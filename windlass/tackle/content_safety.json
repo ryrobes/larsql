@@ -1,0 +1,15 @@
+{
+  "cascade_id": "content_safety",
+  "description": "Checks for harmful or inappropriate content",
+  "tags": ["safety", "moderation", "validation"],
+  "inputs_schema": {
+    "content": "The content to check for safety issues"
+  },
+  "phases": [{
+    "name": "safety_check",
+    "instructions": "Review the content for potential safety issues:\n- Hate speech or discrimination\n- Violence or harmful content\n- Explicit or inappropriate content\n- Misinformation or dangerous advice\n\nBe reasonable - educational or news content discussing these topics is acceptable.\n\nReturn ONLY a JSON object with this exact format:\n{\"valid\": true/false, \"reason\": \"explanation of safety assessment\"}\n\nDo not include any other text.",
+    "rules": {
+      "max_turns": 1
+    }
+  }]
+}

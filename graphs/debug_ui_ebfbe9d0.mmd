@@ -1,0 +1,49 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef system fill:#e1f5fe,stroke:#333,color:#000;
+    classDef user fill:#fff9c4,stroke:#333,color:#000;
+    classDef agent fill:#dcedc8,stroke:#333,color:#000;
+    classDef tool fill:#ffccbc,stroke:#333,color:#000;
+    classDef error fill:#ffcdd2,stroke:#f44336,stroke-width:2px,color:#000;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5,color:#000;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px,color:#000;
+    classDef soundings_group fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3,color:#000;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:4px,color:#000;
+    classDef loser fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5,color:#666;
+    classDef reforge_group fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000;
+    classDef reforge_step fill:#ffe0b2,stroke:#f57c00,color:#000;
+    classDef reforge_winner fill:#dcedc8,stroke:#689f38,stroke-width:4px,color:#000;
+    subgraph node_d45d584f [STR: Cascade: iterative_joke]
+    direction TB
+    class node_d45d584f cascade
+        subgraph node_a5eee527 [STR: Phase: draft_joke]
+        direction TB
+        class node_a5eee527 structure
+                node_95ca1230["SYS"]
+            class node_95ca1230 system
+                node_90083e4d["USE"]
+            class node_90083e4d user
+        end
+        subgraph node_412cbc28 [STR: Phase: refine_joke]
+        direction TB
+        class node_412cbc28 structure
+                node_1c8f2d58["SYS"]
+            class node_1c8f2d58 system
+                node_cd4f2435["USE"]
+            class node_cd4f2435 user
+        end
+    end
+        node_882778c3["Agent:  Brainstorm Concepts for Pirat"]
+    class node_882778c3 agent
+        node_ec3fcca4["Agent:  Best Possible Joke (Draft 1) "]
+    class node_ec3fcca4 agent
+        node_33c0b511["USE"]
+    class node_33c0b511 user
+        node_7f231a3a["Agent:  Best Possible Joke (Draft 3) "]
+    class node_7f231a3a agent
+        node_61b40b9a["USE"]
+    class node_61b40b9a user
+        node_74c72b22["Agent:  Best Possible Joke (Draft 5) "]
+    class node_74c72b22 agent

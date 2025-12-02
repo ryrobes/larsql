@@ -1,0 +1,44 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_91e3c387 [STRUCTURE: Cascade: grammar_check]
+    direction TB
+    class node_91e3c387 cascade
+        subgraph node_af2f8bc2 [STRUCTURE: Phase: check]
+        direction TB
+        class node_af2f8bc2 structure
+                node_b3985811["SYSTEM<br/>Review the provided text for grammar and spelling errors. Check for:\n- Spelling mistakes\n- Grammar issues\n- Punctuation errors\n- Basic readability\n\nReturn ONLY a JSON object with this exact format:\n{\'valid\': true/false, \'reason\': \'explanation of issues found or confirmation it's good\', \'issues\': [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable."]
+            class node_b3985811 system
+                node_645e57e9["USER<br/> Input Data:\n{\'content\': \' The Future of AI: Trends Shaping Tomorrow's Technology\\n\\nArtificial Intelligence (AI) is poised at the forefront of technological advancement, with its influence permeating every sector\\u2014from healthcare to finance, and beyond. As tech professionals, understanding the trajectory of AI is crucial for staying ahead in an ever-evolving landscape. The future of AI promises both opportunities and challenges, and navigating this terrain requires a keen understandi..."]
+            class node_645e57e9 user
+        end
+    end
+        node_97f4f378["ASSISTANT<br/>{\'valid\': false, \'reason\': \'The text contains three significant issues: 1) Incorrect use of characters (e.g., \'\\u2014\' instead of proper punctuation), 2) Missing comma in a compound sentence, 3) Inconsistency in quotation marks with apostrophes. \', \'issues\': [\'Incorrect punctuation characters used (e.g., \\u2014 should be an em dash)\', \'Missing comma before 'and beyond' in the first sentence\', \'Inconsistency in the use of apostrophes (e.g., using curly quotes and straight quotes)..."]
+    class node_97f4f378 agent
+    subgraph node_2bee3887 [STRUCTURE: Cascade: grammar_check]
+    direction TB
+    class node_2bee3887 cascade
+        subgraph node_87c63323 [STRUCTURE: Phase: check]
+        direction TB
+        class node_87c63323 structure
+                node_afea4dc4["SYSTEM<br/>Review the provided text for grammar and spelling errors. Check for:\n- Spelling mistakes\n- Grammar issues\n- Punctuation errors\n- Basic readability\n\nReturn ONLY a JSON object with this exact format:\n{\'valid\': true/false, \'reason\': \'explanation of issues found or confirmation it's good\', \'issues\': [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable."]
+            class node_afea4dc4 system
+                node_1daf25e0["USER<br/> Input Data:\n{\'content\': \' The Future of AI: Trends Shaping Tomorrow's Technology\\n\\nArtificial Intelligence (AI) stands at the forefront of technological advancement, its influence permeating every sector\\u2014from healthcare to finance and beyond. For tech professionals, understanding the trajectory of AI is critical to staying ahead in an ever-evolving landscape. The future of AI presents both opportunities and challenges, and navigating this terrain requires a keen understanding of em..."]
+            class node_1daf25e0 user
+        end
+    end
+        node_320ea4fb["ASSISTANT<br/>{\'valid\': true, \'reason\': \'The text is well-written with no significant errors found.\', \'issues\': []}"]
+    class node_320ea4fb agent
+    node_91e3c387 -.-> node_97f4f378
+    node_97f4f378 -.-> node_2bee3887
+    node_2bee3887 -.-> node_320ea4fb

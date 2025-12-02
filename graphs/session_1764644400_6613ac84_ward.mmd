@@ -1,0 +1,28 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_85414fd8 [STRUCTURE: Cascade: length_check]
+    direction TB
+    class node_85414fd8 cascade
+        subgraph node_a177940b [STRUCTURE: Phase: check_length]
+        direction TB
+        class node_a177940b structure
+                node_030c59cd["SYSTEM<br/>Check if the content length meets the constraints:\n- min_length: 0\n- max_length: 10000\n\nCount the actual character length of the content and verify it falls within the range.\n\nReturn ONLY a JSON object with this exact format:\n{\'valid\': true/false, \'reason\': \'explanation\', \'actual_length\': N}\n\nDo not include any other text."]
+            class node_030c59cd system
+                node_53f4c116["USER<br/> Input Data:\n{\'content\': \'{'session_id': 'session_1764644400_6613ac84_reforge1_1', 'state': {'input': {'business_challenge': 'Limiting shrinkage in high crime retail areas', 'timeframe': 'ASAP - 6 months', '_refinement_context': 'Original cascade goal: Create a strategic plan with cascade-level reforge for iterative improvement\\\\n\\\\nCurrent best output: {\\\\'session_id\\\\': \\\\'session_1764644400_6613ac84_sounding_0\\\\', \\\\'state\\\\': {\\\\'input\\\\': {\\\\'business_challenge\\\\..."]
+            class node_53f4c116 user
+        end
+    end
+        node_b1294888["ASSISTANT<br/>{\'valid\':false,\'reason\':\'The content exceeds the maximum length of 10000 characters.\',\'actual"]
+    class node_b1294888 agent
+    node_85414fd8 -.-> node_b1294888

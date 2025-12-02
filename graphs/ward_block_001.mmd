@@ -1,0 +1,45 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_6223642d [STRUCTURE: Cascade: ward_blocking_flow]
+    direction TB
+    class node_6223642d cascade
+        subgraph node_67219ca6 [STRUCTURE: Phase: safety_check]
+        direction TB
+        class node_67219ca6 structure
+                node_ddcc52dd["SYSTEM<br/>Review this content for publication:\n\nThis article discusses technology trends and innovation in 2024. AI is transforming how we work and live.\n\nProvide your analysis."]
+            class node_ddcc52dd system
+                node_1ea104c1["USER<br/> Input Data:\n{\'content\': \'This article discusses technology trends and innovation in 2024. AI is transforming how we work and live.\'}"]
+            class node_1ea104c1 user
+        end
+        subgraph node_6fcdd539 [STRUCTURE: Phase: publish]
+        direction TB
+        class node_6fcdd539 structure
+                node_3eecf462["SYSTEM<br/>Content passed all safety and quality wards! \u2705\n\nConfirm it's ready for publication."]
+            class node_3eecf462 system
+                node_977cbb13["USER<br/> Input Data:\n{\'content\': \'This article discusses technology trends and innovation in 2024. AI is transforming how we work and live.\'}"]
+            class node_977cbb13 user
+        end
+    end
+        node_99a6ace5["ASSISTANT<br/>The content provided is concise and clearly conveys the main theme of the article, focusing on technology trends and innovation in 2024, with an emphasis on AI's transformative impact on daily life and work environments. However, there are several areas where the content could be improved for better publication quality:\n\n1. **Depth and Detail**: The current description is quite brief and lacks specific examples or details. Expanding on how AI is changing work and life\u2014such as through auto..."]
+    class node_99a6ace5 agent
+        node_c0b53680["ASSISTANT<br/>"]
+    class node_c0b53680 agent
+        node_e261d675["TOOL<br/>State updated: publication_status = ready for publication"]
+    class node_e261d675 tool
+        node_717f3988["ASSISTANT<br/>The content has been confirmed as ready for publication."]
+    class node_717f3988 agent
+    node_6223642d -.-> node_99a6ace5
+    node_99a6ace5 -.-> node_c0b53680
+    node_c0b53680 -.-> node_e261d675
+    node_e261d675 -.-> node_717f3988

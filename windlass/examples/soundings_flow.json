@@ -1,0 +1,26 @@
+{
+  "cascade_id": "creative_writing_with_soundings",
+  "description": "Demonstrates soundings (Tree of Thought) for creative writing",
+  "inputs_schema": {
+    "theme": "The theme for the story"
+  },
+  "phases": [
+    {
+      "name": "draft_opening",
+      "instructions": "Write an engaging opening paragraph for a short story about {{ input.theme }}. Be creative and varied in your approach.",
+      "tackle": [],
+      "soundings": {
+        "factor": 3,
+        "evaluator_instructions": "You are an expert creative writing instructor. Evaluate the following story openings based on: 1) Hook strength - does it grab attention? 2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear and compelling? Select the BEST opening."
+      },
+      "rules": {"max_turns": 1},
+      "handoffs": ["develop_story"]
+    },
+    {
+      "name": "develop_story",
+      "instructions": "Continue the story from this opening: {{ outputs.draft_opening }}. Write 2-3 more paragraphs to develop the narrative.",
+      "tackle": [],
+      "rules": {"max_turns": 2}
+    }
+  ]
+}

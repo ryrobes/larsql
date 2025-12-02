@@ -1,0 +1,18 @@
+{
+  "cascade_id": "data_analysis",
+  "phases": [
+    {
+      "name": "ingest",
+      "instructions": "You are a data ingest assistant. Receive the input data and confirm its structure.",
+      "tackle": [],
+      "handoffs": ["summarize"]
+    },
+    {
+      "name": "summarize",
+      "instructions": "Summarize the ingested data concisely.",
+      "tackle": [],
+      "rules": {"max_turns": 1},
+      "handoffs": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "cascade_id": "research_assistant_with_manifest",
+  "description": "Adaptive research assistant that manifests tackle based on full conversation context",
+  "inputs_schema": {
+    "research_topic": "The topic to research and analyze"
+  },
+  "phases": [
+    {
+      "name": "initial_analysis",
+      "instructions": "Research Topic: {{ input.research_topic }}\n\nProvide an initial analysis of this topic. What are the key aspects to explore?",
+      "tackle": "manifest",
+      "manifest_context": "current",
+      "rules": {"max_turns": 2},
+      "handoffs": ["deep_dive"]
+    },
+    {
+      "name": "deep_dive",
+      "instructions": "Based on the initial analysis, dive deeper into the most important aspects. Use appropriate tools to enhance your analysis.",
+      "tackle": "manifest",
+      "manifest_context": "full",
+      "rules": {"max_turns": 3},
+      "handoffs": ["synthesize"]
+    },
+    {
+      "name": "synthesize",
+      "instructions": "Synthesize all findings into a coherent summary with key insights and conclusions.",
+      "tackle": [],
+      "rules": {"max_turns": 2}
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "cascade_id": "dashboard_metrics_ideation",
+  "description": "Brainstorm dashboard metrics with iterative refinement via reforge",
+  "inputs_schema": {
+    "dashboard_type": "Type of dashboard (e.g., sales, marketing, operations)",
+    "audience": "Target audience for the dashboard"
+  },
+  "phases": [{
+    "name": "ideate_metrics",
+    "instructions": "Brainstorm key metrics for a {{ input.dashboard_type }} dashboard targeting {{ input.audience }}. Be creative and varied in your approach. Consider:\n- Primary KPIs\n- Supporting metrics\n- User engagement indicators\n- Actionable insights",
+    "tackle": [],
+    "soundings": {
+      "factor": 4,
+      "evaluator_instructions": "Evaluate the metric proposals based on:\n1. Relevance to {{ input.dashboard_type }}\n2. Originality and creativity\n3. Feasibility of implementation\n4. Value to {{ input.audience }}\n\nSelect the BEST proposal with highest overall score.",
+      "reforge": {
+        "steps": 3,
+        "honing_prompt": "Refine the selected metrics:\n- Add specific visualization recommendations (charts, graphs, heatmaps)\n- Include data validation thresholds and alert conditions\n- Tighten descriptions for dashboard flow and user experience\n- Ensure metrics are actionable and time-bound",
+        "factor_per_step": 2,
+        "mutate": true,
+        "evaluator_override": "Evaluate refined metrics on:\n1. Clarity and specificity\n2. Visualization effectiveness\n3. Actionability for {{ input.audience }}\n4. Technical feasibility\n\nPick the most polished and production-ready version.",
+        "threshold": {
+          "validator": "simple_validator",
+          "mode": "blocking"
+        }
+      }
+    },
+    "rules": {"max_turns": 1},
+    "handoffs": ["finalize"]
+  }, {
+    "name": "finalize",
+    "instructions": "The metrics have been refined through {{ phase_count | default(3) }} reforge steps! Provide a brief summary highlighting:\n- Top 3 metrics selected\n- Key visualization recommendations\n- Why this dashboard will be effective\n\nStore final metrics using set_state.",
+    "tackle": ["set_state"],
+    "rules": {"max_turns": 1}
+  }]
+}

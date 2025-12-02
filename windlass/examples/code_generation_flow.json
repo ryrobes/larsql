@@ -1,0 +1,33 @@
+{
+  "cascade_id": "code_generation_flow",
+  "description": "Generate code with validation ensuring proper documentation",
+  "inputs_schema": {
+    "function_name": "Name of the function to create",
+    "description": "What the function should do"
+  },
+  "phases": [{
+    "name": "generate_code",
+    "instructions": "Create a Python function:\n- Function name: {{ input.function_name }}\n- Purpose: {{ input.description }}\n\nProvide clean, working Python code.",
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "loop_until": "simple_validator",
+      "retry_instructions": "⚠️ Code validation failed: {{ validation_error }}\n\nPlease provide more complete code. Attempt {{ attempt }}/{{ max_attempts }}"
+    },
+    "handoffs": ["add_docstring"]
+  }, {
+    "name": "add_docstring",
+    "instructions": "Your code structure looks good. Now add comprehensive documentation:\n\nAdd a detailed docstring to the function that:\n1. Explains what it does\n2. Documents parameters\n3. Documents return value\n4. Must include the word 'important' in the docstring (coding standard requirement)\n\nProvide the complete documented function.",
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "loop_until": "keyword_validator",
+      "retry_instructions": "📋 Documentation standard not met: {{ validation_error }}\n\nYour docstring must mention what is 'important' about this function's usage or behavior.\n\nAttempt {{ attempt }}/{{ max_attempts }}"
+    },
+    "handoffs": ["summary"]
+  }, {
+    "name": "summary",
+    "instructions": "Perfect! The code is complete and properly documented.\n\nProvide a brief summary of the function you created.",
+    "tackle": ["set_state"]
+  }]
+}

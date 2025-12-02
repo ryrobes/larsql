@@ -1,0 +1,48 @@
+{
+  "cascade_id": "api_response_flow",
+  "description": "Generate API response with schema and semantic validation",
+  "inputs_schema": {
+    "endpoint": "API endpoint name",
+    "data": "Description of data to return"
+  },
+  "phases": [{
+    "name": "generate_response",
+    "instructions": "Generate a REST API response for endpoint: {{ input.endpoint }}\n\nData to include: {{ input.data }}\n\nReturn ONLY valid JSON (no markdown) with this structure:\n{\n  \"status\": \"success\" or \"error\",\n  \"code\": 200,\n  \"message\": \"descriptive message\",\n  \"data\": {},\n  \"timestamp\": \"ISO 8601 timestamp\"\n}",
+    "output_schema": {
+      "type": "object",
+      "required": ["status", "code", "message", "data", "timestamp"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["success", "error"]
+        },
+        "code": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "message": {
+          "type": "string",
+          "minLength": 5
+        },
+        "data": {
+          "type": "object"
+        },
+        "timestamp": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        }
+      }
+    },
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "retry_instructions": "🔌 API Response Schema Error:\n\n{{ schema_error }}\n\nRequired fields:\n- status: \"success\" or \"error\"\n- code: integer 100-599\n- message: string (5+ chars)\n- data: object\n- timestamp: ISO 8601 format (YYYY-MM-DDTHH:MM:SS)\n\nReturn ONLY valid JSON. Attempt {{ attempt }}/{{ max_attempts }}"
+    },
+    "handoffs": ["validate_semantics"]
+  }, {
+    "name": "validate_semantics",
+    "instructions": "The JSON structure is valid! Now verify the response makes sense:\n\nResponse code: {{ state.validated_output.code }}\nStatus: {{ state.validated_output.status }}\nMessage: {{ state.validated_output.message }}\n\nProvide brief confirmation that the API response is semantically correct (e.g., success status matches 2xx code).",
+    "tackle": ["set_state"]
+  }]
+}

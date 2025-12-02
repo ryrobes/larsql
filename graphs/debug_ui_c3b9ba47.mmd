@@ -1,0 +1,51 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef system fill:#e1f5fe,stroke:#333,color:#000;
+    classDef user fill:#fff9c4,stroke:#333,color:#000;
+    classDef agent fill:#dcedc8,stroke:#333,color:#000;
+    classDef tool fill:#ffccbc,stroke:#333,color:#000;
+    classDef error fill:#ffcdd2,stroke:#f44336,color:#000;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5,color:#000;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px,color:#000;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3,color:#000;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000;
+    subgraph node_786d5f72 [STRUCTURE: Cascade: iterative_joke]
+    direction TB
+    class node_786d5f72 cascade
+        subgraph node_d06ac4b2 [STRUCTURE: Phase: draft_joke]
+        direction TB
+        class node_d06ac4b2 structure
+                node_9dad138a["SYSTEM<br/>Draft a joke about a pirate who is learning Python programming. Do not output the final joke yet, just brainstorm concepts."]
+            class node_9dad138a system
+                node_595e989d["USER<br/> Input Data:\n{}"]
+            class node_595e989d user
+        end
+        subgraph node_a0338847 [STRUCTURE: Phase: refine_joke]
+        direction TB
+        class node_a0338847 structure
+                node_a7853d1f["SYSTEM<br/>Take the concepts from the previous turn and write the best possible joke. Then critique it. Then rewrite it to be funnier."]
+            class node_a7853d1f system
+                node_3183c7e9["USER<br/> Input Data:\n{}"]
+            class node_3183c7e9 user
+        end
+    end
+        node_2e6665b9["ASSISTANT<br/> Brainstorm Concepts for Pirate Learning Python Joke\n\n**Core Theme**: Play on pirate stereotypes (Arrr!, treasure, ships, parrots, peg legs, rum) clashing with Python concepts (snakes, indentation, print(), lists, loops, bugs, syntax errors). Aim for puns, wordplay, and absurdity. Keep it light, PG, short setup-punchline.\n\n**Key Pun Ideas**:\n1. **Arrr vs. Array/R**: Pirate says \'Arrr!\' but confuses it with coding arrays or R language. E.g., \'Why does the pirate love Python? No 'Arrr'chiv..."]
+    class node_2e6665b9 agent
+        node_2741205b["ASSISTANT<br/> Best Possible Joke\n**Why did the pirate fail Python 101?**  \nHis code kept throwing IndentationErrors\u2014*arrr, his spaces were as crooked as his peg leg!*\n\n Critique\n**Strengths**: Strong pun on Python's strict indentation rules clashing with pirate stereotypes (peg leg = uneven). Relatable for coders, short Q&A format, pirate lingo adds flavor without overkill. Visual and absurd imagery boosts humor.  \n**Weaknesses**: Punchline is a tad predictable (indentation jokes are common in pro..."]
+    class node_2741205b agent
+        node_7c558612["USER<br/>Continue/Refine based on previous output."]
+    class node_7c558612 user
+        node_70215bf3["ASSISTANT<br/> Best Possible Joke (Refined from Previous)\n**Why did the pirate abandon Python for JavaScript?**  \nHis code was full of IndentationErrors\u2014*\'Arrr, me spaces be as crooked as me peg leg, and the interpreter walked 'em off the plank!\'*\n\n Critique\n**Strengths**: Builds on prior versions with escalation (quitting for JS adds coding rivalry twist, relatable to devs). Ties in \'plank\' pun seamlessly for pirate flair. Punchier rhythm, vivid imagery (peg leg + plank), and surprise contrast ..."]
+    class node_70215bf3 agent
+        node_bf4c18af["USER<br/>Continue/Refine based on previous output."]
+    class node_bf4c18af user
+        node_3165a5f3["ASSISTANT<br/> Best Possible Joke (Refined from Previous)\n**Pirate boots up Python: `print(\'Arrr, matey!\')`**  \n**SyntaxError: invalid syntax**  \n*\'Shiver me timbers\u2014me parrot ate the quotes! Now it's a naked snake hissin' bare code at me!\'*\n\n Critique\n**Strengths**: Excellent multi-layer pun (parrot eating quotes = missing strings; Python as literal snake; pirate exclamations for rhythm). Visual absurdity (parrot + snake imagery) creates strong mental picture. Code snippet adds authenticity fo..."]
+    class node_3165a5f3 agent
+    node_786d5f72 -.-> node_2e6665b9
+    node_2e6665b9 -.-> node_2741205b
+    node_2741205b -.-> node_7c558612
+    node_7c558612 -.-> node_70215bf3
+    node_70215bf3 -.-> node_bf4c18af
+    node_bf4c18af -.-> node_3165a5f3

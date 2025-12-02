@@ -1,0 +1,15 @@
+{
+  "cascade_id": "fact_check",
+  "description": "Evaluates claims for accuracy and identifies potential issues or areas needing verification",
+  "inputs_schema": {
+    "claim": "The claim or statement to fact-check"
+  },
+  "phases": [
+    {
+      "name": "evaluate",
+      "instructions": "Evaluate this claim: {{ input.claim }}\n\nAnalyze:\n1. Is the claim verifiable?\n2. What would you need to verify it?\n3. Are there any red flags or potential issues?\n4. What's your confidence level in this claim? (low/medium/high)\n\nNote: You don't have web access, so focus on logical analysis and identifying verification needs.",
+      "tackle": [],
+      "rules": {"max_turns": 1}
+    }
+  ]
+}

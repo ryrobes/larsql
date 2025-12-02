@@ -1,0 +1,30 @@
+{
+  "cascade_id": "context_demo_parent",
+  "phases": [
+    {
+      "name": "setup",
+      "instructions": "Use the 'set_state' tool to set a state variable 'secret_code' to 'BLUE_OCEAN'.",
+      "tackle": ["set_state"],
+      "handoffs": ["call_child"]
+    },
+    {
+      "name": "call_child",
+      "instructions": "Calling child cascade with context inheritance.",
+      "tackle": [],
+      "sub_cascades": [
+        {
+          "ref": "context_demo_child.json",
+          "context_in": true,
+          "context_out": true
+        }
+      ],
+      "handoffs": ["verify"]
+    },
+    {
+      "name": "verify",
+      "instructions": "Current State: {{ state }}. The child should have added 'child_status' to the state. Verify it.",
+      "tackle": [],
+      "rules": {"max_turns": 1}
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_c98e53aa [STRUCTURE: Cascade: validation_test_flow]
+    direction TB
+    class node_c98e53aa cascade
+        subgraph node_1934f2ca [STRUCTURE: Phase: write_content]
+        direction TB
+        class node_1934f2ca structure
+                node_8e3f1451["SYSTEM<br/>Write a short paragraph (at least 50 characters) about: AI\n\nMake it clear and well-written."]
+            class node_8e3f1451 system
+                node_909ffc1c["USER<br/> Input Data:\n{\'topic\': \'AI\'}"]
+            class node_909ffc1c user
+        end
+    end
+        node_cfd32f3b["ASSISTANT<br/>Artificial Intelligence (AI) has rapidly transformed various industries by enhancing efficiency and decision-making capabilities. From healthcare to finance, AI algorithms analyze vast amounts of data, enabling better predictions and personalized solutions. As machine learning and natural language processing improve, AI continues to evolve, providing innovative tools that augment human capabilities and drive progress in technology. The future of AI holds immense potential, prompting discussions ..."]
+    class node_cfd32f3b agent
+    node_c98e53aa -.-> node_cfd32f3b

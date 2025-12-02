@@ -1,0 +1,39 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_233bbf74 [STRUCTURE: Cascade: contact_extractor_flow]
+    direction TB
+    class node_233bbf74 cascade
+        subgraph node_783f1803 [STRUCTURE: Phase: extract_contact]
+        direction TB
+        class node_783f1803 structure
+                node_3cafb0a1["SYSTEM<br/>Extract contact information from the following text:\n\nContact John Doe at john@email.com or (555) 555-5555\n\nReturn ONLY a JSON object with this structure:\n{\n  \'name\': \'Full name\',\n  \'email\': \'email@example.com\',\n  \'phone\': \'phone number\'\n}\n\nDo not include any other text or markdown formatting."]
+            class node_3cafb0a1 system
+                node_20905653["USER<br/> Input Data:\n{\'text\': \'Contact John Doe at john@email.com or (555) 555-5555\'}"]
+            class node_20905653 user
+        end
+        subgraph node_53844c73 [STRUCTURE: Phase: confirm]
+        direction TB
+        class node_53844c73 structure
+                node_30df9687["SYSTEM<br/>Contact information extracted successfully!\n\nValidated data:\n- Name: John Doe\n- Email: john@email.com\n- Phone: (555) 555-5555\n\nProvide a brief confirmation message."]
+            class node_30df9687 system
+                node_500f4524["USER<br/> Input Data:\n{\'text\': \'Contact John Doe at john@email.com or (555) 555-5555\'}"]
+            class node_500f4524 user
+        end
+    end
+        node_a301caaa["ASSISTANT<br/>{\n  \'name\': \'John Doe\',\n  \'email\': \'john@email.com\',\n  \'phone\': \'(555) 555-5555\'\n}"]
+    class node_a301caaa agent
+        node_3175e1b2["ASSISTANT<br/>The contact information has been successfully extracted."]
+    class node_3175e1b2 agent
+    node_233bbf74 -.-> node_a301caaa
+    node_a301caaa -.-> node_3175e1b2

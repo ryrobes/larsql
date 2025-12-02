@@ -1,0 +1,51 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef system fill:#e1f5fe,stroke:#333,color:#000;
+    classDef user fill:#fff9c4,stroke:#333,color:#000;
+    classDef agent fill:#dcedc8,stroke:#333,color:#000;
+    classDef tool fill:#ffccbc,stroke:#333,color:#000;
+    classDef error fill:#ffcdd2,stroke:#f44336,color:#000;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5,color:#000;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px,color:#000;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3,color:#000;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000;
+    subgraph node_743f53ec [STRUCTURE: Cascade: iterative_joke]
+    direction TB
+    class node_743f53ec cascade
+        subgraph node_e16b3d40 [STRUCTURE: Phase: draft_joke]
+        direction TB
+        class node_e16b3d40 structure
+                node_80fc5a46["SYSTEM<br/>Draft a joke about a pirate who is learning Python programming. Do not output the final joke yet, just brainstorm concepts."]
+            class node_80fc5a46 system
+                node_e88af4e3["USER<br/> Input Data:\n{}"]
+            class node_e88af4e3 user
+        end
+        subgraph node_021cfcf0 [STRUCTURE: Phase: refine_joke]
+        direction TB
+        class node_021cfcf0 structure
+                node_b0182e06["SYSTEM<br/>Take the concepts from the previous turn and write the best possible joke. Then critique it. Then rewrite it to be funnier."]
+            class node_b0182e06 system
+                node_04e09f05["USER<br/> Input Data:\n{}"]
+            class node_04e09f05 user
+        end
+    end
+        node_fd6780fd["ASSISTANT<br/> Brainstorm Concepts for Pirate Learning Python Joke\n\n**Core Theme**: Play on pirate lingo (\'Arrr!\', \'matey\', \'shiver me timbers\', treasure, planks, ships) clashing with Python programming concepts (syntax, indentation, print, lists, loops, errors, pip, etc.). Goal: Punny, short setup-punchline structure for quick laugh.\n\n**Key Pun Opportunities**:\n- \'Arrr\' sounds like \'R\' (programming language), but pivot to Python-specific: \'Arrr-guments\' (function args), \'Arrr-rays\' (arrays..."]
+    class node_fd6780fd agent
+        node_59414697["ASSISTANT<br/> Best Possible Joke\nWhy did the pirate fail his Python class?  \nHis code kept throwing IndentationErrors\u2014turns out, his ship already listed too much, and he made it walk the plank!\n\n Critique\n**Strengths**: Strong double pun on \'list\' (Python data structure/ship tilting) and \'walk the plank\' (indentation errors as punishment). Ties pirate lore directly to a common beginner Python frustration. Short setup-punchline, groan-worthy wordplay.\n**Weaknesses**: Slightly wordy; the \'ship ..."]
+    class node_59414697 agent
+        node_4ea64409["USER<br/>Continue/Refine based on previous output."]
+    class node_4ea64409 user
+        node_9c248ba2["ASSISTANT<br/> Best Possible Joke\nArrr, matey! Why'd the pirate flunk Python?  \nHis code threw an IndentationError every time\u2014\'Shiver me timbers, me script's walkin' the plank agin!\'\n\n Critique\n**Strengths**: Punchier than previous (shorter, direct punchline). Pirate dialect (\'Arrr, matey!\', \'Shiver me timbers\') amps immersion and fun. Ties error to pirate punishment seamlessly for big groan-laugh. Broad appeal\u2014coders get the tech, others get the pirate vibe.\n**Weaknesses**: Still niche ..."]
+    class node_9c248ba2 agent
+        node_9e2685e3["USER<br/>Continue/Refine based on previous output."]
+    class node_9e2685e3 user
+        node_94a0bbf9["ASSISTANT<br/> Best Possible Joke\nWhy'd the pirate quit Python?  \n\'Arrrgh! IndentationErrors make me code walk the plank\u2014and me parrot's trapped in `while True: print('Dead men tell no tales!')`!\'\n\n Critique\n**Strengths**: Combines two Python pitfalls (indentation + infinite loops) with pirate staples (plank, parrot repetition, proverb). Visual/hilarious image of endless squawking parrot. Dialect keeps flavor; concise setup-punchline for max impact.\n**Weaknesses**: Slightly technical (assumes `wh..."]
+    class node_94a0bbf9 agent
+    node_743f53ec -.-> node_fd6780fd
+    node_fd6780fd -.-> node_59414697
+    node_59414697 -.-> node_4ea64409
+    node_4ea64409 -.-> node_9c248ba2
+    node_9c248ba2 -.-> node_9e2685e3
+    node_9e2685e3 -.-> node_94a0bbf9

@@ -1,0 +1,39 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_13264b45 [STRUCTURE: Cascade: product_catalog_flow]
+    direction TB
+    class node_13264b45 cascade
+        subgraph node_9b792122 [STRUCTURE: Phase: create_catalog_entry]
+        direction TB
+        class node_9b792122 structure
+                node_a8484744["SYSTEM<br/>Create a structured product catalog entry for:\n\nErgonomic wireless mouse with adjustable DPI, USB-C charging, and RGB lighting. Perfect for gaming and productivity.\n\nReturn ONLY a JSON object (no markdown, no extra text) with this structure:\n{\n  \'product_name\': \'Name of product\',\n  \'category\': \'Product category\',\n  \'price\': 29.99,\n  \'in_stock\': true,\n  \'specifications\': {\n    \'dimensions\': \'measurements\',\n    \'weight\': \'weight info\',\n    \'material\': \'materia..."]
+            class node_a8484744 system
+                node_f6db1620["USER<br/> Input Data:\n{\'product_description\': \'Ergonomic wireless mouse with adjustable DPI, USB-C charging, and RGB lighting. Perfect for gaming and productivity.\'}"]
+            class node_f6db1620 user
+        end
+        subgraph node_0d9dca5c [STRUCTURE: Phase: summary]
+        direction TB
+        class node_0d9dca5c structure
+                node_b514eb0b["SYSTEM<br/>\u2705 Product catalog entry validated!\n\nProduct: Ergonomic Wireless Mouse\nCategory: Computer Accessories\nPrice: $29.99\nIn Stock: True\n\nProvide a brief confirmation that the catalog entry is ready."]
+            class node_b514eb0b system
+                node_dcc1034b["USER<br/> Input Data:\n{\'product_description\': \'Ergonomic wireless mouse with adjustable DPI, USB-C charging, and RGB lighting. Perfect for gaming and productivity.\'}"]
+            class node_dcc1034b user
+        end
+    end
+        node_102db2db["ASSISTANT<br/>{\n  \'product_name\': \'Ergonomic Wireless Mouse\',\n  \'category\': \'Computer Accessories\',\n  \'price\': 29.99,\n  \'in_stock\': true,\n  \'specifications\': {\n    \'dimensions\': \'4.5 x 2.5 x 1.5 inches\',\n    \'weight\': \'100 grams\',\n    \'material\': \'Plastic\'\n  },\n  \'tags\': [\'wireless\', \'gaming\', \'productivity\', \'RGB\', \'adjustable DPI\']\n}"]
+    class node_102db2db agent
+        node_1a0f8206["ASSISTANT<br/>The catalog entry for the Ergonomic Wireless Mouse is ready."]
+    class node_1a0f8206 agent
+    node_13264b45 -.-> node_102db2db
+    node_102db2db -.-> node_1a0f8206

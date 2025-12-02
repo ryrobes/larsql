@@ -1,0 +1,67 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_0167dfc0 [STRUCTURE: Cascade: strategic_plan_reforge]
+    direction TB
+    class node_0167dfc0 cascade
+        subgraph node_af461b47 [STRUCTURE: Phase: analyze_challenge]
+        direction TB
+        class node_af461b47 structure
+                node_a824709b["SYSTEM<br/>Analyze the business challenge: Limiting shrinkage in high crime retail areas\n\nTimeframe: ASAP - 6 months\n\nProvide:\n1. Current state assessment\n2. Root cause analysis\n3. Key stakeholders affected\n4. Market context\n\nIf '_refinement_context' is provided in input, incorporate that feedback:\n"]
+            class node_a824709b system
+                node_4a56db98["USER<br/> Input Data:\n{\'business_challenge\': \'Limiting shrinkage in high crime retail areas\', \'timeframe\': \'ASAP - 6 months\'}"]
+            class node_4a56db98 user
+        end
+        subgraph node_d5c9e083 [STRUCTURE: Phase: strategize]
+        direction TB
+        class node_d5c9e083 structure
+                node_1f98eb1f["SYSTEM<br/>Based on the analysis, develop a strategic approach to address Limiting shrinkage in high crime retail areas.\n\nInclude:\n1. Strategic goals (3-5 key objectives)\n2. Approach and methodology\n3. Success criteria\n4. Initial resource estimates\n\nRefinement context (if reforging):\n"]
+            class node_1f98eb1f system
+                node_36817529["USER<br/> Input Data:\n{\'business_challenge\': \'Limiting shrinkage in high crime retail areas\', \'timeframe\': \'ASAP - 6 months\'}"]
+            class node_36817529 user
+        end
+        subgraph node_99fb0dd6 [STRUCTURE: Phase: risk_assessment]
+        direction TB
+        class node_99fb0dd6 structure
+                node_cdf7e634["SYSTEM<br/>Identify and analyze risks for the proposed strategy.\n\nProvide:\n1. Top 5 risks (with likelihood and impact)\n2. Mitigation strategies\n3. Contingency plans\n4. Early warning indicators\n\nRefinement context:\n"]
+            class node_cdf7e634 system
+                node_f552d6a1["USER<br/> Input Data:\n{\'business_challenge\': \'Limiting shrinkage in high crime retail areas\', \'timeframe\': \'ASAP - 6 months\'}"]
+            class node_f552d6a1 user
+        end
+        subgraph node_ff976be1 [STRUCTURE: Phase: finalize_plan]
+        direction TB
+        class node_ff976be1 structure
+                node_e593272c["SYSTEM<br/>Synthesize the complete strategic plan.\n\nProvide an executive summary including:\n1. Vision statement\n2. Strategic goals\n3. Execution approach\n4. Risk overview\n5. Success metrics\n6. Timeline and milestones\n\nRefinement context:\n\n\nStore the final plan using set_state."]
+            class node_e593272c system
+                node_e1ea454a["USER<br/> Input Data:\n{\'business_challenge\': \'Limiting shrinkage in high crime retail areas\', \'timeframe\': \'ASAP - 6 months\'}"]
+            class node_e1ea454a user
+        end
+    end
+        node_613e036c["ASSISTANT<br/> 1. Current State Assessment\nRetail shrinkage\u2014defined as the difference between recorded sales and actual inventory\u2014typically averages 1.6% of annual sales industry-wide (per 2023 National Retail Federation (NRF) data), equating to ~$112 billion in U.S. losses. In high-crime retail areas (e.g., urban zones with elevated theft rates per FBI Uniform Crime Reports), shrinkage can exceed 3-5%, driven primarily by external theft (shoplifting and organized retail crime, ORC). \n\nKey indica..."]
+    class node_613e036c agent
+        node_65ea1210["ASSISTANT<br/> Strategic Approach: Limiting Shrinkage in High-Crime Retail Areas\n\nThis strategy builds directly on the current state (3-5% shrinkage in hotspots), root causes (external theft dominance, tech/process gaps), stakeholders (prioritizing employees/managers/executives), and market context (ORC surge, tech adoption trends). It employs a **phased DMAIC-inspired methodology** (Define, Measure, Analyze, Improve, Control) tailored for ASAP-6 month execution: **Phase 1 (0-3 months: Stabilize & Quick Win..."]
+    class node_65ea1210 agent
+        node_ff563033["ASSISTANT<br/> Risk Analysis: Strategic Approach to Limiting Shrinkage in High-Crime Retail Areas\n\nThis risk analysis evaluates the proposed phased strategy (quick wins + tech scale) for 20 high-crime stores within 6 months. Risks are prioritized using a **Likelihood x Impact matrix** (Likelihood: Low/Medium/High; Impact: Low/Medium/High; Score: 1-9, with top 5 >6). Based on NRF LP data (20-30% pilot failure rates), industry benchmarks (e.g., 15% tech deployment delays), and high-crime volatility (FBI ORC t..."]
+    class node_ff563033 agent
+        node_fd32fb2b["ASSISTANT<br/> Executive Summary: Strategic Plan to Limit Shrinkage in High-Crime Retail Areas\n\n**Business Challenge**: Reduce shrinkage (target: 40% from 3-5% baseline) in 20 high-crime stores within ASAP-6 months, addressing external theft (ORC/shoplifting), process gaps, and safety risks amid rising U.S. retail losses ($112B annually, NRF 2023).\n\n 1. Vision Statement\nTransform high-crime retail stores into secure, efficient fortresses that deter theft, empower employees, recover losses, and restore cu..."]
+    class node_fd32fb2b agent
+        node_6529746b["TOOL<br/>State updated: final_strategic_plan =  Executive Summary: Strategic Plan to Limit Shrinkage in High-Crime Retail Areas\n\n**Business Challenge**: Reduce shrinkage (target: 40% from 3-5% baseline) in 20 high-crime stores within ASAP-6 months, addressing external theft (ORC/shoplifting), process gaps, and safety risks amid rising U.S. retail losses ($112B annually, NRF 2023).\n\n 1. Vision Statement\nTransform high-crime retail stores into secure, efficient fortresses that deter theft, empower emp..."]
+    class node_6529746b tool
+        node_9723ab5f["ASSISTANT<br/> Executive Summary: Strategic Plan to Limit Shrinkage in High-Crime Retail Areas\n\n**Business Challenge**: Reduce shrinkage (target: 40% from 3-5% baseline) in 20 high-crime stores within ASAP-6 months, addressing external theft (ORC/shoplifting), process gaps, and safety risks amid rising U.S. retail losses ($112B annually, NRF 2023).\n\n 1. Vision Statement\nTransform high-crime retail stores into secure, efficient fortresses that deter theft, empower employees, recover losses, and restore cu..."]
+    class node_9723ab5f agent
+    node_0167dfc0 -.-> node_613e036c
+    node_613e036c -.-> node_65ea1210
+    node_65ea1210 -.-> node_ff563033
+    node_ff563033 -.-> node_fd32fb2b
+    node_fd32fb2b -.-> node_6529746b
+    node_6529746b -.-> node_9723ab5f

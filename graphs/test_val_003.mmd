@@ -1,0 +1,28 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_8462fb6e [STRUCTURE: Cascade: validation_test_flow]
+    direction TB
+    class node_8462fb6e cascade
+        subgraph node_085ad32a [STRUCTURE: Phase: write_content]
+        direction TB
+        class node_085ad32a structure
+                node_7f42ecd2["SYSTEM<br/>Write a short paragraph (at least 50 characters) about: AI\n\nMake it clear and well-written."]
+            class node_7f42ecd2 system
+                node_c06781f2["USER<br/> Input Data:\n{\'topic\': \'AI\'}"]
+            class node_c06781f2 user
+        end
+    end
+        node_a8c99af8["ASSISTANT<br/>Artificial Intelligence (AI) refers to the simulation of human intelligence processes by machines, particularly computer systems. It encompasses a variety of technologies, including machine learning, natural language processing, and computer vision. AI systems analyze data, learn from patterns, and make decisions with minimal human intervention. This transformative technology is revolutionizing industries such as healthcare, finance, and transportation by enhancing efficiency and enabling innova..."]
+    class node_a8c99af8 agent
+    node_8462fb6e -.-> node_a8c99af8

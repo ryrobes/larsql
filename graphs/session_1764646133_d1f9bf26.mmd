@@ -1,0 +1,40 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_aad75ce4 [STRUCTURE: Cascade: chart_refinement_reforge]
+    direction TB
+    class node_aad75ce4 cascade
+        subgraph node_4ba420ed [STRUCTURE: Phase: create_and_refine_chart]
+        direction TB
+        class node_4ba420ed structure
+                node_21556951["SOUNDINGS_RESULT<br/>Selected best of 3 attempts"]
+            class node_21556951 default
+        end
+        subgraph node_f6d7c085 [STRUCTURE: Phase: finalize]
+        direction TB
+        class node_f6d7c085 structure
+                node_587080bf["SYSTEM<br/>Summarize the chart refinement process:\n- Original chart observations\n- Key improvements identified through reforge\n- Final recommendations\n\nThe images from the refinement process have been saved to the images directory and can be reviewed later."]
+            class node_587080bf system
+                node_c7be8921["USER<br/> Input Data:\n{\'data\': \'Comma-separated data values (e.g., 10,20,30,25,35)\', \'title\': \'Chart title\'}"]
+            class node_c7be8921 user
+        end
+    end
+        node_16b71f23["ASSISTANT<br/>"]
+    class node_16b71f23 agent
+        node_2f91269d["TOOL<br/>Tool not found."]
+    class node_2f91269d tool
+        node_b29901af["ASSISTANT<br/> Chart Refinement Process Summary\n\n Original Chart Observations\n- **Initial Visualization**: Unsorted vertical bar chart titled \'Chart title\' with data [10,20,30,25,35] across \'Items\' 0-4. Y-axis \'Values\' scaled 0-35 (tight fit), uniform blue bars, minimal grid/labels. Pattern: Steady rise (10\u219220\u219230), anomaly dip (30\u219225 at Item 3), peak at 35 (Item 4); sum=120, hints at volatility/sequence (not categorical).\n- **Key Traits**: No sorting preserved raw order (avoids manufa..."]
+    class node_b29901af agent
+    node_aad75ce4 -.-> node_16b71f23
+    node_16b71f23 -.-> node_2f91269d
+    node_2f91269d -.-> node_b29901af

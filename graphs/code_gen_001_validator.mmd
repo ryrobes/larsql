@@ -1,0 +1,44 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_b3a58469 [STRUCTURE: Cascade: simple_validator]
+    direction TB
+    class node_b3a58469 cascade
+        subgraph node_aa43e784 [STRUCTURE: Phase: validate]
+        direction TB
+        class node_aa43e784 structure
+                node_173dc139["SYSTEM<br/>Check if the content is non-empty and has at least 10 characters. Return ONLY a JSON object with this exact format: {\'valid\': true/false, \'reason\': \'explanation\'}. Do not include any other text."]
+            class node_173dc139 system
+                node_1ce739f4["USER<br/> Input Data:\n{\'content\': \'Here's a clean implementation of the `calculate_fibonacci` function in Python, which calculates the nth Fibonacci number using an iterative approach for efficiency:\\n\\n```python\\ndef calculate_fibonacci(n):\\n    \\\'\\\'\\\'\\n    Calculate the nth Fibonacci number.\\n\\n    :param n: Index of the Fibonacci number to calculate (0-based index).\\n    :return: The nth Fibonacci number.\\n    \\\'\\\'\\\'\\n    if n < 0:\\n        raise ValueError(\\\'Input should ..."]
+            class node_1ce739f4 user
+        end
+    end
+        node_885d6625["ASSISTANT<br/>{\'valid\': true, \'reason\': \'The content is non-empty and has more than 10 characters.\'}"]
+    class node_885d6625 agent
+    subgraph node_3bb4ea96 [STRUCTURE: Cascade: keyword_validator]
+    direction TB
+    class node_3bb4ea96 cascade
+        subgraph node_5dccb508 [STRUCTURE: Phase: validate]
+        direction TB
+        class node_5dccb508 structure
+                node_922a0a72["SYSTEM<br/>Check if the text contains the word 'important' (case-insensitive).\n\nReturn ONLY a JSON object:\n- If it contains 'important': {\'valid\': true, \'reason\': \'Content contains required keyword\'}\n- If it does NOT contain 'important': {\'valid\': false, \'reason\': \'Content must include the word 'important'\'}\n\nNo other text."]
+            class node_922a0a72 system
+                node_1b24f989["USER<br/> Input Data:\n{\'content\': \'Here is the `calculate_fibonacci` function with comprehensive documentation in the form of a detailed docstring:\\n\\n```python\\ndef calculate_fibonacci(n):\\n    \\\'\\\'\\\'\\n    Calculate the nth Fibonacci number.\\n\\n    The Fibonacci sequence is a series of numbers where each number \\n    is the sum of the two preceding ones, usually starting with 0 and 1. \\n    This function calculates the nth Fibonacci number using an iterative \\n    approach, which is ..."]
+            class node_1b24f989 user
+        end
+    end
+        node_1b1d358e["ASSISTANT<br/>{\'valid\': true, \'reason\': \'Content contains required keyword\'}"]
+    class node_1b1d358e agent
+    node_b3a58469 -.-> node_885d6625
+    node_885d6625 -.-> node_3bb4ea96
+    node_3bb4ea96 -.-> node_1b1d358e

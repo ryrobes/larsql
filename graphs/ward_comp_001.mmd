@@ -1,0 +1,43 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_417c27bf [STRUCTURE: Cascade: ward_comprehensive_flow]
+    direction TB
+    class node_417c27bf cascade
+        subgraph node_7a32780d [STRUCTURE: Phase: plan]
+        direction TB
+        class node_7a32780d structure
+        end
+        subgraph node_d7618301 [STRUCTURE: Phase: write]
+        direction TB
+        class node_d7618301 structure
+                node_f3a861af["SYSTEM<br/>Based on your outline, write the full article about The Future of Renewable Energy.\n\nMake it engaging and well-structured. Include the word 'important' naturally in the content."]
+            class node_f3a861af system
+                node_9ab9ae15["USER<br/> Input Data:\n{\'article_topic\': \'The Future of Renewable Energy\', \'target_length\': \'500\'}"]
+            class node_9ab9ae15 user
+        end
+        subgraph node_c30f3986 [STRUCTURE: Phase: finalize]
+        direction TB
+        class node_c30f3986 structure
+                node_9384f81e["SYSTEM<br/>Article passed all critical wards! \ud83c\udf89\n\n\u2705 Safety: PASSED (blocking)\n\u2705 Keyword: PASSED (retry)\n\u2139\ufe0f  Grammar: Checked (advisory)\n\nProvide a brief summary of the final article."]
+            class node_9384f81e system
+                node_44ab1480["USER<br/> Input Data:\n{\'article_topic\': \'The Future of Renewable Energy\', \'target_length\': \'500\'}"]
+            class node_44ab1480 user
+        end
+    end
+        node_d416a838["ASSISTANT<br/> The Future of Renewable Energy: A Brighter Tomorrow\n\nAs we navigate through the challenges posed by climate change, one thing becomes increasingly clear: the future of energy lies in renewable resources. The world is waking up to the fact that fossil fuels not only deplete our planet's natural assets but also contribute significantly to pollution and global warming. Harnessing renewable energy sources\u2014such as solar, wind, and hydroelectric power\u2014has become an important goal for gove..."]
+    class node_d416a838 agent
+        node_9ed31f6b["ASSISTANT<br/>The article \'The Future of Renewable Energy\' explores the vital role renewable energy sources, such as solar and wind, will play in creating a sustainable energy landscape. It highlights the significant reduction in costs of solar technology, the rising efficiency of wind energy generation, and the crucial need for advanced energy storage solutions to accommodate the intermittent nature of these resources. The piece emphasizes the importance of supportive policies and increased investments in ..."]
+    class node_9ed31f6b agent
+    node_417c27bf -.-> node_d416a838
+    node_d416a838 -.-> node_9ed31f6b

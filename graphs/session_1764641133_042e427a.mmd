@@ -1,0 +1,43 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_3043c1dc [STRUCTURE: Cascade: ward_comprehensive_flow]
+    direction TB
+    class node_3043c1dc cascade
+        subgraph node_372c1054 [STRUCTURE: Phase: plan]
+        direction TB
+        class node_372c1054 structure
+        end
+        subgraph node_c05bbb08 [STRUCTURE: Phase: write]
+        direction TB
+        class node_c05bbb08 structure
+                node_d98276be["SYSTEM<br/>Based on your outline, write the full article about .\n\nMake it engaging and well-structured. Include the word 'important' naturally in the content."]
+            class node_d98276be system
+                node_56f2e7d6["USER<br/> Input Data:\n{}"]
+            class node_56f2e7d6 user
+        end
+        subgraph node_f17db1c9 [STRUCTURE: Phase: finalize]
+        direction TB
+        class node_f17db1c9 structure
+                node_292ee461["SYSTEM<br/>Article passed all critical wards! \ud83c\udf89\n\n\u2705 Safety: PASSED (blocking)\n\u2705 Keyword: PASSED (retry)\n\u2139\ufe0f  Grammar: Checked (advisory)\n\nProvide a brief summary of the final article."]
+            class node_292ee461 system
+                node_e22d23f8["USER<br/> Input Data:\n{}"]
+            class node_e22d23f8 user
+        end
+    end
+        node_41c462d5["ASSISTANT<br/> The Importance of Continuous Learning in Today's World\n\nIn an ever-evolving world, the concept of continuous learning has emerged as a pivotal element that shapes our personal and professional lives. With the rapid advancements in technology, shifts in job markets, and changing societal expectations, the importance of staying informed and adaptable cannot be overstated. This article delves into why continuous learning is crucial and how individuals can cultivate a mindset geared towards lifel..."]
+    class node_41c462d5 agent
+        node_51271ebe["ASSISTANT<br/>The article emphasizes the importance of continuous learning in today's rapidly changing world. It discusses how adapting to change is essential for maintaining relevance in the workforce, given the impact of technology and globalization on job markets. The piece highlights personal growth and satisfaction that come from lifelong education, detailing how new learning experiences foster curiosity and creativity. To cultivate a culture of continuous learning, the article encourages both individual..."]
+    class node_51271ebe agent
+    node_3043c1dc -.-> node_41c462d5
+    node_41c462d5 -.-> node_51271ebe

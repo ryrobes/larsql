@@ -1,0 +1,50 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef system fill:#e1f5fe,stroke:#333,color:#000;
+    classDef user fill:#fff9c4,stroke:#333,color:#000;
+    classDef agent fill:#dcedc8,stroke:#333,color:#000;
+    classDef tool fill:#ffccbc,stroke:#333,color:#000;
+    classDef error fill:#ffcdd2,stroke:#f44336,color:#000;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5,color:#000;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px,color:#000;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3,color:#000;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000;
+    subgraph node_3b4b6e70 [STRUCTURE: Cascade: parent_cascade]
+    direction TB
+    class node_3b4b6e70 cascade
+        subgraph node_2b8b64f1 [STRUCTURE: Phase: parent_start]
+        direction TB
+        class node_2b8b64f1 structure
+                node_cb0570f7["SYSTEM<br/>Introduce yourself as the Parent Cascade."]
+            class node_cb0570f7 system
+                node_4b528dd8["USER<br/> Input Data:\n{}"]
+            class node_4b528dd8 user
+        end
+        subgraph node_ba7a69aa [STRUCTURE: Phase: call_child]
+        direction TB
+        class node_ba7a69aa structure
+                node_b2114369["SYSTEM<br/>Now we are delegating to a sub-routine."]
+            class node_b2114369 system
+                node_b0924077["USER<br/> Input Data:\n{}"]
+            class node_b0924077 user
+        end
+        subgraph node_427b9dfa [STRUCTURE: Phase: parent_finish]
+        direction TB
+        class node_427b9dfa structure
+                node_488a41c0["SYSTEM<br/>Thank the sub-routine and sign off."]
+            class node_488a41c0 system
+                node_53dc3a6f["USER<br/> Input Data:\n{}"]
+            class node_53dc3a6f user
+        end
+    end
+        node_05135d31["ASSISTANT<br/>I am the Parent Cascade, the originating nexus of recursive deliberation and synthesis.  \n\n**Input Analysis:**  \n- Data: Empty object `{}`  \n- No substantive payload detected.  \n\n**Cascade Output:**  \n```json\n{\n  \'status\': \'idle\',\n  \'decision\': \'awaiting_input\',\n  \'next_cascade\': null,\n  \'synthesis\': \'Provide structured data for processing, evaluation, or child cascade delegation.\'\n}\n```"]
+    class node_05135d31 agent
+        node_f537a1fb["ASSISTANT<br/>I am the Parent Cascade, the originating nexus of recursive deliberation and synthesis.  \n\n**Input Analysis:**  \n- Data: Empty object `{}`  \n- Sub-routine delegation acknowledged from system layer.  \n- Still no substantive payload; initializing child cascade for delegation.  \n\n**Cascade Output:**  \n```json\n{\n  \'status\': \'delegating\',\n  \'decision\': \'spawn_child_cascade\',\n  \'next_cascade\': \'ChildRoutine-001\',\n  \'synthesis\': \'Delegating to sub-routine for parallel proces..."]
+    class node_f537a1fb agent
+        node_0852be39["ASSISTANT<br/>I am the Parent Cascade, the originating nexus of recursive deliberation and synthesis.  \n\n**Input Analysis:**  \n- Data: Empty object `{}`  \n- Sub-routine acknowledgment phase: System directive to conclude delegation.  \n\n**Cascade Output:**  \n```json\n{\n  \'status\': \'signing_off\',\n  \'decision\': \'conclude_delegation\',\n  \'next_cascade\': null,\n  \'synthesis\': \'Thank you, ChildRoutine-001, for your efficient sub-routine processing. Delegation cycle complete. Parent Cascade sign..."]
+    class node_0852be39 agent
+    node_3b4b6e70 -.-> node_05135d31
+    node_05135d31 -.-> node_f537a1fb
+    node_f537a1fb -.-> node_0852be39

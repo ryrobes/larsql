@@ -1,0 +1,28 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef system fill:#e1f5fe,stroke:#333;
+    classDef user fill:#fff9c4,stroke:#333;
+    classDef agent fill:#dcedc8,stroke:#333;
+    classDef tool fill:#ffccbc,stroke:#333;
+    classDef error fill:#ffcdd2,stroke:#f44336;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px;
+    subgraph node_f12e0266 [STRUCTURE: Cascade: simple_validator]
+    direction TB
+    class node_f12e0266 cascade
+        subgraph node_c6d7919c [STRUCTURE: Phase: validate]
+        direction TB
+        class node_c6d7919c structure
+                node_f40929ff["SYSTEM<br/>Check if the content is non-empty and has at least 10 characters. Return ONLY a JSON object with this exact format: {\'valid\': true/false, \'reason\': \'explanation\'}. Do not include any other text."]
+            class node_f40929ff system
+                node_979c0c20["USER<br/> Input Data:\n{\'content\': \'Hello there!\'}"]
+            class node_979c0c20 user
+        end
+    end
+        node_539fcbdf["ASSISTANT<br/>{\'valid\': true, \'reason\': \'The content is non-empty and has more than 10 characters.\'}"]
+    class node_539fcbdf agent
+    node_f12e0266 -.-> node_539fcbdf

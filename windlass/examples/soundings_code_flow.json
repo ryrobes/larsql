@@ -1,0 +1,26 @@
+{
+  "cascade_id": "code_solution_with_soundings",
+  "description": "Uses soundings to generate multiple code solutions and pick the best one",
+  "inputs_schema": {
+    "problem": "Description of the coding problem to solve"
+  },
+  "phases": [
+    {
+      "name": "generate_solution",
+      "instructions": "Solve this coding problem: {{ input.problem }}\n\nProvide a complete Python solution with explanation. ",
+      "tackle": [],
+      "soundings": {
+        "factor": 3,
+        "evaluator_instructions": "You are an expert software engineer. Evaluate the following code solutions based on: 1) Correctness - does it solve the problem? 2) Efficiency - what is the time/space complexity? 3) Code quality - is it readable and well-structured? 4) Edge cases - does it handle corner cases? Select the BEST solution overall."
+      },
+      "rules": {"max_turns": 1},
+      "handoffs": ["test_solution"]
+    },
+    {
+      "name": "test_solution",
+      "instructions": "Review the chosen solution and write test cases for it. Use the 'run_code' tool to verify it works correctly.",
+      "tackle": ["run_code"],
+      "rules": {"max_turns": 3}
+    }
+  ]
+}

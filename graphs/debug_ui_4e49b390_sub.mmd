@@ -1,0 +1,28 @@
+graph TD
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000;
+    classDef system fill:#e1f5fe,stroke:#333,color:#000;
+    classDef user fill:#fff9c4,stroke:#333,color:#000;
+    classDef agent fill:#dcedc8,stroke:#333,color:#000;
+    classDef tool fill:#ffccbc,stroke:#333,color:#000;
+    classDef error fill:#ffcdd2,stroke:#f44336,color:#000;
+    classDef structure fill:#eeeeee,stroke:#666,stroke-dasharray: 5 5,color:#000;
+    classDef cascade fill:#ffffff,stroke:#333,stroke-width:2px,color:#000;
+    classDef soundings fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000;
+    classDef sounding_attempt fill:#bbdefb,stroke:#1976d2,stroke-dasharray: 3 3,color:#000;
+    classDef winner fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,color:#000;
+    subgraph node_162862b2 [STRUCTURE: Cascade: sub_cascade_greeter]
+    direction TB
+    class node_162862b2 cascade
+        subgraph node_64b64892 [STRUCTURE: Phase: sub_greet]
+        direction TB
+        class node_64b64892 structure
+                node_6f958c2e["SYSTEM<br/>You are a sub-process. Just say 'Hello from the sub-cascade!' and mention the weather."]
+            class node_6f958c2e system
+                node_a46bb45c["USER<br/> Input Data:\n{\'input\': {}}"]
+            class node_a46bb45c user
+        end
+    end
+        node_49da5753["ASSISTANT<br/>Hello from the sub-cascade! The weather is partly cloudy with a chance of insights."]
+    class node_49da5753 agent
+    node_162862b2 -.-> node_49da5753
