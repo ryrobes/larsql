@@ -61,6 +61,7 @@ class MegaTableSchema:
             "reforge_step": "int (Reforge iteration, 0=initial, null if N/A)",
             "attempt_number": "int (Retry/validation attempt, null if N/A)",
             "turn_number": "int (Turn within phase, null if N/A)",
+            "mutation_applied": "str (What mutation/variation was applied to this sounding)",
 
             # Cascade context
             "cascade_id": "str (Cascade identifier)",
@@ -308,6 +309,9 @@ class UnifiedLogger:
         reforge_step: int = None,
         attempt_number: int = None,
         turn_number: int = None,
+        mutation_applied: str = None,
+        mutation_type: str = None,      # 'augment', 'rewrite', or None for baseline
+        mutation_template: str = None,  # For rewrite: the instruction used to generate mutation
 
         # Cascade context
         cascade_id: str = None,
@@ -403,6 +407,9 @@ class UnifiedLogger:
             "reforge_step": reforge_step,
             "attempt_number": attempt_number,
             "turn_number": turn_number,
+            "mutation_applied": mutation_applied,
+            "mutation_type": mutation_type,
+            "mutation_template": mutation_template,
 
             # Cascade context
             "cascade_id": cascade_id,
@@ -584,6 +591,9 @@ def log_unified(
     reforge_step: int = None,
     attempt_number: int = None,
     turn_number: int = None,
+    mutation_applied: str = None,
+    mutation_type: str = None,      # 'augment', 'rewrite', or None for baseline
+    mutation_template: str = None,  # For rewrite: the instruction used to generate mutation
     cascade_id: str = None,
     cascade_file: str = None,
     cascade_config: dict = None,
@@ -630,6 +640,9 @@ def log_unified(
         reforge_step=reforge_step,
         attempt_number=attempt_number,
         turn_number=turn_number,
+        mutation_applied=mutation_applied,
+        mutation_type=mutation_type,
+        mutation_template=mutation_template,
         cascade_id=cascade_id,
         cascade_file=cascade_file,
         cascade_config=cascade_config,

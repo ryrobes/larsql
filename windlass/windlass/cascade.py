@@ -45,6 +45,9 @@ class SoundingsConfig(BaseModel):
     factor: int = 1
     evaluator_instructions: str
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop
+    mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)
+    mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
+    mutations: Optional[List[str]] = None  # Custom mutations/templates, or use built-in if None
 
 class PhaseConfig(BaseModel):
     name: str

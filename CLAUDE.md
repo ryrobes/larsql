@@ -156,7 +156,7 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
 - `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"` or `"on_end"`
 - `rules`: Contains `max_turns`, `max_attempts`, `loop_until` (validator name to keep looping until it passes), and `retry_instructions` (injected on retry)
-- `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, optional `reforge` for iterative refinement)
+- `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, `mutate`, `mutation_mode`, optional `reforge` for iterative refinement)
 - `output_schema`: JSON schema for validating phase output with automatic retry on failure
 - `wards`: Pre/post validation with three modes (blocking, retry, advisory)
 
@@ -574,6 +574,92 @@ Each reforge iteration gets unique session ID for image/state isolation:
 - `reforge_meta_optimizer.json`: META - cascade that optimizes other cascades
 - `reforge_image_chart.json`: Chart refinement with visual feedback
 - `reforge_feedback_chart.json`: Feedback loops with manual image injection
+
+### 2.10. Mutation System for Soundings
+
+Soundings support automatic prompt mutation to explore different formulations and learn what works. Three mutation modes are available:
+
+**Configuration** (`SoundingsConfig` fields):
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "evaluator_instructions": "Pick the best response",
+    "mutate": true,
+    "mutation_mode": "rewrite",
+    "mutations": null
+  }
+}
+```
+
+**Mutation Modes:**
+
+1. **Rewrite** (default, recommended for learning):
+   - Uses an LLM to completely rewrite the prompt while preserving intent
+   - Discovers fundamentally different formulations you wouldn't think of
+   - Each mutation template describes HOW to rewrite (e.g., "Rewrite to emphasize step-by-step reasoning")
+   - Highest learning value - winner patterns can inform prompt optimization
+   - Rewrite LLM calls are tracked in logs/costs like any other LLM call
+
+2. **Augment** (good for testing known patterns):
+   - Prepends text fragments to the original prompt
+   - Good for A/B testing specific known patterns
+   - Lower cost (no LLM call for mutation)
+   - Less exploratory - only tests formulations you already know
+
+3. **Approach** (Tree of Thought sampling):
+   - Appends thinking strategy hints to the prompt
+   - Changes HOW the agent thinks, not the prompt itself
+   - Good for diversity sampling across reasoning styles
+   - Low learning value - strategies are generic, not prompt-specific
+
+**Built-in Mutation Templates:**
+
+For **rewrite** mode (LLM instructions):
+- "Rewrite this prompt to be more specific and detailed..."
+- "Rewrite this prompt to emphasize step-by-step reasoning..."
+- "Rewrite to focus on concrete examples..."
+- "Rewrite to be more concise and direct..."
+- Plus 4 more variations
+
+For **augment** mode (prepended text):
+- "Let's approach this step-by-step..."
+- "Before answering, consider the key constraints..."
+- "Think carefully about edge cases..."
+- Plus 5 more patterns
+
+For **approach** mode (appended strategy):
+- "Approach this from a contrarian perspective..."
+- "Focus on edge cases and failure modes..."
+- "Think from first principles..."
+- Plus 5 more strategies
+
+**Custom Mutations:**
+
+Provide your own templates via the `mutations` field:
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "mutation_mode": "augment",
+    "mutations": [
+      "You are an expert in this domain...",
+      "Consider the user's perspective carefully...",
+      "Focus on actionable recommendations..."
+    ]
+  }
+}
+```
+
+**Logging:**
+
+All mutation data is tracked in unified logs:
+- `mutation_applied`: The actual mutation (rewritten prompt or augment text)
+- `mutation_type`: "rewrite", "augment", "approach", or null for baseline
+- `mutation_template`: For rewrite mode, the instruction used to generate the mutation
+
+**Environment Variables:**
+- `WINDLASS_REWRITE_MODEL`: Model used for prompt rewrites (default: `google/gemini-2.5-flash-lite`)
 
 ### 3. Execution Flow (Runner)
 The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).
@@ -1099,6 +1185,9 @@ The `examples/` directory contains reference implementations:
 - **template_flow.json**: Jinja2 templating in instructions
 - **hitl_flow.json**: Human-in-the-loop with `ask_human`
 - **soundings_flow.json**: Phase-level Tree of Thought with multiple parallel attempts and evaluation
+- **soundings_rewrite_flow.json**: Soundings with LLM prompt rewriting (mutation_mode: rewrite)
+- **soundings_augment_flow.json**: Soundings with prepended patterns (mutation_mode: augment)
+- **soundings_approach_flow.json**: Soundings with thinking strategies (mutation_mode: approach)
 - **soundings_code_flow.json**: Phase-level soundings applied to code generation with multiple algorithmic approaches
 - **cascade_soundings_test.json**: Cascade-level Tree of Thought - runs entire multi-phase workflow N times and picks best execution
 - **manifest_flow.json**: Quartermaster auto-selects tools based on task description

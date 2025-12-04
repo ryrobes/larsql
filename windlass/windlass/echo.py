@@ -86,6 +86,9 @@ class Echo:
             phase_name = meta.get("phase_name")
             cascade_id = meta.get("cascade_id")
             model = meta.get("model")  # Extract model from metadata
+            mutation_applied = meta.get("mutation_applied")  # Extract mutation for soundings
+            mutation_type = meta.get("mutation_type")  # 'augment', 'rewrite', or None
+            mutation_template = meta.get("mutation_template")  # For rewrite: the instruction used
 
             # Generate mermaid diagram content (includes the newly added entry)
             mermaid_content = None
@@ -114,6 +117,9 @@ class Echo:
                 images=images,
                 has_base64=has_base64,
                 mermaid_content=mermaid_content,
+                mutation_applied=mutation_applied,  # Pass mutation for soundings
+                mutation_type=mutation_type,
+                mutation_template=mutation_template,
             )
         except Exception as e:
             # Don't fail if logging has issues

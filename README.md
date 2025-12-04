@@ -357,15 +357,72 @@ After soundings pick a winner, **progressively polish it** through depth-first r
 }
 ```
 
-**Built-in Mutations** (applied when `mutate: true`):
-1. Contrarian perspective
-2. Edge cases focus
-3. Practical implementation
-4. First-principles thinking
-5. UX/human factors
-6. Simplicity optimization
-7. Scalability focus
-8. Devil's advocate
+### Mutation Modes (Prompt Variation Strategies)
+
+Soundings support three mutation modes for generating prompt variations:
+
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "evaluator_instructions": "Pick the best",
+    "mutate": true,
+    "mutation_mode": "rewrite"
+  }
+}
+```
+
+**1. Rewrite (default, recommended for learning)**
+- LLM rewrites the prompt to discover new formulations
+- Highest learning value - discovers approaches you wouldn't think of
+- Rewrite calls tracked in logs/costs like any other LLM call
+
+**2. Augment (good for A/B testing specific patterns)**
+- Prepends known text fragments to the prompt
+- Good for testing specific patterns you already know
+- No extra LLM call - direct text prepending
+
+**3. Approach (Tree of Thought diversity sampling)**
+- Appends thinking strategy hints to the prompt
+- Changes HOW the agent thinks, not the prompt itself
+- Good for sampling diverse reasoning styles
+
+**Built-in Mutation Templates:**
+
+For **rewrite** mode:
+- "Rewrite to be more specific and detailed..."
+- "Rewrite to emphasize step-by-step reasoning..."
+- "Rewrite to focus on concrete examples..."
+- Plus 5 more variations
+
+For **augment** mode:
+- "Let's approach this step-by-step..."
+- "Think carefully about edge cases..."
+- Plus 6 more patterns
+
+For **approach** mode:
+- Contrarian perspective
+- Edge cases focus
+- First-principles thinking
+- Plus 5 more strategies
+
+**Custom Mutations:**
+```json
+{
+  "soundings": {
+    "mutation_mode": "augment",
+    "mutations": [
+      "You are an expert in this domain...",
+      "Consider the user's perspective carefully..."
+    ]
+  }
+}
+```
+
+**Mutation Data Logging:**
+- `mutation_type`: "rewrite", "augment", "approach", or null for baseline
+- `mutation_template`: The template/instruction used
+- `mutation_applied`: The actual mutation (rewritten prompt or prepended text)
 
 **Use cases:**
 - Code: Algorithm exploration → Polished implementation
@@ -1074,6 +1131,9 @@ The `examples/` directory contains reference implementations:
 
 **Advanced:**
 - `soundings_flow.json`: Phase-level Tree of Thought
+- `soundings_rewrite_flow.json`: Soundings with LLM prompt rewriting (mutation_mode: rewrite)
+- `soundings_augment_flow.json`: Soundings with prepended patterns (mutation_mode: augment)
+- `soundings_approach_flow.json`: Soundings with thinking strategies (mutation_mode: approach)
 - `cascade_soundings_test.json`: Cascade-level ToT
 - `reforge_dashboard_metrics.json`: Iterative refinement with mutations
 - `reforge_image_chart.json`: Visual feedback loops

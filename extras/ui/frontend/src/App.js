@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CascadesView from './components/CascadesView';
 import InstancesView from './components/InstancesView';
+import HotOrNotView from './components/HotOrNotView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import Toast from './components/Toast';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
@@ -297,6 +298,7 @@ function App() {
         <CascadesView
           onSelectCascade={handleSelectCascade}
           onRunCascade={handleRunCascade}
+          onHotOrNot={() => setCurrentView('hotornot')}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -319,6 +321,12 @@ function App() {
           sessionMetadata={sessionMetadata}
           sessionUpdates={sessionUpdates}
           sseConnected={sseConnected}
+        />
+      )}
+
+      {currentView === 'hotornot' && (
+        <HotOrNotView
+          onBack={() => setCurrentView('cascades')}
         />
       )}
 

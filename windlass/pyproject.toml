@@ -18,7 +18,8 @@ dependencies = [
     "pydantic",
     "rich",
     "jinja2",
-    "jsonschema"
+    "jsonschema",
+    "readchar",  # For Hot or Not interactive rating UI
 ]
 
 [project.scripts]

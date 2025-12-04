@@ -93,6 +93,9 @@ class WindlassRunner:
         self.current_phase_sounding_index = None  # Track sounding index within current phase
         self.current_retry_attempt = None  # Track retry/validation attempt index
         self.current_turn_number = None  # Track turn number within phase (for max_turns)
+        self.current_mutation_applied = None  # Track mutation applied to current sounding
+        self.current_mutation_type = None  # Track mutation type: 'rewrite', 'augment', 'approach'
+        self.current_mutation_template = None  # Track mutation template (for rewrite: instruction used)
         self.parent_session_id = parent_session_id  # Track parent session for sub-cascades
         
         # Tracing
@@ -884,6 +887,97 @@ If no tools are needed, return an empty array: []
 
         return valid_tackle
 
+    def _rewrite_prompt_with_llm(self, phase: PhaseConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode) -> str:
+        """
+        Use an LLM to rewrite the phase prompt based on the mutation template.
+
+        This creates a completely rewritten version of the prompt, discovering new
+        formulations that may work better. The rewrite call is fully tracked in logs/costs.
+
+        Args:
+            phase: The phase config containing instructions to rewrite
+            input_data: Input data for rendering the original instructions
+            mutation_template: The rewrite instruction (e.g., "Rewrite to be more specific...")
+            parent_trace: Parent trace for observability
+
+        Returns:
+            The rewritten prompt string
+        """
+        indent = "  " * self.depth
+
+        # Create trace for this rewrite operation
+        rewrite_trace = parent_trace.create_child("prompt_rewrite", "llm_rewrite")
+
+        # Render the original instructions first
+        outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        render_context = {
+            "input": input_data,
+            "state": self.echo.state,
+            "history": self.echo.history,
+            "outputs": outputs,
+            "lineage": self.echo.lineage
+        }
+        original_prompt = render_instruction(phase.instructions, render_context)
+
+        # Build the rewrite request
+        rewrite_request = f"""You are a prompt rewriting assistant. Your job is to rewrite a prompt while preserving its core intent.
+
+## Original Prompt:
+{original_prompt}
+
+## Rewrite Instruction:
+{mutation_template}
+
+## Rules:
+1. Preserve the core task/intent of the original prompt
+2. Apply the rewrite instruction to change how the prompt is formulated
+3. Output ONLY the rewritten prompt, nothing else
+4. Do not add meta-commentary or explanations
+5. The rewritten prompt should be self-contained and complete
+
+## Rewritten Prompt:"""
+
+        # Use a fast, cheap model for rewriting (gemini flash lite or similar)
+        rewrite_model = os.environ.get("WINDLASS_REWRITE_MODEL", "google/gemini-2.5-flash-lite")
+
+        rewrite_agent = Agent(
+            model=rewrite_model,
+            system_prompt="You are a prompt rewriting assistant. Output only the rewritten prompt.",
+            tools=[],
+            base_url=self.base_url,
+            api_key=self.api_key
+        )
+
+        # Make the LLM call - this will be logged automatically by Agent.call()
+        response = rewrite_agent.run(rewrite_request, context_messages=[])
+        rewritten_prompt = response.get("content", "").strip()
+
+        # Log the rewrite operation to unified logs
+        log_message(
+            self.session_id,
+            "prompt_rewrite",
+            rewritten_prompt,
+            metadata={
+                "original_prompt": original_prompt[:500],  # Truncate for storage
+                "mutation_template": mutation_template,
+                "rewrite_model": rewrite_model,
+                "phase_name": phase.name
+            },
+            trace_id=rewrite_trace.id,
+            parent_id=parent_trace.id,
+            node_type="prompt_rewrite",
+            depth=self.depth,
+            phase_name=phase.name,
+            cascade_id=self.config.cascade_id
+        )
+
+        # If rewrite failed or returned empty, fall back to original
+        if not rewritten_prompt:
+            console.print(f"{indent}    [yellow]⚠ Rewrite failed, using original prompt[/yellow]")
+            return original_prompt
+
+        return rewritten_prompt
+
     def _run_ward(self, ward_config, content: str, trace: TraceNode, ward_type: str = "post") -> dict:
         """
         Run a single ward (validator) and return validation result.
@@ -1043,13 +1137,88 @@ If no tools are needed, return an empty array: []
         # Store all sounding results
         sounding_results = []
 
+        # Determine mutations to apply
+        mutations_to_use = []
+        mutation_mode = phase.soundings.mutation_mode  # "rewrite", "augment", or "approach"
+
+        if phase.soundings.mutate:
+            if phase.soundings.mutations:
+                # Use custom mutations/templates
+                mutations_to_use = phase.soundings.mutations
+            elif mutation_mode == "rewrite":
+                # Rewrite templates: LLM will rewrite the prompt using these instructions
+                # These are META-instructions for how to transform the prompt
+                # IMPORTANT: Templates must be task-agnostic (work for creative, analytical, coding, etc.)
+                mutations_to_use = [
+                    "Rewrite this prompt to be more specific and detailed. Add concrete details while preserving the core intent.",
+                    "Rewrite this prompt to be more concise and focused. Keep only what's essential, remove fluff.",
+                    "Rewrite this prompt to be more evocative and engaging. Use vivid language and sensory details.",
+                    "Rewrite this prompt to include specific constraints (length, format, style, or structure).",
+                    "Rewrite this prompt to encourage a unique perspective or unconventional approach.",
+                    "Rewrite this prompt to emphasize quality and polish. Ask for refined, polished output.",
+                    "Rewrite this prompt to specify a particular tone or voice (e.g., professional, casual, dramatic).",
+                    "Rewrite this prompt to ask for depth over breadth. Focus on exploring one aspect thoroughly.",
+                ]
+            elif mutation_mode == "augment":
+                # Augment mutations: prepended to the prompt as-is
+                # These are direct instruction additions that can be learned from
+                # IMPORTANT: Templates must be task-agnostic (work for creative, analytical, coding, etc.)
+                mutations_to_use = [
+                    "Be thorough and comprehensive. Cover all important aspects.",
+                    "Be concise and direct. Focus only on what's essential.",
+                    "Be vivid and engaging. Use specific details and strong imagery.",
+                    "Take an unexpected angle. Surprise with your approach.",
+                    "Prioritize clarity above all else.",
+                    "Show, don't tell. Use concrete examples.",
+                    "Focus on the most impactful elements first.",
+                    "Aim for polish and refinement in your response.",
+                ]
+            else:
+                # Approach mutations: appended as thinking strategy hints (Tree of Thought)
+                # These change HOW the agent thinks, not the prompt itself
+                # IMPORTANT: Templates must be task-agnostic (work for creative, analytical, coding, etc.)
+                mutations_to_use = [
+                    "Approach this from an unexpected angle - subvert expectations.",
+                    "Focus on the emotional or human element.",
+                    "Prioritize boldness and confidence over hedging.",
+                    "Go for maximum impact in minimum words.",
+                    "Consider what would make this memorable or distinctive.",
+                    "Optimize for simplicity and elegance.",
+                    "Think about what's surprising or counterintuitive here.",
+                    "Challenge the obvious interpretation - what's the deeper layer?"
+                ]
+
         # Execute each sounding in sequence (to avoid threading complexity with Rich output)
         # Each sounding gets the same starting context
         for i in range(factor):
-            console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]")
+            # Determine mutation for this sounding
+            mutation_template = None  # The template/instruction used (for rewrite mode)
+            mutation_applied = None   # The actual mutation (rewritten prompt or augment text)
+            mutation_type = None      # 'rewrite', 'augment', 'approach', or None for baseline
+
+            if mutations_to_use and i > 0:  # First sounding (i=0) uses original prompt (baseline)
+                mutation_template = mutations_to_use[(i - 1) % len(mutations_to_use)]
+                mutation_type = mutation_mode
+
+                if mutation_mode == "rewrite":
+                    # For rewrite mode: use LLM to rewrite the prompt
+                    console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan] [yellow]🧬 Rewriting prompt...[/yellow]")
+                    mutation_applied = self._rewrite_prompt_with_llm(
+                        phase, input_data, mutation_template, soundings_trace
+                    )
+                    console.print(f"{indent}    [dim]Rewritten: {mutation_applied[:80]}...[/dim]")
+                else:
+                    # For augment/approach: use the template directly
+                    mutation_applied = mutation_template
+                    console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan] [yellow]🧬 {mutation_applied[:50]}...[/yellow]")
+            else:
+                console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" + (" [dim](baseline)[/dim]" if mutations_to_use else ""))
 
             # Set current sounding index for this attempt
             self.current_phase_sounding_index = i
+            self.current_mutation_applied = mutation_applied  # Track for logging
+            self.current_mutation_type = mutation_type  # Track type: rewrite, augment, approach
+            self.current_mutation_template = mutation_template  # Track template/instruction used
 
             # Create trace for this sounding
             sounding_trace = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
@@ -1060,9 +1229,14 @@ If no tools are needed, return an empty array: []
             self.echo.history = echo_history_snapshot.copy()
             self.echo.lineage = echo_lineage_snapshot.copy()
 
-            # Execute the phase normally
+            # Execute the phase with optional mutation
             try:
-                result = self._execute_phase_internal(phase, input_data, sounding_trace, initial_injection)
+                result = self._execute_phase_internal(
+                    phase, input_data, sounding_trace,
+                    initial_injection=initial_injection,
+                    mutation=mutation_applied,
+                    mutation_mode=mutation_mode
+                )
 
                 # Capture the context that was generated during this sounding
                 sounding_context = self.context_messages[len(context_snapshot):]  # New messages added
@@ -1072,7 +1246,10 @@ If no tools are needed, return an empty array: []
                     "result": result,
                     "context": sounding_context,
                     "trace_id": sounding_trace.id,
-                    "final_state": self.echo.state.copy()
+                    "final_state": self.echo.state.copy(),
+                    "mutation_applied": mutation_applied,
+                    "mutation_type": mutation_type,
+                    "mutation_template": mutation_template
                 })
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
@@ -1086,8 +1263,16 @@ If no tools are needed, return an empty array: []
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
                     "trace_id": sounding_trace.id,
-                    "final_state": {}
+                    "final_state": {},
+                    "mutation_applied": mutation_applied,
+                    "mutation_type": mutation_type,
+                    "mutation_template": mutation_template
                 })
+
+        # Clear mutation tracking
+        self.current_mutation_applied = None
+        self.current_mutation_type = None
+        self.current_mutation_template = None
 
         # Reset to original snapshot before evaluation
         self.context_messages = context_snapshot.copy()
@@ -1158,7 +1343,8 @@ If no tools are needed, return an empty array: []
                    "phase_name": phase.name,
                    "sounding_index": sr["index"],
                    "is_winner": is_winner,
-                   "factor": factor
+                   "factor": factor,
+                   "mutation_applied": sr.get("mutation_applied")  # Log what mutation was used
                })
 
         # Add evaluator entry (auto-logs via unified_logs)
@@ -1541,7 +1727,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return self._execute_phase_internal(phase, input_data, trace, initial_injection)
 
-    def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None) -> Any:
         indent = "  " * self.depth
 
         # Prepare outputs dict for easier templating
@@ -1556,6 +1742,25 @@ Refinement directive: {reforge_config.honing_prompt}
             "lineage": self.echo.lineage
         }
         rendered_instructions = render_instruction(phase.instructions, render_context)
+
+        # Apply mutation if provided (for sounding variations)
+        # Three modes:
+        #   - rewrite: mutation IS the complete rewritten prompt (replace entirely)
+        #   - augment: mutation is prepended to original prompt (test specific patterns)
+        #   - approach: mutation is appended as thinking strategy (Tree of Thought sampling)
+        if mutation:
+            if mutation_mode == "rewrite":
+                # Rewrite mode: The mutation is the complete rewritten prompt from LLM
+                # Replace instructions entirely - this tests fundamentally different formulations
+                rendered_instructions = mutation
+            elif mutation_mode == "augment":
+                # Augment mode: PREPEND mutation to instructions
+                # Good for testing specific known patterns/fragments
+                rendered_instructions = f"{mutation}\n\n{rendered_instructions}"
+            else:  # approach mode or default
+                # Approach mode: APPEND as strategy hint - guides thinking style
+                # This is for diversity sampling (Tree of Thought), less learnable
+                rendered_instructions += f"\n\n**Variation Strategy**: {mutation}"
 
         # ========== PRE-WARDS: Validate inputs before phase starts ==========
         if phase.wards and phase.wards.pre:
@@ -2016,6 +2221,9 @@ Refinement directive: {reforge_config.honing_prompt}
                         reforge_step=getattr(self, 'current_reforge_step', None),
                         attempt_number=self.current_retry_attempt,
                         turn_number=self.current_turn_number,
+                        mutation_applied=self.current_mutation_applied,
+                        mutation_type=self.current_mutation_type,
+                        mutation_template=self.current_mutation_template,
                         cascade_id=self.config.cascade_id,
                         cascade_file=self.config_path if isinstance(self.config_path, str) else None,
                         cascade_config=cascade_config_dict,

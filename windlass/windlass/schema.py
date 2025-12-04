@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     reforge_step Nullable(Int32),
     attempt_number Nullable(Int32),
     turn_number Nullable(Int32),
+    mutation_applied Nullable(String),  -- The actual mutation text (augment prefix OR rewritten prompt)
+    mutation_type Nullable(String),     -- Type of mutation: 'augment', 'rewrite', or null for baseline
+    mutation_template Nullable(String), -- For rewrite: the template/instruction used to generate the mutation
 
     -- Cascade context
     cascade_id Nullable(String),

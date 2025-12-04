@@ -63,6 +63,32 @@
   gap: 1rem;
 }
 
+.hotornot-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.15), rgba(251, 146, 60, 0.15));
+  border: 1px solid rgba(244, 114, 182, 0.3);
+  border-radius: 8px;
+  color: #f472b6;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hotornot-btn:hover {
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.25), rgba(251, 146, 60, 0.25));
+  border-color: rgba(244, 114, 182, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(244, 114, 182, 0.2);
+}
+
+.hotornot-btn svg {
+  color: #fb923c;
+}
+
 .connection-indicator {
   width: 10px;
   height: 10px;

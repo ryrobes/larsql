@@ -291,9 +291,10 @@ def get_db_adapter() -> DatabaseAdapter:
     Get the appropriate database adapter based on configuration.
 
     This is the main entry point for all database operations.
-    It checks the config and returns either:
-    - ChDBAdapter (embedded, reads parquet files)
-    - ClickHouseServerAdapter (production server)
+    It checks the config and returns (in order of preference):
+    1. ClickHouseServerAdapter (if configured)
+    2. ChDBAdapter (embedded chDB, if available)
+    3. DuckDBAdapter (fallback, widely available)
 
     Returns:
         DatabaseAdapter instance
@@ -311,6 +312,6 @@ def get_db_adapter() -> DatabaseAdapter:
             user=getattr(config, 'clickhouse_user', 'default'),
             password=getattr(config, 'clickhouse_password', '')
         )
-    else:
-        # Default: embedded chDB reading parquet files
-        return ChDBAdapter(config.data_dir)
+
+    # Use chDB (embedded ClickHouse)
+    return ChDBAdapter(config.data_dir)

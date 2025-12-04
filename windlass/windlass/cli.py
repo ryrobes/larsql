@@ -66,6 +66,41 @@ def main():
     analyze_parser.add_argument('--apply', action='store_true', help='Automatically apply suggestions')
     analyze_parser.add_argument('--output', help='Save suggestions to file', default=None)
 
+    # Hot or Not command group
+    hotornot_parser = subparsers.add_parser('hotornot', help='Human evaluation system', aliases=['hon'])
+    hotornot_subparsers = hotornot_parser.add_subparsers(dest='hotornot_command', help='Hot or Not subcommands')
+
+    # hotornot rate - Interactive rating mode
+    rate_parser = hotornot_subparsers.add_parser(
+        'rate',
+        help='Start interactive rating session (WASD controls)'
+    )
+    rate_parser.add_argument('--cascade', help='Filter by cascade file', default=None)
+    rate_parser.add_argument('--limit', type=int, default=20, help='Number of items to rate')
+
+    # hotornot stats - Show evaluation statistics
+    stats_parser = hotornot_subparsers.add_parser(
+        'stats',
+        help='Show evaluation statistics'
+    )
+
+    # hotornot list - List unevaluated soundings
+    list_uneval_parser = hotornot_subparsers.add_parser(
+        'list',
+        help='List unevaluated sounding outputs'
+    )
+    list_uneval_parser.add_argument('--limit', type=int, default=20, help='Max items to show')
+
+    # hotornot quick - Quick binary rating of a specific session
+    quick_parser = hotornot_subparsers.add_parser(
+        'quick',
+        help='Quick rate a specific session'
+    )
+    quick_parser.add_argument('session_id', help='Session ID to rate')
+    quick_parser.add_argument('rating', choices=['good', 'bad', 'g', 'b', '+', '-'], help='Rating (good/bad)')
+    quick_parser.add_argument('--phase', help='Specific phase', default=None)
+    quick_parser.add_argument('--notes', help='Optional notes', default='')
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -111,6 +146,18 @@ def main():
             sys.exit(1)
     elif args.command == 'analyze':
         cmd_analyze(args)
+    elif args.command in ['hotornot', 'hon']:
+        if args.hotornot_command == 'rate':
+            cmd_hotornot_rate(args)
+        elif args.hotornot_command == 'stats':
+            cmd_hotornot_stats(args)
+        elif args.hotornot_command == 'list':
+            cmd_hotornot_list(args)
+        elif args.hotornot_command == 'quick':
+            cmd_hotornot_quick(args)
+        else:
+            hotornot_parser.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
@@ -390,3 +437,300 @@ def cmd_analyze(args):
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+# ========== HOT OR NOT COMMANDS ==========
+
+def cmd_hotornot_stats(args):
+    """Show evaluation statistics."""
+    from windlass.hotornot import get_evaluation_stats
+
+    stats = get_evaluation_stats()
+
+    print()
+    print("="*50)
+    print("HOT OR NOT - Evaluation Statistics")
+    print("="*50)
+    print()
+
+    if stats.get("error"):
+        print(f"Error: {stats['error']}")
+        return
+
+    if stats["total_evaluations"] == 0:
+        print("No evaluations yet!")
+        print()
+        print("Start rating with:")
+        print("  windlass hotornot rate")
+        print()
+        print("Or quick-rate a session:")
+        print("  windlass hotornot quick <session_id> good")
+        return
+
+    print(f"Total evaluations: {stats['total_evaluations']}")
+    print()
+    print("Binary ratings:")
+    print(f"  Good: {stats['binary_good']}")
+    print(f"  Bad:  {stats['binary_bad']}")
+    if stats['binary_good'] + stats['binary_bad'] > 0:
+        good_rate = stats['binary_good'] / (stats['binary_good'] + stats['binary_bad']) * 100
+        print(f"  Good rate: {good_rate:.1f}%")
+    print()
+    print("Preference evaluations:")
+    print(f"  Total: {stats['preferences_total']}")
+    print(f"  Agreed with system: {stats['preferences_agreed']}")
+    print(f"  Agreement rate: {stats['agreement_rate']}%")
+    print()
+    print(f"Flagged for review: {stats['flags']}")
+    print()
+
+
+def cmd_hotornot_list(args):
+    """List unevaluated soundings."""
+    from windlass.hotornot import get_unevaluated_soundings
+
+    df = get_unevaluated_soundings(limit=args.limit)
+
+    if df.empty:
+        print()
+        print("No unevaluated soundings found!")
+        print()
+        print("Run some cascades with soundings first:")
+        print("  windlass examples/soundings_flow.json --input '{}'")
+        return
+
+    print()
+    print("="*60)
+    print(f"Unevaluated Soundings (showing {len(df)})")
+    print("="*60)
+    print()
+
+    # Group by session+phase
+    grouped = df.groupby(['session_id', 'phase_name'])
+
+    for (session_id, phase_name), group in grouped:
+        winner_row = group[group['is_winner'] == True]
+        winner_idx = winner_row['sounding_index'].values[0] if not winner_row.empty else '?'
+
+        print(f"Session: {session_id[:30]}...")
+        print(f"  Phase: {phase_name}")
+        print(f"  Soundings: {len(group)} variants")
+        print(f"  System winner: #{winner_idx}")
+        print()
+
+    print()
+    print("Start rating with:")
+    print("  windlass hotornot rate")
+    print()
+
+
+def cmd_hotornot_quick(args):
+    """Quick-rate a specific session."""
+    from windlass.hotornot import log_binary_eval, flush_evaluations
+
+    is_good = args.rating in ['good', 'g', '+']
+
+    eval_id = log_binary_eval(
+        session_id=args.session_id,
+        is_good=is_good,
+        phase_name=args.phase,
+        notes=args.notes
+    )
+
+    flush_evaluations()
+
+    emoji = "" if is_good else ""
+    rating_str = "GOOD" if is_good else "BAD"
+
+    print()
+    print(f"{emoji} Rated session {args.session_id[:20]}... as {rating_str}")
+    if args.phase:
+        print(f"   Phase: {args.phase}")
+    if args.notes:
+        print(f"   Notes: {args.notes}")
+    print()
+
+
+def cmd_hotornot_rate(args):
+    """Interactive rating session with WASD controls."""
+    from windlass.hotornot import (
+        get_unevaluated_soundings, get_sounding_group,
+        log_binary_eval, log_preference_eval, log_flag_eval,
+        flush_evaluations
+    )
+
+    try:
+        import readchar
+    except ImportError:
+        print("Interactive mode requires 'readchar' package.")
+        print("Install with: pip install readchar")
+        print()
+        print("Or use quick mode:")
+        print("  windlass hotornot quick <session_id> good")
+        sys.exit(1)
+
+    print()
+    print("="*60)
+    print("HOT OR NOT - Interactive Rating")
+    print("="*60)
+    print()
+    print("Controls:")
+    print("  A / Left Arrow  = BAD ()")
+    print("  D / Right Arrow = GOOD ()")
+    print("  S / Down Arrow  = SKIP")
+    print("  W / Up Arrow    = FLAG for review")
+    print("  Q               = Quit")
+    print()
+    print("Loading soundings to rate...")
+    print()
+
+    # Get items to rate
+    df = get_unevaluated_soundings(limit=args.limit * 3)  # Get extra in case of grouping
+
+    if df.empty:
+        print("No soundings to rate!")
+        print("Run cascades with soundings first.")
+        return
+
+    # Get unique session+phase combinations
+    combos = df.groupby(['session_id', 'phase_name']).first().reset_index()[['session_id', 'phase_name']]
+
+    rated_count = 0
+    good_count = 0
+    bad_count = 0
+    skip_count = 0
+    flag_count = 0
+    streak = 0
+
+    for idx, row in combos.iterrows():
+        if rated_count >= args.limit:
+            break
+
+        session_id = row['session_id']
+        phase_name = row['phase_name']
+
+        # Get the sounding group
+        group = get_sounding_group(session_id, phase_name)
+        if not group or not group.get('soundings'):
+            continue
+
+        # Clear screen (simple version)
+        print("\033[2J\033[H", end="")  # ANSI clear
+
+        print("="*60)
+        print(f"HOT OR NOT  |  {rated_count + 1}/{args.limit}  |  Streak: {streak}")
+        print("="*60)
+        print()
+        print(f"Cascade: {group.get('cascade_id', 'unknown')}")
+        print(f"Phase: {phase_name}")
+        print(f"Session: {session_id[:40]}...")
+        print()
+
+        # Show system winner
+        winner_idx = group.get('system_winner_index', 0)
+        winner_sounding = None
+        for s in group['soundings']:
+            if s['index'] == winner_idx:
+                winner_sounding = s
+                break
+
+        if winner_sounding:
+            print("-"*60)
+            print(f"System picked: Sounding #{winner_idx + 1}")
+            if winner_sounding.get('mutation_applied'):
+                print(f"Mutation: {winner_sounding['mutation_applied'][:60]}...")
+            print("-"*60)
+            print()
+
+            content = winner_sounding.get('content', '')
+            if isinstance(content, dict):
+                content = json.dumps(content, indent=2)
+            elif isinstance(content, list):
+                content = json.dumps(content, indent=2)
+
+            # Truncate for display
+            if len(str(content)) > 800:
+                content = str(content)[:800] + "\n... (truncated)"
+
+            print(content)
+            print()
+
+        print("-"*60)
+        print("[A] BAD    [D] GOOD    [S] Skip    [W] Flag    [Q] Quit")
+        print("-"*60)
+
+        # Get input
+        try:
+            key = readchar.readkey()
+        except KeyboardInterrupt:
+            break
+
+        if key.lower() == 'q':
+            break
+        elif key.lower() == 'a' or key == readchar.key.LEFT:
+            # BAD
+            log_binary_eval(
+                session_id=session_id,
+                is_good=False,
+                phase_name=phase_name,
+                cascade_id=group.get('cascade_id'),
+                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None,
+                mutation_applied=winner_sounding.get('mutation_applied') if winner_sounding else None
+            )
+            rated_count += 1
+            bad_count += 1
+            streak = 0
+            print(" BAD")
+        elif key.lower() == 'd' or key == readchar.key.RIGHT:
+            # GOOD
+            log_binary_eval(
+                session_id=session_id,
+                is_good=True,
+                phase_name=phase_name,
+                cascade_id=group.get('cascade_id'),
+                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None,
+                mutation_applied=winner_sounding.get('mutation_applied') if winner_sounding else None
+            )
+            rated_count += 1
+            good_count += 1
+            streak += 1
+            print(" GOOD")
+        elif key.lower() == 's' or key == readchar.key.DOWN:
+            # SKIP
+            skip_count += 1
+            print(" SKIP")
+        elif key.lower() == 'w' or key == readchar.key.UP:
+            # FLAG
+            log_flag_eval(
+                session_id=session_id,
+                flag_reason="Flagged during interactive rating",
+                phase_name=phase_name,
+                cascade_id=group.get('cascade_id'),
+                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None
+            )
+            rated_count += 1
+            flag_count += 1
+            streak = 0
+            print(" FLAGGED")
+
+        import time
+        time.sleep(0.3)  # Brief pause to show result
+
+    # Final flush
+    flush_evaluations()
+
+    # Summary
+    print("\033[2J\033[H", end="")  # Clear
+    print()
+    print("="*60)
+    print("HOT OR NOT - Session Complete!")
+    print("="*60)
+    print()
+    print(f"Rated: {rated_count}")
+    print(f"  Good: {good_count}")
+    print(f"  Bad:  {bad_count}")
+    print(f"  Flagged: {flag_count}")
+    print(f"  Skipped: {skip_count}")
+    print()
+    print("View stats with: windlass hotornot stats")
+    print()

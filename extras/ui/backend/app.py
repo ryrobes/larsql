@@ -12,6 +12,7 @@ from datetime import datetime
 from flask import Flask, jsonify, send_from_directory, request, Response, stream_with_context
 from flask_cors import CORS
 import duckdb
+import pandas as pd
 from queue import Empty
 
 app = Flask(__name__)
@@ -1214,6 +1215,295 @@ def freeze_test():
             'snapshot_name': snapshot_name,
             'message': f'Snapshot frozen: {snapshot_name}'
         })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+# ==============================================================================
+# Hot or Not - Human Evaluation API
+# ==============================================================================
+
+@app.route('/api/hotornot/stats', methods=['GET'])
+def hotornot_stats():
+    """Get Hot or Not evaluation statistics."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import get_evaluation_stats
+
+        stats = get_evaluation_stats()
+        return jsonify(stats)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/queue', methods=['GET'])
+def hotornot_queue():
+    """Get unevaluated soundings for the Hot or Not UI."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import get_unevaluated_soundings
+
+        limit = request.args.get('limit', 50, type=int)
+        show_all = request.args.get('show_all', 'false').lower() == 'true'
+        df = get_unevaluated_soundings(limit=limit * 3 if show_all else limit)
+
+        if df.empty:
+            return jsonify([])
+
+        items = []
+
+        if show_all:
+            # Show ALL individual soundings (for detailed review)
+            for _, row in df.iterrows():
+                # Parse content
+                content = row.get('content_json', '')
+                if content and isinstance(content, str):
+                    try:
+                        content = json.loads(content)
+                    except:
+                        pass
+
+                items.append({
+                    'session_id': row['session_id'],
+                    'phase_name': row['phase_name'],
+                    'cascade_id': row.get('cascade_id'),
+                    'cascade_file': row.get('cascade_file'),
+                    'sounding_index': int(row.get('sounding_index', 0)),
+                    # Don't reveal winner status - blind evaluation to avoid bias
+                    'is_winner': None,
+                    'content_preview': str(content)[:200] if content else '',
+                    'timestamp': row.get('timestamp')
+                })
+
+                if len(items) >= limit:
+                    break
+        else:
+            # Group by session_id + phase_name for unique items (original behavior)
+            seen = set()
+
+            for _, row in df.iterrows():
+                key = (row['session_id'], row['phase_name'])
+                if key not in seen:
+                    seen.add(key)
+
+                    # Parse content
+                    content = row.get('content_json', '')
+                    if content and isinstance(content, str):
+                        try:
+                            content = json.loads(content)
+                        except:
+                            pass
+
+                    items.append({
+                        'session_id': row['session_id'],
+                        'phase_name': row['phase_name'],
+                        'cascade_id': row.get('cascade_id'),
+                        'cascade_file': row.get('cascade_file'),
+                        'sounding_index': int(row.get('sounding_index', 0)),
+                        'is_winner': bool(row.get('is_winner')) if row.get('is_winner') is not None and not pd.isna(row.get('is_winner')) else False,
+                        'content_preview': str(content)[:200] if content else '',
+                        'timestamp': row.get('timestamp')
+                    })
+
+        return jsonify(items)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/sounding-group/<session_id>/<phase_name>', methods=['GET'])
+def hotornot_sounding_group(session_id, phase_name):
+    """Get all soundings for a specific session+phase for comparison."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import get_sounding_group
+
+        result = get_sounding_group(session_id, phase_name)
+
+        if not result:
+            return jsonify({'error': 'Sounding group not found'}), 404
+
+        return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/rate', methods=['POST'])
+def hotornot_rate():
+    """Submit a binary evaluation (good/bad)."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import log_binary_eval, flush_evaluations
+
+        data = request.json
+        session_id = data.get('session_id')
+        is_good = data.get('is_good')
+
+        if session_id is None or is_good is None:
+            return jsonify({'error': 'session_id and is_good required'}), 400
+
+        eval_id = log_binary_eval(
+            session_id=session_id,
+            is_good=is_good,
+            phase_name=data.get('phase_name'),
+            cascade_id=data.get('cascade_id'),
+            cascade_file=data.get('cascade_file'),
+            prompt_text=data.get('prompt_text'),
+            output_text=data.get('output_text'),
+            mutation_applied=data.get('mutation_applied'),
+            sounding_index=data.get('sounding_index'),
+            notes=data.get('notes', ''),
+            evaluator=data.get('evaluator', 'human')
+        )
+
+        # Flush immediately for UI responsiveness
+        flush_evaluations()
+
+        return jsonify({
+            'success': True,
+            'eval_id': eval_id,
+            'is_good': is_good
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/prefer', methods=['POST'])
+def hotornot_prefer():
+    """Submit a preference evaluation (A/B comparison)."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import log_preference_eval, flush_evaluations
+
+        data = request.json
+        session_id = data.get('session_id')
+        phase_name = data.get('phase_name')
+        preferred_index = data.get('preferred_index')
+        system_winner_index = data.get('system_winner_index')
+        sounding_outputs = data.get('sounding_outputs', [])
+
+        if not all([session_id, phase_name, preferred_index is not None, system_winner_index is not None]):
+            return jsonify({'error': 'session_id, phase_name, preferred_index, and system_winner_index required'}), 400
+
+        eval_id = log_preference_eval(
+            session_id=session_id,
+            phase_name=phase_name,
+            preferred_index=preferred_index,
+            system_winner_index=system_winner_index,
+            sounding_outputs=sounding_outputs,
+            cascade_id=data.get('cascade_id'),
+            cascade_file=data.get('cascade_file'),
+            prompt_text=data.get('prompt_text'),
+            notes=data.get('notes', ''),
+            evaluator=data.get('evaluator', 'human')
+        )
+
+        # Flush immediately for UI responsiveness
+        flush_evaluations()
+
+        agreement = (preferred_index == system_winner_index)
+
+        return jsonify({
+            'success': True,
+            'eval_id': eval_id,
+            'preferred_index': preferred_index,
+            'system_winner_index': system_winner_index,
+            'agreement': agreement
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/flag', methods=['POST'])
+def hotornot_flag():
+    """Flag a session for review."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import log_flag_eval, flush_evaluations
+
+        data = request.json
+        session_id = data.get('session_id')
+        flag_reason = data.get('flag_reason')
+
+        if not session_id or not flag_reason:
+            return jsonify({'error': 'session_id and flag_reason required'}), 400
+
+        eval_id = log_flag_eval(
+            session_id=session_id,
+            flag_reason=flag_reason,
+            phase_name=data.get('phase_name'),
+            cascade_id=data.get('cascade_id'),
+            output_text=data.get('output_text'),
+            notes=data.get('notes', ''),
+            evaluator=data.get('evaluator', 'human')
+        )
+
+        flush_evaluations()
+
+        return jsonify({
+            'success': True,
+            'eval_id': eval_id
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hotornot/evaluations', methods=['GET'])
+def hotornot_evaluations():
+    """Get all evaluations with optional filtering."""
+    try:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.hotornot import query_evaluations
+
+        where = request.args.get('where')
+        limit = request.args.get('limit', 100, type=int)
+
+        df = query_evaluations(where_clause=where)
+
+        if df.empty:
+            return jsonify([])
+
+        # Limit results
+        df = df.head(limit)
+
+        # Convert to list of dicts
+        results = df.to_dict('records')
+
+        return jsonify(results)
 
     except Exception as e:
         import traceback
