@@ -7,7 +7,7 @@
   "phases": [
     {
       "name": "validate",
-      "instructions": "Check if the content shows that code was executed successfully.\n\nLook for:\n1. Actual execution output (numbers, results, print statements)\n2. NO error messages (Exit code, Traceback, Error:, etc.)\n3. Evidence that the solution worked\n\nReturn JSON:\n{\"valid\": true, \"reason\": \"...\"} if code executed successfully with output\n{\"valid\": false, \"reason\": \"...\"} if errors present or no execution happened\n\nBe strict: Only return valid=true if you see ACTUAL execution output without errors.",
+      "instructions": "Check if the following content shows that code was executed successfully:\n\n---\n{{ input.content }}\n---\n\nLook for:\n1. Actual execution output (numbers, results, print statements)\n2. NO error messages (Exit code, Traceback, Error:, etc.)\n3. Evidence that the solution worked\n\nReturn JSON:\n{\"valid\": true, \"reason\": \"...\"} if code executed successfully with output\n{\"valid\": false, \"reason\": \"...\"} if errors present or no execution happened\n\nBe strict: Only return valid=true if you see ACTUAL execution output without errors.",
       "tackle": [],
       "output_schema": {
         "type": "object",

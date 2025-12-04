@@ -56,10 +56,11 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
   };
 
   const formatCost = (cost) => {
-    if (!cost || cost === 0) return '$0.0000';
-    if (cost < 0.0001) return `$${(cost * 1000).toFixed(4)}‰`;
+    if (!cost || cost === 0) return '$0';
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
     if (cost < 0.01) return `$${cost.toFixed(5)}`;
-    if (cost < 1) return `$${cost.toFixed(4)}`;
+    if (cost < 0.1) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
     return `$${cost.toFixed(2)}`;
   };
 

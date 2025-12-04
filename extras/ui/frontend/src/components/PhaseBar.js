@@ -30,16 +30,11 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
 
   const formatCost = (cost) => {
     if (!cost || cost === 0) return '$0';
-
-    // Adaptive decimal places based on magnitude
-    if (cost < 0.00001) return `$${(cost * 1000000).toFixed(2)}µ`;  // Micro-dollars
-    if (cost < 0.0001) return `$${(cost * 1000).toFixed(3)}‰`;      // Permille
-    if (cost < 0.001) return `$${cost.toFixed(6)}`;                 // 6 decimals
-    if (cost < 0.01) return `$${cost.toFixed(5)}`;                  // 5 decimals
-    if (cost < 0.1) return `$${cost.toFixed(4)}`;                   // 4 decimals
-    if (cost < 1) return `$${cost.toFixed(3)}`;                     // 3 decimals
-    if (cost < 10) return `$${cost.toFixed(2)}`;                    // 2 decimals
-    return `$${cost.toFixed(2)}`;                                   // Standard
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
+    if (cost < 0.01) return `$${cost.toFixed(5)}`;
+    if (cost < 0.1) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
+    return `$${cost.toFixed(2)}`;
   };
 
   const formatDuration = (seconds) => {

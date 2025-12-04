@@ -7,7 +7,7 @@
   },
   "phases": [{
     "name": "validate",
-    "instructions": "Check if the content is non-empty and has at least 10 characters. Return ONLY a JSON object with this exact format: {\"valid\": true/false, \"reason\": \"explanation\"}. Do not include any other text.",
+    "instructions": "Check if the following content is non-empty and has at least 10 characters:\n\n---\n{{ input.content }}\n---\n\nReturn ONLY a JSON object with this exact format: {\"valid\": true/false, \"reason\": \"explanation\"}. Do not include any other text.",
     "rules": {
       "max_turns": 1
     }

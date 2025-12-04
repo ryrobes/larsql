@@ -118,9 +118,14 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
                             'pre_ward', 'post_ward', 'schema_validation', 'schema_validation_failed',
                             'sub_cascade_ref', 'sub_cascade_start', 'sub_cascade_complete'];
 
+    // Include soundings/evaluation messages - critical for understanding workflow decisions
+    const soundingsTypes = ['evaluation', 'evaluator', 'soundings_result', 'sounding_attempt',
+                           'sounding_evaluation', 'soundings_start', 'reforge_start', 'reforge_result'];
+
     return conversationalTypes.includes(entry.node_type) ||
            (entry.node_type === 'system' && conversationalSystemRoles.includes(entry.role)) ||
-           validationTypes.includes(entry.node_type);
+           validationTypes.includes(entry.node_type) ||
+           soundingsTypes.includes(entry.node_type);
   };
 
   const filterEntriesByViewMode = (entries) => {
@@ -183,10 +188,11 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   };
 
   const formatCost = (cost) => {
-    if (!cost || cost === 0) return '$0.0000';
-    if (cost < 0.0001) return `$${(cost * 1000).toFixed(4)}‰`;
+    if (!cost || cost === 0) return '$0';
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
     if (cost < 0.01) return `$${cost.toFixed(5)}`;
-    if (cost < 1) return `$${cost.toFixed(4)}`;
+    if (cost < 0.1) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
     return `$${cost.toFixed(2)}`;
   };
 
@@ -250,6 +256,18 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
       case 'sub_cascade_start':
       case 'sub_cascade_complete':
         return 'mdi:file-tree';
+      case 'evaluation':
+      case 'evaluator':
+      case 'sounding_evaluation':
+        return 'mdi:scale-balance';
+      case 'soundings_result':
+      case 'sounding_attempt':
+        return 'mdi:chart-tree';
+      case 'soundings_start':
+        return 'mdi:chart-multiple';
+      case 'reforge_start':
+      case 'reforge_result':
+        return 'mdi:hammer';
       default:
         return 'mdi:message';
     }
@@ -289,6 +307,18 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
       case 'sub_cascade_start':
       case 'sub_cascade_complete':
         return '#a78bfa'; // Purple (sub-cascades)
+      case 'evaluation':
+      case 'evaluator':
+      case 'sounding_evaluation':
+        return '#fbbf24'; // Yellow (evaluation/decision)
+      case 'soundings_result':
+      case 'sounding_attempt':
+        return '#fb923c'; // Orange (soundings)
+      case 'soundings_start':
+        return '#fb923c'; // Orange
+      case 'reforge_start':
+      case 'reforge_result':
+        return '#fb923c'; // Orange (reforge)
       default:
         return '#666';
     }
@@ -296,6 +326,73 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
 
   const renderContent = (entry) => {
     const { content, node_type, metadata } = entry;
+
+    // For soundings evaluation/results, show with special highlighting
+    if (node_type === 'evaluation' || node_type === 'evaluator' || node_type === 'sounding_evaluation') {
+      return (
+        <div className="evaluation-content">
+          <div className="evaluation-header">
+            <Icon icon="mdi:scale-balance" width="20" />
+            <span className="evaluation-title">⚖️ Soundings Evaluator Decision</span>
+          </div>
+          <div className="evaluation-reasoning">
+            {String(content)}
+          </div>
+        </div>
+      );
+    }
+
+    // For soundings results, show winner announcement
+    if (node_type === 'soundings_result') {
+      try {
+        const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+        const winnerIndex = meta?.winner_index;
+
+        return (
+          <div className="soundings-result-content">
+            <div className="soundings-result-header">
+              <Icon icon="mdi:trophy" width="20" />
+              <span className="result-title">🏆 Winner Selected</span>
+            </div>
+            {winnerIndex !== undefined && (
+              <div className="winner-info">
+                Sounding #{winnerIndex} chosen as best attempt
+              </div>
+            )}
+            {content && <div className="result-note">{String(content)}</div>}
+          </div>
+        );
+      } catch (e) {
+        return <div className="message-content">{String(content)}</div>;
+      }
+    }
+
+    // For sounding attempts, show attempt info
+    if (node_type === 'sounding_attempt') {
+      try {
+        const soundingIndex = entry.sounding_index;
+        const isWinner = entry.is_winner;
+
+        return (
+          <div className={`sounding-attempt-content ${isWinner ? 'winner' : ''}`}>
+            <div className="attempt-header">
+              <Icon icon={isWinner ? "mdi:trophy" : "mdi:chart-line"} width="16" />
+              <span className="attempt-title">
+                Sounding #{soundingIndex} {isWinner ? '(Winner)' : ''}
+              </span>
+            </div>
+            {content && (
+              <div className="attempt-summary">
+                {String(content).substring(0, 150)}
+                {String(content).length > 150 && '...'}
+              </div>
+            )}
+          </div>
+        );
+      } catch (e) {
+        return <div className="message-content">{String(content)}</div>;
+      }
+    }
 
     // For cost updates, show special format
     if (node_type === 'cost_update') {

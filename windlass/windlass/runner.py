@@ -32,7 +32,7 @@ from .prompts import render_instruction
 from .state import update_session_state
 from .eddies.system import spawn_cascade
 from .eddies.state_tools import set_current_session_id
-from .cost import track_request # Ensure this is imported
+# NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
 
 from rich.tree import Tree
 
@@ -273,11 +273,7 @@ To use: Output JSON in this format:
         # Create soundings trace node
         soundings_trace = self.trace.create_child("cascade_soundings", f"{self.config.cascade_id}_soundings")
 
-        # Log cascade soundings start
-        log_message(self.session_id, "cascade_soundings_start", f"{self.config.cascade_id} with {factor} attempts",
-                   trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cascade_soundings", depth=self.depth)
-
-        # Add to echo history for visualization
+        # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "cascade_soundings",
             "content": f"🔱 Running {factor} cascade soundings",
@@ -331,14 +327,7 @@ To use: Output JSON in this format:
 
                 console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
 
-                # Log this sounding completion with metadata
-                log_message(self.session_id, "cascade_sounding_complete", f"Sounding {i+1} completed",
-                           {"result_preview": str(final_output)[:200]},
-                           trace_id=sounding_trace.id, parent_id=soundings_trace.id,
-                           node_type="cascade_sounding", depth=self.depth,
-                           sounding_index=i, is_winner=False)  # Will update winner later
-
-                # Add to echo history for visualization - store sub-session reference
+                # Add to echo history for visualization - store sub-session reference (auto-logs via unified_logs)
                 self.echo.add_history({
                     "role": "cascade_sounding_attempt",
                     "content": str(final_output)[:150] if final_output else "Completed",
@@ -348,7 +337,8 @@ To use: Output JSON in this format:
                        "cascade_id": self.config.cascade_id,
                        "sounding_index": i,
                        "sub_session_id": sounding_session_id,
-                       "is_winner": False  # Updated later when winner is selected
+                       "is_winner": False,  # Updated later when winner is selected
+                       "result_preview": str(final_output)[:200]
                    })
 
             except Exception as e:
@@ -396,12 +386,7 @@ To use: Output JSON in this format:
 
         console.print(f"{indent}  [bold magenta]Cascade Evaluator:[/bold magenta] {eval_content[:200]}...")
 
-        # Log evaluation reasoning
-        log_message(self.session_id, "cascade_sounding_evaluation", eval_content,
-                   trace_id=evaluator_trace.id, parent_id=soundings_trace.id,
-                   node_type="evaluation", depth=self.depth, model=self.model)
-
-        # Add evaluator to echo history for visualization
+        # Add evaluator to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "cascade_evaluator",
             "content": eval_content[:150] if eval_content else "Evaluating...",
@@ -409,7 +394,8 @@ To use: Output JSON in this format:
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
            metadata={
                "cascade_id": self.config.cascade_id,
-               "factor": factor
+               "factor": factor,
+               "model": self.model
            })
 
         # Extract winner index from evaluation
@@ -425,13 +411,6 @@ To use: Output JSON in this format:
 
         console.print(f"{indent}[bold green]🏆 Winner: Cascade Sounding {winner_index + 1}[/bold green]")
 
-        # Log the winner selection with is_winner=True
-        log_message(self.session_id, "cascade_sounding_winner", f"Selected cascade execution {winner_index + 1}",
-                   {"winner_trace_id": winner['trace_id'], "evaluation": eval_content},
-                   trace_id=soundings_trace.id, parent_id=self.trace.id,
-                   node_type="winner", depth=self.depth,
-                   sounding_index=winner_index, is_winner=True)
-
         # Merge winner's echo into our main echo (this becomes the "canon" result)
         if winner['echo']:
             # Copy winner's state, history, and lineage into main echo
@@ -439,7 +418,7 @@ To use: Output JSON in this format:
             self.echo.history.extend(winner['echo'].history)
             self.echo.lineage.extend(winner['echo'].lineage)
 
-        # Add soundings result to history
+        # Add soundings result to history (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "cascade_soundings_result",
             "content": f"🏆 Winner: Cascade #{winner_index + 1}",
@@ -450,7 +429,10 @@ To use: Output JSON in this format:
                "winner_index": winner_index,
                "winner_session_id": f"{self.session_id}_sounding_{winner_index}",
                "factor": factor,
-               "evaluation": eval_content[:200]
+               "evaluation": eval_content[:200],
+               "winner_trace_id": winner['trace_id'],
+               "sounding_index": winner_index,
+               "is_winner": True
            })
 
         self._update_graph()
@@ -732,6 +714,11 @@ Refinement directive: {reforge_config.honing_prompt}
 
             output_or_next_phase = self.execute_phase(phase, input_data, phase_trace, initial_injection=hook_result)
 
+            # Log phase completion for UI visibility
+            log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
+                       trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
+                       depth=self.depth, phase_name=phase.name, cascade_id=self.config.cascade_id)
+
             # Hook: Phase Complete
             self.hooks.on_phase_complete(phase.name, self.session_id, {"output": output_or_next_phase})
 
@@ -849,11 +836,7 @@ If no tools are needed, return an empty array: []
             api_key=self.api_key
         )
 
-        # Run quartermaster
-        log_message(self.session_id, "quartermaster_start", "Manifesting tackle",
-                   trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster", depth=self.depth,
-                   model=qm_model)
-
+        # Run quartermaster (logging via echo.add_history below)
         response = qm_agent.run(qm_prompt, context_messages=[])
         response_content = response.get("content", "[]")
 
@@ -878,12 +861,7 @@ If no tools are needed, return an empty array: []
         # Validate that selected tools exist
         valid_tackle = [t for t in selected_tackle if t in manifest]
 
-        # Log selection
-        log_message(self.session_id, "quartermaster_result", f"Selected: {valid_tackle}",
-                   {"reasoning": response_content, "manifest_context": phase.manifest_context},
-                   trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster_result", depth=self.depth)
-
-        # Add to echo history for visualization
+        # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "quartermaster",
             "content": f"Selected tools: {', '.join(valid_tackle) if valid_tackle else 'none'}",
@@ -892,7 +870,9 @@ If no tools are needed, return an empty array: []
            metadata={
                "phase_name": phase.name,
                "selected_tackle": valid_tackle,
-               "reasoning": response_content[:200]
+               "reasoning": response_content[:200],
+               "manifest_context": phase.manifest_context,
+               "model": qm_model
            })
 
         console.print(f"{indent}    [dim]Reasoning: {response_content[:150]}...[/dim]")
@@ -996,13 +976,7 @@ If no tools are needed, return an empty array: []
         is_valid = validator_result.get("valid", False)
         reason = validator_result.get("reason", "No reason provided")
 
-        # Log ward result
-        log_message(self.session_id, f"{ward_type}_ward", f"{validator_name}: {is_valid}",
-                   {"validator": validator_name, "mode": mode, "valid": is_valid, "reason": reason},
-                   trace_id=ward_trace.id, parent_id=trace.id,
-                   node_type=f"{ward_type}_ward", depth=self.depth)
-
-        # Add ward to Echo history for visualization
+        # Add ward to Echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "ward",
             "content": f"{ward_type.title()} Ward: {validator_name}",
@@ -1042,16 +1016,12 @@ If no tools are needed, return an empty array: []
         # Create soundings trace node
         soundings_trace = trace.create_child("soundings", f"{phase.name}_soundings")
 
-        # Log soundings start with rich metadata
+        # Add soundings structure to Echo for visualization (auto-logs via unified_logs)
         soundings_meta = {
             "phase_name": phase.name,
             "factor": factor,
             "has_reforge": phase.soundings.reforge is not None
         }
-        log_message(self.session_id, "soundings_start", f"{phase.name} with {factor} attempts",
-                   trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings", depth=self.depth)
-
-        # Add soundings structure to Echo for visualization
         self.echo.add_history({
             "role": "structure",
             "content": f"Soundings: {phase.name}",
@@ -1151,11 +1121,6 @@ If no tools are needed, return an empty array: []
 
         console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
 
-        # Log evaluation reasoning
-        log_message(self.session_id, "sounding_evaluation", eval_content,
-                   trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluation", depth=self.depth,
-                   model=self.model)
-
         # Extract winner index from evaluation (simple parsing - look for first digit)
         winner_index = 0
         import re
@@ -1169,11 +1134,6 @@ If no tools are needed, return an empty array: []
 
         console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner_index + 1}[/bold green]")
 
-        # Log the winner selection
-        log_message(self.session_id, "sounding_winner", f"Selected attempt {winner_index + 1}",
-                   {"winner_trace_id": winner['trace_id'], "evaluation": eval_content},
-                   trace_id=soundings_trace.id, parent_id=trace.id, node_type="winner", depth=self.depth)
-
         # Now apply ONLY the winner's context to the main snowball
         self.context_messages = context_snapshot + winner['context']
         self.echo.state = winner['final_state']
@@ -1181,7 +1141,7 @@ If no tools are needed, return an empty array: []
         # Reset sounding index (no longer in sounding context)
         self.current_phase_sounding_index = None
 
-        # Add all sounding attempts to Echo history with metadata for visualization
+        # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
             is_winner = sr["index"] == winner_index
             self.echo.add_history({
@@ -1196,13 +1156,19 @@ If no tools are needed, return an empty array: []
                    "factor": factor
                })
 
-        # Add evaluator entry
+        # Add evaluator entry (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "evaluator",
             "content": eval_content[:200],
             "node_type": "evaluator"
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
-           metadata={"phase_name": phase.name, "winner_index": winner_index})
+           metadata={
+               "phase_name": phase.name,
+               "winner_index": winner_index,
+               "winner_trace_id": winner['trace_id'],
+               "evaluation": eval_content,
+               "model": self.model
+           })
 
         # Add winning result to history
         self.echo.add_history({
@@ -2144,13 +2110,7 @@ Refinement directive: {reforge_config.honing_prompt}
                             except:
                                 args = {}
 
-                            # Log tool call BEFORE execution
-                            log_message(self.session_id, "tool_call", f"Calling {func_name}",
-                                       metadata={"tool_name": func_name, "arguments": args},
-                                       trace_id=tool_trace.id, parent_id=turn_trace.id,
-                                       node_type="tool_call", depth=tool_trace.depth)
-
-                            # Add to echo history for visualization
+                            # Add to echo history for visualization (auto-logs via unified_logs)
                             call_trace = tool_trace.create_child("msg", "tool_call")
                             self.echo.add_history(
                                 {"role": "tool_call", "content": f"Calling {func_name}", "tool_name": func_name, "arguments": args},
@@ -2182,13 +2142,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                      "tool": func_name,
                                      "result": str(result)
                                  })
+                                 console.print(f"{indent}    [dim cyan][DEBUG] tool_outputs.append() - now has {len(tool_outputs)} item(s)[/dim cyan]")
 
-                            # Log tool result AFTER execution
-                            log_message(self.session_id, "tool_result", str(result),
-                                       metadata={"tool_name": func_name, "result": str(result)[:500]},
-                                       trace_id=tool_trace.id, parent_id=tool_trace.parent_id,
-                                       node_type="tool_result", depth=tool_trace.depth)
-                        
                             # Handle Smart Image Injection logic
                             parsed_result = result
                             image_injection_message = None
@@ -2248,9 +2203,10 @@ Refinement directive: {reforge_config.honing_prompt}
                             console.print(f"{indent}    [dim cyan][DEBUG] Tool result added to context_messages[/dim cyan]")
                             console.print(f"{indent}    [dim]  Index: {len(self.context_messages)-1}, Tool: {func_name}, Result: {len(str(result))} chars[/dim]")
 
-                            # Add to Echo
+                            # Add to Echo (auto-logs via unified_logs)
                             result_trace = tool_trace.create_child("msg", "tool_result")
-                            self.echo.add_history(tool_msg, trace_id=result_trace.id, parent_id=tool_trace.id, node_type="tool_result")
+                            self.echo.add_history(tool_msg, trace_id=result_trace.id, parent_id=tool_trace.id, node_type="tool_result",
+                                                 metadata={"tool_name": func_name, "result": str(result)[:500]})
                         
                             # Inject Image Message if present
                             if image_injection_message:
@@ -2270,11 +2226,11 @@ Refinement directive: {reforge_config.honing_prompt}
                          
                         content = follow_up.get("content")
                         request_id = follow_up.get("id")
+                        model_used = follow_up.get("model", self.model)
+                        provider = follow_up.get("provider", "unknown")
 
-                        log_message(self.session_id, "agent", str(content), trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="follow_up", depth=turn_trace.depth)
-
-                        if request_id:
-                            track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id)
+                        # NOTE: Don't call track_request() - old async cost system is deprecated
+                        # Cost tracking now handled by unified_logs.py non-blocking worker
 
                         if content:
                             console.print(Panel(Markdown(content), title=f"Agent ({self.model})", border_style="green", expand=False))
@@ -2285,7 +2241,25 @@ Refinement directive: {reforge_config.honing_prompt}
                             self.context_messages.append(assistant_msg)
 
                             followup_trace = turn_trace.create_child("msg", "follow_up")
-                            self.echo.add_history(assistant_msg, trace_id=followup_trace.id, parent_id=turn_trace.id, node_type="follow_up")
+
+                            # Log to unified system with full context for cost tracking
+                            from .unified_logs import log_unified
+                            log_unified(
+                                session_id=self.session_id,
+                                trace_id=followup_trace.id,
+                                parent_id=turn_trace.id,
+                                node_type="follow_up",
+                                role="assistant",
+                                depth=self.depth,
+                                phase_name=phase.name,
+                                cascade_id=self.config.cascade_id,
+                                model=model_used,
+                                request_id=request_id,  # For non-blocking cost tracking
+                                provider=provider,
+                                content=content,
+                                metadata={"is_follow_up": True, "turn_number": self.current_turn_number}
+                            )
+
                             self._update_graph() # Update after follow up
                             response_content = content
                         else:
@@ -2298,6 +2272,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     # Build comprehensive validation content (agent response + tool outputs + follow-up)
                     # This ensures validators see the COMPLETE turn output, not just the agent's text
+                    console.print(f"{indent}  [dim cyan][DEBUG] Building validation content: tool_outputs has {len(tool_outputs)} item(s)[/dim cyan]")
                     if tool_outputs:
                         validation_content_parts = []
                         if response_content:
@@ -2308,6 +2283,9 @@ Refinement directive: {reforge_config.honing_prompt}
                             validation_content_parts.append(f"\n[{tool_output['tool']}]:\n{tool_output['result']}\n")
 
                         response_content = "\n".join(validation_content_parts)
+                        console.print(f"{indent}  [dim green][DEBUG] Validation content built: {len(response_content)} chars total[/dim green]")
+                    else:
+                        console.print(f"{indent}  [dim yellow][DEBUG] tool_outputs is empty - validator will only see agent response![/dim yellow]")
 
                 except Exception as e:
                     # Enhanced error logging with detailed information
@@ -2496,26 +2474,21 @@ Refinement directive: {reforge_config.honing_prompt}
                 validator_name = phase.rules.loop_until
                 console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_name}[/bold cyan]")
 
-                # Log that validation is starting (for debugging)
-                log_message(self.session_id, "validation_start", f"Starting validator: {validator_name}",
-                           {"validator": validator_name, "phase_name": phase.name, "attempt": attempt + 1,
-                            "content_preview": response_content[:200] if response_content else "(empty)"},
-                           node_type="validation_start", depth=self.depth)
+                # Create validation trace
+                validation_trace = trace.create_child("validation", validator_name)
 
-                # Add to echo history
+                # Add to echo history (auto-logs via unified system - no need for separate log_message)
                 self.echo.add_history({
                     "role": "validation",
                     "content": f"🛡️ Running validator: {validator_name}",
                     "node_type": "validation_start"
-                }, trace_id=None, parent_id=trace.id, node_type="validation_start",
+                }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation_start",
                    metadata={
                        "phase_name": phase.name,
                        "validator": validator_name,
-                       "attempt": attempt + 1
+                       "attempt": attempt + 1,
+                       "content_preview": response_content[:200] if response_content else "(empty)"
                    })
-
-                # Create validation trace
-                validation_trace = trace.create_child("validation", validator_name)
 
                 # Initialize validator_result to None (ensures it's in scope for logging later)
                 validator_result = None
@@ -2642,12 +2615,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     reason = "Validator execution failed or returned invalid format"
 
                 # Log validation result to parent session (ALWAYS)
-                log_message(self.session_id, "validation", f"Valid: {is_valid}",
-                           {"validator": validator_name, "reason": reason, "attempt": attempt + 1},
-                           trace_id=validation_trace.id, parent_id=trace.id,
-                           node_type="validation", depth=self.depth)
-
-                # Add to echo history for visualization (ALWAYS)
+                # Add to echo history (auto-logs via unified system - no separate log_message needed)
                 self.echo.add_history({
                     "role": "validation",
                     "content": f"{'✓' if is_valid else '✗'} {validator_name}: {reason[:200]}",

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
 import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
@@ -61,10 +62,11 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
   };
 
   const formatCost = (cost) => {
-    if (!cost || cost === 0) return '$0.0000';
-    if (cost < 0.0001) return `$${(cost * 1000).toFixed(4)}‰`;
+    if (!cost || cost === 0) return '$0';
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
     if (cost < 0.01) return `$${cost.toFixed(5)}`;
-    if (cost < 1) return `$${cost.toFixed(4)}`;
+    if (cost < 0.1) return `$${cost.toFixed(4)}`;
+    if (cost < 1) return `$${cost.toFixed(3)}`;
     return `$${cost.toFixed(2)}`;
   };
 
@@ -254,7 +256,9 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
               {instance.final_output && (
                 <div className="final-output">
                   <div className="final-output-label">Final Output:</div>
-                  <div className="final-output-content">{instance.final_output}</div>
+                  <div className="final-output-content">
+                    <ReactMarkdown>{instance.final_output}</ReactMarkdown>
+                  </div>
                 </div>
               )}
             </div>

@@ -473,11 +473,12 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Message counts query: {e}")
 
-            # Get phase-level data
+            # Get phase-level data (need both role and node_type for status detection)
             phases_query = """
             SELECT
                 phase_name,
                 node_type,
+                role,
                 content_json,
                 model,
                 sounding_index,
@@ -491,7 +492,7 @@ def get_cascade_instances(cascade_id):
             # Group by phase to determine status and output
             phases_map = {}
             for p_row in phase_results:
-                p_name, p_node_type, p_content, p_model, sounding_idx, is_winner = p_row
+                p_name, p_node_type, p_role, p_content, p_model, sounding_idx, is_winner = p_row
 
                 if p_name not in phases_map:
                     sounding_data = soundings_map.get(p_name, {})
@@ -535,12 +536,21 @@ def get_cascade_instances(cascade_id):
                         "avg_duration": 0.0
                     }
 
-                # Update status based on node_type
-                if p_node_type == "phase_start":
+                # Update status based on node_type AND role
+                # After unified logging refactor:
+                # - node_type="phase" with role="phase_start" → phase starting
+                # - node_type="agent" with role="assistant" → agent output
+                # - node_type="phase" with role="phase_complete" → phase done
+
+                is_phase_start = (p_node_type == "phase_start") or (p_node_type == "phase" and p_role == "phase_start")
+                is_phase_complete = (p_node_type == "phase_complete") or (p_node_type == "phase" and p_role == "phase_complete")
+                is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
+
+                if is_phase_start:
                     phases_map[p_name]["status"] = "running"
                     phases_map[p_name]["model"] = p_model
 
-                elif p_node_type in ("phase_complete", "turn_output", "agent"):
+                elif is_phase_complete or is_agent_output:
                     phases_map[p_name]["status"] = "completed"
                     if p_content and isinstance(p_content, str):
                         try:
@@ -670,13 +680,32 @@ def get_session_detail(session_id):
         entries = []
         for row in result:
             entry = dict(zip(column_names, row))
-            # Parse JSON fields for easier frontend consumption
-            for json_field in ['content_json', 'tool_calls_json', 'metadata_json', 'full_request_json', 'full_response_json']:
+
+            # Parse JSON fields AND rename to match frontend expectations
+            # Frontend expects: content, tool_calls, metadata (not content_json, etc.)
+            json_field_mappings = {
+                'content_json': 'content',
+                'tool_calls_json': 'tool_calls',
+                'metadata_json': 'metadata',
+                'full_request_json': 'full_request',
+                'full_response_json': 'full_response',
+                'images_json': 'images'
+            }
+
+            for json_field, renamed_field in json_field_mappings.items():
                 if json_field in entry and entry[json_field]:
                     try:
-                        entry[json_field] = json.loads(entry[json_field])
+                        # Parse JSON string to object
+                        parsed = json.loads(entry[json_field]) if isinstance(entry[json_field], str) else entry[json_field]
+                        # Store under the new name that frontend expects
+                        entry[renamed_field] = parsed
                     except:
-                        pass
+                        # If parsing fails, keep the raw value
+                        entry[renamed_field] = entry[json_field]
+
+                    # Optionally keep the original _json field for debugging
+                    # del entry[json_field]  # Uncomment to remove _json fields
+
             entries.append(entry)
 
         conn.close()
@@ -1038,10 +1067,113 @@ def freeze_test():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/debug/schema', methods=['GET'])
+def debug_schema():
+    """Debug endpoint to show what columns and data exist in Parquet files"""
+    try:
+        conn = get_db_connection()
+
+        # Get schema
+        columns = get_available_columns(conn)
+
+        # Get sample data
+        sample_query = "SELECT * FROM logs LIMIT 5"
+        sample_df = conn.execute(sample_query).df()
+
+        # Get node_type distribution
+        node_types_query = """
+        SELECT node_type, role, COUNT(*) as count
+        FROM logs
+        GROUP BY node_type, role
+        ORDER BY count DESC
+        LIMIT 20
+        """
+        node_types_df = conn.execute(node_types_query).df()
+
+        # Get session summary
+        sessions_query = """
+        SELECT
+            session_id,
+            cascade_id,
+            COUNT(*) as msg_count,
+            COUNT(DISTINCT phase_name) as phase_count,
+            SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
+        FROM logs
+        WHERE cascade_id IS NOT NULL
+        GROUP BY session_id, cascade_id
+        ORDER BY MIN(timestamp) DESC
+        LIMIT 10
+        """
+        sessions_df = conn.execute(sessions_query).df()
+
+        conn.close()
+
+        return jsonify({
+            'data_dir': DATA_DIR,
+            'parquet_files_found': len(glob.glob(f"{DATA_DIR}/*.parquet")),
+            'columns': columns,
+            'column_count': len(columns),
+            'sample_rows': sample_df.to_dict('records') if not sample_df.empty else [],
+            'node_type_distribution': node_types_df.to_dict('records') if not node_types_df.empty else [],
+            'recent_sessions': sessions_df.to_dict('records') if not sessions_df.empty else []
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+
 if __name__ == '__main__':
     print("🌊 Windlass UI Backend Starting...")
+    print(f"   Windlass Root: {WINDLASS_ROOT}")
     print(f"   Data Dir: {DATA_DIR}")
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
+    print()
+
+    # Debug: Check data availability
+    parquet_files = glob.glob(f"{DATA_DIR}/*.parquet")
+    print(f"📊 Found {len(parquet_files)} Parquet files in {DATA_DIR}")
+
+    if parquet_files:
+        conn = get_db_connection()
+        try:
+            # Quick stats
+            stats = conn.execute("""
+                SELECT
+                    COUNT(DISTINCT session_id) as sessions,
+                    COUNT(DISTINCT cascade_id) as cascades,
+                    COUNT(*) as messages,
+                    SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
+                FROM logs
+            """).fetchone()
+
+            print(f"   Sessions: {stats[0]}, Cascades: {stats[1]}, Messages: {stats[2]}")
+            print(f"   Total Cost: ${stats[3]:.4f}" if stats[3] else "   Total Cost: $0.0000")
+            print()
+
+            # Show node types
+            node_types = conn.execute("""
+                SELECT node_type, role, COUNT(*) as count
+                FROM logs
+                GROUP BY node_type, role
+                ORDER BY count DESC
+                LIMIT 10
+            """).fetchall()
+
+            print("📝 Message Types:")
+            for nt, role, count in node_types:
+                role_str = f" (role={role})" if role else ""
+                print(f"   {nt}{role_str}: {count}")
+            print()
+
+        except Exception as e:
+            print(f"⚠️  Error querying data: {e}")
+            print()
+        finally:
+            conn.close()
+
+    print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()
     app.run(host='0.0.0.0', port=5001, debug=True)

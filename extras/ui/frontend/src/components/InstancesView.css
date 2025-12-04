@@ -298,10 +298,10 @@
   background: #0a0a0a;
   border: 1px solid #2a2a2a;
   border-radius: 6px;
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .input-label {
@@ -316,10 +316,11 @@
 .input-fields {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.3rem;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  padding-right: 0.25rem;
 }
 
 .input-field-display {
@@ -375,12 +376,14 @@
 
 /* Final Output Display */
 .final-output {
-  margin-top: 1rem;
+  margin-top: auto;
   padding: 0.75rem;
   background: #0a0a0a;
   border: 1px solid #2a2a2a;
   border-radius: 6px;
-  max-height: 120px;
+  flex: 1;
+  min-height: 60px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -394,13 +397,80 @@
 }
 
 .final-output-content {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: #e0e0e0;
-  font-family: 'Monaco', 'Courier New', monospace;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
+  line-height: 1.6;
 }
+
+.final-output-content p {
+  margin: 0 0 0.75rem 0;
+}
+
+.final-output-content p:last-child {
+  margin-bottom: 0;
+}
+
+.final-output-content code {
+  background: #1a1a1a;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #f472b6;
+}
+
+.final-output-content pre {
+  background: #1a1a1a;
+  padding: 0.75rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.final-output-content pre code {
+  background: none;
+  padding: 0;
+  color: #e0e0e0;
+}
+
+.final-output-content ul,
+.final-output-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.final-output-content li {
+  margin: 0.25rem 0;
+}
+
+.final-output-content strong {
+  color: #f0f0f0;
+  font-weight: 600;
+}
+
+.final-output-content em {
+  color: #a78bfa;
+}
+
+.final-output-content a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.final-output-content a:hover {
+  text-decoration: underline;
+}
+
+.final-output-content h1,
+.final-output-content h2,
+.final-output-content h3 {
+  color: #f0f0f0;
+  margin: 0.75rem 0 0.5rem 0;
+}
+
+.final-output-content h1 { font-size: 1.1rem; }
+.final-output-content h2 { font-size: 1rem; }
+.final-output-content h3 { font-size: 0.95rem; }
 
 /* Right: Instance Metrics */
 .instance-metrics {
