@@ -51,7 +51,7 @@
   font-size: 0.85rem;
   font-weight: 700;
   color: #34d399;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .phase-duration {
@@ -316,7 +316,7 @@
   font-size: 0.8rem;
   color: #34d399;
   margin-bottom: 0.5rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .tooltip-turns {
@@ -329,7 +329,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   color: #e0e0e0;
 }
 
@@ -413,7 +413,7 @@
 /* Snippet (instructions or output) */
 .phase-snippet {
   font-size: 0.7rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;

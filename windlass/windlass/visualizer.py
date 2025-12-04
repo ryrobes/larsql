@@ -470,9 +470,9 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
     return output_path
 
 
-def generate_mermaid(echo: Echo, output_path: str) -> str:
+def generate_mermaid_string(echo: Echo) -> str:
     """
-    Generate a Mermaid flowchart from Echo history.
+    Generate a Mermaid flowchart string from Echo history.
 
     The diagram shows:
     - Cascade as the outer container
@@ -481,24 +481,10 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     - Reforge as sequential refinement steps
     - Sub-cascades as nested groups
 
-    Also generates a companion JSON file with execution graph structure.
+    Returns the mermaid diagram as a string without writing to file.
     """
     root_nodes, nodes_map = build_execution_tree(echo)
 
-    # Generate companion JSON files
-    json_path = output_path.replace(".mmd", ".json")
-    reactflow_path = output_path.replace(".mmd", "_reactflow.json")
-
-    try:
-        export_execution_graph_json(echo, json_path)
-    except Exception as e:
-        # Don't fail mermaid generation if JSON fails
-        print(f"[Warning] Failed to generate execution graph JSON: {e}")
-
-    try:
-        export_react_flow_graph(echo, reactflow_path)
-    except Exception as e:
-        print(f"[Warning] Failed to generate React Flow JSON: {e}")
     # Flatten history to include nested sub_echo entries
     history, sub_echoes = flatten_history(echo.history)
 
@@ -1315,9 +1301,47 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     # as it creates visual clutter with arrows crossing container boundaries.
     # The structural diagram focuses on flow; use logs/lineage for content details.
 
+    # Return the mermaid diagram as a string
+    return "\n".join(lines)
+
+
+def generate_mermaid(echo: Echo, output_path: str) -> str:
+    """
+    Generate a Mermaid flowchart from Echo history and write to file.
+
+    The diagram shows:
+    - Cascade as the outer container
+    - Phases as nodes connected by handoffs
+    - Soundings as parallel branches with winner highlighting
+    - Reforge as sequential refinement steps
+    - Sub-cascades as nested groups
+
+    Also generates companion JSON files with execution graph structure.
+
+    Returns:
+        Path to written .mmd file
+    """
+    # Generate the mermaid string
+    mermaid_content = generate_mermaid_string(echo)
+
+    # Generate companion JSON files
+    json_path = output_path.replace(".mmd", ".json")
+    reactflow_path = output_path.replace(".mmd", "_reactflow.json")
+
+    try:
+        export_execution_graph_json(echo, json_path)
+    except Exception as e:
+        # Don't fail mermaid generation if JSON fails
+        print(f"[Warning] Failed to generate execution graph JSON: {e}")
+
+    try:
+        export_react_flow_graph(echo, reactflow_path)
+    except Exception as e:
+        print(f"[Warning] Failed to generate React Flow JSON: {e}")
+
     # Write to file
     with open(output_path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(mermaid_content)
 
     return output_path
 

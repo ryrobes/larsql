@@ -92,6 +92,9 @@ class MegaTableSchema:
             "has_images": "bool",
             "has_base64": "bool",
 
+            # Mermaid diagram state
+            "mermaid_content": "str (Mermaid diagram at time of message)",
+
             # Metadata
             "metadata_json": "str (JSON: Additional context)"
         }
@@ -307,6 +310,9 @@ class UnifiedLogger:
         images: List[str] = None,
         has_base64: bool = False,
 
+        # Mermaid diagram state
+        mermaid_content: str = None,
+
         # Metadata
         metadata: Dict = None
     ):
@@ -400,6 +406,9 @@ class UnifiedLogger:
             "images_json": safe_json(image_paths),
             "has_images": has_images,
             "has_base64": has_base64,
+
+            # Mermaid diagram state
+            "mermaid_content": mermaid_content,
 
             # Metadata
             "metadata_json": safe_json(metadata)
@@ -538,6 +547,7 @@ def log_unified(
     tool_calls: List[Dict] = None,
     images: List[str] = None,
     has_base64: bool = False,
+    mermaid_content: str = None,
     metadata: Dict = None
 ):
     """
@@ -583,6 +593,7 @@ def log_unified(
         tool_calls=tool_calls,
         images=images,
         has_base64=has_base64,
+        mermaid_content=mermaid_content,
         metadata=metadata
     )
 

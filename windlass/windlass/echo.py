@@ -68,6 +68,7 @@ class Echo:
             # Lazy import to avoid circular dependency
             from .unified_logs import log_unified
             from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result
+            from .visualizer import generate_mermaid_string
 
             # Extract data from entry
             role = entry.get("role")
@@ -85,6 +86,14 @@ class Echo:
             phase_name = meta.get("phase_name")
             cascade_id = meta.get("cascade_id")
             model = meta.get("model")  # Extract model from metadata
+
+            # Generate mermaid diagram content (includes the newly added entry)
+            mermaid_content = None
+            try:
+                mermaid_content = generate_mermaid_string(self)
+            except Exception as mermaid_error:
+                # Don't fail logging if mermaid generation fails
+                pass
 
             # Log to unified system
             log_unified(
@@ -104,6 +113,7 @@ class Echo:
                 model=model,  # Pass model
                 images=images,
                 has_base64=has_base64,
+                mermaid_content=mermaid_content,
             )
         except Exception as e:
             # Don't fail if logging has issues

@@ -578,7 +578,7 @@ def get_cascade_instances(cascade_id):
                 if sounding_idx is not None:
                     phases_map[p_name]["has_soundings"] = True
 
-            # Get final output
+            # Get final output (full content, no truncation)
             final_output = None
             try:
                 output_query = """
@@ -594,9 +594,9 @@ def get_cascade_instances(cascade_id):
                     if isinstance(content, str):
                         try:
                             parsed = json.loads(content)
-                            final_output = str(parsed)[:500] if parsed else None
+                            final_output = str(parsed) if parsed else None
                         except:
-                            final_output = content[:500]
+                            final_output = content
             except:
                 pass
 

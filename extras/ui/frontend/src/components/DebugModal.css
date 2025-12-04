@@ -236,7 +236,7 @@
 }
 
 .entry-type {
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.85rem;
   color: var(--node-color, #666);
   font-weight: 600;
@@ -246,7 +246,7 @@
 .entry-time {
   font-size: 0.75rem;
   color: #666;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .entry-cost {
@@ -254,7 +254,7 @@
   font-size: 0.85rem;
   font-weight: 700;
   color: #34d399;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .direction-badge {
@@ -262,7 +262,7 @@
   padding: 0.25rem 0.6rem;
   border-radius: 4px;
   font-weight: 700;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   margin-left: auto;
   white-space: nowrap;
 }
@@ -291,7 +291,7 @@
   border-radius: 6px;
   color: #fbbf24;
   font-size: 0.8rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .time-gap-indicator span:first-of-type {
@@ -312,7 +312,7 @@
 /* Content Types */
 .message-content {
   margin: 0;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
@@ -359,7 +359,7 @@
   background: #1a1a1a;
   padding: 0.2rem 0.4rem;
   border-radius: 3px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
   color: #60a5fa;
 }
@@ -435,13 +435,13 @@
   font-size: 1.2rem;
   font-weight: 700;
   color: #34d399;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .token-info {
   font-size: 0.85rem;
   color: #666;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .tool-call-content,
@@ -455,7 +455,7 @@
   font-size: 0.9rem;
   font-weight: 600;
   color: #f472b6;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .tool-args,
@@ -465,7 +465,7 @@
   background: #000;
   border: 1px solid #222;
   border-radius: 4px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.85rem;
   color: #e0e0e0;
   overflow-x: auto;
@@ -497,7 +497,7 @@
   font-size: 0.95rem;
   font-weight: 600;
   color: #60a5fa;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .validation-status {
@@ -505,7 +505,7 @@
   font-weight: 700;
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .validation-status.passed {
@@ -560,13 +560,13 @@
   font-size: 0.9rem;
   font-weight: 600;
   color: #a78bfa;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .sub-cascade-session {
   font-size: 0.75rem;
   color: #666;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   background: rgba(0, 0, 0, 0.3);
   padding: 0.2rem 0.5rem;
   border-radius: 3px;

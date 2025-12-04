@@ -100,7 +100,7 @@
   padding: 0.75rem;
   font-size: 0.7rem;
   color: #999;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   backdrop-filter: blur(8px);
   max-width: 300px;
 }

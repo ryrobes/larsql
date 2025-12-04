@@ -230,7 +230,7 @@
   font-weight: 600;
   margin: 0;
   color: #f0f0f0;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -327,7 +327,7 @@
   display: flex;
   gap: 0.5rem;
   font-size: 0.75rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   line-height: 1.4;
 }
 
@@ -414,7 +414,7 @@
   background: #1a1a1a;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.8rem;
   color: #f472b6;
 }
