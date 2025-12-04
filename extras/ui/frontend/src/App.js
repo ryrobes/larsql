@@ -20,9 +20,12 @@ function App() {
   const [runningSessions, setRunningSessions] = useState(new Set());
   const [sessionUpdates, setSessionUpdates] = useState({}); // Track last update time per session for mermaid refresh
 
-  const showToast = (message, type = 'success') => {
+  const showToast = (message, type = 'success', duration = null) => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
+    // Default durations by type: info=3s, success=4s, warning=5s, error=8s
+    const defaultDurations = { info: 3000, success: 4000, warning: 5000, error: 8000 };
+    const finalDuration = duration ?? defaultDurations[type] ?? 4000;
+    setToasts(prev => [...prev, { id, message, type, duration: finalDuration }]);
   };
 
   const removeToast = (id) => {
@@ -129,7 +132,7 @@ function App() {
             if (startSessionId) {
               setRunningSessions(prev => new Set([...prev, startSessionId]));
             }
-            showToast(`Cascade started: ${startCascadeId || startSessionId}`, 'info');
+            // Don't toast here - handleCascadeStarted already shows one when user clicks Run
             setRefreshTrigger(prev => prev + 1);
             break;
 
@@ -211,24 +214,15 @@ function App() {
     };
   }, []);
 
-  // Add SSE status indicator to header
-  const SSEStatus = () => (
-    <div className={`sse-status ${sseConnected ? 'connected' : 'disconnected'}`}>
-      <span className="status-dot"></span>
-      <span className="status-text">{sseConnected ? 'Live' : 'Offline'}</span>
-    </div>
-  );
-
   return (
     <div className="app">
-      <SSEStatus />
-
       {currentView === 'cascades' && (
         <CascadesView
           onSelectCascade={handleSelectCascade}
           onRunCascade={handleRunCascade}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
+          sseConnected={sseConnected}
         />
       )}
 
@@ -243,6 +237,7 @@ function App() {
           runningCascades={runningCascades}
           runningSessions={runningSessions}
           sessionUpdates={sessionUpdates}
+          sseConnected={sseConnected}
         />
       )}
 
@@ -277,6 +272,7 @@ function App() {
             key={toast.id}
             message={toast.message}
             type={toast.type}
+            duration={toast.duration}
             onClose={() => removeToast(toast.id)}
           />
         ))}

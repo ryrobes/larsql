@@ -114,7 +114,7 @@ class CostTracker:
 
         if pending_message:
             # NEW BEHAVIOR: Merge cost into pending message and log once
-            from .echoes import log_echo
+            from .unified_logs import log_unified
 
             # Merge cost data
             pending_message["cost"] = cost
@@ -122,7 +122,7 @@ class CostTracker:
             pending_message["tokens_out"] = tokens_out
 
             # Log complete message with cost included
-            log_echo(**pending_message)
+            log_unified(**pending_message)
 
         else:
             # OLD BEHAVIOR (backward compatibility): Log separate cost_update

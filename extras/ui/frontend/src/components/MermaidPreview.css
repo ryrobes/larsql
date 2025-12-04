@@ -6,26 +6,27 @@
   z-index: 1;
 }
 
-/* Small size - for instance rows (tiny preview) */
+/* Small size - for instance rows (in left column under inputs) */
 .mermaid-preview.small {
-  width: 20vw;
-  /* height: 90px; */
+  width: 100%;
+  height: 100%;
   flex-shrink: 0;
-  /* opacity: 0.6; */
-  padding: 0px;
-  margin: 0px;
-  margin-right: -40px;
-  margin-left: -30px;
-  /* margin-top: -60px; */
+  padding: 0.25rem;
+  margin: 0;
   transition: all 0.2s ease;
   cursor: pointer;
   background: transparent;
   border: none;
 }
 
+.mermaid-preview.small .mermaid-container {
+  /* Allow container to size based on SVG aspect ratio */
+  align-items: center;
+  justify-content: center;
+}
+
 .mermaid-preview.small:hover {
-  opacity: 1;
-  /* Removed transform to prevent glitchy repositioning */
+  opacity: 0.9;
 }
 
 /* Medium size - for debug modal top */

@@ -63,10 +63,10 @@ class Echo:
         enriched_entry["metadata"] = meta
         self.history.append(enriched_entry)
 
-        # NEW: Also log to echo system automatically
+        # Also log to unified logging system automatically
         try:
             # Lazy import to avoid circular dependency
-            from .echoes import log_echo
+            from .unified_logs import log_unified
             from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result
 
             # Extract data from entry
@@ -86,8 +86,8 @@ class Echo:
             cascade_id = meta.get("cascade_id")
             model = meta.get("model")  # Extract model from metadata
 
-            # Log to echo system
-            log_echo(
+            # Log to unified system
+            log_unified(
                 session_id=self.session_id,
                 trace_id=trace_id,
                 parent_id=parent_id,
@@ -106,7 +106,7 @@ class Echo:
                 has_base64=has_base64,
             )
         except Exception as e:
-            # Don't fail if echo logging has issues
+            # Don't fail if logging has issues
             pass  # Silently ignore to avoid spam
 
     def add_lineage(self, phase: str, output: Any, trace_id: str = None):

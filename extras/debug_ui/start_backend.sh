@@ -4,16 +4,10 @@
 cd "$(dirname "$0")/backend"
 source ../venv/bin/activate
 
-export WINDLASS_LOG_DIR=/home/ryanr/repos/windlass/logs
-export WINDLASS_GRAPH_DIR=/home/ryanr/repos/windlass/graphs
-export WINDLASS_STATE_DIR=/home/ryanr/repos/windlass/states
-export WINDLASS_IMAGE_DIR=/home/ryanr/repos/windlass/images
+export WINDLASS_ROOT=/home/ryanr/repos/windlass
 
 echo "Starting Windlass Debug UI Backend..."
-echo "  Logs:   $WINDLASS_LOG_DIR"
-echo "  Graphs: $WINDLASS_GRAPH_DIR"
-echo "  States: $WINDLASS_STATE_DIR"
-echo "  Images: $WINDLASS_IMAGE_DIR"
+echo "  Root:   $WINDLASS_ROOT"
 echo ""
 
 python app.py

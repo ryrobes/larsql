@@ -26,13 +26,39 @@ pip install .
 
 **Required Environment Variables**:
 - `OPENROUTER_API_KEY`: API key for OpenRouter (default provider)
-- Optional overrides via `WINDLASS_` prefix:
+
+**Workspace Configuration** (WINDLASS_ROOT-based):
+- `WINDLASS_ROOT`: Workspace root directory (default: current directory)
+  - All data and content paths are derived from this single variable
+  - No need to set individual directory variables unless you want custom paths
+
+**Optional Overrides**:
+- Provider settings:
   - `WINDLASS_PROVIDER_BASE_URL` (default: `https://openrouter.ai/api/v1`)
-  - `WINDLASS_DEFAULT_MODEL` (default: `x-ai/grok-4.1-fast:free`)
-  - `WINDLASS_LOG_DIR` (default: `./logs`)
-  - `WINDLASS_GRAPH_DIR` (default: `./graphs`)
-  - `WINDLASS_STATE_DIR` (default: `./states`)
-  - `WINDLASS_IMAGE_DIR` (default: `./images`)
+  - `WINDLASS_DEFAULT_MODEL` (default: `google/gemini-2.5-flash-lite`)
+- Data directories (auto-derived from `WINDLASS_ROOT` if not set):
+  - `WINDLASS_DATA_DIR` (default: `$WINDLASS_ROOT/data`)
+  - `WINDLASS_LOG_DIR` (default: `$WINDLASS_ROOT/logs`)
+  - `WINDLASS_GRAPH_DIR` (default: `$WINDLASS_ROOT/graphs`)
+  - `WINDLASS_STATE_DIR` (default: `$WINDLASS_ROOT/states`)
+  - `WINDLASS_IMAGE_DIR` (default: `$WINDLASS_ROOT/images`)
+- Content directories (auto-derived from `WINDLASS_ROOT` if not set):
+  - `WINDLASS_EXAMPLES_DIR` (default: `$WINDLASS_ROOT/examples`)
+  - `WINDLASS_TACKLE_DIR` (default: `$WINDLASS_ROOT/tackle`)
+  - `WINDLASS_CASCADES_DIR` (default: `$WINDLASS_ROOT/cascades`)
+
+**Workspace Directory Structure**:
+```
+$WINDLASS_ROOT/
+├── data/          # Unified logs (Parquet files)
+├── logs/          # Old logs (backward compatibility)
+├── graphs/        # Mermaid execution graphs
+├── states/        # Session state JSON files
+├── images/        # Multi-modal image outputs
+├── examples/      # Example cascade definitions
+├── tackle/        # Reusable tool cascades
+└── cascades/      # User-defined cascades
+```
 
 ## Common Development Commands
 
@@ -109,11 +135,12 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `instructions`: Jinja2-templated system prompt (can reference `{{ input.key }}` or `{{ state.key }}`)
 - `tackle`: List of tool names to inject, or `"manifest"` for Quartermaster auto-selection
 - `manifest_context`: Context mode for Quartermaster (`"current"` or `"full"`, default: `"current"`)
+- `model`: Optional model override for this phase (e.g., `"anthropic/claude-opus-4.5"` for expensive phases)
 - `use_native_tools`: Boolean (default: `false`) - Use provider native tool calling vs prompt-based (see section 2.8)
-- `handoffs`: List of next-phase targets (enables dynamic routing via `route_to` tool)
+- `handoffs`: List of next-phase targets (enables dynamic routing via `route_to` tool); can include descriptions for routing menu
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
-- `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"`
-- `rules`: Contains `max_turns`, `max_attempts`, or `loop_until` conditions
+- `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"` or `"on_end"`
+- `rules`: Contains `max_turns`, `max_attempts`, `loop_until` (validator name to keep looping until it passes), and `retry_instructions` (injected on retry)
 - `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, optional `reforge` for iterative refinement)
 - `output_schema`: JSON schema for validating phase output with automatic retry on failure
 - `wards`: Pre/post validation with three modes (blocking, retry, advisory)
@@ -499,7 +526,7 @@ Reforge extends Soundings (Tree of Thought) with iterative refinement: after sou
   ⚖️  Evaluate → New Winner
      ↓
 🔨 Reforge Step 2
-  ├─ Refine 1 (prev winner + honing + mutation_3)Windlass
+  ├─ Refine 1 (prev winner + honing + mutation_3)
   └─ Refine 2 (prev winner + honing + mutation_4)
      ↓
   ⚖️  Evaluate → Final Winner
@@ -518,7 +545,7 @@ All intermediate sounding and reforge attempts are fully logged with `sounding_i
 
 **Dual-Level Support:**
 - **Phase-level reforge**: Refines single phase output
-- **Cascade-level reforge**: Refines enWindlassi-phase workflow execution
+- **Cascade-level reforge**: Refines entire multi-phase workflow execution
 
 **Session ID Namespacing:**
 Each reforge iteration gets unique session ID for image/state isolation:
@@ -534,7 +561,7 @@ Each reforge iteration gets unique session ID for image/state isolation:
 - `reforge_feedback_chart.json`: Feedback loops with manual image injection
 
 ### 3. Execution Flow (Runner)
-The core execution engine is in `windlass/runner.py` (`SkelrigenRunner` class).
+The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).
 
 **Key Execution Concepts**:
 - **Context Snowballing**: Full conversation history (user inputs, agent thoughts, tool results) accumulates across phases. An agent in Phase 3 has visibility into Phase 1's reasoning.
@@ -542,6 +569,8 @@ The core execution engine is in `windlass/runner.py` (`SkelrigenRunner` class).
   - `state`: Persistent key-value store (set via `set_state` tool)
   - `history`: Full message log with trace IDs
   - `lineage`: Phase-level output summary
+  - `errors`: Track errors that occurred
+  - **Auto-logging**: Echo automatically calls `log_unified()` when `add_history()` is invoked, ensuring all messages are logged to the unified system. The entry dict is **copied** to prevent trace metadata from polluting LLM API messages.
 - **Sub-Cascade Context**:
   - `context_in: true`: Parent's `state` is flattened into child's `input`
   - `context_out: true`: Child's final `state` is merged back into parent's `state`
@@ -553,7 +582,7 @@ The core execution engine is in `windlass/runner.py` (`SkelrigenRunner` class).
 
 ### 4. Multi-Modal Vision Protocol & Image Handling
 
-Images are **first-class citizens** in Skelrigen with automatic persistence and reforge integration.
+Images are **first-class citizens** in Windlass with automatic persistence and reforge integration.
 
 **Tool Image Protocol**: If a tool returns `{"content": "...", "images": ["/path/to/file.png"]}`, the runner:
 1. Detects the `images` key in the tool result
@@ -575,7 +604,7 @@ Images are **first-class citizens** in Skelrigen with automatic persistence and 
 
 **Reforge Image Flow**: Images automatically flow through refinement:
 1. Winner's context includes images (base64 in messages)
-Windlass extracted and re-encoded for new API requests
+2. Images extracted and re-encoded for new API requests
 3. Refinement context includes both honing prompt + images
 4. Each reforge iteration can see and analyze previous images
 5. All images saved with session namespacing to prevent collisions
@@ -602,15 +631,51 @@ This allows tools to generate charts/screenshots that the agent can analyze visu
 
 ### 5. Observability Stack
 
-**Core Logging:**
-- **DuckDB Logging** (`logs.py`): All events are logged to Parquet files in `./logs` for high-performance querying. Schema includes `sounding_index` (0-indexed, null if not a sounding), `reforge_step` (0=initial, 1+=refinement, null if no reforge), and `is_winner` (True/False/null) for soundings/reforge analysis.
+**Unified Logging System:**
+
+All logging now goes through a single unified mega-table system (`unified_logs.py`) that writes to `$WINDLASS_ROOT/data/`:
+
+- **Unified Logging** (`unified_logs.py`): All events logged to Parquet files in `./data/` (NOT `./logs/`). Uses buffered writes (100 messages OR 10 seconds, whichever first). Files named `log_{timestamp}_{count}msgs_{uuid}.parquet`.
+- **Backward Compatibility**: `logs.py` is now a shim that routes all calls to `unified_logs.py`. Old code still works.
 - **Mermaid Graphs** (`visualizer.py`): Real-time flowchart generation (`.mmd` files in `./graphs`) showing phase transitions, soundings, and reforges with visual grouping
-- **Cost Tracking** (`cost.py`): Asynchronous workers track token usage via OpenRouter APIs, associating costs with trace IDs
+- **Cost Tracking**: Now **blocking** (not async) - cost data fetched immediately from OpenRouter after each LLM call and merged into the log entry before writing. No separate `cost_update` messages.
 - **Trace Hierarchy** (`tracing.py`): `TraceNode` class creates parent-child relationships for nested cascades and soundings attempts
+
+**Unified Log Schema (34+ fields per message):**
+
+| Category | Fields |
+|----------|--------|
+| **Core IDs** | `timestamp`, `timestamp_iso`, `session_id`, `trace_id`, `parent_id`, `parent_session_id`, `parent_message_id` |
+| **Classification** | `node_type`, `role`, `depth` |
+| **Execution Context** | `sounding_index`, `is_winner`, `reforge_step`, `attempt_number`, `turn_number` |
+| **Cascade Context** | `cascade_id`, `cascade_file`, `cascade_json`, `phase_name`, `phase_json` |
+| **LLM Provider** | `model`, `request_id`, `provider` |
+| **Performance** | `duration_ms`, `tokens_in`, `tokens_out`, `total_tokens`, `cost` |
+| **Content (JSON)** | `content_json`, `full_request_json`, `full_response_json`, `tool_calls_json` |
+| **Images** | `images_json`, `has_images`, `has_base64` |
+| **Metadata** | `metadata_json` |
+
+**Query Helpers:**
+```python
+from windlass.unified_logs import query_unified, get_session_messages, get_cascade_costs
+
+# Query unified logs using DuckDB
+df = query_unified("session_id = 'session_123'")
+
+# Get all messages for a session
+messages = get_session_messages("session_123")
+
+# Get cost breakdown by phase
+costs = get_cascade_costs("blog_flow")
+
+# Analyze soundings performance
+from windlass.unified_logs import get_soundings_analysis
+soundings = get_soundings_analysis("session_123", "generate")
+```
 
 **Real-Time Event System:**
 
-Skelrigen includes a built-in event bus for real-time cascade updates via Server-Sent Events (SSE).
+Windlass includes a built-in event bus for real-time cascade updates via Server-Sent Events (SSE).
 
 **Event Bus** (`events.py`):
 ```python
@@ -745,7 +810,7 @@ graph = build_react_flow_nodes(tree)
             'id': 'phase_0',
             'type': 'phaseNode',
             'position': {'x': 0, 'y': 0},
-Windlass   'data': {'label': 'Generate', 'event_count': 45}
+            'data': {'label': 'Generate', 'event_count': 45}
         },
         {
             'id': 'phase_1_sounding_0',
@@ -771,7 +836,7 @@ Windlass   'data': {'label': 'Generate', 'event_count': 45}
 
 See `extras/debug_ui/VISUALIZATION_GUIDE.md` for complete visualization patterns and React Flow implementation examples.
 
-### 6. LLM IntegrationWindlass
+### 6. LLM Integration
 The `Agent` class (`agent.py`) wraps LiteLLM for flexible provider support.
 - Default: OpenRouter with configurable base URL and API key
 - Messages are sanitized to remove `tool_calls: None` fields
@@ -780,7 +845,7 @@ The `Agent` class (`agent.py`) wraps LiteLLM for flexible provider support.
 
 ### 7. Debug UI
 
-Skelrigen includes a development debug UI for real-time cascade monitoring located in `extras/debug_ui/`.
+Windlass includes a development debug UI for real-time cascade monitoring located in `extras/debug_ui/`.
 
 **Features:**
 - Real-time SSE updates (no polling required)
@@ -806,7 +871,7 @@ npm start
 
 **Backend Configuration:**
 
-Set environment variables to point to your Skelrigen data directories:
+Set environment variables to point to your Windlass data directories:
 
 ```bash
 export WINDLASS_LOG_DIR=/path/to/logs
@@ -819,7 +884,7 @@ export WINDLASS_IMAGE_DIR=/path/to/images
 
 ```
 GET  /api/cascades                    # List all cascade sessions
-GET  /api/logs/<session_id>Windlass  # Get logs for session
+GET  /api/logs/<session_id>          # Get logs for session
 GET  /api/graph/<session_id>          # Get Mermaid graph
 GET  /api/execution-tree/<session_id> # Get execution tree (JSON)
 GET  /api/execution-tree/<session_id>?format=react-flow  # React Flow format
@@ -854,12 +919,14 @@ See `extras/debug_ui/VISUALIZATION_GUIDE.md` for React Flow integration and adva
 windlass/
 ├── __init__.py          # Package entry point, tool registration
 ├── cascade.py           # Pydantic models for Cascade DSL
-├── runner.py            # SkelrigenRunner execution engine
+├── runner.py            # WindlassRunner execution engine
 ├── agent.py             # LLM wrapper (LiteLLM integration)
-├── echo.py              # Echo class (state/history container)
+├── echo.py              # Echo class (state/history container) + auto-logging
 ├── tackle.py            # ToolRegistry for tool management
-├── config.py            # Global configuration management
-├── logs.py              # DuckDB event logging
+├── tackle_manifest.py   # Dynamic tool discovery for Quartermaster
+├── config.py            # Global configuration management (WINDLASS_ROOT-based)
+├── unified_logs.py      # Unified mega-table logging (primary log system)
+├── logs.py              # Backward compatibility shim → routes to unified_logs.py
 ├── visualizer.py        # Mermaid graph generation (with soundings/reforge support)
 ├── tracing.py           # TraceNode hierarchy for observability
 ├── events.py            # Event bus for real-time updates
@@ -868,30 +935,31 @@ windlass/
 ├── cli.py               # Command-line interface
 ├── prompts.py           # Jinja2 prompt rendering
 ├── state.py             # Session state management
-├── cost.py              # Async cost tracking
+├── cost.py              # Cost tracking (legacy async, now mostly blocking in agent.py)
 └── eddies/              # Built-in tools
     ├── base.py          # Eddy wrapper (retry logic)
-    ├── sql.py           # DuckDB SQL execution
-    ├── extras.py        # run_code, take_screenshot
+    ├── sql.py           # DuckDB SQL execution (smart_sql_run)
+    ├── extras.py        # linux_shell, run_code, take_screenshot
     ├── human.py         # ask_human HITL tool
     ├── state_tools.py   # set_state tool
     ├── system.py        # spawn_cascade tool
- Windlassart.py         # create_chart toolWindlass
+    └── chart.py         # create_chart tool
 
 extras/
-└── debug_ui/            # Development debug UI
-    ├── start_backend.sh # Backend startup script
-    ├── backend/
-    │   ├── app.py       # Flask API server
-    │   └── execution_tree.py  # Execution tree builder for React Flow
-    └── frontend/
-        └── src/
-            ├── App.js           # Main UI with SSE integration
-            ├── components/
-            │   ├── CascadeList.js
-            │   ├── MermaidViewer.js
-            │   └── LogsPanel.js
-            └── VISUALIZATION_GUIDE.md  # React Flow patterns
+├── debug_ui/            # Development debug UI
+│   ├── start_backend.sh # Backend startup script
+│   ├── backend/
+│   │   ├── app.py       # Flask API server
+│   │   └── execution_tree.py  # Execution tree builder for React Flow
+│   └── frontend/
+│       └── src/
+│           ├── App.js           # Main UI with SSE integration
+│           ├── components/
+│           │   ├── CascadeList.js
+│           │   ├── MermaidViewer.js
+│           │   └── LogsPanel.js
+│           └── VISUALIZATION_GUIDE.md  # React Flow patterns
+└── ui/                  # Production UI (separate from debug_ui)
 ```
 
 ## Important Implementation Details
@@ -900,6 +968,10 @@ extras/
 Phase instructions support Jinja2 syntax:
 - `{{ input.variable_name }}`: Access initial cascade input
 - `{{ state.variable_name }}`: Access persistent session state
+- `{{ outputs.phase_name }}`: Access previous phase outputs by name
+- `{{ lineage }}`: Full execution lineage array
+- `{{ history }}`: Message history
+- `{{ input | default('value') }}`: Default filters supported
 - Rendered in `prompts.py:render_instruction()`
 
 ### Session and Trace IDs
@@ -907,11 +979,22 @@ Phase instructions support Jinja2 syntax:
 - **Trace ID**: Unique identifier for each node in the execution tree (cascade, phase, or tool)
 - Both are threaded through logging and visualization for full traceability
 
+**Session ID Namespacing:**
+```
+Main cascade:           session_123
+Cascade-level sounding: session_123_sounding_0, session_123_sounding_1, ...
+Phase-level sounding:   Uses main session_id with sounding_index metadata
+Reforge iterations:     session_123_reforge1_0, session_123_reforge1_1, session_123_reforge2_0, ...
+Sub-cascades:           Linked via parent_session_id field
+```
+
+This namespacing ensures image/state isolation between parallel sounding attempts and reforge iterations.
+
 ### Context Tokens
 The runner uses `contextvars` (via `state_tools.py:set_current_session_id()` and `tracing.py:set_current_trace()`) to make session/trace data available to tools without explicit parameter passing.
 
 ### Hooks System & Real-Time Events
-`SkelrigenRunner` accepts a `hooks` parameter (`SkelrigenHooks` class) allowing injection of custom logic at key lifecycle points:
+`WindlassRunner` accepts a `hooks` parameter (`WindlassHooks` class) allowing injection of custom logic at key lifecycle points:
 
 **Lifecycle Hooks:**
 - `on_cascade_start`: Called when cascade execution begins
@@ -983,7 +1066,7 @@ The `examples/` directory contains reference implementations:
 
 ## Testing System (Snapshot Testing)
 
-Skelrigen includes a powerful snapshot testing system that captures real cascade executions and replays them as regression tests **without calling LLMs**.
+Windlass includes a powerful snapshot testing system that captures real cascade executions and replays them as regression tests **without calling LLMs**.
 
 ### How It Works
 
@@ -996,7 +1079,7 @@ windlass examples/routing_flow.json --input '{"text": "I love it!"}' --session t
 **2. Verify Phase:**
 Check that it did what you expected:
 - Review output in terminal
-- Check logs: `cat logs/*.parquet | grep test_001`
+- Check logs: Query `data/*.parquet` using DuckDB (logs are in `data/` not `logs/`)
 - Check graph: `cat graphs/test_001.mmd`
 - View in debug UI
 
@@ -1088,7 +1171,7 @@ windlass test freeze weird_001 --name routing_edge_case_handling
 # - If framework changes break this flow, test catches it
 ```
 
-**Philosophy:** You're testing that Skelrigen's plumbing works correctly, not that the LLM is smart. If the framework:
+**Philosophy:** You're testing that Windlass's plumbing works correctly, not that the LLM is smart. If the framework:
 - Routes to the correct phase based on tool calls
 - Persists state properly
 - Validates with wards as configured

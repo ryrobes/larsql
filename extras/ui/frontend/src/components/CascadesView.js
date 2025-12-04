@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PhaseBar from './PhaseBar';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCascades }) {
+function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCascades, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -93,29 +93,37 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     );
   }
 
+  const totalRuns = cascades.reduce((sum, c) => sum + (c.metrics?.run_count || 0), 0);
+  const totalCost = cascades.reduce((sum, c) => sum + (c.metrics?.total_cost || 0), 0);
+
   return (
     <div className="cascades-container">
-      <div className="header">
-        <h1>Cascades</h1>
-        <div className="header-stats">
-          <span className="stat">
-            <span className="stat-value">{cascades.length}</span>
-            <span className="stat-label">Definitions</span>
-          </span>
-          <span className="stat">
-            <span className="stat-value">
-              {cascades.reduce((sum, c) => sum + (c.metrics?.run_count || 0), 0)}
-            </span>
-            <span className="stat-label">Total Runs</span>
-          </span>
-          <span className="stat">
-            <span className="stat-value">
-              {formatCost(cascades.reduce((sum, c) => sum + (c.metrics?.total_cost || 0), 0))}
-            </span>
-            <span className="stat-label">Total Cost</span>
-          </span>
+      <header className="app-header">
+        <div className="header-brand">
+          <svg className="brand-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L12 6" />
+            <path d="M12 18L12 22" />
+            <circle cx="12" cy="12" r="4" />
+            <path d="M4.93 4.93L7.76 7.76" />
+            <path d="M16.24 16.24L19.07 19.07" />
+            <path d="M2 12L6 12" />
+            <path d="M18 12L22 12" />
+            <path d="M4.93 19.07L7.76 16.24" />
+            <path d="M16.24 7.76L19.07 4.93" />
+          </svg>
+          <span className="brand-name">Windlass</span>
         </div>
-      </div>
+        <div className="header-center">
+          <span className="header-stat">{cascades.length} <span className="stat-dim">cascades</span></span>
+          <span className="header-divider">·</span>
+          <span className="header-stat">{totalRuns} <span className="stat-dim">runs</span></span>
+          <span className="header-divider">·</span>
+          <span className="header-stat cost">{formatCost(totalCost)}</span>
+        </div>
+        <div className="header-right">
+          <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />
+        </div>
+      </header>
 
       <div className="cascades-list">
         {cascades.map((cascade) => {

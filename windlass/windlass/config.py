@@ -2,23 +2,56 @@ import os
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 
+# Get WINDLASS_ROOT once at module load
+_WINDLASS_ROOT = os.getenv("WINDLASS_ROOT", os.getcwd())
+
 class Config(BaseModel):
     provider_base_url: str = Field(default="https://openrouter.ai/api/v1")
     provider_api_key: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
-    #default_model: str = Field(default="x-ai/grok-4.1-fast:free") # RIP 
+    #default_model: str = Field(default="x-ai/grok-4.1-fast:free") # RIP
     #default_model: str = Field(default="google/gemini-3-pro-preview")
     #default_model: str = Field(default="anthropic/claude-sonnet-4.5")
-    #default_model: str = Field(default="x-ai/grok-4.1-fast") 
-    default_model: str = Field(default="google/gemini-2.5-flash-lite") 
-    log_dir: str = Field(default_factory=lambda: os.getenv("WINDLASS_LOG_DIR", "./logs"))
-    graph_dir: str = Field(default_factory=lambda: os.getenv("WINDLASS_GRAPH_DIR", "./graphs"))
-    state_dir: str = Field(default_factory=lambda: os.getenv("WINDLASS_STATE_DIR", "./states"))
-    image_dir: str = Field(default_factory=lambda: os.getenv("WINDLASS_IMAGE_DIR", "./images"))
-    tackle_dirs: List[str] = Field(default=["examples/", "cascades/", "tackle/"])
+    #default_model: str = Field(default="x-ai/grok-4.1-fast")
+    default_model: str = Field(default="google/gemini-2.5-flash-lite")
+
+    # Root directory - single source of truth
+    root_dir: str = Field(default=_WINDLASS_ROOT)
+
+    # Data directories - all derived from WINDLASS_ROOT
+    log_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "logs"))
+    data_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "data"))
+    graph_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "graphs"))
+    state_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "states"))
+    image_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "images"))
+
+    # Content directories - all derived from WINDLASS_ROOT
+    examples_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "examples"))
+    tackle_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "tackle"))
+    cascades_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "cascades"))
+
+    # Tackle search paths (for manifest)
+    tackle_dirs: List[str] = Field(default=[
+        os.path.join(_WINDLASS_ROOT, "examples"),
+        os.path.join(_WINDLASS_ROOT, "tackle"),
+        os.path.join(_WINDLASS_ROOT, "cascades"),
+    ])
 
     model_config = ConfigDict(env_prefix="WINDLASS_")
 
+def _ensure_directories(config: Config):
+    """Create all data directories if they don't exist"""
+    dirs_to_create = [
+        config.data_dir,
+        config.log_dir,
+        config.graph_dir,
+        config.state_dir,
+        config.image_dir,
+    ]
+    for dir_path in dirs_to_create:
+        os.makedirs(dir_path, exist_ok=True)
+
 _global_config = Config()
+_ensure_directories(_global_config)
 
 def get_config() -> Config:
     return _global_config

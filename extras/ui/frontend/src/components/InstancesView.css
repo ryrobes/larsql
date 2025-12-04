@@ -6,79 +6,134 @@
   padding: 2rem;
 }
 
-/* Header */
-.header {
+/* App Header */
+.app-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 2px solid #1a1a1a;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  margin: -2rem -2rem 2rem -2rem;
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.95) 0%, rgba(10, 10, 10, 0.98) 100%);
+  border-bottom: 1px solid rgba(96, 165, 250, 0.15);
+  backdrop-filter: blur(8px);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
-.header-actions {
+.back-button {
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 2rem;
+  justify-content: center;
+  padding: 0;
 }
 
-.header h1 {
-  font-size: 2rem;
+.back-button:hover {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.cascade-title {
+  font-size: 1.25rem;
   font-weight: 700;
-  margin: 0;
+  letter-spacing: -0.02em;
   background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.back-button {
-  background: #1a1a1a;
-  border: 2px solid #2a2a2a;
-  color: #a78bfa;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
+.header-center {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
-.back-button:hover {
-  background: #2a2a2a;
-  border-color: #a78bfa;
-  transform: translateX(-3px);
+.header-stat {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e0e0e0;
 }
 
-/* Run button in header */
-.run-button-header {
-  background: rgba(52, 211, 153, 0.1);
-  border: 2px solid #34d399;
+.header-stat.cost {
   color: #34d399;
-  padding: 0.75rem 1.5rem;
+}
+
+.stat-dim {
+  font-weight: 400;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.header-divider {
+  color: #333;
+  font-weight: 300;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.run-button {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid #34d399;
+  color: #34d399;
+  padding: 0.5rem 1rem;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
-.run-button-header:hover {
+.run-button:hover {
   background: rgba(52, 211, 153, 0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(52, 211, 153, 0.3);
+  box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+}
+
+.connection-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.connection-indicator.connected {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.connection-indicator.disconnected {
+  background: #f87171;
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.4);
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(52, 211, 153, 0.8);
+  }
 }
 
 /* Instances List */
@@ -159,9 +214,9 @@
 
 /* Left: Instance Info */
 .instance-info {
-  width: 380px;
-  min-width: 380px;
-  max-width: 380px;
+  width: 420px;
+  min-width: 420px;
+  max-width: 420px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -187,11 +242,41 @@
   margin: 0;
 }
 
+/* Actions row with model tags and re-run button */
+.instance-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 .models-used {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.25rem;
+  flex: 1;
+}
+
+.rerun-button-small {
+  background: transparent;
+  border: 1px solid #a78bfa;
+  color: #a78bfa;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.rerun-button-small:hover {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #c4b5fd;
+  color: #c4b5fd;
 }
 
 .model-tag {
@@ -219,39 +304,13 @@
   min-height: 0;
 }
 
-.input-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
 .input-label {
   font-size: 0.7rem;
   font-weight: 600;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-
-.rerun-button {
-  background: rgba(52, 211, 153, 0.1);
-  border: 1px solid #34d399;
-  color: #34d399;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.rerun-button:hover {
-  background: rgba(52, 211, 153, 0.2);
-  transform: translateY(-1px);
+  margin-bottom: 0.4rem;
 }
 
 .input-fields {
@@ -283,6 +342,25 @@
   flex: 1;
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+/* Mermaid Graph Preview Wrapper - sits below inputs, expands to fit diagram */
+.mermaid-wrapper {
+  margin-top: 0.75rem;
+  width: 100%;
+  height: auto;
+  min-height: 100px;
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mermaid-wrapper:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.2);
 }
 
 /* Middle: Phase Bars Container */
@@ -326,7 +404,7 @@
 
 /* Right: Instance Metrics */
 .instance-metrics {
-  flex: 0 0 280px;
+  flex: 0 0 160px;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -475,6 +553,12 @@
 
   .instance-info {
     flex: 1 1 100%;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .mermaid-wrapper {
+    min-height: 80px;
   }
 
   .instance-metrics {

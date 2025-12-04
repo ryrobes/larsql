@@ -21,7 +21,21 @@ class Agent:
 
     def run(self, input_message: str = None, context_messages: List[Dict] = None) -> Dict[str, Any]:
         """
-        Executes a turn. Returns the response message dict.
+        Executes a turn. Returns the response message dict with full context.
+
+        Returns:
+            dict with keys:
+                - role: "assistant"
+                - content: Response text
+                - id: Request ID
+                - tool_calls: Tool calls (if any)
+                - full_request: Complete request with history (NEW)
+                - full_response: Complete LLM response (NEW)
+                - model: Model used
+                - cost: Dollar cost (NEW - blocking fetch)
+                - tokens_in: Input tokens (NEW - blocking fetch)
+                - tokens_out: Output tokens (NEW - blocking fetch)
+                - provider: Provider name (NEW)
         """
         # Build messages array
         messages = []
@@ -106,31 +120,73 @@ class Agent:
             print(f"  [{i}] {role:12s} | tools:{has_tools} | tool_id:{has_tool_id} | {content_preview}")
         print()
 
+        # Save full request for logging
+        full_request = {
+            "model": self.model,
+            "messages": messages,  # Complete history
+            "tools": self.tools if self.tools else None,
+            "tool_choice": "auto" if self.tools else None
+        }
+
         retries = 2
         for attempt in range(retries + 1):
             try:
                 response = litellm.completion(**args)
                 message = response.choices[0].message
-                
+
                 # Convert to dict
                 msg_dict = {
-                    "role": message.role, 
+                    "role": message.role,
                     "content": message.content if message.content is not None else "",
                     "id": response.id # Capture Request ID
                 }
                 if hasattr(message, "tool_calls") and message.tool_calls:
                     msg_dict["tool_calls"] = [
                         {
-                            "id": tc.id, 
-                            "type": tc.type, 
+                            "id": tc.id,
+                            "type": tc.type,
                             "function": {
-                                "name": tc.function.name, 
+                                "name": tc.function.name,
                                 "arguments": tc.function.arguments
                             }
                         }
                         for tc in message.tool_calls
                     ]
-                
+
+                # Capture full response
+                full_response = {
+                    "id": response.id,
+                    "model": response.model if hasattr(response, 'model') else self.model,
+                    "choices": [{
+                        "message": msg_dict,
+                        "finish_reason": response.choices[0].finish_reason if hasattr(response.choices[0], 'finish_reason') else None
+                    }],
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'prompt_tokens') else 0,
+                        "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'completion_tokens') else 0,
+                        "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'total_tokens') else 0
+                    } if hasattr(response, 'usage') else None
+                }
+
+                # NON-BLOCKING: Don't fetch cost here - let the unified logger handle it
+                # The logger will queue this message and fetch cost in a background worker
+                # after a delay (OpenRouter needs ~3-5 seconds to have cost data available)
+
+                # Extract provider from model name (no API call needed)
+                from .blocking_cost import extract_provider_from_model
+                provider = extract_provider_from_model(self.model)
+
+                # Add metadata to response - cost will be fetched later by unified logger
+                msg_dict.update({
+                    "full_request": full_request,
+                    "full_response": full_response,
+                    "model": response.model if hasattr(response, 'model') else self.model,
+                    "cost": None,  # Will be fetched by unified logger
+                    "tokens_in": 0,  # Will be fetched by unified logger
+                    "tokens_out": 0,  # Will be fetched by unified logger
+                    "provider": provider
+                })
+
                 return msg_dict
                 
             except Exception as e:

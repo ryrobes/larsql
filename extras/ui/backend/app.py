@@ -1,5 +1,8 @@
 """
 Windlass UI Backend - Flask server for cascade exploration and analytics
+
+All data comes from Parquet files in DATA_DIR (unified logging system).
+No JSONL support - Parquet is the single source of truth.
 """
 import os
 import json
@@ -15,54 +18,59 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration - reads from environment or uses defaults
-LOG_DIR = os.getenv("WINDLASS_LOG_DIR", "../../logs")
-GRAPH_DIR = os.getenv("WINDLASS_GRAPH_DIR", "../../graphs")
-STATE_DIR = os.getenv("WINDLASS_STATE_DIR", "../../states")
-IMAGE_DIR = os.getenv("WINDLASS_IMAGE_DIR", "../../images")
-CASCADES_DIR = os.getenv("WINDLASS_CASCADES_DIR", "../../windlass/examples")
+# WINDLASS_ROOT-based configuration (single source of truth)
+WINDLASS_ROOT = os.getenv("WINDLASS_ROOT", "../../..")  # Default to repo root from UI backend
+
+LOG_DIR = os.getenv("WINDLASS_LOG_DIR", os.path.join(WINDLASS_ROOT, "logs"))
+DATA_DIR = os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data"))
+GRAPH_DIR = os.getenv("WINDLASS_GRAPH_DIR", os.path.join(WINDLASS_ROOT, "graphs"))
+STATE_DIR = os.getenv("WINDLASS_STATE_DIR", os.path.join(WINDLASS_ROOT, "states"))
+IMAGE_DIR = os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images"))
+EXAMPLES_DIR = os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples"))
+TACKLE_DIR = os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle"))
+CASCADES_DIR = os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades"))
 
 
 def get_db_connection():
-    """Create a DuckDB connection to query echo logs"""
+    """Create a DuckDB connection to query unified mega-table logs from Parquet files."""
     conn = duckdb.connect(database=':memory:')
 
-    # Load echoes parquet files (comprehensive data)
-    # Use union_by_name to handle schema inconsistencies
-    echoes_dir = os.path.join(LOG_DIR, "echoes")
-    if os.path.exists(echoes_dir):
-        parquet_files = glob.glob(f"{echoes_dir}/*.parquet")
-        if parquet_files:
-            files_str = "', '".join(parquet_files)
-            conn.execute(f"CREATE OR REPLACE VIEW echoes AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)")
+    # Load unified logs from DATA_DIR
+    if os.path.exists(DATA_DIR):
+        data_files = glob.glob(f"{DATA_DIR}/*.parquet")
+        if data_files:
+            print(f"[INFO] Loading unified logs from: {DATA_DIR}")
+            print(f"[INFO] Found {len(data_files)} parquet files")
+            files_str = "', '".join(data_files)
+            conn.execute(f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)")
+            return conn
 
-    # Also load original logs for backward compatibility
-    log_parquet_files = glob.glob(f"{LOG_DIR}/log_*.parquet")
-    if log_parquet_files:
-        files_str = "', '".join(log_parquet_files)
-        conn.execute(f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)")
-
+    print(f"[WARN] No parquet files found in {DATA_DIR}")
     return conn
+
+
+def get_available_columns(conn):
+    """Get list of available columns in the logs view."""
+    try:
+        result = conn.execute("SELECT column_name FROM (DESCRIBE SELECT * FROM logs)").fetchall()
+        return [col[0] for col in result]
+    except:
+        return []
 
 
 @app.route('/api/cascade-definitions', methods=['GET'])
 def get_cascade_definitions():
     """
-    Get all cascade definitions (from filesystem) with execution metrics.
-
-    Shows all cascade JSON files, with metrics for ones that have been run.
-
-    Now uses Parquet with 1-second flush interval for real-time updates.
+    Get all cascade definitions (from filesystem) with execution metrics from Parquet.
     """
     try:
         # Scan filesystem for all cascade definitions
         all_cascades = {}
 
         search_paths = [
+            EXAMPLES_DIR,
+            TACKLE_DIR,
             CASCADES_DIR,
-            "../../windlass/examples",
-            "../../examples",
-            "../../cascades",
-            "../../tackle"
         ]
 
         for search_dir in search_paths:
@@ -109,12 +117,12 @@ def get_cascade_definitions():
                 except:
                     continue
 
-        # Now enrich with metrics from echo logs (if available)
+        # Enrich with metrics from Parquet logs
         conn = get_db_connection()
 
         try:
-            # Check if echoes table exists
-            conn.execute("SELECT 1 FROM echoes LIMIT 1")
+            # Check if logs view exists and has data
+            conn.execute("SELECT 1 FROM logs LIMIT 1")
 
             # Get metrics for cascades that have been run
             query = """
@@ -125,8 +133,8 @@ def get_cascade_definitions():
                     MIN(timestamp) as run_start,
                     MAX(timestamp) as run_end,
                     MAX(timestamp) - MIN(timestamp) as duration_seconds
-                FROM echoes
-                WHERE cascade_id IS NOT NULL
+                FROM logs
+                WHERE cascade_id IS NOT NULL AND cascade_id != ''
                 GROUP BY cascade_id, session_id
             ),
             cascade_costs AS (
@@ -134,7 +142,7 @@ def get_cascade_definitions():
                     cascade_id,
                     session_id,
                     SUM(cost) as total_cost
-                FROM echoes
+                FROM logs
                 WHERE cost IS NOT NULL AND cost > 0
                 GROUP BY cascade_id, session_id
             ),
@@ -156,7 +164,6 @@ def get_cascade_definitions():
 
             result = conn.execute(query).fetchall()
 
-            # Enrich with metrics
             for row in result:
                 cascade_id, run_count, avg_duration, min_duration, max_duration, total_cost = row
 
@@ -171,38 +178,29 @@ def get_cascade_definitions():
 
                     # Get phase-level metrics
                     try:
-                        print(f"[DEBUG] Querying phase metrics for cascade: {cascade_id}")
                         phase_query = """
                         SELECT
                             phase_name,
-                            AVG(cost) as avg_cost,
-                            0.0 as avg_duration_seconds
-                        FROM echoes
+                            AVG(cost) as avg_cost
+                        FROM logs
                         WHERE cascade_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
                         GROUP BY phase_name
                         """
                         phase_metrics = conn.execute(phase_query, [cascade_id]).fetchall()
-                        #print(f"[DEBUG] Phase metrics results: {phase_metrics}")
 
-                        # Update phase metrics
                         for phase in all_cascades[cascade_id]['phases']:
-                            for p_name, p_cost, p_duration in phase_metrics:
+                            for p_name, p_cost in phase_metrics:
                                 if p_name == phase['name']:
                                     phase['avg_cost'] = float(p_cost) if p_cost else 0.0
-                                    phase['avg_duration'] = float(p_duration) if p_duration else 0.0
-                                    print(f"[DEBUG] Updated phase {p_name}: cost=${p_cost}, duration={p_duration}s")
                     except Exception as e:
                         print(f"[ERROR] Phase metrics query failed: {e}")
-                        import traceback
-                        traceback.print_exc()
 
         except Exception as e:
-            # No echoes data - that's fine, metrics stay at zero
-            print(f"No echo data available: {e}")
+            print(f"No log data available: {e}")
 
         conn.close()
 
-        # Convert to list and sort by run_count (descending), then by name
+        # Sort by run_count descending, then by name
         cascades_list = sorted(
             all_cascades.values(),
             key=lambda c: (-c['metrics']['run_count'], c['cascade_id'])
@@ -220,289 +218,213 @@ def get_cascade_definitions():
 def get_cascade_instances(cascade_id):
     """
     Get all run instances for a specific cascade definition.
-
-    Returns list of instances with:
-    - Session ID, timestamp, duration, cost, model
-    - Phase-level status and outputs
+    All data comes from Parquet files.
     """
     try:
         conn = get_db_connection()
+        columns = get_available_columns(conn)
 
-        # Check if model column exists
-        columns_query = "DESCRIBE echoes"
-        try:
-            columns = conn.execute(columns_query).fetchall()
-            column_names = [col[0] for col in columns]
-            has_model_column = 'model' in column_names
-        except:
-            has_model_column = False
+        if not columns:
+            return jsonify([])
 
-        # Build query based on available columns
-        if has_model_column:
-            query = """
-            WITH session_runs AS (
-                SELECT
-                    session_id,
-                    MIN(timestamp) as start_time,
-                    MAX(timestamp) as end_time,
-                    MAX(timestamp) - MIN(timestamp) as duration_seconds
-                FROM echoes
-                WHERE cascade_id = ?
-                GROUP BY session_id
-            ),
-            session_costs AS (
-                SELECT
-                    session_id,
-                    SUM(cost) as total_cost
-                FROM echoes
-                WHERE cost IS NOT NULL AND cost > 0
-                GROUP BY session_id
-            ),
-            session_models AS (
-                SELECT
-                    session_id,
-                    LISTAGG(DISTINCT model, ', ') as models_used
-                FROM echoes
-                WHERE cascade_id = ? AND model IS NOT NULL
-                GROUP BY session_id
-            )
+        has_model = 'model' in columns
+        has_turn_number = 'turn_number' in columns
+
+        # Get all sessions for this cascade
+        sessions_query = """
+        WITH session_runs AS (
             SELECT
-                r.session_id,
-                r.start_time,
-                r.end_time,
-                r.duration_seconds,
-                COALESCE(c.total_cost, 0) as total_cost,
-                m.models_used
-            FROM session_runs r
-            LEFT JOIN session_costs c ON r.session_id = c.session_id
-            LEFT JOIN session_models m ON r.session_id = m.session_id
-            ORDER BY r.start_time DESC
-            LIMIT 100
-            """
-            result = conn.execute(query, [cascade_id, cascade_id]).fetchall()
-        else:
-            # Fallback query without model column
-            query = """
-            WITH session_runs AS (
-                SELECT
-                    session_id,
-                    MIN(timestamp) as start_time,
-                    MAX(timestamp) as end_time,
-                    MAX(timestamp) - MIN(timestamp) as duration_seconds
-                FROM echoes
-                WHERE cascade_id = ?
-                GROUP BY session_id
-            ),
-            session_costs AS (
-                SELECT
-                    session_id,
-                    SUM(COALESCE(
-                        cost,
-                        CAST(json_extract_string(metadata, '$.cost') AS DOUBLE)
-                    )) as total_cost
-                FROM echoes
-                WHERE cascade_id = ? AND (cost IS NOT NULL OR json_extract_string(metadata, '$.cost') IS NOT NULL)
-                GROUP BY session_id
-            )
+                session_id,
+                MIN(timestamp) as start_time,
+                MAX(timestamp) as end_time,
+                MAX(timestamp) - MIN(timestamp) as duration_seconds
+            FROM logs
+            WHERE cascade_id = ?
+            GROUP BY session_id
+        ),
+        session_costs AS (
             SELECT
-                r.session_id,
-                r.start_time,
-                r.end_time,
-                r.duration_seconds,
-                COALESCE(c.total_cost, 0) as total_cost,
-                NULL as models_used
-            FROM session_runs r
-            LEFT JOIN session_costs c ON r.session_id = c.session_id
-            ORDER BY r.start_time DESC
-            LIMIT 100
-            """
-            result = conn.execute(query, [cascade_id, cascade_id]).fetchall()
+                session_id,
+                SUM(cost) as total_cost
+            FROM logs
+            WHERE cascade_id = ? AND cost IS NOT NULL AND cost > 0
+            GROUP BY session_id
+        )
+        SELECT
+            r.session_id,
+            r.start_time,
+            r.end_time,
+            r.duration_seconds,
+            COALESCE(c.total_cost, 0) as total_cost
+        FROM session_runs r
+        LEFT JOIN session_costs c ON r.session_id = c.session_id
+        ORDER BY r.start_time DESC
+        LIMIT 100
+        """
+        session_results = conn.execute(sessions_query, [cascade_id, cascade_id]).fetchall()
 
         instances = []
-        for row in result:
-            session_id, start_time, end_time, duration, total_cost, models_used = row
+        for session_row in session_results:
+            session_id, start_time, end_time, duration, total_cost = session_row
 
-            # Get input data for this session - try JSONL first (has native JSON)
-            input_data = {}
-            jsonl_path = os.path.join(LOG_DIR, "echoes_jsonl", f"{session_id}.jsonl")
-
-            if os.path.exists(jsonl_path):
-                # Read from JSONL (simpler, no JSON string parsing needed)
+            # Get models used in this session
+            models_used = []
+            if has_model:
                 try:
-                    with open(jsonl_path, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                entry = json.loads(line)
-                                if entry.get('node_type') == 'user' and isinstance(entry.get('content'), str):
-                                    content = entry['content']
-                                    if '## Input Data:' in content:
-                                        lines = content.split('\n')
-                                        for i, ln in enumerate(lines):
-                                            if '## Input Data:' in ln and i + 1 < len(lines):
-                                                json_str = lines[i + 1].strip()
-                                                if json_str and json_str != '{}':
-                                                    try:
-                                                        parsed = json.loads(json_str)
-                                                        if isinstance(parsed, dict) and parsed:
-                                                            input_data = parsed
-                                                            #print(f"[DEBUG] Found inputs for {session_id}: {input_data}")
-                                                            break
-                                                    except:
-                                                        pass
-                                        if input_data:
-                                            break
-                except Exception as e:
-                    print(f"[ERROR] Reading JSONL for inputs: {e}")
-
-            # Get phase-level status for this session
-            if has_model_column:
-                phases_query = """
-                SELECT
-                    phase_name,
-                    node_type,
-                    content,
-                    model,
-                    sounding_index,
-                    is_winner
-                FROM echoes
-                WHERE session_id = ? AND phase_name IS NOT NULL
-                ORDER BY timestamp
-                """
-                phase_results = conn.execute(phases_query, [session_id]).fetchall()
-            else:
-                phases_query = """
-                SELECT
-                    phase_name,
-                    node_type,
-                    content,
-                    NULL as model,
-                    sounding_index,
-                    is_winner
-                FROM echoes
-                WHERE session_id = ? AND phase_name IS NOT NULL
-                ORDER BY timestamp
-                """
-                phase_results = conn.execute(phases_query, [session_id]).fetchall()
-
-            # Get phase costs for this session
-            # Check JSONL first for most recent data (costs arrive async)
-            phase_costs_map = {}
-
-            # Try JSONL first (has latest data)
-            if os.path.exists(jsonl_path):
-                try:
-                    with open(jsonl_path, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                entry = json.loads(line)
-                                if entry.get('cost') and entry.get('cost') > 0 and entry.get('phase_name'):
-                                    p_name = entry['phase_name']
-                                    p_cost = entry['cost']
-                                    if p_name not in phase_costs_map:
-                                        phase_costs_map[p_name] = 0.0
-                                    phase_costs_map[p_name] += p_cost
+                    models_query = """
+                    SELECT DISTINCT model FROM logs
+                    WHERE session_id = ? AND model IS NOT NULL AND model != ''
+                    """
+                    model_results = conn.execute(models_query, [session_id]).fetchall()
+                    models_used = [m[0] for m in model_results if m[0]]
                 except:
                     pass
 
-            # Fallback to Parquet if JSONL didn't work
-            if not phase_costs_map:
-                try:
-                    phase_cost_query = """
+            # Get input data from first user message with "## Input Data:"
+            input_data = {}
+            try:
+                input_query = """
+                SELECT content_json FROM logs
+                WHERE session_id = ? AND node_type = 'user' AND content_json IS NOT NULL
+                ORDER BY timestamp
+                LIMIT 10
+                """
+                input_results = conn.execute(input_query, [session_id]).fetchall()
+                for (content_json,) in input_results:
+                    if content_json:
+                        try:
+                            content = json.loads(content_json) if isinstance(content_json, str) else content_json
+                            if isinstance(content, str) and '## Input Data:' in content:
+                                lines = content.split('\n')
+                                for i, ln in enumerate(lines):
+                                    if '## Input Data:' in ln and i + 1 < len(lines):
+                                        json_str = lines[i + 1].strip()
+                                        if json_str and json_str != '{}':
+                                            parsed = json.loads(json_str)
+                                            if isinstance(parsed, dict) and parsed:
+                                                input_data = parsed
+                                                break
+                                if input_data:
+                                    break
+                        except:
+                            pass
+            except Exception as e:
+                print(f"[ERROR] Getting input data: {e}")
+
+            # Get phase costs
+            phase_costs_map = {}
+            try:
+                phase_cost_query = """
+                SELECT
+                    phase_name,
+                    SUM(cost) as total_cost
+                FROM logs
+                WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                GROUP BY phase_name
+                """
+                phase_cost_results = conn.execute(phase_cost_query, [session_id]).fetchall()
+                for pc_name, pc_cost in phase_cost_results:
+                    phase_costs_map[pc_name] = float(pc_cost) if pc_cost else 0.0
+            except Exception as e:
+                print(f"[ERROR] Phase cost query: {e}")
+
+            # Get turn-level costs grouped by phase and sounding
+            turn_costs_map = {}
+            try:
+                if has_turn_number:
+                    turn_query = """
                     SELECT
                         phase_name,
-                        SUM(cost) as total_cost
-                    FROM echoes
+                        sounding_index,
+                        turn_number,
+                        SUM(cost) as turn_cost
+                    FROM logs
                     WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                    GROUP BY phase_name
+                    GROUP BY phase_name, sounding_index, turn_number
+                    ORDER BY phase_name, sounding_index, turn_number
                     """
-                    phase_cost_results = conn.execute(phase_cost_query, [session_id]).fetchall()
-                    for pc_name, pc_cost in phase_cost_results:
-                        phase_costs_map[pc_name] = float(pc_cost) if pc_cost else 0.0
-                except Exception as e:
-                    print(f"[ERROR] Phase cost query: {e}")
+                else:
+                    # Fallback: group costs without turn_number
+                    turn_query = """
+                    SELECT
+                        phase_name,
+                        sounding_index,
+                        0 as turn_number,
+                        SUM(cost) as turn_cost
+                    FROM logs
+                    WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                    GROUP BY phase_name, sounding_index
+                    ORDER BY phase_name, sounding_index
+                    """
+                turn_results = conn.execute(turn_query, [session_id]).fetchall()
 
-            #print(f"[DEBUG] Phase costs for {session_id}: {phase_costs_map}")
+                for t_phase, t_sounding, t_turn, t_cost in turn_results:
+                    key = (t_phase, t_sounding)
+                    if key not in turn_costs_map:
+                        turn_costs_map[key] = []
+                    turn_costs_map[key].append({
+                        'turn': int(t_turn) if t_turn is not None else len(turn_costs_map[key]),
+                        'cost': float(t_cost) if t_cost else 0.0
+                    })
+            except Exception as e:
+                print(f"[ERROR] Turn costs query: {e}")
 
-            # Get turn-level costs and tool calls
-            turn_costs_map = {}
+            # Get tool calls per phase
             tool_calls_map = {}
+            try:
+                tool_query = """
+                SELECT
+                    phase_name,
+                    tool_calls_json,
+                    metadata_json
+                FROM logs
+                WHERE session_id = ? AND phase_name IS NOT NULL
+                    AND (tool_calls_json IS NOT NULL OR node_type = 'tool_result')
+                """
+                tool_results = conn.execute(tool_query, [session_id]).fetchall()
 
-            if os.path.exists(jsonl_path):
-                try:
-                    with open(jsonl_path, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                entry = json.loads(line)
+                for t_phase, tool_calls_json, metadata_json in tool_results:
+                    if t_phase not in tool_calls_map:
+                        tool_calls_map[t_phase] = []
 
-                                # Track costs by phase/sounding
-                                if entry.get('cost') and entry.get('cost') > 0 and entry.get('phase_name'):
-                                    p_name = entry['phase_name']
-                                    s_idx = entry.get('sounding_index')
-                                    key = (p_name, s_idx)
+                    # Try to extract tool names from tool_calls_json
+                    if tool_calls_json:
+                        try:
+                            tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
+                            if isinstance(tool_calls, list):
+                                for tc in tool_calls:
+                                    if isinstance(tc, dict):
+                                        tool_name = tc.get('function', {}).get('name') or tc.get('name') or 'unknown'
+                                        tool_calls_map[t_phase].append(tool_name)
+                        except:
+                            pass
 
-                                    if key not in turn_costs_map:
-                                        turn_costs_map[key] = []
+                    # Also check metadata for tool_name
+                    if metadata_json:
+                        try:
+                            meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                            if isinstance(meta, dict) and meta.get('tool_name'):
+                                tool_calls_map[t_phase].append(meta['tool_name'])
+                        except:
+                            pass
+            except Exception as e:
+                print(f"[ERROR] Tool calls query: {e}")
 
-                                    turn_costs_map[key].append({
-                                        'turn': len(turn_costs_map[key]),
-                                        'cost': float(entry['cost'])
-                                    })
-
-                                # Track tool calls
-                                if entry.get('node_type') == 'tool_result' and entry.get('phase_name'):
-                                    p_name = entry['phase_name']
-                                    if p_name not in tool_calls_map:
-                                        tool_calls_map[p_name] = []
-
-                                    # Extract tool name from metadata or content
-                                    tool_name = 'unknown'
-                                    if entry.get('metadata'):
-                                        meta = entry['metadata']
-                                        if isinstance(meta, dict):
-                                            tool_name = meta.get('tool_name', 'unknown')
-                                        elif isinstance(meta, str):
-                                            try:
-                                                meta_obj = json.loads(meta)
-                                                tool_name = meta_obj.get('tool_name', 'unknown')
-                                            except:
-                                                pass
-
-                                    tool_calls_map[p_name].append(tool_name)
-                except Exception as e:
-                    print(f"[ERROR] Reading JSONL for turns/tools: {e}")
-
-            # Get sounding/retry data for each phase with costs
+            # Get sounding data
             soundings_map = {}
             try:
                 soundings_query = """
-                WITH sounding_winner_data AS (
-                    SELECT
-                        phase_name,
-                        sounding_index,
-                        is_winner
-                    FROM echoes
-                    WHERE session_id = ? AND sounding_index IS NOT NULL AND is_winner IS NOT NULL
-                ),
-                sounding_cost_data AS (
-                    SELECT
-                        phase_name,
-                        sounding_index,
-                        SUM(cost) as total_cost
-                    FROM echoes
-                    WHERE session_id = ? AND sounding_index IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                    GROUP BY phase_name, sounding_index
-                )
                 SELECT
-                    COALESCE(w.phase_name, c.phase_name) as phase_name,
-                    COALESCE(w.sounding_index, c.sounding_index) as sounding_index,
-                    COALESCE(w.is_winner, false) as is_winner,
-                    COALESCE(c.total_cost, 0) as cost
-                FROM sounding_winner_data w
-                FULL OUTER JOIN sounding_cost_data c
-                    ON w.phase_name = c.phase_name AND w.sounding_index = c.sounding_index
+                    phase_name,
+                    sounding_index,
+                    MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
+                    SUM(cost) as total_cost
+                FROM logs
+                WHERE session_id = ? AND sounding_index IS NOT NULL
+                GROUP BY phase_name, sounding_index
                 ORDER BY phase_name, sounding_index
                 """
-                sounding_results = conn.execute(soundings_query, [session_id, session_id]).fetchall()
+                sounding_results = conn.execute(soundings_query, [session_id]).fetchall()
 
                 for s_phase, s_idx, s_winner, s_cost in sounding_results:
                     if s_phase not in soundings_map:
@@ -512,41 +434,59 @@ def get_cascade_instances(cascade_id):
                             'attempts': [],
                             'max_turns': 0
                         }
-                    soundings_map[s_phase]['total'] = max(soundings_map[s_phase]['total'], int(s_idx) + 1)
+
+                    s_idx_int = int(s_idx) if s_idx is not None else 0
+                    soundings_map[s_phase]['total'] = max(soundings_map[s_phase]['total'], s_idx_int + 1)
+
                     if s_winner:
-                        soundings_map[s_phase]['winner_index'] = int(s_idx)
+                        soundings_map[s_phase]['winner_index'] = s_idx_int
 
                     # Get turn breakdown for this sounding
-                    turn_key = (s_phase, int(s_idx))
+                    turn_key = (s_phase, s_idx_int)
                     turns = turn_costs_map.get(turn_key, [])
                     soundings_map[s_phase]['max_turns'] = max(soundings_map[s_phase]['max_turns'], len(turns))
 
                     soundings_map[s_phase]['attempts'].append({
-                        'index': int(s_idx),
+                        'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
                         'turns': turns
                     })
             except Exception as e:
-                print(f"[ERROR] Getting sounding data: {e}")
+                print(f"[ERROR] Soundings query: {e}")
 
-            # Count messages per phase
+            # Get message counts per phase
             message_counts = {}
-            if os.path.exists(jsonl_path):
-                try:
-                    with open(jsonl_path, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                entry = json.loads(line)
-                                p_name = entry.get('phase_name')
-                                node_type = entry.get('node_type')
-                                # Count agent calls, tool calls, user messages
-                                if p_name and node_type in ('agent', 'tool_result', 'user', 'system'):
-                                    if p_name not in message_counts:
-                                        message_counts[p_name] = 0
-                                    message_counts[p_name] += 1
-                except:
-                    pass
+            try:
+                msg_query = """
+                SELECT
+                    phase_name,
+                    COUNT(*) as msg_count
+                FROM logs
+                WHERE session_id = ? AND phase_name IS NOT NULL
+                    AND node_type IN ('agent', 'tool_result', 'user', 'system')
+                GROUP BY phase_name
+                """
+                msg_results = conn.execute(msg_query, [session_id]).fetchall()
+                for m_phase, m_count in msg_results:
+                    message_counts[m_phase] = int(m_count)
+            except Exception as e:
+                print(f"[ERROR] Message counts query: {e}")
+
+            # Get phase-level data
+            phases_query = """
+            SELECT
+                phase_name,
+                node_type,
+                content_json,
+                model,
+                sounding_index,
+                is_winner
+            FROM logs
+            WHERE session_id = ? AND phase_name IS NOT NULL
+            ORDER BY timestamp
+            """
+            phase_results = conn.execute(phases_query, [session_id]).fetchall()
 
             # Group by phase to determine status and output
             phases_map = {}
@@ -587,10 +527,10 @@ def get_cascade_instances(cascade_id):
                         "sounding_winner": sounding_data.get('winner_index'),
                         "sounding_attempts": sounding_data.get('attempts', []),
                         "max_turns_actual": sounding_data.get('max_turns', len(turns)),
-                        "max_turns": max_turns_config,  # From config
-                        "turn_costs": turns,  # For non-sounding phases
-                        "tool_calls": tool_calls_map.get(p_name, []),  # Tool calls for this phase
-                        "message_count": message_counts.get(p_name, 0),  # Total messages
+                        "max_turns": max_turns_config,
+                        "turn_costs": turns,
+                        "tool_calls": tool_calls_map.get(p_name, []),
+                        "message_count": message_counts.get(p_name, 0),
                         "avg_cost": phase_costs_map.get(p_name, 0.0),
                         "avg_duration": 0.0
                     }
@@ -602,7 +542,6 @@ def get_cascade_instances(cascade_id):
 
                 elif p_node_type in ("phase_complete", "turn_output", "agent"):
                     phases_map[p_name]["status"] = "completed"
-                    # Get output snippet
                     if p_content and isinstance(p_content, str):
                         try:
                             content_obj = json.loads(p_content)
@@ -613,9 +552,8 @@ def get_cascade_instances(cascade_id):
                         except:
                             phases_map[p_name]["output_snippet"] = str(p_content)[:200]
 
-                elif p_node_type == "error" or "error" in p_node_type.lower():
+                elif p_node_type == "error" or (p_node_type and "error" in p_node_type.lower()):
                     phases_map[p_name]["status"] = "error"
-                    # Capture error message
                     if p_content:
                         try:
                             if isinstance(p_content, str):
@@ -630,87 +568,61 @@ def get_cascade_instances(cascade_id):
                 if sounding_idx is not None:
                     phases_map[p_name]["has_soundings"] = True
 
-            # Get final output from state or lineage
+            # Get final output
             final_output = None
             try:
-                # Try to get from last phase output or state
                 output_query = """
-                SELECT content
-                FROM echoes
+                SELECT content_json
+                FROM logs
                 WHERE session_id = ? AND (node_type = 'turn_output' OR node_type = 'agent')
                 ORDER BY timestamp DESC
                 LIMIT 1
                 """
                 output_result = conn.execute(output_query, [session_id]).fetchone()
                 if output_result and output_result[0]:
-                    try:
-                        content = output_result[0]
-                        if isinstance(content, str):
-                            try:
-                                parsed = json.loads(content)
-                                final_output = str(parsed)[:500] if parsed else None
-                            except:
-                                final_output = content[:500]
-                    except:
-                        pass
+                    content = output_result[0]
+                    if isinstance(content, str):
+                        try:
+                            parsed = json.loads(content)
+                            final_output = str(parsed)[:500] if parsed else None
+                        except:
+                            final_output = content[:500]
             except:
                 pass
 
-            # Check for errors in this session
+            # Check for errors
             cascade_status = "success"
             error_count = 0
             error_list = []
 
-            # Try JSONL first for error data (has better schema handling)
-            if os.path.exists(jsonl_path):
-                try:
-                    with open(jsonl_path, 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                entry = json.loads(line)
-                                if entry.get('node_type') == 'error':
-                                    error_count += 1
-                                    error_list.append({
-                                        "phase": entry.get('phase_name') or "unknown",
-                                        "message": str(entry.get('content', 'Unknown error'))[:200],
-                                        "error_type": entry.get('metadata', {}).get('error_type', 'Error') if isinstance(entry.get('metadata'), dict) else 'Error'
-                                    })
-                except Exception as e:
-                    print(f"[ERROR] Reading JSONL for errors: {e}")
+            try:
+                error_query = """
+                SELECT phase_name, content_json
+                FROM logs
+                WHERE session_id = ? AND node_type = 'error'
+                ORDER BY timestamp
+                """
+                error_results = conn.execute(error_query, [session_id]).fetchall()
 
-            # Fallback to Parquet if JSONL didn't have errors
-            if error_count == 0:
-                try:
-                    # Simplified query - just get phase_name and content, skip metadata
-                    error_query = """
-                    SELECT phase_name, content
-                    FROM echoes
-                    WHERE session_id = ? AND node_type = 'error'
-                    ORDER BY timestamp
-                    """
-                    error_results = conn.execute(error_query, [session_id]).fetchall()
+                error_count = len(error_results)
+                for err_phase, err_content in error_results:
+                    error_list.append({
+                        "phase": err_phase or "unknown",
+                        "message": str(err_content)[:200] if err_content else "Unknown error",
+                        "error_type": "Error"
+                    })
+            except Exception as e:
+                print(f"[ERROR] Querying errors: {e}")
 
-                    error_count = len(error_results)
-                    for err_phase, err_content in error_results:
-                        error_list.append({
-                            "phase": err_phase or "unknown",
-                            "message": str(err_content)[:200] if err_content else "Unknown error",
-                            "error_type": "Error"
-                        })
-                except Exception as e:
-                    print(f"[ERROR] Querying errors from Parquet: {e}")
-
-            # Set status based on error count
             if error_count > 0:
                 cascade_status = "failed"
 
-            # Also check state file for status (new field)
+            # Check state file for status
             try:
                 state_path = os.path.join(STATE_DIR, f"{session_id}.json")
                 if os.path.exists(state_path):
                     with open(state_path) as f:
                         state_data = json.load(f)
-                        # Newer runs will have "failed" status in state file
                         if state_data.get("status") == "failed":
                             cascade_status = "failed"
             except:
@@ -719,11 +631,11 @@ def get_cascade_instances(cascade_id):
             instances.append({
                 'session_id': session_id,
                 'cascade_id': cascade_id,
-                'start_time': datetime.fromtimestamp(start_time).isoformat(),
-                'end_time': datetime.fromtimestamp(end_time).isoformat(),
-                'duration_seconds': float(duration),
+                'start_time': datetime.fromtimestamp(start_time).isoformat() if start_time else None,
+                'end_time': datetime.fromtimestamp(end_time).isoformat() if end_time else None,
+                'duration_seconds': float(duration) if duration else 0.0,
                 'total_cost': float(total_cost) if total_cost else 0.0,
-                'models_used': models_used.split(', ') if models_used else [],
+                'models_used': models_used,
                 'input_data': input_data,
                 'final_output': final_output,
                 'phases': list(phases_map.values()),
@@ -743,37 +655,29 @@ def get_cascade_instances(cascade_id):
 
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session_detail(session_id):
-    """Get detailed data for a specific session"""
+    """Get detailed data for a specific session from Parquet."""
     try:
-        # Try to load from JSONL first (has full content)
-        jsonl_path = os.path.join(LOG_DIR, "echoes_jsonl", f"{session_id}.jsonl")
-
-        if os.path.exists(jsonl_path):
-            entries = []
-            with open(jsonl_path) as f:
-                for line in f:
-                    if line.strip():
-                        entries.append(json.loads(line))
-
-            # CRITICAL: Sort entries by timestamp for chronological display
-            # Entries are written in the order log_echo is called, but with delayed
-            # cost tracking, agent messages may be written 5s after they actually occurred.
-            # Always sort by the timestamp field to get true chronological order.
-            entries.sort(key=lambda e: e.get('timestamp', 0))
-
-            return jsonify({
-                'session_id': session_id,
-                'entries': entries,
-                'source': 'jsonl'
-            })
-
-        # Fallback to Parquet
         conn = get_db_connection()
-        query = "SELECT * FROM echoes WHERE session_id = ? ORDER BY timestamp"
+
+        query = "SELECT * FROM logs WHERE session_id = ? ORDER BY timestamp"
         result = conn.execute(query, [session_id]).fetchall()
 
-        columns = [desc[0] for desc in conn.execute(query, [session_id]).description]
-        entries = [dict(zip(columns, row)) for row in result]
+        # Get column names
+        columns = conn.execute("SELECT column_name FROM (DESCRIBE SELECT * FROM logs)").fetchall()
+        column_names = [col[0] for col in columns]
+
+        # Convert to list of dicts
+        entries = []
+        for row in result:
+            entry = dict(zip(column_names, row))
+            # Parse JSON fields for easier frontend consumption
+            for json_field in ['content_json', 'tool_calls_json', 'metadata_json', 'full_request_json', 'full_response_json']:
+                if json_field in entry and entry[json_field]:
+                    try:
+                        entry[json_field] = json.loads(entry[json_field])
+                    except:
+                        pass
+            entries.append(entry)
 
         conn.close()
 
@@ -792,22 +696,29 @@ def get_session_detail(session_id):
 @app.route('/api/session/<session_id>/dump', methods=['POST'])
 def dump_session(session_id):
     """
-    Dump complete session to a single JSON file for easy debugging.
-    Saves to logs/session_dumps/{session_id}.json
+    Dump complete session to a single JSON file for debugging.
+    Reads from Parquet and saves to logs/session_dumps/{session_id}.json
     """
     try:
-        # Get session data
-        jsonl_path = os.path.join(LOG_DIR, "echoes_jsonl", f"{session_id}.jsonl")
+        conn = get_db_connection()
 
-        if not os.path.exists(jsonl_path):
+        query = "SELECT * FROM logs WHERE session_id = ? ORDER BY timestamp"
+        result = conn.execute(query, [session_id]).fetchall()
+
+        if not result:
             return jsonify({'error': 'Session not found'}), 404
 
-        # Load all entries
+        # Get column names
+        columns = conn.execute("SELECT column_name FROM (DESCRIBE SELECT * FROM logs)").fetchall()
+        column_names = [col[0] for col in columns]
+
+        # Convert to list of dicts
         entries = []
-        with open(jsonl_path) as f:
-            for line in f:
-                if line.strip():
-                    entries.append(json.loads(line))
+        for row in result:
+            entry = dict(zip(column_names, row))
+            entries.append(entry)
+
+        conn.close()
 
         # Create dump directory
         dump_dir = os.path.join(LOG_DIR, "session_dumps")
@@ -861,11 +772,10 @@ def get_mermaid_graph(session_id):
         if not os.path.exists(mermaid_path):
             return jsonify({'error': 'Mermaid graph not found'}), 404
 
-        # Read mermaid content
         with open(mermaid_path) as f:
             mermaid_content = f.read()
 
-        # Get session metadata for overlay
+        # Get session metadata from Parquet
         conn = get_db_connection()
 
         try:
@@ -875,7 +785,7 @@ def get_mermaid_graph(session_id):
                 MIN(timestamp) as start_time,
                 MAX(timestamp) as end_time,
                 MAX(timestamp) - MIN(timestamp) as duration_seconds
-            FROM echoes
+            FROM logs
             WHERE session_id = ?
             GROUP BY cascade_id
             """
@@ -883,8 +793,6 @@ def get_mermaid_graph(session_id):
 
             if result:
                 cascade_id, start_time, end_time, duration = result
-
-                # Find cascade file
                 cascade_file = find_cascade_file(cascade_id)
                 filename = os.path.basename(cascade_file) if cascade_file else 'unknown.json'
 
@@ -931,7 +839,6 @@ def get_mermaid_graph(session_id):
 def event_stream():
     """SSE endpoint for real-time cascade updates"""
     try:
-        # Import event bus
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
@@ -943,28 +850,24 @@ def event_stream():
             queue = bus.subscribe()
             print(f"[SSE] Subscribed to event bus")
 
-            # Send initial connection event
             connection_msg = json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})
             yield f"data: {connection_msg}\n\n"
-            print(f"[SSE] Sent connection event")
 
             heartbeat_count = 0
             try:
                 while True:
                     try:
-                        event = queue.get(timeout=0.5)  # Check every 0.5 seconds
+                        event = queue.get(timeout=0.5)
                         print(f"[SSE] Event from bus: {event.type if hasattr(event, 'type') else 'unknown'}")
                         event_dict = event.to_dict() if hasattr(event, 'to_dict') else event
                         yield f"data: {json.dumps(event_dict, default=str)}\n\n"
                     except Empty:
-                        # Send heartbeat every 10 checks (5 seconds)
                         heartbeat_count += 1
                         if heartbeat_count >= 10:
                             yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
                             heartbeat_count = 0
             except GeneratorExit:
                 print("[SSE] Client disconnected")
-                pass
             except Exception as e:
                 print(f"[SSE] Error in generator: {e}")
                 import traceback
@@ -988,20 +891,16 @@ def event_stream():
 
 def find_cascade_file(cascade_id):
     """Find cascade JSON file by cascade_id"""
-    # Search in cascades directory
     search_paths = [
         CASCADES_DIR,
-        "../../windlass/examples",
-        "../../examples",
-        "../../cascades",
-        "../../tackle"
+        EXAMPLES_DIR,
+        TACKLE_DIR,
     ]
 
     for search_dir in search_paths:
         if not os.path.exists(search_dir):
             continue
 
-        # Search for JSON files
         for filepath in glob.glob(f"{search_dir}/**/*.json", recursive=True):
             try:
                 with open(filepath) as f:
@@ -1022,9 +921,7 @@ def get_cascade_files():
 
         search_paths = [
             CASCADES_DIR,
-            "../../windlass/examples",
-            "../../examples",
-            "../../cascades"
+            EXAMPLES_DIR,
         ]
 
         for search_dir in search_paths:
@@ -1076,18 +973,15 @@ def run_cascade():
         if not cascade_path:
             return jsonify({'error': 'cascade_path required'}), 400
 
-        # Import windlass
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
         from windlass import run_cascade as execute_cascade
         import uuid
 
-        # Generate session ID if not provided
         if not session_id:
             session_id = f"ui_run_{uuid.uuid4().hex[:12]}"
 
-        # Run cascade in background thread with event hooks
         import threading
         from windlass.event_hooks import EventPublishingHooks
 
@@ -1125,13 +1019,11 @@ def freeze_test():
         if not session_id or not snapshot_name:
             return jsonify({'error': 'session_id and snapshot_name required'}), 400
 
-        # Import windlass testing
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
         from windlass.testing import freeze_snapshot
 
-        # Freeze the snapshot
         result = freeze_snapshot(session_id, snapshot_name, description)
 
         return jsonify({
@@ -1148,7 +1040,7 @@ def freeze_test():
 
 if __name__ == '__main__':
     print("🌊 Windlass UI Backend Starting...")
-    print(f"   Log Dir: {LOG_DIR}")
+    print(f"   Data Dir: {DATA_DIR}")
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
     print()

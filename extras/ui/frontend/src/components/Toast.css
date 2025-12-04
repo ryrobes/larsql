@@ -1,21 +1,18 @@
 /* Toast notifications - Dark mode with bright pastels */
 .toast {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
+  position: relative;
   min-width: 320px;
   max-width: 500px;
   background: #121212;
   border: 2px solid;
   border-radius: 12px;
-  padding: 1.25rem;
+  padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   cursor: pointer;
-  animation: slideIn 0.3s ease-out;
-  z-index: 9999;
+  animation: slideIn 0.3s ease-out forwards;
 }
 
 @keyframes slideIn {
@@ -118,7 +115,3 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
 }
 
-/* Multiple toasts stack */
-.toast + .toast {
-  margin-bottom: 1rem;
-}

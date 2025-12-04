@@ -2005,7 +2005,20 @@ Refinement directive: {reforge_config.honing_prompt}
                                 raise
 
                     # After infrastructure retry loop succeeds, continue with normal flow
-                    # Build metadata with retry/turn context
+                    # Log to unified logger (NON-BLOCKING - cost will be fetched by background worker)
+                    # The unified logger queues messages with request_id and fetches cost after ~3s delay
+                    from .unified_logs import log_unified
+
+                    # Extract all data from agent response
+                    full_request = response_dict.get("full_request")
+                    full_response = response_dict.get("full_response")
+                    model_used = response_dict.get("model", phase_model)
+                    cost = response_dict.get("cost")
+                    tokens_in = response_dict.get("tokens_in", 0)
+                    tokens_out = response_dict.get("tokens_out", 0)
+                    provider = response_dict.get("provider", "unknown")
+
+                    # Build metadata
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
                         "turn_number": self.current_turn_number,
@@ -2013,41 +2026,45 @@ Refinement directive: {reforge_config.honing_prompt}
                         "cascade_id": self.config.cascade_id
                     }
 
-                    if request_id:
-                        # NEW: Build pending message dict to hold until cost arrives
-                        # CRITICAL: Capture timestamp NOW (when response arrives), not later when cost tracker logs it
-                        import time
-                        pending_agent_message = {
-                            "session_id": self.session_id,
-                            "trace_id": turn_trace.id,
-                            "parent_id": turn_trace.parent_id,
-                            "timestamp": time.time(),  # Capture original response time
-                            "node_type": "agent",
-                            "role": "agent",
-                            "depth": turn_trace.depth,
-                            "sounding_index": self.current_phase_sounding_index,
-                            "is_winner": None,
-                            "reforge_step": None,  # Reforge context tracked separately in soundings system
-                            "phase_name": phase.name,
-                            "cascade_id": self.config.cascade_id,
-                            "model": phase_model,
-                            "content": content,
-                            "tool_calls": tool_calls,
-                            "metadata": agent_metadata
-                            # cost, tokens_in, tokens_out will be merged in by cost tracker
-                        }
+                    # Get cascade and phase configs for logging
+                    cascade_config_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else None
+                    phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
 
-                        # Pass to cost tracker - will log with cost after ~5s
-                        track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id,
-                                    phase.name, self.config.cascade_id, self.current_phase_sounding_index,
-                                    pending_message=pending_agent_message)
-                    else:
-                        # No request_id means no cost tracking - log immediately
-                        log_message(self.session_id, "agent", str(content),
-                                    metadata=agent_metadata,
-                                    trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="agent", depth=turn_trace.depth,
-                                    model=phase_model, tool_calls=tool_calls,
-                                    sounding_index=self.current_phase_sounding_index)
+                    # LOG WITH UNIFIED SYSTEM (immediate write with all context)
+                    log_unified(
+                        session_id=self.session_id,
+                        trace_id=turn_trace.id,
+                        parent_id=turn_trace.parent_id,
+                        parent_session_id=getattr(self, 'parent_session_id', None),
+                        parent_message_id=getattr(self, 'parent_message_id', None),
+                        node_type="agent",
+                        role="assistant",
+                        depth=self.depth,
+                        sounding_index=self.current_phase_sounding_index,
+                        is_winner=None,  # Set later when sounding evaluation happens
+                        reforge_step=getattr(self, 'current_reforge_step', None),
+                        attempt_number=self.current_retry_attempt,
+                        turn_number=self.current_turn_number,
+                        cascade_id=self.config.cascade_id,
+                        cascade_file=self.config_path if isinstance(self.config_path, str) else None,
+                        cascade_config=cascade_config_dict,
+                        phase_name=phase.name,
+                        phase_config=phase_config_dict,
+                        model=model_used,
+                        request_id=request_id,
+                        provider=provider,
+                        duration_ms=None,  # Not tracking per-message duration yet
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        cost=cost,
+                        content=content,
+                        full_request=full_request,
+                        full_response=full_response,
+                        tool_calls=tool_calls,
+                        images=None,  # Images handled separately
+                        has_base64=False,
+                        metadata=agent_metadata
+                    )
 
                     if content:
                         console.print(Panel(Markdown(content), title=f"Agent ({phase_model})", border_style="green", expand=False))

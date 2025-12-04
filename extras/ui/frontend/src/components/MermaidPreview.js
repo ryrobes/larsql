@@ -3,16 +3,16 @@ import { createPortal } from 'react-dom';
 import mermaid from 'mermaid';
 import './MermaidPreview.css';
 
-// Initialize mermaid with base theme (we'll mutate colors)
+// Initialize mermaid with cyberpunk/vaporwave theme
 mermaid.initialize({
   startOnLoad: false,
   theme: 'base',
   themeVariables: {
     background: 'transparent',
     primaryColor: 'transparent',
-    primaryTextColor: '#e0e0e0',
-    primaryBorderColor: '#60a5fa',
-    lineColor: '#60a5fa',
+    primaryTextColor: '#e0f0ff',
+    primaryBorderColor: '#a78bfa',
+    lineColor: '#06b6d4',
     secondaryColor: 'transparent',
     tertiaryColor: 'transparent',
     fontSize: '14px',
@@ -84,29 +84,52 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         const svgElement = containerRef.current.querySelector('svg');
 
         if (svgElement) {
-          // Remove ALL fill colors - we want outline-only
-          const allShapes = svgElement.querySelectorAll('rect, circle, polygon, path, ellipse');
-          allShapes.forEach(shape => {
-            // Make fills transparent
+          // Cyberpunk/vaporwave color palette - outline only, no fills
+          const colors = {
+            purple: '#a78bfa',    // Primary - boxes
+            cyan: '#06b6d4',      // Secondary - lines/arrows
+            pink: '#f472b6',      // Accent
+            text: '#e0f0ff'       // Bright text
+          };
+
+          // Style shapes - transparent fill, colored strokes
+          const allShapes = svgElement.querySelectorAll('rect, circle, polygon, ellipse');
+          allShapes.forEach((shape, index) => {
             shape.setAttribute('fill', 'none');
             shape.setAttribute('fill-opacity', '0');
-
-            // Make strokes bright and visible
-            const currentStroke = shape.getAttribute('stroke');
-            if (!currentStroke || currentStroke === 'none') {
-              shape.setAttribute('stroke', '#60a5fa');
-            } else {
-              // Keep stroke but make it brighter
-              shape.setAttribute('stroke', '#60a5fa');
-            }
-            shape.setAttribute('stroke-width', '2.5');
+            // Alternate purple and cyan strokes
+            const strokeColor = index % 2 === 0 ? colors.purple : colors.cyan;
+            shape.setAttribute('stroke', strokeColor);
+            shape.setAttribute('stroke-width', '2');
           });
 
-          // Make text bright
+          // Style paths (arrows/lines) with cyan
+          const allPaths = svgElement.querySelectorAll('path');
+          allPaths.forEach(path => {
+            path.setAttribute('stroke', colors.cyan);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke-width', '2');
+          });
+
+          // Style lines
+          const allLines = svgElement.querySelectorAll('line');
+          allLines.forEach(line => {
+            line.setAttribute('stroke', colors.cyan);
+            line.setAttribute('stroke-width', '2');
+          });
+
+          // Make text bright and readable
           const allText = svgElement.querySelectorAll('text, tspan');
           allText.forEach(text => {
-            text.setAttribute('fill', '#e0e0e0');
+            text.setAttribute('fill', colors.text);
             text.setAttribute('stroke', 'none');
+          });
+
+          // Style arrowheads - these need fill to be visible
+          const allMarkers = svgElement.querySelectorAll('marker path, marker polygon');
+          allMarkers.forEach(marker => {
+            marker.setAttribute('fill', colors.cyan);
+            marker.setAttribute('stroke', colors.cyan);
           });
 
           // Remove width/height first so getBBox works properly
@@ -115,17 +138,20 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
           svgElement.removeAttribute('width');
           svgElement.removeAttribute('height');
 
+          let contentWidth = parseFloat(origWidth) || 400;
+          let contentHeight = parseFloat(origHeight) || 300;
+
           try {
             // Get bounding box for tight crop (needs to be in DOM)
             const bbox = svgElement.getBBox();
             const padding = 10; // Small fixed padding
             const x = bbox.x - padding;
             const y = bbox.y - padding;
-            const width = bbox.width + (padding * 2);
-            const height = bbox.height + (padding * 2);
+            contentWidth = bbox.width + (padding * 2);
+            contentHeight = bbox.height + (padding * 2);
 
             // Set tight viewBox
-            svgElement.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
+            svgElement.setAttribute('viewBox', `${x} ${y} ${contentWidth} ${contentHeight}`);
           } catch (err) {
             // Fallback to original dimensions
             console.warn('getBBox failed, using original dimensions:', err);
@@ -134,13 +160,33 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
             }
           }
 
-          // Use 'slice' for small/medium (fill and clip), 'meet' for large (fit everything)
-          const aspectRatio = size === 'large' ? 'xMidYMid meet' : 'xMidYMid slice';
-          svgElement.setAttribute('preserveAspectRatio', aspectRatio);
-          svgElement.style.width = '100%';
-          svgElement.style.height = '100%';
-          svgElement.style.minWidth = '100%';
-          svgElement.style.minHeight = '100%';
+          // For small size: expand container to fit the full diagram
+          if (size === 'small') {
+            const wrapper = containerRef.current.closest('.mermaid-wrapper');
+            const containerWidth = wrapper?.offsetWidth || 400;
+
+            // Calculate exact height needed to show full diagram at this width
+            const aspectRatio = contentHeight / contentWidth;
+            const exactHeight = containerWidth * aspectRatio;
+
+            // Clamp to reasonable bounds (min 100px, max 400px)
+            const finalHeight = Math.min(400, Math.max(100, exactHeight));
+
+            if (wrapper) {
+              wrapper.style.height = `${finalHeight}px`;
+            }
+
+            // Use 'none' to fill the container exactly - no gaps, no clipping
+            // This works because we sized the container to match the aspect ratio
+            svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svgElement.style.width = '100%';
+            svgElement.style.height = `${finalHeight}px`;
+          } else {
+            // For medium/large: show entire diagram
+            svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svgElement.style.width = '100%';
+            svgElement.style.height = '100%';
+          }
         }
       } catch (err) {
         console.error('Error rendering mermaid:', err);
@@ -149,37 +195,33 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
     };
 
     renderGraph();
-  }, [graphData, sessionId]);
+  }, [graphData, sessionId, size]);
 
   const mutateMermaidColors = (mermaidContent) => {
-    // Replace default mermaid colors with UI dark theme colors
+    // Replace default mermaid colors with cyberpunk/vaporwave theme
+    // All fills become transparent, strokes become neon colors
     let mutated = mermaidContent;
 
-    // Replace class definitions with brighter, more visible dark theme colors
     const colorMap = {
-      // Fill colors - use darker backgrounds with visible contrast
-      'fill:#f9f9f9': 'fill:#1a2332',
-      'fill:#e1f5fe': 'fill:#1a2a42',  // system - dark blue
-      'fill:#fff9c4': 'fill:#3a3428',  // user - dark yellow
-      'fill:#dcedc8': 'fill:#1a3a2a',  // agent - dark green
-      'fill:#ffccbc': 'fill:#3a2428',  // tool - dark red/pink
-      'fill:#ffcdd2': 'fill:#4a2328',  // error - darker red
-      'fill:#eeeeee': 'fill:#2a2a2a',  // structure - dark gray
-      'fill:#ffffff': 'fill:#1a1a1a',  // cascade - dark background
-      'fill:#e3f2fd': 'fill:#1a2842',  // soundings - dark blue
-      'fill:#bbdefb': 'fill:#2a3858',  // sounding attempt - medium blue
-      'fill:#c8e6c9': 'fill:#2a4a3a',  // winner - dark green
+      // All fills -> none (transparent)
+      'fill:#f9f9f9': 'fill:none',
+      'fill:#e1f5fe': 'fill:none',
+      'fill:#fff9c4': 'fill:none',
+      'fill:#dcedc8': 'fill:none',
+      'fill:#ffccbc': 'fill:none',
+      'fill:#ffcdd2': 'fill:none',
+      'fill:#eeeeee': 'fill:none',
+      'fill:#ffffff': 'fill:none',
+      'fill:#e3f2fd': 'fill:none',
+      'fill:#bbdefb': 'fill:none',
+      'fill:#c8e6c9': 'fill:none',
 
-      // Stroke colors - use bright, visible pastels
-      'stroke:#333': 'stroke:#60a5fa',  // borders - bright blue
-      'stroke:#666': 'stroke:#a78bfa',  // dashed borders - bright purple
-      'stroke:#f44336': 'stroke:#f87171',  // error stroke - bright red
-      'stroke:#1976d2': 'stroke:#60a5fa',  // soundings stroke - bright blue
-      'stroke:#388e3c': 'stroke:#34d399',  // winner stroke - bright green
-
-      // Additional stroke widths for visibility
-      'stroke-width:1px': 'stroke-width:2px',
-      'stroke-width:2px': 'stroke-width:2.5px',
+      // Stroke colors - cyberpunk neons
+      'stroke:#333': 'stroke:#a78bfa',     // purple
+      'stroke:#666': 'stroke:#06b6d4',     // cyan
+      'stroke:#f44336': 'stroke:#f472b6',  // pink
+      'stroke:#1976d2': 'stroke:#06b6d4',  // cyan
+      'stroke:#388e3c': 'stroke:#34d399',  // mint
     };
 
     Object.entries(colorMap).forEach(([oldColor, newColor]) => {

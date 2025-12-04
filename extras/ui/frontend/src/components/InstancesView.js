@@ -5,7 +5,7 @@ import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
 import './InstancesView.css';
 
-function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions, sessionUpdates }) {
+function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions, sessionUpdates, sseConnected }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -118,41 +118,36 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
     );
   }
 
+  const totalCost = instances.reduce((sum, i) => sum + (i.total_cost || 0), 0);
+
   return (
     <div className="instances-container">
-      <div className="header">
+      <header className="app-header">
         <div className="header-left">
           <button onClick={onBack} className="back-button">
-            <Icon icon="mdi:arrow-left" width="20" />
-            Back
+            <Icon icon="mdi:arrow-left" width="18" />
           </button>
-          <h1>{cascadeId}</h1>
+          <span className="cascade-title">{cascadeId}</span>
         </div>
-        <div className="header-actions">
-          <div className="header-stats">
-            <span className="stat">
-              <span className="stat-value">{instances.length}</span>
-              <span className="stat-label">Instances</span>
-            </span>
-            <span className="stat">
-              <span className="stat-value">
-                {formatCost(instances.reduce((sum, i) => sum + (i.total_cost || 0), 0))}
-              </span>
-              <span className="stat-label">Total Cost</span>
-            </span>
-          </div>
+        <div className="header-center">
+          <span className="header-stat">{instances.length} <span className="stat-dim">{instances.length === 1 ? 'instance' : 'instances'}</span></span>
+          <span className="header-divider">·</span>
+          <span className="header-stat cost">{formatCost(totalCost)}</span>
+        </div>
+        <div className="header-right">
           {cascadeData && onRunCascade && (
             <button
-              className="run-button-header"
+              className="run-button"
               onClick={() => onRunCascade(cascadeData)}
               title="Run this cascade"
             >
-              <Icon icon="mdi:play" width="20" />
+              <Icon icon="mdi:play" width="18" />
               Run
             </button>
           )}
+          <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />
         </div>
-      </div>
+      </header>
 
       <div className="instances-list">
         {instances.map((instance) => {
@@ -181,36 +176,35 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
               </h3>
               <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
 
-              {instance.models_used.length > 0 && (
-                <div className="models-used">
-                  {instance.models_used.map((model, idx) => (
-                    <span key={idx} className="model-tag">
-                      <Icon icon="mdi:robot" width="12" />
-                      {model.split('/').pop()}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <div className="instance-actions-row">
+                {instance.models_used.length > 0 && (
+                  <div className="models-used">
+                    {instance.models_used.map((model, idx) => (
+                      <span key={idx} className="model-tag">
+                        <Icon icon="mdi:robot" width="12" />
+                        {model.split('/').pop()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button
+                  className="rerun-button-small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRunCascade && onRunCascade({
+                      ...cascadeData,
+                      prefilled_inputs: instance.input_data || {}
+                    });
+                  }}
+                  title="Re-run with these inputs"
+                >
+                  <Icon icon="mdi:replay" width="14" />
+                </button>
+              </div>
 
               {instance.input_data && Object.keys(instance.input_data).length > 0 && (
                 <div className="input-params">
-                  <div className="input-header">
-                    <span className="input-label">Inputs:</span>
-                    <button
-                      className="rerun-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRunCascade && onRunCascade({
-                          ...cascadeData,
-                          prefilled_inputs: instance.input_data
-                        });
-                      }}
-                      title="Re-run with these inputs"
-                    >
-                      <Icon icon="mdi:replay" width="14" />
-                      Re-run
-                    </button>
-                  </div>
+                  <span className="input-label">Inputs:</span>
                   <div className="input-fields">
                     {Object.entries(instance.input_data).map(([key, value]) => (
                       <div key={key} className="input-field-display">
@@ -223,6 +217,16 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
                   </div>
                 </div>
               )}
+
+              {/* Mermaid Graph Preview - under inputs on left side */}
+              <div className="mermaid-wrapper">
+                <MermaidPreview
+                  sessionId={instance.session_id}
+                  size="small"
+                  showMetadata={false}
+                  lastUpdate={sessionUpdates?.[instance.session_id]}
+                />
+              </div>
             </div>
 
             {/* Middle: Phase Bars with Status */}
@@ -257,14 +261,6 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
 
             {/* Right: Instance Metrics */}
             <div className="instance-metrics">
-              {/* Small Mermaid Preview */}
-              <MermaidPreview
-                sessionId={instance.session_id}
-                size="small"
-                showMetadata={false}
-                lastUpdate={sessionUpdates?.[instance.session_id]}
-              />
-
               <div className="metric">
                 <span className="metric-value">
                   {formatDuration(instance.duration_seconds)}

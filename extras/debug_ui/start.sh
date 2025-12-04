@@ -3,11 +3,7 @@
 # Windlass Debug UI Startup Script
 # Starts both backend and frontend servers
 
-export WINDLASS_LOG_DIR=/home/ryanr/repos/windlass/logs
-export WINDLASS_GRAPH_DIR=/home/ryanr/repos/windlass/graphs
-export WINDLASS_STATE_DIR=/home/ryanr/repos/windlass/states
-export WINDLASS_IMAGE_DIR=/home/ryanr/repos/windlass/images
-
+export WINDLASS_ROOT=/home/ryanr/repos/windlass
 
 set -e
 

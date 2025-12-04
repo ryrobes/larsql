@@ -6,24 +6,34 @@
 echo "🌊 Starting Windlass UI..."
 echo ""
 
-# Set data directories (relative to windlass repo root)
-export WINDLASS_LOG_DIR=/home/ryanr/repos/windlass/logs
-export WINDLASS_GRAPH_DIR=/home/ryanr/repos/windlass/graphs
-export WINDLASS_STATE_DIR=/home/ryanr/repos/windlass/states
-export WINDLASS_IMAGE_DIR=/home/ryanr/repos/windlass/images
-export WINDLASS_CASCADES_DIR=/home/ryanr/repos/windlass/windlass/examples
+# Detect Windlass root (default to repo root, 2 levels up from this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Set WINDLASS_ROOT (can be overridden by environment)
+export WINDLASS_ROOT="${WINDLASS_ROOT:-$DEFAULT_ROOT}"
 
 echo "Configuration:"
-echo "  LOG_DIR: $WINDLASS_LOG_DIR"
-echo "  GRAPH_DIR: $WINDLASS_GRAPH_DIR"
-echo "  CASCADES_DIR: $WINDLASS_CASCADES_DIR"
+echo "  WINDLASS_ROOT: $WINDLASS_ROOT"
+echo ""
+echo "Data directories:"
+echo "  data/      → $WINDLASS_ROOT/data"
+echo "  logs/      → $WINDLASS_ROOT/logs"
+echo "  graphs/    → $WINDLASS_ROOT/graphs"
+echo "  states/    → $WINDLASS_ROOT/states"
+echo "  images/    → $WINDLASS_ROOT/images"
+echo ""
+echo "Content directories:"
+echo "  examples/  → $WINDLASS_ROOT/examples"
+echo "  tackle/    → $WINDLASS_ROOT/tackle"
+echo "  cascades/  → $WINDLASS_ROOT/cascades"
 echo ""
 
-# Check if logs directory exists
-if [ ! -d "$WINDLASS_LOG_DIR/echoes" ]; then
-    echo "⚠️  Warning: Echo logs not found at $WINDLASS_LOG_DIR/echoes"
+# Check if data directory exists
+if [ ! -d "$WINDLASS_ROOT/data" ]; then
+    echo "⚠️  Warning: Unified logs not found at $WINDLASS_ROOT/data"
     echo "   Run some cascades first to generate data:"
-    echo "   windlass windlass/examples/simple_flow.json --input '{}'"
+    echo "   windlass run examples/simple_flow.json --input '{}'"
     echo ""
 fi
 
