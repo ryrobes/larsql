@@ -20,3 +20,5 @@ yarn-error.log*
 .vscode/
 *.swp
 *.swo
+
+*.pyc

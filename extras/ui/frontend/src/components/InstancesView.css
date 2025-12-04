@@ -326,7 +326,7 @@
 
 /* Right: Instance Metrics */
 .instance-metrics {
-  flex: 0 0 200px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import PhaseBar from './PhaseBar';
 import DebugModal from './DebugModal';
+import MermaidPreview from './MermaidPreview';
 import './InstancesView.css';
 
 function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions }) {
@@ -256,6 +257,13 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
 
             {/* Right: Instance Metrics */}
             <div className="instance-metrics">
+              {/* Small Mermaid Preview */}
+              <MermaidPreview
+                sessionId={instance.session_id}
+                size="small"
+                showMetadata={false}
+              />
+
               <div className="metric">
                 <span className="metric-value">
                   {formatDuration(instance.duration_seconds)}

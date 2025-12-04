@@ -1,4 +1,7 @@
 graphs
 states
 logs
+*.pyc
+**/__pycache__/**
 
+extras/ui/backend/__pycache__/app.cpython-314.pyc

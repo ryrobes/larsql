@@ -1686,9 +1686,12 @@ Refinement directive: {reforge_config.honing_prompt}
             tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
 
         # Construct context from lineage
-        # Since we are snowballing context_messages, we don't need to stringify previous outputs into the user message anymore.
-        # This prevents duplicating history.
-        user_content = f"## Input Data:\n{json.dumps(input_data or {})}"
+        # Since we are snowballing context_messages, we don't need to add input_data as a separate user message.
+        # Input data is already available via:
+        # 1. Jinja2 template rendering in system prompt ({{ input.key }})
+        # 2. Snowball context from previous phases (for multi-phase cascades)
+        # Adding a redundant "## Input Data:" user message confuses the agent.
+        # user_content = f"## Input Data:\n{json.dumps(input_data or {})}"  # REMOVED - redundant!
 
         # Add tool descriptions to instructions if using prompt-based tools
         final_instructions = rendered_instructions
@@ -1722,14 +1725,22 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Append to snowball context
         self.context_messages.append(sys_msg)
-        
-        user_trace = trace.create_child("msg", "user_input")
-        user_msg = {"role": "user", "content": user_content}
-        self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user")
-        
-        # Append to snowball context
-        self.context_messages.append(user_msg)
-        
+
+        # NOTE: We do NOT add a separate "## Input Data:" user message
+        # Input data is already available to the agent via:
+        # 1. Jinja2 template rendering in system prompt (e.g., {{ input.problem }})
+        # 2. Snowball context from previous phases (full conversation history)
+        # Adding a redundant user message would confuse the agent with duplicate information.
+
+        # For debugging, log input data to echo (but NOT to context_messages)
+        if input_data:
+            input_trace = trace.create_child("msg", "input_data_reference")
+            self.echo.add_history(
+                {"role": "user", "content": f"## Input Data:\n{json.dumps(input_data)}"},
+                trace_id=input_trace.id, parent_id=trace.id, node_type="user",
+                metadata={"debug_only": True, "not_sent_to_llm": True}
+            )
+
         # Handle Phase Start Injection
         injected_messages = []
         if initial_injection and initial_injection.get("action") == HookAction.INJECT:
@@ -1926,20 +1937,74 @@ Refinement directive: {reforge_config.honing_prompt}
                         console.print(f"{indent}    [dim][{idx}] {role:10s} | tools:{has_tools} | tool_id:{has_tool_id} | {content_preview}[/dim]")
 
                 try:
-                    is_main_thread = threading.current_thread() is threading.main_thread()
-                
-                    if self.depth == 0 and is_main_thread:
-                        with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status: # Added status here
-                            response_dict = agent.run(current_input, context_messages=self.context_messages)
-                    else:
-                        # For sub-cascades, no spinner to avoid Rich Live conflicts
-                        console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
-                        response_dict = agent.run(current_input, context_messages=self.context_messages)
-                
-                    content = response_dict.get("content")
-                    tool_calls = response_dict.get("tool_calls")
-                    request_id = response_dict.get("id")
+                    # Infrastructure retry loop (for API errors, timeouts, empty responses)
+                    # This is SEPARATE from validation retries (max_attempts)
+                    # Retries up to 3 times for transient infrastructure issues
+                    infrastructure_max_retries = 3
+                    last_infrastructure_error = None
 
+                    for infra_attempt in range(infrastructure_max_retries):
+                        if infra_attempt > 0:
+                            console.print(f"{indent}  [bold yellow]🔄 Infrastructure Retry {infra_attempt + 1}/{infrastructure_max_retries}[/bold yellow]")
+                            console.print(f"{indent}  [dim]Previous error: {last_infrastructure_error}[/dim]")
+                            import time
+                            time.sleep(1)  # Brief backoff
+
+                        try:
+                            is_main_thread = threading.current_thread() is threading.main_thread()
+
+                            if self.depth == 0 and is_main_thread:
+                                with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status:
+                                    response_dict = agent.run(current_input, context_messages=self.context_messages)
+                            else:
+                                # For sub-cascades, no spinner to avoid Rich Live conflicts
+                                console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
+                                response_dict = agent.run(current_input, context_messages=self.context_messages)
+
+                            content = response_dict.get("content")
+                            tool_calls = response_dict.get("tool_calls")
+                            request_id = response_dict.get("id")
+
+                            # CRITICAL: Detect empty responses - this is an infrastructure error
+                            # Empty responses indicate API issues, not validation failures
+                            if (not content or content.strip() == "") and not tool_calls:
+                                error_msg = f"Agent returned empty response (0 tokens output). Model: {phase_model}"
+                                console.print(f"{indent}  [bold red]⚠️  Infrastructure Error: {error_msg}[/bold red]")
+                                last_infrastructure_error = error_msg
+
+                                if infra_attempt + 1 >= infrastructure_max_retries:
+                                    console.print(f"{indent}  [bold red]Max infrastructure retries reached. Failing.[/bold red]")
+                                    raise Exception(error_msg)
+                                else:
+                                    console.print(f"{indent}  [yellow]Retrying due to empty response...[/yellow]")
+                                    continue  # Retry infrastructure loop
+
+                            # Successfully got response, break from infrastructure retry loop
+                            break
+
+                        except Exception as infra_error:
+                            # Check if this is an infrastructure error (API timeout, connection, etc.)
+                            error_str = str(infra_error).lower()
+                            is_infrastructure_error = any(keyword in error_str for keyword in [
+                                'timeout', 'connection', 'empty response', 'rate limit',
+                                'api error', 'service unavailable', '503', '502', '500', '429'
+                            ])
+
+                            if is_infrastructure_error:
+                                last_infrastructure_error = str(infra_error)
+                                console.print(f"{indent}  [bold yellow]⚠️  Infrastructure Error: {infra_error}[/bold yellow]")
+
+                                if infra_attempt + 1 >= infrastructure_max_retries:
+                                    console.print(f"{indent}  [bold red]Max infrastructure retries reached. Failing.[/bold red]")
+                                    raise  # Re-raise to outer exception handler
+                                else:
+                                    console.print(f"{indent}  [yellow]Retrying infrastructure error...[/yellow]")
+                                    continue  # Retry infrastructure loop
+                            else:
+                                # Not an infrastructure error - raise to outer handler
+                                raise
+
+                    # After infrastructure retry loop succeeds, continue with normal flow
                     # Build metadata with retry/turn context
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
@@ -1950,16 +2015,19 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     if request_id:
                         # NEW: Build pending message dict to hold until cost arrives
+                        # CRITICAL: Capture timestamp NOW (when response arrives), not later when cost tracker logs it
+                        import time
                         pending_agent_message = {
                             "session_id": self.session_id,
                             "trace_id": turn_trace.id,
                             "parent_id": turn_trace.parent_id,
+                            "timestamp": time.time(),  # Capture original response time
                             "node_type": "agent",
                             "role": "agent",
                             "depth": turn_trace.depth,
                             "sounding_index": self.current_phase_sounding_index,
                             "is_winner": None,
-                            "reforge_step": self.current_reforge_step,
+                            "reforge_step": None,  # Reforge context tracked separately in soundings system
                             "phase_name": phase.name,
                             "cascade_id": self.config.cascade_id,
                             "model": phase_model,
@@ -2003,6 +2071,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     self._update_graph()
 
                     response_content = content
+                    tool_outputs = []  # Track tool outputs for validation
 
                     # Parse prompt-based tool calls if not using native tools
                     json_parse_error = None
@@ -2011,25 +2080,32 @@ Refinement directive: {reforge_config.honing_prompt}
                         parsed_tool_calls, parse_error = self._parse_prompt_tool_calls(content)
 
                         if parse_error:
-                            # JSON parsing failed - send error back to agent as feedback
+                            # JSON parsing failed - this is a validation error that should trigger attempt retry
                             console.print(f"{indent}  [bold red]⚠️  JSON Parse Error:[/bold red] {parse_error}")
 
-                            # Add error message to context for next turn
-                            error_msg = {
-                                "role": "user",
-                                "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
-                            }
-                            self.context_messages.append(error_msg)
+                            # Store error in state for retry message
+                            self.echo.update_state("last_validation_error", f"Tool call JSON is malformed: {parse_error}")
 
+                            # Log the error
                             error_trace = turn_trace.create_child("msg", "json_error")
-                            self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error")
-
                             log_message(self.session_id, "json_parse_error", parse_error,
                                        metadata={"phase_name": phase.name, "turn": i},
                                        trace_id=error_trace.id, parent_id=turn_trace.parent_id, node_type="validation_error")
 
-                            # Don't execute tools, continue to next turn so agent can fix
+                            # Add error to echo history
+                            error_msg = {
+                                "role": "user",
+                                "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
+                            }
+                            self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error")
+
+                            # CRITICAL: Set validation_passed = False to trigger attempt retry
+                            # JSON errors should retry the entire attempt, not just skip to next turn
+                            validation_passed = False
                             json_parse_error = True
+
+                            # Break from turn loop - will check validation_passed and retry if needed
+                            break
 
                         elif parsed_tool_calls:
                             console.print(f"{indent}  [dim cyan]Parsed {len(parsed_tool_calls)} prompt-based tool call(s)[/dim cyan]")
@@ -2050,7 +2126,21 @@ Refinement directive: {reforge_config.honing_prompt}
                                 args = json.loads(args_str)
                             except:
                                 args = {}
-                        
+
+                            # Log tool call BEFORE execution
+                            log_message(self.session_id, "tool_call", f"Calling {func_name}",
+                                       metadata={"tool_name": func_name, "arguments": args},
+                                       trace_id=tool_trace.id, parent_id=turn_trace.id,
+                                       node_type="tool_call", depth=tool_trace.depth)
+
+                            # Add to echo history for visualization
+                            call_trace = tool_trace.create_child("msg", "tool_call")
+                            self.echo.add_history(
+                                {"role": "tool_call", "content": f"Calling {func_name}", "tool_name": func_name, "arguments": args},
+                                trace_id=call_trace.id, parent_id=tool_trace.id, node_type="tool_call",
+                                metadata={"tool_name": func_name, "arguments": args}
+                            )
+
                             # Find tool
                             tool_func = tool_map.get(func_name)
                             result = "Tool not found."
@@ -2069,9 +2159,18 @@ Refinement directive: {reforge_config.honing_prompt}
                                      result = f"Error: {str(e)}"
                              
                                  console.print(f"{indent}    [green]✔ {func_name}[/green] -> {str(result)[:100]}...")
-                        
-                            log_message(self.session_id, "tool_result", str(result), {"tool": func_name}, 
-                                       trace_id=tool_trace.id, parent_id=tool_trace.parent_id, node_type="tool", depth=tool_trace.depth)
+
+                                 # Capture tool output for validation
+                                 tool_outputs.append({
+                                     "tool": func_name,
+                                     "result": str(result)
+                                 })
+
+                            # Log tool result AFTER execution
+                            log_message(self.session_id, "tool_result", str(result),
+                                       metadata={"tool_name": func_name, "result": str(result)[:500]},
+                                       trace_id=tool_trace.id, parent_id=tool_trace.parent_id,
+                                       node_type="tool_result", depth=tool_trace.depth)
                         
                             # Handle Smart Image Injection logic
                             parsed_result = result
@@ -2180,6 +2279,19 @@ Refinement directive: {reforge_config.honing_prompt}
                         # Auto-save any images from messages (catches manual injection, feedback loops, etc.)
                         self._save_images_from_messages(self.context_messages, phase.name)
 
+                    # Build comprehensive validation content (agent response + tool outputs + follow-up)
+                    # This ensures validators see the COMPLETE turn output, not just the agent's text
+                    if tool_outputs:
+                        validation_content_parts = []
+                        if response_content:
+                            validation_content_parts.append(f"Agent Response:\n{response_content}\n")
+
+                        validation_content_parts.append("Tool Execution Results:")
+                        for tool_output in tool_outputs:
+                            validation_content_parts.append(f"\n[{tool_output['tool']}]:\n{tool_output['result']}\n")
+
+                        response_content = "\n".join(validation_content_parts)
+
                 except Exception as e:
                     # Enhanced error logging with detailed information
                     import traceback
@@ -2246,8 +2358,11 @@ Refinement directive: {reforge_config.honing_prompt}
                         metadata=error_metadata
                     )
 
+                    # Store error in state for retry message
+                    self.echo.update_state("last_validation_error", error_msg)
+
                     self._update_graph()
-                    break
+                    break  # Break from turn loop, continue to validation/next attempt
 
             # After turn loop: Check if schema validation is required (output_schema)
             if phase.output_schema:
@@ -2364,8 +2479,29 @@ Refinement directive: {reforge_config.honing_prompt}
                 validator_name = phase.rules.loop_until
                 console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_name}[/bold cyan]")
 
+                # Log that validation is starting (for debugging)
+                log_message(self.session_id, "validation_start", f"Starting validator: {validator_name}",
+                           {"validator": validator_name, "phase_name": phase.name, "attempt": attempt + 1,
+                            "content_preview": response_content[:200] if response_content else "(empty)"},
+                           node_type="validation_start", depth=self.depth)
+
+                # Add to echo history
+                self.echo.add_history({
+                    "role": "validation",
+                    "content": f"🛡️ Running validator: {validator_name}",
+                    "node_type": "validation_start"
+                }, trace_id=None, parent_id=trace.id, node_type="validation_start",
+                   metadata={
+                       "phase_name": phase.name,
+                       "validator": validator_name,
+                       "attempt": attempt + 1
+                   })
+
                 # Create validation trace
                 validation_trace = trace.create_child("validation", validator_name)
+
+                # Initialize validator_result to None (ensures it's in scope for logging later)
+                validator_result = None
 
                 # Try to get validator as Python function first
                 validator_tool = get_tackle(validator_name)
@@ -2380,26 +2516,39 @@ Refinement directive: {reforge_config.honing_prompt}
                         cascade_path = manifest[validator_name]["path"]
                         validator_input = {"content": response_content}
 
-                        console.print(f"{indent}  [dim]Running cascade validator: {validator_name}[/dim]")
+                        validator_session_id = f"{self.session_id}_validator_{attempt}"
+                        console.print(f"{indent}  [dim]Running cascade validator: {validator_name} (session: {validator_session_id})[/dim]")
+
+                        # Log sub-cascade reference to parent
+                        log_message(self.session_id, "sub_cascade_ref", f"Validator sub-cascade: {validator_name}",
+                                   {"validator": validator_name, "sub_session_id": validator_session_id,
+                                    "cascade_path": cascade_path, "phase_name": phase.name},
+                                   trace_id=validation_trace.id, parent_id=trace.id,
+                                   node_type="sub_cascade_ref", depth=self.depth)
 
                         try:
                             # Run the validator cascade
                             validator_result_echo = run_cascade(
                                 cascade_path,
                                 validator_input,
-                                f"{self.session_id}_validator",
+                                validator_session_id,
                                 self.overrides,
                                 self.depth + 1,
                                 parent_trace=validation_trace,
                                 hooks=self.hooks
                             )
 
+                            console.print(f"{indent}  [dim cyan]Validator sub-cascade completed[/dim cyan]")
+
                             # Extract the result - look in lineage for last phase output
                             if validator_result_echo.get("lineage"):
                                 last_output = validator_result_echo["lineage"][-1].get("output", "")
+                                console.print(f"{indent}  [dim]Validator output: {last_output[:100]}...[/dim]")
+
                                 # Try to parse as JSON
                                 try:
                                     validator_result = json.loads(last_output)
+                                    console.print(f"{indent}  [dim green]Parsed validator result: valid={validator_result.get('valid')}[/dim green]")
                                 except:
                                     # If not JSON, try to extract from text
                                     import re
@@ -2407,15 +2556,22 @@ Refinement directive: {reforge_config.honing_prompt}
                                     if json_match:
                                         try:
                                             validator_result = json.loads(json_match.group(0))
+                                            console.print(f"{indent}  [dim green]Extracted validator result from text[/dim green]")
                                         except:
                                             validator_result = {"valid": False, "reason": "Could not parse validator response"}
+                                            console.print(f"{indent}  [dim yellow]Failed to parse extracted JSON[/dim yellow]")
                                     else:
                                         validator_result = {"valid": False, "reason": last_output}
+                                        console.print(f"{indent}  [dim yellow]No JSON found in output[/dim yellow]")
                             else:
                                 validator_result = {"valid": False, "reason": "No output from validator"}
+                                console.print(f"{indent}  [dim yellow]Validator lineage empty[/dim yellow]")
 
                         except Exception as e:
                             console.print(f"{indent}  [bold red]Validator Error:[/bold red] {str(e)}")
+                            import traceback
+                            console.print(f"{indent}  [dim red]{traceback.format_exc()}[/dim red]")
+
                             log_message(self.session_id, "validation_error", str(e),
                                        {"validator": validator_name},
                                        trace_id=validation_trace.id, parent_id=trace.id,
@@ -2458,44 +2614,50 @@ Refinement directive: {reforge_config.honing_prompt}
                         continue  # Try next attempt if available
 
                 # Parse and handle validation result (common for both function and cascade validators)
-                if 'validator_result' in locals():
+                # ALWAYS log validation result, even if validator_result isn't set properly
+                if 'validator_result' in locals() and validator_result is not None:
                     is_valid = validator_result.get("valid", False)
                     reason = validator_result.get("reason", "No reason provided")
+                else:
+                    # Validator didn't set result properly - treat as failure
+                    console.print(f"{indent}  [yellow]Warning: Validator '{validator_name}' did not return proper result[/yellow]")
+                    is_valid = False
+                    reason = "Validator execution failed or returned invalid format"
 
-                    # Log validation result
-                    log_message(self.session_id, "validation", f"Valid: {is_valid}",
-                               {"validator": validator_name, "reason": reason, "attempt": attempt + 1},
-                               trace_id=validation_trace.id, parent_id=trace.id,
-                               node_type="validation", depth=self.depth)
+                # Log validation result to parent session (ALWAYS)
+                log_message(self.session_id, "validation", f"Valid: {is_valid}",
+                           {"validator": validator_name, "reason": reason, "attempt": attempt + 1},
+                           trace_id=validation_trace.id, parent_id=trace.id,
+                           node_type="validation", depth=self.depth)
 
-                    # Add to echo history for visualization
-                    self.echo.add_history({
-                        "role": "validation",
-                        "content": f"{'✓' if is_valid else '✗'} {validator_name}: {reason[:100]}",
-                        "node_type": "validation"
-                    }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation",
-                       metadata={
-                           "phase_name": phase.name,
-                           "validator": validator_name,
-                           "valid": is_valid,
-                           "reason": reason,
-                           "attempt": attempt + 1,
-                           "max_attempts": max_attempts
-                       })
+                # Add to echo history for visualization (ALWAYS)
+                self.echo.add_history({
+                    "role": "validation",
+                    "content": f"{'✓' if is_valid else '✗'} {validator_name}: {reason[:200]}",
+                    "node_type": "validation"
+                }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation",
+                   metadata={
+                       "phase_name": phase.name,
+                       "validator": validator_name,
+                       "valid": is_valid,
+                       "reason": reason,
+                       "attempt": attempt + 1,
+                       "max_attempts": max_attempts
+                   })
 
-                    if is_valid:
-                        console.print(f"{indent}  [bold green]✓ Validation Passed:[/bold green] {reason}")
-                        validation_passed = True
-                        break  # Exit attempt loop
-                    else:
-                        console.print(f"{indent}  [bold red]✗ Validation Failed:[/bold red] {reason}")
-                        # Store error in state for retry instructions template
-                        self.echo.update_state("last_validation_error", reason)
-                        validation_passed = False
+                if is_valid:
+                    console.print(f"{indent}  [bold green]✓ Validation Passed:[/bold green] {reason[:150]}...")
+                    validation_passed = True
+                    break  # Exit attempt loop
+                else:
+                    console.print(f"{indent}  [bold red]✗ Validation Failed:[/bold red] {reason[:150]}...")
+                    # Store error in state for retry instructions template
+                    self.echo.update_state("last_validation_error", reason)
+                    validation_passed = False
 
-                        # If this was the last attempt, we're done
-                        if attempt + 1 >= max_attempts:
-                            console.print(f"{indent}[bold red]⚠️  Max validation attempts reached ({max_attempts})[/bold red]")
+                    # If this was the last attempt, we're done
+                    if attempt + 1 >= max_attempts:
+                        console.print(f"{indent}[bold red]⚠️  Max validation attempts reached ({max_attempts})[/bold red]")
 
             # ========== POST-WARDS: Validate outputs after phase completes ==========
             post_ward_retry_needed = False
@@ -2537,11 +2699,22 @@ Refinement directive: {reforge_config.honing_prompt}
             if post_ward_retry_needed:
                 continue
 
-            # No validation/ward failures, exit retry loop
+            # Check if we should exit retry loop
             if not phase.rules.loop_until and not (phase.wards and phase.wards.post):
                 # No validation required, exit after first attempt
                 validation_passed = True
-            break  # Exit retry loop
+                break  # Exit retry loop
+
+            # If validation passed (or no validation configured), exit
+            if validation_passed:
+                break  # Exit retry loop
+
+            # Otherwise, validation failed - check if we have more attempts
+            if attempt + 1 >= max_attempts:
+                console.print(f"{indent}[bold red]⚠️  Max validation attempts reached ({max_attempts})[/bold red]")
+                break  # Exit retry loop after max attempts
+
+            # Continue to next attempt (loop will iterate)
 
         # Auto-save any images from final phase context (catches all images before phase completion)
         self._save_images_from_messages(self.context_messages, phase.name)

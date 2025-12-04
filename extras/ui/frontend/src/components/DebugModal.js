@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import MermaidPreview from './MermaidPreview';
 import './DebugModal.css';
 
 function DebugModal({ sessionId, onClose }) {
@@ -88,12 +90,37 @@ function DebugModal({ sessionId, onClose }) {
   };
 
   const isConversational = (entry) => {
+    // Filter out debug-only messages (not sent to LLM)
+    const meta = entry.metadata;
+    if (meta) {
+      const metaObj = typeof meta === 'string' ? JSON.parse(meta) : meta;
+      if (metaObj?.not_sent_to_llm === true || metaObj?.debug_only === true) {
+        return false; // Filter out debug-only messages
+      }
+    }
+
+    // Filter out "Initialization" phase entries (duplicates logged before phase assignment)
+    if (entry.phase_name === 'Initialization' || entry.phase_name === null) {
+      // Allow structural messages, but not conversation messages from Initialization
+      const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'system'];
+      if (conversationalTypes.includes(entry.node_type)) {
+        return false; // Filter out Initialization conversation messages
+      }
+    }
+
     // Core conversation messages
-    const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result'];
+    const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'follow_up'];
     const conversationalSystemRoles = ['system']; // System prompts sent to LLM
 
+    // Include validation/ward messages - these are part of the conversation flow
+    const validationTypes = ['validation', 'validation_start', 'validation_error', 'validation_retry',
+                            'ward_blocking', 'ward_retry', 'ward_advisory',
+                            'pre_ward', 'post_ward', 'schema_validation', 'schema_validation_failed',
+                            'sub_cascade_ref', 'sub_cascade_start', 'sub_cascade_complete'];
+
     return conversationalTypes.includes(entry.node_type) ||
-           (entry.node_type === 'system' && conversationalSystemRoles.includes(entry.role));
+           (entry.node_type === 'system' && conversationalSystemRoles.includes(entry.role)) ||
+           validationTypes.includes(entry.node_type);
   };
 
   const filterEntriesByViewMode = (entries) => {
@@ -208,6 +235,21 @@ function DebugModal({ sessionId, onClose }) {
         return 'mdi:alert-circle';
       case 'cost_update':
         return 'mdi:currency-usd';
+      case 'validation':
+      case 'validation_start':
+      case 'validation_error':
+      case 'validation_retry':
+        return 'mdi:shield-check';
+      case 'pre_ward':
+      case 'post_ward':
+      case 'ward_blocking':
+      case 'ward_retry':
+      case 'ward_advisory':
+        return 'mdi:shield-alert';
+      case 'sub_cascade_ref':
+      case 'sub_cascade_start':
+      case 'sub_cascade_complete':
+        return 'mdi:file-tree';
       default:
         return 'mdi:message';
     }
@@ -229,9 +271,24 @@ function DebugModal({ sessionId, onClose }) {
       case 'phase_complete':
         return '#34d399'; // Green
       case 'error':
+      case 'validation_error':
         return '#f87171'; // Red
       case 'cost_update':
         return '#34d399'; // Green
+      case 'validation':
+      case 'validation_start':
+      case 'validation_retry':
+        return '#fbbf24'; // Yellow
+      case 'pre_ward':
+      case 'post_ward':
+      case 'ward_blocking':
+      case 'ward_retry':
+      case 'ward_advisory':
+        return '#60a5fa'; // Blue (wards)
+      case 'sub_cascade_ref':
+      case 'sub_cascade_start':
+      case 'sub_cascade_complete':
+        return '#a78bfa'; // Purple (sub-cascades)
       default:
         return '#666';
     }
@@ -252,6 +309,64 @@ function DebugModal({ sessionId, onClose }) {
           )}
         </div>
       );
+    }
+
+    // For sub-cascade references, show with link to sub-session
+    if (node_type === 'sub_cascade_ref' || node_type === 'sub_cascade_start' || node_type === 'sub_cascade_complete') {
+      try {
+        const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+        const subSessionId = meta?.sub_session_id || 'unknown';
+        const validatorName = meta?.validator || meta?.cascade_name || 'sub-cascade';
+
+        return (
+          <div className="sub-cascade-content">
+            <div className="sub-cascade-header">
+              <Icon icon="mdi:file-tree" width="16" />
+              <span className="sub-cascade-name">{validatorName}</span>
+              <span className="sub-cascade-session">{subSessionId}</span>
+            </div>
+            <div className="sub-cascade-note">
+              {node_type === 'sub_cascade_ref' && 'Sub-cascade execution started'}
+              {node_type === 'sub_cascade_complete' && 'Sub-cascade completed'}
+              {!node_type.includes('ref') && !node_type.includes('complete') && content}
+            </div>
+          </div>
+        );
+      } catch (e) {
+        return <div className="message-content">{String(content)}</div>;
+      }
+    }
+
+    // For validation/ward messages, show with special styling
+    if (node_type === 'validation' || node_type === 'validation_error' || node_type === 'validation_retry' ||
+        node_type === 'validation_start' || node_type.includes('ward')) {
+      try {
+        const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+        const validatorName = meta?.validator || 'unknown';
+        const isValid = meta?.valid;
+        const reason = meta?.reason || content;
+
+        return (
+          <div className="validation-content">
+            <div className="validation-header">
+              <span className="validator-name">{validatorName}</span>
+              {isValid !== undefined && (
+                <span className={`validation-status ${isValid ? 'passed' : 'failed'}`}>
+                  {isValid ? '✓ PASSED' : '✗ FAILED'}
+                </span>
+              )}
+            </div>
+            {reason && reason.length > 0 && reason !== content && (
+              <div className="validation-reason">{reason}</div>
+            )}
+            {node_type === 'validation_start' && (
+              <div className="validation-note">Running validator...</div>
+            )}
+          </div>
+        );
+      } catch (e) {
+        return <div className="message-content">{String(content)}</div>;
+      }
     }
 
     // For tool calls, show tool name and arguments with syntax highlighting
@@ -425,7 +540,7 @@ function DebugModal({ sessionId, onClose }) {
 
   if (!sessionId) return null;
 
-  return (
+  return createPortal(
     <div className="debug-modal-backdrop" onClick={handleBackdropClick}>
       <div className="debug-modal">
         <div className="debug-modal-header">
@@ -487,6 +602,17 @@ function DebugModal({ sessionId, onClose }) {
         </div>
 
         <div className="debug-modal-body">
+          {/* Mermaid Graph at top */}
+          {!loading && !error && (
+            <div className="debug-mermaid-section">
+              <MermaidPreview
+                sessionId={sessionId}
+                size="medium"
+                showMetadata={false}
+              />
+            </div>
+          )}
+
           {loading && (
             <div className="loading-state">
               <div className="spinner"></div>
@@ -580,7 +706,8 @@ function DebugModal({ sessionId, onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -8,8 +8,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 8888;
   backdrop-filter: blur(4px);
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .debug-modal {
@@ -477,6 +479,105 @@
   background: #0a1f0a;
 }
 
+/* Validation Content */
+.validation-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.validation-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.validator-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #60a5fa;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.validation-status {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.validation-status.passed {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+  border: 1px solid #34d399;
+}
+
+.validation-status.failed {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  border: 1px solid #f87171;
+}
+
+.validation-reason {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid #fbbf24;
+  border-radius: 4px;
+}
+
+.validation-note {
+  font-size: 0.85rem;
+  color: #999;
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+/* Sub-Cascade Content */
+.sub-cascade-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(167, 139, 250, 0.05);
+  border: 1px dashed #a78bfa;
+  border-radius: 6px;
+}
+
+.sub-cascade-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #a78bfa;
+}
+
+.sub-cascade-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #a78bfa;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.sub-cascade-session {
+  font-size: 0.75rem;
+  color: #666;
+  font-family: 'Monaco', 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+}
+
+.sub-cascade-note {
+  font-size: 0.85rem;
+  color: #999;
+  font-style: italic;
+}
+
 /* Syntax highlighter overrides */
 .markdown-content pre > div {
   margin: 0 !important;
@@ -569,4 +670,13 @@
 
 .debug-modal-body::-webkit-scrollbar-thumb:hover {
   background: #444;
+}
+
+/* Mermaid section in debug modal */
+.debug-mermaid-section {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: #121212;
+  border: 2px solid #2a2a2a;
+  border-radius: 12px;
 }

@@ -755,6 +755,12 @@ def get_session_detail(session_id):
                     if line.strip():
                         entries.append(json.loads(line))
 
+            # CRITICAL: Sort entries by timestamp for chronological display
+            # Entries are written in the order log_echo is called, but with delayed
+            # cost tracking, agent messages may be written 5s after they actually occurred.
+            # Always sort by the timestamp field to get true chronological order.
+            entries.sort(key=lambda e: e.get('timestamp', 0))
+
             return jsonify({
                 'session_id': session_id,
                 'entries': entries,
@@ -843,6 +849,81 @@ def get_graph(session_id):
         return jsonify({'error': 'Graph not found'}), 404
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mermaid/<session_id>', methods=['GET'])
+def get_mermaid_graph(session_id):
+    """Get Mermaid graph content for a session"""
+    try:
+        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+
+        if not os.path.exists(mermaid_path):
+            return jsonify({'error': 'Mermaid graph not found'}), 404
+
+        # Read mermaid content
+        with open(mermaid_path) as f:
+            mermaid_content = f.read()
+
+        # Get session metadata for overlay
+        conn = get_db_connection()
+
+        try:
+            metadata_query = """
+            SELECT
+                cascade_id,
+                MIN(timestamp) as start_time,
+                MAX(timestamp) as end_time,
+                MAX(timestamp) - MIN(timestamp) as duration_seconds
+            FROM echoes
+            WHERE session_id = ?
+            GROUP BY cascade_id
+            """
+            result = conn.execute(metadata_query, [session_id]).fetchone()
+
+            if result:
+                cascade_id, start_time, end_time, duration = result
+
+                # Find cascade file
+                cascade_file = find_cascade_file(cascade_id)
+                filename = os.path.basename(cascade_file) if cascade_file else 'unknown.json'
+
+                metadata = {
+                    'cascade_id': cascade_id,
+                    'cascade_file': filename,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration_seconds': float(duration) if duration else 0.0
+                }
+            else:
+                metadata = {
+                    'cascade_id': 'unknown',
+                    'cascade_file': 'unknown.json',
+                    'start_time': None,
+                    'end_time': None,
+                    'duration_seconds': 0.0
+                }
+        except Exception as e:
+            print(f"Error getting metadata: {e}")
+            metadata = {
+                'cascade_id': 'unknown',
+                'cascade_file': 'unknown.json',
+                'start_time': None,
+                'end_time': None,
+                'duration_seconds': 0.0
+            }
+        finally:
+            conn.close()
+
+        return jsonify({
+            'session_id': session_id,
+            'mermaid': mermaid_content,
+            'metadata': metadata
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 

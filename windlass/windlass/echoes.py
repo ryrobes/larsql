@@ -39,8 +39,8 @@ class EchoLogger:
         self.flush_interval = 1.0  # Flush every 1 second for real-time UI
         self.last_flush_time = time.time()
 
-        # JSONL file handles (one per session)
-        self.jsonl_files = {}
+        # NOTE: JSONL files are now opened/closed immediately on each write
+        # No persistent file handles to prevent file descriptor leaks
 
     def log_echo(
         self,
@@ -184,19 +184,22 @@ class EchoLogger:
             self.last_flush_time = current_time
 
     def _write_jsonl(self, session_id: str, entry: Dict):
-        """Append entry to session-specific JSONL file."""
-        # Lazy-open JSONL file for this session
-        if session_id not in self.jsonl_files:
-            filepath = os.path.join(self.jsonl_dir, f"{session_id}.jsonl")
-            self.jsonl_files[session_id] = open(filepath, "a", encoding="utf-8")
+        """
+        Append entry to session-specific JSONL file.
 
-        file_handle = self.jsonl_files[session_id]
+        Uses a simple open/write/close pattern to prevent file handle leaks.
+        This is slightly less efficient than keeping files open, but much safer.
+        """
+        filepath = os.path.join(self.jsonl_dir, f"{session_id}.jsonl")
 
         # Write JSON line
         # Use default=str to handle any non-serializable objects gracefully
         json_line = json.dumps(entry, default=str, ensure_ascii=False)
-        file_handle.write(json_line + "\n")
-        file_handle.flush()  # Ensure immediate write
+
+        # Open, write, close immediately (no persistent handles)
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write(json_line + "\n")
+            # File auto-flushes and closes when exiting 'with' block
 
     def flush(self):
         """Flush buffered entries to Parquet."""
@@ -223,14 +226,12 @@ class EchoLogger:
         self.buffer = []
 
     def close(self):
-        """Close all open JSONL files and flush Parquet buffer."""
+        """Flush Parquet buffer and clean up resources."""
         # Flush remaining Parquet entries
         self.flush()
 
-        # Close all JSONL files
-        for file_handle in self.jsonl_files.values():
-            file_handle.close()
-        self.jsonl_files = {}
+        # NOTE: No JSONL files to close - we use context managers (with statement)
+        # that auto-close on each write
 
     def __del__(self):
         """Ensure cleanup on garbage collection."""
