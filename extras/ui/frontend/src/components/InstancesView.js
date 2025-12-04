@@ -507,9 +507,14 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
     <div className="instances-container">
       <header className="app-header">
         <div className="header-left">
-          <button onClick={onBack} className="back-button">
-            <Icon icon="mdi:arrow-left" width="18" />
-          </button>
+          <img
+            src="/windlass-transparent-square.png"
+            alt="Windlass"
+            className="brand-logo"
+            onClick={onBack}
+            style={{ cursor: 'pointer' }}
+            title="Back to cascades"
+          />
           <span className="cascade-title">{cascadeId}</span>
         </div>
         <div className="header-center">

@@ -195,6 +195,46 @@ def get_cascade_definitions():
                     except Exception as e:
                         print(f"[ERROR] Phase metrics query failed: {e}")
 
+                    # Get latest session_id for this cascade to find mermaid diagram
+                    try:
+                        latest_session_query = """
+                        SELECT session_id, MAX(timestamp) as latest_time
+                        FROM logs
+                        WHERE cascade_id = ? AND (parent_session_id IS NULL OR parent_session_id = '')
+                        GROUP BY session_id
+                        ORDER BY latest_time DESC
+                        LIMIT 1
+                        """
+                        latest_result = conn.execute(latest_session_query, [cascade_id]).fetchone()
+
+                        if latest_result:
+                            latest_session_id = latest_result[0]
+                            all_cascades[cascade_id]['latest_session_id'] = latest_session_id
+
+                            # Check for mermaid and graph files
+                            mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
+                            graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
+
+                            all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
+                            all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
+
+                            # Load graph JSON for complexity calculation
+                            if os.path.exists(graph_json_path):
+                                try:
+                                    with open(graph_json_path) as gf:
+                                        graph_data = json.load(gf)
+                                        summary = graph_data.get('summary', {})
+                                        all_cascades[cascade_id]['graph_complexity'] = {
+                                            'total_nodes': summary.get('total_nodes', 0),
+                                            'total_phases': summary.get('total_phases', 0),
+                                            'has_soundings': summary.get('has_soundings', False),
+                                            'has_sub_cascades': summary.get('has_sub_cascades', False),
+                                        }
+                                except:
+                                    all_cascades[cascade_id]['graph_complexity'] = None
+                    except Exception as e:
+                        print(f"[ERROR] Failed to get latest session/graph: {e}")
+
         except Exception as e:
             print(f"No log data available: {e}")
 
@@ -707,6 +747,29 @@ def get_cascade_instances(cascade_id):
 
         conn.close()
         return jsonify(parents)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mermaid/<session_id>', methods=['GET'])
+def get_mermaid(session_id):
+    """Get mermaid diagram content for a session."""
+    try:
+        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+
+        if not os.path.exists(mermaid_path):
+            return jsonify({'error': 'Mermaid file not found'}), 404
+
+        with open(mermaid_path, 'r') as f:
+            mermaid_content = f.read()
+
+        return jsonify({
+            'session_id': session_id,
+            'mermaid': mermaid_content
+        })
 
     except Exception as e:
         import traceback

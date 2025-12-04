@@ -1,15 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import PhaseBar from './PhaseBar';
+import CascadeTile, { calculateTileDimensions } from './CascadeTile';
 import './CascadesView.css';
 
 function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [layout, setLayout] = useState({ boxes: [], w: 0, h: 0, fill: 0 });
 
   useEffect(() => {
     fetchCascades();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
+
+  // Recalculate layout on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (cascades.length > 0) {
+        console.log('[RESIZE] Recalculating layout for new viewport width');
+        calculateLayout(cascades);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cascades]);
 
   // Add polling for running cascades AND finalizing sessions (every 2 seconds)
   useEffect(() => {
@@ -26,6 +42,7 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     }, 2000); // Poll every 2 seconds when cascades are active
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningCascades, finalizingSessions]);
 
   const fetchCascades = async () => {
@@ -44,6 +61,7 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
       // Ensure data is an array
       if (Array.isArray(data)) {
         setCascades(data);
+        calculateLayout(data);
       } else {
         console.error('API returned non-array:', data);
         setCascades([]);
@@ -57,6 +75,151 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     }
   };
 
+  const calculateLayout = async (cascadesList) => {
+    if (!cascadesList || cascadesList.length === 0) {
+      console.log('[LAYOUT] No cascades to layout');
+      setLayout({ boxes: [], w: 0, h: 0, fill: 0 });
+      return;
+    }
+
+    // TWO-PASS APPROACH for accurate dimensions:
+    // Pass 1: Measure actual mermaid diagram sizes (only for cascades with diagrams)
+    // Pass 2: Use those real sizes for potpack
+
+    const boxes = await Promise.all(cascadesList.map(async (cascade) => {
+      let mermaidWidth, mermaidHeight;
+      const hasRuns = cascade.metrics?.run_count > 0;
+
+      // Try to get actual mermaid dimensions
+      if (hasRuns && cascade.has_mermaid && cascade.latest_session_id) {
+        try {
+          const response = await fetch(`http://localhost:5001/api/mermaid/${cascade.latest_session_id}`);
+          if (response.ok) {
+            const data = await response.json();
+            // Render mermaid to get actual SVG dimensions
+            const mermaid = await import('mermaid');
+            const id = `measure-${cascade.cascade_id}-${Date.now()}`;
+            const { svg } = await mermaid.default.render(id, data.mermaid);
+
+            // Parse SVG to get viewBox or width/height
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+            const svgEl = svgDoc.querySelector('svg');
+
+            if (svgEl) {
+              const viewBox = svgEl.getAttribute('viewBox');
+              if (viewBox) {
+                const [, , w, h] = viewBox.split(' ').map(Number);
+                mermaidWidth = w;
+                mermaidHeight = h;
+              } else {
+                mermaidWidth = parseFloat(svgEl.getAttribute('width')) || 400;
+                mermaidHeight = parseFloat(svgEl.getAttribute('height')) || 300;
+              }
+
+              // Apply 0.5 scale factor
+              mermaidWidth *= 0.5;
+              mermaidHeight *= 0.5;
+
+              console.log(`[MEASURE] ${cascade.cascade_id}: actual mermaid=${mermaidWidth}x${mermaidHeight}`);
+            }
+          }
+        } catch (err) {
+          console.warn(`[MEASURE] Failed to measure ${cascade.cascade_id}:`, err.message);
+        }
+      }
+
+      // Fallback to estimation if measurement failed
+      if (!mermaidWidth || !mermaidHeight) {
+        const dims = calculateTileDimensions(cascade);
+        // Extract mermaid dimensions from box dimensions
+        // NEW LAYOUT: Title top, Mermaid left, Metrics right (120px)
+        const TITLE_HEIGHT = 40;
+        const METRICS_WIDTH = 120;
+        const PADDING = 20;
+        mermaidWidth = dims.w - METRICS_WIDTH - (PADDING * 2) - 12;
+        mermaidHeight = dims.h - TITLE_HEIGHT - (PADDING * 2) - 12;
+      }
+
+      // Calculate box dimensions with new layout
+      // Layout: [          TITLE (full width)         ]
+      //         [ MERMAID (flexible) | METRICS (120px) ]
+      const TITLE_HEIGHT = 40;
+      const METRICS_WIDTH = 120;
+      const PADDING = 20;
+      const GAP = 12;
+
+      const boxWidth = PADDING + mermaidWidth + METRICS_WIDTH + PADDING;
+      const boxHeight = PADDING + TITLE_HEIGHT + mermaidHeight + PADDING;
+
+      return {
+        w: boxWidth + GAP,
+        h: boxHeight + GAP,
+        cascade_id: cascade.cascade_id,
+        cascade: cascade
+      };
+    }));
+
+    const firstThreeBefore = boxes.slice(0, 3).map(b => ({
+      id: b.cascade_id,
+      w: b.w,
+      h: b.h
+    }));
+    console.log('[LAYOUT] Boxes before packing (first 3):', JSON.stringify(firstThreeBefore));
+
+    // Get viewport width constraint (with padding + extra margin for comfort)
+    const viewportWidth = window.innerWidth - 40; // Just 20px margin on each side
+    console.log('[LAYOUT] Viewport width:', viewportWidth);
+
+    // Simple width-constrained bin packing algorithm
+    // Sort by height descending (taller boxes first)
+    boxes.sort((a, b) => b.h - a.h);
+
+    let currentX = 0;
+    let currentY = 0;
+    let rowHeight = 0;
+    let maxWidth = 0;
+
+    for (const box of boxes) {
+      // Check if box fits in current row
+      if (currentX + box.w > viewportWidth && currentX > 0) {
+        // Move to next row
+        currentX = 0;
+        currentY += rowHeight;
+        rowHeight = 0;
+      }
+
+      // Place box
+      box.x = currentX;
+      box.y = currentY;
+
+      // Update trackers
+      currentX += box.w;
+      rowHeight = Math.max(rowHeight, box.h);
+      maxWidth = Math.max(maxWidth, currentX);
+    }
+
+    const totalHeight = currentY + rowHeight;
+
+    const firstThreeAfter = boxes.slice(0, 3).map(b => ({
+      id: b.cascade_id,
+      x: b.x,
+      y: b.y,
+      w: b.w,
+      h: b.h
+    }));
+    console.log('[PACKING] Boxes after packing (first 3):', JSON.stringify(firstThreeAfter));
+    console.log('[PACKING] Container:', `${maxWidth}px × ${totalHeight}px, boxes: ${boxes.length}`);
+
+    // Store layout with positions
+    setLayout({
+      boxes: boxes,
+      w: maxWidth,
+      h: totalHeight,
+      fill: boxes.reduce((sum, b) => sum + (b.w * b.h), 0) / (maxWidth * totalHeight)
+    });
+  };
+
   const formatCost = (cost) => {
     if (!cost || cost === 0) return '$0';
     if (cost < 0.001) return `$${cost.toFixed(6)}`;
@@ -64,14 +227,6 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     if (cost < 0.1) return `$${cost.toFixed(4)}`;
     if (cost < 1) return `$${cost.toFixed(3)}`;
     return `$${cost.toFixed(2)}`;
-  };
-
-  const formatDuration = (seconds) => {
-    if (!seconds) return '0s';
-    if (seconds < 60) return `${seconds.toFixed(1)}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}m ${secs}s`;
   };
 
   if (loading) {
@@ -100,7 +255,7 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
   const totalCost = cascades.reduce((sum, c) => sum + (c.metrics?.total_cost || 0), 0);
 
   return (
-    <div className="cascades-container">
+    <>
       <header className="app-header">
         <div className="header-brand">
           <img
@@ -121,79 +276,75 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
         </div>
       </header>
 
-      <div className="cascades-list">
-        {cascades.map((cascade) => {
-          const hasRuns = cascade.metrics?.run_count > 0;
-          const isRunning = runningCascades && runningCascades.has(cascade.cascade_id);
+      <div className="cascades-container">
+        <div className="cascades-grid-wrapper">
+        <div className="cascades-grid" style={{
+          width: `${layout.w || 0}px`,
+          height: `${layout.h || 0}px`,
+        }}>
+        {(() => {
+          console.log('[RENDER] Rendering tiles, layout.boxes.length:', layout.boxes?.length);
 
-          return (
-            <div
-              key={cascade.cascade_id}
-              className={`cascade-row ${!hasRuns ? 'no-runs' : ''} ${isRunning ? 'running' : ''}`}
-            >
-            {/* Left: Cascade Info */}
-            <div
-              className="cascade-info"
-              onClick={() => onSelectCascade(cascade.cascade_id, cascade)}
-            >
-              <h2 className="cascade-name">
-                {cascade.cascade_id || 'Unknown'}
-                {isRunning && <span className="running-indicator">Running...</span>}
-              </h2>
-              {cascade.description && (
-                <p className="cascade-description">{cascade.description}</p>
-              )}
-            </div>
-
-            {/* Middle: Phase Bars */}
-            <div className="phase-bars-container">
-              {(() => {
-                // Calculate max cost for relative bar widths
-                const maxCost = Math.max(...(cascade.phases || []).map(p => p.avg_cost || 0), 0.01);
-
-                return (cascade.phases || []).map((phase, idx) => (
-                  <PhaseBar
-                    key={idx}
-                    phase={phase}
-                    maxCost={maxCost}
-                    onClick={() => onSelectCascade(cascade.cascade_id, cascade)}
-                  />
-                ));
-              })()}
-            </div>
-
-            {/* Right: Metrics */}
-            <div className="cascade-metrics">
-              <div className="metric-group">
-                <div className="metric">
-                  <span className="metric-value">{cascade.metrics?.run_count || 0}</span>
-                  <span className="metric-label">runs</span>
-                </div>
-                <div className="metric">
-                  <span className="metric-value">
-                    {formatDuration(cascade.metrics?.avg_duration_seconds || 0)}
-                  </span>
-                  <span className="metric-label">avg time</span>
-                </div>
+          if (!layout.boxes || layout.boxes.length === 0) {
+            return (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+                No layout calculated yet (boxes: {layout.boxes ? layout.boxes.length : 'null'})
               </div>
+            );
+          }
 
-              <div className="metric-cost">
-                <span className="cost-label">Total Cost</span>
-                <span className="cost-value">{formatCost(cascade.metrics?.total_cost || 0)}</span>
+          return layout.boxes.map((box, index) => {
+            const cascade = box.cascade;
+            const isRunning = runningCascades && runningCascades.has(cascade.cascade_id);
+
+            // Safety check for undefined x/y
+            if (box.x === undefined || box.y === undefined) {
+              console.error('[RENDER] Box missing coordinates:', {
+                index,
+                cascade_id: cascade.cascade_id,
+                x: box.x,
+                y: box.y,
+                w: box.w,
+                h: box.h
+              });
+              return null;
+            }
+
+            if (index < 3) {
+              console.log(`[RENDER] Tile ${index}: id=${cascade.cascade_id}, pos=(${box.x},${box.y}), size=${box.w}×${box.h}`);
+            }
+
+            return (
+              <div
+                key={cascade.cascade_id}
+                style={{
+                  position: 'absolute',
+                  left: `${box.x}px`,
+                  top: `${box.y}px`,
+                  width: `${box.w}px`,
+                  height: `${box.h}px`,
+                }}
+              >
+                <CascadeTile
+                  cascade={cascade}
+                  onClick={() => onSelectCascade(cascade.cascade_id, cascade)}
+                  isRunning={isRunning}
+                />
               </div>
-            </div>
-          </div>
-          );
-        })}
-      </div>
-
-      {cascades.length === 0 && (
-        <div className="empty-state">
-          <p>No cascades found</p>
-          <p className="empty-hint">Run a cascade to see it appear here</p>
+            );
+          });
+        })()}
         </div>
-      )}
-    </div>
+        </div>
+
+        {cascades.length === 0 && (
+          <div className="empty-state">
+            <p>No cascades found</p>
+            <p className="empty-hint">Run a cascade to see it appear here</p>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

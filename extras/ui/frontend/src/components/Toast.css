@@ -3,7 +3,7 @@
   position: relative;
   min-width: 320px;
   max-width: 500px;
-  background: #121212;
+  background: #16202A;
   border: 2px solid;
   border-radius: 12px;
   padding: 1rem 1.25rem;
@@ -28,39 +28,39 @@
 
 /* Toast types with bright pastels */
 .toast-success {
-  border-color: #34d399;  /* Green pastel */
+  border-color: #2DD4BF;
 }
 
 .toast-success .toast-icon {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.1);
+  color: #2DD4BF;
+  background: rgba(45, 212, 191, 0.1);
 }
 
 .toast-error {
-  border-color: #f87171;  /* Red pastel */
+  border-color: #CF6679;
 }
 
 .toast-error .toast-icon {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: #CF6679;
+  background: rgba(207, 102, 121, 0.1);
 }
 
 .toast-info {
-  border-color: #60a5fa;  /* Blue pastel */
+  border-color: #2DD4BF;
 }
 
 .toast-info .toast-icon {
-  color: #60a5fa;
-  background: rgba(96, 165, 250, 0.1);
+  color: #2DD4BF;
+  background: rgba(45, 212, 191, 0.1);
 }
 
 .toast-warning {
-  border-color: #fbbf24;  /* Yellow pastel */
+  border-color: #D9A553;
 }
 
 .toast-warning .toast-icon {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.1);
+  color: #D9A553;
+  background: rgba(217, 165, 83, 0.1);
 }
 
 /* Icon */
@@ -82,7 +82,7 @@
 }
 
 .toast-message {
-  color: #e0e0e0;
+  color: #F0F4F8;
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -91,7 +91,7 @@
 .toast-close {
   background: transparent;
   border: none;
-  color: #666;
+  color: #9AA5B1;
   font-size: 1.8rem;
   line-height: 1;
   cursor: pointer;
@@ -106,7 +106,7 @@
 }
 
 .toast-close:hover {
-  color: #e0e0e0;
+  color: #F0F4F8;
 }
 
 /* Hover effect */

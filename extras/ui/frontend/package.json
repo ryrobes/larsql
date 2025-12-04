@@ -6,6 +6,7 @@
     "@iconify/react": "^6.0.2",
     "axios": "^1.6.2",
     "mermaid": "^10.6.1",
+    "potpack": "^2.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",

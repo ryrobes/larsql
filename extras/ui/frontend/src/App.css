@@ -6,8 +6,8 @@
 }
 
 body {
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: #0B1219;
+  color: #F0F4F8;
   font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -19,7 +19,7 @@ code, pre, .monospace {
 
 .app {
   min-height: 100vh;
-  background: #0a0a0a;
+  background: #0B1219;
 }
 
 /* Scrollbar styling */
@@ -29,22 +29,22 @@ code, pre, .monospace {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: #0B1219;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: #2C3B4B;
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: #2DD4BF;
 }
 
 /* Selection color */
 ::selection {
-  background: #a78bfa;  /* Purple pastel */
-  color: #0a0a0a;
+  background: #2DD4BF;  /* Glacial Ice */
+  color: #0B1219;
 }
 
 /* Toast container */
