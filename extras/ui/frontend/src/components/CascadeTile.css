@@ -207,18 +207,38 @@
   color: #2DD4BF; /* Glacial Ice */
 }
 
-.metric-item.cost,
-.metric-item.cost-per-run {
-  color: #4ADE80; /* Aurora Green */
+/* Cost Display - Fixed bottom right corner */
+.tile-cost-display {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
 }
 
-.metric-item.cost .iconify {
-  color: #4ADE80; /* Aurora Green */
+.cost-total {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2DD4BF; /* Glacial Ice */
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 0, 0, 0.7),
+    0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
-.cost-per-run {
-  font-size: 0.7rem;
-  opacity: 0.8;
+.cost-avg {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2DD4BF; /* Glacial Ice */
+  opacity: 0.6;
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 0, 0, 0.7),
+    0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 /* Responsive adjustments */

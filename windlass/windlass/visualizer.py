@@ -490,27 +490,30 @@ def generate_mermaid_string(echo: Echo) -> str:
 
     lines = ["graph TD"]
 
-    # Style definitions
+    # Style definitions - Midnight Fjord Dark Theme
+    # Background: #0B1219 (Midnight Fjord), #16202A (Abyssal Slate)
+    # Accents: #2DD4BF (Glacial Ice), #D9A553 (Compass Brass)
+    # Text: #F0F4F8 (Frosted White), #9AA5B1 (Mist Gray)
     lines.extend([
-        "    %% Node Styles",
-        "    classDef cascade fill:#f8f9fa,stroke:#343a40,stroke-width:2px,color:#212529;",
-        "    classDef phase fill:#e7f5ff,stroke:#1c7ed6,stroke-width:2px,color:#1864ab;",
-        "    classDef phase_active fill:#d0ebff,stroke:#1971c2,stroke-width:3px,color:#1864ab;",
-        "    classDef system fill:#e1f5fe,stroke:#0288d1,color:#01579b;",
-        "    classDef user fill:#fff9c4,stroke:#f9a825,color:#f57f17;",
-        "    classDef tool fill:#ffccbc,stroke:#e64a19,color:#bf360c;",
-        "    classDef soundings_group fill:#fff3bf,stroke:#fab005,stroke-width:2px,color:#e67700;",
-        "    classDef attempt fill:#fff9db,stroke:#fab005,stroke-dasharray:3 3,color:#e67700;",
-        "    classDef winner fill:#d3f9d8,stroke:#37b24d,stroke-width:4px,color:#2b8a3e;",
-        "    classDef loser fill:#f1f3f5,stroke:#adb5bd,stroke-dasharray:5 5,color:#868e96;",
-        "    classDef reforge_group fill:#fff4e6,stroke:#fd7e14,stroke-width:2px,color:#d9480f;",
-        "    classDef reforge_step fill:#ffe8cc,stroke:#fd7e14,color:#d9480f;",
-        "    classDef evaluator fill:#f3f0ff,stroke:#7950f2,stroke-width:2px,color:#6741d9;",
-        "    classDef agent fill:#d3f9d8,stroke:#40c057,color:#2f9e44;",
-        "    classDef sub_cascade fill:#f8f0fc,stroke:#be4bdb,stroke-width:2px,color:#9c36b5;",
-        "    classDef ward_pre fill:#e3fafc,stroke:#15aabf,color:#0c8599;",
-        "    classDef ward_post fill:#fff5f5,stroke:#fa5252,color:#e03131;",
-        "    classDef ward_fail fill:#ffe3e3,stroke:#fa5252,stroke-width:3px,color:#c92a2a;",
+        "    %% Node Styles - Midnight Fjord Dark Theme",
+        "    classDef cascade fill:#16202A,stroke:#2C3B4B,stroke-width:2px,color:#F0F4F8;",
+        "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
+        "    classDef phase_active fill:#1a2a3a,stroke:#2DD4BF,stroke-width:3px,color:#F0F4F8;",
+        "    classDef system fill:#16202A,stroke:#60a5fa,color:#F0F4F8;",
+        "    classDef user fill:#16202A,stroke:#D9A553,color:#F0F4F8;",
+        "    classDef tool fill:#16202A,stroke:#f472b6,color:#F0F4F8;",
+        "    classDef soundings_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef attempt fill:#16202A,stroke:#D9A553,stroke-dasharray:3 3,color:#F0F4F8;",
+        "    classDef winner fill:#16202A,stroke:#F0F4F8,stroke-width:4px,color:#F0F4F8;",
+        "    classDef loser fill:#16202A,stroke:#9AA5B1,stroke-dasharray:5 5,color:#9AA5B1;",
+        "    classDef reforge_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef reforge_step fill:#16202A,stroke:#D9A553,color:#F0F4F8;",
+        "    classDef evaluator fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
+        "    classDef agent fill:#16202A,stroke:#2DD4BF,color:#F0F4F8;",
+        "    classDef sub_cascade fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
+        "    classDef ward_pre fill:#16202A,stroke:#2DD4BF,color:#F0F4F8;",
+        "    classDef ward_post fill:#16202A,stroke:#CF6679,color:#F0F4F8;",
+        "    classDef ward_fail fill:#16202A,stroke:#CF6679,stroke-width:3px,color:#CF6679;",
         "",
     ])
 
@@ -680,11 +683,11 @@ def generate_mermaid_string(echo: Echo) -> str:
     def get_phase_status(phase_name: str) -> str:
         """Get status icon for a phase."""
         if phase_name in completed_phases:
-            return "✓"  # Completed
+            return "+"  # Completed
         elif phase_name in active_phases:
-            return "◐"  # In progress (has activity but not in lineage yet)
+            return ">"  # In progress (has activity but not in lineage yet)
         else:
-            return "○"  # Pending
+            return "-"  # Pending
 
     # Collect cascade-level soundings entries
     cascade_soundings_start = None
@@ -710,7 +713,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         factor = cs_meta.get("factor", len(cascade_sounding_attempts))
         cs_id = "n_cascade_soundings"
 
-        lines.append(f'        subgraph {cs_id}["🔱 Cascade Soundings ({factor} executions)"]')
+        lines.append(f'        subgraph {cs_id}["Cascade Soundings ({factor} executions)"]')
         lines.append("        direction TB")
 
         # Render attempts as boxes with sub-session links
@@ -748,9 +751,9 @@ def generate_mermaid_string(echo: Echo) -> str:
         eval_id = f"{cs_id}_eval"
         if cascade_evaluator:
             eval_preview = sanitize_label(cascade_evaluator.get("content", ""), 35)
-            lines.append(f'            {eval_id}{{"⚖️ {eval_preview}"}}')
+            lines.append(f'            {eval_id}{{"Eval: {eval_preview}"}}')
         else:
-            lines.append(f'            {eval_id}{{"⚖️ Evaluate"}}')
+            lines.append(f'            {eval_id}{{"Evaluate"}}')
         lines.append(f"            class {eval_id} evaluator")
 
         # Connect attempts to evaluator
@@ -760,7 +763,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         # Add winner output
         if winner_index is not None:
             winner_out = f"{cs_id}_winner"
-            lines.append(f'            {winner_out}(["🏆 Cascade #{winner_index+1} selected"])')
+            lines.append(f'            {winner_out}(["* Cascade #{winner_index+1} selected"])')
             lines.append(f"            class {winner_out} winner")
             lines.append(f"            {eval_id} ==> {winner_out}")
             cascade_soundings_node_id = winner_out
@@ -791,7 +794,7 @@ def generate_mermaid_string(echo: Echo) -> str:
 
         if has_soundings and phase_name in soundings_by_phase:
             # Render soundings group
-            lines.append(f'        subgraph {phase_id}["{status_icon} 🔱 {sanitize_label(phase_name, 30)}"]')
+            lines.append(f'        subgraph {phase_id}["{status_icon} {sanitize_label(phase_name, 30)}"]')
             lines.append("        direction TB")
 
             # Get sounding attempts for this phase
@@ -845,9 +848,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                 eval_id = f"{phase_id}_eval"
                 if eval_content:
                     eval_preview = sanitize_label(eval_content, 35)
-                    lines.append(f'            {eval_id}{{"⚖️ {eval_preview}"}}')
+                    lines.append(f'            {eval_id}{{"Eval: {eval_preview}"}}')
                 else:
-                    lines.append(f'            {eval_id}{{"⚖️ Evaluate"}}')
+                    lines.append(f'            {eval_id}{{"Evaluate"}}')
                 lines.append(f"            class {eval_id} evaluator")
 
                 # Connect attempts to evaluator
@@ -861,9 +864,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                     winner_content = attempts_info.get(winner_index, {}).get("content", "")
                     if winner_content:
                         winner_preview = sanitize_label(winner_content, 30)
-                        lines.append(f'            {winner_out}(["🏆 #{winner_index+1}: {winner_preview}"])')
+                        lines.append(f'            {winner_out}(["* #{winner_index+1}: {winner_preview}"])')
                     else:
-                        lines.append(f'            {winner_out}(["🏆 Winner #{winner_index+1}"])')
+                        lines.append(f'            {winner_out}(["* Winner #{winner_index+1}"])')
                     lines.append(f"            class {winner_out} winner")
                     lines.append(f"            {eval_id} ==> {winner_out}")
                     last_node_id = winner_out
@@ -882,7 +885,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                         if rf_step_entry or rf_attempts or rf_evaluator or rf_winner:
                             # Create reforge step subgraph
                             rf_step_id = f"{phase_id}_rf{step_num}"
-                            lines.append(f'            subgraph {rf_step_id}["🔨 Reforge Step {step_num}"]')
+                            lines.append(f'            subgraph {rf_step_id}["Reforge Step {step_num}"]')
                             lines.append("            direction TB")
 
                             rf_attempt_ids = []
@@ -923,9 +926,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                             if rf_evaluator:
                                 rf_eval_content = rf_evaluator.get("content", "")
                                 rf_eval_preview = sanitize_label(rf_eval_content, 30)
-                                lines.append(f'                {rf_eval_id}{{"⚖️ {rf_eval_preview}"}}')
+                                lines.append(f'                {rf_eval_id}{{"Eval: {rf_eval_preview}"}}')
                             else:
-                                lines.append(f'                {rf_eval_id}{{"⚖️ Evaluate"}}')
+                                lines.append(f'                {rf_eval_id}{{"Evaluate"}}')
                             lines.append(f"                class {rf_eval_id} evaluator")
 
                             # Connect refinement attempts to evaluator
@@ -935,7 +938,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                             # Add step winner
                             if rf_winner_index is not None:
                                 rf_step_winner = f"{rf_step_id}_winner"
-                                lines.append(f'                {rf_step_winner}(["🏆 R{rf_winner_index+1}"])')
+                                lines.append(f'                {rf_step_winner}(["* R{rf_winner_index+1}"])')
                                 lines.append(f"                class {rf_step_winner} winner")
                                 lines.append(f"                {rf_eval_id} ==> {rf_step_winner}")
 
@@ -951,7 +954,7 @@ def generate_mermaid_string(echo: Echo) -> str:
 
         elif phase_wards["pre"] or phase_wards["post"]:
             # Phase with wards - render as subgraph with checkpoints
-            lines.append(f'        subgraph {phase_id}["{status_icon} 🛡️ {sanitize_label(phase_name, 30)}"]')
+            lines.append(f'        subgraph {phase_id}["{status_icon} {sanitize_label(phase_name, 30)}"]')
             lines.append("        direction TB")
 
             internal_nodes = []
@@ -966,9 +969,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                 ward_id = f"{phase_id}_pre{j}"
                 internal_nodes.append(ward_id)
 
-                mode_icon = "🛡️" if mode == "blocking" else ("🔄" if mode == "retry" else "ℹ️")
-                status_icon = "✓" if valid else "✗"
-                label = f"{mode_icon} {validator} {status_icon}"
+                mode_label = "[B]" if mode == "blocking" else ("[R]" if mode == "retry" else "[A]")
+                status_mark = "+" if valid else "x"
+                label = f"{mode_label} {validator} {status_mark}"
 
                 lines.append(f'            {ward_id}(["{sanitize_label(label, 30)}"])')
                 style = "ward_pre" if valid else "ward_fail"
@@ -990,9 +993,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                 ward_id = f"{phase_id}_post{j}"
                 internal_nodes.append(ward_id)
 
-                mode_icon = "🛡️" if mode == "blocking" else ("🔄" if mode == "retry" else "ℹ️")
-                status_icon = "✓" if valid else "✗"
-                label = f"{mode_icon} {validator} {status_icon}"
+                mode_label = "[B]" if mode == "blocking" else ("[R]" if mode == "retry" else "[A]")
+                status_mark = "+" if valid else "x"
+                label = f"{mode_label} {validator} {status_mark}"
 
                 lines.append(f'            {ward_id}(["{sanitize_label(label, 30)}"])')
                 style = "ward_post" if valid else "ward_fail"
@@ -1090,9 +1093,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                         tools_preview = ", ".join(selected_tackle[:3])
                         if len(selected_tackle) > 3:
                             tools_preview += f" +{len(selected_tackle) - 3}"
-                        qm_label = f"🎯 {tools_preview}"
+                        qm_label = f"Tackle: {tools_preview}"
                     else:
-                        qm_label = "🎯 No tools"
+                        qm_label = "No tools"
                     lines.append(f'            {qm_id}{{"{sanitize_label(qm_label, 35)}"}}')
                     lines.append(f"            class {qm_id} evaluator")
 
@@ -1117,38 +1120,38 @@ def generate_mermaid_string(echo: Echo) -> str:
                         preview = sanitize_label(msg_content, 30)
                         label = f"{icon}: {preview}" if preview else icon
                     elif msg_type in ("turn_output", "follow_up") or msg_role == "assistant":
-                        icon = "💬"
+                        icon = "OUT"
                         style = "agent"
                         preview = sanitize_label(msg_content, 35)
-                        label = f"{icon} {preview}"
+                        label = f"{icon}: {preview}"
                     elif msg_type == "tool_result":
-                        icon = "🔧"
+                        icon = "TOOL"
                         style = "tool"
                         preview = sanitize_label(msg_content, 25)
-                        label = f"{icon} {preview}" if preview else f"{icon} Tool"
+                        label = f"{icon}: {preview}" if preview else "Tool"
                     elif msg_type == "injection":
-                        icon = "⚡"
+                        icon = "INJ"
                         style = "user"
                         preview = sanitize_label(msg_content, 25)
-                        label = f"{icon} {preview}" if preview else f"{icon} Inject"
+                        label = f"{icon}: {preview}" if preview else "Inject"
                     elif msg_type in ("validation", "schema_validation"):
                         # Validation result - render as diamond decision node
                         msg_meta = extract_metadata(msg)
                         is_valid = msg_meta.get("valid", False)
                         validator = msg_meta.get("validator", "schema")
-                        icon = "✓" if is_valid else "✗"
+                        status_mark = "+" if is_valid else "x"
                         style = "winner" if is_valid else "ward_fail"
                         preview = sanitize_label(msg_content, 30)
-                        label = f"🛡️ {preview}"
+                        label = f"Valid {status_mark}: {preview}"
                         # Use diamond shape for validation
                         lines.append(f'            {msg_id}{{"{label}"}}')
                         lines.append(f"            class {msg_id} {style}")
                         continue  # Skip normal rendering below (msg_id already in all_node_ids)
                     elif msg_type == "validation_retry":
-                        icon = "🔄"
+                        icon = "RETRY"
                         style = "user"
                         preview = sanitize_label(msg_content, 30)
-                        label = f"{icon} Retry: {preview}" if preview else f"{icon} Retry"
+                        label = f"{icon}: {preview}" if preview else "Retry"
                     else:
                         icon = "•"
                         style = "phase"
@@ -1173,7 +1176,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                         if entry.get("parent_id") == sc_trace_id and entry.get("node_type") == "phase":
                             sc_phase_entries.append(entry)
 
-                    lines.append(f'            subgraph {sc_id}["📦 {sanitize_label(sc_name, 25)}"]')
+                    lines.append(f'            subgraph {sc_id}["Sub: {sanitize_label(sc_name, 25)}"]')
                     lines.append("            direction TB")
 
                     sc_phase_ids = []
@@ -1227,12 +1230,12 @@ def generate_mermaid_string(echo: Echo) -> str:
                                     preview = sanitize_label(msg_content, 20)
                                     label = f"{icon}: {preview}" if preview else icon
                                 elif msg_type in ("turn_output", "follow_up") or msg_role == "assistant":
-                                    icon = "💬"
+                                    icon = "OUT"
                                     style = "agent"
                                     preview = sanitize_label(msg_content, 25)
-                                    label = f"{icon} {preview}"
+                                    label = f"{icon}: {preview}"
                                 else:
-                                    icon = "•"
+                                    icon = "-"
                                     style = "phase"
                                     label = f"{icon} {msg_type}"
 
@@ -1341,14 +1344,14 @@ def generate_mermaid_from_config(config: Any, output_path: str) -> str:
     """
     lines = ["graph TD"]
 
-    # Styles
+    # Styles - Midnight Fjord Dark Theme
     lines.extend([
-        "    %% Static Structure Styles",
-        "    classDef cascade fill:#f8f9fa,stroke:#343a40,stroke-width:2px;",
-        "    classDef phase fill:#e7f5ff,stroke:#1c7ed6,stroke-width:2px;",
-        "    classDef soundings fill:#fff3bf,stroke:#fab005,stroke-width:2px;",
-        "    classDef reforge fill:#fff4e6,stroke:#fd7e14,stroke-width:2px;",
-        "    classDef sub_cascade fill:#f8f0fc,stroke:#be4bdb,stroke-width:2px;",
+        "    %% Static Structure Styles - Midnight Fjord Dark Theme",
+        "    classDef cascade fill:#16202A,stroke:#2C3B4B,stroke-width:2px,color:#F0F4F8;",
+        "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
+        "    classDef soundings fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef reforge fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef sub_cascade fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
         "",
     ])
 
@@ -1362,13 +1365,13 @@ def generate_mermaid_from_config(config: Any, output_path: str) -> str:
 
         # Determine phase decoration
         if phase.soundings and phase.soundings.factor > 1:
-            icon = "🔱"  # Soundings
+            icon = "[ToT]"  # Soundings / Tree of Thought
             style = "soundings"
             if phase.soundings.reforge:
-                icon = "🔱🔨"  # Soundings + Reforge
+                icon = "[ToT+R]"  # Soundings + Reforge
                 style = "reforge"
         elif phase.sub_cascades:
-            icon = "📦"  # Sub-cascade
+            icon = "[Sub]"  # Sub-cascade
             style = "sub_cascade"
         else:
             icon = ""

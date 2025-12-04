@@ -14,12 +14,17 @@ mermaid.initialize({
     primaryTextColor: '#F0F4F8',  // Frosted White
     primaryBorderColor: '#2DD4BF',
     lineColor: '#2C3B4B',         // Storm Cloud
-    secondaryColor: '#4ADE80',    // Aurora Green
-    tertiaryColor: '#D9A553',     // Compass Brass
+    secondaryColor: '#D9A553',    // Compass Brass
+    tertiaryColor: '#a78bfa',     // Purple
+    nodePadding: 12,              // Padding inside nodes
+    nodeTextColor: '#F0F4F8',     // Text color
   },
   flowchart: {
     useMaxWidth: false,
     htmlLabels: true,
+    padding: 16,                  // Padding around flowchart
+    nodeSpacing: 50,              // Space between nodes
+    rankSpacing: 50,              // Space between ranks
   }
 });
 
@@ -144,10 +149,15 @@ function CascadeTile({ cascade, onClick, isRunning }) {
     svgElement.style.background = 'transparent';
     svgElement.style.backgroundColor = 'transparent';
 
-    // Remove any background rect elements (mermaid sometimes adds these)
+    // Midnight Fjord color palette
+    const colors = {
+      cyan: '#2DD4BF',      // Glacial Ice - default stroke
+      text: '#F0F4F8'       // Frosted White
+    };
+
+    // Remove background rects (mermaid adds these)
     const backgroundRects = svgElement.querySelectorAll('rect[class*="background"], rect:first-child');
     backgroundRects.forEach(rect => {
-      // Check if it's a full-size background rect
       const width = parseFloat(rect.getAttribute('width'));
       const height = parseFloat(rect.getAttribute('height'));
       const x = parseFloat(rect.getAttribute('x') || 0);
@@ -161,41 +171,42 @@ function CascadeTile({ cascade, onClick, isRunning }) {
       }
     });
 
-    // Midnight Fjord color palette
-    const colors = {
-      purple: '#a78bfa',
-      cyan: '#2DD4BF',      // Glacial Ice
-      pink: '#f472b6',
-      text: '#F0F4F8'       // Frosted White
-    };
-
-    // Style shapes - transparent fill, colored strokes
+    // Make shape fills transparent but PRESERVE stroke colors from Mermaid classes
+    // This keeps semantic coloring (winner=green, loser=gray, error=red, etc.)
     const allShapes = svgElement.querySelectorAll('rect, circle, polygon, ellipse');
-    allShapes.forEach((shape, index) => {
+    allShapes.forEach((shape) => {
       // Skip if we already made it transparent (background rect)
       if (shape.getAttribute('fill') === 'transparent') return;
 
+      // Make fill transparent
       shape.setAttribute('fill', 'none');
       shape.setAttribute('fill-opacity', '0');
-      // Alternate purple and cyan strokes
-      const strokeColor = index % 2 === 0 ? colors.purple : colors.cyan;
-      shape.setAttribute('stroke', strokeColor);
-      shape.setAttribute('stroke-width', '2');
+
+      // Only set stroke if none exists (preserve Mermaid class colors)
+      if (!shape.getAttribute('stroke') || shape.getAttribute('stroke') === 'none') {
+        shape.setAttribute('stroke', colors.cyan);
+        shape.setAttribute('stroke-width', '2');
+      }
     });
 
-    // Style paths (arrows/lines) with cyan
+    // Style paths (arrows/lines) - preserve existing strokes or default to cyan
     const allPaths = svgElement.querySelectorAll('path');
     allPaths.forEach(path => {
-      path.setAttribute('stroke', colors.cyan);
       path.setAttribute('fill', 'none');
-      path.setAttribute('stroke-width', '2');
+      // Only override if no stroke set
+      if (!path.getAttribute('stroke') || path.getAttribute('stroke') === 'none') {
+        path.setAttribute('stroke', colors.cyan);
+        path.setAttribute('stroke-width', '2');
+      }
     });
 
-    // Style lines
+    // Style lines - preserve existing strokes
     const allLines = svgElement.querySelectorAll('line');
     allLines.forEach(line => {
-      line.setAttribute('stroke', colors.cyan);
-      line.setAttribute('stroke-width', '2');
+      if (!line.getAttribute('stroke') || line.getAttribute('stroke') === 'none') {
+        line.setAttribute('stroke', colors.cyan);
+        line.setAttribute('stroke-width', '2');
+      }
     });
 
     // Make text bright and readable
@@ -205,7 +216,7 @@ function CascadeTile({ cascade, onClick, isRunning }) {
       text.setAttribute('stroke', 'none');
     });
 
-    // Style arrowheads - these need fill to be visible
+    // Style arrowheads - use cyan for visibility
     const allMarkers = svgElement.querySelectorAll('marker path, marker polygon');
     allMarkers.forEach(marker => {
       marker.setAttribute('fill', colors.cyan);
@@ -326,21 +337,14 @@ function CascadeTile({ cascade, onClick, isRunning }) {
           <Icon icon="mdi:clock-outline" width={16} height={16} />
           <span>{hasRuns ? formatDuration(cascade.metrics.avg_duration_seconds) : '0s'}</span>
         </div>
+      </div>
 
-        <div className="metric-divider"></div>
-
-        {/* Total cost */}
-        <div className="metric-item cost">
-          <Icon icon="mdi:currency-usd" width={16} height={16} />
-          <span>{formatCost(cascade.metrics.total_cost)}</span>
-        </div>
-
-        {/* Avg cost per run */}
+      {/* Cost Display - Bottom right, overlaps diagram */}
+      <div className="tile-cost-display">
         {hasRuns && (
-          <div className="metric-item cost-per-run">
-            <span style={{ fontSize: '0.7rem' }}>~{formatCost(avgCostPerRun)}</span>
-          </div>
+          <span className="cost-avg">(~{formatCost(avgCostPerRun)})</span>
         )}
+        <span className="cost-total">{formatCost(cascade.metrics.total_cost)}</span>
       </div>
     </div>
   );
