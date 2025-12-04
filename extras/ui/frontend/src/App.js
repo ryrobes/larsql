@@ -18,7 +18,10 @@ function App() {
   const [sseConnected, setSseConnected] = useState(false);
   const [runningCascades, setRunningCascades] = useState(new Set());
   const [runningSessions, setRunningSessions] = useState(new Set());
+  const [finalizingSessions, setFinalizingSessions] = useState(new Set()); // Sessions between SSE completion and SQL availability
+  const [sessionMetadata, setSessionMetadata] = useState({}); // session_id -> {parent_session_id, depth, cascade_id}
   const [sessionUpdates, setSessionUpdates] = useState({}); // Track last update time per session for mermaid refresh
+  const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
 
   const showToast = (message, type = 'success', duration = null) => {
     const id = Date.now();
@@ -49,7 +52,7 @@ function App() {
   };
 
   const handleCascadeStarted = (sessionId, cascadeId) => {
-    showToast(`Cascade started! Session: ${sessionId.substring(0, 16)}...`, 'success');
+    showToast(`Cascade started! Session: ${sessionId.substring(0, 16)}...`, 'info');
     setShowRunModal(false);
     setSelectedInstance(null);
 
@@ -61,13 +64,34 @@ function App() {
       setRunningSessions(prev => new Set([...prev, sessionId]));
     }
 
-    // Immediate refresh
+    // Immediate refresh to show ghost row
     setRefreshTrigger(prev => prev + 1);
   };
 
   const handleFreezeInstance = (instance) => {
     setSelectedInstance(instance);
     setShowFreezeModal(true);
+  };
+
+  const handleInstanceComplete = (sessionId) => {
+    // Called when SQL confirms instance is truly complete
+    // Deduplicate: only show toast once per session
+    setCompletedSessions(prev => {
+      if (prev.has(sessionId)) {
+        console.log('[TOAST] Already showed completion for:', sessionId, '- skipping duplicate');
+        return prev; // Already completed, don't show toast again
+      }
+
+      console.log('[TOAST] First completion for:', sessionId, '- showing toast');
+      showToast(`Cascade completed: ${sessionId.substring(0, 16)}...`, 'success');
+      return new Set([...prev, sessionId]);
+    });
+
+    setFinalizingSessions(prev => {
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
   };
 
   const handleFreezeSubmit = async (sessionId, snapshotName, description) => {
@@ -110,27 +134,56 @@ function App() {
     };
 
     eventSource.onmessage = (e) => {
-      console.log('SSE raw message:', e.data);
+      // console.log('SSE raw message:', e.data);
       try {
         const event = JSON.parse(e.data);
 
         // Ignore heartbeats
         if (event.type === 'heartbeat') {
-          console.log('Heartbeat received');
+          // console.log('Heartbeat received');
           return;
         }
 
-        console.log('SSE event received:', event.type, event);
+        console.log('[SSE] Event received:', event.type, event);
 
         switch (event.type) {
           case 'cascade_start':
             const startCascadeId = event.data?.cascade_id;
             const startSessionId = event.session_id;
+            const startDepth = event.data?.depth || 0;
+            const startParentSessionId = event.data?.parent_session_id;
+
+            console.log('[SSE] cascade_start details:', {
+              sessionId: startSessionId,
+              cascadeId: startCascadeId,
+              depth: startDepth,
+              parentSessionId: startParentSessionId,
+              isChild: startDepth > 0
+            });
+
             if (startCascadeId) {
               setRunningCascades(prev => new Set([...prev, startCascadeId]));
             }
             if (startSessionId) {
-              setRunningSessions(prev => new Set([...prev, startSessionId]));
+              setRunningSessions(prev => {
+                const next = new Set([...prev, startSessionId]);
+                console.log('[SSE] Updated runningSessions:', Array.from(next));
+                return next;
+              });
+
+              // Track metadata for ghost row nesting
+              setSessionMetadata(prev => {
+                const next = {
+                  ...prev,
+                  [startSessionId]: {
+                    cascade_id: startCascadeId,
+                    depth: startDepth,
+                    parent_session_id: startParentSessionId
+                  }
+                };
+                console.log('[SSE] Updated sessionMetadata:', next);
+                return next;
+              });
             }
             // Don't toast here - handleCascadeStarted already shows one when user clicks Run
             setRefreshTrigger(prev => prev + 1);
@@ -140,7 +193,7 @@ function App() {
           case 'phase_complete':
           case 'tool_call':
           case 'tool_result':
-            // Refresh on any activity
+            // Refresh on any activity (data may not be in SQL yet, but update UI state)
             setRefreshTrigger(prev => prev + 1);
             // Track session update for mermaid refresh
             if (event.session_id) {
@@ -154,6 +207,8 @@ function App() {
           case 'cascade_complete':
             const completeCascadeId = event.data?.cascade_id;
             const completeSessionId = event.session_id;
+
+            // Move cascade from running to neutral
             if (completeCascadeId) {
               setRunningCascades(prev => {
                 const newSet = new Set(prev);
@@ -161,20 +216,39 @@ function App() {
                 return newSet;
               });
             }
+
+            // Move session from running to finalizing (waiting for SQL)
             if (completeSessionId) {
               setRunningSessions(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(completeSessionId);
                 return newSet;
               });
+              setFinalizingSessions(prev => new Set([...prev, completeSessionId]));
+
+              // Grace period: if SQL doesn't confirm completion in 30s, force cleanup
+              setTimeout(() => {
+                setFinalizingSessions(prev => {
+                  if (prev.has(completeSessionId)) {
+                    console.warn(`[SSE] Force cleanup for ${completeSessionId} after 30s grace period`);
+                    const next = new Set(prev);
+                    next.delete(completeSessionId);
+                    showToast(`Cascade finalized (delayed): ${completeSessionId.substring(0, 16)}...`, 'warning');
+                    return next;
+                  }
+                  return prev;
+                });
+              }, 30000);
             }
-            showToast(`Cascade completed: ${completeCascadeId || completeSessionId}`, 'success');
+
+            // NO completion toast here - wait for SQL confirmation via handleInstanceComplete
             setRefreshTrigger(prev => prev + 1);
             break;
 
           case 'cascade_error':
             const errorCascadeId = event.data?.cascade_id;
             const errorSessionId = event.session_id;
+
             if (errorCascadeId) {
               setRunningCascades(prev => {
                 const newSet = new Set(prev);
@@ -182,13 +256,16 @@ function App() {
                 return newSet;
               });
             }
+
             if (errorSessionId) {
               setRunningSessions(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(errorSessionId);
                 return newSet;
               });
+              // Don't add to finalizing - errors should show immediately
             }
+
             showToast(`Cascade error: ${event.data?.error || 'Unknown error'}`, 'error');
             setRefreshTrigger(prev => prev + 1);
             break;
@@ -222,6 +299,7 @@ function App() {
           onRunCascade={handleRunCascade}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
+          finalizingSessions={finalizingSessions}
           sseConnected={sseConnected}
         />
       )}
@@ -233,9 +311,12 @@ function App() {
           onBack={handleBack}
           onFreezeInstance={handleFreezeInstance}
           onRunCascade={handleRunCascade}
+          onInstanceComplete={handleInstanceComplete}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           runningSessions={runningSessions}
+          finalizingSessions={finalizingSessions}
+          sessionMetadata={sessionMetadata}
           sessionUpdates={sessionUpdates}
           sseConnected={sseConnected}
         />

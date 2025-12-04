@@ -25,8 +25,8 @@ import requests
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 import pandas as pd
-import duckdb
 from .config import get_config
+from .db_adapter import get_db_adapter
 
 
 class MegaTableSchema:
@@ -118,9 +118,14 @@ class UnifiedLogger:
         # Use "data" directory from config (respects WINDLASS_DATA_DIR env var)
         config = get_config()
         self.log_dir = config.data_dir
+        self.config = config
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # Main write buffer - messages ready to be written to Parquet
+        # If using ClickHouse server, ensure database and table exist
+        if config.use_clickhouse_server:
+            self._ensure_clickhouse_setup()
+
+        # Main write buffer - messages ready to be written to Parquet or ClickHouse
         self.buffer = []
         self.buffer_lock = threading.Lock()
         self.buffer_limit = 100  # Flush after 100 messages
@@ -137,6 +142,28 @@ class UnifiedLogger:
         self._running = True
         self._cost_worker = threading.Thread(target=self._cost_fetch_worker, daemon=True)
         self._cost_worker.start()
+
+    def _ensure_clickhouse_setup(self):
+        """
+        Ensure ClickHouse database and table exist.
+
+        This runs automatically when using ClickHouse server mode.
+        Database and table are created if they don't exist.
+        """
+        from .db_adapter import get_db_adapter
+        from .schema import get_schema
+
+        try:
+            db = get_db_adapter()
+
+            # Database creation is handled by ClickHouseServerAdapter.__init__()
+            # Now ensure the table exists
+            if hasattr(db, 'ensure_table_exists'):
+                ddl = get_schema("unified_logs")
+                db.ensure_table_exists("unified_logs", ddl)
+        except Exception as e:
+            print(f"[Windlass] Warning: Could not ensure ClickHouse setup: {e}")
+            print(f"[Windlass] Continuing with parquet-only mode...")
 
     def _cost_fetch_worker(self):
         """
@@ -444,7 +471,11 @@ class UnifiedLogger:
                     self.last_flush_time = current_time
 
     def _flush_internal(self):
-        """Internal flush - must be called with buffer_lock held."""
+        """
+        Internal flush - must be called with buffer_lock held.
+
+        Writes to ClickHouse server if configured, otherwise writes to Parquet files.
+        """
         if not self.buffer:
             return
 
@@ -452,17 +483,30 @@ class UnifiedLogger:
             # Create DataFrame from all buffered rows
             df = pd.DataFrame(self.buffer)
 
-            # Generate unique filename (timestamp + uuid + count for ordering)
-            filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
-            filepath = os.path.join(self.log_dir, filename)
+            # Write to ClickHouse server or Parquet based on config
+            if self.config.use_clickhouse_server:
+                # Write directly to ClickHouse server
+                from .db_adapter import get_db_adapter
+                db = get_db_adapter()
 
-            # Write to Parquet
-            df.to_parquet(filepath, engine='pyarrow', index=False)
+                # ClickHouse prefers batch inserts - use execute with VALUES
+                # The clickhouse-driver supports insert_dataframe for pandas
+                if hasattr(db.client, 'insert_dataframe'):
+                    db.client.insert_dataframe(
+                        "INSERT INTO unified_logs VALUES",
+                        df,
+                        settings={'use_numpy': True}
+                    )
+                    print(f"[Unified Log] Flushed {len(self.buffer)} messages to ClickHouse")
+                else:
+                    print(f"[Unified Log] Warning: ClickHouse driver doesn't support insert_dataframe, falling back to Parquet")
+                    self._write_parquet(df)
+            else:
+                # Write to Parquet files (default)
+                self._write_parquet(df)
 
             # Force cleanup
             del df
-
-            print(f"[Unified Log] Flushed {len(self.buffer)} messages to {filename}")
 
         except Exception as e:
             print(f"[ERROR] Failed to flush unified log: {e}")
@@ -471,6 +515,17 @@ class UnifiedLogger:
         finally:
             # Always clear buffer
             self.buffer = []
+
+    def _write_parquet(self, df: pd.DataFrame):
+        """Write DataFrame to Parquet file."""
+        # Generate unique filename (timestamp + uuid + count for ordering)
+        filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
+        filepath = os.path.join(self.log_dir, filename)
+
+        # Write to Parquet
+        df.to_parquet(filepath, engine='pyarrow', index=False)
+
+        print(f"[Unified Log] Flushed {len(df)} messages to {filename}")
 
     def flush(self):
         """
@@ -610,7 +665,7 @@ def force_flush():
 
 def query_unified(where_clause: str = None, order_by: str = "timestamp") -> pd.DataFrame:
     """
-    Query unified logs using DuckDB.
+    Query unified logs using chDB (ClickHouse).
 
     Args:
         where_clause: SQL WHERE clause (e.g., "session_id = 'abc' AND cost > 0")
@@ -633,27 +688,23 @@ def query_unified(where_clause: str = None, order_by: str = "timestamp") -> pd.D
         df = query_unified("cascade_id = 'blog_flow' AND phase_name = 'research'")
     """
     config = get_config()
-    log_dir = config.data_dir
+    data_dir = config.data_dir
+    db = get_db_adapter()
 
-    conn = duckdb.connect()
+    # Build query with file() function for parquet
+    base_query = f"SELECT * FROM file('{data_dir}/*.parquet', Parquet)"
 
-    try:
-        # Build query
-        base_query = f"SELECT * FROM '{log_dir}/*.parquet'"
+    if where_clause:
+        query = f"{base_query} WHERE {where_clause}"
+    else:
+        query = base_query
 
-        if where_clause:
-            query = f"{base_query} WHERE {where_clause}"
-        else:
-            query = base_query
+    if order_by:
+        query = f"{query} ORDER BY {order_by}"
 
-        if order_by:
-            query = f"{query} ORDER BY {order_by}"
-
-        # Execute and return DataFrame
-        result = conn.execute(query).df()
-        return result
-    finally:
-        conn.close()
+    # Execute and return DataFrame
+    result = db.query(query, output_format="dataframe")
+    return result
 
 
 def query_unified_json_parsed(
@@ -744,26 +795,22 @@ def get_cascade_costs(cascade_id: str) -> pd.DataFrame:
         DataFrame with session_id, phase_name, total_cost, total_tokens
     """
     config = get_config()
-    log_dir = config.data_dir
+    data_dir = config.data_dir
+    db = get_db_adapter()
 
-    conn = duckdb.connect()
-
-    try:
-        query = f"""
-        SELECT
-            session_id,
-            phase_name,
-            SUM(cost) as total_cost,
-            SUM(total_tokens) as total_tokens,
-            COUNT(*) as message_count
-        FROM '{log_dir}/*.parquet'
-        WHERE cascade_id = '{cascade_id}' AND cost IS NOT NULL
-        GROUP BY session_id, phase_name
-        ORDER BY session_id, phase_name
-        """
-        return conn.execute(query).df()
-    finally:
-        conn.close()
+    query = f"""
+    SELECT
+        session_id,
+        phase_name,
+        SUM(cost) as total_cost,
+        SUM(total_tokens) as total_tokens,
+        COUNT(*) as message_count
+    FROM file('{data_dir}/*.parquet', Parquet)
+    WHERE cascade_id = '{cascade_id}' AND cost IS NOT NULL
+    GROUP BY session_id, phase_name
+    ORDER BY session_id, phase_name
+    """
+    return db.query(query, output_format="dataframe")
 
 
 def get_soundings_analysis(session_id: str, phase_name: str) -> pd.DataFrame:
@@ -774,29 +821,25 @@ def get_soundings_analysis(session_id: str, phase_name: str) -> pd.DataFrame:
         DataFrame with sounding_index, is_winner, cost, tokens, message summary
     """
     config = get_config()
-    log_dir = config.data_dir
+    data_dir = config.data_dir
+    db = get_db_adapter()
 
-    conn = duckdb.connect()
-
-    try:
-        query = f"""
-        SELECT
-            sounding_index,
-            is_winner,
-            SUM(cost) as total_cost,
-            SUM(total_tokens) as total_tokens,
-            COUNT(*) as turn_count,
-            MAX(timestamp) - MIN(timestamp) as duration_seconds
-        FROM '{log_dir}/*.parquet'
-        WHERE session_id = '{session_id}'
-          AND phase_name = '{phase_name}'
-          AND sounding_index IS NOT NULL
-        GROUP BY sounding_index, is_winner
-        ORDER BY sounding_index
-        """
-        return conn.execute(query).df()
-    finally:
-        conn.close()
+    query = f"""
+    SELECT
+        sounding_index,
+        is_winner,
+        SUM(cost) as total_cost,
+        SUM(total_tokens) as total_tokens,
+        COUNT(*) as turn_count,
+        MAX(timestamp) - MIN(timestamp) as duration_seconds
+    FROM file('{data_dir}/*.parquet', Parquet)
+    WHERE session_id = '{session_id}'
+      AND phase_name = '{phase_name}'
+      AND sounding_index IS NOT NULL
+    GROUP BY sounding_index, is_winner
+    ORDER BY sounding_index
+    """
+    return db.query(query, output_format="dataframe")
 
 
 def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> pd.DataFrame:
@@ -811,35 +854,31 @@ def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> pd.Data
         DataFrame with time bucket, total cost, total tokens
     """
     config = get_config()
-    log_dir = config.data_dir
+    data_dir = config.data_dir
+    db = get_db_adapter()
 
-    conn = duckdb.connect()
+    # Time bucket formatting using ClickHouse functions
+    time_format = {
+        "hour": "toStartOfHour(toDateTime(timestamp))",
+        "day": "toStartOfDay(toDateTime(timestamp))",
+        "week": "toStartOfWeek(toDateTime(timestamp))"
+    }.get(group_by, "toStartOfHour(toDateTime(timestamp))")
 
-    try:
-        # Time bucket formatting
-        time_format = {
-            "hour": "strftime('%Y-%m-%d %H:00', timestamp_iso)",
-            "day": "DATE_TRUNC('day', CAST(timestamp_iso AS TIMESTAMP))",
-            "week": "DATE_TRUNC('week', CAST(timestamp_iso AS TIMESTAMP))"
-        }.get(group_by, "DATE_TRUNC('hour', CAST(timestamp_iso AS TIMESTAMP))")
+    cascade_filter = f"AND cascade_id = '{cascade_id}'" if cascade_id else ""
 
-        cascade_filter = f"AND cascade_id = '{cascade_id}'" if cascade_id else ""
-
-        query = f"""
-        SELECT
-            {time_format} as time_bucket,
-            SUM(cost) as total_cost,
-            SUM(total_tokens) as total_tokens,
-            COUNT(DISTINCT session_id) as session_count,
-            COUNT(*) as message_count
-        FROM '{log_dir}/*.parquet'
-        WHERE cost IS NOT NULL {cascade_filter}
-        GROUP BY time_bucket
-        ORDER BY time_bucket
-        """
-        return conn.execute(query).df()
-    finally:
-        conn.close()
+    query = f"""
+    SELECT
+        {time_format} as time_bucket,
+        SUM(cost) as total_cost,
+        SUM(total_tokens) as total_tokens,
+        COUNT(DISTINCT session_id) as session_count,
+        COUNT(*) as message_count
+    FROM file('{data_dir}/*.parquet', Parquet)
+    WHERE cost IS NOT NULL {cascade_filter}
+    GROUP BY time_bucket
+    ORDER BY time_bucket
+    """
+    return db.query(query, output_format="dataframe")
 
 
 def get_model_usage_stats() -> pd.DataFrame:
@@ -850,26 +889,22 @@ def get_model_usage_stats() -> pd.DataFrame:
         DataFrame with model, provider, total cost, total tokens, call count
     """
     config = get_config()
-    log_dir = config.data_dir
+    data_dir = config.data_dir
+    db = get_db_adapter()
 
-    conn = duckdb.connect()
-
-    try:
-        query = f"""
-        SELECT
-            model,
-            provider,
-            SUM(cost) as total_cost,
-            SUM(total_tokens) as total_tokens,
-            COUNT(*) as call_count,
-            AVG(cost) as avg_cost_per_call,
-            SUM(tokens_in) as total_tokens_in,
-            SUM(tokens_out) as total_tokens_out
-        FROM '{log_dir}/*.parquet'
-        WHERE cost IS NOT NULL AND model IS NOT NULL
-        GROUP BY model, provider
-        ORDER BY total_cost DESC
-        """
-        return conn.execute(query).df()
-    finally:
-        conn.close()
+    query = f"""
+    SELECT
+        model,
+        provider,
+        SUM(cost) as total_cost,
+        SUM(total_tokens) as total_tokens,
+        COUNT(*) as call_count,
+        AVG(cost) as avg_cost_per_call,
+        SUM(tokens_in) as total_tokens_in,
+        SUM(tokens_out) as total_tokens_out
+    FROM file('{data_dir}/*.parquet', Parquet)
+    WHERE cost IS NOT NULL AND model IS NOT NULL
+    GROUP BY model, provider
+    ORDER BY total_cost DESC
+    """
+    return db.query(query, output_format="dataframe")

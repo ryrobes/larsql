@@ -230,42 +230,70 @@ def get_cascade_instances(cascade_id):
         has_model = 'model' in columns
         has_turn_number = 'turn_number' in columns
 
-        # Get all sessions for this cascade
+        # Get all sessions for this cascade (parents + children)
+        # Strategy: Find parent sessions, then query for their children
         sessions_query = """
-        WITH session_runs AS (
+        WITH parent_sessions AS (
             SELECT
                 session_id,
+                cascade_id,
                 MIN(timestamp) as start_time,
                 MAX(timestamp) as end_time,
                 MAX(timestamp) - MIN(timestamp) as duration_seconds
             FROM logs
             WHERE cascade_id = ?
-            GROUP BY session_id
+              AND (parent_session_id IS NULL OR parent_session_id = '')
+            GROUP BY session_id, cascade_id
+        ),
+        child_sessions AS (
+            SELECT
+                l.session_id,
+                l.cascade_id,
+                l.parent_session_id,
+                MIN(l.timestamp) as start_time,
+                MAX(l.timestamp) as end_time,
+                MAX(l.timestamp) - MIN(l.timestamp) as duration_seconds
+            FROM logs l
+            INNER JOIN parent_sessions p ON l.parent_session_id = p.session_id
+            WHERE l.parent_session_id IS NOT NULL AND l.parent_session_id != ''
+            GROUP BY l.session_id, l.cascade_id, l.parent_session_id
+        ),
+        all_sessions AS (
+            SELECT session_id, cascade_id, NULL as parent_session_id, start_time, end_time, duration_seconds, 0 as depth
+            FROM parent_sessions
+
+            UNION ALL
+
+            SELECT session_id, cascade_id, parent_session_id, start_time, end_time, duration_seconds, 1 as depth
+            FROM child_sessions
         ),
         session_costs AS (
             SELECT
                 session_id,
                 SUM(cost) as total_cost
             FROM logs
-            WHERE cascade_id = ? AND cost IS NOT NULL AND cost > 0
+            WHERE cost IS NOT NULL AND cost > 0
             GROUP BY session_id
         )
         SELECT
-            r.session_id,
-            r.start_time,
-            r.end_time,
-            r.duration_seconds,
+            a.session_id,
+            a.cascade_id,
+            a.parent_session_id,
+            a.depth,
+            a.start_time,
+            a.end_time,
+            a.duration_seconds,
             COALESCE(c.total_cost, 0) as total_cost
-        FROM session_runs r
-        LEFT JOIN session_costs c ON r.session_id = c.session_id
-        ORDER BY r.start_time DESC
+        FROM all_sessions a
+        LEFT JOIN session_costs c ON a.session_id = c.session_id
+        ORDER BY a.depth, a.start_time DESC
         LIMIT 100
         """
-        session_results = conn.execute(sessions_query, [cascade_id, cascade_id]).fetchall()
+        session_results = conn.execute(sessions_query, [cascade_id]).fetchall()
 
         instances = []
         for session_row in session_results:
-            session_id, start_time, end_time, duration, total_cost = session_row
+            session_id, session_cascade_id, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
 
             # Get models used in this session
             models_used = []
@@ -640,7 +668,9 @@ def get_cascade_instances(cascade_id):
 
             instances.append({
                 'session_id': session_id,
-                'cascade_id': cascade_id,
+                'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
+                'parent_session_id': parent_session_id,
+                'depth': int(depth) if depth is not None else 0,
                 'start_time': datetime.fromtimestamp(start_time).isoformat() if start_time else None,
                 'end_time': datetime.fromtimestamp(end_time).isoformat() if end_time else None,
                 'duration_seconds': float(duration) if duration else 0.0,
@@ -654,8 +684,29 @@ def get_cascade_instances(cascade_id):
                 'errors': error_list
             })
 
+        # Restructure to nest children under parents
+        parents = []
+        children_map = {}  # parent_session_id -> [children]
+
+        for instance in instances:
+            if instance['depth'] == 0:
+                # Parent instance
+                instance['children'] = []  # Will populate below
+                parents.append(instance)
+            else:
+                # Child instance - add to map
+                parent_id = instance['parent_session_id']
+                if parent_id not in children_map:
+                    children_map[parent_id] = []
+                children_map[parent_id].append(instance)
+
+        # Attach children to their parents
+        for parent in parents:
+            if parent['session_id'] in children_map:
+                parent['children'] = children_map[parent['session_id']]
+
         conn.close()
-        return jsonify(instances)
+        return jsonify(parents)
 
     except Exception as e:
         import traceback
@@ -794,18 +845,58 @@ def get_graph(session_id):
 
 @app.route('/api/mermaid/<session_id>', methods=['GET'])
 def get_mermaid_graph(session_id):
-    """Get Mermaid graph content for a session"""
+    """Get Mermaid graph content for a session from database (mermaid_content field)"""
     try:
-        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+        conn = get_db_connection()
+        columns = get_available_columns(conn)
 
-        if not os.path.exists(mermaid_path):
-            return jsonify({'error': 'Mermaid graph not found'}), 404
+        # Check if mermaid_content column exists
+        if 'mermaid_content' not in columns:
+            print(f"[MERMAID] mermaid_content column NOT in schema, using file fallback")
+            # Fallback to file if column doesn't exist (backward compatibility)
+            mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+            if not os.path.exists(mermaid_path):
+                conn.close()
+                return jsonify({'error': 'Mermaid graph not found'}), 404
+            with open(mermaid_path) as f:
+                mermaid_content = f.read()
+            print(f"[MERMAID] Loaded from file: {len(mermaid_content)} chars")
+        else:
+            print(f"[MERMAID] mermaid_content column exists, querying database for session: {session_id}")
+            # Query latest mermaid_content from database
+            mermaid_query = """
+            SELECT mermaid_content, timestamp, node_type
+            FROM logs
+            WHERE session_id = ?
+              AND mermaid_content IS NOT NULL
+              AND mermaid_content != ''
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """
+            mermaid_result = conn.execute(mermaid_query, [session_id]).fetchone()
 
-        with open(mermaid_path) as f:
-            mermaid_content = f.read()
+            print(f"[MERMAID] Query result: {mermaid_result is not None}")
+            if mermaid_result:
+                print(f"[MERMAID] Found mermaid_content: {len(mermaid_result[0]) if mermaid_result[0] else 0} chars, node_type: {mermaid_result[2]}")
+            else:
+                print(f"[MERMAID] No results from query")
+
+            if not mermaid_result or not mermaid_result[0]:
+                # Try file fallback
+                print(f"[MERMAID] No data in database, trying file fallback...")
+                mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+                if os.path.exists(mermaid_path):
+                    with open(mermaid_path) as f:
+                        mermaid_content = f.read()
+                    print(f"[MERMAID] Loaded from file fallback: {len(mermaid_content)} chars")
+                else:
+                    conn.close()
+                    return jsonify({'error': 'Mermaid graph not found in database or files'}), 404
+            else:
+                mermaid_content = mermaid_result[0]
+                print(f"[MERMAID] Using database content: {mermaid_content[:100]}...")
 
         # Get session metadata from Parquet
-        conn = get_db_connection()
 
         try:
             metadata_query = """

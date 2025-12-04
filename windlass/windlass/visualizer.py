@@ -592,13 +592,8 @@ def generate_mermaid_string(echo: Echo) -> str:
                 return 999
         phase_entries.sort(key=phase_sort_key)
 
-    # Render cascade container
-    if cascade_entry:
-        content = cascade_entry.get("content", "")
-        cascade_name = content.replace("Cascade: ", "") if content.startswith("Cascade: ") else content
-        cascade_id = safe_id(cascade_entry.get("trace_id", "cascade"))
-        lines.append(f'    subgraph {cascade_id}["🌊 {sanitize_label(cascade_name, 40)}"]')
-        lines.append("    direction LR")
+    # Note: Removed cascade container wrapper for cleaner visualization
+    # Diagram renders phases directly without outer border box
 
     # Group sounding attempts by phase
     soundings_by_phase: Dict[str, List[Dict]] = {}
@@ -1291,14 +1286,7 @@ def generate_mermaid_string(echo: Echo) -> str:
             # Default: connect to next phase
             lines.append(f"        {current_id} --> {phase_ids[i+1]}")
 
-    # Close cascade container
-    if cascade_entry:
-        lines.append("    end")
-        cascade_id = safe_id(cascade_entry.get("trace_id", "cascade"))
-        lines.append(f"    class {cascade_id} cascade")
-
-    # Note: We intentionally don't render outputs outside the cascade container
-    # as it creates visual clutter with arrows crossing container boundaries.
+    # Note: Cascade container removed for cleaner visualization without outer border
     # The structural diagram focuses on flow; use logs/lineage for content details.
 
     # Return the mermaid diagram as a string
@@ -1364,11 +1352,7 @@ def generate_mermaid_from_config(config: Any, output_path: str) -> str:
         "",
     ])
 
-    cascade_id = config.cascade_id.replace("-", "_")
-
-    # Cascade container
-    lines.append(f'    subgraph {cascade_id}["🌊 {config.cascade_id}"]')
-    lines.append("    direction LR")
+    # Note: Removed cascade container for cleaner visualization without outer border
 
     phase_ids = []
 
@@ -1410,9 +1394,6 @@ def generate_mermaid_from_config(config: Any, output_path: str) -> str:
         elif i + 1 < len(phase_ids):
             # Default sequential connection
             lines.append(f"        {current_id} --> {phase_ids[i+1]}")
-
-    lines.append("    end")
-    lines.append(f"    class {cascade_id} cascade")
 
     with open(output_path, "w") as f:
         f.write("\n".join(lines))

@@ -24,19 +24,11 @@
   gap: 0.75rem;
 }
 
-.brand-icon {
-  color: #a78bfa;
-  opacity: 0.9;
-}
-
-.brand-name {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 50%, #34d399 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.brand-logo {
+  width: 58px;
+  height: 58px;
+  
+  object-fit: contain;
 }
 
 .header-center {

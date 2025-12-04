@@ -79,7 +79,7 @@ class WindlassHooks:
 class WindlassRunner:
     def __init__(self, config_path: str | dict, session_id: str = "default", overrides: dict = None,
                  depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None,
-                 sounding_index: int = None):
+                 sounding_index: int = None, parent_session_id: str = None):
         self.config_path = config_path
         self.config = load_cascade_config(config_path)
         self.session_id = session_id
@@ -93,6 +93,7 @@ class WindlassRunner:
         self.current_phase_sounding_index = None  # Track sounding index within current phase
         self.current_retry_attempt = None  # Track retry/validation attempt index
         self.current_turn_number = None  # Track turn number within phase (for max_turns)
+        self.parent_session_id = parent_session_id  # Track parent session for sub-cascades
         
         # Tracing
         if parent_trace:
@@ -661,7 +662,11 @@ Refinement directive: {reforge_config.honing_prompt}
         console.print(f"{indent}[{style}]🌊 Starting Cascade: {self.config.cascade_id} (Depth {self.depth})[/{style}]\n")
 
         # Hook: Cascade Start
-        self.hooks.on_cascade_start(self.config.cascade_id, self.session_id, {"depth": self.depth, "input": input_data})
+        self.hooks.on_cascade_start(self.config.cascade_id, self.session_id, {
+            "depth": self.depth,
+            "input": input_data,
+            "parent_session_id": getattr(self, 'parent_session_id', None)
+        })
 
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
                    trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade", depth=self.depth,
@@ -1751,8 +1756,8 @@ Refinement directive: {reforge_config.honing_prompt}
                             ref_path = os.path.join(os.path.dirname(self.config_path), ref_path)
                     
                     # Call spawn (fire and forget). spawn_cascade handles the threading.
-                    # It needs the parent_trace object directly
-                    spawn_cascade(ref_path, sub_input, parent_trace=trace)
+                    # It needs the parent_trace object directly AND parent_session_id
+                    spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id)
 
         # Sub-cascades handling
         if phase.sub_cascades:
@@ -1788,9 +1793,9 @@ Refinement directive: {reforge_config.honing_prompt}
                 
                 console.print(f"{indent}  ↳ [bold yellow]Routing to Sub-Cascade: {sub.ref}[/bold yellow] (In:{sub.context_in}, Out:{sub.context_out})")
                 log_message(self.session_id, "sub_cascade_start", sub.ref, trace_id=trace.id, parent_id=trace.parent_id, node_type="link")
-                
-                # Pass trace context AND HOOKS
-                sub_result = run_cascade(ref_path, sub_input, f"{self.session_id}_sub", self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks)
+
+                # Pass trace context AND HOOKS AND parent_session_id
+                sub_result = run_cascade(ref_path, sub_input, f"{self.session_id}_sub", self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks, parent_session_id=self.session_id)
                 
                 # 2. Handle Output (Context Out)
                 if sub.context_out:
@@ -2525,7 +2530,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 self.overrides,
                                 self.depth + 1,
                                 parent_trace=validation_trace,
-                                hooks=self.hooks
+                                hooks=self.hooks,
+                                parent_session_id=self.session_id
                             )
 
                             console.print(f"{indent}  [dim cyan]Validator sub-cascade completed[/dim cyan]")
@@ -2706,9 +2712,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return chosen_next_phase if chosen_next_phase else response_content
 
-def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None, 
-                depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None) -> dict:
-    runner = WindlassRunner(config_path, session_id, overrides, depth, parent_trace, hooks)
+def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
+                depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None, parent_session_id: str = None) -> dict:
+    runner = WindlassRunner(config_path, session_id, overrides, depth, parent_trace, hooks, sounding_index=None, parent_session_id=parent_session_id)
     result = runner.run(input_data)
     
     if depth == 0:

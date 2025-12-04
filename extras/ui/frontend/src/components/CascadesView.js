@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PhaseBar from './PhaseBar';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCascades, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,20 +11,22 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     fetchCascades();
   }, [refreshTrigger]);
 
-  // Add polling for running cascades (every 2 seconds)
-  // This ensures UI updates even if SSE events are delayed
+  // Add polling for running cascades AND finalizing sessions (every 2 seconds)
   useEffect(() => {
-    if (!runningCascades || runningCascades.size === 0) {
-      return; // No polling if nothing running
+    const hasRunning = runningCascades && runningCascades.size > 0;
+    const hasFinalizing = finalizingSessions && finalizingSessions.size > 0;
+
+    if (!hasRunning && !hasFinalizing) {
+      return; // No polling if nothing active
     }
 
     const interval = setInterval(() => {
-      console.log('[POLL] Refreshing cascade list (running cascades detected)');
+      console.log('[POLL] Refreshing cascade list (active cascades detected)');
       fetchCascades();
-    }, 2000); // Poll every 2 seconds when cascades are running
+    }, 2000); // Poll every 2 seconds when cascades are active
 
     return () => clearInterval(interval);
-  }, [runningCascades]);
+  }, [runningCascades, finalizingSessions]);
 
   const fetchCascades = async () => {
     try {
@@ -101,18 +103,11 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     <div className="cascades-container">
       <header className="app-header">
         <div className="header-brand">
-          <svg className="brand-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L12 6" />
-            <path d="M12 18L12 22" />
-            <circle cx="12" cy="12" r="4" />
-            <path d="M4.93 4.93L7.76 7.76" />
-            <path d="M16.24 16.24L19.07 19.07" />
-            <path d="M2 12L6 12" />
-            <path d="M18 12L22 12" />
-            <path d="M4.93 19.07L7.76 16.24" />
-            <path d="M16.24 7.76L19.07 4.93" />
-          </svg>
-          <span className="brand-name">Windlass</span>
+          <img
+            src="/windlass-transparent-square.png"
+            alt="Windlass"
+            className="brand-logo"
+          />
         </div>
         <div className="header-center">
           <span className="header-stat">{cascades.length} <span className="stat-dim">cascades</span></span>

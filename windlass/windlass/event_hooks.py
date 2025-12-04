@@ -22,7 +22,8 @@ class EventPublishingHooks(WindlassHooks):
             timestamp=datetime.now().isoformat(),
             data={
                 "cascade_id": cascade_id,
-                "depth": context.get("depth", 0)
+                "depth": context.get("depth", 0),
+                "parent_session_id": context.get("parent_session_id")
             }
         ))
         return {"action": HookAction.CONTINUE}

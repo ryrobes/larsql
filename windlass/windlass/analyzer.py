@@ -8,7 +8,6 @@ After N runs, analyze which sounding approaches win most often,
 then suggest prompt improvements based on winning patterns.
 """
 import json
-import duckdb
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -17,10 +16,12 @@ from datetime import datetime
 class SoundingAnalyzer:
     """Analyzes sounding winners to suggest prompt improvements."""
 
-    def __init__(self, log_dir: str = None):
+    def __init__(self, data_dir: str = None):
         from windlass.config import get_config
+        from windlass.db_adapter import get_db_adapter
         config = get_config()
-        self.log_dir = Path(log_dir or config.log_dir)
+        self.data_dir = Path(data_dir or config.data_dir)
+        self.db = get_db_adapter()
 
     def analyze_cascade(
         self,
@@ -43,18 +44,18 @@ class SoundingAnalyzer:
         print(f"Minimum runs: {min_runs}, Confidence threshold: {min_confidence*100}%")
         print()
 
-        conn = duckdb.connect()
-        parquet_pattern = str(self.log_dir / "**" / "*.parquet")
+        parquet_pattern = str(self.data_dir / "*.parquet")
 
         # Get all sessions for this cascade
         sessions_query = f"""
             SELECT DISTINCT session_id
-            FROM read_parquet('{parquet_pattern}')
-            WHERE metadata LIKE '%{cascade_file}%'
+            FROM file('{parquet_pattern}', Parquet)
+            WHERE metadata_json LIKE '%{cascade_file}%'
         """
 
         try:
-            sessions = conn.execute(sessions_query).fetchall()
+            df = self.db.query(sessions_query)
+            sessions = df.values.tolist()
         except Exception as e:
             print(f"Error querying logs: {e}")
             return {"suggestions": []}
@@ -70,14 +71,15 @@ class SoundingAnalyzer:
 
         # Get phases with soundings
         phases_query = f"""
-            SELECT DISTINCT metadata
-            FROM read_parquet('{parquet_pattern}')
-            WHERE metadata LIKE '%{cascade_file}%'
+            SELECT DISTINCT metadata_json
+            FROM file('{parquet_pattern}', Parquet)
+            WHERE metadata_json LIKE '%{cascade_file}%'
             AND role = 'phase_start'
             LIMIT 50
         """
 
-        phase_events = conn.execute(phases_query).fetchall()
+        df_phases = self.db.query(phases_query)
+        phase_events = df_phases.values.tolist()
 
         # Extract unique phase names
         phases = set()
@@ -94,7 +96,6 @@ class SoundingAnalyzer:
 
         for phase_name in phases:
             suggestion = self._analyze_phase(
-                conn,
                 parquet_pattern,
                 cascade_file,
                 phase_name,
@@ -103,8 +104,6 @@ class SoundingAnalyzer:
 
             if suggestion:
                 suggestions.append(suggestion)
-
-        conn.close()
 
         return {
             "cascade_file": cascade_file,
@@ -115,7 +114,6 @@ class SoundingAnalyzer:
 
     def _analyze_phase(
         self,
-        conn,
         parquet_pattern: str,
         cascade_file: str,
         phase_name: str,
@@ -126,19 +124,20 @@ class SoundingAnalyzer:
         # Query for sounding winners in this phase
         query = f"""
             SELECT
-                metadata,
-                content,
+                metadata_json,
+                content_json,
                 role
-            FROM read_parquet('{parquet_pattern}')
-            WHERE metadata LIKE '%{cascade_file}%'
-            AND metadata LIKE '%{phase_name}%'
-            AND metadata LIKE '%sounding_index%'
+            FROM file('{parquet_pattern}', Parquet)
+            WHERE metadata_json LIKE '%{cascade_file}%'
+            AND metadata_json LIKE '%{phase_name}%'
+            AND metadata_json LIKE '%sounding_index%'
             ORDER BY timestamp DESC
             LIMIT 500
         """
 
         try:
-            events = conn.execute(query).fetchall()
+            df = self.db.query(query)
+            events = df.values.tolist()
         except Exception as e:
             return None
 

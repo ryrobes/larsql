@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "litellm",
-    "duckdb",
+    "chdb",
+    "duckdb",  # Still used by smart_sql_run tool for agent queries
     "pandas",
     "pyarrow",
     "python-dotenv",

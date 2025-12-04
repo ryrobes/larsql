@@ -47,10 +47,23 @@ pip install .
   - `WINDLASS_TACKLE_DIR` (default: `$WINDLASS_ROOT/tackle`)
   - `WINDLASS_CASCADES_DIR` (default: `$WINDLASS_ROOT/cascades`)
 
+**Database Backend (chDB / ClickHouse):**
+- Default: **chDB** (embedded ClickHouse) reads Parquet files in `./data/` - zero setup
+- Production: **ClickHouse server** with automatic database/table creation
+- Scale: Set 2 env vars to switch from embedded → distributed server
+
+**Optional: ClickHouse Server Mode:**
+- `WINDLASS_USE_CLICKHOUSE_SERVER` (default: `false`) - Enable ClickHouse server
+- `WINDLASS_CLICKHOUSE_HOST` (default: `localhost`) - Server hostname
+- `WINDLASS_CLICKHOUSE_PORT` (default: `9000`) - Native protocol port
+- `WINDLASS_CLICKHOUSE_DATABASE` (default: `windlass`) - Database name (auto-created)
+- `WINDLASS_CLICKHOUSE_USER` (default: `default`) - Username
+- `WINDLASS_CLICKHOUSE_PASSWORD` (default: `""`) - Password
+
 **Workspace Directory Structure**:
 ```
 $WINDLASS_ROOT/
-├── data/          # Unified logs (Parquet files)
+├── data/          # Unified logs (Parquet files) - chDB mode
 ├── logs/          # Old logs (backward compatibility)
 ├── graphs/        # Mermaid execution graphs
 ├── states/        # Session state JSON files
@@ -59,6 +72,8 @@ $WINDLASS_ROOT/
 ├── tackle/        # Reusable tool cascades
 └── cascades/      # User-defined cascades
 ```
+
+**Note**: In ClickHouse server mode, logs write directly to the database instead of `./data/` parquet files.
 
 ## Common Development Commands
 
@@ -631,15 +646,39 @@ This allows tools to generate charts/screenshots that the agent can analyze visu
 
 ### 5. Observability Stack
 
-**Unified Logging System:**
+**Unified Logging System (chDB/ClickHouse):**
 
-All logging now goes through a single unified mega-table system (`unified_logs.py`) that writes to `$WINDLASS_ROOT/data/`:
+All logging goes through a unified mega-table system (`unified_logs.py`) with **automatic scaling** from embedded to distributed:
 
-- **Unified Logging** (`unified_logs.py`): All events logged to Parquet files in `./data/` (NOT `./logs/`). Uses buffered writes (100 messages OR 10 seconds, whichever first). Files named `log_{timestamp}_{count}msgs_{uuid}.parquet`.
-- **Backward Compatibility**: `logs.py` is now a shim that routes all calls to `unified_logs.py`. Old code still works.
-- **Mermaid Graphs** (`visualizer.py`): Real-time flowchart generation (`.mmd` files in `./graphs`) showing phase transitions, soundings, and reforges with visual grouping
-- **Cost Tracking**: Now **blocking** (not async) - cost data fetched immediately from OpenRouter after each LLM call and merged into the log entry before writing. No separate `cost_update` messages.
-- **Trace Hierarchy** (`tracing.py`): `TraceNode` class creates parent-child relationships for nested cascades and soundings attempts
+- **Development Mode (chDB)**: Embedded ClickHouse reads Parquet files in `./data/` - zero setup, pure Python
+- **Production Mode (ClickHouse Server)**: Set 2 env vars → automatic database/table creation → writes directly to ClickHouse
+- **Query Compatibility**: Same query API works with both backends - seamless migration
+- **Hybrid Mode**: Can read old Parquet files + new ClickHouse data simultaneously
+
+**Logging Features:**
+- **Buffered Writes**: 100 messages OR 10 seconds (whichever first)
+- **Non-Blocking Cost Tracking**: Background worker fetches costs after ~3 seconds (OpenRouter delay)
+- **Automatic Setup**: Database and table created automatically on first run (ClickHouse server mode)
+- **Backward Compatibility**: Old `logs.py` is now a shim that routes to unified system
+- **Mermaid Graphs** (`visualizer.py`): Real-time flowchart generation showing phase transitions, soundings, reforges
+- **Trace Hierarchy** (`tracing.py`): `TraceNode` class creates parent-child relationships for nested cascades
+
+**Switching to ClickHouse Server (2 environment variables):**
+```bash
+# Start ClickHouse server
+docker run -d --name clickhouse-server \
+  -p 9000:9000 -p 8123:8123 \
+  clickhouse/clickhouse-server
+
+# Enable server mode (database and table created automatically!)
+export WINDLASS_USE_CLICKHOUSE_SERVER=true
+export WINDLASS_CLICKHOUSE_HOST=localhost
+
+# Run windlass - that's it!
+windlass examples/simple_flow.json --input '{"data": "test"}'
+```
+
+See `CLICKHOUSE_SETUP.md` for complete guide.
 
 **Unified Log Schema (34+ fields per message):**
 
@@ -655,11 +694,11 @@ All logging now goes through a single unified mega-table system (`unified_logs.p
 | **Images** | `images_json`, `has_images`, `has_base64` |
 | **Metadata** | `metadata_json` |
 
-**Query Helpers:**
+**Query Helpers (Works with both chDB and ClickHouse server):**
 ```python
 from windlass.unified_logs import query_unified, get_session_messages, get_cascade_costs
 
-# Query unified logs using DuckDB
+# Query unified logs (automatically uses chDB or ClickHouse server)
 df = query_unified("session_id = 'session_123'")
 
 # Get all messages for a session
@@ -671,6 +710,13 @@ costs = get_cascade_costs("blog_flow")
 # Analyze soundings performance
 from windlass.unified_logs import get_soundings_analysis
 soundings = get_soundings_analysis("session_123", "generate")
+
+# Advanced: Use ClickHouse JSON functions (server mode)
+from windlass.unified_logs import query_unified
+df = query_unified("""
+    JSONExtractString(tool_calls_json, '0', 'tool') = 'route_to'
+    AND cost > 0.01
+""")
 ```
 
 **Real-Time Event System:**
@@ -907,7 +953,7 @@ POST /api/run-cascade                 # Execute cascade with inputs
 ```
 
 **Tech Stack:**
-- Backend: Flask + DuckDB + SSE
+- Backend: Flask + chDB/ClickHouse + SSE
 - Frontend: React + Mermaid.js
 - Real-time: EventSource API
 
@@ -925,7 +971,9 @@ windlass/
 ├── tackle.py            # ToolRegistry for tool management
 ├── tackle_manifest.py   # Dynamic tool discovery for Quartermaster
 ├── config.py            # Global configuration management (WINDLASS_ROOT-based)
-├── unified_logs.py      # Unified mega-table logging (primary log system)
+├── schema.py            # ClickHouse table DDL definitions
+├── db_adapter.py        # Database adapter (chDB + ClickHouse server) with auto-setup
+├── unified_logs.py      # Unified mega-table logging (chDB/ClickHouse)
 ├── logs.py              # Backward compatibility shim → routes to unified_logs.py
 ├── visualizer.py        # Mermaid graph generation (with soundings/reforge support)
 ├── tracing.py           # TraceNode hierarchy for observability
@@ -1313,6 +1361,123 @@ windlass test freeze update_001 --name existing_test_name
 ```
 
 For complete documentation, see `TESTING.md`.
+
+## Training Data & Evaluation Dataset Generation
+
+**Windlass automatically captures rich training data from every execution.**
+
+### Why ClickHouse is Perfect for Training Data
+
+With millions of execution traces, you need serious query power. ClickHouse gives you:
+
+**1. Scale Without Pain:**
+- ✅ Handles petabytes of training data (Windlass captures EVERYTHING)
+- ✅ Query millions of cascade executions in seconds
+- ✅ Automatic partitioning by time (easy data retention)
+- ✅ Distributed queries across multiple nodes
+
+**2. Rich JSON Querying:**
+```sql
+-- Extract tool usage patterns for fine-tuning
+SELECT
+    JSONExtractString(tool_calls_json, '0', 'tool') as tool_used,
+    JSONExtractString(tool_calls_json, '0', 'arguments') as args,
+    cost,
+    is_winner
+FROM unified_logs
+WHERE sounding_index IS NOT NULL
+  AND JSONHas(tool_calls_json, '0', 'tool')
+ORDER BY timestamp DESC
+LIMIT 10000
+```
+
+**3. Training Dataset Queries:**
+```python
+from windlass.unified_logs import query_unified
+
+# Get all winning soundings for fine-tuning data
+winners = query_unified("""
+    is_winner = true
+    AND sounding_index IS NOT NULL
+    AND cost > 0
+""")
+
+# Extract successful tool sequences
+tool_sequences = query_unified("""
+    phase_name = 'solve_problem'
+    AND JSONExtractString(tool_calls_json, '0', 'tool') IN ('run_code', 'linux_shell')
+    AND content_json NOT LIKE '%error%'
+""")
+
+# Get evaluation pairs (soundings + winner for ranking model)
+eval_pairs = query_unified("""
+    session_id IN (
+        SELECT DISTINCT session_id
+        FROM unified_logs
+        WHERE sounding_index IS NOT NULL
+    )
+    ORDER BY session_id, sounding_index
+""")
+```
+
+**4. Automatic Data Collection:**
+
+Every cascade execution logs:
+- ✅ Full conversation history (prompts + responses)
+- ✅ Tool calls and results
+- ✅ Sounding attempts (winners + losers for preference learning)
+- ✅ Reforge iterations (progressive refinement traces)
+- ✅ Cost and token counts (for efficiency training)
+- ✅ Ward validation results (quality signals)
+- ✅ Phase routing decisions (multi-step reasoning)
+
+**5. Export Training Data:**
+```python
+# Export to JSONL for fine-tuning
+import json
+from windlass.unified_logs import query_unified
+
+df = query_unified("is_winner = true AND role = 'assistant'")
+
+with open('training_data.jsonl', 'w') as f:
+    for _, row in df.iterrows():
+        f.write(json.dumps({
+            'prompt': json.loads(row['full_request_json']),
+            'completion': json.loads(row['content_json']),
+            'cost': row['cost'],
+            'tokens': row['total_tokens']
+        }) + '\n')
+```
+
+**6. Evaluation Dataset Generation:**
+```python
+# Create evaluation sets from real production traces
+from windlass.unified_logs import query_unified
+
+# Get diverse test cases
+eval_set = query_unified("""
+    node_type = 'phase_start'
+    AND phase_name IN ('generate', 'analyze', 'solve_problem')
+    ORDER BY RANDOM()
+    LIMIT 1000
+""")
+
+# Export with ground truth (from actual execution)
+eval_set.to_json('eval_dataset.jsonl', orient='records', lines=True)
+```
+
+**Migration Impact for Training Workflows:**
+
+| Volume | Mode | Query Time | Cost |
+|--------|------|------------|------|
+| <100K rows | chDB (embedded) | Seconds | $0 |
+| 100K-10M rows | chDB (embedded) | Minutes | $0 |
+| 10M-1B rows | ClickHouse server | Seconds | ~$100/month |
+| 1B+ rows | ClickHouse cluster | Seconds | ~$500/month |
+
+**Just set 2 env vars when you outgrow embedded mode. Code stays the same.**
+
+See `CLICKHOUSE_SETUP.md` for migration guide.
 
 ## Passive Prompt Optimization (Self-Evolving Prompts)
 

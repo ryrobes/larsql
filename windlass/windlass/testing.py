@@ -12,19 +12,20 @@ captured the execution correctly and can be loaded. Full LLM mocking replay
 coming in Phase 2.
 """
 import json
-import duckdb
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 
 class SnapshotCapture:
-    """Captures cascade executions from DuckDB logs."""
+    """Captures cascade executions from chDB (ClickHouse) logs."""
 
-    def __init__(self, log_dir: str = None):
+    def __init__(self, data_dir: str = None):
         from windlass.config import get_config
+        from windlass.db_adapter import get_db_adapter
         config = get_config()
-        self.log_dir = Path(log_dir or config.log_dir)
+        self.data_dir = Path(data_dir or config.data_dir)
+        self.db = get_db_adapter()
 
     def freeze(self, session_id: str, snapshot_name: str, description: str = "") -> Path:
         """
@@ -40,25 +41,23 @@ class SnapshotCapture:
         """
         print(f"Freezing session {session_id} as test snapshot...")
 
-        # Connect to logs
-        conn = duckdb.connect()
-
         # Get all events for this session
-        parquet_pattern = str(self.log_dir / "**" / "*.parquet")
+        parquet_pattern = str(self.data_dir / "*.parquet")
         query = f"""
             SELECT
                 timestamp,
                 session_id,
                 role,
-                content,
-                metadata
-            FROM read_parquet('{parquet_pattern}')
+                content_json,
+                metadata_json
+            FROM file('{parquet_pattern}', Parquet)
             WHERE session_id = '{session_id}'
             ORDER BY timestamp ASC
         """
 
         try:
-            events = conn.execute(query).fetchall()
+            df = self.db.query(query)
+            events = df.values.tolist()
         except Exception as e:
             raise ValueError(f"Failed to query logs: {e}")
 
@@ -84,7 +83,6 @@ class SnapshotCapture:
         print(f"  Total turns: {sum(len(p['turns']) for p in snapshot['execution']['phases'])}")
         print(f"\nValidate with: windlass test validate {snapshot_name}")
 
-        conn.close()
         return snapshot_file
 
     def _parse_execution(

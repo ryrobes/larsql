@@ -36,6 +36,14 @@ class Config(BaseModel):
         os.path.join(_WINDLASS_ROOT, "cascades"),
     ])
 
+    # Database backend settings (chDB by default, ClickHouse server optional)
+    use_clickhouse_server: bool = Field(default=False)
+    clickhouse_host: str = Field(default="localhost")
+    clickhouse_port: int = Field(default=9000)
+    clickhouse_database: str = Field(default="windlass")
+    clickhouse_user: str = Field(default="default")
+    clickhouse_password: str = Field(default="")
+
     model_config = ConfigDict(env_prefix="WINDLASS_")
 
 def _ensure_directories(config: Config):

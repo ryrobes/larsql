@@ -6,11 +6,12 @@ import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
 import './InstancesView.css';
 
-function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions, sessionUpdates, sseConnected }) {
+function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sseConnected }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [debugSessionId, setDebugSessionId] = useState(null);
+  const [expandedParents, setExpandedParents] = useState(new Set());
 
   useEffect(() => {
     if (cascadeId) {
@@ -18,19 +19,32 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
     }
   }, [cascadeId, refreshTrigger]);
 
-  // Add polling for running sessions (every 2 seconds)
+  // Add polling for running AND finalizing sessions (every 2 seconds)
   useEffect(() => {
-    if (!runningSessions || runningSessions.size === 0) {
+    const activeSessions = new Set([
+      ...(runningSessions || []),
+      ...(finalizingSessions || [])
+    ]);
+
+    console.log('[POLL] useEffect triggered - runningSessions:', Array.from(runningSessions || []), 'finalizingSessions:', Array.from(finalizingSessions || []));
+
+    if (activeSessions.size === 0) {
+      console.log('[POLL] No active sessions - not polling');
       return;
     }
 
-    const interval = setInterval(() => {
-      console.log('[POLL] Refreshing instances (running sessions detected)');
-      fetchInstances();
-    }, 2000); // Poll every 2 seconds when sessions are running
+    console.log('[POLL] Starting polling interval for', activeSessions.size, 'active sessions');
 
-    return () => clearInterval(interval);
-  }, [runningSessions]);
+    const interval = setInterval(() => {
+      console.log('[POLL] Refreshing instances (active sessions:', activeSessions.size, ')');
+      fetchInstances();
+    }, 2000); // Poll every 2 seconds when sessions are active
+
+    return () => {
+      console.log('[POLL] Cleaning up polling interval');
+      clearInterval(interval);
+    };
+  }, [runningSessions, finalizingSessions]);
 
   const fetchInstances = async () => {
     try {
@@ -46,14 +60,156 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
       }
 
       // Ensure data is an array
+      let instances = [];
       if (Array.isArray(data)) {
-        setInstances(data);
+        instances = data;
       } else {
         console.error('API returned non-array:', data);
-        setInstances([]);
+        instances = [];
       }
 
+      // Create ghost rows for sessions that SSE knows about but SQL doesn't have yet
+      const allActiveSessions = new Set([
+        ...(runningSessions || []),
+        ...(finalizingSessions || [])
+      ]);
+
+      console.log('[GHOST] Active sessions:', Array.from(allActiveSessions));
+      console.log('[GHOST] SQL instances:', instances.map(i => i.session_id));
+      console.log('[GHOST] sessionMetadata:', sessionMetadata);
+
+      // Separate ghost parents and children
+      const ghostParents = [];
+      const ghostChildrenMap = {}; // parent_id -> [children]
+
+      Array.from(allActiveSessions)
+        .filter(sessionId => {
+          const exists = instances.some(i => i.session_id === sessionId);
+          if (!exists) {
+            console.log('[GHOST] Creating ghost for:', sessionId);
+          }
+          return !exists;
+        })
+        .forEach(sessionId => {
+          const metadata = sessionMetadata?.[sessionId] || {};
+          const isChild = metadata.depth > 0 && metadata.parent_session_id;
+
+          console.log('[GHOST] Processing:', sessionId, 'metadata:', metadata, 'isChild:', isChild);
+
+          const ghostInstance = {
+            session_id: sessionId,
+            cascade_id: metadata.cascade_id || cascadeId,
+            parent_session_id: metadata.parent_session_id,
+            depth: metadata.depth || 0,
+            start_time: new Date().toISOString(),
+            status: 'initializing',
+            phases: [],
+            total_cost: 0,
+            duration_seconds: 0,
+            models_used: [],
+            input_data: {},
+            final_output: null,
+            children: [],
+            isGhost: true
+          };
+
+          if (isChild) {
+            // Add to children map
+            const parentId = metadata.parent_session_id;
+            console.log('[GHOST] This is a child! Adding to parent:', parentId);
+            if (!ghostChildrenMap[parentId]) {
+              ghostChildrenMap[parentId] = [];
+            }
+            ghostChildrenMap[parentId].push(ghostInstance);
+          } else {
+            // Top-level ghost parent
+            console.log('[GHOST] This is a parent! Adding to ghostParents');
+            ghostParents.push(ghostInstance);
+          }
+        });
+
+      console.log('[GHOST] Ghost parents:', ghostParents.length);
+      console.log('[GHOST] Ghost children map:', ghostChildrenMap);
+
+      // Merge ghost children into parents (both SQL parents and ghost parents)
+      const allInstances = [...ghostParents, ...instances];
+      allInstances.forEach(parent => {
+        if (ghostChildrenMap[parent.session_id]) {
+          // Deduplicate: only add ghost children that don't already exist in SQL children
+          const existingChildIds = new Set((parent.children || []).map(c => c.session_id));
+          const newGhostChildren = ghostChildrenMap[parent.session_id].filter(ghost =>
+            !existingChildIds.has(ghost.session_id)
+          );
+
+          if (newGhostChildren.length > 0) {
+            console.log('[GHOST] Merging', newGhostChildren.length, 'ghost children into parent:', parent.session_id);
+            parent.children = [...(parent.children || []), ...newGhostChildren];
+          } else {
+            console.log('[GHOST] No new ghost children to merge (all exist in SQL)');
+          }
+        }
+      });
+
+      console.log('[GHOST] Final instances count:', allInstances.length);
+      console.log('[GHOST] Final instances:', allInstances.map(i => ({
+        id: i.session_id,
+        isGhost: i.isGhost,
+        childrenCount: i.children?.length || 0
+      })));
+
+      setInstances(allInstances);
       setLoading(false);
+
+      // Auto-expand parents with active children (running or finalizing)
+      const autoExpand = new Set();
+      allInstances.forEach(parent => {
+        if (parent.children && parent.children.length > 0) {
+          const hasActiveChildren = parent.children.some(child =>
+            runningSessions?.has(child.session_id) ||
+            finalizingSessions?.has(child.session_id)
+          );
+          if (hasActiveChildren) {
+            autoExpand.add(parent.session_id);
+            console.log('[EXPAND] Auto-expanding parent with active children:', parent.session_id);
+          }
+        }
+      });
+
+      // Merge with existing expanded state (don't collapse manually expanded parents)
+      if (autoExpand.size > 0) {
+        setExpandedParents(prev => {
+          const merged = new Set([...prev, ...autoExpand]);
+          console.log('[EXPAND] Updated expandedParents:', Array.from(merged));
+          return merged;
+        });
+      }
+
+      // SQL-driven completion detection: check if any finalizing sessions are now truly complete
+      // Check both parents AND children recursively
+      if (finalizingSessions && onInstanceComplete) {
+        const checkCompletion = (instance) => {
+          if (finalizingSessions.has(instance.session_id)) {
+            // Check if this instance is REALLY done
+            const allPhasesComplete = instance.phases?.every(p =>
+              p.status === 'completed' || p.status === 'error'
+            );
+            const hasData = instance.total_cost > 0 || instance.phases?.length > 0;
+
+            if (allPhasesComplete && hasData) {
+              console.log(`[SQL] Instance ${instance.session_id} is truly complete, notifying parent`);
+              // SQL data is ready! Trigger completion callback
+              onInstanceComplete(instance.session_id);
+            }
+          }
+
+          // Check children recursively
+          if (instance.children && instance.children.length > 0) {
+            instance.children.forEach(checkCompletion);
+          }
+        };
+
+        allInstances.forEach(checkCompletion);
+      }
     } catch (err) {
       setError(err.message);
       setInstances([]);
@@ -95,6 +251,231 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
       default:
         return '#4b5563';  // Gray
     }
+  };
+
+  const toggleExpanded = (sessionId) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  };
+
+  const getChildrenSummary = (children) => {
+    if (!children || children.length === 0) return null;
+
+    const runningCount = children.filter(c => runningSessions?.has(c.session_id)).length;
+    const finalizingCount = children.filter(c => finalizingSessions?.has(c.session_id)).length;
+    const failedCount = children.filter(c => c.status === 'failed').length;
+
+    const parts = [];
+    if (runningCount > 0) parts.push(`${runningCount} running`);
+    if (finalizingCount > 0) parts.push(`${finalizingCount} processing`);
+    if (failedCount > 0) parts.push(`${failedCount} failed`);
+
+    const statusText = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+    return `${children.length} sub-cascade${children.length > 1 ? 's' : ''}${statusText}`;
+  };
+
+  // Helper function to render an instance row (for both parents and children)
+  const renderInstanceRow = (instance, isChild = false) => {
+    const isGhost = instance.isGhost;
+    const isCompleted = instance.phases?.every(p => p.status === 'completed');
+    const hasRunning = instance.phases?.some(p => p.status === 'running');
+    const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
+    const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
+
+    // Determine visual state
+    let stateClass = '';
+    let stateBadge = null;
+
+    if (isGhost) {
+      stateClass = 'ghost';
+      stateBadge = <span className="initializing-badge">⏳ Initializing...</span>;
+    } else if (isFinalizing) {
+      stateClass = 'finalizing';
+      stateBadge = <span className="finalizing-badge">🔄 Processing...</span>;
+    } else if (hasRunning || isSessionRunning) {
+      stateClass = 'running';
+      stateBadge = <span className="running-badge">⚡ Running</span>;
+    }
+
+    return (
+      <div
+        key={instance.session_id}
+        className={`instance-row ${stateClass} ${isChild ? 'child-row' : ''}`}
+      >
+        {/* Left: Instance Info */}
+        <div className="instance-info">
+          {isChild && (
+            <div className="child-connector">
+              <span className="connector-line">└─</span>
+              <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
+            </div>
+          )}
+          <h3 className="session-id">
+            {instance.session_id}
+            {stateBadge}
+            {instance.status === 'failed' && !isGhost && (
+              <span className="failed-badge">
+                <Icon icon="mdi:alert-circle" width="14" />
+                Failed ({instance.error_count})
+              </span>
+            )}
+          </h3>
+          <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+
+          <div className="instance-actions-row">
+            {instance.models_used?.length > 0 && (
+              <div className="models-used">
+                {instance.models_used.map((model, idx) => (
+                  <span key={idx} className="model-tag">
+                    <Icon icon="mdi:robot" width="12" />
+                    {model.split('/').pop()}
+                  </span>
+                ))}
+              </div>
+            )}
+            <button
+              className="rerun-button-small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRunCascade && onRunCascade({
+                  ...cascadeData,
+                  prefilled_inputs: instance.input_data || {}
+                });
+              }}
+              title="Re-run with these inputs"
+            >
+              <Icon icon="mdi:replay" width="14" />
+            </button>
+          </div>
+
+          {instance.input_data && Object.keys(instance.input_data).length > 0 && (
+            <div className="input-params">
+              <span className="input-label">Inputs:</span>
+              <div className="input-fields">
+                {Object.entries(instance.input_data).map(([key, value]) => (
+                  <div key={key} className="input-field-display">
+                    <span className="input-key">{key}:</span>
+                    <span className="input-value">
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mermaid Graph Preview - under inputs on left side */}
+          {!isChild && (
+            <div className="mermaid-wrapper">
+              <MermaidPreview
+                sessionId={instance.session_id}
+                size="small"
+                showMetadata={false}
+                lastUpdate={sessionUpdates?.[instance.session_id]}
+              />
+            </div>
+          )}
+
+          {/* Children collapse indicator (for parent rows only) - below mermaid */}
+          {!isChild && instance.children && instance.children.length > 0 && (
+            <div
+              className="children-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded(instance.session_id);
+              }}
+            >
+              <Icon
+                icon={expandedParents.has(instance.session_id) ? "mdi:chevron-down" : "mdi:chevron-right"}
+                width="20"
+                className="chevron-icon"
+              />
+              <span className="children-summary">{getChildrenSummary(instance.children)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Middle: Phase Bars with Status */}
+        <div className="phase-bars-container">
+          {(() => {
+            // Calculate max cost for relative bar widths
+            const costs = (instance.phases || []).map(p => p.avg_cost || 0);
+            const maxCost = Math.max(...costs, 0.01);
+            const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
+            const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
+
+            return (instance.phases || []).map((phase, idx) => (
+              <PhaseBar
+                key={idx}
+                phase={phase}
+                maxCost={normalizedMax}
+                status={phase.status}
+              />
+            ));
+          })()}
+
+          {/* Final Output */}
+          {instance.final_output && (
+            <div className="final-output">
+              <div className="final-output-label">Final Output:</div>
+              <div className="final-output-content">
+                <ReactMarkdown>{instance.final_output}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Instance Metrics */}
+        <div className="instance-metrics">
+          <div className="metric">
+            <span className="metric-value">
+              {formatDuration(instance.duration_seconds)}
+            </span>
+            <span className="metric-label">duration</span>
+          </div>
+
+          <div className="metric metric-cost-small">
+            <span className="metric-value cost-highlight">
+              {formatCost(instance.total_cost)}
+            </span>
+            <span className="metric-label">cost</span>
+          </div>
+
+          <button
+            className="debug-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDebugSessionId(instance.session_id);
+            }}
+            title="Debug: view all messages"
+          >
+            <Icon icon="mdi:bug" width="18" />
+            Debug
+          </button>
+
+          {isCompleted && onFreezeInstance && !isChild && (
+            <button
+              className="freeze-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFreezeInstance(instance);
+              }}
+              title="Freeze as test snapshot"
+            >
+              <Icon icon="mdi:snowflake" width="18" />
+              Freeze
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -153,162 +534,27 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
 
       <div className="instances-list">
         {instances.map((instance) => {
-          const isCompleted = instance.phases?.every(p => p.status === 'completed');
-          const hasRunning = instance.phases?.some(p => p.status === 'running');
-          const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
+          const isExpanded = expandedParents.has(instance.session_id);
+          const hasChildren = instance.children && instance.children.length > 0;
+
+          if (hasChildren) {
+            console.log('[RENDER] Parent:', instance.session_id, 'has', instance.children.length, 'children, expanded:', isExpanded);
+          }
 
           return (
-            <div
-              key={instance.session_id}
-              className={`instance-row ${hasRunning || isSessionRunning ? 'running' : ''}`}
-            >
-            {/* Left: Instance Info */}
-            <div className="instance-info">
-              <h3 className="session-id">
-                {instance.session_id}
-                {(hasRunning || isSessionRunning) && (
-                  <span className="running-badge">Running</span>
-                )}
-                {instance.status === 'failed' && (
-                  <span className="failed-badge">
-                    <Icon icon="mdi:alert-circle" width="14" />
-                    Failed ({instance.error_count})
-                  </span>
-                )}
-              </h3>
-              <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+            <React.Fragment key={instance.session_id}>
+              {/* Render parent instance */}
+              {renderInstanceRow(instance, false)}
 
-              <div className="instance-actions-row">
-                {instance.models_used.length > 0 && (
-                  <div className="models-used">
-                    {instance.models_used.map((model, idx) => (
-                      <span key={idx} className="model-tag">
-                        <Icon icon="mdi:robot" width="12" />
-                        {model.split('/').pop()}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <button
-                  className="rerun-button-small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRunCascade && onRunCascade({
-                      ...cascadeData,
-                      prefilled_inputs: instance.input_data || {}
-                    });
-                  }}
-                  title="Re-run with these inputs"
-                >
-                  <Icon icon="mdi:replay" width="14" />
-                </button>
-              </div>
-
-              {instance.input_data && Object.keys(instance.input_data).length > 0 && (
-                <div className="input-params">
-                  <span className="input-label">Inputs:</span>
-                  <div className="input-fields">
-                    {Object.entries(instance.input_data).map(([key, value]) => (
-                      <div key={key} className="input-field-display">
-                        <span className="input-key">{key}:</span>
-                        <span className="input-value">
-                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {/* Render child instances (only if expanded) */}
+              {hasChildren && isExpanded && (
+                instance.children.map(child => renderInstanceRow(child, true))
               )}
-
-              {/* Mermaid Graph Preview - under inputs on left side */}
-              <div className="mermaid-wrapper">
-                <MermaidPreview
-                  sessionId={instance.session_id}
-                  size="small"
-                  showMetadata={false}
-                  lastUpdate={sessionUpdates?.[instance.session_id]}
-                />
-              </div>
-            </div>
-
-            {/* Middle: Phase Bars with Status */}
-            <div className="phase-bars-container">
-              {(() => {
-                // Calculate max cost for relative bar widths
-                // Use a softer normalization: max cost OR average*2 (whichever is higher)
-                // This prevents one expensive phase from making all others tiny
-                const costs = (instance.phases || []).map(p => p.avg_cost || 0);
-                const maxCost = Math.max(...costs, 0.01);
-                const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
-                const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
-
-                return (instance.phases || []).map((phase, idx) => (
-                  <PhaseBar
-                    key={idx}
-                    phase={phase}
-                    maxCost={normalizedMax}
-                    status={phase.status}
-                  />
-                ));
-              })()}
-
-              {/* Final Output */}
-              {instance.final_output && (
-                <div className="final-output">
-                  <div className="final-output-label">Final Output:</div>
-                  <div className="final-output-content">
-                    <ReactMarkdown>{instance.final_output}</ReactMarkdown>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Instance Metrics */}
-            <div className="instance-metrics">
-              <div className="metric">
-                <span className="metric-value">
-                  {formatDuration(instance.duration_seconds)}
-                </span>
-                <span className="metric-label">duration</span>
-              </div>
-
-              <div className="metric metric-cost-small">
-                <span className="metric-value cost-highlight">
-                  {formatCost(instance.total_cost)}
-                </span>
-                <span className="metric-label">cost</span>
-              </div>
-
-              <button
-                className="debug-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDebugSessionId(instance.session_id);
-                }}
-                title="Debug: view all messages"
-              >
-                <Icon icon="mdi:bug" width="18" />
-                Debug
-              </button>
-
-              {isCompleted && onFreezeInstance && (
-                <button
-                  className="freeze-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFreezeInstance(instance);
-                  }}
-                  title="Freeze as test snapshot"
-                >
-                  <Icon icon="mdi:snowflake" width="18" />
-                  Freeze
-                </button>
-              )}
-            </div>
-          </div>
+            </React.Fragment>
           );
         })}
       </div>
+
 
       {instances.length === 0 && (
         <div className="empty-state">
