@@ -60,6 +60,12 @@ class Agent:
         if self.base_url and "openrouter" in self.base_url:
              args["custom_llm_provider"] = "openai"
 
+        # Explicitly set provider for Ollama (local GPU)
+        if self.base_url and "ollama" in self.base_url.lower():
+            args["custom_llm_provider"] = "ollama"
+        elif self.model and self.model.startswith("ollama/"):
+            args["custom_llm_provider"] = "ollama"
+
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"

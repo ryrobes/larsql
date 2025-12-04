@@ -19,6 +19,9 @@ def main():
     run_parser.add_argument("config", help="Path to cascade JSON config")
     run_parser.add_argument("--input", help="Path to input JSON file or raw JSON string", default="{}")
     run_parser.add_argument("--session", help="Session ID", default=None)
+    run_parser.add_argument("--model", help="Override model name (e.g., 'ollama/mistral', 'anthropic/claude-sonnet-4.5')", default=None)
+    run_parser.add_argument("--base-url", help="Override provider base URL (e.g., 'http://localhost:11434/v1' for Ollama)", default=None)
+    run_parser.add_argument("--api-key", help="Override API key", default=None)
 
     # Test command group
     test_parser = subparsers.add_parser('test', help='Cascade testing commands')
@@ -77,10 +80,16 @@ def main():
             run_parser_standalone.add_argument("config")
             run_parser_standalone.add_argument("--input", default="{}")
             run_parser_standalone.add_argument("--session", default=None)
+            run_parser_standalone.add_argument("--model", default=None)
+            run_parser_standalone.add_argument("--base-url", default=None)
+            run_parser_standalone.add_argument("--api-key", default=None)
             standalone_args = run_parser_standalone.parse_args(sys.argv[1:])
 
             args.input = standalone_args.input
             args.session = standalone_args.session
+            args.model = standalone_args.model
+            args.base_url = standalone_args.base_url
+            args.api_key = standalone_args.api_key
         else:
             parser.print_help()
             sys.exit(1)
@@ -127,6 +136,18 @@ def cmd_run(args):
         except json.JSONDecodeError:
             input_data = {"raw": args.input}
 
+    # Build overrides dict from CLI flags
+    overrides = {}
+    if hasattr(args, 'model') and args.model:
+        overrides['model'] = args.model
+        print(f"🔧 Model override: {args.model}")
+    if hasattr(args, 'base_url') and args.base_url:
+        overrides['base_url'] = args.base_url
+        print(f"🔧 Base URL override: {args.base_url}")
+    if hasattr(args, 'api_key') and args.api_key:
+        overrides['api_key'] = args.api_key
+        print(f"🔧 API key override: ***")
+
     print(f"Running cascade: {args.config}")
     print(f"Session ID: {session_id}")
     print()
@@ -134,7 +155,7 @@ def cmd_run(args):
     # Enable event hooks for real-time updates
     hooks = EventPublishingHooks()
 
-    result = run_cascade(args.config, input_data, session_id, hooks=hooks)
+    result = run_cascade(args.config, input_data, session_id, overrides=overrides, hooks=hooks)
 
     print()
     print("="*60)

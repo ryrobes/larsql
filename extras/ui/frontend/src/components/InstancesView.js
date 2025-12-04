@@ -5,7 +5,7 @@ import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
 import './InstancesView.css';
 
-function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions }) {
+function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, cascadeData, refreshTrigger, runningCascades, runningSessions, sessionUpdates }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -262,6 +262,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
                 sessionId={instance.session_id}
                 size="small"
                 showMetadata={false}
+                lastUpdate={sessionUpdates?.[instance.session_id]}
               />
 
               <div className="metric">
@@ -321,6 +322,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, casc
         <DebugModal
           sessionId={debugSessionId}
           onClose={() => setDebugSessionId(null)}
+          lastUpdate={sessionUpdates?.[debugSessionId]}
         />
       )}
     </div>

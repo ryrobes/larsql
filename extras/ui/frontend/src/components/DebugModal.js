@@ -8,7 +8,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import MermaidPreview from './MermaidPreview';
 import './DebugModal.css';
 
-function DebugModal({ sessionId, onClose }) {
+function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -609,6 +609,7 @@ function DebugModal({ sessionId, onClose }) {
                 sessionId={sessionId}
                 size="medium"
                 showMetadata={false}
+                lastUpdate={lastUpdate}
               />
             </div>
           )}

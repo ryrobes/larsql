@@ -100,13 +100,21 @@ class Logger:
     def flush(self):
         if not self.buffer:
             return
-        
-        df = pd.DataFrame(self.buffer)
-        filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
-        path = os.path.join(self.log_dir, filename)
-        
-        df.to_parquet(path, engine='pyarrow')
-        self.buffer = []
+
+        try:
+            df = pd.DataFrame(self.buffer)
+            filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
+            path = os.path.join(self.log_dir, filename)
+
+            df.to_parquet(path, engine='pyarrow')
+
+            # Force garbage collection to release file handles
+            del df
+        except Exception as e:
+            print(f"[ERROR] Failed to flush parquet: {e}")
+        finally:
+            # Always clear buffer
+            self.buffer = []
 
 _logger = Logger()
 
@@ -125,4 +133,8 @@ def query_logs(query: str):
     """Query logs using DuckDB SQL."""
     log_dir = get_config().log_dir
     con = duckdb.connect()
-    return con.execute(f"SELECT * FROM '{log_dir}/*.parquet' WHERE {query}").df()
+    try:
+        result = con.execute(f"SELECT * FROM '{log_dir}/*.parquet' WHERE {query}").df()
+        return result
+    finally:
+        con.close()  # Always close connection to prevent file handle leaks

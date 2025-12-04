@@ -25,7 +25,7 @@ mermaid.initialize({
   }
 });
 
-function MermaidPreview({ sessionId, size = 'small', showMetadata = true }) {
+function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUpdate = null }) {
   const containerRef = useRef(null);
   const [graphData, setGraphData] = useState(null);
   const [error, setError] = useState(null);
@@ -63,7 +63,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true }) {
     };
 
     fetchGraph();
-  }, [sessionId]);
+  }, [sessionId, lastUpdate]); // Refetch when session gets updated via SSE
 
   useEffect(() => {
     if (!graphData || !containerRef.current) return;

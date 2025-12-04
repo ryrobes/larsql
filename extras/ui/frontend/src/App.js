@@ -18,6 +18,7 @@ function App() {
   const [sseConnected, setSseConnected] = useState(false);
   const [runningCascades, setRunningCascades] = useState(new Set());
   const [runningSessions, setRunningSessions] = useState(new Set());
+  const [sessionUpdates, setSessionUpdates] = useState({}); // Track last update time per session for mermaid refresh
 
   const showToast = (message, type = 'success') => {
     const id = Date.now();
@@ -138,6 +139,13 @@ function App() {
           case 'tool_result':
             // Refresh on any activity
             setRefreshTrigger(prev => prev + 1);
+            // Track session update for mermaid refresh
+            if (event.session_id) {
+              setSessionUpdates(prev => ({
+                ...prev,
+                [event.session_id]: Date.now()
+              }));
+            }
             break;
 
           case 'cascade_complete':
@@ -234,6 +242,7 @@ function App() {
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           runningSessions={runningSessions}
+          sessionUpdates={sessionUpdates}
         />
       )}
 

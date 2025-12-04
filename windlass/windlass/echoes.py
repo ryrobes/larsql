@@ -206,24 +206,34 @@ class EchoLogger:
         if not self.buffer:
             return
 
-        # Convert to DataFrame
-        df = pd.DataFrame(self.buffer)
+        try:
+            # Convert to DataFrame
+            df = pd.DataFrame(self.buffer)
 
-        # Convert complex types to JSON strings for Parquet compatibility
-        # PyArrow can't handle empty dicts/structs, so we stringify them
-        for col in ['content', 'tool_calls', 'metadata', 'image_paths']:
-            if col in df.columns:
-                df[col] = df[col].apply(lambda x: json.dumps(x, default=str) if x is not None else None)
+            # Convert complex types to JSON strings for Parquet compatibility
+            # PyArrow can't handle empty dicts/structs, so we stringify them
+            for col in ['content', 'tool_calls', 'metadata', 'image_paths']:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: json.dumps(x, default=str) if x is not None else None)
 
-        # Write to Parquet with pyarrow
-        filename = f"echoes_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
-        filepath = os.path.join(self.parquet_dir, filename)
+            # Write to Parquet with pyarrow
+            filename = f"echoes_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
+            filepath = os.path.join(self.parquet_dir, filename)
 
-        # Use pyarrow engine - complex data is now JSON strings
-        df.to_parquet(filepath, engine='pyarrow', index=False)
+            # Use pyarrow engine - complex data is now JSON strings
+            # Write and explicitly close file handle
+            df.to_parquet(filepath, engine='pyarrow', index=False)
 
-        # Clear buffer
-        self.buffer = []
+            # Force garbage collection of DataFrame to release file handles
+            del df
+
+        except Exception as e:
+            print(f"[ERROR] Failed to flush parquet: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Always clear buffer, even on error
+            self.buffer = []
 
     def close(self):
         """Flush Parquet buffer and clean up resources."""
@@ -349,12 +359,16 @@ def query_echoes_parquet(where_clause: str = None) -> pd.DataFrame:
 
     con = duckdb.connect()
 
-    if where_clause:
-        query = f"SELECT * FROM '{parquet_dir}/*.parquet' WHERE {where_clause}"
-    else:
-        query = f"SELECT * FROM '{parquet_dir}/*.parquet'"
+    try:
+        if where_clause:
+            query = f"SELECT * FROM '{parquet_dir}/*.parquet' WHERE {where_clause}"
+        else:
+            query = f"SELECT * FROM '{parquet_dir}/*.parquet'"
 
-    return con.execute(query).df()
+        result = con.execute(query).df()
+        return result
+    finally:
+        con.close()  # Always close connection to prevent file handle leaks
 
 
 def query_echoes_jsonl(session_id: str) -> List[Dict]:
@@ -408,13 +422,17 @@ def query_echoes_jsonl_duckdb(where_clause: str = None) -> pd.DataFrame:
 
     con = duckdb.connect()
 
-    # DuckDB can read JSONL directly
-    if where_clause:
-        query = f"""
-        SELECT * FROM read_json('{jsonl_dir}/*.jsonl', format='newline_delimited')
-        WHERE {where_clause}
-        """
-    else:
-        query = f"SELECT * FROM read_json('{jsonl_dir}/*.jsonl', format='newline_delimited')"
+    try:
+        # DuckDB can read JSONL directly
+        if where_clause:
+            query = f"""
+            SELECT * FROM read_json('{jsonl_dir}/*.jsonl', format='newline_delimited')
+            WHERE {where_clause}
+            """
+        else:
+            query = f"SELECT * FROM read_json('{jsonl_dir}/*.jsonl', format='newline_delimited')"
 
-    return con.execute(query).df()
+        result = con.execute(query).df()
+        return result
+    finally:
+        con.close()  # Always close connection to prevent file handle leaks
