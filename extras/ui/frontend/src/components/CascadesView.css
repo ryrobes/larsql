@@ -90,6 +90,107 @@
   }
 }
 
+/* Search Bar */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 0 0.5rem;
+}
+
+.search-container {
+  position: relative;
+  flex: 1;
+  max-width: 480px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #4A5568;
+  pointer-events: none;
+  transition: color 0.2s ease;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 44px 12px 48px;
+  background: rgba(22, 32, 42, 0.8);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 12px;
+  color: #F0F4F8;
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.search-input::placeholder {
+  color: #4A5568;
+}
+
+.search-input:hover {
+  border-color: rgba(45, 212, 191, 0.35);
+  background: rgba(22, 32, 42, 0.9);
+}
+
+.search-input:focus {
+  border-color: rgba(45, 212, 191, 0.6);
+  background: rgba(22, 32, 42, 0.95);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1),
+              0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.search-input:focus + .search-icon,
+.search-container:focus-within .search-icon {
+  color: #2DD4BF;
+}
+
+.search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  background: rgba(45, 212, 191, 0.1);
+  border: none;
+  border-radius: 6px;
+  color: #9AA5B1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.search-clear:hover {
+  background: rgba(45, 212, 191, 0.2);
+  color: #2DD4BF;
+}
+
+.search-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.search-results-count {
+  font-size: 0.85rem;
+  color: #9AA5B1;
+  white-space: nowrap;
+  padding: 6px 12px;
+  background: rgba(22, 32, 42, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.1);
+}
+
 /* Cascades Content Area */
 .cascades-content {
   width: 100%;
@@ -181,5 +282,25 @@
 
   .cascades-grid {
     padding: 10px;
+  }
+
+  .search-container {
+    max-width: 360px;
+  }
+}
+
+@media (max-width: 768px) {
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .search-container {
+    max-width: 100%;
+  }
+
+  .search-results-count {
+    text-align: center;
   }
 }

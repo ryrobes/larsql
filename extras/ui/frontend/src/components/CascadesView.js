@@ -8,25 +8,59 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [layout, setLayout] = useState({ boxes: [], w: 0, h: 0, fill: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Convert wildcard pattern to regex
+  const wildcardToRegex = (pattern) => {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+    return new RegExp(withWildcards, 'i');
+  };
+
+  // Filter cascades based on search query
+  const getFilteredCascades = () => {
+    if (!searchQuery.trim()) return cascades;
+
+    const regex = wildcardToRegex(searchQuery.trim());
+    return cascades.filter(cascade => {
+      // Search in cascade_id
+      if (regex.test(cascade.cascade_id)) return true;
+      // Search in description
+      if (cascade.description && regex.test(cascade.description)) return true;
+      // Search in phase names
+      if (cascade.phases?.some(p => regex.test(p.name))) return true;
+      return false;
+    });
+  };
+
+  const filteredCascades = getFilteredCascades();
 
   useEffect(() => {
     fetchCascades();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
 
+  // Recalculate layout when search query changes
+  useEffect(() => {
+    if (cascades.length > 0) {
+      calculateLayout(filteredCascades);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, cascades]);
+
   // Recalculate layout on window resize
   useEffect(() => {
     const handleResize = () => {
-      if (cascades.length > 0) {
+      if (filteredCascades.length > 0) {
         console.log('[RESIZE] Recalculating layout for new viewport width');
-        calculateLayout(cascades);
+        calculateLayout(filteredCascades);
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cascades]);
+  }, [filteredCascades]);
 
   // Add polling for running cascades AND finalizing sessions (every 2 seconds)
   useEffect(() => {
@@ -249,6 +283,34 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
         </div>
       </header>
 
+      <div className="search-bar">
+        <div className="search-container">
+          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search cascades... (supports * wildcards)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="search-clear" onClick={() => setSearchQuery('')}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <span className="search-results-count">
+            {filteredCascades.length} of {cascades.length}
+          </span>
+        )}
+      </div>
+
       <div className="cascades-content">
         <div className="cascades-grid-wrapper">
         <div className="cascades-grid" style={{
@@ -314,6 +376,13 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
           <div className="empty-state">
             <p>No cascades found</p>
             <p className="empty-hint">Run a cascade to see it appear here</p>
+          </div>
+        )}
+
+        {cascades.length > 0 && filteredCascades.length === 0 && searchQuery && (
+          <div className="empty-state">
+            <p>No cascades match "{searchQuery}"</p>
+            <p className="empty-hint">Try a different search term or use * for wildcards</p>
           </div>
         )}
       </div>

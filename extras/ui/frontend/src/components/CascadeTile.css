@@ -221,7 +221,7 @@
 }
 
 .cost-total {
-  font-size: 1.5rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #2DD4BF; /* Glacial Ice */
   text-shadow:
@@ -231,7 +231,7 @@
 }
 
 .cost-avg {
-  font-size: 1rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: #2DD4BF; /* Glacial Ice */
   opacity: 0.6;
