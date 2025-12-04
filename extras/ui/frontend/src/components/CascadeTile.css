@@ -8,11 +8,11 @@
     rgba(11, 18, 25, 1) 40%,
     rgba(8, 12, 18, 1) 100%
   );
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  border: 2px solid rgba(45, 212, 191, 0.3); /* Glacial Ice border */
+  border: 1px solid rgba(45, 212, 191, 0.3); /* Glacial Ice border */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   /* Fill the wrapper */
   width: 100%;
@@ -54,7 +54,7 @@
 /* Mermaid Background - NEW: Below title, left of metrics column */
 .mermaid-background {
   position: absolute;
-  top: 60px; /* 20px padding + 40px title */
+  top: 70px; /* 20px padding + 50px title */
   left: 20px;
   right: 106px; /* 70px metrics + 16px gap + 20px padding */
   bottom: 20px;
@@ -76,7 +76,7 @@
 /* Tile Placeholder - Same bounds as mermaid */
 .tile-placeholder {
   position: absolute;
-  top: 60px; /* 20px padding + 40px title */
+  top: 70px; /* 20px padding + 50px title */
   left: 20px;
   right: 106px; /* 70px metrics + 16px gap + 20px padding */
   bottom: 20px;
@@ -107,7 +107,7 @@
   top: 20px;
   left: 20px;
   right: 20px;
-  height: 40px;
+  height: 50px; /* title + description */
   z-index: 10;
   display: flex;
   align-items: flex-start;
@@ -155,7 +155,7 @@
 /* Metrics Column - Right side, vertical list */
 .tile-metrics {
   position: absolute;
-  top: 60px; /* 20px padding + 40px title */
+  top: 70px; /* 20px padding + 50px title */
   right: 20px;
   bottom: 20px;
   width: 70px; /* Compact width */

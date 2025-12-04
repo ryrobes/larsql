@@ -1,34 +1,27 @@
 /* Dark mode with bright pastel accents */
 .cascades-container {
+  min-height: 100vh;
   background: #0B1219;
   color: #F0F4F8;
-  min-height: calc(100vh - 80px); /* Account for header */
-  width: 100%;
-  overflow-x: auto;
+  padding: 2rem;
 }
 
-/* App Header - Fixed width, never stretched by grid */
+/* App Header */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1rem 2rem;
+  margin: -2rem -2rem 2rem -2rem;
   background: linear-gradient(180deg, rgba(22, 32, 42, 0.95) 0%, rgba(11, 18, 25, 0.98) 100%);
   border-bottom: 1px solid rgba(45, 212, 191, 0.15);
   backdrop-filter: blur(8px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  width: 100%;
-  margin-left: 0;
-  margin-right: 0;
-  flex-shrink: 0;
 }
 
-.header-brand {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .brand-logo {
@@ -95,6 +88,11 @@
   50% {
     box-shadow: 0 0 12px rgba(45, 212, 191, 0.8);
   }
+}
+
+/* Cascades Content Area */
+.cascades-content {
+  width: 100%;
 }
 
 /* Cascades Grid Container - Scrollable wrapper */

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import potpack from 'potpack';
 import CascadeTile, { calculateTileDimensions } from './CascadeTile';
 import './CascadesView.css';
 
@@ -133,23 +134,25 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
       if (!mermaidWidth || !mermaidHeight) {
         const dims = calculateTileDimensions(cascade);
         // Extract mermaid dimensions from box dimensions
-        // NEW LAYOUT: Title top, Mermaid left, Metrics right (120px)
-        const TITLE_HEIGHT = 40;
-        const METRICS_WIDTH = 120;
+        // NEW LAYOUT: Title top, Mermaid left, Metrics right (70px + 16px gap)
+        const TITLE_HEIGHT = 50;
+        const METRICS_WIDTH = 70;
+        const METRICS_GAP = 16;
         const PADDING = 20;
-        mermaidWidth = dims.w - METRICS_WIDTH - (PADDING * 2) - 12;
+        mermaidWidth = dims.w - METRICS_WIDTH - METRICS_GAP - (PADDING * 2) - 12;
         mermaidHeight = dims.h - TITLE_HEIGHT - (PADDING * 2) - 12;
       }
 
       // Calculate box dimensions with new layout
       // Layout: [          TITLE (full width)         ]
-      //         [ MERMAID (flexible) | METRICS (120px) ]
-      const TITLE_HEIGHT = 40;
-      const METRICS_WIDTH = 120;
+      //         [ MERMAID (flexible) | GAP | METRICS (70px) ]
+      const TITLE_HEIGHT = 50;
+      const METRICS_WIDTH = 70;
+      const METRICS_GAP = 16;
       const PADDING = 20;
       const GAP = 12;
 
-      const boxWidth = PADDING + mermaidWidth + METRICS_WIDTH + PADDING;
+      const boxWidth = PADDING + mermaidWidth + METRICS_GAP + METRICS_WIDTH + PADDING;
       const boxHeight = PADDING + TITLE_HEIGHT + mermaidHeight + PADDING;
 
       return {
@@ -167,39 +170,9 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
     }));
     console.log('[LAYOUT] Boxes before packing (first 3):', JSON.stringify(firstThreeBefore));
 
-    // Get viewport width constraint (with padding + extra margin for comfort)
-    const viewportWidth = window.innerWidth - 40; // Just 20px margin on each side
-    console.log('[LAYOUT] Viewport width:', viewportWidth);
-
-    // Simple width-constrained bin packing algorithm
-    // Sort by height descending (taller boxes first)
-    boxes.sort((a, b) => b.h - a.h);
-
-    let currentX = 0;
-    let currentY = 0;
-    let rowHeight = 0;
-    let maxWidth = 0;
-
-    for (const box of boxes) {
-      // Check if box fits in current row
-      if (currentX + box.w > viewportWidth && currentX > 0) {
-        // Move to next row
-        currentX = 0;
-        currentY += rowHeight;
-        rowHeight = 0;
-      }
-
-      // Place box
-      box.x = currentX;
-      box.y = currentY;
-
-      // Update trackers
-      currentX += box.w;
-      rowHeight = Math.max(rowHeight, box.h);
-      maxWidth = Math.max(maxWidth, currentX);
-    }
-
-    const totalHeight = currentY + rowHeight;
+    // Use potpack for efficient bin packing
+    // potpack mutates boxes array, adding x/y coordinates and sorting by height
+    const { w, h, fill } = potpack(boxes);
 
     const firstThreeAfter = boxes.slice(0, 3).map(b => ({
       id: b.cascade_id,
@@ -208,15 +181,15 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
       w: b.w,
       h: b.h
     }));
-    console.log('[PACKING] Boxes after packing (first 3):', JSON.stringify(firstThreeAfter));
-    console.log('[PACKING] Container:', `${maxWidth}px × ${totalHeight}px, boxes: ${boxes.length}`);
+    console.log('[PACKING] Boxes after potpack (first 3):', JSON.stringify(firstThreeAfter));
+    console.log('[PACKING] Container:', `${w}px × ${h}px, fill: ${(fill * 100).toFixed(1)}%, boxes: ${boxes.length}`);
 
     // Store layout with positions
     setLayout({
       boxes: boxes,
-      w: maxWidth,
-      h: totalHeight,
-      fill: boxes.reduce((sum, b) => sum + (b.w * b.h), 0) / (maxWidth * totalHeight)
+      w: w,
+      h: h,
+      fill: fill
     });
   };
 
@@ -255,9 +228,9 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
   const totalCost = cascades.reduce((sum, c) => sum + (c.metrics?.total_cost || 0), 0);
 
   return (
-    <>
+    <div className="cascades-container">
       <header className="app-header">
-        <div className="header-brand">
+        <div className="header-left">
           <img
             src="/windlass-transparent-square.png"
             alt="Windlass"
@@ -276,7 +249,7 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
         </div>
       </header>
 
-      <div className="cascades-container">
+      <div className="cascades-content">
         <div className="cascades-grid-wrapper">
         <div className="cascades-grid" style={{
           width: `${layout.w || 0}px`,
@@ -344,7 +317,7 @@ function CascadesView({ onSelectCascade, onRunCascade, refreshTrigger, runningCa
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
