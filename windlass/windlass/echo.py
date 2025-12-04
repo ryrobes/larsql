@@ -16,6 +16,7 @@ class Echo:
         self.state = initial_state or {}
         self.history: List[Dict[str, Any]] = []
         self.lineage: List[Dict[str, Any]] = []
+        self.errors: List[Dict[str, Any]] = []  # Track errors that occurred
         # Execution context for visualization
         self._current_cascade_id: Optional[str] = None
         self._current_phase_name: Optional[str] = None
@@ -43,9 +44,14 @@ class Echo:
             node_type: Type of node (cascade, phase, turn, tool, etc.)
             metadata: Additional metadata dict (sounding_index, is_winner, phase_name, etc.)
         """
-        entry["trace_id"] = trace_id
-        entry["parent_id"] = parent_id
-        entry["node_type"] = node_type
+        # CRITICAL: Create a COPY of the entry dict to avoid mutating the original
+        # The caller may reuse the same dict (e.g., appending to context_messages)
+        # If we mutate it, trace_id/metadata fields will pollute the LLM API messages!
+        enriched_entry = entry.copy()
+
+        enriched_entry["trace_id"] = trace_id
+        enriched_entry["parent_id"] = parent_id
+        enriched_entry["node_type"] = node_type
 
         # Build metadata with context
         meta = metadata or {}
@@ -54,8 +60,54 @@ class Echo:
         if self._current_phase_name:
             meta.setdefault("phase_name", self._current_phase_name)
 
-        entry["metadata"] = meta
-        self.history.append(entry)
+        enriched_entry["metadata"] = meta
+        self.history.append(enriched_entry)
+
+        # NEW: Also log to echo system automatically
+        try:
+            # Lazy import to avoid circular dependency
+            from .echoes import log_echo
+            from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result
+
+            # Extract data from entry
+            role = entry.get("role")
+            content = entry.get("content")
+            tool_calls = entry.get("tool_calls")
+
+            # Detect images
+            has_base64 = detect_base64_in_content(content) if content else False
+            images = extract_image_paths_from_tool_result(content) if isinstance(content, dict) else None
+
+            # Extract enrichment data from metadata
+            sounding_index = meta.get("sounding_index")
+            is_winner = meta.get("is_winner")
+            reforge_step = meta.get("reforge_step")
+            phase_name = meta.get("phase_name")
+            cascade_id = meta.get("cascade_id")
+            model = meta.get("model")  # Extract model from metadata
+
+            # Log to echo system
+            log_echo(
+                session_id=self.session_id,
+                trace_id=trace_id,
+                parent_id=parent_id,
+                node_type=node_type,
+                role=role,
+                content=content,  # Full content (NOT stringified!)
+                tool_calls=tool_calls,
+                metadata=meta,
+                sounding_index=sounding_index,
+                is_winner=is_winner,
+                reforge_step=reforge_step,
+                phase_name=phase_name,
+                cascade_id=cascade_id,
+                model=model,  # Pass model
+                images=images,
+                has_base64=has_base64,
+            )
+        except Exception as e:
+            # Don't fail if echo logging has issues
+            pass  # Silently ignore to avoid spam
 
     def add_lineage(self, phase: str, output: Any, trace_id: str = None):
         self.lineage.append({
@@ -64,12 +116,24 @@ class Echo:
             "trace_id": trace_id
         })
 
+    def add_error(self, phase: str, error_type: str, error_message: str, metadata: Dict[str, Any] = None):
+        """Track that an error occurred during execution."""
+        self.errors.append({
+            "phase": phase,
+            "error_type": error_type,
+            "error_message": error_message,
+            "metadata": metadata or {}
+        })
+
     def get_full_echo(self) -> Dict[str, Any]:
         return {
             "session_id": self.session_id,
             "state": self.state,
             "history": self.history,
-            "lineage": self.lineage
+            "lineage": self.lineage,
+            "errors": self.errors,
+            "has_errors": len(self.errors) > 0,
+            "status": "failed" if len(self.errors) > 0 else "success"
         }
 
     def merge(self, other_echo: 'Echo'):
@@ -78,6 +142,8 @@ class Echo:
         self.state.update(other_echo.state)
         # Append lineage
         self.lineage.extend(other_echo.lineage)
+        # Merge errors from sub-cascade
+        self.errors.extend(other_echo.errors)
         # History might be tricky, let's append it with a marker
         self.history.append({"sub_echo": other_echo.session_id, "history": other_echo.history})
 

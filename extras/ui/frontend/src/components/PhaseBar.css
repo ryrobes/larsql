@@ -1,0 +1,457 @@
+/* Phase bar - Horizontal bar chart style */
+.phase-bar-container {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #1a1a1a;
+  transition: all 0.2s ease;
+}
+
+.phase-bar-container:last-child {
+  border-bottom: none;
+}
+
+.phase-bar-container:hover {
+  background: rgba(167, 139, 250, 0.05);
+  cursor: pointer;
+}
+
+/* Header: Name + Metrics */
+.phase-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.phase-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.phase-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.message-count {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #666;
+  font-style: italic;
+}
+
+.phase-metrics {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.phase-cost {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #34d399;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.phase-duration {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+/* Bar track and fill */
+.phase-bar-track {
+  height: 24px;
+  background: #0a0a0a;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.phase-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  position: relative;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.3), rgba(52, 211, 153, 0.6));
+}
+
+/* Weight-based colors (for cascade definitions) */
+.phase-bar-fill.weight-light {
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.2), rgba(52, 211, 153, 0.4));
+}
+
+.phase-bar-fill.weight-medium {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.3), rgba(251, 191, 36, 0.6));
+}
+
+.phase-bar-fill.weight-heavy {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.3), rgba(248, 113, 113, 0.6));
+}
+
+/* Status-based colors (for instances) */
+.phase-bar-fill.status-completed {
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.3), rgba(52, 211, 153, 0.7));
+}
+
+.phase-bar-fill.status-running {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.3), rgba(251, 191, 36, 0.7));
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.phase-bar-fill.status-error {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.3), rgba(248, 113, 113, 0.7));
+}
+
+.phase-bar-fill.status-pending {
+  background: linear-gradient(90deg, rgba(75, 85, 99, 0.2), rgba(75, 85, 99, 0.3));
+  opacity: 0.5;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Segments for soundings (shows factor visually for definitions) */
+.bar-segments {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent calc(100% / var(--segments) - 1px),
+    rgba(255, 255, 255, 0.2) calc(100% / var(--segments) - 1px),
+    rgba(255, 255, 255, 0.2) calc(100% / var(--segments))
+  );
+}
+
+/* Sounding segments (for instances with winner data) */
+.sounding-segments {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 0;
+}
+
+.sounding-segments .segment {
+  position: relative;
+  transition: all 0.3s ease;
+  border-right: 2px solid #0a0a0a;
+}
+
+.sounding-segments .segment:last-child {
+  border-right: none;
+}
+
+.sounding-segments .segment.loser {
+  opacity: 0.35;
+  filter: brightness(0.5) saturate(0.7);
+}
+
+.sounding-segments .segment.winner {
+  opacity: 1;
+  filter: brightness(1.4) saturate(1.2);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.4);
+  position: relative;
+}
+
+.sounding-segments .segment.winner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent);
+  pointer-events: none;
+}
+
+/* Winner checkmark removed - brightness is enough */
+
+/* Turn count indicator on segment */
+.turn-count {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+  z-index: 10;
+}
+
+/* Cost display in segment (only if wide enough) */
+.segment-cost {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 3px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  z-index: 20;
+  white-space: nowrap;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* Turn indicators for non-sounding phases */
+.turn-indicators {
+  position: absolute;
+  bottom: 2px;
+  left: 4px;
+  display: flex;
+  gap: 2px;
+  z-index: 10;
+}
+
+.turn-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(96, 165, 250, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Tool call indicators */
+.tool-indicators {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  z-index: 10;
+}
+
+.tool-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(244, 114, 182, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.tool-overflow {
+  font-size: 7px;
+  color: rgba(244, 114, 182, 0.9);
+  font-weight: 700;
+  margin-left: 1px;
+}
+
+/* Segment hover effect */
+.sounding-segments .segment:hover {
+  filter: brightness(1.6);
+  z-index: 10;
+  cursor: help;
+}
+
+/* Tooltip for segment hover */
+.segment-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  background: #1a1a1a;
+  border: 2px solid #fbbf24;
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+  z-index: 100;
+  pointer-events: none;
+  animation: tooltipFadeIn 0.2s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.segment-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #fbbf24;
+}
+
+.tooltip-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.tooltip-total {
+  font-size: 0.8rem;
+  color: #34d399;
+  margin-bottom: 0.5rem;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.tooltip-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tooltip-turn {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-family: 'Monaco', 'Courier New', monospace;
+  color: #e0e0e0;
+}
+
+.tooltip-turn span:first-child {
+  color: #888;
+}
+
+.tooltip-turn span:last-child {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+/* Turn costs overlay (for non-sounding phases) */
+.turn-costs-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  cursor: help;
+  z-index: 5;
+}
+
+/* Badges */
+.phase-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.complexity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid;
+}
+
+.complexity-badge.soundings {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
+.complexity-badge.reforge {
+  background: rgba(251, 146, 60, 0.15);
+  border-color: #fb923c;
+  color: #fb923c;
+}
+
+.complexity-badge.wards {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+
+.complexity-badge.loop {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.complexity-badge.weight {
+  background: rgba(156, 163, 175, 0.15);
+  border-color: #6b7280;
+  color: #9ca3af;
+}
+
+.complexity-badge.tools {
+  background: rgba(244, 114, 182, 0.15);
+  border-color: #f472b6;
+  color: #f472b6;
+}
+
+/* Snippet (instructions or output) */
+.phase-snippet {
+  font-size: 0.7rem;
+  font-family: 'Monaco', 'Courier New', monospace;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 0.4rem;
+  line-height: 1.3;
+}
+
+.phase-snippet.instructions {
+  color: #888;
+  font-style: italic;
+}
+
+.phase-snippet.output {
+  color: #666;
+}
+
+.phase-snippet.error {
+  color: #f87171;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-weight: 600;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  margin-left: 0;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* Spinning icon for running status */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

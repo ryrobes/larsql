@@ -211,6 +211,265 @@ def collect_reforge_steps(nodes_map: Dict[str, ExecutionNode], phase_id: str) ->
     return reforge_steps
 
 
+def export_execution_graph_json(echo: Echo, output_path: str) -> str:
+    """
+    Export execution graph as structured JSON for UI consumption.
+
+    Provides easy-to-query structure with trace_ids for DB lookups.
+    Includes nodes, edges, and metadata without needing to parse mermaid.
+
+    Returns:
+        Path to written JSON file
+    """
+    root_nodes, nodes_map = build_execution_tree(echo)
+    history, sub_echoes = flatten_history(echo.history)
+
+    # Build nodes list
+    nodes = []
+    edges = []
+
+    for trace_id, node in nodes_map.items():
+        # Create node entry
+        node_entry = {
+            "trace_id": trace_id,
+            "node_type": node.node_type,
+            "role": node.role,
+            "parent_id": node.parent_id,
+            "depth": node.metadata.get("depth", 0),
+
+            # Metadata
+            "phase_name": node.metadata.get("phase_name"),
+            "cascade_id": node.metadata.get("cascade_id"),
+
+            # Soundings/Reforge
+            "sounding_index": node.sounding_index,
+            "is_winner": node.is_winner,
+            "reforge_step": node.reforge_step,
+
+            # Content preview (truncated for JSON size)
+            "content_preview": str(node.content)[:100] if node.content else None,
+
+            # Additional metadata
+            "metadata": {
+                k: v for k, v in node.metadata.items()
+                if k not in ("phase_name", "cascade_id", "depth")
+            }
+        }
+        nodes.append(node_entry)
+
+        # Create edge if has parent
+        if node.parent_id:
+            edges.append({
+                "source": node.parent_id,
+                "target": trace_id,
+                "edge_type": "parent_child"
+            })
+
+    # Collect phases in order
+    phases = []
+    for item in echo.lineage:
+        phases.append({
+            "phase": item.get("phase"),
+            "trace_id": item.get("trace_id"),
+            "output_preview": str(item.get("output", ""))[:100]
+        })
+
+    # Build phase connections from history
+    phase_nodes = [n for n in nodes if n["node_type"] == "phase"]
+    for i in range(len(phase_nodes) - 1):
+        edges.append({
+            "source": phase_nodes[i]["trace_id"],
+            "target": phase_nodes[i+1]["trace_id"],
+            "edge_type": "phase_sequence"
+        })
+
+    # Collect soundings info
+    soundings_groups = {}
+    for node in nodes:
+        if node["sounding_index"] is not None:
+            phase = node.get("phase_name", "unknown")
+            if phase not in soundings_groups:
+                soundings_groups[phase] = []
+            soundings_groups[phase].append({
+                "trace_id": node["trace_id"],
+                "sounding_index": node["sounding_index"],
+                "is_winner": node["is_winner"],
+                "reforge_step": node.get("reforge_step")
+            })
+
+    # Build output structure
+    graph = {
+        "session_id": echo.session_id,
+        "generated_at": None,  # Could add timestamp
+
+        "nodes": nodes,
+        "edges": edges,
+
+        "phases": phases,
+        "soundings": soundings_groups,
+
+        "summary": {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "total_phases": len(phases),
+            "has_soundings": len(soundings_groups) > 0,
+            "has_sub_cascades": len(sub_echoes) > 0
+        }
+    }
+
+    # Write JSON
+    with open(output_path, "w") as f:
+        json.dump(graph, f, indent=2, default=str)
+
+    return output_path
+
+
+def export_react_flow_graph(echo: Echo, output_path: str) -> str:
+    """
+    Export execution graph in React Flow format for direct UI use.
+
+    React Flow format: https://reactflow.dev/
+    Ready to drop into React Flow component with custom node types.
+
+    Returns:
+        Path to written JSON file
+    """
+    root_nodes, nodes_map = build_execution_tree(echo)
+    history, sub_echoes = flatten_history(echo.history)
+
+    rf_nodes = []
+    rf_edges = []
+
+    # Position layout (simple left-to-right based on depth and order)
+    node_positions = {}
+    y_offset = 0
+    x_spacing = 250
+    y_spacing = 100
+
+    # Group nodes by depth for layout
+    depth_groups = {}
+    for trace_id, node in nodes_map.items():
+        depth = node.metadata.get("depth", 0)
+        if depth not in depth_groups:
+            depth_groups[depth] = []
+        depth_groups[depth].append((trace_id, node))
+
+    # Assign positions
+    for depth in sorted(depth_groups.keys()):
+        nodes_at_depth = depth_groups[depth]
+        for i, (trace_id, node) in enumerate(nodes_at_depth):
+            node_positions[trace_id] = {
+                "x": depth * x_spacing,
+                "y": i * y_spacing
+            }
+
+    # Build React Flow nodes
+    for trace_id, node in nodes_map.items():
+        pos = node_positions.get(trace_id, {"x": 0, "y": y_offset})
+        y_offset += y_spacing
+
+        # Determine node type for custom rendering
+        if node.node_type == "phase":
+            rf_type = "phaseNode"
+        elif node.node_type == "cascade":
+            rf_type = "cascadeNode"
+        elif node.node_type in ("sounding_attempt", "soundings"):
+            rf_type = "soundingNode"
+        elif node.node_type in ("reforge_step", "reforge_attempt"):
+            rf_type = "reforgeNode"
+        elif node.node_type == "tool_result":
+            rf_type = "toolNode"
+        else:
+            rf_type = "default"
+
+        rf_node = {
+            "id": trace_id,
+            "type": rf_type,
+            "position": pos,
+            "data": {
+                "label": node.content[:50] if node.content else node.node_type,
+                "trace_id": trace_id,
+                "node_type": node.node_type,
+                "role": node.role,
+                "phase_name": node.metadata.get("phase_name"),
+                "cascade_id": node.metadata.get("cascade_id"),
+                "sounding_index": node.sounding_index,
+                "is_winner": node.is_winner,
+                "reforge_step": node.reforge_step,
+                "metadata": node.metadata
+            }
+        }
+
+        # Add parent node reference for grouping
+        if node.parent_id:
+            rf_node["parentNode"] = node.parent_id
+            rf_node["extent"] = "parent"  # Constrain to parent bounds
+
+        rf_nodes.append(rf_node)
+
+    # Build React Flow edges
+    for trace_id, node in nodes_map.items():
+        if node.parent_id:
+            # Determine edge style based on relationship
+            edge_style = {}
+            animated = False
+            edge_type = "default"
+
+            if node.is_winner:
+                edge_style = {"stroke": "#00ff00", "strokeWidth": 3}
+                animated = True
+                edge_type = "winner"
+            elif node.sounding_index is not None:
+                edge_style = {"stroke": "#fab005", "strokeDasharray": "5 5"}
+                edge_type = "sounding"
+            elif node.node_type == "phase":
+                edge_style = {"stroke": "#1c7ed6", "strokeWidth": 2}
+                edge_type = "phase"
+
+            rf_edge = {
+                "id": f"e_{node.parent_id}_{trace_id}",
+                "source": node.parent_id,
+                "target": trace_id,
+                "type": edge_type,
+                "animated": animated,
+                "style": edge_style,
+                "data": {
+                    "edge_type": "parent_child"
+                }
+            }
+
+            rf_edges.append(rf_edge)
+
+    # Add phase sequence edges
+    phases = [item.get("trace_id") for item in echo.lineage if item.get("trace_id")]
+    for i in range(len(phases) - 1):
+        rf_edges.append({
+            "id": f"seq_{phases[i]}_{phases[i+1]}",
+            "source": phases[i],
+            "target": phases[i+1],
+            "type": "phase_sequence",
+            "animated": True,
+            "style": {"stroke": "#1c7ed6", "strokeWidth": 2},
+            "data": {"edge_type": "phase_sequence"}
+        })
+
+    # Output React Flow format
+    react_flow_data = {
+        "nodes": rf_nodes,
+        "edges": rf_edges,
+        "meta": {
+            "session_id": echo.session_id,
+            "total_nodes": len(rf_nodes),
+            "total_edges": len(rf_edges)
+        }
+    }
+
+    with open(output_path, "w") as f:
+        json.dump(react_flow_data, f, indent=2, default=str)
+
+    return output_path
+
+
 def generate_mermaid(echo: Echo, output_path: str) -> str:
     """
     Generate a Mermaid flowchart from Echo history.
@@ -221,8 +480,25 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     - Soundings as parallel branches with winner highlighting
     - Reforge as sequential refinement steps
     - Sub-cascades as nested groups
+
+    Also generates a companion JSON file with execution graph structure.
     """
     root_nodes, nodes_map = build_execution_tree(echo)
+
+    # Generate companion JSON files
+    json_path = output_path.replace(".mmd", ".json")
+    reactflow_path = output_path.replace(".mmd", "_reactflow.json")
+
+    try:
+        export_execution_graph_json(echo, json_path)
+    except Exception as e:
+        # Don't fail mermaid generation if JSON fails
+        print(f"[Warning] Failed to generate execution graph JSON: {e}")
+
+    try:
+        export_react_flow_graph(echo, reactflow_path)
+    except Exception as e:
+        print(f"[Warning] Failed to generate React Flow JSON: {e}")
     # Flatten history to include nested sub_echo entries
     history, sub_echoes = flatten_history(echo.history)
 

@@ -1,27 +1,110 @@
 from .base import simple_eddy
+from ..logs import log_message
+
+@simple_eddy
+def linux_shell(command: str, timeout: int = 30) -> str:
+    """
+    Execute a shell command in a sandboxed Ubuntu Docker container.
+
+    You have access to a full Ubuntu system with standard tools:
+    - Python (python3), pip, curl, wget
+    - File operations (cat, echo, ls, grep, etc.)
+    - Package management (apt - but requires sudo)
+    - Network tools (curl, wget, nc)
+
+    Examples:
+    - Run Python: python3 -c "print('hello')"
+    - Install package: pip install requests (in container, ephemeral)
+    - Curl API: curl https://api.example.com
+    - File ops: echo 'data' > file.txt && cat file.txt
+
+    Returns stdout/stderr from command execution.
+    """
+    try:
+        import docker
+    except ImportError:
+        return "Error: docker package not installed. Run: pip install docker"
+
+    container_name = "ubuntu-container"
+    code_preview = command[:200] + "..." if len(command) > 200 else command
+    log_message(None, "system", f"linux_shell executing: {code_preview}",
+                metadata={"tool": "linux_shell", "command_length": len(command)})
+
+    try:
+        # Connect to Docker
+        client = docker.from_env()
+
+        # Get the container
+        try:
+            container = client.containers.get(container_name)
+        except docker.errors.NotFound:
+            return f"Error: Container '{container_name}' not found. Please start it first:\n" + \
+                   f"docker run -d --name {container_name} ubuntu:latest sleep infinity"
+
+        # Check if container is running
+        if container.status != 'running':
+            return f"Error: Container '{container_name}' is not running (status: {container.status})"
+
+        # Execute command in container
+        exec_result = container.exec_run(
+            f"bash -c '{command}'",
+            stdout=True,
+            stderr=True,
+            demux=False  # Combine stdout/stderr
+        )
+
+        exit_code = exec_result.exit_code
+        output = exec_result.output.decode('utf-8') if exec_result.output else ""
+
+        log_message(None, "system", f"linux_shell completed: exit_code={exit_code}, {len(output)} chars output",
+                   metadata={"tool": "linux_shell", "exit_code": exit_code, "output_length": len(output)})
+
+        # Return output with exit code info
+        if exit_code != 0:
+            return f"Exit code: {exit_code}\n\n{output}"
+
+        return output if output else "(Command executed successfully with no output)"
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        error_msg = f"Error: {type(e).__name__}: {e}\n\nTraceback:\n{tb}"
+
+        log_message(None, "system", f"linux_shell error: {type(e).__name__}: {e}",
+                   metadata={"tool": "linux_shell", "error_type": type(e).__name__})
+
+        return error_msg
 
 @simple_eddy
 def run_code(code: str, language: str = "python") -> str:
     """
-    Executes code in a sandbox.
-    (Placeholder implementation using exec - insecure for production)
+    Executes Python code in a sandboxed Docker container.
+
+    The code is executed in an isolated Ubuntu container with Python installed.
+    All standard library modules are available.
+
+    For multi-line code, just provide the complete script.
+    For imports, include them at the top of your code.
+
+    Returns stdout/stderr from execution.
     """
-    # In a real implementation, use a docker container or e2b
-    import sys
-    import io
-    
-    # Capture stdout
-    old_stdout = sys.stdout
-    redirected_output = sys.stdout = io.StringIO()
-    
-    try:
-        exec(code)
-    except Exception as e:
-        return f"Error: {e}"
-    finally:
-        sys.stdout = old_stdout
-        
-    return redirected_output.getvalue()
+    # Delegate to linux_shell with python3 -c
+    # Escape single quotes in code for shell safety
+    escaped_code = code.replace("'", "'\"'\"'")
+
+    # Use heredoc for clean multi-line code execution
+    command = f"python3 << 'WINDLASS_EOF'\n{code}\nWINDLASS_EOF"
+
+    log_message(None, "system", f"run_code delegating to linux_shell: {len(code)} chars",
+                metadata={"tool": "run_code", "code_length": len(code), "language": language})
+
+    result = linux_shell(command)
+
+    # Add context about what ran
+    if result and not result.startswith("Error:"):
+        return result
+    else:
+        return result
 
 @simple_eddy
 def take_screenshot(url: str) -> str:

@@ -13,4 +13,6 @@ graphs
 images
 logs
 states
+echoes
+**/graphs/*
 

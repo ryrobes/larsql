@@ -90,6 +90,9 @@ class WindlassRunner:
         self.hooks = hooks or WindlassHooks()
         self.context_messages: List[Dict[str, str]] = []
         self.sounding_index = sounding_index  # Track which sounding attempt this is (for cascade-level soundings)
+        self.current_phase_sounding_index = None  # Track sounding index within current phase
+        self.current_retry_attempt = None  # Track retry/validation attempt index
+        self.current_turn_number = None  # Track turn number within phase (for max_turns)
         
         # Tracing
         if parent_trace:
@@ -115,6 +118,142 @@ class WindlassRunner:
             generate_mermaid(self.echo, self.graph_path)
         except Exception:
             pass # Don't crash execution for visualization
+
+    def _generate_tool_description(self, func: Callable, name: str) -> str:
+        """
+        Generate a prompt-based description of a tool for the agent.
+        Returns formatted text describing the tool, its parameters, and how to call it.
+        """
+        import inspect
+        from typing import get_type_hints
+
+        sig = inspect.signature(func)
+        hints = get_type_hints(func)
+
+        # Get docstring
+        doc = func.__doc__ or f"Tool: {name}"
+        doc_lines = [line.strip() for line in doc.strip().split('\n') if line.strip()]
+        description = doc_lines[0] if doc_lines else f"Tool: {name}"
+
+        # Build parameter list
+        params = []
+        for param_name, param in sig.parameters.items():
+            if param_name == "self":
+                continue
+
+            param_type = hints.get(param_name, str).__name__
+            is_required = param.default == inspect.Parameter.empty
+            required_marker = " (required)" if is_required else f" (optional, default: {param.default})"
+
+            params.append(f"  - {param_name} ({param_type}){required_marker}")
+
+        params_str = "\n".join(params) if params else "  (no parameters)"
+
+        # Format as markdown
+        tool_desc = f"""
+**{name}**
+{description}
+Parameters:
+{params_str}
+
+To use: Output JSON in this format:
+{{"tool": "{name}", "arguments": {{"param1": "value1", "param2": "value2"}}}}
+"""
+        return tool_desc.strip()
+
+    def _parse_prompt_tool_calls(self, content: str) -> tuple[List[Dict], str]:
+        """
+        Parse prompt-based tool calls from agent response.
+        Looks for JSON structures like: {"tool": "name", "arguments": {...}}
+        Handles both raw JSON and markdown code-fenced JSON (```json ... ```)
+
+        Returns:
+            tuple: (tool_calls, error_message)
+                - tool_calls: List of parsed tool calls in native format
+                - error_message: Error description if parsing failed, None if successful
+        """
+        if not content:
+            return [], None
+
+        import re
+        tool_calls = []
+        parse_errors = []
+
+        # ONLY extract JSON from markdown code fences (```json ... ```)
+        # This is the ONLY reliable way to find tool calls
+        # DO NOT try to parse arbitrary {...} patterns - they could be:
+        #   - Python dicts: {'key': 'value'}
+        #   - Python f-strings: {variable}
+        #   - JSON examples in text
+        #   - Formatted output examples
+        code_fence_pattern = r'```json\s*(\{[^`]*\})\s*```'
+        all_json_blocks = re.findall(code_fence_pattern, content, re.DOTALL | re.IGNORECASE)
+
+        # If no ```json blocks found, agent isn't trying to call tools
+        # This is fine - phase might not have tools, or agent is just responding
+
+        for block_idx, block in enumerate(all_json_blocks):
+            # Clean up any remaining markdown or whitespace
+            block = block.strip()
+
+            # Try to parse and validate
+            try:
+                data = json.loads(block)
+
+                # Check if it's a tool call
+                if isinstance(data, dict) and "tool" in data:
+                    tool_name = data["tool"]
+                    arguments = data.get("arguments", {})
+
+                    # Validate tool call structure
+                    if not isinstance(arguments, dict):
+                        parse_errors.append(f"Tool call {block_idx + 1}: 'arguments' must be a dict/object, got {type(arguments).__name__}")
+                        continue
+
+                    # Successfully parsed and validated!
+                    tool_calls.append({
+                        "id": f"prompt_tool_{len(tool_calls)}",
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(arguments)
+                        }
+                    })
+
+            except json.JSONDecodeError as e:
+                # JSON is malformed - record detailed error
+                error_detail = f"Tool call {block_idx + 1}: Invalid JSON at position {e.pos}\n"
+                error_detail += f"  Error: {e.msg}\n"
+                error_detail += f"  Your JSON: {block[:100]}{'...' if len(block) > 100 else ''}\n"
+
+                # Check for common errors
+                opens = block.count('{')
+                closes = block.count('}')
+                if closes > opens:
+                    error_detail += f"  → You have {closes - opens} extra closing braces }}\n"
+                elif opens > closes:
+                    error_detail += f"  → You're missing {opens - closes} closing braces }}\n"
+
+                # Check for missing quotes
+                if block.count('"') % 2 != 0:
+                    error_detail += f"  → Unmatched quotes detected\n"
+
+                parse_errors.append(error_detail)
+
+            except Exception as e:
+                parse_errors.append(f"Tool call {block_idx + 1}: Unexpected error - {type(e).__name__}: {e}")
+
+        # Return results
+        if tool_calls:
+            return tool_calls, None  # Success!
+
+        if parse_errors:
+            # Found JSON blocks but all failed to parse
+            error_msg = "Found JSON block(s) but failed to parse:\n\n" + "\n".join(parse_errors)
+            return [], error_msg
+
+        # No JSON blocks found at all
+        return [], None  # No error, just no tool calls (agent might just be talking)
 
     def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
         """
@@ -255,7 +394,7 @@ class WindlassRunner:
         # Log evaluation reasoning
         log_message(self.session_id, "cascade_sounding_evaluation", eval_content,
                    trace_id=evaluator_trace.id, parent_id=soundings_trace.id,
-                   node_type="evaluation", depth=self.depth)
+                   node_type="evaluation", depth=self.depth, model=self.model)
 
         # Add evaluator to echo history for visualization
         self.echo.add_history({
@@ -609,12 +748,26 @@ Refinement directive: {reforge_config.honing_prompt}
             else:
                 current_phase_name = None
 
-        update_session_state(self.session_id, self.config.cascade_id, "completed", "end", self.depth)
-
+        # Get final result with error status
         result = self.echo.get_full_echo()
 
-        # Hook: Cascade Complete
+        # Update session state based on whether errors occurred
+        final_status = "failed" if result.get("has_errors") else "completed"
+        update_session_state(self.session_id, self.config.cascade_id, final_status, "end", self.depth)
+
+        # Hook: Cascade Complete (called for both success and error cases)
+        # The hook can check result["status"] to distinguish
+        if result.get("has_errors"):
+            # Also call error hook if errors occurred
+            cascade_error = Exception(f"Cascade completed with {len(result['errors'])} error(s)")
+            self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
+
         self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
+
+        # Log cascade completion with status
+        log_message(self.session_id, "system", f"Cascade {final_status}: {self.config.cascade_id}",
+                   metadata={"status": final_status, "error_count": len(result.get("errors", []))},
+                   node_type=f"cascade_{final_status}")
 
         return result
 
@@ -635,7 +788,7 @@ Refinement directive: {reforge_config.honing_prompt}
             self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, e)
             raise
 
-    def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> list[str]:
+    def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
         Run the Quartermaster agent to select appropriate tackle for this phase.
 
@@ -679,9 +832,12 @@ Respond with a JSON array of tool names, nothing else. Example: ["tool1", "tool2
 If no tools are needed, return an empty array: []
 """
 
+        # Use phase model or fall back to default
+        qm_model = phase_model if phase_model else self.model
+
         # Create quartermaster agent
         qm_agent = Agent(
-            model=self.model,
+            model=qm_model,
             system_prompt="You are an expert Quartermaster who selects the right tools for each job.",
             tools=[],
             base_url=self.base_url,
@@ -690,7 +846,8 @@ If no tools are needed, return an empty array: []
 
         # Run quartermaster
         log_message(self.session_id, "quartermaster_start", "Manifesting tackle",
-                   trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster", depth=self.depth)
+                   trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster", depth=self.depth,
+                   model=qm_model)
 
         response = qm_agent.run(qm_prompt, context_messages=[])
         response_content = response.get("content", "[]")
@@ -911,6 +1068,9 @@ If no tools are needed, return an empty array: []
         for i in range(factor):
             console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]")
 
+            # Set current sounding index for this attempt
+            self.current_phase_sounding_index = i
+
             # Create trace for this sounding
             sounding_trace = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
 
@@ -988,7 +1148,8 @@ If no tools are needed, return an empty array: []
 
         # Log evaluation reasoning
         log_message(self.session_id, "sounding_evaluation", eval_content,
-                   trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluation", depth=self.depth)
+                   trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluation", depth=self.depth,
+                   model=self.model)
 
         # Extract winner index from evaluation (simple parsing - look for first digit)
         winner_index = 0
@@ -1011,6 +1172,9 @@ If no tools are needed, return an empty array: []
         # Now apply ONLY the winner's context to the main snowball
         self.context_messages = context_snapshot + winner['context']
         self.echo.state = winner['final_state']
+
+        # Reset sounding index (no longer in sounding context)
+        self.current_phase_sounding_index = None
 
         # Add all sounding attempts to Echo history with metadata for visualization
         for sr in sounding_results:
@@ -1466,33 +1630,41 @@ Refinement directive: {reforge_config.honing_prompt}
             
             rendered_instructions += routing_menu
         
-        console.print(f"\n{indent}[bold magenta]📍 Bearing (Phase): {phase.name}[/bold magenta]")
+        # Determine model to use (phase override or default)
+        phase_model = phase.model if phase.model else self.model
+
+        console.print(f"\n{indent}[bold magenta]📍 Bearing (Phase): {phase.name}[/bold magenta] [bold cyan]🤖 {phase_model}[/bold cyan]")
         console.print(f"{indent}[italic]{rendered_instructions[:100]}...[/italic]")
 
         log_message(self.session_id, "phase_start", phase.name,
-                   trace_id=trace.id, parent_id=trace.parent_id, node_type="phase", depth=trace.depth)
+                   trace_id=trace.id, parent_id=trace.parent_id, node_type="phase", depth=trace.depth,
+                   model=phase_model)
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
         if phase.tackle == "manifest":
             console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting tackle...[/bold cyan]")
-            tackle_list = self._run_quartermaster(phase, input_data, trace)
+            tackle_list = self._run_quartermaster(phase, input_data, trace, phase_model)
             console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(tackle_list)}[/bold cyan]")
 
-        tools_schema = []
+        tools_schema = []  # For native tool calling
+        tool_descriptions = []  # For prompt-based tool calling
         tool_map = {}
+
         for t_name in tackle_list:
             t = get_tackle(t_name)
             if t:
                 tool_map[t_name] = t
+                # Generate both formats
                 tools_schema.append(get_tool_schema(t, name=t_name))
+                tool_descriptions.append(self._generate_tool_description(t, t_name))
             else:
                 pass
 
         # Inject 'route_to' tool if routing enabled
         chosen_next_phase_by_agent = None
         chosen_next_phase = None # Initialize for consistency
-        
+
         if enable_routing_tool:
             def route_to_tool(target: str):
                 """
@@ -1503,29 +1675,46 @@ Refinement directive: {reforge_config.honing_prompt}
                     chosen_next_phase_by_agent = target
                     return f"Routing to {target}."
                 return f"Invalid target. Valid options: {valid_handoff_targets}"
-            
+
             tool_map["route_to"] = route_to_tool
-            tools_schema.append(get_tool_schema(route_to_tool)) # Manually pass tool object
+            tools_schema.append(get_tool_schema(route_to_tool))
+            tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
 
         # Construct context from lineage
         # Since we are snowballing context_messages, we don't need to stringify previous outputs into the user message anymore.
         # This prevents duplicating history.
         user_content = f"## Input Data:\n{json.dumps(input_data or {})}"
 
-        # Initialize Agent
+        # Add tool descriptions to instructions if using prompt-based tools
+        final_instructions = rendered_instructions
+        use_native = phase.use_native_tools
+
+        if not use_native and tool_descriptions:
+            # Prompt-based tools: Add tool descriptions to system prompt
+            console.print(f"{indent}  [dim cyan]Using prompt-based tools (provider-agnostic)[/dim cyan]")
+            tools_prompt = "\n\n## Available Tools\n\n" + "\n\n".join(tool_descriptions)
+            tools_prompt += "\n\n**Important:** To call a tool, you MUST wrap your JSON in a ```json code fence:\n\n"
+            tools_prompt += "Example:\n```json\n"
+            tools_prompt += '{"tool": "tool_name", "arguments": {"param": "value"}}\n```\n\n'
+            tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
+            final_instructions += tools_prompt
+        else:
+            console.print(f"{indent}  [dim cyan]Using native tool calling (provider-specific)[/dim cyan]")
+
+        # Initialize Agent (using phase_model determined earlier)
         agent = Agent(
-            model=self.model,
+            model=phase_model,
             system_prompt="", # We manage system prompts in context_messages
-            tools=tools_schema,
+            tools=tools_schema if use_native else None,  # Only pass tools if using native
             base_url=self.base_url,
             api_key=self.api_key
         )
 
         # Add initial messages to echo history
         sys_trace = trace.create_child("msg", "system_instructions")
-        sys_msg = {"role": "system", "content": rendered_instructions}
+        sys_msg = {"role": "system", "content": final_instructions}
         self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
-        
+
         # Append to snowball context
         self.context_messages.append(sys_msg)
         
@@ -1647,6 +1836,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Outer loop for validation attempts (loop_until)
         for attempt in range(max_attempts):
+            # Track retry attempt
+            self.current_retry_attempt = attempt if max_attempts > 1 else None
+
             if attempt > 0:
                 console.print(f"{indent}[bold yellow]🔄 Validation Retry Attempt {attempt + 1}/{max_attempts}[/bold yellow]")
 
@@ -1686,13 +1878,16 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Turn loop
             for i in range(max_turns):
+                # Track turn number
+                self.current_turn_number = i if max_turns > 1 else None
+
                 # Hook: Turn Start
                 hook_result = self.hooks.on_turn_start(phase.name, i, {"echo": self.echo})
                 turn_injection = ""
                 if hook_result.get("action") == HookAction.INJECT:
                     turn_injection = hook_result.get("content")
                     console.print(f"{indent}[bold red]⚡ Turn Injection:[/bold red] {turn_injection}")
-            
+
                 # Trace Turn
                 turn_trace = trace.create_child("turn", f"turn_{i+1}")
 
@@ -1715,6 +1910,16 @@ Refinement directive: {reforge_config.honing_prompt}
                 else:
                     current_input = "Continue/Refine based on previous output."
 
+                # DEBUG: Show context_messages state before agent call (turn 2+)
+                if i > 0:
+                    console.print(f"{indent}  [dim cyan][DEBUG] Turn {i+1} context_messages: {len(self.context_messages)} messages[/dim cyan]")
+                    for idx, msg in enumerate(self.context_messages[-5:]):  # Show last 5
+                        role = msg.get("role", "?")
+                        has_tools = "tool_calls" in msg
+                        has_tool_id = "tool_call_id" in msg
+                        content_preview = str(msg.get("content", ""))[:60]
+                        console.print(f"{indent}    [dim][{idx}] {role:10s} | tools:{has_tools} | tool_id:{has_tool_id} | {content_preview}[/dim]")
+
                 try:
                     is_main_thread = threading.current_thread() is threading.main_thread()
                 
@@ -1730,14 +1935,24 @@ Refinement directive: {reforge_config.honing_prompt}
                     tool_calls = response_dict.get("tool_calls")
                     request_id = response_dict.get("id")
 
-                    log_message(self.session_id, "agent", str(content), 
-                                trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="agent", depth=turn_trace.depth)
-                
+                    # Build metadata with retry/turn context
+                    agent_metadata = {
+                        "retry_attempt": self.current_retry_attempt,
+                        "turn_number": self.current_turn_number
+                    }
+
+                    log_message(self.session_id, "agent", str(content),
+                                metadata=agent_metadata,
+                                trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="agent", depth=turn_trace.depth,
+                                model=phase_model, tool_calls=tool_calls,
+                                sounding_index=self.current_phase_sounding_index)
+
                     if request_id:
-                        track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id)
-                
+                        track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id,
+                                    phase.name, self.config.cascade_id, self.current_phase_sounding_index)
+
                     if content:
-                        console.print(Panel(Markdown(content), title=f"Agent ({self.model})", border_style="green", expand=False))
+                        console.print(Panel(Markdown(content), title=f"Agent ({phase_model})", border_style="green", expand=False))
                 
                     # Update histories (Snowball)
                     if current_input:
@@ -1754,13 +1969,46 @@ Refinement directive: {reforge_config.honing_prompt}
                          self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input")
                 
                     output_trace = turn_trace.create_child("msg", "agent_output")
-                    self.echo.add_history(assistant_msg, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="turn_output")
+                    self.echo.add_history(assistant_msg, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="turn_output",
+                                         metadata={"model": phase_model})
                     self._update_graph()
-                
+
                     response_content = content
-                
-                    # Handle tool calls
-                    if tool_calls:
+
+                    # Parse prompt-based tool calls if not using native tools
+                    json_parse_error = None
+                    if not use_native and not tool_calls:
+                        # Try to extract JSON tool calls from the response content
+                        parsed_tool_calls, parse_error = self._parse_prompt_tool_calls(content)
+
+                        if parse_error:
+                            # JSON parsing failed - send error back to agent as feedback
+                            console.print(f"{indent}  [bold red]⚠️  JSON Parse Error:[/bold red] {parse_error}")
+
+                            # Add error message to context for next turn
+                            error_msg = {
+                                "role": "user",
+                                "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
+                            }
+                            self.context_messages.append(error_msg)
+
+                            error_trace = turn_trace.create_child("msg", "json_error")
+                            self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error")
+
+                            log_message(self.session_id, "json_parse_error", parse_error,
+                                       metadata={"phase_name": phase.name, "turn": i},
+                                       trace_id=error_trace.id, parent_id=turn_trace.parent_id, node_type="validation_error")
+
+                            # Don't execute tools, continue to next turn so agent can fix
+                            json_parse_error = True
+
+                        elif parsed_tool_calls:
+                            console.print(f"{indent}  [dim cyan]Parsed {len(parsed_tool_calls)} prompt-based tool call(s)[/dim cyan]")
+                            tool_calls = parsed_tool_calls
+
+                    # Handle tool calls (both native and prompt-based)
+                    # Skip if there was a JSON parse error
+                    if tool_calls and not json_parse_error:
                         console.print(f"{indent}  [bold yellow]Executing Tools...[/bold yellow]")
                         for tc in tool_calls:
                             # Trace Tool
@@ -1850,7 +2098,11 @@ Refinement directive: {reforge_config.honing_prompt}
                             # Add standard tool result message
                             tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
                             self.context_messages.append(tool_msg)
-                        
+
+                            # DEBUG: Verify tool result was added
+                            console.print(f"{indent}    [dim cyan][DEBUG] Tool result added to context_messages[/dim cyan]")
+                            console.print(f"{indent}    [dim]  Index: {len(self.context_messages)-1}, Tool: {func_name}, Result: {len(str(result))} chars[/dim]")
+
                             # Add to Echo
                             result_trace = tool_trace.create_child("msg", "tool_result")
                             self.echo.add_history(tool_msg, trace_id=result_trace.id, parent_id=tool_trace.id, node_type="tool_result")
@@ -1873,30 +2125,98 @@ Refinement directive: {reforge_config.honing_prompt}
                          
                         content = follow_up.get("content")
                         request_id = follow_up.get("id")
-                    
+
                         log_message(self.session_id, "agent", str(content), trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="follow_up", depth=turn_trace.depth)
-                    
+
                         if request_id:
                             track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id)
 
                         if content:
                             console.print(Panel(Markdown(content), title=f"Agent ({self.model})", border_style="green", expand=False))
-                    
-                        assistant_msg = {"role": "assistant", "content": content}
-                        self.context_messages.append(assistant_msg)
-                    
-                        followup_trace = turn_trace.create_child("msg", "follow_up")
-                        self.echo.add_history(assistant_msg, trace_id=followup_trace.id, parent_id=turn_trace.id, node_type="follow_up")
-                        self._update_graph() # Update after follow up
-                        response_content = content
+
+                            # ONLY add to message history if content is non-empty
+                            # Empty assistant messages violate Anthropic's API requirements
+                            assistant_msg = {"role": "assistant", "content": content}
+                            self.context_messages.append(assistant_msg)
+
+                            followup_trace = turn_trace.create_child("msg", "follow_up")
+                            self.echo.add_history(assistant_msg, trace_id=followup_trace.id, parent_id=turn_trace.id, node_type="follow_up")
+                            self._update_graph() # Update after follow up
+                            response_content = content
+                        else:
+                            # Log that follow-up had no content (don't add to history - would cause API error)
+                            log_message(self.session_id, "system", "Follow-up response had empty content (not added to history)",
+                                       trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="warning", depth=turn_trace.depth)
 
                         # Auto-save any images from messages (catches manual injection, feedback loops, etc.)
                         self._save_images_from_messages(self.context_messages, phase.name)
 
                 except Exception as e:
-                    console.print(f"[bold red]Error in Agent call:[/bold red] {e}")
-                    log_message(self.session_id, "error", str(e), trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="error")
-                    self.echo.add_history({"role": "system", "content": f"Error: {str(e)}"}, trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="error")
+                    # Enhanced error logging with detailed information
+                    import traceback
+
+                    error_type = type(e).__name__
+                    error_msg = str(e)
+                    error_tb = traceback.format_exc()
+
+                    # Build comprehensive error metadata
+                    error_metadata = {
+                        "error_type": error_type,
+                        "error_message": error_msg,
+                        "phase_name": phase.name,
+                        "turn_number": self.current_turn_number,
+                        "model": phase_model,
+                        "cascade_id": self.config.cascade_id,
+                    }
+
+                    # Try to extract more details from the exception
+                    if hasattr(e, 'response'):
+                        try:
+                            error_metadata["http_status"] = e.response.status_code
+                            error_metadata["http_response"] = e.response.text[:500]
+                        except:
+                            pass
+
+                    if hasattr(e, '__dict__'):
+                        error_metadata["exception_attributes"] = {
+                            k: str(v)[:200] for k, v in e.__dict__.items() if not k.startswith('_')
+                        }
+
+                    # Print detailed error to console
+                    console.print(f"[bold red]Error in Agent call:[/bold red] {error_type}: {error_msg}")
+                    console.print(f"[dim]Phase: {phase.name}, Turn: {self.current_turn_number}[/dim]")
+                    if "http_status" in error_metadata:
+                        console.print(f"[dim]HTTP Status: {error_metadata['http_status']}[/dim]")
+                        console.print(f"[dim]Response: {error_metadata['http_response'][:200]}...[/dim]")
+
+                    # Log with full details including traceback
+                    full_error_msg = f"{error_type}: {error_msg}\n\nTraceback:\n{error_tb}"
+                    log_message(self.session_id, "error", full_error_msg,
+                               trace_id=turn_trace.id, parent_id=turn_trace.parent_id,
+                               node_type="error", metadata=error_metadata)
+
+                    # Add to history with context
+                    error_content = f"Error: {error_type}: {error_msg}"
+                    if "http_status" in error_metadata:
+                        error_content += f"\nHTTP Status: {error_metadata['http_status']}"
+                        error_content += f"\nProvider Response: {error_metadata.get('http_response', 'N/A')[:200]}"
+
+                    self.echo.add_history(
+                        {"role": "system", "content": error_content},
+                        trace_id=turn_trace.id,
+                        parent_id=turn_trace.parent_id,
+                        node_type="error",
+                        metadata=error_metadata
+                    )
+
+                    # Track error in echo for cascade-level status
+                    self.echo.add_error(
+                        phase=phase.name,
+                        error_type=error_type,
+                        error_message=error_msg,
+                        metadata=error_metadata
+                    )
+
                     self._update_graph()
                     break
 

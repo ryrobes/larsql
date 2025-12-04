@@ -6,13 +6,14 @@ from .echo import get_echo
 
 # Register batteries-included eddies
 from .eddies.sql import run_sql
-from .eddies.extras import run_code, take_screenshot
+from .eddies.extras import run_code, take_screenshot, linux_shell
 from .eddies.human import ask_human
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
 from .eddies.chart import create_chart
 
 register_tackle("smart_sql_run", run_sql)
+register_tackle("linux_shell", linux_shell)
 register_tackle("run_code", run_code)
 register_tackle("take_screenshot", take_screenshot)
 register_tackle("ask_human", ask_human)

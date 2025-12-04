@@ -109,6 +109,7 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `instructions`: Jinja2-templated system prompt (can reference `{{ input.key }}` or `{{ state.key }}`)
 - `tackle`: List of tool names to inject, or `"manifest"` for Quartermaster auto-selection
 - `manifest_context`: Context mode for Quartermaster (`"current"` or `"full"`, default: `"current"`)
+- `use_native_tools`: Boolean (default: `false`) - Use provider native tool calling vs prompt-based (see section 2.8)
 - `handoffs`: List of next-phase targets (enables dynamic routing via `route_to` tool)
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
 - `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"`
@@ -134,8 +135,9 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 The framework automatically extracts function signatures using `inspect` and converts them to OpenAI-compatible JSON schemas via `utils.py:get_tool_schema()`.
 
 **Built-in Tools** (registered in `__init__.py`):
+- `linux_shell`: Execute shell commands in sandboxed Ubuntu Docker container (in `eddies/extras.py`) - **NEW!**
+- `run_code`: Execute Python code in Docker container (in `eddies/extras.py`) - uses linux_shell internally
 - `smart_sql_run`: Execute DuckDB SQL queries on datasets (in `eddies/sql.py`)
-- `run_code`: Execute Python code (in `eddies/extras.py`)
 - `take_screenshot`: Capture web pages using Playwright (in `eddies/extras.py`)
 - `ask_human`: Human-in-the-loop input (in `eddies/human.py`)
 - `set_state`: Persist variables to session state (in `eddies/state_tools.py`)
@@ -289,7 +291,155 @@ All validators (function or cascade) must return:
 - `ward_retry_flow.json`: Demonstrates retry mode with automatic improvement
 - `ward_comprehensive_flow.json`: All three modes in one flow
 
-### 2.7. Reforge - Iterative Refinement System
+### 2.7. Prompt-Based vs Native Tool Calling
+
+Windlass supports two modes for tool execution: **prompt-based (default, recommended)** and **native tool calling (opt-in)**.
+
+#### Prompt-Based Tools (Default)
+
+**Configuration:**
+```json
+{
+  "name": "solve_problem",
+  "instructions": "Solve this coding problem",
+  "tackle": ["linux_shell", "run_code"],
+  "use_native_tools": false  // Default
+}
+```
+
+**How it works:**
+1. Tool descriptions added to system prompt as text
+2. Agent outputs JSON: `{"tool": "tool_name", "arguments": {"param": "value"}}`
+3. Windlass parses JSON from response
+4. Calls local Python function
+5. Returns result as user message
+
+**Benefits:**
+- ✅ Works with ANY model (even those without native tool support)
+- ✅ No provider-specific quirks (Gemini thought_signature, Anthropic formats, etc.)
+- ✅ Simpler message format (just user/assistant)
+- ✅ More transparent and debuggable
+- ✅ Perfect for OpenRouter's multi-model approach
+
+**Example agent sees:**
+```markdown
+## Available Tools
+
+**linux_shell**
+Execute a shell command in a sandboxed Ubuntu Docker container.
+Parameters:
+  - command (str) (required)
+
+To use: {"tool": "linux_shell", "arguments": {"command": "ls /tmp"}}
+```
+
+#### Native Tool Calling (Opt-In)
+
+**Configuration:**
+```json
+{
+  "name": "solve_problem",
+  "tackle": ["run_code"],
+  "use_native_tools": true  // Opt-in
+}
+```
+
+**How it works:**
+1. Tool schemas passed to LLM provider API
+2. Provider's native tool calling used
+3. Provider returns structured tool calls
+4. Windlass calls Python functions
+5. Results sent as `role="tool"` messages
+
+**Use when:**
+- Model has excellent native tool support (GPT-4, Claude 3.5)
+- You want maximum structure/reliability
+- You're committed to specific providers
+
+**Drawbacks:**
+- ❌ Provider-specific quirks (Gemini requires thought_signature, etc.)
+- ❌ Limited to models with tool support
+- ❌ More complex message formats
+- ❌ Against provider-agnostic philosophy
+
+**Recommendation:** Use prompt-based (default) unless you have a specific reason for native.
+
+### 2.8. Docker Sandboxed Execution
+
+Code execution tools (`linux_shell`, `run_code`) use Docker for safe, isolated execution.
+
+#### Setup
+
+**1. Start Ubuntu container:**
+```bash
+docker run -d --name ubuntu-container ubuntu:latest sleep infinity
+
+# Install Python and tools
+docker exec ubuntu-container bash -c "apt update && apt install -y python3 python3-pip curl wget"
+```
+
+**2. Verify:**
+```bash
+docker exec ubuntu-container python3 -c "print('Ready!')"
+```
+
+#### linux_shell Tool
+
+**Execute arbitrary shell commands in isolated container:**
+
+```json
+{"tool": "linux_shell", "arguments": {"command": "curl https://api.example.com"}}
+```
+
+**Available in container:**
+- Python 3 (python3, pip)
+- Network tools (curl, wget)
+- File operations (cat, echo, ls, grep, sed, awk)
+- Text processing
+- Package management (apt, pip)
+
+**Use cases:**
+- API calls (curl)
+- File processing
+- Installing packages dynamically
+- Running scripts
+- Testing network connectivity
+
+#### run_code Tool
+
+**Execute Python code using Docker:**
+
+Internally uses `linux_shell` with Python heredoc for clean multi-line execution.
+
+```json
+{"tool": "run_code", "arguments": {"code": "import math\nprint(math.pi)"}}
+```
+
+**Benefits over exec():**
+- ✅ Safe (isolated container)
+- ✅ Can't access host filesystem
+- ✅ Can't break Windlass
+- ✅ Full Python standard library
+- ✅ Can install packages with pip
+
+#### Security
+
+**Container provides:**
+- Filesystem isolation
+- Process isolation
+- Can't access host
+- Configurable resource limits
+
+**Best practices:**
+```bash
+# Set memory/CPU limits
+docker update ubuntu-container --memory=512m --cpus=0.5
+
+# Periodic restart for clean state
+docker restart ubuntu-container
+```
+
+### 2.9. Reforge - Iterative Refinement System
 
 Reforge extends Soundings (Tree of Thought) with iterative refinement: after soundings complete and a winner is selected, the winner is refined through additional sounding loops with honing prompts.
 

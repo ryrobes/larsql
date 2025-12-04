@@ -51,6 +51,8 @@ class PhaseConfig(BaseModel):
     instructions: str
     tackle: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
+    model: Optional[str] = None  # Override default model for this phase
+    use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)
     rules: RuleConfig = Field(default_factory=RuleConfig)
     handoffs: List[Union[str, HandoffConfig]] = Field(default_factory=list)
     sub_cascades: List[SubCascadeRef] = Field(default_factory=list)
