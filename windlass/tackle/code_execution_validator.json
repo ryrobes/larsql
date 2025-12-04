@@ -1,0 +1,22 @@
+{
+  "cascade_id": "code_execution_validator",
+  "description": "Validates that code was executed successfully (no errors, has output)",
+  "inputs_schema": {
+    "content": "The phase output to validate"
+  },
+  "phases": [
+    {
+      "name": "validate",
+      "instructions": "Check if the content shows that code was executed successfully.\n\nLook for:\n1. Actual execution output (numbers, results, print statements)\n2. NO error messages (Exit code, Traceback, Error:, etc.)\n3. Evidence that the solution worked\n\nReturn JSON:\n{\"valid\": true, \"reason\": \"...\"} if code executed successfully with output\n{\"valid\": false, \"reason\": \"...\"} if errors present or no execution happened\n\nBe strict: Only return valid=true if you see ACTUAL execution output without errors.",
+      "tackle": [],
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "valid": {"type": "boolean"},
+          "reason": {"type": "string"}
+        },
+        "required": ["valid", "reason"]
+      }
+    }
+  ]
+}

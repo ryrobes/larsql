@@ -196,64 +196,69 @@ To use: Output JSON in this format:
             # Clean up any remaining markdown or whitespace
             block = block.strip()
 
-            # Try to parse and validate
+            # Try to parse the JSON
             try:
                 data = json.loads(block)
-
-                # Check if it's a tool call
-                if isinstance(data, dict) and "tool" in data:
-                    tool_name = data["tool"]
-                    arguments = data.get("arguments", {})
-
-                    # Validate tool call structure
-                    if not isinstance(arguments, dict):
-                        parse_errors.append(f"Tool call {block_idx + 1}: 'arguments' must be a dict/object, got {type(arguments).__name__}")
-                        continue
-
-                    # Successfully parsed and validated!
-                    tool_calls.append({
-                        "id": f"prompt_tool_{len(tool_calls)}",
-                        "type": "function",
-                        "function": {
-                            "name": tool_name,
-                            "arguments": json.dumps(arguments)
-                        }
-                    })
-
             except json.JSONDecodeError as e:
-                # JSON is malformed - record detailed error
-                error_detail = f"Tool call {block_idx + 1}: Invalid JSON at position {e.pos}\n"
-                error_detail += f"  Error: {e.msg}\n"
-                error_detail += f"  Your JSON: {block[:100]}{'...' if len(block) > 100 else ''}\n"
+                # ONLY report errors for blocks that LOOK like tool calls
+                # Check if this looks like a tool call attempt (has "tool" string in it)
+                if '"tool"' in block or "'tool'" in block:
+                    # This looks like a tool call attempt that's malformed
+                    error_detail = f"Tool call JSON is malformed:\n"
+                    error_detail += f"  Error: {e.msg} at position {e.pos}\n"
+                    error_detail += f"  Your JSON: {block[:150]}{'...' if len(block) > 150 else ''}\n"
 
-                # Check for common errors
-                opens = block.count('{')
-                closes = block.count('}')
-                if closes > opens:
-                    error_detail += f"  → You have {closes - opens} extra closing braces }}\n"
-                elif opens > closes:
-                    error_detail += f"  → You're missing {opens - closes} closing braces }}\n"
+                    # Diagnose common errors
+                    opens = block.count('{')
+                    closes = block.count('}')
+                    if closes > opens:
+                        error_detail += f"  → You have {closes - opens} extra closing braces }}\n"
+                    elif opens > closes:
+                        error_detail += f"  → You're missing {opens - closes} closing braces }}\n"
 
-                # Check for missing quotes
-                if block.count('"') % 2 != 0:
-                    error_detail += f"  → Unmatched quotes detected\n"
+                    if block.count('"') % 2 != 0:
+                        error_detail += f"  → Unmatched quotes detected\n"
 
-                parse_errors.append(error_detail)
+                    parse_errors.append(error_detail)
+                # else: Not a tool call, just some other JSON (ignore it)
+                continue
 
-            except Exception as e:
-                parse_errors.append(f"Tool call {block_idx + 1}: Unexpected error - {type(e).__name__}: {e}")
+            # Successfully parsed - now check if it's actually a TOOL CALL
+            if not isinstance(data, dict):
+                continue  # Not a dict, ignore
+
+            if "tool" not in data:
+                continue  # No "tool" key, not a tool call, ignore
+
+            # This IS a tool call - validate structure
+            tool_name = data.get("tool")
+            arguments = data.get("arguments", {})
+
+            if not isinstance(arguments, dict):
+                parse_errors.append(f"Tool call 'arguments' must be an object/dict, got {type(arguments).__name__}")
+                continue
+
+            # Successfully parsed and validated tool call!
+            tool_calls.append({
+                "id": f"prompt_tool_{len(tool_calls)}",
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(arguments)
+                }
+            })
 
         # Return results
         if tool_calls:
             return tool_calls, None  # Success!
 
         if parse_errors:
-            # Found JSON blocks but all failed to parse
-            error_msg = "Found JSON block(s) but failed to parse:\n\n" + "\n".join(parse_errors)
+            # Found blocks that LOOKED like tool calls but were malformed
+            error_msg = "\n".join(parse_errors)
             return [], error_msg
 
-        # No JSON blocks found at all
-        return [], None  # No error, just no tool calls (agent might just be talking)
+        # No tool calls found (no ```json blocks, or JSON blocks weren't tool calls)
+        return [], None  # No error, agent just not calling tools
 
     def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
         """
@@ -1938,18 +1943,43 @@ Refinement directive: {reforge_config.honing_prompt}
                     # Build metadata with retry/turn context
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
-                        "turn_number": self.current_turn_number
+                        "turn_number": self.current_turn_number,
+                        "phase_name": phase.name,
+                        "cascade_id": self.config.cascade_id
                     }
 
-                    log_message(self.session_id, "agent", str(content),
-                                metadata=agent_metadata,
-                                trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="agent", depth=turn_trace.depth,
-                                model=phase_model, tool_calls=tool_calls,
-                                sounding_index=self.current_phase_sounding_index)
-
                     if request_id:
+                        # NEW: Build pending message dict to hold until cost arrives
+                        pending_agent_message = {
+                            "session_id": self.session_id,
+                            "trace_id": turn_trace.id,
+                            "parent_id": turn_trace.parent_id,
+                            "node_type": "agent",
+                            "role": "agent",
+                            "depth": turn_trace.depth,
+                            "sounding_index": self.current_phase_sounding_index,
+                            "is_winner": None,
+                            "reforge_step": self.current_reforge_step,
+                            "phase_name": phase.name,
+                            "cascade_id": self.config.cascade_id,
+                            "model": phase_model,
+                            "content": content,
+                            "tool_calls": tool_calls,
+                            "metadata": agent_metadata
+                            # cost, tokens_in, tokens_out will be merged in by cost tracker
+                        }
+
+                        # Pass to cost tracker - will log with cost after ~5s
                         track_request(self.session_id, request_id, turn_trace.id, turn_trace.parent_id,
-                                    phase.name, self.config.cascade_id, self.current_phase_sounding_index)
+                                    phase.name, self.config.cascade_id, self.current_phase_sounding_index,
+                                    pending_message=pending_agent_message)
+                    else:
+                        # No request_id means no cost tracking - log immediately
+                        log_message(self.session_id, "agent", str(content),
+                                    metadata=agent_metadata,
+                                    trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="agent", depth=turn_trace.depth,
+                                    model=phase_model, tool_calls=tool_calls,
+                                    sounding_index=self.current_phase_sounding_index)
 
                     if content:
                         console.print(Panel(Markdown(content), title=f"Agent ({phase_model})", border_style="green", expand=False))
@@ -1967,10 +1997,9 @@ Refinement directive: {reforge_config.honing_prompt}
                     input_trace = turn_trace.create_child("msg", "user_input")
                     if current_input:
                          self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input")
-                
-                    output_trace = turn_trace.create_child("msg", "agent_output")
-                    self.echo.add_history(assistant_msg, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="turn_output",
-                                         metadata={"model": phase_model})
+
+                    # NOTE: Agent output is now logged via cost tracker with cost merged in
+                    # No need to log turn_output separately (was duplicate)
                     self._update_graph()
 
                     response_content = content

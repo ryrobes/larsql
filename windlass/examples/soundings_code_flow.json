@@ -13,14 +13,19 @@
         "factor": 3,
         "evaluator_instructions": "You are an expert software engineer. Evaluate the following code solutions based on: 1) Correctness - does it solve the problem? 2) Efficiency - what is the time/space complexity? 3) Code quality - is it readable and well-structured? 4) Edge cases - does it handle corner cases? Select the BEST solution overall."
       },
-      "rules": {"max_turns": 2},
+      "rules": {"max_turns": 1},
       "handoffs": ["test_solution"]
     },
     {
       "name": "test_solution",
-      "instructions": "Review the chosen solution and write test cases for it. Use the 'run_code' tool to verify it works correctly.",
+      "instructions": "Review the chosen solution and write test cases for it. Use the 'run_code' tool to verify it works correctly.\n\nOnce the code executes successfully with output, you're done. Don't continue explaining - the validator will check for success.",
       "tackle": ["run_code"],
-      "rules": {"max_turns": 5}
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 5,
+        "loop_until": "code_execution_validator",
+        "retry_instructions": "⚠️ Code validation failed: {{ validation_error }}\n\nPlease provide more complete code. Attempt {{ attempt }}/{{ max_attempts }}"
+      }
     }
   ]
 }

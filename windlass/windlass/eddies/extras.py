@@ -46,8 +46,9 @@ def linux_shell(command: str, timeout: int = 30) -> str:
             return f"Error: Container '{container_name}' is not running (status: {container.status})"
 
         # Execute command in container
+        # Use array form to avoid shell escaping issues
         exec_result = container.exec_run(
-            f"bash -c '{command}'",
+            ["bash", "-c", command],  # Array form - no quote escaping needed!
             stdout=True,
             stderr=True,
             demux=False  # Combine stdout/stderr

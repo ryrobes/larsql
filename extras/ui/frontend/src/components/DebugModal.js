@@ -11,12 +11,22 @@ function DebugModal({ sessionId, onClose }) {
   const [error, setError] = useState(null);
   const [entries, setEntries] = useState([]);
   const [groupedEntries, setGroupedEntries] = useState([]);
+  const [viewMode, setViewMode] = useState('conversation'); // 'all', 'conversation', 'structural'
+  const [showStructural, setShowStructural] = useState(false);
 
   useEffect(() => {
     if (sessionId) {
       fetchSessionData();
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    // Re-group when view mode changes
+    if (entries.length > 0) {
+      const filtered = filterEntriesByViewMode(entries);
+      groupEntriesByPhase(filtered);
+    }
+  }, [viewMode, showStructural]);
 
   const fetchSessionData = async () => {
     try {
@@ -29,8 +39,12 @@ function DebugModal({ sessionId, onClose }) {
         return;
       }
 
-      setEntries(data.entries || []);
-      groupEntriesByPhase(data.entries || []);
+      // Deduplicate entries (remove turn_output duplicates)
+      const deduplicated = deduplicateEntries(data.entries || []);
+      setEntries(deduplicated);
+
+      const filtered = filterEntriesByViewMode(deduplicated);
+      groupEntriesByPhase(filtered);
       setLoading(false);
     } catch (err) {
       setError(err.message);
@@ -38,12 +52,67 @@ function DebugModal({ sessionId, onClose }) {
     }
   };
 
+  const deduplicateEntries = (entries) => {
+    const filtered = [];
+    const seenAgentContent = new Map();
+
+    for (const entry of entries) {
+      // Track agent entries by timestamp + content hash
+      if (entry.node_type === 'agent') {
+        const contentKey = `${entry.timestamp}-${entry.content?.substring(0, 100)}`;
+        seenAgentContent.set(contentKey, true);
+        filtered.push(entry);
+        continue;
+      }
+
+      // Skip turn_output if we've already seen this content from agent
+      if (entry.node_type === 'turn_output') {
+        const contentKey = `${entry.timestamp}-${entry.content?.substring(0, 100)}`;
+        if (seenAgentContent.has(contentKey)) {
+          continue; // Skip duplicate
+        }
+      }
+
+      filtered.push(entry);
+    }
+
+    return filtered;
+  };
+
+  const isStructural = (entry) => {
+    const structuralTypes = ['cascade', 'phase', 'turn', 'soundings'];
+    const structuralRoles = ['structure', 'phase_start', 'soundings_start', 'turn_start'];
+
+    return structuralTypes.includes(entry.node_type) ||
+           structuralRoles.includes(entry.role);
+  };
+
+  const isConversational = (entry) => {
+    // Core conversation messages
+    const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result'];
+    const conversationalSystemRoles = ['system']; // System prompts sent to LLM
+
+    return conversationalTypes.includes(entry.node_type) ||
+           (entry.node_type === 'system' && conversationalSystemRoles.includes(entry.role));
+  };
+
+  const filterEntriesByViewMode = (entries) => {
+    if (viewMode === 'all') {
+      return showStructural ? entries : entries.filter(e => !isStructural(e));
+    } else if (viewMode === 'conversation') {
+      return entries.filter(e => isConversational(e));
+    } else if (viewMode === 'structural') {
+      return entries.filter(e => isStructural(e));
+    }
+    return entries;
+  };
+
   const groupEntriesByPhase = (entries) => {
     const grouped = [];
     let currentPhase = null;
     let currentGroup = null;
 
-    entries.forEach((entry) => {
+    entries.forEach((entry, idx) => {
       const phaseName = entry.phase_name || 'Initialization';
 
       // Start new phase group
@@ -60,9 +129,18 @@ function DebugModal({ sessionId, onClose }) {
         };
       }
 
-      // Add entry to current group
+      // Add entry to current group with time gap info
+      const enrichedEntry = { ...entry };
+
+      // Calculate time gap from previous entry
+      if (idx > 0) {
+        const prevEntry = entries[idx - 1];
+        const timeDiff = entry.timestamp - prevEntry.timestamp;
+        enrichedEntry.timeDiff = timeDiff;
+      }
+
       if (currentGroup) {
-        currentGroup.entries.push(entry);
+        currentGroup.entries.push(enrichedEntry);
         if (entry.cost) {
           currentGroup.totalCost += entry.cost;
         }
@@ -89,6 +167,24 @@ function DebugModal({ sessionId, onClose }) {
     if (!timestamp) return '';
     const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString();
+  };
+
+  const getDirectionBadge = (entry) => {
+    // SENT to LLM
+    if (entry.node_type === 'user' ||
+        (entry.node_type === 'system' && entry.role === 'system')) {
+      return <span className="direction-badge sent">→ SENT</span>;
+    }
+
+    // RECEIVED from LLM
+    if (entry.node_type === 'agent' ||
+        entry.node_type === 'assistant' ||
+        entry.role === 'agent' ||
+        entry.role === 'assistant') {
+      return <span className="direction-badge received">← RECEIVED</span>;
+    }
+
+    return null;
   };
 
   const getNodeIcon = (nodeType) => {
@@ -323,6 +419,10 @@ function DebugModal({ sessionId, onClose }) {
     }
   };
 
+  // Calculate stats based on all entries (before filtering)
+  const structuralCount = entries.filter(e => isStructural(e)).length;
+  const conversationalCount = entries.filter(e => isConversational(e)).length;
+
   if (!sessionId) return null;
 
   return (
@@ -334,6 +434,30 @@ function DebugModal({ sessionId, onClose }) {
             Debug: {sessionId}
           </h2>
           <div className="header-actions">
+            {/* View mode selector */}
+            <select
+              className="view-mode-select"
+              value={viewMode}
+              onChange={e => setViewMode(e.target.value)}
+              title="Filter message types"
+            >
+              <option value="conversation">💬 Conversation ({conversationalCount})</option>
+              <option value="all">📋 All Entries ({entries.length})</option>
+              <option value="structural">⚙️ Structural ({structuralCount})</option>
+            </select>
+
+            {/* Structural toggle (only show in 'all' mode) */}
+            {viewMode === 'all' && (
+              <button
+                className={`toggle-structural ${showStructural ? 'active' : ''}`}
+                onClick={() => setShowStructural(!showStructural)}
+                title="Toggle framework/structural messages"
+              >
+                <Icon icon="mdi:cog" width="16" />
+                {showStructural ? 'Hide' : 'Show'} Framework
+              </button>
+            )}
+
             <button
               className="dump-button"
               onClick={async () => {
@@ -400,25 +524,36 @@ function DebugModal({ sessionId, onClose }) {
 
               <div className="phase-entries">
                 {group.entries.map((entry, entryIdx) => (
-                  <div
-                    key={entryIdx}
-                    className={`entry-row ${entry.node_type}`}
-                    style={{ '--node-color': getNodeColor(entry.node_type) }}
-                  >
-                    <div className="entry-meta">
-                      <div className="entry-icon">
-                        <Icon icon={getNodeIcon(entry.node_type)} width="18" />
+                  <React.Fragment key={entryIdx}>
+                    {/* Time gap indicator */}
+                    {entry.timeDiff && entry.timeDiff > 2 && (
+                      <div className="time-gap-indicator">
+                        <Icon icon="mdi:clock-outline" width="14" />
+                        <span>{entry.timeDiff.toFixed(1)}s gap</span>
+                        <span className="gap-reason">(LLM processing)</span>
                       </div>
-                      <div className="entry-type">{entry.node_type}</div>
-                      <div className="entry-time">{formatTimestamp(entry.timestamp)}</div>
-                      {entry.cost > 0 && (
-                        <div className="entry-cost">{formatCost(entry.cost)}</div>
-                      )}
+                    )}
+
+                    <div
+                      className={`entry-row ${entry.node_type}`}
+                      style={{ '--node-color': getNodeColor(entry.node_type) }}
+                    >
+                      <div className="entry-meta">
+                        <div className="entry-icon">
+                          <Icon icon={getNodeIcon(entry.node_type)} width="18" />
+                        </div>
+                        <div className="entry-type">{entry.node_type}</div>
+                        <div className="entry-time">{formatTimestamp(entry.timestamp)}</div>
+                        {entry.cost > 0 && (
+                          <div className="entry-cost">{formatCost(entry.cost)}</div>
+                        )}
+                        {getDirectionBadge(entry)}
+                      </div>
+                      <div className="entry-content">
+                        {renderContent(entry)}
+                      </div>
                     </div>
-                    <div className="entry-content">
-                      {renderContent(entry)}
-                    </div>
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
             </div>
@@ -429,6 +564,12 @@ function DebugModal({ sessionId, onClose }) {
           <div className="footer-stats">
             <span className="stat">
               <strong>{entries.length}</strong> total entries
+            </span>
+            <span className="stat">
+              <strong>{conversationalCount}</strong> conversation
+            </span>
+            <span className="stat">
+              <strong>{structuralCount}</strong> structural
             </span>
             <span className="stat">
               <strong>{groupedEntries.length}</strong> phases

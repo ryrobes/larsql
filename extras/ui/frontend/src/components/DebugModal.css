@@ -51,6 +51,61 @@
   align-items: center;
 }
 
+.view-mode-select {
+  background: #1a1a1a;
+  border: 2px solid #333;
+  color: #e0e0e0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.view-mode-select:hover {
+  border-color: #a78bfa;
+  background: #222;
+}
+
+.view-mode-select:focus {
+  outline: none;
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+}
+
+.toggle-structural {
+  background: rgba(102, 102, 102, 0.1);
+  border: 2px solid #666;
+  color: #666;
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.toggle-structural:hover {
+  background: rgba(102, 102, 102, 0.2);
+  border-color: #888;
+  color: #888;
+}
+
+.toggle-structural.active {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.toggle-structural.active:hover {
+  background: rgba(167, 139, 250, 0.2);
+}
+
 .dump-button {
   background: rgba(52, 211, 153, 0.1);
   border: 2px solid #34d399;
@@ -198,6 +253,52 @@
   font-weight: 700;
   color: #34d399;
   font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.direction-badge {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-family: 'Monaco', 'Courier New', monospace;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.direction-badge.sent {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  border: 1px solid #60a5fa;
+}
+
+.direction-badge.received {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border: 1px solid #a78bfa;
+}
+
+.time-gap-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin: 0.5rem 0;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px dashed #fbbf24;
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 0.8rem;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.time-gap-indicator span:first-of-type {
+  font-weight: 700;
+}
+
+.gap-reason {
+  color: #999;
+  font-style: italic;
 }
 
 .entry-content {
