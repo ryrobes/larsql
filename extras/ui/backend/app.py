@@ -1,12 +1,17 @@
 """
 Windlass UI Backend - Flask server for cascade exploration and analytics
 
-All data comes from Parquet files in DATA_DIR (unified logging system).
-No JSONL support - Parquet is the single source of truth.
+Data sources (priority order):
+1. LiveStore (DuckDB in-memory) - Real-time data for running cascades
+2. Parquet files in DATA_DIR - Historical data (unified logging system)
+
+The LiveStore provides instant updates during cascade execution,
+while Parquet is used for completed/historical sessions.
 """
 import os
 import json
 import glob
+import math
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, send_from_directory, request, Response, stream_with_context
@@ -15,8 +20,27 @@ import duckdb
 import pandas as pd
 from queue import Empty
 
+# Import live store for real-time session data
+from live_store import get_live_store, process_event as live_store_process
+
 app = Flask(__name__)
 CORS(app)
+
+
+def sanitize_for_json(obj):
+    """Recursively sanitize an object for JSON serialization.
+
+    Converts NaN/Infinity to None, which becomes null in JSON.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    return obj
 
 # Configuration - reads from environment or uses defaults
 # WINDLASS_ROOT-based configuration (single source of truth)
@@ -60,6 +84,239 @@ def get_available_columns(conn):
         return [col[0] for col in result]
     except:
         return []
+
+
+def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> dict:
+    """Build an instance dict from LiveStore data.
+
+    Returns the same structure as the SQL-based instance builder,
+    so the frontend doesn't know/care about the data source.
+    """
+    store = get_live_store()
+    info = store.get_session_info(session_id)
+    if not info:
+        return None
+
+    # Get all rows for this session
+    rows = store.get_session_data(session_id)
+    if not rows:
+        return None
+
+    # Calculate basic metrics
+    timestamps = [r.get('timestamp', 0) for r in rows if r.get('timestamp')]
+    start_time = min(timestamps) if timestamps else None
+    end_time = max(timestamps) if timestamps else None
+    duration = (end_time - start_time) if start_time and end_time else 0
+
+    # Calculate total cost
+    total_cost = sum(r.get('cost', 0) or 0 for r in rows)
+
+    # Get models used
+    models_used = list(set(r.get('model') for r in rows if r.get('model')))
+
+    # Build phases map
+    phases_map = {}
+    phase_costs = {}
+    sounding_data = {}
+    tool_calls_map = {}
+    message_counts = {}
+
+    for row in rows:
+        phase_name = row.get('phase_name')
+        if not phase_name:
+            continue
+
+        # Initialize phase if not seen
+        if phase_name not in phases_map:
+            phases_map[phase_name] = {
+                "name": phase_name,
+                "status": "pending",
+                "output_snippet": "",
+                "error_message": None,
+                "model": None,
+                "has_soundings": False,
+                "sounding_total": 0,
+                "sounding_winner": None,
+                "sounding_attempts": [],
+                "max_turns_actual": 0,
+                "max_turns": 1,
+                "turn_costs": [],
+                "tool_calls": [],
+                "message_count": 0,
+                "avg_cost": 0.0,
+                "avg_duration": 0.0
+            }
+            phase_costs[phase_name] = 0.0
+            sounding_data[phase_name] = {}
+            tool_calls_map[phase_name] = []
+            message_counts[phase_name] = 0
+
+        # Update phase status based on node_type
+        node_type = row.get('node_type', '')
+        if node_type == 'phase_start':
+            phases_map[phase_name]['status'] = 'running'
+            if row.get('model'):
+                phases_map[phase_name]['model'] = row.get('model')
+        elif node_type in ('phase_complete', 'agent', 'turn_output'):
+            phases_map[phase_name]['status'] = 'completed'
+            content = row.get('content_json')
+            if content:
+                try:
+                    parsed = json.loads(content) if isinstance(content, str) else content
+                    # Store output snippet regardless of type
+                    if parsed:
+                        snippet = str(parsed)[:200] if not isinstance(parsed, str) else parsed[:200]
+                        if snippet:
+                            phases_map[phase_name]['output_snippet'] = snippet
+                except:
+                    # If JSON parsing fails, use raw content
+                    if isinstance(content, str) and content:
+                        phases_map[phase_name]['output_snippet'] = content[:200]
+        elif node_type == 'error' or 'error' in node_type.lower():
+            phases_map[phase_name]['status'] = 'error'
+            content = row.get('content_json')
+            if content:
+                phases_map[phase_name]['error_message'] = str(content)[:200]
+
+        # Track costs
+        cost = row.get('cost', 0) or 0
+        phase_costs[phase_name] += cost
+
+        # Track soundings
+        sounding_idx = row.get('sounding_index')
+        if sounding_idx is not None:
+            phases_map[phase_name]['has_soundings'] = True
+            if sounding_idx not in sounding_data[phase_name]:
+                sounding_data[phase_name][sounding_idx] = {
+                    'index': sounding_idx,
+                    'is_winner': False,
+                    'cost': 0.0,
+                    'turns': []
+                }
+            sounding_data[phase_name][sounding_idx]['cost'] += cost
+            if row.get('is_winner'):
+                sounding_data[phase_name][sounding_idx]['is_winner'] = True
+                phases_map[phase_name]['sounding_winner'] = sounding_idx
+
+        # Track tool calls
+        tool_calls_json = row.get('tool_calls_json')
+        if tool_calls_json:
+            try:
+                tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
+                if isinstance(tool_calls, list):
+                    for tc in tool_calls:
+                        if isinstance(tc, dict):
+                            tool_name = tc.get('tool') or tc.get('function', {}).get('name') or tc.get('name')
+                            if tool_name:
+                                tool_calls_map[phase_name].append(tool_name)
+            except:
+                pass
+
+        # Count messages
+        if node_type in ('agent', 'tool_result', 'user', 'system', 'turn_output'):
+            message_counts[phase_name] += 1
+
+    # Finalize phases
+    for phase_name, phase in phases_map.items():
+        phase['avg_cost'] = phase_costs.get(phase_name, 0.0)
+        phase['tool_calls'] = tool_calls_map.get(phase_name, [])
+        phase['message_count'] = message_counts.get(phase_name, 0)
+
+        # Build sounding attempts
+        if phase_name in sounding_data:
+            attempts = list(sounding_data[phase_name].values())
+            phase['sounding_attempts'] = sorted(attempts, key=lambda x: x['index'])
+            phase['sounding_total'] = len(attempts)
+
+    # Get input data (from first user message with Input Data)
+    input_data = {}
+    for row in rows:
+        if row.get('node_type') == 'user':
+            content = row.get('content_json')
+            if content and isinstance(content, str) and '## Input Data:' in content:
+                try:
+                    lines = content.split('\n')
+                    for i, ln in enumerate(lines):
+                        if '## Input Data:' in ln and i + 1 < len(lines):
+                            json_str = lines[i + 1].strip()
+                            if json_str and json_str != '{}':
+                                input_data = json.loads(json_str)
+                                break
+                except:
+                    pass
+            if input_data:
+                break
+
+    # Get final output - look for phase_complete, turn_output, or agent nodes with content
+    final_output = None
+    for row in reversed(rows):
+        if row.get('node_type') in ('phase_complete', 'turn_output', 'agent'):
+            content = row.get('content_json')
+            if content:
+                try:
+                    parsed = json.loads(content) if isinstance(content, str) else content
+                    if parsed:
+                        final_output = str(parsed) if not isinstance(parsed, str) else parsed
+                        break
+                except:
+                    final_output = content
+                    break
+
+    # Check for errors
+    cascade_status = "running" if info.status == "running" else "success"
+    error_count = 0
+    error_list = []
+    for row in rows:
+        if row.get('node_type') == 'error':
+            error_count += 1
+            error_list.append({
+                "phase": row.get('phase_name', 'unknown'),
+                "message": str(row.get('content_json', ''))[:200],
+                "error_type": "Error"
+            })
+    if error_count > 0:
+        cascade_status = "failed"
+
+    return {
+        'session_id': session_id,
+        'cascade_id': info.cascade_id,
+        'parent_session_id': None,  # Live store doesn't track parent yet
+        'depth': 0,
+        'start_time': datetime.fromtimestamp(start_time).isoformat() if start_time else None,
+        'end_time': datetime.fromtimestamp(end_time).isoformat() if end_time and info.status != "running" else None,
+        'duration_seconds': duration,
+        'total_cost': total_cost,
+        'models_used': models_used,
+        'input_data': input_data,
+        'final_output': final_output,
+        'phases': list(phases_map.values()),
+        'status': cascade_status,
+        'error_count': error_count,
+        'errors': error_list,
+        'children': [],
+        '_source': 'live'  # Indicate data source for debugging
+    }
+
+
+@app.route('/api/live-store/stats', methods=['GET'])
+def get_live_store_stats():
+    """Get statistics about the live session store."""
+    store = get_live_store()
+    return jsonify(store.get_stats())
+
+
+@app.route('/api/live-store/session/<session_id>', methods=['GET'])
+def get_live_session(session_id):
+    """Get live session data if available."""
+    store = get_live_store()
+    if not store.has_data(session_id):
+        return jsonify({'error': 'Session not in live store'}), 404
+
+    instance = build_instance_from_live_store(session_id)
+    if not instance:
+        return jsonify({'error': 'Failed to build instance from live store'}), 500
+
+    return jsonify(sanitize_for_json(instance))
 
 
 @app.route('/api/cascade-definitions', methods=['GET'])
@@ -262,14 +519,41 @@ def get_cascade_definitions():
 def get_cascade_instances(cascade_id):
     """
     Get all run instances for a specific cascade definition.
-    All data comes from Parquet files.
+
+    Data sources (priority):
+    1. LiveStore - for running/completing sessions (real-time)
+    2. Parquet - for completed sessions (historical)
+
+    Live sessions are served from in-memory store for instant updates.
     """
     try:
+        # First, get any live sessions for this cascade
+        store = get_live_store()
+
+        # Debug: show all tracked sessions
+        stats = store.get_stats()
+        print(f"[API] LiveStore stats: {stats}")
+
+        live_sessions = store.get_sessions_for_cascade(cascade_id)
+        print(f"[API] Looking for cascade_id={cascade_id}, found live sessions: {live_sessions}")
+
+        live_instances = []
+        live_session_ids = set()
+
+        for session_id in live_sessions:
+            instance = build_instance_from_live_store(session_id, cascade_id)
+            if instance:
+                live_instances.append(instance)
+                live_session_ids.add(session_id)
+                print(f"[API] Serving session {session_id} from LiveStore (status={instance.get('status')}, phases={len(instance.get('phases', []))})")
+
+        # Now get historical sessions from Parquet (excluding live ones)
         conn = get_db_connection()
         columns = get_available_columns(conn)
 
         if not columns:
-            return jsonify([])
+            # No Parquet data, return just live instances
+            return jsonify(sanitize_for_json(live_instances))
 
         has_model = 'model' in columns
         has_turn_number = 'turn_number' in columns
@@ -338,6 +622,11 @@ def get_cascade_instances(cascade_id):
         instances = []
         for session_row in session_results:
             session_id, session_cascade_id, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
+
+            # Skip sessions that are being served from LiveStore
+            if session_id in live_session_ids:
+                print(f"[API] Skipping session {session_id} from SQL (already in LiveStore)")
+                continue
 
             # Get models used in this session
             models_used = []
@@ -725,17 +1014,23 @@ def get_cascade_instances(cascade_id):
                 'phases': list(phases_map.values()),
                 'status': cascade_status,
                 'error_count': error_count,
-                'errors': error_list
+                'errors': error_list,
+                'children': [],
+                '_source': 'sql'  # Indicate data source for debugging
             })
+
+        # Merge live instances with SQL instances
+        all_instances = live_instances + instances
 
         # Restructure to nest children under parents
         parents = []
         children_map = {}  # parent_session_id -> [children]
 
-        for instance in instances:
+        for instance in all_instances:
             if instance['depth'] == 0:
                 # Parent instance
-                instance['children'] = []  # Will populate below
+                if 'children' not in instance:
+                    instance['children'] = []  # Will populate below
                 parents.append(instance)
             else:
                 # Child instance - add to map
@@ -749,8 +1044,29 @@ def get_cascade_instances(cascade_id):
             if parent['session_id'] in children_map:
                 parent['children'] = children_map[parent['session_id']]
 
+        # Sort: live/running instances first, then by start_time descending
+        # Use tuple sorting: (priority, inverted_time_string)
+        # ISO timestamps sort lexicographically, so we can use string comparison
+        def sort_key(x):
+            priority = (
+                0 if x.get('_source') == 'live' else 1,
+                0 if x.get('status') == 'running' else 1,
+            )
+            # Invert time by making it negative in sort order
+            # ISO strings sort ascending, so prefix with 'z' minus the string to reverse
+            start_time = x.get('start_time') or '0000-00-00'
+            return (priority[0], priority[1], start_time)
+
+        parents.sort(key=sort_key, reverse=True)
+        # Re-sort to get priority correct (live/running first)
+        parents.sort(key=lambda x: (
+            0 if x.get('_source') == 'live' else 1,
+            0 if x.get('status') == 'running' else 1,
+        ))
+
         conn.close()
-        return jsonify(parents)
+        # Sanitize to handle NaN/Infinity values that aren't valid JSON
+        return jsonify(sanitize_for_json(parents))
 
     except Exception as e:
         import traceback
@@ -892,66 +1208,65 @@ def get_graph(session_id):
 
 @app.route('/api/mermaid/<session_id>', methods=['GET'])
 def get_mermaid_graph(session_id):
-    """Get Mermaid graph content for a session from database (mermaid_content field)"""
+    """Get Mermaid graph content for a session.
+
+    Priority: FILE FIRST (real-time) > DATABASE (buffered/stale)
+
+    The .mmd file is written synchronously on every update by WindlassRunner._update_graph(),
+    while database logging is buffered (100 messages or 10 seconds). For live updates during
+    cascade execution, the file is always more current.
+    """
     try:
         conn = get_db_connection()
-        columns = get_available_columns(conn)
+        mermaid_content = None
+        source = None
 
-        # Check if mermaid_content column exists
-        if 'mermaid_content' not in columns:
-            print(f"[MERMAID] mermaid_content column NOT in schema, using file fallback")
-            # Fallback to file if column doesn't exist (backward compatibility)
-            mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
-            if not os.path.exists(mermaid_path):
-                conn.close()
-                return jsonify({'error': 'Mermaid graph not found'}), 404
-            with open(mermaid_path) as f:
-                mermaid_content = f.read()
-            print(f"[MERMAID] Loaded from file: {len(mermaid_content)} chars")
-        else:
-            print(f"[MERMAID] mermaid_content column exists, querying database for session: {session_id}")
-            # Query latest mermaid_content from database
-            mermaid_query = """
-            SELECT mermaid_content, timestamp, node_type
-            FROM logs
-            WHERE session_id = ?
-              AND mermaid_content IS NOT NULL
-              AND mermaid_content != ''
-            ORDER BY timestamp DESC
-            LIMIT 1
-            """
-            mermaid_result = conn.execute(mermaid_query, [session_id]).fetchone()
+        # PRIORITY 1: Check file first (synchronous writes, always up-to-date)
+        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+        if os.path.exists(mermaid_path):
+            try:
+                with open(mermaid_path) as f:
+                    mermaid_content = f.read()
+                if mermaid_content and mermaid_content.strip():
+                    source = "file"
+                    print(f"[MERMAID] Loaded from file (real-time): {len(mermaid_content)} chars")
+            except Exception as file_err:
+                print(f"[MERMAID] File read error: {file_err}")
 
-            print(f"[MERMAID] Query result: {mermaid_result is not None}")
-            if mermaid_result:
-                print(f"[MERMAID] Found mermaid_content: {len(mermaid_result[0]) if mermaid_result[0] else 0} chars, node_type: {mermaid_result[2]}")
-            else:
-                print(f"[MERMAID] No results from query")
+        # PRIORITY 2: Fall back to database only if file doesn't exist or is empty
+        if not mermaid_content:
+            columns = get_available_columns(conn)
+            if 'mermaid_content' in columns:
+                print(f"[MERMAID] No file found, checking database for session: {session_id}")
+                mermaid_query = """
+                SELECT mermaid_content, timestamp, node_type
+                FROM logs
+                WHERE session_id = ?
+                  AND mermaid_content IS NOT NULL
+                  AND mermaid_content != ''
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """
+                mermaid_result = conn.execute(mermaid_query, [session_id]).fetchone()
 
-            if not mermaid_result or not mermaid_result[0]:
-                # Try file fallback
-                mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
-                print(f"[MERMAID] No data in database, trying file fallback at: {mermaid_path}")
-                print(f"[MERMAID] GRAPH_DIR={GRAPH_DIR}, absolute={os.path.abspath(GRAPH_DIR)}")
-                if os.path.exists(mermaid_path):
-                    with open(mermaid_path) as f:
-                        mermaid_content = f.read()
-                    print(f"[MERMAID] Loaded from file fallback: {len(mermaid_content)} chars")
+                if mermaid_result and mermaid_result[0]:
+                    mermaid_content = mermaid_result[0]
+                    source = "database"
+                    print(f"[MERMAID] Loaded from database: {len(mermaid_content)} chars")
+
+        # No content found anywhere
+        if not mermaid_content:
+            # Debug: list graph dir contents
+            try:
+                if os.path.exists(GRAPH_DIR):
+                    files = [f for f in os.listdir(GRAPH_DIR) if f.endswith('.mmd')][:10]
+                    print(f"[MERMAID] Not found. Available .mmd files (first 10): {files}")
                 else:
-                    # List what files ARE in the graph dir for debugging
-                    try:
-                        if os.path.exists(GRAPH_DIR):
-                            files = os.listdir(GRAPH_DIR)[:10]  # First 10 files
-                            print(f"[MERMAID] File not found. Graph dir contents (first 10): {files}")
-                        else:
-                            print(f"[MERMAID] GRAPH_DIR does not exist: {GRAPH_DIR}")
-                    except Exception as list_err:
-                        print(f"[MERMAID] Error listing graph dir: {list_err}")
-                    conn.close()
-                    return jsonify({'error': 'Mermaid graph not found in database or files'}), 404
-            else:
-                mermaid_content = mermaid_result[0]
-                print(f"[MERMAID] Using database content: {mermaid_content[:100]}...")
+                    print(f"[MERMAID] GRAPH_DIR does not exist: {GRAPH_DIR}")
+            except Exception as list_err:
+                print(f"[MERMAID] Error listing graph dir: {list_err}")
+            conn.close()
+            return jsonify({'error': 'Mermaid graph not found'}), 404
 
         # Get session metadata from Parquet
 
@@ -1000,10 +1315,17 @@ def get_mermaid_graph(session_id):
         finally:
             conn.close()
 
+        # Add file modification time for change detection
+        file_mtime = None
+        if source == "file" and os.path.exists(mermaid_path):
+            file_mtime = os.path.getmtime(mermaid_path)
+
         return jsonify({
             'session_id': session_id,
             'mermaid': mermaid_content,
-            'metadata': metadata
+            'metadata': metadata,
+            'source': source,
+            'file_mtime': file_mtime
         })
 
     except Exception as e:
@@ -1014,18 +1336,22 @@ def get_mermaid_graph(session_id):
 
 @app.route('/api/events/stream')
 def event_stream():
-    """SSE endpoint for real-time cascade updates"""
+    """SSE endpoint for real-time cascade updates.
+
+    Also feeds events into the LiveSessionStore for real-time data queries.
+    """
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
         from windlass.events import get_event_bus
+        from live_store import process_event as live_store_process
 
         def generate():
             print("[SSE] Client connected")
             bus = get_event_bus()
             queue = bus.subscribe()
-            print(f"[SSE] Subscribed to event bus")
+            print(f"[SSE] Subscribed to event bus (with LiveStore integration)")
 
             connection_msg = json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})
             yield f"data: {connection_msg}\n\n"
@@ -1035,8 +1361,18 @@ def event_stream():
                 while True:
                     try:
                         event = queue.get(timeout=0.5)
-                        print(f"[SSE] Event from bus: {event.type if hasattr(event, 'type') else 'unknown'}")
+                        event_type = event.type if hasattr(event, 'type') else 'unknown'
+                        print(f"[SSE] Event from bus: {event_type}")
                         event_dict = event.to_dict() if hasattr(event, 'to_dict') else event
+
+                        # Feed event into LiveStore for real-time queries
+                        try:
+                            processed = live_store_process(event_dict)
+                            if processed:
+                                print(f"[SSE] LiveStore processed: {event_type}")
+                        except Exception as ls_err:
+                            print(f"[SSE] LiveStore error: {ls_err}")
+
                         yield f"data: {json.dumps(event_dict, default=str)}\n\n"
                     except Empty:
                         heartbeat_count += 1

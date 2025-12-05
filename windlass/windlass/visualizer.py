@@ -1296,24 +1296,539 @@ def generate_mermaid_string(echo: Echo) -> str:
     return "\n".join(lines)
 
 
+def generate_state_diagram_string(echo: Echo) -> str:
+    """
+    Generate a Mermaid state diagram string from Echo history.
+
+    State diagrams provide a compact, semantic representation with encapsulated complexity:
+    - Phases are composite states that contain their internal complexity
+    - Fork/join pseudo-states show parallel execution (soundings)
+    - Sub-cascades appear as nested composite states within parent phases
+    - Wards chain as sequential validation steps
+    - Reforge chains sequentially after soundings
+
+    Visual language:
+    - ✓ completed, ○ pending, ▶ running
+    - 🔱 soundings (parallel attempts)
+    - 🔨 reforge (iterative refinement)
+    - 📦 sub-cascade (nested workflow)
+    - 🛡️ blocking ward, 🔄 retry ward, ℹ️ advisory ward
+    - ⚖️ evaluator, ★ winner
+    - 🔧 tool usage
+
+    Returns the mermaid state diagram as a string.
+    """
+    history, sub_echoes = flatten_history(echo.history)
+
+    # Helper to create safe state IDs
+    def sid(name: str) -> str:
+        # Replace problematic characters and ensure valid ID
+        s = name.replace("-", "_").replace(" ", "_").replace(".", "_")
+        s = s.replace("(", "").replace(")", "").replace(":", "").replace("/", "_")
+        return s
+
+    # Helper to get status icon
+    def status_icon(phase_name: str, completed_phases: set) -> str:
+        return "✓" if phase_name in completed_phases else "○"
+
+    # Collect data structures
+    completed_phases = {item.get("phase") for item in echo.lineage}
+
+    # Build lookup maps
+    sub_cascade_trace_ids = set()
+    sub_cascades_by_phase: Dict[str, List[Dict]] = {}  # phase_trace_id -> [sub_echo_data]
+
+    for sub_echo in sub_echoes:
+        sub_history = sub_echo.get("history", [])
+        for entry in sub_history:
+            if entry.get("node_type") == "cascade":
+                sub_cascade_trace_ids.add(entry.get("trace_id"))
+
+    # Collect all entries by type
+    phase_entries = []
+    soundings_by_phase: Dict[str, List[Dict]] = {}
+    reforge_by_phase: Dict[str, Dict[int, Dict]] = {}
+    wards_by_phase: Dict[str, Dict[str, List[Dict]]] = {}
+    tools_by_phase: Dict[str, List[str]] = {}
+    turns_by_phase: Dict[str, int] = {}
+    cascade_sounding_attempts = []
+    cascade_soundings_result = None
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        meta = extract_metadata(entry)
+
+        if node_type == "phase":
+            # Only collect top-level phases (not sub-cascade phases)
+            if entry.get("parent_id") not in sub_cascade_trace_ids:
+                phase_entries.append(entry)
+
+        elif node_type == "sounding_attempt":
+            phase_name = meta.get("phase_name", "unknown")
+            if phase_name not in soundings_by_phase:
+                soundings_by_phase[phase_name] = []
+            soundings_by_phase[phase_name].append(entry)
+
+        elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
+            phase_name = meta.get("phase_name", "unknown")
+            step = meta.get("reforge_step", 1)
+            if phase_name not in reforge_by_phase:
+                reforge_by_phase[phase_name] = {}
+            if step not in reforge_by_phase[phase_name]:
+                reforge_by_phase[phase_name][step] = {"attempts": [], "winner": None}
+
+            if node_type == "reforge_attempt":
+                reforge_by_phase[phase_name][step]["attempts"].append(entry)
+            elif node_type == "reforge_winner":
+                reforge_by_phase[phase_name][step]["winner"] = entry
+
+        elif node_type in ("pre_ward", "post_ward"):
+            phase_name = meta.get("phase_name", "unknown")
+            if phase_name not in wards_by_phase:
+                wards_by_phase[phase_name] = {"pre": [], "post": []}
+            ward_type = meta.get("ward_type", "")
+            if ward_type in ("pre", "post"):
+                wards_by_phase[phase_name][ward_type].append(entry)
+
+        elif node_type == "tool_result":
+            phase_name = meta.get("phase_name", "unknown")
+            if phase_name not in tools_by_phase:
+                tools_by_phase[phase_name] = []
+            # Extract tool name from content or metadata
+            content = entry.get("content", "")
+            if content:
+                tools_by_phase[phase_name].append(content[:20])
+
+        elif node_type == "turn":
+            phase_name = meta.get("phase_name", "unknown")
+            turns_by_phase[phase_name] = turns_by_phase.get(phase_name, 0) + 1
+
+        elif node_type == "cascade_sounding_attempt":
+            cascade_sounding_attempts.append(entry)
+
+        elif node_type == "cascade_soundings_result":
+            cascade_soundings_result = entry
+
+    # Map phase trace_id to phase data for ward lookup
+    phase_trace_to_name = {}
+    phase_trace_to_entry = {}
+    for pe in phase_entries:
+        content = pe.get("content", "")
+        name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+        phase_trace_to_name[pe.get("trace_id")] = name
+        phase_trace_to_entry[pe.get("trace_id")] = pe
+
+    # Re-process wards with correct phase names (using parent_id lookup)
+    wards_by_phase = {}
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type in ("pre_ward", "post_ward"):
+            parent_id = entry.get("parent_id")
+            phase_name = phase_trace_to_name.get(parent_id, "unknown")
+            meta = extract_metadata(entry)
+            if phase_name not in wards_by_phase:
+                wards_by_phase[phase_name] = {"pre": [], "post": []}
+            ward_type = meta.get("ward_type", "")
+            if ward_type in ("pre", "post"):
+                wards_by_phase[phase_name][ward_type].append(entry)
+
+    # Map sub-cascades to their parent phases
+    sub_cascades_by_phase_name: Dict[str, List[Dict]] = {}
+    for sub_echo in sub_echoes:
+        sub_history = sub_echo.get("history", [])
+        # Find cascade entry and its phases
+        cascade_entry = None
+        sub_phases = []
+        for entry in sub_history:
+            if entry.get("node_type") == "cascade":
+                cascade_entry = entry
+            elif entry.get("node_type") == "phase":
+                sub_phases.append(entry)
+
+        if cascade_entry:
+            # Find which parent phase this belongs to
+            # Look for has_sub_cascades metadata in phase entries
+            for pe in phase_entries:
+                pe_meta = extract_metadata(pe)
+                if pe_meta.get("has_sub_cascades"):
+                    phase_name = phase_trace_to_name.get(pe.get("trace_id"), "unknown")
+                    if phase_name not in sub_cascades_by_phase_name:
+                        sub_cascades_by_phase_name[phase_name] = []
+                    sub_cascades_by_phase_name[phase_name].append({
+                        "cascade": cascade_entry,
+                        "phases": sub_phases,
+                        "sub_echo": sub_echo.get("sub_echo", "sub")
+                    })
+
+    # Sort phases by lineage order
+    phase_order = [item.get("phase") for item in echo.lineage]
+    if phase_order:
+        def phase_sort_key(entry):
+            content = entry.get("content", "")
+            name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+            try:
+                return phase_order.index(name)
+            except ValueError:
+                return 999
+        phase_entries.sort(key=phase_sort_key)
+
+    # =========================================================================
+    # BUILD THE STATE DIAGRAM
+    # =========================================================================
+
+    lines = ["stateDiagram-v2"]
+    lines.append("    direction LR")
+    lines.append("")
+
+    # Cascade-level soundings (if present)
+    first_state = None
+    if cascade_sounding_attempts:
+        cs_meta = extract_metadata(cascade_soundings_result) if cascade_soundings_result else {}
+        winner_index = cs_meta.get("winner_index")
+        factor = len(cascade_sounding_attempts)
+
+        lines.append("    state cascade_soundings {")
+        lines.append("        cs_label : 🔱 Cascade Soundings")
+        lines.append("        [*] --> cs_fork")
+        lines.append("        state cs_fork <<fork>>")
+
+        for attempt in sorted(cascade_sounding_attempts, key=lambda a: extract_metadata(a).get("sounding_index", 0)):
+            a_meta = extract_metadata(attempt)
+            idx = a_meta.get("sounding_index", 0)
+            is_winner = (winner_index is not None and idx == winner_index)
+            marker = " ✓" if is_winner else ""
+            lines.append(f"        cs_fork --> cs_a{idx}")
+            lines.append(f"        cs_a{idx} : #{idx+1}{marker}")
+
+        lines.append("        state cs_join <<join>>")
+        for i in range(factor):
+            lines.append(f"        cs_a{i} --> cs_join")
+
+        lines.append("        cs_join --> cs_eval")
+        lines.append("        cs_eval : ⚖️ Evaluate")
+
+        if winner_index is not None:
+            lines.append("        cs_eval --> cs_winner")
+            lines.append(f"        cs_winner : ★ #{winner_index+1}")
+            lines.append("        cs_winner --> [*]")
+        else:
+            lines.append("        cs_eval --> [*]")
+
+        lines.append("    }")
+        lines.append("")
+        first_state = "cascade_soundings"
+
+    # =========================================================================
+    # RENDER EACH PHASE
+    # =========================================================================
+
+    phase_ids = []
+
+    for phase_entry in phase_entries:
+        content = phase_entry.get("content", "")
+        phase_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+        pid = sid(phase_name)
+        phase_ids.append(pid)
+        phase_trace_id = phase_entry.get("trace_id")
+
+        meta = extract_metadata(phase_entry)
+        status = status_icon(phase_name, completed_phases)
+
+        # Determine what complexity this phase has
+        has_soundings = phase_name in soundings_by_phase
+        has_reforge = phase_name in reforge_by_phase
+        has_wards = phase_name in wards_by_phase and (wards_by_phase[phase_name]["pre"] or wards_by_phase[phase_name]["post"])
+        has_sub_cascades = phase_name in sub_cascades_by_phase_name
+        tool_count = len(tools_by_phase.get(phase_name, []))
+        turn_count = turns_by_phase.get(phase_name, 0)
+
+        # Build annotation string for simple phases
+        annotations = []
+        if tool_count > 0:
+            annotations.append(f"🔧{tool_count}")
+        if turn_count > 1:
+            annotations.append(f"↻{turn_count}")
+        annotation_str = " " + " ".join(annotations) if annotations else ""
+
+        # Decide if phase needs composite state
+        needs_composite = has_soundings or has_reforge or has_wards or has_sub_cascades
+
+        if not needs_composite:
+            # Simple phase - single state
+            lines.append(f'    state "{status} {sanitize_label(phase_name, 28)}{annotation_str}" as {pid}')
+
+        else:
+            # Composite state
+            lines.append(f"    state {pid} {{")
+
+            # Phase label with status
+            label_parts = [status, sanitize_label(phase_name, 25)]
+            if has_soundings:
+                factor = len(soundings_by_phase[phase_name])
+                label_parts.append(f"🔱{factor}")
+            if has_reforge:
+                steps = len(reforge_by_phase[phase_name])
+                label_parts.append(f"🔨{steps}")
+            if has_sub_cascades:
+                count = len(sub_cascades_by_phase_name[phase_name])
+                label_parts.append(f"📦{count}")
+            if tool_count > 0:
+                label_parts.append(f"🔧{tool_count}")
+
+            lines.append(f"        {pid}_label : {' '.join(label_parts)}")
+            lines.append("")
+
+            # Track last node for chaining
+            last_node = None
+            first_internal = None
+
+            # PRE-WARDS
+            if has_wards and wards_by_phase[phase_name]["pre"]:
+                for j, ward in enumerate(wards_by_phase[phase_name]["pre"]):
+                    ward_meta = extract_metadata(ward)
+                    validator = ward_meta.get("validator", "check")
+                    valid = ward_meta.get("valid", True)
+                    mode = ward_meta.get("mode", "blocking")
+
+                    mode_icon = "🛡️" if mode == "blocking" else ("🔄" if mode == "retry" else "ℹ️")
+                    status_mark = "✓" if valid else "✗"
+
+                    ward_id = f"{pid}_pre{j}"
+                    lines.append(f"        {ward_id} : {mode_icon} {sanitize_label(validator, 12)} {status_mark}")
+
+                    if last_node:
+                        lines.append(f"        {last_node} --> {ward_id}")
+                    else:
+                        first_internal = ward_id
+                    last_node = ward_id
+
+            # SOUNDINGS
+            if has_soundings:
+                attempts = soundings_by_phase[phase_name]
+                attempts_info = {}
+                winner_index = None
+
+                for sa in attempts:
+                    sa_meta = extract_metadata(sa)
+                    idx = sa_meta.get("sounding_index", 0)
+                    is_winner = sa_meta.get("is_winner", False)
+                    attempts_info[idx] = {"is_winner": is_winner}
+                    if is_winner:
+                        winner_index = idx
+
+                # Fork
+                fork_id = f"{pid}_fork"
+                lines.append(f"        state {fork_id} <<fork>>")
+
+                if last_node:
+                    lines.append(f"        {last_node} --> {fork_id}")
+                else:
+                    first_internal = fork_id
+
+                # Attempts
+                for idx in sorted(attempts_info.keys()):
+                    info = attempts_info[idx]
+                    marker = " ✓" if info["is_winner"] else ""
+                    lines.append(f"        {fork_id} --> {pid}_a{idx}")
+                    lines.append(f"        {pid}_a{idx} : #{idx+1}{marker}")
+
+                # Join
+                join_id = f"{pid}_join"
+                lines.append(f"        state {join_id} <<join>>")
+                for idx in sorted(attempts_info.keys()):
+                    lines.append(f"        {pid}_a{idx} --> {join_id}")
+
+                # Evaluator
+                eval_id = f"{pid}_eval"
+                lines.append(f"        {join_id} --> {eval_id}")
+                lines.append(f"        {eval_id} : ⚖️ Evaluate")
+
+                # Winner
+                if winner_index is not None:
+                    winner_id = f"{pid}_winner"
+                    lines.append(f"        {eval_id} --> {winner_id}")
+                    lines.append(f"        {winner_id} : ★ #{winner_index+1}")
+                    last_node = winner_id
+                else:
+                    last_node = eval_id
+
+                # REFORGE (chains after soundings)
+                if has_reforge:
+                    for step_num in sorted(reforge_by_phase[phase_name].keys()):
+                        step_data = reforge_by_phase[phase_name][step_num]
+                        rf_attempts = step_data.get("attempts", [])
+                        rf_winner = step_data.get("winner")
+
+                        if rf_attempts:
+                            rf_id = f"{pid}_rf{step_num}"
+                            rf_factor = len(rf_attempts)
+                            rf_winner_meta = extract_metadata(rf_winner) if rf_winner else {}
+                            rf_winner_index = rf_winner_meta.get("winner_index")
+
+                            # Nested composite for reforge step
+                            lines.append(f"        state {rf_id} {{")
+                            lines.append(f"            {rf_id}_label : 🔨 Reforge {step_num}")
+                            lines.append(f"            [*] --> {rf_id}_fork")
+                            lines.append(f"            state {rf_id}_fork <<fork>>")
+
+                            for rf_att in sorted(rf_attempts, key=lambda a: extract_metadata(a).get("attempt_index", 0)):
+                                rf_att_meta = extract_metadata(rf_att)
+                                rf_idx = rf_att_meta.get("attempt_index", 0)
+                                rf_is_winner = (rf_winner_index is not None and rf_idx == rf_winner_index)
+                                rf_marker = " ✓" if rf_is_winner else ""
+                                lines.append(f"            {rf_id}_fork --> {rf_id}_a{rf_idx}")
+                                lines.append(f"            {rf_id}_a{rf_idx} : R{rf_idx+1}{rf_marker}")
+
+                            lines.append(f"            state {rf_id}_join <<join>>")
+                            for j in range(rf_factor):
+                                lines.append(f"            {rf_id}_a{j} --> {rf_id}_join")
+
+                            if rf_winner_index is not None:
+                                lines.append(f"            {rf_id}_join --> {rf_id}_winner")
+                                lines.append(f"            {rf_id}_winner : ★ R{rf_winner_index+1}")
+                                lines.append(f"            {rf_id}_winner --> [*]")
+                            else:
+                                lines.append(f"            {rf_id}_join --> [*]")
+
+                            lines.append(f"        }}")
+                            lines.append(f"        {last_node} --> {rf_id}")
+                            last_node = rf_id
+
+            # SUB-CASCADES
+            if has_sub_cascades:
+                for sc_idx, sc_data in enumerate(sub_cascades_by_phase_name[phase_name]):
+                    sc_cascade = sc_data["cascade"]
+                    sc_phases = sc_data["phases"]
+                    sc_name = sc_data.get("sub_echo", f"sub_{sc_idx}")
+
+                    sc_content = sc_cascade.get("content", "")
+                    sc_cascade_name = sc_content.replace("Cascade: ", "") if sc_content.startswith("Cascade: ") else sc_content
+                    sc_id = f"{pid}_sc{sc_idx}"
+
+                    # Nested composite for sub-cascade
+                    lines.append(f"        state {sc_id} {{")
+                    lines.append(f"            {sc_id}_label : 📦 {sanitize_label(sc_cascade_name, 20)}")
+
+                    if sc_phases:
+                        # Render sub-cascade phases
+                        sc_phase_ids = []
+                        for sp_idx, sp_entry in enumerate(sc_phases):
+                            sp_content = sp_entry.get("content", "")
+                            sp_name = sp_content.replace("Phase: ", "") if sp_content.startswith("Phase: ") else sp_content
+                            sp_id = f"{sc_id}_p{sp_idx}"
+                            sc_phase_ids.append(sp_id)
+
+                            # Check if sub-phase is complete (in parent lineage or has output)
+                            sp_status = "✓" if sp_name in completed_phases else "○"
+                            lines.append(f"            {sp_id} : {sp_status} {sanitize_label(sp_name, 18)}")
+
+                        # Connect sub-phases
+                        if sc_phase_ids:
+                            lines.append(f"            [*] --> {sc_phase_ids[0]}")
+                            for k in range(len(sc_phase_ids) - 1):
+                                lines.append(f"            {sc_phase_ids[k]} --> {sc_phase_ids[k+1]}")
+                            lines.append(f"            {sc_phase_ids[-1]} --> [*]")
+                    else:
+                        # Empty sub-cascade placeholder
+                        lines.append(f"            {sc_id}_empty : (no phases)")
+                        lines.append(f"            [*] --> {sc_id}_empty")
+                        lines.append(f"            {sc_id}_empty --> [*]")
+
+                    lines.append(f"        }}")
+
+                    if last_node:
+                        lines.append(f"        {last_node} --> {sc_id}")
+                    else:
+                        first_internal = sc_id
+                    last_node = sc_id
+
+            # POST-WARDS
+            if has_wards and wards_by_phase[phase_name]["post"]:
+                for j, ward in enumerate(wards_by_phase[phase_name]["post"]):
+                    ward_meta = extract_metadata(ward)
+                    validator = ward_meta.get("validator", "check")
+                    valid = ward_meta.get("valid", True)
+                    mode = ward_meta.get("mode", "blocking")
+
+                    mode_icon = "🛡️" if mode == "blocking" else ("🔄" if mode == "retry" else "ℹ️")
+                    status_mark = "✓" if valid else "✗"
+
+                    ward_id = f"{pid}_post{j}"
+                    lines.append(f"        {ward_id} : {mode_icon} {sanitize_label(validator, 12)} {status_mark}")
+
+                    if last_node:
+                        lines.append(f"        {last_node} --> {ward_id}")
+                    else:
+                        first_internal = ward_id
+                    last_node = ward_id
+
+            # Connect internal flow
+            if first_internal:
+                lines.append(f"        [*] --> {first_internal}")
+            if last_node:
+                lines.append(f"        {last_node} --> [*]")
+
+            lines.append("    }")
+
+        lines.append("")
+
+    # =========================================================================
+    # CONNECT PHASES
+    # =========================================================================
+
+    if first_state is None and phase_ids:
+        first_state = phase_ids[0]
+        lines.append(f"    [*] --> {first_state}")
+    elif first_state and phase_ids:
+        lines.append(f"    {first_state} --> {phase_ids[0]}")
+
+    # Phase-to-phase transitions
+    for i in range(len(phase_ids) - 1):
+        lines.append(f"    {phase_ids[i]} --> {phase_ids[i+1]}")
+
+    # End state
+    if phase_ids:
+        lines.append(f"    {phase_ids[-1]} --> [*]")
+
+    return "\n".join(lines)
+
+
+def generate_state_diagram(echo: Echo, output_path: str) -> str:
+    """
+    Generate a Mermaid state diagram from Echo history and write to file.
+
+    This is an alternative to generate_mermaid() that produces a more compact,
+    semantically meaningful visualization using state diagram syntax.
+
+    Returns:
+        Path to written .mmd file
+    """
+    content = generate_state_diagram_string(echo)
+
+    with open(output_path, "w") as f:
+        f.write(content)
+
+    return output_path
+
+
 def generate_mermaid(echo: Echo, output_path: str) -> str:
     """
-    Generate a Mermaid flowchart from Echo history and write to file.
+    Generate a Mermaid state diagram from Echo history and write to file.
 
     The diagram shows:
-    - Cascade as the outer container
-    - Phases as nodes connected by handoffs
-    - Soundings as parallel branches with winner highlighting
-    - Reforge as sequential refinement steps
-    - Sub-cascades as nested groups
+    - Phases as composite states with internal complexity
+    - Soundings as fork/join parallel branches with winner highlighting
+    - Reforge as nested refinement states
+    - Sub-cascades as nested composite states
+    - Wards as entry/exit validation states
 
     Also generates companion JSON files with execution graph structure.
 
     Returns:
         Path to written .mmd file
     """
-    # Generate the mermaid string
-    mermaid_content = generate_mermaid_string(echo)
+    # Generate the state diagram (more compact than flowchart)
+    mermaid_content = generate_state_diagram_string(echo)
 
     # Generate companion JSON files
     json_path = output_path.replace(".mmd", ".json")

@@ -194,6 +194,7 @@ function App() {
           case 'phase_complete':
           case 'tool_call':
           case 'tool_result':
+          case 'cost_update':
             // Refresh on any activity (data may not be in SQL yet, but update UI state)
             setRefreshTrigger(prev => prev + 1);
             // Track session update for mermaid refresh

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './ImageGallery.css';
 
 /**
@@ -78,8 +79,8 @@ function ImageGallery({ sessionId, isRunning, refreshTrigger }) {
         ))}
       </div>
 
-      {/* Full-size image modal */}
-      {selectedImage && (
+      {/* Full-size image modal - rendered via portal at document root to avoid hover interaction issues */}
+      {selectedImage && createPortal(
         <div className="image-modal-overlay" onClick={handleCloseModal}>
           <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="image-modal-close" onClick={handleCloseModal}>×</button>
@@ -95,7 +96,8 @@ function ImageGallery({ sessionId, isRunning, refreshTrigger }) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

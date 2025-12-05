@@ -22,8 +22,11 @@ dependencies = [
     "vl-convert-python", 
     "plotly", 
     "kaleido",
+    "miniaudio",
     "jsonschema",
     "readchar",  # For Hot or Not interactive rating UI
+    "miniaudio",  # For ElevenLabs TTS audio playback
+    "requests",  # For ElevenLabs API calls
 ]
 
 [project.scripts]

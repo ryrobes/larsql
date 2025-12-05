@@ -36,11 +36,13 @@ const queueRender = async (renderFn) => {
 
 function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUpdate = null }) {
   const containerRef = useRef(null);
+  const prevSessionIdRef = useRef(null);
   const [graphData, setGraphData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [lastMtime, setLastMtime] = useState(null); // Track file modification time
   const maxRetries = 3;
   const retryDelayMs = 2000; // 2 seconds between retries
 
@@ -49,8 +51,11 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
 
     const fetchGraph = async (attempt = 0) => {
       try {
-        setLoading(true);
-        console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1})`);
+        // Only show loading on first fetch, not on updates
+        if (!graphData) {
+          setLoading(true);
+        }
+        console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1}, lastUpdate=${lastUpdate})`);
 
         const response = await fetch(`http://localhost:5001/api/mermaid/${sessionId}`);
         const data = await response.json();
@@ -77,13 +82,26 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         setError(null);
         setRetryCount(0);
 
+        // Check if content actually changed (by file mtime or content hash)
+        const newMtime = data.file_mtime;
+        const contentChanged = !lastMtime || newMtime !== lastMtime ||
+          !graphData || graphData.mermaid !== data.mermaid;
+
+        if (!contentChanged) {
+          console.log(`[MermaidPreview] No changes detected for ${sessionId} (mtime=${newMtime})`);
+          setLoading(false);
+          return;
+        }
+
         // Mutate mermaid colors to match UI theme
         const mutatedMermaid = mutateMermaidColors(data.mermaid);
-        console.log(`[MermaidPreview] Successfully loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars)`);
+        console.log(`[MermaidPreview] Loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars, source=${data.source}, mtime=${newMtime})`);
 
+        setLastMtime(newMtime);
         setGraphData({
           mermaid: mutatedMermaid,
-          metadata: data.metadata
+          metadata: data.metadata,
+          source: data.source
         });
         setLoading(false);
       } catch (err) {
@@ -104,10 +122,16 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
       }
     };
 
-    // Reset state when sessionId changes
-    setGraphData(null);
-    setError(null);
-    setRetryCount(0);
+    // Reset state only when sessionId actually changes (not on lastUpdate triggers)
+    const sessionChanged = prevSessionIdRef.current !== sessionId;
+    if (sessionChanged) {
+      console.log(`[MermaidPreview] Session changed from ${prevSessionIdRef.current} to ${sessionId}`);
+      setGraphData(null);
+      setError(null);
+      setRetryCount(0);
+      setLastMtime(null);
+      prevSessionIdRef.current = sessionId;
+    }
 
     fetchGraph(0);
   }, [sessionId, lastUpdate]); // Refetch when session gets updated via SSE

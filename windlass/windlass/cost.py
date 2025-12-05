@@ -1,8 +1,10 @@
 import threading
 import time
 import requests
+from datetime import datetime
 from .logs import log_message
 from .config import get_config
+from .events import get_event_bus, Event
 
 class CostTracker:
     def __init__(self):
@@ -148,6 +150,33 @@ class CostTracker:
                 tokens_out=tokens_out,
                 sounding_index=item.get("sounding_index")
             )
+
+        # ALWAYS publish cost_update event for LiveStore (regardless of logging path)
+        # This allows the UI to UPDATE existing rows with cost data in real-time
+        self._publish_cost_event(item, cost, tokens_in, tokens_out)
+
+    def _publish_cost_event(self, item, cost, tokens_in, tokens_out):
+        """Publish cost_update event to event bus for real-time UI updates."""
+        try:
+            bus = get_event_bus()
+            bus.publish(Event(
+                type="cost_update",
+                session_id=item["session_id"],
+                timestamp=datetime.now().isoformat(),
+                data={
+                    "trace_id": item["trace_id"],
+                    "request_id": item["request_id"],
+                    "cost": cost,
+                    "tokens_in": tokens_in or 0,
+                    "tokens_out": tokens_out or 0,
+                    "phase_name": item.get("phase_name"),
+                    "cascade_id": item.get("cascade_id"),
+                    "sounding_index": item.get("sounding_index")
+                }
+            ))
+        except Exception as e:
+            # Don't let event publishing errors break cost tracking
+            print(f"[CostTracker] Event publish error: {e}")
 
 _tracker = CostTracker()
 _tracker.start()

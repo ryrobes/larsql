@@ -200,12 +200,19 @@ class UnifiedLogger:
                     self.pending_cost_buffer = still_pending
 
                 # Process ready items outside the lock
+                if ready_items:
+                    print(f"[Cost Worker] Processing {len(ready_items)} ready items for cost fetch")
+
                 for item in ready_items:
                     request_id = item.get("request_id")
                     row = item["_row"]
 
+                    print(f"[Cost Worker] Fetching cost for request_id={request_id[:20] if request_id else 'None'}..., session={row.get('session_id')}")
+
                     if request_id:
                         cost_data = self._fetch_cost_with_retry(request_id, config.provider_api_key)
+                        print(f"[Cost Worker] Got cost_data: cost={cost_data.get('cost')}, tokens_in={cost_data.get('tokens_in')}, tokens_out={cost_data.get('tokens_out')}")
+
                         # Merge cost data into row
                         row["cost"] = cost_data.get("cost")
                         row["tokens_in"] = cost_data.get("tokens_in", 0)
@@ -215,6 +222,9 @@ class UnifiedLogger:
                         # Recalculate total tokens
                         if row["tokens_in"] is not None and row["tokens_out"] is not None:
                             row["total_tokens"] = row["tokens_in"] + row["tokens_out"]
+
+                        # Publish cost_update event for LiveStore real-time UI updates
+                        self._publish_cost_event(row, cost_data)
 
                     # Move to main buffer
                     with self.buffer_lock:
@@ -288,6 +298,45 @@ class UnifiedLogger:
 
         # All retries exhausted
         return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown"}
+
+    def _publish_cost_event(self, row: Dict, cost_data: Dict):
+        """Publish cost_update event to event bus for LiveStore real-time UI updates."""
+        try:
+            from .events import get_event_bus, Event
+            from datetime import datetime
+
+            # Only publish if we have cost data (allow 0 for free models)
+            cost = cost_data.get("cost")
+            if cost is None:
+                print(f"[Cost Worker] Skipping publish - cost is None for {row.get('session_id')}")
+                return
+
+            bus = get_event_bus()
+            event_data = {
+                "trace_id": row.get("trace_id"),
+                "request_id": row.get("request_id"),
+                "cost": cost,
+                "tokens_in": cost_data.get("tokens_in", 0),
+                "tokens_out": cost_data.get("tokens_out", 0),
+                "phase_name": row.get("phase_name"),
+                "cascade_id": row.get("cascade_id"),
+                "sounding_index": row.get("sounding_index")
+            }
+
+            print(f"[Cost Worker] Publishing cost_update: session={row.get('session_id')}, phase={row.get('phase_name')}, cost=${cost:.6f}, subscribers={bus.subscriber_count()}")
+
+            bus.publish(Event(
+                type="cost_update",
+                session_id=row.get("session_id", "unknown"),
+                timestamp=datetime.now().isoformat(),
+                data=event_data
+            ))
+            print(f"[Cost Worker] Published cost_update event: ${cost:.6f} for trace {row.get('trace_id', 'unknown')[:16]}...")
+        except Exception as e:
+            # Don't let event publishing errors break cost tracking
+            import traceback
+            print(f"[Cost Worker] Event publish error: {e}")
+            traceback.print_exc()
 
     def log(
         self,

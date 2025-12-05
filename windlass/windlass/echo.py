@@ -71,7 +71,7 @@ class Echo:
             # Lazy import to avoid circular dependency
             from .unified_logs import log_unified
             from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result
-            from .visualizer import generate_mermaid_string
+            from .visualizer import generate_state_diagram_string
 
             # Extract data from entry
             role = entry.get("role")
@@ -98,7 +98,7 @@ class Echo:
             # The mermaid chart is monotonically growing, so previous state is always a valid subset
             mermaid_content = self._last_mermaid_content  # Start with cached value as fallback
             try:
-                new_mermaid = generate_mermaid_string(self)
+                new_mermaid = generate_state_diagram_string(self)
                 # Only update cache if we got valid content
                 if new_mermaid and new_mermaid.strip() and len(new_mermaid) > 10:
                     self._last_mermaid_content = new_mermaid
