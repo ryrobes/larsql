@@ -25,30 +25,61 @@ mermaid.initialize({
   }
 });
 
+// Global render queue to serialize mermaid renders (prevents race conditions)
+let renderQueue = Promise.resolve();
+const queueRender = async (renderFn) => {
+  renderQueue = renderQueue.then(renderFn).catch(err => {
+    console.error('[MermaidPreview] Queued render failed:', err);
+  });
+  return renderQueue;
+};
+
 function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUpdate = null }) {
   const containerRef = useRef(null);
   const [graphData, setGraphData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  const retryDelayMs = 2000; // 2 seconds between retries
 
   useEffect(() => {
     if (!sessionId) return;
 
-    const fetchGraph = async () => {
+    const fetchGraph = async (attempt = 0) => {
       try {
         setLoading(true);
+        console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1})`);
+
         const response = await fetch(`http://localhost:5001/api/mermaid/${sessionId}`);
         const data = await response.json();
 
         if (data.error) {
+          console.warn(`[MermaidPreview] API error for ${sessionId}:`, data.error);
+
+          // Retry if we haven't exhausted retries (data might not be flushed to parquet yet)
+          if (attempt < maxRetries) {
+            console.log(`[MermaidPreview] Retrying in ${retryDelayMs}ms...`);
+            setTimeout(() => {
+              setRetryCount(attempt + 1);
+              fetchGraph(attempt + 1);
+            }, retryDelayMs);
+            return;
+          }
+
           setError(data.error);
           setLoading(false);
           return;
         }
 
+        // Success! Clear any error state and retry count
+        setError(null);
+        setRetryCount(0);
+
         // Mutate mermaid colors to match UI theme
         const mutatedMermaid = mutateMermaidColors(data.mermaid);
+        console.log(`[MermaidPreview] Successfully loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars)`);
 
         setGraphData({
           mermaid: mutatedMermaid,
@@ -56,28 +87,48 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         });
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching mermaid graph:', err);
+        console.error(`[MermaidPreview] Fetch error for ${sessionId}:`, err);
+
+        // Retry on network errors too
+        if (attempt < maxRetries) {
+          console.log(`[MermaidPreview] Retrying in ${retryDelayMs}ms...`);
+          setTimeout(() => {
+            setRetryCount(attempt + 1);
+            fetchGraph(attempt + 1);
+          }, retryDelayMs);
+          return;
+        }
+
         setError('Failed to load graph');
         setLoading(false);
       }
     };
 
-    fetchGraph();
+    // Reset state when sessionId changes
+    setGraphData(null);
+    setError(null);
+    setRetryCount(0);
+
+    fetchGraph(0);
   }, [sessionId, lastUpdate]); // Refetch when session gets updated via SSE
 
   useEffect(() => {
     if (!graphData || !containerRef.current) return;
 
-    const renderGraph = async () => {
-      try {
-        // Generate unique ID for this graph
-        const id = `mermaid-${sessionId}-${Date.now()}`;
+    // Use a unique render ID
+    const renderId = `mermaid-${sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Queue the render to serialize all mermaid renders globally
+    queueRender(async () => {
+      try {
         // Clear container
+        if (!containerRef.current) return; // Check if still mounted
         containerRef.current.innerHTML = '';
 
-        // Render mermaid
-        const { svg } = await mermaid.render(id, graphData.mermaid);
+        console.log(`[MermaidPreview] Rendering graph for ${sessionId} with id ${renderId}`);
+
+        // Render mermaid (now serialized via queue)
+        const { svg } = await mermaid.render(renderId, graphData.mermaid);
 
         // Insert SVG first
         containerRef.current.innerHTML = svg;
@@ -192,9 +243,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         console.error('Error rendering mermaid:', err);
         setError('Failed to render graph');
       }
-    };
-
-    renderGraph();
+    });
   }, [graphData, sessionId, size]);
 
   const mutateMermaidColors = (mermaidContent) => {
@@ -245,22 +294,67 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
     return date.toLocaleString();
   };
 
-  if (error) {
-    return null; // Don't show anything if graph doesn't exist
-  }
-
+  // Show loading state (including during retries)
   if (loading) {
     return (
       <div className={`mermaid-preview ${size}`}>
         <div className="mermaid-loading">
           <div className="spinner-small"></div>
+          {retryCount > 0 && (
+            <div className="retry-indicator" style={{ fontSize: '10px', color: '#666', marginTop: '4px' }}>
+              Retry {retryCount}/{maxRetries}...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state after all retries exhausted (but still show something)
+  if (error) {
+    // For 'small' size, just show a minimal placeholder
+    if (size === 'small') {
+      return (
+        <div className={`mermaid-preview ${size}`} style={{ opacity: 0.5 }}>
+          <div className="mermaid-error-placeholder" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '60px',
+            color: '#666',
+            fontSize: '11px'
+          }}>
+            Graph loading...
+          </div>
+        </div>
+      );
+    }
+    // For larger sizes, show more info
+    return (
+      <div className={`mermaid-preview ${size}`}>
+        <div className="mermaid-error" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          color: '#888'
+        }}>
+          <span style={{ fontSize: '12px' }}>Graph unavailable</span>
+          <span style={{ fontSize: '10px', color: '#555', marginTop: '4px' }}>{error}</span>
         </div>
       </div>
     );
   }
 
   if (!graphData) {
-    return null;
+    return (
+      <div className={`mermaid-preview ${size}`} style={{ opacity: 0.3 }}>
+        <div style={{ padding: '10px', color: '#555', fontSize: '11px', textAlign: 'center' }}>
+          No graph data
+        </div>
+      </div>
+    );
   }
 
   // Don't show modal if we're already in large size (prevents recursion)

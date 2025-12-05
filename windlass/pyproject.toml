@@ -18,6 +18,10 @@ dependencies = [
     "pydantic",
     "rich",
     "jinja2",
+    "altair", 
+    "vl-convert-python", 
+    "plotly", 
+    "kaleido",
     "jsonschema",
     "readchar",  # For Hot or Not interactive rating UI
 ]

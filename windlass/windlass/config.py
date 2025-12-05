@@ -10,9 +10,9 @@ class Config(BaseModel):
     provider_api_key: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
     #default_model: str = Field(default="x-ai/grok-4.1-fast:free") # RIP
     #default_model: str = Field(default="google/gemini-3-pro-preview")
-    #default_model: str = Field(default="anthropic/claude-sonnet-4.5")
+    default_model: str = Field(default="anthropic/claude-sonnet-4.5")
     #default_model: str = Field(default="x-ai/grok-4.1-fast")
-    default_model: str = Field(default="google/gemini-2.5-flash-lite")
+    #default_model: str = Field(default="google/gemini-2.5-flash-lite")
 
     # Root directory - single source of truth
     root_dir: str = Field(default=_WINDLASS_ROOT)

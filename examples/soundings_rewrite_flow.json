@@ -10,7 +10,7 @@
       "instructions": "Write a SINGLE engaging opening paragraph for a short story. Be creative and varied in your approach. The theme is... {{ input.theme }}",
       "tackle": [],
       "soundings": {
-        "factor": 7,
+        "factor": 4,
         "evaluator_instructions": "You are an expert creative writing instructor. Evaluate the following story openings based on: 1) Hook strength - does it grab attention? 2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear and compelling? Select the BEST opening.",
         "mutate": true,
         "mutation_mode": "rewrite"

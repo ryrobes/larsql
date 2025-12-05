@@ -2,7 +2,26 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import VideoSpinner from './VideoSpinner';
 import './HotOrNotView.css';
+
+// Helper to render phase images from the filesystem (via API)
+const renderPhaseImages = (images) => {
+  if (!images || images.length === 0) return null;
+
+  return (
+    <div className="phase-images">
+      {images.map((img, idx) => (
+        <img
+          key={img.filename || idx}
+          src={`http://localhost:5001${img.url}`}
+          alt={img.filename || `Image ${idx + 1}`}
+          className="phase-image"
+        />
+      ))}
+    </div>
+  );
+};
 
 function HotOrNotView({ onBack }) {
   const [queue, setQueue] = useState([]);
@@ -18,6 +37,9 @@ function HotOrNotView({ onBack }) {
   // Swipe animation state
   const [swipeDirection, setSwipeDirection] = useState(null); // 'left', 'right', 'up', or null
   const [isEntering, setIsEntering] = useState(false);
+
+  // Button bump animation state (triggered by keyboard)
+  const [bumpingButton, setBumpingButton] = useState(null); // 'good', 'bad', or null
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
@@ -80,6 +102,12 @@ function HotOrNotView({ onBack }) {
     }
   }, [currentIndex, queue, fetchSoundingGroup]);
 
+  // Trigger bump animation for a button
+  const triggerBump = (buttonType) => {
+    setBumpingButton(buttonType);
+    setTimeout(() => setBumpingButton(null), 250);
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -91,10 +119,12 @@ function HotOrNotView({ onBack }) {
       switch (e.key.toLowerCase()) {
         case 'd':
         case 'arrowright':
+          triggerBump('good');
           handleRate(true);  // Good (right swipe)
           break;
         case 'a':
         case 'arrowleft':
+          triggerBump('bad');
           handleRate(false); // Bad (left swipe)
           break;
         case 's':
@@ -288,8 +318,7 @@ function HotOrNotView({ onBack }) {
     return (
       <div className="hotornot-view">
         <div className="loading-state">
-          <div className="spinner"></div>
-          <span>Loading evaluations...</span>
+          <VideoSpinner message="Loading evaluations..." size={400} opacity={0.6} />
         </div>
       </div>
     );
@@ -316,7 +345,7 @@ function HotOrNotView({ onBack }) {
 
           <div className="hotornot-title">
             <Icon icon="mdi:fire" width={28} className="fire-icon" />
-            <h1>Hot or Not</h1>
+            {/* <h1>Hot or Not</h1> */}
           </div>
         </div>
 
@@ -421,6 +450,9 @@ function HotOrNotView({ onBack }) {
                             )}
                           </div>
                           <div className="card-content">
+                            {/* Render images for this specific sounding */}
+                            {renderPhaseImages(currentSounding?.images)}
+
                             <div className="markdown-content">
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
@@ -455,12 +487,17 @@ function HotOrNotView({ onBack }) {
                           </span>
                         )}
                       </div>
-                      <div className="comparison-content markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {typeof sounding.content === 'string'
-                            ? sounding.content
-                            : JSON.stringify(sounding.content, null, 2)}
-                        </ReactMarkdown>
+                      <div className="comparison-content">
+                        {/* Render images for this specific sounding */}
+                        {renderPhaseImages(sounding.images)}
+
+                        <div className="markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {typeof sounding.content === 'string'
+                              ? sounding.content
+                              : JSON.stringify(sounding.content, null, 2)}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                       <div className="comparison-footer">
                         {sounding.cost && (
@@ -502,7 +539,7 @@ function HotOrNotView({ onBack }) {
 
               {/* Bad/Nope button */}
               <button
-                className="action-btn large bad"
+                className={`action-btn large bad ${bumpingButton === 'bad' ? 'bumping' : ''}`}
                 onClick={() => handleRate(false)}
                 disabled={swipeDirection}
               >
@@ -522,7 +559,7 @@ function HotOrNotView({ onBack }) {
 
               {/* Good/Like button */}
               <button
-                className="action-btn large good"
+                className={`action-btn large good ${bumpingButton === 'good' ? 'bumping' : ''}`}
                 onClick={() => handleRate(true)}
                 disabled={swipeDirection}
               >

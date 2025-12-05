@@ -11,12 +11,13 @@ class Agent:
     This mimics the interface of 'openai-agents-python' or similar libraries,
     allowing us to swap the backend easily.
     """
-    def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None):
+    def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None, use_native_tools: bool = False):
         self.model = model
         self.system_prompt = system_prompt
         self.tools = tools or []
         self.base_url = base_url
         self.api_key = api_key
+        self.use_native_tools = use_native_tools
         self.history = []
 
     def run(self, input_message: str = None, context_messages: List[Dict] = None) -> Dict[str, Any]:
@@ -87,10 +88,21 @@ class Agent:
         # Sanitize messages: Remove Echo fields and ensure API compliance
         # LLM APIs only accept: role, content, tool_calls, tool_call_id, name
         # Remove: trace_id, parent_id, node_type, metadata (Echo fields)
-        allowed_fields = {'role', 'content', 'tool_calls', 'tool_call_id', 'name'}
+        # IMPORTANT: When NOT using native tools, also strip tool_calls and tool_call_id
+        # to prevent providers (especially Anthropic) from rejecting the request
+        if self.use_native_tools:
+            allowed_fields = {'role', 'content', 'tool_calls', 'tool_call_id', 'name'}
+        else:
+            allowed_fields = {'role', 'content', 'name'}
 
         sanitized_messages = []
         for m in messages:
+            # Skip role="tool" messages when not using native tools
+            # These are native tool result messages that would confuse providers
+            if not self.use_native_tools and m.get("role") == "tool":
+                print(f"[WARN] Skipping role='tool' message in prompt-based mode")
+                continue
+
             # Create clean message with only allowed fields
             clean_msg = {}
             for key in allowed_fields:

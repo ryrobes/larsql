@@ -578,6 +578,43 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_phase_images(session_id: str, phase_name: str) -> Dict[int, List[Dict]]:
+    """
+    Get all images for a session/phase from the filesystem, grouped by sounding index.
+
+    Returns dict mapping sounding_index -> list of image info dicts.
+    Images without sounding prefix go under key -1 (or None).
+    """
+    import re
+    config = get_config()
+    image_dir = config.image_dir
+    phase_dir = os.path.join(image_dir, session_id, phase_name)
+
+    # Group images by sounding index
+    images_by_sounding = {}
+
+    if os.path.exists(phase_dir):
+        for filename in sorted(os.listdir(phase_dir)):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                # Check for sounding prefix: sounding_N_image_M.ext
+                match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', filename)
+                if match:
+                    sounding_idx = int(match.group(1))
+                else:
+                    # No sounding prefix - use None as key
+                    sounding_idx = None
+
+                if sounding_idx not in images_by_sounding:
+                    images_by_sounding[sounding_idx] = []
+
+                images_by_sounding[sounding_idx].append({
+                    'filename': filename,
+                    'url': f'/api/images/{session_id}/{phase_name}/{filename}'
+                })
+
+    return images_by_sounding
+
+
 def get_sounding_group(session_id: str, phase_name: str) -> Dict:
     """
     Get all sounding attempts for a specific session+phase.
@@ -589,6 +626,7 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
         - cascade_id
         - cascade_file
         - soundings: List of sounding outputs with index, content, is_winner, etc.
+        - images: List of image URLs from filesystem for this phase
         - system_winner_index: Which one the evaluator picked
     """
     config = get_config()
@@ -597,6 +635,7 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
     try:
         if _USE_DUCKDB:
             conn = _get_db()
+            # Get assistant messages (sounding outputs)
             df = conn.execute(
                 f"""
                 SELECT
@@ -618,6 +657,7 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
                 ORDER BY sounding_index
                 """
             ).fetchdf()
+
         else:
             db = _get_db()
             df = db.query(
@@ -645,6 +685,9 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
 
         if df.empty:
             return None
+
+        # Get images from filesystem for this phase
+        phase_images = get_phase_images(session_id, phase_name)
 
         soundings = []
         system_winner = None
@@ -682,15 +725,24 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
             except (TypeError, ValueError):
                 is_winner = False
 
+            sounding_idx = int(row['sounding_index'])
+
+            # Get images for this specific sounding
+            sounding_images = phase_images.get(sounding_idx, [])
+            # Also include non-sounding images (legacy) if no sounding-specific ones
+            if not sounding_images and None in phase_images:
+                sounding_images = phase_images.get(None, [])
+
             sounding_data = {
-                "index": int(row['sounding_index']),
+                "index": sounding_idx,
                 "content": content,
                 "instructions": instructions,  # Per-sounding instructions (may be mutated)
                 "is_winner": is_winner,
                 "cost": float(row['cost']) if row['cost'] is not None and not pd.isna(row['cost']) else None,
                 "tokens": int(row['tokens_out']) if row['tokens_out'] is not None and not pd.isna(row['tokens_out']) else None,
                 "model": row['model'] if row['model'] is not None and not pd.isna(row['model']) else None,
-                "mutation_applied": row.get('mutation_applied') if row.get('mutation_applied') is not None and not pd.isna(row.get('mutation_applied')) else None
+                "mutation_applied": row.get('mutation_applied') if row.get('mutation_applied') is not None and not pd.isna(row.get('mutation_applied')) else None,
+                "images": sounding_images,  # Images specific to this sounding
             }
             soundings.append(sounding_data)
 
@@ -706,7 +758,7 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
             "phase_name": phase_name,
             "cascade_id": cascade_id,
             "cascade_file": cascade_file,
-            "soundings": soundings,
+            "soundings": soundings,  # Each sounding has its own "images" array
             "system_winner_index": system_winner
         }
 

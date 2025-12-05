@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
 import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
+import ImageGallery from './ImageGallery';
+import VideoSpinner from './VideoSpinner';
 import './InstancesView.css';
 
 function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sseConnected }) {
@@ -375,6 +377,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
           {!isChild && (
             <div className="mermaid-wrapper">
               <MermaidPreview
+                key={`mermaid-${instance.session_id}`}
                 sessionId={instance.session_id}
                 size="small"
                 showMetadata={false}
@@ -430,6 +433,13 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
               </div>
             </div>
           )}
+
+          {/* Image Gallery - shows generated images */}
+          <ImageGallery
+            sessionId={instance.session_id}
+            isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
+            refreshTrigger={refreshTrigger}
+          />
         </div>
 
         {/* Right: Instance Metrics */}
@@ -482,8 +492,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
     return (
       <div className="instances-container">
         <div className="loading">
-          <div className="spinner"></div>
-          <p>Loading instances...</p>
+          <VideoSpinner message="Loading instances..." size={400} opacity={0.6} />
         </div>
       </div>
     );

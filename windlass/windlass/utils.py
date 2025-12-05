@@ -73,10 +73,44 @@ def extract_images_from_messages(messages: List[Dict]) -> List[Tuple[str, str]]:
 
     return images
 
-def get_image_save_path(session_id: str, phase_name: str, image_index: int, extension: str = "png") -> str:
+def get_next_image_index(session_id: str, phase_name: str, sounding_index: int = None) -> int:
+    """
+    Find the next available image index for a session/phase directory.
+    Scans existing files to avoid overwriting.
+    If sounding_index is provided, only considers images for that sounding.
+    """
+    from .config import get_config
+    config = get_config()
+
+    images_dir = config.image_dir
+    phase_dir = os.path.join(images_dir, session_id, phase_name)
+
+    if not os.path.exists(phase_dir):
+        return 0
+
+    # Find all existing image files and extract their indices
+    existing_indices = set()
+    for filename in os.listdir(phase_dir):
+        if sounding_index is not None:
+            # Match pattern: sounding_N_image_M.ext
+            match = re.match(rf'sounding_{sounding_index}_image_(\d+)\.\w+$', filename)
+        else:
+            # Match pattern: image_N.ext (without sounding prefix)
+            match = re.match(r'image_(\d+)\.\w+$', filename)
+        if match:
+            existing_indices.add(int(match.group(1)))
+
+    if not existing_indices:
+        return 0
+
+    # Return next index after the highest existing one
+    return max(existing_indices) + 1
+
+def get_image_save_path(session_id: str, phase_name: str, image_index: int, extension: str = "png", sounding_index: int = None) -> str:
     """
     Generate standardized path for saving images.
     Format: images/{session_id}/{phase_name}/image_{index}.{ext}
+    Or with sounding: images/{session_id}/{phase_name}/sounding_{s}_image_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -84,7 +118,12 @@ def get_image_save_path(session_id: str, phase_name: str, image_index: int, exte
     # Use configured image_dir
     images_dir = config.image_dir
 
-    path = os.path.join(images_dir, session_id, phase_name, f"image_{image_index}.{extension}")
+    if sounding_index is not None:
+        filename = f"sounding_{sounding_index}_image_{image_index}.{extension}"
+    else:
+        filename = f"image_{image_index}.{extension}"
+
+    path = os.path.join(images_dir, session_id, phase_name, filename)
     return path
 
 def python_type_to_json_type(t: Any) -> str:

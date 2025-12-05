@@ -10,7 +10,7 @@ from .eddies.extras import run_code, take_screenshot, linux_shell
 from .eddies.human import ask_human
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
-from .eddies.chart import create_chart
+from .eddies.chart import create_chart, create_vega_lite, create_plotly
 
 register_tackle("smart_sql_run", run_sql)
 register_tackle("linux_shell", linux_shell)
@@ -20,5 +20,7 @@ register_tackle("ask_human", ask_human)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
 register_tackle("create_chart", create_chart)
+register_tackle("create_vega_lite", create_vega_lite)
+register_tackle("create_plotly", create_plotly)
 
 __all__ = ["run_cascade", "set_provider", "register_tackle", "register_cascade_as_tool", "create_eddy", "get_echo"]

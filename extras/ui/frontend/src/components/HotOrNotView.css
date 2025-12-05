@@ -270,6 +270,54 @@
   }
 }
 
+/* Cold overlay for left/bad swipe - icy blue */
+.swipe-card.swiping-left::before {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  background: linear-gradient(135deg,
+    rgba(96, 165, 250, 0.6) 0%,
+    rgba(147, 197, 253, 0.5) 25%,
+    rgba(59, 130, 246, 0.4) 50%,
+    rgba(96, 165, 250, 0.3) 100%);
+  border-radius: 20px;
+  pointer-events: none;
+  z-index: 10;
+  animation: coldOverlay 0.5s ease-out forwards;
+  box-shadow: inset 0 0 80px rgba(147, 197, 253, 0.5),
+              0 0 40px rgba(96, 165, 250, 0.4);
+}
+
+/* Hot overlay for right/good swipe - warm orange/pink */
+.swipe-card.swiping-right::before {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  background: linear-gradient(135deg,
+    rgba(251, 146, 60, 0.5) 0%,
+    rgba(244, 114, 182, 0.4) 30%,
+    rgba(249, 115, 22, 0.4) 60%,
+    rgba(251, 146, 60, 0.3) 100%);
+  border-radius: 20px;
+  pointer-events: none;
+  z-index: 10;
+  animation: hotOverlay 0.5s ease-out forwards;
+  box-shadow: inset 0 0 80px rgba(251, 146, 60, 0.4),
+              0 0 40px rgba(244, 114, 182, 0.3);
+}
+
+@keyframes coldOverlay {
+  0% { opacity: 0; transform: scale(0.95); }
+  30% { opacity: 1; }
+  100% { opacity: 0.9; transform: scale(1.02); }
+}
+
+@keyframes hotOverlay {
+  0% { opacity: 0; transform: scale(0.95); }
+  30% { opacity: 1; }
+  100% { opacity: 0.9; transform: scale(1.02); }
+}
+
 @keyframes swipeUp {
   0% {
     transform: translateY(0) scale(1);
@@ -415,6 +463,34 @@
   overflow-y: auto;
   padding-right: 0.5rem;
   min-height: 0;
+}
+
+/* ==================== PHASE IMAGES ==================== */
+.phase-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(45, 212, 191, 0.15);
+}
+
+.phase-image {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* For comparison grid - smaller images */
+.comparison-content .phase-images {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.comparison-content .phase-image {
+  max-height: 200px;
 }
 
 /* ==================== MARKDOWN STYLING ==================== */
@@ -689,6 +765,11 @@
   box-shadow: 0 8px 30px rgba(207, 102, 121, 0.5);
 }
 
+/* Keyboard-triggered bump animation for bad button */
+.action-btn.bad.bumping {
+  animation: bumpBad 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .action-btn.good {
   background: linear-gradient(135deg, #2DD4BF 0%, #14b8a6 100%);
   color: #0B1219;
@@ -698,6 +779,23 @@
 .action-btn.good:hover {
   transform: scale(1.15) rotate(5deg);
   box-shadow: 0 8px 30px rgba(45, 212, 191, 0.5);
+}
+
+/* Keyboard-triggered bump animation for good button */
+.action-btn.good.bumping {
+  animation: bumpGood 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes bumpBad {
+  0% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.4) rotate(-10deg); box-shadow: 0 15px 50px rgba(207, 102, 121, 0.8); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes bumpGood {
+  0% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.4) rotate(10deg); box-shadow: 0 15px 50px rgba(45, 212, 191, 0.8); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 
 .action-btn.skip {

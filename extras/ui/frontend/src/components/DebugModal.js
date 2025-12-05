@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import MermaidPreview from './MermaidPreview';
+import VideoSpinner from './VideoSpinner';
 import './DebugModal.css';
 
 function DebugModal({ sessionId, onClose, lastUpdate = null }) {
@@ -109,7 +110,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
     }
 
     // Core conversation messages
-    const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'follow_up'];
+    const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'follow_up', 'injection'];
     const conversationalSystemRoles = ['system']; // System prompts sent to LLM
 
     // Include validation/ward messages - these are part of the conversation flow
@@ -231,6 +232,8 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
         return 'mdi:hammer-wrench';
       case 'tool_result':
         return 'mdi:check-circle';
+      case 'injection':
+        return 'mdi:image-multiple';
       case 'system':
         return 'mdi:cog';
       case 'phase_start':
@@ -283,6 +286,8 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
       case 'tool_call':
       case 'tool_result':
         return '#f472b6'; // Pink
+      case 'injection':
+        return '#34d399'; // Green (images injected into context)
       case 'system':
         return '#666'; // Gray
       case 'phase_start':
@@ -324,8 +329,95 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
     }
   };
 
+  // Helper to detect and render images from content
+  const renderImagesFromContent = (content) => {
+    // Handle multi-modal array format (OpenAI/Anthropic style)
+    if (Array.isArray(content)) {
+      const images = [];
+      const textParts = [];
+
+      content.forEach((part, idx) => {
+        if (part.type === 'image_url' && part.image_url?.url) {
+          images.push(
+            <div key={`img-${idx}`} className="inline-image-container">
+              <img
+                src={part.image_url.url}
+                alt={`Inline image ${idx}`}
+                className="inline-image"
+                loading="lazy"
+              />
+            </div>
+          );
+        } else if (part.type === 'text' && part.text) {
+          textParts.push(part.text);
+        }
+      });
+
+      if (images.length > 0) {
+        return {
+          hasImages: true,
+          images,
+          text: textParts.join('\n')
+        };
+      }
+    }
+
+    // Handle string content with embedded base64 data URLs
+    if (typeof content === 'string') {
+      // Match data URLs for images
+      const base64Pattern = /data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+/g;
+      const matches = content.match(base64Pattern);
+
+      if (matches && matches.length > 0) {
+        const images = matches.map((url, idx) => (
+          <div key={`img-${idx}`} className="inline-image-container">
+            <img
+              src={url}
+              alt={`Inline image ${idx}`}
+              className="inline-image"
+              loading="lazy"
+            />
+          </div>
+        ));
+
+        // Remove base64 data from text (it's very long)
+        let cleanedText = content;
+        matches.forEach(url => {
+          cleanedText = cleanedText.replace(url, '[image]');
+        });
+
+        return {
+          hasImages: true,
+          images,
+          text: cleanedText
+        };
+      }
+    }
+
+    return { hasImages: false, images: [], text: content };
+  };
+
   const renderContent = (entry) => {
     const { content, node_type, metadata } = entry;
+
+    // First check for images in content
+    const imageResult = renderImagesFromContent(content);
+    if (imageResult.hasImages) {
+      return (
+        <div className="content-with-images">
+          <div className="inline-images-grid">
+            {imageResult.images}
+          </div>
+          {imageResult.text && imageResult.text.trim() && (
+            <div className="markdown-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {String(imageResult.text)}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
 
     // For soundings evaluation/results, show with special highlighting
     if (node_type === 'evaluation' || node_type === 'evaluator' || node_type === 'sounding_evaluation') {
@@ -713,8 +805,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
 
           {loading && (
             <div className="loading-state">
-              <div className="spinner"></div>
-              <p>Loading session data...</p>
+              <VideoSpinner message="Loading session data..." size={320} opacity={0.6} />
             </div>
           )}
 

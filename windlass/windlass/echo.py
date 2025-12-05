@@ -20,6 +20,9 @@ class Echo:
         # Execution context for visualization
         self._current_cascade_id: Optional[str] = None
         self._current_phase_name: Optional[str] = None
+        # Mermaid continuity - cache last successful generation to ensure every message has a chart
+        self._last_mermaid_content: Optional[str] = None
+        self._mermaid_failure_count: int = 0  # Track failures to avoid log spam
 
     def set_cascade_context(self, cascade_id: str):
         """Set the current cascade context for metadata enrichment."""
@@ -91,12 +94,25 @@ class Echo:
             mutation_template = meta.get("mutation_template")  # For rewrite: the instruction used
 
             # Generate mermaid diagram content (includes the newly added entry)
-            mermaid_content = None
+            # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
+            # The mermaid chart is monotonically growing, so previous state is always a valid subset
+            mermaid_content = self._last_mermaid_content  # Start with cached value as fallback
             try:
-                mermaid_content = generate_mermaid_string(self)
+                new_mermaid = generate_mermaid_string(self)
+                # Only update cache if we got valid content
+                if new_mermaid and new_mermaid.strip() and len(new_mermaid) > 10:
+                    self._last_mermaid_content = new_mermaid
+                    mermaid_content = new_mermaid
+                    # Reset failure count on success
+                    if self._mermaid_failure_count > 0:
+                        self._mermaid_failure_count = 0
             except Exception as mermaid_error:
-                # Don't fail logging if mermaid generation fails
-                pass
+                # Don't fail logging, but track failures for debugging
+                self._mermaid_failure_count += 1
+                # Log first failure and then every 10th to avoid spam
+                if self._mermaid_failure_count == 1 or self._mermaid_failure_count % 10 == 0:
+                    print(f"[Mermaid] Generation failed (using cached, failure #{self._mermaid_failure_count}): {type(mermaid_error).__name__}: {str(mermaid_error)[:100]}")
+                # mermaid_content already set to cached value above
 
             # Log to unified system
             log_unified(

@@ -1405,24 +1405,51 @@ If no tools are needed, return an empty array: []
 
     def _save_images_from_messages(self, messages: list, phase_name: str):
         """
-        Auto-save ALL images found in message history to structured directory.
-        This catches images from ANY source (tools, manual injection, feedback loops).
+        Auto-save images from RECEIVED messages only (assistant, tool roles).
+        Skips user-role messages (sent/injection messages) to avoid duplicates.
+        Tool result images are already saved explicitly when received.
         """
-        from .utils import extract_images_from_messages, get_image_save_path, decode_and_save_image
+        from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
+        import re
 
-        images = extract_images_from_messages(messages)
+        indent = "  " * self.depth
+        images_to_save = []
 
-        if images:
-            indent = "  " * self.depth
-            for img_idx, (img_data, desc) in enumerate(images):
+        for msg in messages:
+            role = msg.get("role", "")
+            # Only save from received messages (assistant, tool), not sent (user)
+            if role == "user":
+                continue
+
+            content = msg.get("content")
+
+            # Handle multi-modal content (array format)
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        image_url = item.get("image_url", {})
+                        url = image_url.get("url", "") if isinstance(image_url, dict) else image_url
+                        if url.startswith("data:"):
+                            images_to_save.append((url, item.get("description", "image")))
+
+            # Handle string content with embedded base64
+            elif isinstance(content, str):
+                data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
+                matches = re.findall(data_url_pattern, content)
+                for match in matches:
+                    images_to_save.append((match, "embedded_image"))
+
+        if images_to_save:
+            next_idx = get_next_image_index(self.session_id, phase_name)
+
+            for i, (img_data, desc) in enumerate(images_to_save):
                 save_path = get_image_save_path(
                     self.session_id,
                     phase_name,
-                    img_idx,
-                    extension='png'  # Default, could extract from data URL mime type
+                    next_idx + i,
+                    extension='png'
                 )
 
-                # Check if already saved (avoid duplicates)
                 if not os.path.exists(save_path):
                     try:
                         decode_and_save_image(img_data, save_path)
@@ -1891,7 +1918,8 @@ Refinement directive: {reforge_config.honing_prompt}
             system_prompt="", # We manage system prompts in context_messages
             tools=tools_schema if use_native else None,  # Only pass tools if using native
             base_url=self.base_url,
-            api_key=self.api_key
+            api_key=self.api_key,
+            use_native_tools=use_native  # Pass flag so Agent can strip tool_calls/tool_call_id from messages
         )
 
         # Add initial messages to echo history
@@ -2253,7 +2281,9 @@ Refinement directive: {reforge_config.honing_prompt}
                          self.context_messages.append({"role": "user", "content": current_input})
                 
                     assistant_msg = {"role": "assistant", "content": content}
-                    if tool_calls:
+                    # Only add tool_calls field when using native tools
+                    # For prompt-based tools, the tool call JSON is already in content
+                    if tool_calls and use_native:
                         assistant_msg["tool_calls"] = tool_calls
                     self.context_messages.append(assistant_msg)
 
@@ -2378,7 +2408,11 @@ Refinement directive: {reforge_config.honing_prompt}
                                 valid_images = 0
                                 saved_image_paths = []
 
-                                for img_idx, img_path in enumerate(images):
+                                # Get the next available index to avoid overwriting existing images
+                                from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
+                                next_idx = get_next_image_index(self.session_id, phase.name, self.current_phase_sounding_index)
+
+                                for i, img_path in enumerate(images):
                                     encoded_img = encode_image_base64(img_path)
                                     if not encoded_img.startswith("[Error"):
                                         content_block.append({
@@ -2388,12 +2422,12 @@ Refinement directive: {reforge_config.honing_prompt}
                                         valid_images += 1
 
                                         # Auto-save image to structured directory
-                                        from .utils import get_image_save_path, decode_and_save_image
                                         save_path = get_image_save_path(
                                             self.session_id,
                                             phase.name,
-                                            img_idx,
-                                            extension=img_path.split('.')[-1] if '.' in img_path else 'png'
+                                            next_idx + i,
+                                            extension=img_path.split('.')[-1] if '.' in img_path else 'png',
+                                            sounding_index=self.current_phase_sounding_index
                                         )
                                         try:
                                             decode_and_save_image(encoded_img, save_path)
@@ -2408,8 +2442,13 @@ Refinement directive: {reforge_config.honing_prompt}
                                     image_injection_message = {"role": "user", "content": content_block}
                                     console.print(f"{indent}    [bold magenta]📸 Injecting {valid_images} images into next turn[/bold magenta]")
 
-                            # Add standard tool result message
-                            tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
+                            # Add tool result message
+                            # Native tools use role="tool" with tool_call_id
+                            # Prompt-based tools use role="user" to avoid provider-specific formats
+                            if use_native:
+                                tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
+                            else:
+                                tool_msg = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
                             self.context_messages.append(tool_msg)
 
                             # DEBUG: Verify tool result was added
@@ -2425,7 +2464,8 @@ Refinement directive: {reforge_config.honing_prompt}
                             if image_injection_message:
                                 self.context_messages.append(image_injection_message)
                                 img_trace = tool_trace.create_child("msg", "image_injection")
-                                self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection")
+                                self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection",
+                                                     metadata={"sounding_index": self.current_phase_sounding_index, "phase_name": phase.name})
 
                             self._update_graph() # Update after tool
 

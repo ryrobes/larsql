@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import potpack from 'potpack';
 import CascadeTile, { calculateTileDimensions } from './CascadeTile';
+import VideoSpinner from './VideoSpinner';
 import './CascadesView.css';
 
 function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
@@ -240,8 +241,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
     return (
       <div className="cascades-container">
         <div className="loading">
-          <div className="spinner"></div>
-          <p>Loading cascades...</p>
+          <VideoSpinner message="Loading cascades..." size={400} opacity={0.6} />
         </div>
       </div>
     );

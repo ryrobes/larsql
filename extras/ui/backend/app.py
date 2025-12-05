@@ -20,16 +20,19 @@ CORS(app)
 
 # Configuration - reads from environment or uses defaults
 # WINDLASS_ROOT-based configuration (single source of truth)
-WINDLASS_ROOT = os.getenv("WINDLASS_ROOT", "../../..")  # Default to repo root from UI backend
+# Calculate default root relative to this file's location (extras/ui/backend/app.py -> repo root)
+_DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
 
-LOG_DIR = os.getenv("WINDLASS_LOG_DIR", os.path.join(WINDLASS_ROOT, "logs"))
-DATA_DIR = os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data"))
-GRAPH_DIR = os.getenv("WINDLASS_GRAPH_DIR", os.path.join(WINDLASS_ROOT, "graphs"))
-STATE_DIR = os.getenv("WINDLASS_STATE_DIR", os.path.join(WINDLASS_ROOT, "states"))
-IMAGE_DIR = os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images"))
-EXAMPLES_DIR = os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples"))
-TACKLE_DIR = os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle"))
-CASCADES_DIR = os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades"))
+# All paths are absolute to avoid issues with working directory changes
+LOG_DIR = os.path.abspath(os.getenv("WINDLASS_LOG_DIR", os.path.join(WINDLASS_ROOT, "logs")))
+DATA_DIR = os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data")))
+GRAPH_DIR = os.path.abspath(os.getenv("WINDLASS_GRAPH_DIR", os.path.join(WINDLASS_ROOT, "graphs")))
+STATE_DIR = os.path.abspath(os.getenv("WINDLASS_STATE_DIR", os.path.join(WINDLASS_ROOT, "states")))
+IMAGE_DIR = os.path.abspath(os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images")))
+EXAMPLES_DIR = os.path.abspath(os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples")))
+TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle")))
+CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
 
 
 def get_db_connection():
@@ -755,27 +758,7 @@ def get_cascade_instances(cascade_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/mermaid/<session_id>', methods=['GET'])
-def get_mermaid(session_id):
-    """Get mermaid diagram content for a session."""
-    try:
-        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
-
-        if not os.path.exists(mermaid_path):
-            return jsonify({'error': 'Mermaid file not found'}), 404
-
-        with open(mermaid_path, 'r') as f:
-            mermaid_content = f.read()
-
-        return jsonify({
-            'session_id': session_id,
-            'mermaid': mermaid_content
-        })
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+# NOTE: Removed duplicate route - get_mermaid_graph below handles both database and file fallback
 
 
 @app.route('/api/session/<session_id>', methods=['GET'])
@@ -947,13 +930,23 @@ def get_mermaid_graph(session_id):
 
             if not mermaid_result or not mermaid_result[0]:
                 # Try file fallback
-                print(f"[MERMAID] No data in database, trying file fallback...")
                 mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
+                print(f"[MERMAID] No data in database, trying file fallback at: {mermaid_path}")
+                print(f"[MERMAID] GRAPH_DIR={GRAPH_DIR}, absolute={os.path.abspath(GRAPH_DIR)}")
                 if os.path.exists(mermaid_path):
                     with open(mermaid_path) as f:
                         mermaid_content = f.read()
                     print(f"[MERMAID] Loaded from file fallback: {len(mermaid_content)} chars")
                 else:
+                    # List what files ARE in the graph dir for debugging
+                    try:
+                        if os.path.exists(GRAPH_DIR):
+                            files = os.listdir(GRAPH_DIR)[:10]  # First 10 files
+                            print(f"[MERMAID] File not found. Graph dir contents (first 10): {files}")
+                        else:
+                            print(f"[MERMAID] GRAPH_DIR does not exist: {GRAPH_DIR}")
+                    except Exception as list_err:
+                        print(f"[MERMAID] Error listing graph dir: {list_err}")
                     conn.close()
                     return jsonify({'error': 'Mermaid graph not found in database or files'}), 404
             else:
@@ -1504,6 +1497,105 @@ def hotornot_evaluations():
         results = df.to_dict('records')
 
         return jsonify(results)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+# ==============================================================================
+# Session Images API
+# ==============================================================================
+
+@app.route('/api/session/<session_id>/images', methods=['GET'])
+def get_session_images(session_id):
+    """
+    Get list of all images for a session.
+    Images are stored in IMAGE_DIR/{session_id}/{phase_name}/image_{N}.{ext}
+    """
+    try:
+        session_image_dir = os.path.join(IMAGE_DIR, session_id)
+
+        # Handle case where directory doesn't exist yet
+        if not os.path.exists(session_image_dir):
+            return jsonify({'session_id': session_id, 'images': []})
+
+        images = []
+
+        # Walk the session directory to find all images
+        for root, dirs, files in os.walk(session_image_dir):
+            for filename in files:
+                # Only include image files
+                ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
+                    continue
+
+                full_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(full_path, session_image_dir)
+
+                # Extract phase name from path (e.g., "generate/image_0.png" -> "generate")
+                path_parts = rel_path.split(os.sep)
+                phase_name = path_parts[0] if len(path_parts) > 1 else None
+
+                # Get file modification time for sorting
+                mtime = os.path.getmtime(full_path)
+
+                images.append({
+                    'filename': filename,
+                    'path': rel_path,
+                    'phase_name': phase_name,
+                    'url': f'/api/images/{session_id}/{rel_path}',
+                    'mtime': mtime
+                })
+
+        # Sort by modification time (newest first)
+        images.sort(key=lambda x: x['mtime'], reverse=True)
+
+        return jsonify({
+            'session_id': session_id,
+            'images': images
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/images/<session_id>/<path:subpath>', methods=['GET'])
+def serve_session_image(session_id, subpath):
+    """
+    Serve an image file from the session's image directory.
+    Path: IMAGE_DIR/{session_id}/{subpath}
+    """
+    try:
+        # Security: prevent path traversal
+        safe_subpath = os.path.normpath(subpath)
+        if safe_subpath.startswith('..') or os.path.isabs(safe_subpath):
+            return jsonify({'error': 'Invalid path'}), 400
+
+        image_path = os.path.join(IMAGE_DIR, session_id, safe_subpath)
+
+        if not os.path.exists(image_path):
+            return jsonify({'error': 'Image not found'}), 404
+
+        # Determine mimetype
+        ext = safe_subpath.lower().split('.')[-1] if '.' in safe_subpath else ''
+        mimetypes = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'svg': 'image/svg+xml'
+        }
+        mimetype = mimetypes.get(ext, 'application/octet-stream')
+
+        directory = os.path.dirname(image_path)
+        filename = os.path.basename(image_path)
+
+        return send_from_directory(directory, filename, mimetype=mimetype)
 
     except Exception as e:
         import traceback

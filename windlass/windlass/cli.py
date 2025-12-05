@@ -66,6 +66,42 @@ def main():
     analyze_parser.add_argument('--apply', action='store_true', help='Automatically apply suggestions')
     analyze_parser.add_argument('--output', help='Save suggestions to file', default=None)
 
+    # Data management command group
+    data_parser = subparsers.add_parser('data', help='Data management commands')
+    data_subparsers = data_parser.add_subparsers(dest='data_command', help='Data subcommands')
+
+    # data compact
+    compact_parser = data_subparsers.add_parser(
+        'compact',
+        help='Compact multiple Parquet files into larger files (default 500MB max)'
+    )
+    compact_parser.add_argument(
+        '--path',
+        default=None,
+        help='Directory to compact (default: $WINDLASS_DATA_DIR)'
+    )
+    compact_parser.add_argument(
+        '--max-size',
+        type=int,
+        default=500,
+        help='Maximum file size in MB (default: 500)'
+    )
+    compact_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be done without making changes'
+    )
+    compact_parser.add_argument(
+        '--keep-originals',
+        action='store_true',
+        help='Keep original files after compaction (default: delete)'
+    )
+    compact_parser.add_argument(
+        '--recursive',
+        action='store_true',
+        help='Also compact subdirectories (e.g., data/evals)'
+    )
+
     # Hot or Not command group
     hotornot_parser = subparsers.add_parser('hotornot', help='Human evaluation system', aliases=['hon'])
     hotornot_subparsers = hotornot_parser.add_subparsers(dest='hotornot_command', help='Hot or Not subcommands')
@@ -146,6 +182,12 @@ def main():
             sys.exit(1)
     elif args.command == 'analyze':
         cmd_analyze(args)
+    elif args.command == 'data':
+        if args.data_command == 'compact':
+            cmd_data_compact(args)
+        else:
+            data_parser.print_help()
+            sys.exit(1)
     elif args.command in ['hotornot', 'hon']:
         if args.hotornot_command == 'rate':
             cmd_hotornot_rate(args)
@@ -337,10 +379,6 @@ def cmd_test_list(args):
         print()
 
 
-if __name__ == "__main__":
-    main()
-
-
 def cmd_analyze(args):
     """Analyze cascade and suggest prompt improvements."""
     from windlass.analyzer import analyze_and_suggest, PromptSuggestionManager
@@ -437,6 +475,175 @@ def cmd_analyze(args):
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+# ========== DATA MANAGEMENT COMMANDS ==========
+
+def cmd_data_compact(args):
+    """Compact multiple Parquet files into larger files."""
+    import glob
+    import uuid
+    import time
+    from pathlib import Path
+
+    try:
+        import duckdb
+    except ImportError:
+        print("✗ DuckDB required for compaction. Install with: pip install duckdb")
+        sys.exit(1)
+
+    from windlass.config import get_config
+    config = get_config()
+
+    # Determine directories to compact
+    if args.path:
+        base_dirs = [Path(args.path)]
+    else:
+        base_dirs = [Path(config.data_dir)]
+
+    # Add subdirectories if recursive
+    all_dirs = []
+    for base_dir in base_dirs:
+        if not base_dir.exists():
+            print(f"⚠ Directory does not exist: {base_dir}")
+            continue
+        all_dirs.append(base_dir)
+        if args.recursive:
+            for subdir in base_dir.iterdir():
+                if subdir.is_dir():
+                    all_dirs.append(subdir)
+
+    if not all_dirs:
+        print("✗ No directories to compact")
+        sys.exit(1)
+
+    max_size_bytes = args.max_size * 1024 * 1024  # Convert MB to bytes
+
+    print()
+    print("="*60)
+    print("PARQUET COMPACTION")
+    print("="*60)
+    print()
+    print(f"Max file size: {args.max_size} MB")
+    print(f"Keep originals: {args.keep_originals}")
+    print(f"Dry run: {args.dry_run}")
+    print()
+
+    total_original_files = 0
+    total_original_size = 0
+    total_compacted_files = 0
+    total_compacted_size = 0
+
+    for target_dir in all_dirs:
+        parquet_files = sorted(glob.glob(str(target_dir / "*.parquet")))
+
+        if not parquet_files:
+            print(f"⚠ No Parquet files in: {target_dir}")
+            continue
+
+        # Calculate original stats
+        original_size = sum(os.path.getsize(f) for f in parquet_files)
+        original_count = len(parquet_files)
+        total_original_files += original_count
+        total_original_size += original_size
+
+        print(f"📁 {target_dir}")
+        print(f"   Found: {original_count} files ({original_size / 1024 / 1024:.2f} MB)")
+
+        if args.dry_run:
+            # Estimate compacted file count
+            estimated_files = max(1, int(original_size / max_size_bytes) + 1)
+            print(f"   Would compact to: ~{estimated_files} file(s)")
+            print()
+            continue
+
+        # Create temp directory for compaction
+        temp_dir = target_dir / f".compact_temp_{uuid.uuid4().hex[:8]}"
+        temp_dir.mkdir(exist_ok=True)
+
+        try:
+            # Use DuckDB to read all files, sort by timestamp, and write compacted
+            conn = duckdb.connect()
+
+            # Read all parquet files with union_by_name for schema evolution
+            conn.execute(f"""
+                CREATE TABLE all_data AS
+                SELECT * FROM read_parquet('{target_dir}/*.parquet', union_by_name=true)
+                ORDER BY COALESCE(timestamp, 0)
+            """)
+
+            row_count = conn.execute("SELECT COUNT(*) FROM all_data").fetchone()[0]
+
+            if row_count == 0:
+                print(f"   ⚠ No data found, skipping")
+                conn.close()
+                temp_dir.rmdir()
+                continue
+
+            # Write compacted files with size limit
+            # DuckDB with FILE_SIZE_BYTES creates directory with data_N.parquet files
+            output_dir = temp_dir / "output"
+
+            conn.execute(f"""
+                COPY all_data TO '{output_dir}'
+                (FORMAT PARQUET, FILE_SIZE_BYTES {max_size_bytes}, COMPRESSION 'zstd')
+            """)
+
+            conn.close()
+
+            # DuckDB creates files like output/data_0.parquet, output/data_1.parquet
+            compacted_files = list(output_dir.glob("*.parquet"))
+            compacted_size = sum(f.stat().st_size for f in compacted_files)
+            total_compacted_files += len(compacted_files)
+            total_compacted_size += compacted_size
+
+            print(f"   Compacted to: {len(compacted_files)} file(s) ({compacted_size / 1024 / 1024:.2f} MB)")
+
+            # Delete originals (unless --keep-originals)
+            if not args.keep_originals:
+                for f in parquet_files:
+                    os.remove(f)
+                print(f"   Deleted: {original_count} original files")
+
+            # Move compacted files to target directory with proper naming
+            for i, cf in enumerate(sorted(compacted_files)):
+                # Generate timestamp-based name like original files
+                ts = int(time.time())
+                new_name = f"log_{ts}_{uuid.uuid4().hex[:8]}.parquet"
+                new_path = target_dir / new_name
+                cf.rename(new_path)
+                time.sleep(0.01)  # Ensure unique timestamps
+
+            # Remove temp directories
+            output_dir.rmdir()
+            temp_dir.rmdir()
+
+            compression_ratio = (1 - compacted_size / original_size) * 100 if original_size > 0 else 0
+            print(f"   Compression: {compression_ratio:.1f}% smaller")
+            print()
+
+        except Exception as e:
+            print(f"   ✗ Error: {e}")
+            # Cleanup temp dir on error
+            import shutil
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+            continue
+
+    # Summary
+    print("="*60)
+    if args.dry_run:
+        print("DRY RUN SUMMARY")
+        print(f"  Would compact: {total_original_files} files ({total_original_size / 1024 / 1024:.2f} MB)")
+    else:
+        print("COMPACTION COMPLETE")
+        print(f"  Original: {total_original_files} files ({total_original_size / 1024 / 1024:.2f} MB)")
+        print(f"  Compacted: {total_compacted_files} files ({total_compacted_size / 1024 / 1024:.2f} MB)")
+        if total_original_size > 0:
+            ratio = (1 - total_compacted_size / total_original_size) * 100
+            print(f"  Space saved: {ratio:.1f}%")
+    print("="*60)
+    print()
 
 
 # ========== HOT OR NOT COMMANDS ==========
@@ -734,3 +941,7 @@ def cmd_hotornot_rate(args):
     print()
     print("View stats with: windlass hotornot stats")
     print()
+
+
+if __name__ == "__main__":
+    main()
