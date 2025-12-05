@@ -23,6 +23,7 @@ dependencies = [
     "plotly", 
     "kaleido",
     "miniaudio",
+    "pillow",
     "jsonschema",
     "readchar",  # For Hot or Not interactive rating UI
     "miniaudio",  # For ElevenLabs TTS audio playback

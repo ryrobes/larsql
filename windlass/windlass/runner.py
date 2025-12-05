@@ -29,7 +29,7 @@ from .utils import get_tool_schema, encode_image_base64
 from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
-from .state import update_session_state
+from .state import update_session_state, update_phase_progress, clear_phase_progress
 from .eddies.system import spawn_cascade
 from .eddies.state_tools import set_current_session_id
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
@@ -1196,6 +1196,15 @@ If no tools are needed, return an empty array: []
         # Execute each sounding in sequence (to avoid threading complexity with Rich output)
         # Each sounding gets the same starting context
         for i in range(factor):
+            # Update phase progress for sounding visualization
+            update_phase_progress(
+                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                stage="soundings",
+                sounding_index=i + 1,
+                sounding_factor=factor,
+                sounding_stage="executing"
+            )
+
             # Determine mutation for this sounding
             mutation_template = None  # The template/instruction used (for rewrite mode)
             mutation_applied = None   # The actual mutation (rewritten prompt or augment text)
@@ -1286,6 +1295,11 @@ If no tools are needed, return an empty array: []
         self.echo.lineage = echo_lineage_snapshot.copy()
 
         # Now evaluate all soundings
+        # Update phase progress for evaluation stage
+        update_phase_progress(
+            self.session_id, self.config.cascade_id, phase.name, self.depth,
+            sounding_stage="evaluating"
+        )
         console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(sounding_results)} soundings...[/bold yellow]")
 
         # Create evaluator trace
@@ -1798,10 +1812,25 @@ Refinement directive: {reforge_config.honing_prompt}
         if phase.wards and phase.wards.pre:
             console.print(f"{indent}[bold cyan]🛡️  Running Pre-Wards (Input Validation)...[/bold cyan]")
 
+            # Update phase progress for pre-ward stage
+            update_phase_progress(
+                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                stage="pre_ward"
+            )
+
             # Prepare input content for validation
             input_content = json.dumps(input_data)
 
-            for ward_config in phase.wards.pre:
+            total_pre_wards = len(phase.wards.pre)
+            for ward_idx, ward_config in enumerate(phase.wards.pre):
+                # Update progress with current ward
+                update_phase_progress(
+                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                    ward_name=ward_config.validator,
+                    ward_type="pre",
+                    ward_index=ward_idx + 1,
+                    total_wards=total_pre_wards
+                )
                 ward_result = self._run_ward(ward_config, input_content, trace, ward_type="pre")
 
                 if not ward_result["valid"]:
@@ -2064,6 +2093,14 @@ Refinement directive: {reforge_config.honing_prompt}
             # Track retry attempt
             self.current_retry_attempt = attempt if max_attempts > 1 else None
 
+            # Update phase progress for visualization
+            update_phase_progress(
+                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                stage="main",
+                attempt=attempt + 1,
+                max_attempts=max_attempts
+            )
+
             if attempt > 0:
                 console.print(f"{indent}[bold yellow]🔄 Validation Retry Attempt {attempt + 1}/{max_attempts}[/bold yellow]")
 
@@ -2098,13 +2135,26 @@ Refinement directive: {reforge_config.honing_prompt}
 
                 retry_msg = {"role": "user", "content": retry_msg_content}
                 self.context_messages.append(retry_msg)
-                self.echo.add_history(retry_msg, trace_id=retry_trace.id, parent_id=trace.id, node_type="validation_retry")
+                self.echo.add_history(retry_msg, trace_id=retry_trace.id, parent_id=trace.id, node_type="validation_retry",
+                                      metadata={
+                                          "phase_name": phase.name,
+                                          "attempt": attempt + 1,
+                                          "max_attempts": max_attempts,
+                                          "loop_until": phase.rules.loop_until if phase.rules.loop_until else None
+                                      })
                 self._update_graph()
 
             # Turn loop
             for i in range(max_turns):
                 # Track turn number
                 self.current_turn_number = i if max_turns > 1 else None
+
+                # Update phase progress for visualization
+                update_phase_progress(
+                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                    turn=i + 1,
+                    max_turns=max_turns
+                )
 
                 # Hook: Turn Start
                 hook_result = self.hooks.on_turn_start(phase.name, i, {
@@ -2367,6 +2417,12 @@ Refinement directive: {reforge_config.honing_prompt}
                                 {"role": "tool_call", "content": f"Calling {func_name}", "tool_name": func_name, "arguments": args},
                                 trace_id=call_trace.id, parent_id=tool_trace.id, node_type="tool_call",
                                 metadata={"tool_name": func_name, "arguments": args}
+                            )
+
+                            # Update phase progress with current tool
+                            update_phase_progress(
+                                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                                tool_name=func_name
                             )
 
                             # Find tool
@@ -2911,7 +2967,22 @@ Refinement directive: {reforge_config.honing_prompt}
             if phase.wards and phase.wards.post:
                 console.print(f"{indent}[bold cyan]🛡️  Running Post-Wards (Output Validation)...[/bold cyan]")
 
-                for ward_config in phase.wards.post:
+                # Update phase progress for post-ward stage
+                update_phase_progress(
+                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                    stage="post_ward"
+                )
+
+                total_post_wards = len(phase.wards.post)
+                for ward_idx, ward_config in enumerate(phase.wards.post):
+                    # Update progress with current ward
+                    update_phase_progress(
+                        self.session_id, self.config.cascade_id, phase.name, self.depth,
+                        ward_name=ward_config.validator,
+                        ward_type="post",
+                        ward_index=ward_idx + 1,
+                        total_wards=total_post_wards
+                    )
                     ward_result = self._run_ward(ward_config, response_content, trace, ward_type="post")
 
                     if not ward_result["valid"]:

@@ -67,8 +67,8 @@ def get_db_connection():
     if os.path.exists(DATA_DIR):
         data_files = glob.glob(f"{DATA_DIR}/*.parquet")
         if data_files:
-            print(f"[INFO] Loading unified logs from: {DATA_DIR}")
-            print(f"[INFO] Found {len(data_files)} parquet files")
+            #print(f"[INFO] Loading unified logs from: {DATA_DIR}")
+            #print(f"[INFO] Found {len(data_files)} parquet files")
             files_str = "', '".join(data_files)
             conn.execute(f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)")
             return conn
@@ -642,10 +642,10 @@ def get_cascade_instances(cascade_id):
 
         # Debug: show all tracked sessions
         stats = store.get_stats()
-        print(f"[API] LiveStore stats: {stats}")
+        #print(f"[API] LiveStore stats: {stats}")
 
         live_sessions = store.get_sessions_for_cascade(cascade_id)
-        print(f"[API] Looking for cascade_id={cascade_id}, found live sessions: {live_sessions}")
+        #print(f"[API] Looking for cascade_id={cascade_id}, found live sessions: {live_sessions}")
 
         live_instances = []
         live_session_ids = set()
@@ -655,7 +655,7 @@ def get_cascade_instances(cascade_id):
             if instance:
                 live_instances.append(instance)
                 live_session_ids.add(session_id)
-                print(f"[API] Serving session {session_id} from LiveStore (status={instance.get('status')}, phases={len(instance.get('phases', []))})")
+                #print(f"[API] Serving session {session_id} from LiveStore (status={instance.get('status')}, phases={len(instance.get('phases', []))})")
 
         # Now get historical sessions from Parquet (excluding live ones)
         conn = get_db_connection()
@@ -735,7 +735,7 @@ def get_cascade_instances(cascade_id):
 
             # Skip sessions that are being served from LiveStore
             if session_id in live_session_ids:
-                print(f"[API] Skipping session {session_id} from SQL (already in LiveStore)")
+                #print(f"[API] Skipping session {session_id} from SQL (already in LiveStore)")
                 continue
 
             # Get models used in this session

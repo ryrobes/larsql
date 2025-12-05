@@ -1,12 +1,19 @@
 import argparse
 import json
 import os
+import random
+import shutil
 import sys
+from pathlib import Path
 from windlass import run_cascade
 from windlass.event_hooks import EventPublishingHooks
 
 
+SPLASH_DIR = Path(__file__).resolve().parent.parent / "tui_images"
+
+
 def main():
+    _maybe_render_startup_splash()
     parser = argparse.ArgumentParser(
         description="Windlass - Declarative Agent Framework",
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -23,6 +30,30 @@ def main():
     run_parser.add_argument("--base-url", help="Override provider base URL (e.g., 'http://localhost:11434/v1' for Ollama)", default=None)
     run_parser.add_argument("--api-key", help="Override API key", default=None)
 
+    # Render command
+    render_parser = subparsers.add_parser('render', help='Render an image in the current terminal')
+    render_parser.add_argument("image", help="Path to image file to render (e.g., extras/ui/frontend/public/windlass-spicy.png)")
+    render_parser.add_argument("--width", type=int, default=None, help="Max terminal columns to use (defaults to terminal width)")
+    render_parser.add_argument(
+        "--mode",
+        choices=["auto", "kitty", "iterm2", "ansi"],
+        default="auto",
+        help="Force render mode (default: auto-detect)"
+    )
+
+    # Render Mermaid command
+    render_mermaid_parser = subparsers.add_parser(
+        'render-mermaid',
+        help='Render a Mermaid diagram (from file or inline text) in the terminal'
+    )
+    render_mermaid_parser.add_argument("mermaid", help="Path to .mmd file or inline Mermaid text")
+    render_mermaid_parser.add_argument("--width", type=int, default=None, help="Max terminal columns (defaults to terminal width)")
+    render_mermaid_parser.add_argument(
+        "--mode",
+        choices=["auto", "kitty", "iterm2", "ansi"],
+        default="auto",
+        help="Force render mode (default: auto-detect)"
+    )
     # Test command group
     test_parser = subparsers.add_parser('test', help='Cascade testing commands')
     test_subparsers = test_parser.add_subparsers(dest='test_command', help='Test subcommands')
@@ -168,6 +199,10 @@ def main():
     # Execute commands
     if args.command == 'run':
         cmd_run(args)
+    elif args.command == 'render':
+        cmd_render(args)
+    elif args.command == 'render-mermaid':
+        cmd_render_mermaid(args)
     elif args.command == 'test':
         if args.test_command == 'freeze':
             cmd_test_freeze(args)
@@ -203,6 +238,80 @@ def main():
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def cmd_render(args):
+    """Render an image in the terminal using the best supported protocol."""
+    try:
+        from windlass.terminal_image import render_image_in_terminal
+
+        force_mode = None if args.mode == "auto" else args.mode
+        render_image_in_terminal(args.image, max_width=args.width, force_mode=force_mode)
+    except FileNotFoundError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    except ImportError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ Failed to render image: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_render_mermaid(args):
+    """Render a Mermaid diagram from file or inline text in the terminal."""
+    try:
+        from windlass.mermaid_terminal import render_mermaid_in_terminal, MermaidRenderError
+
+        force_mode = None if args.mode == "auto" else args.mode
+        is_path = os.path.exists(args.mermaid)
+        render_mermaid_in_terminal(args.mermaid, max_width=args.width, force_mode=force_mode, is_path=is_path)
+    except MermaidRenderError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    except ImportError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ Failed to render Mermaid diagram: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _maybe_render_startup_splash():
+    """Render a random TUI splash image on startup if interactive."""
+    if os.environ.get("WINDLASS_NO_SPLASH"):
+        return
+    if not sys.stdout.isatty():
+        return
+
+    try:
+        from windlass.terminal_image import render_image_in_terminal
+    except Exception:
+        return
+
+    if not SPLASH_DIR.exists():
+        return
+
+    images = [p for p in SPLASH_DIR.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}]
+    if not images:
+        return
+
+    try:
+        cols = shutil.get_terminal_size((80, 24)).columns
+    except OSError:
+        cols = 80
+    max_width = max(20, min(cols, 80))
+
+    image_path = random.choice(images)
+    try:
+        render_image_in_terminal(str(image_path), max_width=max_width)
+        print()  # spacing after splash
+    except Exception:
+        # Splash is best-effort; ignore failures.
+        pass
 
 
 def cmd_run(args):

@@ -14,6 +14,9 @@
     "react-syntax-highlighter": "^16.1.0",
     "remark-gfm": "^4.0.1"
   },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^10.6.1"
+  },
   "scripts": {
     "start": "PORT=5550 react-scripts start",
     "build": "react-scripts build",

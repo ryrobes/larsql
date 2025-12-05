@@ -98,8 +98,538 @@ def extract_metadata(entry: Dict) -> Dict:
         'total_steps': meta.get('total_steps'),
         'factor_per_step': meta.get('factor_per_step'),
         'attempt_index': meta.get('attempt_index'),
-        'has_mutation': meta.get('has_mutation')
+        'has_mutation': meta.get('has_mutation'),
+        # Retry/validation-specific
+        'attempt': meta.get('attempt'),
+        'max_attempts': meta.get('max_attempts'),
+        # Mutation-specific (for soundings)
+        'mutation_applied': meta.get('mutation_applied'),
+        'mutation_type': meta.get('mutation_type'),
+        'mutation_template': meta.get('mutation_template'),
+        # Tool-specific
+        'tool_name': meta.get('tool_name'),
+        # Turn-specific
+        'turn_number': meta.get('turn_number'),
+        'max_turns': meta.get('max_turns'),
     }
+
+
+def extract_routing_choices(lineage: List[Dict]) -> Dict[str, str]:
+    """
+    Extract which phase dynamically routed to which target.
+
+    Parses lineage entries like "Dynamically routed to: target_phase"
+
+    Returns:
+        Dict mapping source_phase -> target_phase for dynamic routing decisions
+    """
+    routing_choices = {}
+    for item in lineage:
+        phase = item.get("phase")
+        output = item.get("output", "")
+        if isinstance(output, str) and output.startswith("Dynamically routed to: "):
+            target = output.replace("Dynamically routed to: ", "")
+            routing_choices[phase] = target
+    return routing_choices
+
+
+def extract_ward_retries(history: List[Dict]) -> Dict[str, Dict]:
+    """
+    Extract ward retry information per phase.
+
+    Identifies phases where retry-mode wards failed and triggered re-execution.
+
+    Returns:
+        Dict: phase_name -> {
+            'has_retry': bool,
+            'retry_count': int,
+            'validators': [list of validator names that failed]
+        }
+    """
+    retry_info = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type in ("pre_ward", "post_ward"):
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            mode = meta.get("mode")
+            valid = meta.get("valid")
+            validator = meta.get("validator", "validator")
+
+            # Track retry wards that failed
+            if mode == "retry" and valid is False:
+                if phase_name not in retry_info:
+                    retry_info[phase_name] = {
+                        'has_retry': True,
+                        'retry_count': 0,
+                        'validators': []
+                    }
+                retry_info[phase_name]['retry_count'] += 1
+                if validator not in retry_info[phase_name]['validators']:
+                    retry_info[phase_name]['validators'].append(validator)
+
+        elif node_type == "validation_retry":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            if phase_name not in retry_info:
+                retry_info[phase_name] = {
+                    'has_retry': True,
+                    'retry_count': 1,
+                    'validators': []
+                }
+            else:
+                retry_info[phase_name]['retry_count'] += 1
+
+    return retry_info
+
+
+def extract_validation_retries(history: List[Dict]) -> Dict[str, Dict]:
+    """
+    Extract validation retry (loop_until) information per phase.
+
+    When max_attempts > 1 and validation fails, the phase re-executes.
+    This tracks those retry loops separately from ward retries.
+
+    Returns:
+        Dict: phase_name -> {
+            'retry_count': int,  # Number of retry attempts (0 = passed first try)
+            'max_attempts': int,  # Total attempts allowed
+            'reasons': [str],    # Validation failure reasons
+            'passed': bool       # Whether it eventually passed
+        }
+    """
+    validation_retries = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+
+        # Track validation_retry nodes (injected when attempt > 0)
+        if node_type == "validation_retry":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            content = entry.get("content", "")
+
+            if phase_name not in validation_retries:
+                validation_retries[phase_name] = {
+                    'retry_count': 0,
+                    'max_attempts': meta.get('max_attempts', 1),
+                    'reasons': [],
+                    'passed': False  # Will update if we see success
+                }
+
+            validation_retries[phase_name]['retry_count'] += 1
+
+            # Extract reason from content
+            if "rejected" in content.lower() or "failed" in content.lower():
+                reason = content[:100] if len(content) > 100 else content
+                validation_retries[phase_name]['reasons'].append(reason)
+
+        # Track schema_validation success to mark as passed
+        elif node_type == "schema_validation":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            content = entry.get("content", "")
+
+            if phase_name in validation_retries and "passed" in content.lower():
+                validation_retries[phase_name]['passed'] = True
+
+        # Also look for loop_until validator results
+        elif node_type == "loop_until_validation":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            valid = meta.get("valid")
+
+            if phase_name not in validation_retries:
+                validation_retries[phase_name] = {
+                    'retry_count': 0,
+                    'max_attempts': meta.get('max_attempts', 1),
+                    'reasons': [],
+                    'passed': False
+                }
+
+            if valid:
+                validation_retries[phase_name]['passed'] = True
+            else:
+                validation_retries[phase_name]['retry_count'] += 1
+                reason = meta.get('reason', 'Validation failed')
+                validation_retries[phase_name]['reasons'].append(reason)
+
+    return validation_retries
+
+
+def extract_errors(history: List[Dict]) -> Dict[str, List[Dict]]:
+    """
+    Extract error nodes per phase.
+
+    Returns:
+        Dict: phase_name -> [
+            {'error_type': str, 'message': str, 'trace_id': str}
+        ]
+    """
+    errors = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type in ("error", "validation_error", "schema_validation_failed"):
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            content = entry.get("content", "")
+
+            error_info = {
+                'error_type': node_type,
+                'message': content[:100] if len(content) > 100 else content,
+                'trace_id': entry.get("trace_id", "")
+            }
+
+            if phase_name not in errors:
+                errors[phase_name] = []
+            errors[phase_name].append(error_info)
+
+    return errors
+
+
+def extract_quartermaster_selections(history: List[Dict]) -> Dict[str, Dict]:
+    """
+    Extract Quartermaster (manifest) tool selections per phase.
+
+    Returns:
+        Dict: phase_name -> {
+            'selected_tools': [list of tool names],
+            'reasoning': str
+        }
+    """
+    selections = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type == "quartermaster_result":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            selected_tackle = meta.get("selected_tackle", [])
+            reasoning = meta.get("reasoning", "")
+
+            selections[phase_name] = {
+                'selected_tools': selected_tackle,
+                'reasoning': reasoning[:100] if len(reasoning) > 100 else reasoning
+            }
+
+    return selections
+
+
+def extract_turns(history: List[Dict]) -> Dict[str, List[Dict]]:
+    """
+    Extract turn information per phase for detailed visualization.
+
+    Returns:
+        Dict: phase_name -> [
+            {'turn_number': int, 'has_tool_calls': bool, 'content_preview': str}
+        ]
+    """
+    turns = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type == "turn":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            turn_number = meta.get("turn_number", 1)
+
+            if phase_name not in turns:
+                turns[phase_name] = []
+
+            turns[phase_name].append({
+                'turn_number': turn_number,
+                'trace_id': entry.get("trace_id", "")
+            })
+
+        # Also track agent responses within turns
+        elif node_type == "agent":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            content = entry.get("content", "")
+            tool_calls = entry.get("tool_calls")
+
+            # Find the corresponding turn and add info
+            if phase_name in turns and turns[phase_name]:
+                last_turn = turns[phase_name][-1]
+                last_turn['has_tool_calls'] = bool(tool_calls)
+                last_turn['content_preview'] = content[:50] if content else ""
+
+    return turns
+
+
+def extract_blocked_phases(history: List[Dict]) -> Dict[str, Dict]:
+    """
+    Extract phases that were blocked by blocking-mode wards.
+
+    Returns:
+        Dict: phase_name -> {
+            'blocked': True,
+            'validator': str,
+            'reason': str
+        }
+    """
+    blocked = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type in ("pre_ward", "post_ward", "ward_block"):
+            meta = extract_metadata(entry)
+            mode = meta.get("mode")
+            valid = meta.get("valid")
+            phase_name = meta.get("phase_name", "unknown")
+
+            if mode == "blocking" and valid is False:
+                blocked[phase_name] = {
+                    'blocked': True,
+                    'validator': meta.get("validator", "validator"),
+                    'reason': meta.get("reason", "Validation failed"),
+                    'ward_type': meta.get("ward_type", "post")
+                }
+
+    return blocked
+
+
+def extract_state_changes(history: List[Dict]) -> Dict[str, List[str]]:
+    """
+    Extract set_state calls to show state flow between phases.
+
+    Returns:
+        Dict: phase_name -> [list of state keys set]
+    """
+    state_changes = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type == "tool_result":
+            content = entry.get("content", "")
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+
+            # Check if this is a set_state result
+            # Format: "State updated: {key} = {value}"
+            if isinstance(content, str) and ("state updated" in content.lower() or "set_state" in content.lower()):
+                import re
+                # Try multiple patterns
+                match = re.search(r"[Ss]tate\s+updated:\s*(\w+)\s*=", content)
+                if not match:
+                    match = re.search(r"[Ss]tate\s*['\"](\w+)['\"]", content)
+                if match:
+                    key = match.group(1)
+                    if phase_name not in state_changes:
+                        state_changes[phase_name] = []
+                    if key not in state_changes[phase_name]:
+                        state_changes[phase_name].append(key)
+
+        # Also check tool_calls for set_state
+        tool_calls = entry.get("tool_calls")
+        if tool_calls:
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            for tc in tool_calls:
+                if isinstance(tc, dict):
+                    func = tc.get("function", {})
+                    if isinstance(func, dict) and func.get("name") == "set_state":
+                        args = func.get("arguments", "{}")
+                        try:
+                            if isinstance(args, str):
+                                args = json.loads(args)
+                            key = args.get("key", args.get("name"))
+                            if key:
+                                if phase_name not in state_changes:
+                                    state_changes[phase_name] = []
+                                if key not in state_changes[phase_name]:
+                                    state_changes[phase_name].append(key)
+                        except:
+                            pass
+
+    return state_changes
+
+
+def extract_sounding_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]]:
+    """
+    Extract mutation information for sounding attempts.
+
+    Returns:
+        Dict: phase_name -> {sounding_index -> {'mutation_applied': str, 'mutation_type': str, 'is_winner': bool}}
+    """
+    mutations = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type == "sounding_attempt":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            sounding_index = meta.get("sounding_index", 0)
+            mutation_applied = meta.get("mutation_applied")
+            is_winner = meta.get("is_winner", False)
+
+            if phase_name not in mutations:
+                mutations[phase_name] = {}
+
+            mutations[phase_name][sounding_index] = {
+                'mutation_applied': mutation_applied,
+                'is_winner': is_winner
+            }
+
+    return mutations
+
+
+def get_live_session_state(session_id: str) -> dict:
+    """
+    Get the live running state for a session.
+
+    Returns:
+        Dict with status, current_phase, phase_progress, or None if not found.
+    """
+    try:
+        from .state import get_session_state
+        return get_session_state(session_id)
+    except Exception:
+        return None
+
+
+def format_phase_progress_indicator(phase_progress: dict) -> str:
+    """
+    Format a compact indicator string showing current position within a phase.
+
+    Uses phase_progress from state.json to show exactly where execution is:
+    - Stage: pre_ward, main, post_ward
+    - Turn: T1/3 (turn 1 of 3)
+    - Attempt: A2/5 (attempt 2 of 5 for validation)
+    - Sounding: S2/5⚖ (sounding 2 of 5, currently evaluating)
+    - Reforge: R1/3 (reforge step 1 of 3)
+    - Ward: 🛡️grammar_check (current ward being run)
+    - Tool: 🔧run_code (current tool being called)
+
+    Returns compact indicator like: "T2/3 🔧run_code" or "S3/5 ⚖️eval"
+    """
+    if not phase_progress:
+        return ""
+
+    parts = []
+
+    # Stage indicator (only if not 'main')
+    stage = phase_progress.get("stage", "main")
+    if stage == "pre_ward":
+        parts.append("⏵pre")
+    elif stage == "post_ward":
+        parts.append("⏵post")
+
+    # Turn info
+    turn_info = phase_progress.get("turn", {})
+    current_turn = turn_info.get("current", 0)
+    max_turns = turn_info.get("max", 1)
+    if current_turn > 0:
+        parts.append(f"T{current_turn}/{max_turns}")
+
+    # Attempt info (validation retries)
+    attempt_info = phase_progress.get("attempt", {})
+    current_attempt = attempt_info.get("current", 0)
+    max_attempts = attempt_info.get("max", 1)
+    if current_attempt > 0 and max_attempts > 1:
+        parts.append(f"A{current_attempt}/{max_attempts}")
+
+    # Sounding info
+    sounding_info = phase_progress.get("sounding")
+    if sounding_info:
+        sounding_idx = sounding_info.get("index")
+        sounding_factor = sounding_info.get("factor", 1)
+        sounding_stage = sounding_info.get("stage", "executing")
+
+        if sounding_idx is not None:
+            stage_icon = "⚖️" if sounding_stage == "evaluating" else "🔱"
+            parts.append(f"{stage_icon}S{sounding_idx + 1}/{sounding_factor}")
+
+    # Reforge info
+    reforge_info = phase_progress.get("reforge")
+    if reforge_info:
+        reforge_step = reforge_info.get("step")
+        total_steps = reforge_info.get("total_steps", 1)
+        if reforge_step is not None:
+            parts.append(f"🔨R{reforge_step}/{total_steps}")
+
+    # Ward info
+    ward_info = phase_progress.get("ward")
+    if ward_info and ward_info.get("name"):
+        ward_name = ward_info.get("name", "")
+        ward_type = ward_info.get("type", "post")
+        ward_idx = ward_info.get("index", 1)
+        total_wards = ward_info.get("total", 1)
+        type_icon = "🛡️" if ward_type == "pre" else "🔄"
+        # Truncate ward name
+        short_name = ward_name[:10] + ".." if len(ward_name) > 12 else ward_name
+        parts.append(f"{type_icon}{short_name}({ward_idx}/{total_wards})")
+
+    # Tool info
+    tool_info = phase_progress.get("tool", {})
+    current_tool = tool_info.get("current")
+    if current_tool:
+        # Truncate tool name
+        short_tool = current_tool[:10] + ".." if len(current_tool) > 12 else current_tool
+        parts.append(f"🔧{short_tool}")
+
+    # Timing info (optional - elapsed time)
+    timing = phase_progress.get("timing", {})
+    phase_elapsed = timing.get("phase_elapsed_ms", 0)
+    if phase_elapsed > 1000:  # Only show if > 1 second
+        seconds = phase_elapsed // 1000
+        parts.append(f"⏱{seconds}s")
+
+    return " ".join(parts) if parts else ""
+
+
+def get_running_internal_node_id(phase_progress: dict, pid: str) -> Optional[str]:
+    """
+    Determine which internal node ID within a composite phase is currently executing.
+
+    Returns the Mermaid node ID that should be highlighted, or None if not determinable.
+    """
+    if not phase_progress:
+        return None
+
+    stage = phase_progress.get("stage", "main")
+
+    # Pre-ward stage
+    if stage == "pre_ward":
+        ward_info = phase_progress.get("ward")
+        if ward_info:
+            ward_idx = ward_info.get("index", 1) - 1  # 0-indexed
+            return f"{pid}_pre{ward_idx}"
+
+    # Post-ward stage
+    elif stage == "post_ward":
+        ward_info = phase_progress.get("ward")
+        if ward_info:
+            ward_idx = ward_info.get("index", 1) - 1  # 0-indexed
+            return f"{pid}_post{ward_idx}"
+
+    # Main stage - could be turn, sounding, or reforge
+    elif stage == "main":
+        sounding_info = phase_progress.get("sounding")
+        if sounding_info:
+            sounding_idx = sounding_info.get("index")
+            sounding_stage = sounding_info.get("stage")
+
+            if sounding_stage == "evaluating":
+                return f"{pid}_eval"
+            elif sounding_idx is not None:
+                return f"{pid}_a{sounding_idx}"
+
+        reforge_info = phase_progress.get("reforge")
+        if reforge_info:
+            reforge_step = reforge_info.get("step")
+            if reforge_step is not None:
+                return f"{pid}_rf{reforge_step}"
+
+        # Turn-based progress
+        turn_info = phase_progress.get("turn", {})
+        current_turn = turn_info.get("current", 0)
+        if current_turn > 0:
+            return f"{pid}_t{current_turn - 1}"
+
+    return None
 
 
 def flatten_history(history: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
@@ -1306,15 +1836,36 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - Sub-cascades appear as nested composite states within parent phases
     - Wards chain as sequential validation steps
     - Reforge chains sequentially after soundings
+    - Dynamic routing shown with taken (✓) vs available (○) paths
+    - Blocked phases terminate at error states (⛔)
+    - Live running state shows currently executing phase (▶)
+    - Mutation strategies shown on sounding attempts
 
     Visual language:
-    - ✓ completed, ○ pending, ▶ running
+    - ▶ running (currently executing phase) + green glow border
+    - ✓ completed, ○ pending, ⛔ blocked
     - 🔱 soundings (parallel attempts)
     - 🔨 reforge (iterative refinement)
     - 📦 sub-cascade (nested workflow)
     - 🛡️ blocking ward, 🔄 retry ward, ℹ️ advisory ward
     - ⚖️ evaluator, ★ winner
     - 🔧 tool usage
+    - 🔄N retry count (N retries occurred)
+    - 📝key1,key2 state keys set (via set_state)
+
+    CSS Classes (applied via Mermaid classDef):
+    - running: thick green border (4px), green fill - for currently executing phase
+    - blocked: red border, red fill - for blocked phases
+
+    Sounding labels:
+    - [baseline] = first attempt, no mutation
+    - [mutation...] = mutation strategy applied (truncated)
+    - ✓ = winner
+
+    Routing transitions:
+    - "✓ route" = taken path (agent chose this)
+    - "○ available" = available but not taken
+    - "⛔ validator" = blocked by validator
 
     Returns the mermaid state diagram as a string.
     """
@@ -1329,10 +1880,59 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
     # Helper to get status icon
     def status_icon(phase_name: str, completed_phases: set) -> str:
-        return "✓" if phase_name in completed_phases else "○"
+        if is_running and phase_name == running_phase:
+            return "▶"  # Currently running
+        elif phase_name in completed_phases:
+            return "✓"  # Completed
+        else:
+            return "○"  # Pending
 
     # Collect data structures
     completed_phases = {item.get("phase") for item in echo.lineage}
+
+    # Extract routing choices (which phase dynamically routed to which target)
+    routing_choices = extract_routing_choices(echo.lineage)
+
+    # Extract ward retry information
+    ward_retries = extract_ward_retries(history)
+
+    # Extract phases blocked by blocking wards
+    blocked_phases = extract_blocked_phases(history)
+
+    # Extract state changes (set_state calls per phase)
+    state_changes = extract_state_changes(history)
+
+    # Extract sounding mutations
+    sounding_mutations = extract_sounding_mutations(history)
+
+    # Extract validation retries (loop_until / max_attempts > 1)
+    validation_retries = extract_validation_retries(history)
+
+    # Extract errors per phase
+    errors_by_phase = extract_errors(history)
+
+    # Extract Quartermaster tool selections
+    qm_selections = extract_quartermaster_selections(history)
+
+    # Extract detailed turn info per phase
+    turns_detail = extract_turns(history)
+
+    # Get live session state for running indicator
+    live_state = get_live_session_state(echo.session_id)
+    running_phase = None
+    is_running = False
+    phase_progress = None
+    progress_indicator = ""
+    running_internal_node = None
+
+    if live_state:
+        is_running = live_state.get("status") == "running"
+        running_phase = live_state.get("current_phase")
+        phase_progress = live_state.get("phase_progress")
+
+        # Generate compact progress indicator from phase_progress
+        if phase_progress and is_running:
+            progress_indicator = format_phase_progress_indicator(phase_progress)
 
     # Build lookup maps
     sub_cascade_trace_ids = set()
@@ -1351,6 +1951,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     wards_by_phase: Dict[str, Dict[str, List[Dict]]] = {}
     tools_by_phase: Dict[str, List[str]] = {}
     turns_by_phase: Dict[str, int] = {}
+    handoffs_by_phase: Dict[str, List[str]] = {}  # phase_name -> list of available handoff targets
     cascade_sounding_attempts = []
     cascade_soundings_result = None
 
@@ -1362,6 +1963,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
             # Only collect top-level phases (not sub-cascade phases)
             if entry.get("parent_id") not in sub_cascade_trace_ids:
                 phase_entries.append(entry)
+                # Also capture handoffs for this phase
+                content = entry.get("content", "")
+                phase_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+                handoffs = meta.get("handoffs", [])
+                if handoffs:
+                    handoffs_by_phase[phase_name] = handoffs
 
         elif node_type == "sounding_attempt":
             phase_name = meta.get("phase_name", "unknown")
@@ -1394,10 +2001,18 @@ def generate_state_diagram_string(echo: Echo) -> str:
             phase_name = meta.get("phase_name", "unknown")
             if phase_name not in tools_by_phase:
                 tools_by_phase[phase_name] = []
-            # Extract tool name from content or metadata
-            content = entry.get("content", "")
-            if content:
-                tools_by_phase[phase_name].append(content[:20])
+            # Extract tool name from metadata (preferred) or content
+            tool_name = meta.get("tool_name")
+            if not tool_name:
+                # Try to extract from content format "Tool Result (tool_name):"
+                content = entry.get("content", "")
+                if "Tool Result (" in content:
+                    import re
+                    match = re.search(r"Tool Result \((\w+)\)", content)
+                    if match:
+                        tool_name = match.group(1)
+            if tool_name and tool_name not in tools_by_phase[phase_name]:
+                tools_by_phase[phase_name].append(tool_name)
 
         elif node_type == "turn":
             phase_name = meta.get("phase_name", "unknown")
@@ -1480,6 +2095,16 @@ def generate_state_diagram_string(echo: Echo) -> str:
     lines.append("    direction LR")
     lines.append("")
 
+    # Add style definitions for running states (thick border, glow effect via stroke)
+    # Mermaid state diagrams support classDef for styling
+    lines.append("    %% Style for running states - thick green border for visibility")
+    lines.append("    classDef running fill:#1a2a1a,stroke:#00ff00,stroke-width:4px,color:#00ff00")
+    lines.append("    classDef blocked fill:#2a1a1a,stroke:#ff4444,stroke-width:3px,color:#ff4444")
+    lines.append("")
+
+    # Track which phase IDs need the running class applied
+    running_phase_ids = []
+
     # Cascade-level soundings (if present)
     first_state = None
     if cascade_sounding_attempts:
@@ -1539,23 +2164,90 @@ def generate_state_diagram_string(echo: Echo) -> str:
         has_reforge = phase_name in reforge_by_phase
         has_wards = phase_name in wards_by_phase and (wards_by_phase[phase_name]["pre"] or wards_by_phase[phase_name]["post"])
         has_sub_cascades = phase_name in sub_cascades_by_phase_name
-        tool_count = len(tools_by_phase.get(phase_name, []))
         turn_count = turns_by_phase.get(phase_name, 0)
+        has_retries = phase_name in ward_retries
+        is_blocked = phase_name in blocked_phases
+        has_validation_retries = phase_name in validation_retries
+        has_errors = phase_name in errors_by_phase
+        has_qm_selection = phase_name in qm_selections
+        detailed_turns = turns_detail.get(phase_name, [])
+        has_multi_turns = len(detailed_turns) > 1
+
+        # Get tools and state changes for this phase
+        phase_tools = tools_by_phase.get(phase_name, [])
+        phase_state_changes = state_changes.get(phase_name, [])
 
         # Build annotation string for simple phases
         annotations = []
-        if tool_count > 0:
-            annotations.append(f"🔧{tool_count}")
+        # Show tool names (up to 3) instead of just count
+        if phase_tools:
+            if len(phase_tools) <= 3:
+                tool_str = ",".join(phase_tools)
+            else:
+                tool_str = ",".join(phase_tools[:2]) + f"+{len(phase_tools)-2}"
+            annotations.append(f"🔧{tool_str}")
         if turn_count > 1:
             annotations.append(f"↻{turn_count}")
+        # Show ward retry count if retries occurred
+        if has_retries:
+            retry_count = ward_retries[phase_name].get('retry_count', 0)
+            if retry_count > 0:
+                annotations.append(f"🔄{retry_count}")
+        # Show validation retry loop (loop_until / max_attempts) - different icon
+        if has_validation_retries:
+            vr = validation_retries[phase_name]
+            retry_count = vr.get('retry_count', 0)
+            passed = vr.get('passed', False)
+            if retry_count > 0:
+                # Show attempt/max format: ⟳2/3 means 2 retries out of 3 max
+                max_attempts = vr.get('max_attempts', retry_count + 1)
+                loop_icon = "✓" if passed else "✗"
+                annotations.append(f"⟳{retry_count+1}/{max_attempts}{loop_icon}")
+        # Show blocked indicator if phase was blocked
+        if is_blocked:
+            annotations.append("⛔")
+        # Show error indicator if errors occurred
+        if has_errors:
+            error_count = len(errors_by_phase[phase_name])
+            annotations.append(f"❌{error_count}")
+        # Show Quartermaster (manifest) indicator
+        if has_qm_selection:
+            qm_tools = qm_selections[phase_name].get('selected_tools', [])
+            annotations.append(f"🧭{len(qm_tools)}")
+        # Show state changes (keys set)
+        if phase_state_changes:
+            state_keys = ",".join(phase_state_changes[:2])  # Limit to 2 keys
+            if len(phase_state_changes) > 2:
+                state_keys += f"+{len(phase_state_changes)-2}"
+            annotations.append(f"📝{state_keys}")
         annotation_str = " " + " ".join(annotations) if annotations else ""
 
+        # Override status if blocked
+        if is_blocked:
+            status = "⛔"
+
+        # Track running and blocked phases for styling
+        is_phase_running = is_running and phase_name == running_phase
+        phase_running_internal_node = None
+
+        if is_phase_running:
+            running_phase_ids.append(pid)
+            # Calculate which internal node is currently executing
+            if phase_progress:
+                phase_running_internal_node = get_running_internal_node_id(phase_progress, pid)
+
         # Decide if phase needs composite state
-        needs_composite = has_soundings or has_reforge or has_wards or has_sub_cascades
+        # Include errors and multi-turns as reasons for composite rendering
+        needs_composite = (has_soundings or has_reforge or has_wards or has_sub_cascades
+                          or has_errors or has_multi_turns or has_qm_selection)
 
         if not needs_composite:
             # Simple phase - single state
-            lines.append(f'    state "{status} {sanitize_label(phase_name, 28)}{annotation_str}" as {pid}')
+            # Add progress indicator if this phase is currently running
+            progress_str = ""
+            if is_phase_running and progress_indicator:
+                progress_str = f" [{progress_indicator}]"
+            lines.append(f'    state "{status} {sanitize_label(phase_name, 28)}{annotation_str}{progress_str}" as {pid}')
 
         else:
             # Composite state
@@ -1572,8 +2264,45 @@ def generate_state_diagram_string(echo: Echo) -> str:
             if has_sub_cascades:
                 count = len(sub_cascades_by_phase_name[phase_name])
                 label_parts.append(f"📦{count}")
-            if tool_count > 0:
-                label_parts.append(f"🔧{tool_count}")
+            # Show tool names for composite phases
+            if phase_tools:
+                if len(phase_tools) <= 2:
+                    tool_str = ",".join(phase_tools)
+                else:
+                    tool_str = ",".join(phase_tools[:2]) + f"+{len(phase_tools)-2}"
+                label_parts.append(f"🔧{tool_str}")
+            # Add ward retry annotation for composite phases
+            if has_retries:
+                retry_count = ward_retries[phase_name].get('retry_count', 0)
+                if retry_count > 0:
+                    label_parts.append(f"🔄{retry_count}")
+            # Add validation retry (loop_until) annotation for composite phases
+            if has_validation_retries:
+                vr = validation_retries[phase_name]
+                retry_count = vr.get('retry_count', 0)
+                passed = vr.get('passed', False)
+                if retry_count > 0:
+                    max_attempts = vr.get('max_attempts', retry_count + 1)
+                    loop_icon = "✓" if passed else "✗"
+                    label_parts.append(f"⟳{retry_count+1}/{max_attempts}{loop_icon}")
+            # Add error indicator for composite phases
+            if has_errors:
+                error_count = len(errors_by_phase[phase_name])
+                label_parts.append(f"❌{error_count}")
+            # Add Quartermaster indicator for composite phases
+            if has_qm_selection:
+                qm_tool_count = len(qm_selections[phase_name].get('selected_tools', []))
+                label_parts.append(f"🧭{qm_tool_count}")
+            # Add state changes for composite phases
+            if phase_state_changes:
+                state_keys = ",".join(phase_state_changes[:2])
+                if len(phase_state_changes) > 2:
+                    state_keys += f"+{len(phase_state_changes)-2}"
+                label_parts.append(f"📝{state_keys}")
+
+            # Add progress indicator for running composite phases
+            if is_phase_running and progress_indicator:
+                label_parts.append(f"[{progress_indicator}]")
 
             lines.append(f"        {pid}_label : {' '.join(label_parts)}")
             lines.append("")
@@ -1581,6 +2310,29 @@ def generate_state_diagram_string(echo: Echo) -> str:
             # Track last node for chaining
             last_node = None
             first_internal = None
+
+            # Track internal nodes that need running style
+            running_internal_nodes = []
+            if phase_running_internal_node:
+                running_internal_nodes.append(phase_running_internal_node)
+
+            # QUARTERMASTER SELECTION (show which tools were auto-selected)
+            if has_qm_selection:
+                qm_data = qm_selections[phase_name]
+                qm_tools = qm_data.get('selected_tools', [])
+                if qm_tools:
+                    qm_id = f"{pid}_qm"
+                    # Show up to 3 tool names
+                    if len(qm_tools) <= 3:
+                        tools_display = ", ".join(qm_tools)
+                    else:
+                        tools_display = ", ".join(qm_tools[:3]) + f" +{len(qm_tools)-3}"
+                    lines.append(f"        {qm_id} : 🧭 manifest: {sanitize_label(tools_display, 30)}")
+                    if last_node:
+                        lines.append(f"        {last_node} --> {qm_id}")
+                    else:
+                        first_internal = qm_id
+                    last_node = qm_id
 
             # PRE-WARDS
             if has_wards and wards_by_phase[phase_name]["pre"]:
@@ -1625,12 +2377,29 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 else:
                     first_internal = fork_id
 
-                # Attempts
+                # Attempts - include mutation info if available
+                phase_mutations = sounding_mutations.get(phase_name, {})
                 for idx in sorted(attempts_info.keys()):
                     info = attempts_info[idx]
                     marker = " ✓" if info["is_winner"] else ""
+
+                    # Check for mutation info
+                    mutation_info = phase_mutations.get(idx, {})
+                    mutation_applied = mutation_info.get('mutation_applied')
+
+                    # Determine mutation label (shortened)
+                    mutation_label = ""
+                    if mutation_applied:
+                        # Shorten the mutation description
+                        if len(mutation_applied) > 15:
+                            mutation_label = f" [{mutation_applied[:12]}...]"
+                        else:
+                            mutation_label = f" [{mutation_applied}]"
+                    elif idx == 0:
+                        mutation_label = " [baseline]"
+
                     lines.append(f"        {fork_id} --> {pid}_a{idx}")
-                    lines.append(f"        {pid}_a{idx} : #{idx+1}{marker}")
+                    lines.append(f"        {pid}_a{idx} : #{idx+1}{mutation_label}{marker}")
 
                 # Join
                 join_id = f"{pid}_join"
@@ -1762,11 +2531,75 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         first_internal = ward_id
                     last_node = ward_id
 
+            # TURNS (show individual turn progression for multi-turn phases)
+            if has_multi_turns and not has_soundings:  # Don't show turns if soundings handles it
+                lines.append("")
+                lines.append(f"        %% Turn progression")
+                turn_ids = []
+                for t_idx, turn_info in enumerate(detailed_turns):
+                    t_num = turn_info.get('turn_number', t_idx + 1)
+                    has_tools = turn_info.get('has_tool_calls', False)
+                    content_preview = turn_info.get('content_preview', '')
+                    t_id = f"{pid}_t{t_idx}"
+                    turn_ids.append(t_id)
+
+                    # Show turn with tool indicator and content preview
+                    tool_mark = "🔧" if has_tools else ""
+                    # Add short content preview like soundings do with mutations
+                    context_label = ""
+                    if content_preview:
+                        # Truncate and clean for Mermaid
+                        preview = sanitize_label(content_preview, 18)
+                        if preview:
+                            context_label = f" [{preview}]"
+                    lines.append(f"        {t_id} : T{t_num}{context_label} {tool_mark}")
+
+                # Connect turns in sequence
+                if turn_ids:
+                    if last_node:
+                        lines.append(f"        {last_node} --> {turn_ids[0]}")
+                    else:
+                        first_internal = turn_ids[0]
+                    for k in range(len(turn_ids) - 1):
+                        lines.append(f"        {turn_ids[k]} --> {turn_ids[k+1]}")
+                    last_node = turn_ids[-1]
+
+            # ERRORS (show error nodes if errors occurred)
+            if has_errors:
+                lines.append("")
+                lines.append(f"        %% Errors")
+                for e_idx, error_info in enumerate(errors_by_phase[phase_name]):
+                    error_type = error_info.get('error_type', 'error')
+                    error_msg = sanitize_label(error_info.get('message', 'Error'), 25)
+                    e_id = f"{pid}_err{e_idx}"
+
+                    # Different icons for different error types
+                    if error_type == "validation_error":
+                        err_icon = "⚠️"
+                    elif error_type == "schema_validation_failed":
+                        err_icon = "📋❌"
+                    else:
+                        err_icon = "❌"
+
+                    lines.append(f"        {e_id} : {err_icon} {error_msg}")
+
+                    # Errors branch off but don't necessarily block flow
+                    # Connect from last node (error happened during processing)
+                    if last_node:
+                        lines.append(f"        {last_node} --> {e_id}")
+
             # Connect internal flow
             if first_internal:
                 lines.append(f"        [*] --> {first_internal}")
             if last_node:
                 lines.append(f"        {last_node} --> [*]")
+
+            # Apply running style to internal nodes that are currently executing
+            if running_internal_nodes:
+                lines.append("")
+                lines.append("        %% Highlight currently executing internal node")
+                for internal_node_id in running_internal_nodes:
+                    lines.append(f"        class {internal_node_id} running")
 
             lines.append("    }")
 
@@ -1776,21 +2609,307 @@ def generate_state_diagram_string(echo: Echo) -> str:
     # CONNECT PHASES
     # =========================================================================
 
+    # Build phase_name -> pid mapping
+    phase_name_to_pid = {}
+    for phase_entry in phase_entries:
+        content = phase_entry.get("content", "")
+        pname = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+        phase_name_to_pid[pname] = sid(pname)
+
     if first_state is None and phase_ids:
         first_state = phase_ids[0]
         lines.append(f"    [*] --> {first_state}")
     elif first_state and phase_ids:
         lines.append(f"    {first_state} --> {phase_ids[0]}")
 
-    # Phase-to-phase transitions
-    for i in range(len(phase_ids) - 1):
-        lines.append(f"    {phase_ids[i]} --> {phase_ids[i+1]}")
+    # Track which phases were actually executed (from lineage)
+    executed_phases = [item.get("phase") for item in echo.lineage]
 
-    # End state
+    # Phase-to-phase transitions with routing differentiation
+    for i, phase_entry in enumerate(phase_entries):
+        content = phase_entry.get("content", "")
+        phase_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+        pid = phase_ids[i]
+
+        # Check if this phase was blocked
+        if phase_name in blocked_phases:
+            # Add blocked terminal state
+            blocked_id = f"{pid}_blocked"
+            validator = blocked_phases[phase_name].get('validator', 'ward')
+            reason_short = sanitize_label(blocked_phases[phase_name].get('reason', 'blocked')[:20], 20)
+            lines.append(f'    state "{reason_short}" as {blocked_id}')
+            lines.append(f"    {pid} --> {blocked_id} : ⛔ {validator}")
+            # No further transitions from blocked phase
+            continue
+
+        # Get handoffs for this phase
+        phase_handoffs = handoffs_by_phase.get(phase_name, [])
+        routing_target = routing_choices.get(phase_name)
+
+        if phase_handoffs and len(phase_handoffs) > 1:
+            # Multiple handoff options - show routing choices
+            for target in phase_handoffs:
+                target_pid = phase_name_to_pid.get(target)
+                if target_pid:
+                    if routing_target == target:
+                        # This was the taken path - bold arrow with checkmark
+                        lines.append(f"    {pid} --> {target_pid} : ✓ route")
+                    else:
+                        # Available but not taken - note syntax for dashed (Mermaid state diagrams don't support dashed, so we use note)
+                        # Use different notation to indicate not-taken
+                        lines.append(f"    {pid} --> {target_pid} : ○ available")
+        elif phase_handoffs and len(phase_handoffs) == 1:
+            # Single handoff - show taken path
+            target = phase_handoffs[0]
+            target_pid = phase_name_to_pid.get(target)
+            if target_pid:
+                lines.append(f"    {pid} --> {target_pid}")
+        elif i + 1 < len(phase_ids):
+            # Default sequential - connect to next phase
+            lines.append(f"    {phase_ids[i]} --> {phase_ids[i+1]}")
+
+    # =========================================================================
+    # SELF-LOOP ARROWS FOR VALIDATION RETRIES
+    # =========================================================================
+    # Add self-loop arrows for phases that had validation retries (loop_until / max_attempts)
+    lines.append("")
+    lines.append("    %% Validation retry loops")
+    for phase_entry in phase_entries:
+        content = phase_entry.get("content", "")
+        pname = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+        pid = phase_name_to_pid.get(pname)
+
+        if pname in validation_retries and pid:
+            vr = validation_retries[pname]
+            retry_count = vr.get('retry_count', 0)
+            if retry_count > 0:
+                max_attempts = vr.get('max_attempts', retry_count + 1)
+                passed = vr.get('passed', False)
+                loop_status = "✓" if passed else "✗"
+                # Self-loop showing retry behavior
+                lines.append(f"    {pid} --> {pid} : ⟳ retry {retry_count}x {loop_status}")
+
+    # End state - only connect if last phase wasn't blocked
     if phase_ids:
-        lines.append(f"    {phase_ids[-1]} --> [*]")
+        last_phase_entry = phase_entries[-1] if phase_entries else None
+        if last_phase_entry:
+            last_content = last_phase_entry.get("content", "")
+            last_phase_name = last_content.replace("Phase: ", "") if last_content.startswith("Phase: ") else last_content
+            if last_phase_name not in blocked_phases:
+                lines.append(f"    {phase_ids[-1]} --> [*]")
+
+    # =========================================================================
+    # APPLY STYLING CLASSES
+    # =========================================================================
+
+    # Apply running class to running phases (thick green border)
+    if running_phase_ids:
+        lines.append("")
+        lines.append("    %% Apply running style to active phases")
+        for pid in running_phase_ids:
+            lines.append(f"    class {pid} running")
 
     return "\n".join(lines)
+
+
+def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: bool = True) -> Tuple[str, Dict[str, Any]]:
+    """
+    Generate a Mermaid state diagram with companion metadata for interactive debugging.
+
+    Returns:
+        Tuple of (mermaid_string, metadata_dict)
+
+    The metadata dict contains:
+    - node_map: Maps Mermaid node IDs to trace_ids and metadata
+    - session_id: The session this diagram represents
+    - phases: List of phase info with trace_ids
+    - click_handlers: If enabled, adds click callbacks to the Mermaid
+
+    This enables:
+    - Clicking nodes to navigate to log entries
+    - Highlighting nodes dynamically (e.g., for current execution)
+    - Querying logs by trace_id for detailed inspection
+    """
+    history, sub_echoes = flatten_history(echo.history)
+
+    # Build node metadata map
+    node_map: Dict[str, Dict[str, Any]] = {}
+
+    # Helper to create safe state IDs (same as in main function)
+    def sid(name: str) -> str:
+        s = name.replace("-", "_").replace(" ", "_").replace(".", "_")
+        s = s.replace("(", "").replace(")", "").replace(":", "").replace("/", "_")
+        return s
+
+    # Collect phase info with trace_ids
+    phases_info = []
+    for entry in history:
+        if entry.get("node_type") == "phase":
+            content = entry.get("content", "")
+            phase_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+
+            phase_info = {
+                "node_id": pid,
+                "phase_name": phase_name,
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": "phase"
+            }
+            phases_info.append(phase_info)
+            node_map[pid] = phase_info
+
+    # Collect turn info
+    for entry in history:
+        if entry.get("node_type") == "turn":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            turn_number = meta.get("turn_number", 1)
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+            turn_id = f"{pid}_t{turn_number - 1}"
+
+            node_map[turn_id] = {
+                "node_id": turn_id,
+                "phase_name": phase_name,
+                "turn_number": turn_number,
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": "turn"
+            }
+
+    # Collect sounding attempts
+    for entry in history:
+        if entry.get("node_type") == "sounding_attempt":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            sounding_index = meta.get("sounding_index", 0)
+            is_winner = meta.get("is_winner", False)
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+            sounding_id = f"{pid}_a{sounding_index}"
+
+            node_map[sounding_id] = {
+                "node_id": sounding_id,
+                "phase_name": phase_name,
+                "sounding_index": sounding_index,
+                "is_winner": is_winner,
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": "sounding_attempt"
+            }
+
+    # Collect ward info
+    for entry in history:
+        if entry.get("node_type") in ("pre_ward", "post_ward"):
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            validator = meta.get("validator", "check")
+            ward_type = "pre" if entry.get("node_type") == "pre_ward" else "post"
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+            # Ward IDs are indexed, find next available
+            ward_idx = sum(1 for k in node_map if k.startswith(f"{pid}_{ward_type}"))
+            ward_id = f"{pid}_{ward_type}{ward_idx}"
+
+            node_map[ward_id] = {
+                "node_id": ward_id,
+                "phase_name": phase_name,
+                "validator": validator,
+                "ward_type": ward_type,
+                "valid": meta.get("valid"),
+                "mode": meta.get("mode"),
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": entry.get("node_type")
+            }
+
+    # Collect error info
+    for entry in history:
+        if entry.get("node_type") in ("error", "validation_error", "schema_validation_failed"):
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+            err_idx = sum(1 for k in node_map if k.startswith(f"{pid}_err"))
+            err_id = f"{pid}_err{err_idx}"
+
+            node_map[err_id] = {
+                "node_id": err_id,
+                "phase_name": phase_name,
+                "error_type": entry.get("node_type"),
+                "message": entry.get("content", "")[:100],
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": entry.get("node_type")
+            }
+
+    # Collect quartermaster info
+    for entry in history:
+        if entry.get("node_type") == "quartermaster_result":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            trace_id = entry.get("trace_id", "")
+            pid = sid(phase_name)
+            qm_id = f"{pid}_qm"
+
+            node_map[qm_id] = {
+                "node_id": qm_id,
+                "phase_name": phase_name,
+                "selected_tools": meta.get("selected_tackle", []),
+                "reasoning": meta.get("reasoning", ""),
+                "trace_id": trace_id,
+                "parent_id": entry.get("parent_id"),
+                "node_type": "quartermaster"
+            }
+
+    # Generate the base diagram
+    mermaid_str = generate_state_diagram_string(echo)
+
+    # Add click handlers if requested
+    if include_click_handlers:
+        click_lines = ["\n    %% Click handlers for interactive debugging"]
+        for node_id, node_info in node_map.items():
+            trace_id = node_info.get("trace_id", "")
+            if trace_id:
+                # Mermaid click syntax: click nodeId callback or click nodeId "url"
+                # Using callback style for maximum flexibility
+                click_lines.append(f'    click {node_id} call handleNodeClick("{node_id}", "{trace_id}")')
+
+        mermaid_str += "\n".join(click_lines)
+
+    # Get live session state for additional metadata
+    live_state = get_live_session_state(echo.session_id)
+    running_info = None
+    if live_state and live_state.get("status") == "running":
+        running_phase = live_state.get("current_phase")
+        phase_progress = live_state.get("phase_progress")
+        progress_indicator = format_phase_progress_indicator(phase_progress) if phase_progress else ""
+
+        running_info = {
+            "running_phase": running_phase,
+            "phase_progress": phase_progress,
+            "progress_indicator": progress_indicator,
+            "running_internal_node": get_running_internal_node_id(
+                phase_progress,
+                sid(running_phase) if running_phase else ""
+            ) if phase_progress else None
+        }
+
+    # Build metadata structure
+    metadata = {
+        "session_id": echo.session_id,
+        "node_map": node_map,
+        "phases": phases_info,
+        "lineage": echo.lineage,
+        "node_count": len(node_map),
+        "has_click_handlers": include_click_handlers,
+        # Live execution state (null if not running)
+        "running_state": running_info
+    }
+
+    return mermaid_str, metadata
 
 
 def generate_state_diagram(echo: Echo, output_path: str) -> str:
