@@ -668,7 +668,8 @@ Refinement directive: {reforge_config.honing_prompt}
         self.hooks.on_cascade_start(self.config.cascade_id, self.session_id, {
             "depth": self.depth,
             "input": input_data,
-            "parent_session_id": getattr(self, 'parent_session_id', None)
+            "parent_session_id": getattr(self, 'parent_session_id', None),
+            "sounding_index": self.sounding_index,
         })
 
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
@@ -700,7 +701,11 @@ Refinement directive: {reforge_config.honing_prompt}
             self.echo.set_phase_context(phase.name)
 
             # Hook: Phase Start
-            hook_result = self.hooks.on_phase_start(phase.name, {"echo": self.echo, "input": input_data})
+            hook_result = self.hooks.on_phase_start(phase.name, {
+                "echo": self.echo,
+                "input": input_data,
+                "sounding_index": self.current_phase_sounding_index or self.sounding_index,
+            })
 
             # Phase Trace
             phase_trace = self.trace.create_child("phase", phase.name)
@@ -2102,7 +2107,10 @@ Refinement directive: {reforge_config.honing_prompt}
                 self.current_turn_number = i if max_turns > 1 else None
 
                 # Hook: Turn Start
-                hook_result = self.hooks.on_turn_start(phase.name, i, {"echo": self.echo})
+                hook_result = self.hooks.on_turn_start(phase.name, i, {
+                    "echo": self.echo,
+                    "sounding_index": self.current_phase_sounding_index or self.sounding_index,
+                })
                 turn_injection = ""
                 if hook_result.get("action") == HookAction.INJECT:
                     turn_injection = hook_result.get("content")

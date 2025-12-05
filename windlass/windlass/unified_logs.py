@@ -320,7 +320,8 @@ class UnifiedLogger:
                 "tokens_out": cost_data.get("tokens_out", 0),
                 "phase_name": row.get("phase_name"),
                 "cascade_id": row.get("cascade_id"),
-                "sounding_index": row.get("sounding_index")
+                "sounding_index": row.get("sounding_index"),
+                "turn_number": row.get("turn_number"),
             }
 
             print(f"[Cost Worker] Publishing cost_update: session={row.get('session_id')}, phase={row.get('phase_name')}, cost=${cost:.6f}, subscribers={bus.subscriber_count()}")

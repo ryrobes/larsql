@@ -108,18 +108,30 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
     end_time = max(timestamps) if timestamps else None
     duration = (end_time - start_time) if start_time and end_time else 0
 
-    # Calculate total cost
-    total_cost = sum(r.get('cost', 0) or 0 for r in rows)
+    # Calculate total cost - handle NaN values
+    def safe_cost(r):
+        c = r.get('cost')
+        if c is None:
+            return 0
+        try:
+            if isinstance(c, float) and (c != c):  # NaN check
+                return 0
+            return float(c)
+        except:
+            return 0
+
+    total_cost = sum(safe_cost(r) for r in rows)
 
     # Get models used
     models_used = list(set(r.get('model') for r in rows if r.get('model')))
 
-    # Build phases map
+    # Build phases map with comprehensive tracking
     phases_map = {}
     phase_costs = {}
-    sounding_data = {}
+    sounding_data = {}  # phase_name -> {sounding_idx -> {index, is_winner, cost, turns: {turn_num -> cost}}}
     tool_calls_map = {}
     message_counts = {}
+    turn_tracker = {}  # phase_name -> {(sounding_idx, turn_num) -> cost}
 
     for row in rows:
         phase_name = row.get('phase_name')
@@ -150,53 +162,91 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
             sounding_data[phase_name] = {}
             tool_calls_map[phase_name] = []
             message_counts[phase_name] = 0
+            turn_tracker[phase_name] = {}
+
+        node_type = row.get('node_type', '')
+        cost = safe_cost(row)
+        sounding_idx = row.get('sounding_index')
+        turn_num = row.get('turn_number')
 
         # Update phase status based on node_type
-        node_type = row.get('node_type', '')
         if node_type == 'phase_start':
             phases_map[phase_name]['status'] = 'running'
             if row.get('model'):
                 phases_map[phase_name]['model'] = row.get('model')
-        elif node_type in ('phase_complete', 'agent', 'turn_output'):
+        elif node_type == 'phase_complete':
             phases_map[phase_name]['status'] = 'completed'
+            # Extract output from phase_complete result
             content = row.get('content_json')
             if content:
                 try:
                     parsed = json.loads(content) if isinstance(content, str) else content
-                    # Store output snippet regardless of type
                     if parsed:
                         snippet = str(parsed)[:200] if not isinstance(parsed, str) else parsed[:200]
                         if snippet:
                             phases_map[phase_name]['output_snippet'] = snippet
                 except:
-                    # If JSON parsing fails, use raw content
                     if isinstance(content, str) and content:
                         phases_map[phase_name]['output_snippet'] = content[:200]
-        elif node_type == 'error' or 'error' in node_type.lower():
+        elif node_type in ('agent', 'turn_output'):
+            # Don't override completed status, but update output
+            if phases_map[phase_name]['status'] != 'completed':
+                phases_map[phase_name]['status'] = 'running'
+            content = row.get('content_json')
+            if content:
+                try:
+                    parsed = json.loads(content) if isinstance(content, str) else content
+                    if parsed:
+                        snippet = str(parsed)[:200] if not isinstance(parsed, str) else parsed[:200]
+                        if snippet:
+                            phases_map[phase_name]['output_snippet'] = snippet
+                except:
+                    if isinstance(content, str) and content:
+                        phases_map[phase_name]['output_snippet'] = content[:200]
+        elif node_type == 'error' or (node_type and 'error' in node_type.lower()):
             phases_map[phase_name]['status'] = 'error'
             content = row.get('content_json')
             if content:
                 phases_map[phase_name]['error_message'] = str(content)[:200]
 
-        # Track costs
-        cost = row.get('cost', 0) or 0
+        # Track total phase cost
         phase_costs[phase_name] += cost
 
+        # Track turn-level costs (for both sounding and non-sounding phases)
+        if turn_num is not None or cost > 0:
+            turn_key = (sounding_idx, turn_num if turn_num is not None else 0)
+            if turn_key not in turn_tracker[phase_name]:
+                turn_tracker[phase_name][turn_key] = 0.0
+            turn_tracker[phase_name][turn_key] += cost
+
+            # Track max turns
+            actual_turn = turn_num if turn_num is not None else 0
+            phases_map[phase_name]['max_turns_actual'] = max(
+                phases_map[phase_name]['max_turns_actual'],
+                actual_turn + 1
+            )
+
         # Track soundings
-        sounding_idx = row.get('sounding_index')
         if sounding_idx is not None:
             phases_map[phase_name]['has_soundings'] = True
             if sounding_idx not in sounding_data[phase_name]:
                 sounding_data[phase_name][sounding_idx] = {
-                    'index': sounding_idx,
+                    'index': int(sounding_idx),
                     'is_winner': False,
                     'cost': 0.0,
-                    'turns': []
+                    'turn_costs': {}  # turn_num -> cost
                 }
             sounding_data[phase_name][sounding_idx]['cost'] += cost
+
+            # Track per-turn cost within sounding
+            turn_key = turn_num if turn_num is not None else 0
+            if turn_key not in sounding_data[phase_name][sounding_idx]['turn_costs']:
+                sounding_data[phase_name][sounding_idx]['turn_costs'][turn_key] = 0.0
+            sounding_data[phase_name][sounding_idx]['turn_costs'][turn_key] += cost
+
             if row.get('is_winner'):
                 sounding_data[phase_name][sounding_idx]['is_winner'] = True
-                phases_map[phase_name]['sounding_winner'] = sounding_idx
+                phases_map[phase_name]['sounding_winner'] = int(sounding_idx)
 
         # Track tool calls
         tool_calls_json = row.get('tool_calls_json')
@@ -212,21 +262,61 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
             except:
                 pass
 
+        # Also check node_type for tool_call events
+        if node_type == 'tool_call':
+            tool_calls_json = row.get('tool_calls_json')
+            if tool_calls_json:
+                try:
+                    tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
+                    if isinstance(tool_calls, list):
+                        for tc in tool_calls:
+                            if isinstance(tc, dict):
+                                tool_name = tc.get('tool')
+                                if tool_name and tool_name not in tool_calls_map[phase_name]:
+                                    tool_calls_map[phase_name].append(tool_name)
+                except:
+                    pass
+
         # Count messages
-        if node_type in ('agent', 'tool_result', 'user', 'system', 'turn_output'):
+        if node_type in ('agent', 'tool_result', 'tool_call', 'user', 'system', 'turn_output', 'turn_start'):
             message_counts[phase_name] += 1
 
     # Finalize phases
     for phase_name, phase in phases_map.items():
         phase['avg_cost'] = phase_costs.get(phase_name, 0.0)
-        phase['tool_calls'] = tool_calls_map.get(phase_name, [])
+        phase['tool_calls'] = list(set(tool_calls_map.get(phase_name, [])))  # Deduplicate
         phase['message_count'] = message_counts.get(phase_name, 0)
 
-        # Build sounding attempts
-        if phase_name in sounding_data:
-            attempts = list(sounding_data[phase_name].values())
+        # Build sounding attempts with turn breakdown
+        if phase_name in sounding_data and sounding_data[phase_name]:
+            attempts = []
+            for idx, data in sounding_data[phase_name].items():
+                # Convert turn_costs dict to sorted list
+                turns = [
+                    {'turn': int(t), 'cost': c}
+                    for t, c in sorted(data['turn_costs'].items())
+                ]
+                attempts.append({
+                    'index': data['index'],
+                    'is_winner': data['is_winner'],
+                    'cost': data['cost'],
+                    'turns': turns
+                })
             phase['sounding_attempts'] = sorted(attempts, key=lambda x: x['index'])
             phase['sounding_total'] = len(attempts)
+
+        # Build turn_costs for non-sounding phases
+        if phase_name in turn_tracker:
+            # Get turns where sounding_idx is None (non-sounding turns)
+            non_sounding_turns = {
+                t: c for (s, t), c in turn_tracker[phase_name].items()
+                if s is None and c > 0
+            }
+            if non_sounding_turns:
+                phase['turn_costs'] = [
+                    {'turn': int(t), 'cost': c}
+                    for t, c in sorted(non_sounding_turns.items())
+                ]
 
     # Get input data (from first user message with Input Data)
     input_data = {}
@@ -247,18 +337,38 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
             if input_data:
                 break
 
-    # Get final output - look for phase_complete, turn_output, or agent nodes with content
+    # Get "final output" - really the most recent message with content (any type)
+    # This provides a live view of what's happening in the cascade
     final_output = None
     for row in reversed(rows):
-        if row.get('node_type') in ('phase_complete', 'turn_output', 'agent'):
-            content = row.get('content_json')
-            if content:
-                try:
-                    parsed = json.loads(content) if isinstance(content, str) else content
-                    if parsed:
-                        final_output = str(parsed) if not isinstance(parsed, str) else parsed
-                        break
-                except:
+        content = row.get('content_json')
+        node_type = row.get('node_type', '')
+
+        # Skip certain node types that don't have meaningful content
+        if node_type in ('cascade_start', 'cascade_complete', 'cascade_error',
+                         'phase_start', 'turn_start', 'cost_update'):
+            continue
+
+        if content:
+            try:
+                parsed = json.loads(content) if isinstance(content, str) else content
+                if parsed:
+                    # Format based on type for better display
+                    if isinstance(parsed, str):
+                        final_output = parsed
+                    elif isinstance(parsed, dict):
+                        # For tool results, show the result nicely
+                        if 'result' in parsed:
+                            final_output = str(parsed.get('result', parsed))
+                        elif 'error' in parsed:
+                            final_output = f"Error: {parsed.get('error')}"
+                        else:
+                            final_output = str(parsed)
+                    else:
+                        final_output = str(parsed)
+                    break
+            except:
+                if isinstance(content, str) and content.strip():
                     final_output = content
                     break
 
@@ -267,7 +377,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
     error_count = 0
     error_list = []
     for row in rows:
-        if row.get('node_type') == 'error':
+        if row.get('node_type') == 'error' or row.get('node_type') == 'cascade_error':
             error_count += 1
             error_list.append({
                 "phase": row.get('phase_name', 'unknown'),
@@ -1367,9 +1477,7 @@ def event_stream():
 
                         # Feed event into LiveStore for real-time queries
                         try:
-                            processed = live_store_process(event_dict)
-                            if processed:
-                                print(f"[SSE] LiveStore processed: {event_type}")
+                            live_store_process(event_dict)
                         except Exception as ls_err:
                             print(f"[SSE] LiveStore error: {ls_err}")
 

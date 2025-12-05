@@ -21,6 +21,7 @@ import duckdb
 import json
 import time
 import threading
+import numpy as np
 from typing import Optional, Dict, Any, Set, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -84,11 +85,13 @@ class LiveSessionStore:
     """
 
     def __init__(self):
+        import uuid
+        self.store_id = uuid.uuid4().hex[:8]  # Unique identifier for this instance
         self.conn = duckdb.connect(':memory:')
         self.lock = threading.RLock()  # Reentrant lock for nested calls
         self._sessions: Dict[str, SessionInfo] = {}
         self._init_schema()
-        print("[LiveStore] Initialized in-memory DuckDB store")
+        print(f"[LiveStore] Initialized in-memory DuckDB store (id={self.store_id})")
 
     def _init_schema(self):
         """Create in-memory table matching unified_logs schema exactly."""
@@ -184,6 +187,9 @@ class LiveSessionStore:
                     f"INSERT INTO live_logs ({col_names}) VALUES ({placeholders})",
                     values
                 )
+                # Debug: log cost insertions
+                if row.get('cost') and row.get('cost') > 0:
+                    print(f"[LiveStore] Inserted row with cost: session={session_id}, node_type={row.get('node_type')}, phase={row.get('phase_name')}, cost={row.get('cost')}")
             except Exception as e:
                 print(f"[LiveStore] Insert error: {e}")
                 print(f"[LiveStore] Row: {row}")
@@ -197,7 +203,8 @@ class LiveSessionStore:
                     tokens_in: int = None, tokens_out: int = None,
                     request_id: str = None,
                     session_id: str = None, phase_name: str = None,
-                    sounding_index: int = None, cascade_id: str = None):
+                    sounding_index: int = None, cascade_id: str = None,
+                    turn_number: int = None):
         """Update cost for existing entry or INSERT a cost record.
 
         First tries to UPDATE existing rows by trace_id.
@@ -233,14 +240,18 @@ class LiveSessionStore:
             # First try: UPDATE by trace_id if we have one
             if trace_id:
                 try:
-                    values_with_id = values + [trace_id]
-                    self.conn.execute(
-                        f"UPDATE live_logs SET {', '.join(updates)} WHERE trace_id = ?",
-                        values_with_id
-                    )
-                    affected = self.conn.execute("SELECT changes()").fetchone()[0]
+                    # Check if row exists first (DuckDB doesn't have changes() function)
+                    exists = self.conn.execute(
+                        "SELECT COUNT(*) FROM live_logs WHERE trace_id = ?",
+                        [trace_id]
+                    ).fetchone()[0]
 
-                    if affected > 0:
+                    if exists > 0:
+                        values_with_id = values + [trace_id]
+                        self.conn.execute(
+                            f"UPDATE live_logs SET {', '.join(updates)} WHERE trace_id = ?",
+                            values_with_id
+                        )
                         print(f"[LiveStore] Updated cost for trace {trace_id[:16]}...: ${cost:.6f}" if cost else f"[LiveStore] Updated trace {trace_id[:16]}...")
                         return True
                 except Exception as e:
@@ -258,16 +269,19 @@ class LiveSessionStore:
                         'phase_name': phase_name,
                         'cascade_id': cascade_id,
                         'sounding_index': sounding_index,
+                        'turn_number': turn_number,
                         'cost': cost,
                         'tokens_in': tokens_in or 0,
                         'tokens_out': tokens_out or 0,
                         'total_tokens': (tokens_in or 0) + (tokens_out or 0),
                         'request_id': request_id,
                     })
-                    print(f"[LiveStore] Inserted cost row: ${cost:.6f} for session {session_id}, phase {phase_name}")
+
                     return True
                 except Exception as e:
                     print(f"[LiveStore] Insert cost error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return False
 
             return False
@@ -300,9 +314,19 @@ class LiveSessionStore:
                     "SELECT * FROM live_logs WHERE session_id = ? ORDER BY timestamp",
                     [session_id]
                 ).fetchdf()
-                return df.to_dict('records') if not df.empty else []
+
+                if df.empty:
+                    print(f"[LiveStore] get_session_data({session_id}): empty dataframe")
+                    return []
+
+                # Replace pandas NaN with None for cleaner handling
+                df = df.replace({np.nan: None})
+
+                return df.to_dict('records')
             except Exception as e:
                 print(f"[LiveStore] get_session_data error: {e}")
+                import traceback
+                traceback.print_exc()
                 return []
 
     def get_row_count(self, session_id: str) -> int:
@@ -488,7 +512,8 @@ def process_event(event: Dict[str, Any]) -> bool:
             'parent_id': data.get('parent_id'),
             'node_type': 'turn_start',
             'phase_name': data.get('phase_name'),
-            'turn_number': data.get('turn_number'),
+            'cascade_id': data.get('cascade_id'),
+            'turn_number': data.get('turn_number') or data.get('turn_index'),  # Handle both field names
             'sounding_index': data.get('sounding_index'),
         })
         return True
@@ -501,15 +526,19 @@ def process_event(event: Dict[str, Any]) -> bool:
             'parent_id': data.get('parent_id'),
             'node_type': 'tool_call',
             'phase_name': data.get('phase_name'),
+            'cascade_id': data.get('cascade_id'),
             'tool_calls_json': json.dumps([{
                 'tool': data.get('tool_name'),
-                'arguments': data.get('arguments')
+                'arguments': data.get('arguments') or data.get('args')
             }]) if data.get('tool_name') else None,
             'sounding_index': data.get('sounding_index'),
+            'turn_number': data.get('turn_number'),
         })
         return True
 
     elif event_type == 'tool_result':
+        # Get result content - try both 'result' and 'result_preview'
+        result = data.get('result') or data.get('result_preview')
         store.insert({
             'timestamp': ts,
             'session_id': session_id,
@@ -517,14 +546,16 @@ def process_event(event: Dict[str, Any]) -> bool:
             'parent_id': data.get('parent_id'),
             'node_type': 'tool_result',
             'phase_name': data.get('phase_name'),
-            'content_json': json.dumps(data.get('result')) if data.get('result') else None,
+            'cascade_id': data.get('cascade_id'),
+            'content_json': json.dumps(result) if result else None,
             'sounding_index': data.get('sounding_index'),
+            'turn_number': data.get('turn_number'),
         })
         return True
 
     elif event_type == 'cost_update':
         # UPDATE existing row or INSERT a cost record
-        print(f"[LiveStore] Received cost_update event: session={session_id}, phase={data.get('phase_name')}, cost={data.get('cost')}")
+        cost_val = data.get('cost')
         success = store.update_cost(
             trace_id=data.get('trace_id'),
             cost=data.get('cost'),
@@ -535,9 +566,9 @@ def process_event(event: Dict[str, Any]) -> bool:
             session_id=session_id,
             phase_name=data.get('phase_name'),
             sounding_index=data.get('sounding_index'),
-            cascade_id=data.get('cascade_id')
+            cascade_id=data.get('cascade_id'),
+            turn_number=data.get('turn_number'),
         )
-        print(f"[LiveStore] cost_update processed: success={success}")
         return success
 
     elif event_type == 'cascade_complete':

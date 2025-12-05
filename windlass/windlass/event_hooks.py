@@ -1,5 +1,7 @@
 """
 Event Publishing Hooks - Publishes lifecycle events to the event bus
+
+Enhanced to include sounding/turn context for proper UI rendering.
 """
 from datetime import datetime
 from typing import Any
@@ -10,12 +12,31 @@ class EventPublishingHooks(WindlassHooks):
     """
     Hooks implementation that publishes all lifecycle events to the event bus.
     Can be used standalone or combined with other hooks via CompositeHooks.
+
+    Tracks sounding and turn context for proper phase bar visualization.
     """
 
     def __init__(self):
         self.bus = get_event_bus()
+        # Track current context for events that don't receive full context
+        self._current_sounding_index = None
+        self._current_turn_number = None
+        self._current_cascade_id = None
+
+    def _get_echo_context(self, context: dict) -> dict:
+        """Extract useful context from echo if available."""
+        echo = context.get("echo")
+        if not echo:
+            return {}
+
+        return {
+            "cascade_id": getattr(echo, "_cascade_id", None) or self._current_cascade_id,
+        }
 
     def on_cascade_start(self, cascade_id: str, session_id: str, context: dict) -> dict:
+        self._current_cascade_id = cascade_id
+        self._current_sounding_index = context.get("sounding_index")
+
         self.bus.publish(Event(
             type="cascade_start",
             session_id=session_id,
@@ -23,7 +44,8 @@ class EventPublishingHooks(WindlassHooks):
             data={
                 "cascade_id": cascade_id,
                 "depth": context.get("depth", 0),
-                "parent_session_id": context.get("parent_session_id")
+                "parent_session_id": context.get("parent_session_id"),
+                "sounding_index": context.get("sounding_index"),
             }
         ))
         return {"action": HookAction.CONTINUE}
@@ -35,7 +57,8 @@ class EventPublishingHooks(WindlassHooks):
             timestamp=datetime.now().isoformat(),
             data={
                 "cascade_id": cascade_id,
-                "result": result
+                "result": result,
+                "sounding_index": self._current_sounding_index,
             }
         ))
         return {"action": HookAction.CONTINUE}
@@ -48,44 +71,71 @@ class EventPublishingHooks(WindlassHooks):
             data={
                 "cascade_id": cascade_id,
                 "error": str(error),
-                "error_type": type(error).__name__
+                "error_type": type(error).__name__,
+                "sounding_index": self._current_sounding_index,
             }
         ))
         return {"action": HookAction.CONTINUE}
 
     def on_phase_start(self, phase_name: str, context: dict) -> dict:
-        session_id = context.get("echo").session_id if context.get("echo") else "unknown"
+        echo = context.get("echo")
+        session_id = echo.session_id if echo else "unknown"
+
+        # Extract sounding context if available
+        sounding_index = context.get("sounding_index") or self._current_sounding_index
+        if sounding_index is not None:
+            self._current_sounding_index = sounding_index
+
         self.bus.publish(Event(
             type="phase_start",
             session_id=session_id,
             timestamp=datetime.now().isoformat(),
             data={
-                "phase_name": phase_name
+                "phase_name": phase_name,
+                "cascade_id": self._current_cascade_id,
+                "sounding_index": sounding_index,
             }
         ))
         return {"action": HookAction.CONTINUE}
 
     def on_phase_complete(self, phase_name: str, session_id: str, result: dict) -> dict:
+        # Extract is_winner from result if available
+        is_winner = result.get("is_winner") if isinstance(result, dict) else None
+
         self.bus.publish(Event(
             type="phase_complete",
             session_id=session_id,
             timestamp=datetime.now().isoformat(),
             data={
                 "phase_name": phase_name,
-                "result": result
+                "result": result,
+                "cascade_id": self._current_cascade_id,
+                "sounding_index": self._current_sounding_index,
+                "is_winner": is_winner,
             }
         ))
         return {"action": HookAction.CONTINUE}
 
     def on_turn_start(self, phase_name: str, turn_index: int, context: dict) -> dict:
-        session_id = context.get("echo").session_id if context.get("echo") else "unknown"
+        echo = context.get("echo")
+        session_id = echo.session_id if echo else "unknown"
+
+        # Track turn number
+        self._current_turn_number = turn_index
+
+        # Extract sounding context
+        sounding_index = context.get("sounding_index") or self._current_sounding_index
+
         self.bus.publish(Event(
             type="turn_start",
             session_id=session_id,
             timestamp=datetime.now().isoformat(),
             data={
                 "phase_name": phase_name,
-                "turn_index": turn_index
+                "turn_number": turn_index,  # Use turn_number for consistency
+                "turn_index": turn_index,   # Keep for backward compat
+                "cascade_id": self._current_cascade_id,
+                "sounding_index": sounding_index,
             }
         ))
         return {"action": HookAction.CONTINUE}
@@ -98,7 +148,10 @@ class EventPublishingHooks(WindlassHooks):
             data={
                 "tool_name": tool_name,
                 "phase_name": phase_name,
-                "args": args
+                "args": args,
+                "cascade_id": self._current_cascade_id,
+                "sounding_index": self._current_sounding_index,
+                "turn_number": self._current_turn_number,
             }
         ))
         return {"action": HookAction.CONTINUE}
@@ -114,7 +167,11 @@ class EventPublishingHooks(WindlassHooks):
             data={
                 "tool_name": tool_name,
                 "phase_name": phase_name,
-                "result_preview": result_str
+                "result_preview": result_str,
+                "result": result_str,  # Also include as 'result' for consistency
+                "cascade_id": self._current_cascade_id,
+                "sounding_index": self._current_sounding_index,
+                "turn_number": self._current_turn_number,
             }
         ))
         return {"action": HookAction.CONTINUE}

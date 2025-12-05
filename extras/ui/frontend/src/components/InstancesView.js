@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
@@ -7,6 +7,49 @@ import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
 import VideoSpinner from './VideoSpinner';
 import './InstancesView.css';
+
+// Live duration counter that updates every second for running instances
+function LiveDuration({ startTime, isRunning, staticDuration }) {
+  const [elapsed, setElapsed] = useState(0);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isRunning && startTime) {
+      // Calculate initial elapsed time
+      const start = new Date(startTime).getTime();
+      const updateElapsed = () => {
+        const now = Date.now();
+        setElapsed((now - start) / 1000);
+      };
+
+      updateElapsed();
+      intervalRef.current = setInterval(updateElapsed, 1000);
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    } else {
+      // Not running, use static duration
+      setElapsed(staticDuration || 0);
+    }
+  }, [isRunning, startTime, staticDuration]);
+
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds < 0) return '0.0s';
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}m ${secs}s`;
+  };
+
+  return (
+    <span className={isRunning ? 'live-duration' : ''}>
+      {formatDuration(elapsed)}
+    </span>
+  );
+}
 
 function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sseConnected }) {
   const [instances, setInstances] = useState([]);
@@ -359,7 +402,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
 
           {instance.input_data && Object.keys(instance.input_data).length > 0 && (
             <div className="input-params">
-              <span className="input-label">Inputs:</span>
+              {/* <span className="input-label">Inputs:</span> */}
               <div className="input-fields">
                 {Object.entries(instance.input_data).map(([key, value]) => (
                   <div key={key} className="input-field-display">
@@ -427,7 +470,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
           {/* Final Output */}
           {instance.final_output && (
             <div className="final-output">
-              <div className="final-output-label">Final Output:</div>
+              {/* <div className="final-output-label">Final Output:</div> */}
               <div className="final-output-content">
                 <ReactMarkdown>{instance.final_output}</ReactMarkdown>
               </div>
@@ -446,7 +489,11 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
         <div className="instance-metrics">
           <div className="metric">
             <span className="metric-value">
-              {formatDuration(instance.duration_seconds)}
+              <LiveDuration
+                startTime={instance.start_time}
+                isRunning={isSessionRunning || isFinalizing}
+                staticDuration={instance.duration_seconds}
+              />
             </span>
             <span className="metric-label">duration</span>
           </div>

@@ -793,3 +793,14 @@
     flex: 0 0 auto;
   }
 }
+
+/* Live duration animation for running instances */
+.live-duration {
+  color: #fbbf24;
+  animation: pulse-duration 2s ease-in-out infinite;
+}
+
+@keyframes pulse-duration {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
