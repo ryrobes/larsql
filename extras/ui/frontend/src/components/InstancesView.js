@@ -84,7 +84,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     const interval = setInterval(() => {
       console.log('[POLL] Refreshing instances (active sessions:', activeSessions.size, ')');
       fetchInstances();
-    }, 2000); // Poll every 2 seconds when sessions are active
+    }, 1500); // Poll every 1.5 seconds when sessions are active (throttled for CPU)
 
     return () => {
       console.log('[POLL] Cleaning up polling interval');

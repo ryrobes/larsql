@@ -7,7 +7,7 @@
   },
   "phases": [{
     "name": "create_and_refine_chart",
-    "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nUse the create_chart tool to generate an initial visualization.\n\nAfter seeing the chart, describe what you observe and any improvements you'd suggest.",
+    "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nUse the create_chart tool to generate an initial visualization.\n\nAfter seeing the chart, describe what you observe and any improvements you'd suggest. Please be creative and style them for a dark mode system.",
     "tackle": ["create_vega_lite", "create_plotly"],
     "soundings": {
       "factor": 3,

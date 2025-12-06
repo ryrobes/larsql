@@ -78,7 +78,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
     const interval = setInterval(() => {
       console.log('[POLL] Refreshing cascade list (active cascades detected)');
       fetchCascades();
-    }, 2000); // Poll every 2 seconds when cascades are active
+    }, 1500); // Poll every 1.5 seconds when cascades are active
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,7 +132,8 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
       // Try to get actual mermaid dimensions
       if (hasRuns && cascade.has_mermaid && cascade.latest_session_id) {
         try {
-          const response = await fetch(`http://localhost:5001/api/mermaid/${cascade.latest_session_id}`);
+          // Skip metadata query for faster layout calculation (just need diagram)
+          const response = await fetch(`http://localhost:5001/api/mermaid/${cascade.latest_session_id}?include_metadata=false`);
           if (response.ok) {
             const data = await response.json();
             // Render mermaid to get actual SVG dimensions

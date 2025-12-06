@@ -39,7 +39,7 @@ function ImageGallery({ sessionId, isRunning, refreshTrigger }) {
 
     const pollInterval = setInterval(() => {
       fetchImages();
-    }, 2000); // Poll every 2 seconds
+    }, 1500); // Poll every 1.5 seconds
 
     return () => clearInterval(pollInterval);
   }, [isRunning, sessionId, fetchImages]);

@@ -85,6 +85,17 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
       const lastEntryInPhase = phase.entries[phase.entries.length - 1];
       const hasError = phase.entries.some(e => e.node_type === 'error');
 
+      // Handle content that might be string, object, or array
+      let outputSnippet = '';
+      if (lastEntryInPhase?.content) {
+        const content = lastEntryInPhase.content;
+        if (typeof content === 'string') {
+          outputSnippet = content.substring(0, 100);
+        } else {
+          outputSnippet = JSON.stringify(content).substring(0, 100);
+        }
+      }
+
       return {
         name: phase.name,
         status: hasError ? 'error' : (phase.entries.length > 0 ? 'completed' : 'pending'),
@@ -94,7 +105,7 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
         sounding_attempts: Array.from(phase.soundingAttempts.values()),
         tool_calls: Array.from(phase.toolCalls),
         ward_count: phase.wardCount,
-        output_snippet: lastEntryInPhase?.content?.substring(0, 100) || ''
+        output_snippet: outputSnippet
       };
     });
 
@@ -181,7 +192,7 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
     if (isRunning) {
       const interval = setInterval(() => {
         fetchData();
-      }, 2000);
+      }, 1500); // Poll every 1.5 seconds for live updates
       return () => clearInterval(interval);
     }
   }, [isRunning, fetchData]);

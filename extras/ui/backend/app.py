@@ -33,6 +33,12 @@ _connection_lock = threading.Lock()
 _open_connections = 0
 _total_connections_created = 0
 
+# File-based DuckDB cache for better performance
+import time
+_db_cache_file = '/tmp/windlass_ui_cache.duckdb'
+_db_cache_mtime = 0
+_db_cache_refresh_interval = 30  # Refresh every 30 seconds
+
 
 def sanitize_for_json(obj):
     """Recursively sanitize an object for JSON serialization.
@@ -72,20 +78,12 @@ class LoggingConnectionWrapper:
     def __init__(self, conn):
         self._conn = conn
         self._query_count = 0
+        self._total_time = 0.0
+        self._verbose = os.getenv('WINDLASS_SQL_VERBOSE', 'false').lower() == 'true'
 
     def execute(self, query, params=None):
         """Execute query with logging."""
         self._query_count += 1
-        query_num = self._query_count
-
-        # Truncate long queries for readability
-        query_preview = str(query).strip().replace('\n', ' ')[:200]
-        if len(str(query).strip()) > 200:
-            query_preview += '...'
-
-        print(f"[SQL #{query_num}] {query_preview}")
-        if params:
-            print(f"[SQL #{query_num}]   params: {params}")
 
         try:
             import time
@@ -95,10 +93,22 @@ class LoggingConnectionWrapper:
             else:
                 result = self._conn.execute(query)
             elapsed = time.time() - start
-            print(f"[SQL #{query_num}]   ✓ {elapsed*1000:.1f}ms")
+            self._total_time += elapsed
+
+            # Only log individual queries if verbose mode is enabled
+            if self._verbose:
+                query_preview = str(query).strip().replace('\n', ' ')[:200]
+                if len(str(query).strip()) > 200:
+                    query_preview += '...'
+                print(f"[SQL #{self._query_count}] {query_preview} ✓ {elapsed*1000:.1f}ms")
+                if params:
+                    print(f"[SQL #{self._query_count}]   params: {params}")
+
             return result
         except Exception as e:
-            print(f"[SQL #{query_num}]   ✗ Error: {e}")
+            query_preview = str(query).strip().replace('\n', ' ')[:200]
+            print(f"[SQL #{self._query_count}] ✗ Error: {e}")
+            print(f"[SQL #{self._query_count}]   Query: {query_preview}")
             raise
 
     def close(self):
@@ -107,7 +117,10 @@ class LoggingConnectionWrapper:
         with _connection_lock:
             _open_connections -= 1
             open_count = _open_connections
-        print(f"[DB] Closing connection (executed {self._query_count} queries, {open_count} still open)")
+
+        # Always show summary (not verbose)
+        avg_time = (self._total_time / self._query_count * 1000) if self._query_count > 0 else 0
+        print(f"[DB] Closed connection: {self._query_count} queries, {self._total_time*1000:.1f}ms total, {avg_time:.1f}ms avg ({open_count} still open)")
         self._conn.close()
 
     def __getattr__(self, name):
@@ -115,11 +128,53 @@ class LoggingConnectionWrapper:
         return getattr(self._conn, name)
 
 
-def get_db_connection():
-    """Create a new DuckDB connection to query unified mega-table logs from Parquet files.
+def _refresh_cache_if_needed():
+    """Refresh the file-based cache if it's stale."""
+    global _db_cache_mtime
 
-    NOTE: Each request gets its own connection because DuckDB connections are NOT thread-safe.
-    This is less efficient (re-loads parquet files each time) but avoids race conditions and segfaults.
+    current_time = time.time()
+
+    # Check if cache needs refresh
+    if current_time - _db_cache_mtime < _db_cache_refresh_interval:
+        return  # Cache is fresh
+
+    print(f"[CACHE] Refreshing DuckDB cache at {_db_cache_file}")
+
+    # Create/update cache database
+    cache_conn = duckdb.connect(database=_db_cache_file)
+
+    try:
+        if os.path.exists(DATA_DIR):
+            data_files = glob.glob(f"{DATA_DIR}/*.parquet")
+            if data_files:
+                print(f"[CACHE] Loading {len(data_files)} parquet files into cache")
+                files_str = "', '".join(data_files)
+                # Create a materialized table (not a view) for better read performance
+                cache_conn.execute("DROP TABLE IF EXISTS logs")
+                cache_conn.execute(f"""
+                    CREATE TABLE logs AS
+                    SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)
+                """)
+                print(f"[CACHE] Cache refreshed successfully")
+            else:
+                print(f"[WARN] No parquet files found in {DATA_DIR}")
+        else:
+            print(f"[WARN] DATA_DIR does not exist: {DATA_DIR}")
+    finally:
+        cache_conn.close()
+
+    _db_cache_mtime = current_time
+
+
+def get_db_connection():
+    """Create a read-only DuckDB connection to the cached database.
+
+    Uses a file-based cache that's refreshed every 30 seconds. This allows:
+    - Multiple concurrent read-only connections (thread-safe)
+    - Faster queries (parquet data cached in DuckDB format)
+    - No repeated parquet loading
+
+    Falls back to in-memory if cache doesn't exist yet.
     """
     global _open_connections, _total_connections_created
     with _connection_lock:
@@ -128,25 +183,28 @@ def get_db_connection():
         open_count = _open_connections
         total_count = _total_connections_created
 
-    print(f"[DB] Creating connection #{total_count} (now {open_count} open)")
+        # Refresh cache if needed (thread-safe - lock held)
+        _refresh_cache_if_needed()
+
+    # Try to use cached file database (read-only)
+    if os.path.exists(_db_cache_file):
+        print(f"[DB] Creating read-only connection #{total_count} to cache (now {open_count} open)")
+        conn = duckdb.connect(database=_db_cache_file, read_only=True)
+        return LoggingConnectionWrapper(conn)
+
+    # Fallback to in-memory (shouldn't happen after first cache refresh)
+    print(f"[DB] Cache miss - creating in-memory connection #{total_count} (now {open_count} open)")
     conn = duckdb.connect(database=':memory:')
 
-    # Load unified logs from DATA_DIR
     if os.path.exists(DATA_DIR):
         data_files = glob.glob(f"{DATA_DIR}/*.parquet")
         if data_files:
-            print(f"[DB] Loading {len(data_files)} parquet files from {DATA_DIR}")
+            print(f"[DB] Loading {len(data_files)} parquet files (fallback mode)")
             files_str = "', '".join(data_files)
             query = f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)"
             conn.execute(query)
-            # Wrap the connection for logging
-            return LoggingConnectionWrapper(conn)
-        else:
-            print(f"[WARN] No parquet files found in {DATA_DIR}")
-            return LoggingConnectionWrapper(conn)
-    else:
-        print(f"[WARN] DATA_DIR does not exist: {DATA_DIR}")
-        return LoggingConnectionWrapper(conn)
+
+    return LoggingConnectionWrapper(conn)
 
 
 def get_available_columns(conn):
@@ -617,6 +675,58 @@ def get_cascade_definitions():
 
             result = conn.execute(query).fetchall()
 
+            # BATCH QUERY 1: Get ALL phase metrics for ALL cascades at once
+            phase_metrics_by_cascade = {}
+            try:
+                phase_query = """
+                SELECT
+                    cascade_id,
+                    phase_name,
+                    AVG(cost) as avg_cost
+                FROM logs
+                WHERE cascade_id IS NOT NULL AND cascade_id != ''
+                  AND phase_name IS NOT NULL
+                  AND cost IS NOT NULL AND cost > 0
+                GROUP BY cascade_id, phase_name
+                """
+                phase_results = conn.execute(phase_query).fetchall()
+
+                # Group by cascade_id
+                for cascade_id, phase_name, avg_cost in phase_results:
+                    if cascade_id not in phase_metrics_by_cascade:
+                        phase_metrics_by_cascade[cascade_id] = {}
+                    phase_metrics_by_cascade[cascade_id][phase_name] = float(avg_cost) if avg_cost else 0.0
+            except Exception as e:
+                print(f"[ERROR] Batch phase metrics query failed: {e}")
+
+            # BATCH QUERY 2: Get latest session for ALL cascades at once
+            latest_sessions_by_cascade = {}
+            try:
+                latest_session_query = """
+                WITH ranked_sessions AS (
+                    SELECT
+                        cascade_id,
+                        session_id,
+                        MAX(timestamp) as latest_time,
+                        ROW_NUMBER() OVER (PARTITION BY cascade_id ORDER BY MAX(timestamp) DESC) as rn
+                    FROM logs
+                    WHERE cascade_id IS NOT NULL AND cascade_id != ''
+                      AND (parent_session_id IS NULL OR parent_session_id = '')
+                    GROUP BY cascade_id, session_id
+                )
+                SELECT cascade_id, session_id
+                FROM ranked_sessions
+                WHERE rn = 1
+                """
+                latest_results = conn.execute(latest_session_query).fetchall()
+
+                # Map cascade_id -> latest_session_id
+                for cascade_id, session_id in latest_results:
+                    latest_sessions_by_cascade[cascade_id] = session_id
+            except Exception as e:
+                print(f"[ERROR] Batch latest sessions query failed: {e}")
+
+            # Now process results with pre-fetched data (NO queries in loop!)
             for row in result:
                 cascade_id, run_count, avg_duration, min_duration, max_duration, total_cost = row
 
@@ -629,64 +739,39 @@ def get_cascade_definitions():
                         'max_duration_seconds': float(max_duration) if max_duration else 0.0,
                     }
 
-                    # Get phase-level metrics
-                    try:
-                        phase_query = """
-                        SELECT
-                            phase_name,
-                            AVG(cost) as avg_cost
-                        FROM logs
-                        WHERE cascade_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                        GROUP BY phase_name
-                        """
-                        phase_metrics = conn.execute(phase_query, [cascade_id]).fetchall()
-
+                    # Apply phase metrics from batch query
+                    if cascade_id in phase_metrics_by_cascade:
+                        phase_costs = phase_metrics_by_cascade[cascade_id]
                         for phase in all_cascades[cascade_id]['phases']:
-                            for p_name, p_cost in phase_metrics:
-                                if p_name == phase['name']:
-                                    phase['avg_cost'] = float(p_cost) if p_cost else 0.0
-                    except Exception as e:
-                        print(f"[ERROR] Phase metrics query failed: {e}")
+                            if phase['name'] in phase_costs:
+                                phase['avg_cost'] = phase_costs[phase['name']]
 
-                    # Get latest session_id for this cascade to find mermaid diagram
-                    try:
-                        latest_session_query = """
-                        SELECT session_id, MAX(timestamp) as latest_time
-                        FROM logs
-                        WHERE cascade_id = ? AND (parent_session_id IS NULL OR parent_session_id = '')
-                        GROUP BY session_id
-                        ORDER BY latest_time DESC
-                        LIMIT 1
-                        """
-                        latest_result = conn.execute(latest_session_query, [cascade_id]).fetchone()
+                    # Get latest session from batch query
+                    if cascade_id in latest_sessions_by_cascade:
+                        latest_session_id = latest_sessions_by_cascade[cascade_id]
+                        all_cascades[cascade_id]['latest_session_id'] = latest_session_id
 
-                        if latest_result:
-                            latest_session_id = latest_result[0]
-                            all_cascades[cascade_id]['latest_session_id'] = latest_session_id
+                        # Check for mermaid and graph files
+                        mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
+                        graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
 
-                            # Check for mermaid and graph files
-                            mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
-                            graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
+                        all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
+                        all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
 
-                            all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
-                            all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
-
-                            # Load graph JSON for complexity calculation
-                            if os.path.exists(graph_json_path):
-                                try:
-                                    with open(graph_json_path) as gf:
-                                        graph_data = json.load(gf)
-                                        summary = graph_data.get('summary', {})
-                                        all_cascades[cascade_id]['graph_complexity'] = {
-                                            'total_nodes': summary.get('total_nodes', 0),
-                                            'total_phases': summary.get('total_phases', 0),
-                                            'has_soundings': summary.get('has_soundings', False),
-                                            'has_sub_cascades': summary.get('has_sub_cascades', False),
-                                        }
-                                except:
-                                    all_cascades[cascade_id]['graph_complexity'] = None
-                    except Exception as e:
-                        print(f"[ERROR] Failed to get latest session/graph: {e}")
+                        # Load graph JSON for complexity calculation
+                        if os.path.exists(graph_json_path):
+                            try:
+                                with open(graph_json_path) as gf:
+                                    graph_data = json.load(gf)
+                                    summary = graph_data.get('summary', {})
+                                    all_cascades[cascade_id]['graph_complexity'] = {
+                                        'total_nodes': summary.get('total_nodes', 0),
+                                        'total_phases': summary.get('total_phases', 0),
+                                        'has_soundings': summary.get('has_soundings', False),
+                                        'has_sub_cascades': summary.get('has_sub_cascades', False),
+                                    }
+                            except:
+                                all_cascades[cascade_id]['graph_complexity'] = None
 
         except Exception as e:
             print(f"No log data available: {e}")
@@ -811,6 +896,32 @@ def get_cascade_instances(cascade_id):
         """
         session_results = conn.execute(sessions_query, [cascade_id]).fetchall()
 
+        # BATCH QUERIES: Get all data for all sessions at once to avoid N+1 problem
+        # TODO: This endpoint currently does ~142 queries (10-15 per session × ~10 sessions)
+        # Batching all queries would reduce it to ~10-12 total queries
+        # Current partial optimization: models batched (saves ~10 queries)
+        # Still needed: input_data, phase_costs, turn_costs, tool_usage, soundings, messages, phases, output, errors
+        session_ids = [row[0] for row in session_results if row[0] not in live_session_ids]
+
+        # Batch 1: Get models for all sessions
+        models_by_session = {}
+        if has_model and session_ids:
+            try:
+                models_query = """
+                SELECT session_id, model
+                FROM logs
+                WHERE session_id IN ({})
+                  AND model IS NOT NULL AND model != ''
+                GROUP BY session_id, model
+                """.format(','.join('?' * len(session_ids)))
+                model_results = conn.execute(models_query, session_ids).fetchall()
+                for sid, model in model_results:
+                    if sid not in models_by_session:
+                        models_by_session[sid] = []
+                    models_by_session[sid].append(model)
+            except Exception as e:
+                print(f"[ERROR] Batch models query: {e}")
+
         instances = []
         for session_row in session_results:
             session_id, session_cascade_id, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
@@ -820,18 +931,8 @@ def get_cascade_instances(cascade_id):
                 #print(f"[API] Skipping session {session_id} from SQL (already in LiveStore)")
                 continue
 
-            # Get models used in this session
-            models_used = []
-            if has_model:
-                try:
-                    models_query = """
-                    SELECT DISTINCT model FROM logs
-                    WHERE session_id = ? AND model IS NOT NULL AND model != ''
-                    """
-                    model_results = conn.execute(models_query, [session_id]).fetchall()
-                    models_used = [m[0] for m in model_results if m[0]]
-                except:
-                    pass
+            # Get models from batch query
+            models_used = models_by_session.get(session_id, [])
 
             # Get input data from first user message with "## Input Data:"
             input_data = {}
@@ -1426,13 +1527,20 @@ def get_mermaid_graph(session_id):
     The .mmd file is written synchronously on every update by WindlassRunner._update_graph(),
     while database logging is buffered (100 messages or 10 seconds). For live updates during
     cascade execution, the file is always more current.
+
+    Query params:
+        ?include_metadata=true - Include metadata query (slower, only needed for detail views)
     """
     try:
-        conn = get_db_connection()
+        # Check if caller wants metadata (default: false for performance)
+        # Only the detailed debug modal needs metadata, tiles/layout don't
+        include_metadata = request.args.get('include_metadata', 'false').lower() == 'true'
+
         mermaid_content = None
         source = None
 
         # PRIORITY 1: Check file first (synchronous writes, always up-to-date)
+        # Do this BEFORE creating DB connection to avoid unnecessary connections
         mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
         if os.path.exists(mermaid_path):
             try:
@@ -1445,7 +1553,9 @@ def get_mermaid_graph(session_id):
                 print(f"[MERMAID] File read error: {file_err}")
 
         # PRIORITY 2: Fall back to database only if file doesn't exist or is empty
+        # Only create DB connection if we actually need it
         if not mermaid_content:
+            conn = get_db_connection()
             columns = get_available_columns(conn)
             if 'mermaid_content' in columns:
                 print(f"[MERMAID] No file found, checking database for session: {session_id}")
@@ -1476,37 +1586,55 @@ def get_mermaid_graph(session_id):
                     print(f"[MERMAID] GRAPH_DIR does not exist: {GRAPH_DIR}")
             except Exception as list_err:
                 print(f"[MERMAID] Error listing graph dir: {list_err}")
-            conn.close()
+            # Only close connection if we created one
+            if 'conn' in locals():
+                conn.close()
             return jsonify({'error': 'Mermaid graph not found'}), 404
 
-        # Get session metadata from Parquet
+        # Get session metadata from Parquet (only if requested)
+        metadata = None
+        if include_metadata:
+            # Only create connection if we haven't already (file-only path doesn't need DB)
+            conn_created_here = False
+            if 'conn' not in locals():
+                conn = get_db_connection()
+                conn_created_here = True
 
-        try:
-            metadata_query = """
-            SELECT
-                cascade_id,
-                MIN(timestamp) as start_time,
-                MAX(timestamp) as end_time,
-                MAX(timestamp) - MIN(timestamp) as duration_seconds
-            FROM logs
-            WHERE session_id = ?
-            GROUP BY cascade_id
-            """
-            result = conn.execute(metadata_query, [session_id]).fetchone()
+            try:
+                metadata_query = """
+                SELECT
+                    cascade_id,
+                    MIN(timestamp) as start_time,
+                    MAX(timestamp) as end_time,
+                    MAX(timestamp) - MIN(timestamp) as duration_seconds
+                FROM logs
+                WHERE session_id = ?
+                GROUP BY cascade_id
+                """
+                result = conn.execute(metadata_query, [session_id]).fetchone()
 
-            if result:
-                cascade_id, start_time, end_time, duration = result
-                cascade_file = find_cascade_file(cascade_id)
-                filename = os.path.basename(cascade_file) if cascade_file else 'unknown.json'
+                if result:
+                    cascade_id, start_time, end_time, duration = result
+                    cascade_file = find_cascade_file(cascade_id)
+                    filename = os.path.basename(cascade_file) if cascade_file else 'unknown.json'
 
-                metadata = {
-                    'cascade_id': cascade_id,
-                    'cascade_file': filename,
-                    'start_time': start_time,
-                    'end_time': end_time,
-                    'duration_seconds': float(duration) if duration else 0.0
-                }
-            else:
+                    metadata = {
+                        'cascade_id': cascade_id,
+                        'cascade_file': filename,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'duration_seconds': float(duration) if duration else 0.0
+                    }
+                else:
+                    metadata = {
+                        'cascade_id': 'unknown',
+                        'cascade_file': 'unknown.json',
+                        'start_time': None,
+                        'end_time': None,
+                        'duration_seconds': 0.0
+                    }
+            except Exception as e:
+                print(f"Error getting metadata: {e}")
                 metadata = {
                     'cascade_id': 'unknown',
                     'cascade_file': 'unknown.json',
@@ -1514,17 +1642,9 @@ def get_mermaid_graph(session_id):
                     'end_time': None,
                     'duration_seconds': 0.0
                 }
-        except Exception as e:
-            print(f"Error getting metadata: {e}")
-            metadata = {
-                'cascade_id': 'unknown',
-                'cascade_file': 'unknown.json',
-                'start_time': None,
-                'end_time': None,
-                'duration_seconds': 0.0
-            }
-        finally:
-            conn.close()
+            finally:
+                if 'conn' in locals():
+                    conn.close()
 
         # Add file modification time for change detection
         file_mtime = None
