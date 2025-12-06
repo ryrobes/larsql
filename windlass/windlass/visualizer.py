@@ -11,9 +11,11 @@ Generates execution flow diagrams from Echo history showing:
 """
 import json
 import re
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from .echo import Echo
+from .config import get_config
 
 
 @dataclass
@@ -61,6 +63,66 @@ def sanitize_label(content: Any, max_length: int = 50) -> str:
 def safe_id(trace_id: str) -> str:
     """Create a safe Mermaid node ID from trace ID."""
     return "n_" + trace_id.replace("-", "")[:12]
+
+
+def load_sub_cascade_mermaid(sub_session_id: str, graph_dir: Optional[str] = None) -> Optional[str]:
+    """
+    Load the mermaid diagram for a sub-cascade session and extract the meaningful content.
+
+    Returns the phase flow portion without style definitions, ready to be embedded.
+    Returns None if the file doesn't exist or can't be parsed.
+
+    Args:
+        sub_session_id: The session ID of the sub-cascade
+        graph_dir: Optional override for graph directory (for testing)
+    """
+    try:
+        # Get graph directory
+        if graph_dir is None:
+            config = get_config()
+            graph_dir = config.graph_dir
+
+        graph_path = os.path.join(graph_dir, f"{sub_session_id}.mmd")
+
+        if not os.path.exists(graph_path):
+            return None
+
+        with open(graph_path, 'r') as f:
+            content = f.read()
+
+        # Extract everything after the style definitions
+        # Strategy: Skip lines until we find actual node/edge definitions
+        lines = content.split('\n')
+        meaningful_lines = []
+        found_content = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Skip header and style definitions
+            if stripped.startswith('graph ') or \
+               stripped.startswith('stateDiagram') or \
+               stripped.startswith('classDef ') or \
+               stripped.startswith('%%') or \
+               (not stripped and not found_content):
+                continue
+
+            # We've found real content
+            found_content = True
+            meaningful_lines.append(line)
+
+        # Filter out trailing empty lines
+        while meaningful_lines and not meaningful_lines[-1].strip():
+            meaningful_lines.pop()
+
+        if not meaningful_lines:
+            return None
+
+        return '\n'.join(meaningful_lines)
+
+    except Exception as e:
+        # Silently fail - we'll fall back to simple rendering
+        return None
 
 
 def extract_metadata(entry: Dict) -> Dict:
@@ -1048,7 +1110,7 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
 
 
 def generate_mermaid_string(echo: Echo) -> str:
-    """
+    """ NOT USED ANYMORE, WE USE STATE DIAGRAMS NOW!!! THIS ONLY FOR LEGACY REFERENCE!!!
     Generate a Mermaid flowchart string from Echo history.
 
     The diagram shows:
@@ -1303,24 +1365,87 @@ def generate_mermaid_string(echo: Echo) -> str:
             result_meta = extract_metadata(cascade_soundings_result)
             winner_index = result_meta.get("winner_index")
 
+        # Group phases by sounding_index for cascade-level soundings
+        phases_by_sounding: Dict[int, List[Dict]] = {}
+        for phase_entry in phase_entries:
+            phase_meta = extract_metadata(phase_entry)
+            sounding_idx = phase_meta.get("sounding_index")
+            if sounding_idx is not None:
+                if sounding_idx not in phases_by_sounding:
+                    phases_by_sounding[sounding_idx] = []
+                phases_by_sounding[sounding_idx].append(phase_entry)
+
         for attempt in sorted(cascade_sounding_attempts, key=lambda a: extract_metadata(a).get("sounding_index", 0)):
             a_meta = extract_metadata(attempt)
             idx = a_meta.get("sounding_index", 0)
-            sub_session = a_meta.get("sub_session_id", f"sounding_{idx}")
+            sub_session_id = a_meta.get("sub_session_id", f"sounding_{idx}")
             is_winner = (winner_index is not None and idx == winner_index)
 
             attempt_id = f"{cs_id}_a{idx}"
             attempt_ids.append(attempt_id)
 
-            content_preview = sanitize_label(attempt.get("content", ""), 20)
-            if is_winner:
-                label = f"#{idx+1} ✓: {content_preview}" if content_preview else f"#{idx+1} ✓"
-                lines.append(f'                {attempt_id}["{label}"]')
-                lines.append(f"                class {attempt_id} winner")
+            # Try to load the complete mermaid diagram from the sub-session
+            sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
+
+            if sub_mermaid:
+                # Embed the complete sub-cascade diagram
+                winner_mark = " ✓" if is_winner else ""
+                lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
+                lines.append("                direction TB")
+
+                # Add the sub-cascade content with proper indentation
+                for line in sub_mermaid.split('\n'):
+                    if line.strip():
+                        # Add extra indentation for embedding
+                        lines.append(f"                    {line}")
+
+                lines.append("                end")
+                if is_winner:
+                    lines.append(f"                class {attempt_id} winner")
+                else:
+                    lines.append(f"                class {attempt_id} loser")
             else:
-                label = f"#{idx+1}: {content_preview}" if content_preview else f"#{idx+1}"
-                lines.append(f'                {attempt_id}["{label}"]')
-                lines.append(f"                class {attempt_id} loser")
+                # Fallback: Try to reconstruct from phases in parent history
+                sounding_phases = phases_by_sounding.get(idx, [])
+
+                if sounding_phases:
+                    # Render as subgraph containing the phases
+                    winner_mark = " ✓" if is_winner else ""
+                    lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
+                    lines.append("                direction TB")
+
+                    # Render each phase in this sounding
+                    for j, phase_entry in enumerate(sounding_phases):
+                        phase_content = phase_entry.get("content", "")
+                        phase_name = phase_content.replace("Phase: ", "") if phase_content.startswith("Phase: ") else phase_content
+                        phase_id = f"{attempt_id}_p{j}"
+
+                        # Simple phase node
+                        phase_label = sanitize_label(phase_name, 25)
+                        lines.append(f'                    {phase_id}["{phase_label}"]')
+                        lines.append(f"                    class {phase_id} phase")
+
+                        # Connect phases sequentially within the sounding
+                        if j > 0:
+                            prev_phase_id = f"{attempt_id}_p{j-1}"
+                            lines.append(f"                    {prev_phase_id} --> {phase_id}")
+
+                    lines.append("                end")
+                    if is_winner:
+                        lines.append(f"                class {attempt_id} winner")
+                    else:
+                        lines.append(f"                class {attempt_id} loser")
+                else:
+                    # Last fallback: simple box
+                    content_preview = sanitize_label(attempt.get("content", ""), 20)
+                    if is_winner:
+                        label = f"#{idx+1} ✓: {content_preview}" if content_preview else f"#{idx+1} ✓"
+                        lines.append(f'                {attempt_id}["{label}"]')
+                        lines.append(f"                class {attempt_id} winner")
+                    else:
+                        label = f"#{idx+1}: {content_preview}" if content_preview else f"#{idx+1}"
+                        lines.append(f'                {attempt_id}["{label}"]')
+                        lines.append(f"                class {attempt_id} loser")
 
         lines.append("            end")
 
@@ -1355,6 +1480,12 @@ def generate_mermaid_string(echo: Echo) -> str:
     phase_id_map = {}
 
     for i, phase_entry in enumerate(phase_entries):
+        meta = extract_metadata(phase_entry)
+
+        # Skip phases that belong to cascade-level soundings (they're already rendered inside sounding boxes)
+        if meta.get("sounding_index") is not None:
+            continue
+
         content = phase_entry.get("content", "")
         phase_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
         phase_id = safe_id(phase_entry.get("trace_id", f"phase_{i}"))
@@ -1364,7 +1495,6 @@ def generate_mermaid_string(echo: Echo) -> str:
         # Get phase status
         status_icon = get_phase_status(phase_name)
 
-        meta = extract_metadata(phase_entry)
         has_soundings = meta.get("has_soundings", False) or phase_name in soundings_by_phase
         has_wards = meta.get("has_wards", False) or phase_name in wards_by_phase
         phase_wards = wards_by_phase.get(phase_name, {"pre": [], "post": []})
@@ -1393,6 +1523,23 @@ def generate_mermaid_string(echo: Echo) -> str:
             eval_entry = evaluators_by_phase.get(phase_name, {})
             eval_content = eval_entry.get("content", "") if eval_entry else ""
 
+            # Try to load sub-cascade mermaid diagram (for phases with sub_cascades config)
+            # Sub-cascades get rendered to {session_id}_sub.mmd
+            sub_cascade_mermaid = load_sub_cascade_mermaid(f"{echo.session_id}_sub")
+
+            # Also group sub-cascade phases by sounding_index as fallback
+            # (happens when phase has both soundings + sub_cascades)
+            phases_by_sounding_idx: Dict[int, List[Dict]] = {}
+            for pe in phase_entries:
+                pe_meta = extract_metadata(pe)
+                pe_sounding_idx = pe_meta.get("sounding_index")
+                # Check if this phase belongs to a sounding of the current phase we're rendering
+                if pe_sounding_idx is not None and pe_meta.get("phase_name") != phase_name:
+                    # This is a sub-cascade phase inside a sounding
+                    if pe_sounding_idx not in phases_by_sounding_idx:
+                        phases_by_sounding_idx[pe_sounding_idx] = []
+                    phases_by_sounding_idx[pe_sounding_idx].append(pe)
+
             # Render parallel attempts
             if attempts_info:
                 lines.append(f'            subgraph {phase_id}_attempts["Attempts"]')
@@ -1404,20 +1551,73 @@ def generate_mermaid_string(echo: Echo) -> str:
                     attempt_id = f"{phase_id}_a{idx}"
                     attempt_ids.append(attempt_id)
 
-                    # Build label with content preview
-                    content_preview = sanitize_label(info["content"], 25) if info["content"] else ""
-                    if info["is_winner"]:
-                        label = f"#{idx+1} ✓"
-                        if content_preview:
-                            label = f"#{idx+1} ✓: {content_preview}"
-                        lines.append(f'                {attempt_id}["{label}"]')
-                        lines.append(f"                class {attempt_id} winner")
+                    # Priority 1: Try to embed the complete sub-cascade diagram
+                    # Priority 2: Reconstruct from phases in parent history
+                    # Priority 3: Simple box
+
+                    if sub_cascade_mermaid:
+                        # Embed the complete sub-cascade diagram
+                        winner_mark = " ✓" if info["is_winner"] else ""
+                        lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
+                        lines.append("                direction TB")
+
+                        # Add the sub-cascade content with proper indentation
+                        for line in sub_cascade_mermaid.split('\n'):
+                            if line.strip():
+                                # Add extra indentation for embedding
+                                lines.append(f"                    {line}")
+
+                        lines.append("                end")
+                        if info["is_winner"]:
+                            lines.append(f"                class {attempt_id} winner")
+                        else:
+                            lines.append(f"                class {attempt_id} loser")
                     else:
-                        label = f"#{idx+1}"
-                        if content_preview:
-                            label = f"#{idx+1}: {content_preview}"
-                        lines.append(f'                {attempt_id}["{label}"]')
-                        lines.append(f"                class {attempt_id} loser")
+                        # Fallback: Check if this sounding has sub-cascade phases to render
+                        sounding_phases = phases_by_sounding_idx.get(idx, [])
+
+                        if sounding_phases:
+                            # Render as subgraph containing the sub-cascade phases
+                            winner_mark = " ✓" if info["is_winner"] else ""
+                            lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
+                            lines.append("                direction TB")
+
+                            # Render each sub-cascade phase in this sounding
+                            for j, sub_phase_entry in enumerate(sounding_phases):
+                                sub_phase_content = sub_phase_entry.get("content", "")
+                                sub_phase_name = sub_phase_content.replace("Phase: ", "") if sub_phase_content.startswith("Phase: ") else sub_phase_content
+                                sub_phase_id = f"{attempt_id}_p{j}"
+
+                                # Simple phase node
+                                sub_phase_label = sanitize_label(sub_phase_name, 25)
+                                lines.append(f'                    {sub_phase_id}["{sub_phase_label}"]')
+                                lines.append(f"                    class {sub_phase_id} phase")
+
+                                # Connect phases sequentially within the sounding
+                                if j > 0:
+                                    prev_phase_id = f"{attempt_id}_p{j-1}"
+                                    lines.append(f"                    {prev_phase_id} --> {sub_phase_id}")
+
+                            lines.append("                end")
+                            if info["is_winner"]:
+                                lines.append(f"                class {attempt_id} winner")
+                            else:
+                                lines.append(f"                class {attempt_id} loser")
+                        else:
+                            # Last fallback: simple box if no sub-cascade data
+                            content_preview = sanitize_label(info["content"], 25) if info["content"] else ""
+                            if info["is_winner"]:
+                                label = f"#{idx+1} ✓"
+                                if content_preview:
+                                    label = f"#{idx+1} ✓: {content_preview}"
+                                lines.append(f'                {attempt_id}["{label}"]')
+                                lines.append(f"                class {attempt_id} winner")
+                            else:
+                                label = f"#{idx+1}"
+                                if content_preview:
+                                    label = f"#{idx+1}: {content_preview}"
+                                lines.append(f'                {attempt_id}["{label}"]')
+                                lines.append(f"                class {attempt_id} loser")
 
                 lines.append("            end")
 
@@ -1852,7 +2052,24 @@ def generate_mermaid_string(echo: Echo) -> str:
         lines.append(f"        {cascade_soundings_node_id} ==> {phase_ids[0]}")
 
     # Connect phases using handoffs from metadata, or in order
-    for i, phase_entry in enumerate(phase_entries):
+    # Only connect phases that were actually rendered (not filtered out)
+    for i in range(len(phase_ids)):
+        # Find the corresponding phase_entry for this phase_id
+        # (skip phases that were filtered out due to sounding_index)
+        rendered_phase_idx = 0
+        phase_entry = None
+        for pe in phase_entries:
+            meta = extract_metadata(pe)
+            if meta.get("sounding_index") is not None:
+                continue  # Skip filtered phases
+            if rendered_phase_idx == i:
+                phase_entry = pe
+                break
+            rendered_phase_idx += 1
+
+        if not phase_entry:
+            continue
+
         meta = extract_metadata(phase_entry)
         handoffs = meta.get("handoffs", [])
         current_id = phase_ids[i]
@@ -1924,6 +2141,57 @@ def generate_state_diagram_string(echo: Echo) -> str:
         s = name.replace("-", "_").replace(" ", "_").replace(".", "_")
         s = s.replace("(", "").replace(")", "").replace(":", "").replace("/", "_")
         return s
+
+    # Helper to prefix all state IDs in an embedded sub-cascade diagram
+    def prefix_state_ids(mermaid_content: str, prefix: str) -> str:
+        """
+        Rewrites all state IDs in a mermaid diagram by adding a prefix.
+        This prevents ID collisions when embedding multiple sub-cascades.
+
+        Examples:
+            "state foo" -> "state prefix_foo"
+            'state "label" as foo' -> 'state "label" as prefix_foo'
+            "foo --> bar" -> "prefix_foo --> prefix_bar"
+            "state foo {" -> "state prefix_foo {"
+        """
+        import re
+
+        # First pass: collect all state IDs that are defined in the diagram
+        state_ids = set()
+        for line in mermaid_content.split('\n'):
+            stripped = line.strip()
+
+            # Find state IDs from "as foo" pattern
+            match = re.search(r'\bas\s+([a-zA-Z_][a-zA-Z0-9_]*)\b', stripped)
+            if match:
+                state_ids.add(match.group(1))
+
+            # Find state IDs from "state foo" pattern (not followed by quotes)
+            match = re.search(r'\bstate\s+([a-zA-Z_][a-zA-Z0-9_]*)\b', stripped)
+            if match and not stripped.startswith('state "'):
+                state_ids.add(match.group(1))
+
+        # Second pass: replace all occurrences of these state IDs
+        lines = []
+        for line in mermaid_content.split('\n'):
+            stripped = line.strip()
+
+            # Skip empty lines, directives, and classDef definitions
+            if not stripped or stripped.startswith('direction') or stripped.startswith('classDef') or stripped.startswith('%%'):
+                lines.append(line)
+                continue
+
+            # Replace each state ID with its prefixed version
+            for state_id in state_ids:
+                # Use word boundaries to avoid partial matches
+                line = re.sub(r'\b' + state_id + r'\b', f'{prefix}_{state_id}', line)
+
+            # Handle [*] specially - don't prefix the entry/exit nodes
+            line = line.replace(f'{prefix}_[*]', '[*]')
+
+            lines.append(line)
+
+        return '\n'.join(lines)
 
     # Helper to get status icon
     def status_icon(phase_name: str, completed_phases: set) -> str:
@@ -2151,6 +2419,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     lines.append("    classDef running fill:#1a2a1a,stroke:#00ff00,stroke-width:4px,color:#00ff00")
     lines.append("    classDef blocked fill:#2a1a1a,stroke:#ff4444,stroke-width:3px,color:#ff4444")
     lines.append("    classDef failed fill:#2a1a1a,stroke:#ff6b6b,stroke-width:2px,color:#ff6b6b")
+    lines.append("    classDef sub_cascade fill:#1a1a2a,stroke:#a78bfa,stroke-width:3px,color:#a78bfa")
     lines.append("")
 
     # Track which phase IDs need styling classes applied
@@ -2174,12 +2443,38 @@ def generate_state_diagram_string(echo: Echo) -> str:
             idx = a_meta.get("sounding_index", 0)
             is_winner = (winner_index is not None and idx == winner_index)
             marker = " ✓" if is_winner else ""
-            lines.append(f"        cs_fork --> cs_a{idx}")
-            lines.append(f"        cs_a{idx} : #{idx+1}{marker}")
+            sub_session_id = a_meta.get("sub_session_id", f"sounding_{idx}")
+
+            # Try to load the complete mermaid diagram for this cascade sounding
+            sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
+
+            if sub_mermaid:
+                # Embed the complete cascade execution as a composite state
+                cs_attempt_id = f"cs_a{idx}"
+                lines.append(f"        state {cs_attempt_id} {{")
+                lines.append(f"            {cs_attempt_id}_label : Attempt #{idx+1}{marker}")
+                lines.append("")
+
+                # Prefix all state IDs in sub-cascade to prevent collisions
+                prefixed_mermaid = prefix_state_ids(sub_mermaid, f"cs{idx}")
+
+                # Embed with proper indentation (12 spaces for nesting)
+                for line in prefixed_mermaid.split('\n'):
+                    if line.strip():
+                        lines.append(f"            {line}")
+
+                lines.append(f"        }}")
+                lines.append(f"        class {cs_attempt_id} sub_cascade")
+                lines.append(f"        cs_fork --> {cs_attempt_id}")
+            else:
+                # Fallback to simple node
+                lines.append(f"        cs_fork --> cs_a{idx}")
+                lines.append(f"        cs_a{idx} : #{idx+1}{marker}")
 
         lines.append("        state cs_join <<join>>")
         for i in range(factor):
-            lines.append(f"        cs_a{i} --> cs_join")
+            attempt_id = f"cs_a{i}"
+            lines.append(f"        {attempt_id} --> cs_join")
 
         lines.append("        cs_join --> cs_eval")
         lines.append("        cs_eval : ⚖️ Evaluate")
@@ -2461,8 +2756,34 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     elif idx == 0:
                         mutation_label = " [baseline]"
 
-                    lines.append(f"        {fork_id} --> {pid}_a{idx}")
-                    lines.append(f"        {pid}_a{idx} : #{idx+1}{mutation_label}{marker}")
+                    # Always try to load sub-cascade diagram for this sounding attempt
+                    # For phase-level soundings with sub-cascades, the session ID pattern is:
+                    # {parent_session_id}_sub_{sounding_index}
+                    sub_session_id = f"{echo.session_id}_sub_{idx}"
+                    sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
+
+                    if sub_mermaid:
+                        # Render as composite state with embedded sub-cascade diagram
+                        attempt_id = f"{pid}_a{idx}"
+                        lines.append(f"        state {attempt_id} {{")
+                        lines.append(f"            {attempt_id}_label : 📦 Attempt #{idx+1}{mutation_label}{marker}")
+                        lines.append("")
+
+                        # Prefix all state IDs in sub-cascade to prevent collisions
+                        prefixed_mermaid = prefix_state_ids(sub_mermaid, f"sub{idx}")
+
+                        # Embed with proper indentation (12 spaces for nesting)
+                        for line in prefixed_mermaid.split('\n'):
+                            if line.strip():
+                                lines.append(f"            {line}")
+
+                        lines.append(f"        }}")
+                        lines.append(f"        class {attempt_id} sub_cascade")
+                        lines.append(f"        {fork_id} --> {attempt_id}")
+                    else:
+                        # Fallback to simple node if sub-cascade diagram not found
+                        lines.append(f"        {fork_id} --> {pid}_a{idx}")
+                        lines.append(f"        {pid}_a{idx} : #{idx+1}{mutation_label}{marker}")
 
                 # Join
                 join_id = f"{pid}_join"
@@ -2537,12 +2858,26 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     sc_cascade_name = sc_content.replace("Cascade: ", "") if sc_content.startswith("Cascade: ") else sc_content
                     sc_id = f"{pid}_sc{sc_idx}"
 
+                    # Try to load the complete mermaid diagram for this sub-cascade
+                    sub_cascade_mermaid = load_sub_cascade_mermaid(sc_name)
+
                     # Nested composite for sub-cascade
                     lines.append(f"        state {sc_id} {{")
-                    lines.append(f"            {sc_id}_label : 📦 {sanitize_label(sc_cascade_name, 20)}")
+                    lines.append(f"            {sc_id}_label : 📦 Sub-Cascade: {sanitize_label(sc_cascade_name, 20)}")
+                    lines.append("")
 
-                    if sc_phases:
-                        # Render sub-cascade phases
+                    if sub_cascade_mermaid:
+                        # Prefix all state IDs in sub-cascade to prevent collisions
+                        prefixed_mermaid = prefix_state_ids(sub_cascade_mermaid, f"sc{sc_idx}")
+
+                        # Embed the complete sub-cascade state diagram
+                        # Add extra indentation for proper nesting (12 spaces = 3 levels of 4-space indents)
+                        for line in prefixed_mermaid.split('\n'):
+                            if line.strip():
+                                # Add extra indentation to nest within parent composite state
+                                lines.append(f"            {line}")
+                    elif sc_phases:
+                        # Fallback: Render sub-cascade phases as simple nodes
                         sc_phase_ids = []
                         for sp_idx, sp_entry in enumerate(sc_phases):
                             sp_content = sp_entry.get("content", "")
@@ -2567,6 +2902,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         lines.append(f"            {sc_id}_empty --> [*]")
 
                     lines.append(f"        }}")
+                    lines.append(f"        class {sc_id} sub_cascade")
 
                     if last_node:
                         lines.append(f"        {last_node} --> {sc_id}")

@@ -11,8 +11,9 @@ class Echo:
     - node_type: cascade, phase, turn, tool, soundings, reforge, etc.
     - metadata: Dict with additional context (phase_name, sounding_index, etc.)
     """
-    def __init__(self, session_id: str, initial_state: Dict[str, Any] = None):
+    def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None):
         self.session_id = session_id
+        self.parent_session_id = parent_session_id
         self.state = initial_state or {}
         self.history: List[Dict[str, Any]] = []
         self.lineage: List[Dict[str, Any]] = []
@@ -117,6 +118,7 @@ class Echo:
             # Log to unified system
             log_unified(
                 session_id=self.session_id,
+                parent_session_id=self.parent_session_id,
                 trace_id=trace_id,
                 parent_id=parent_id,
                 node_type=node_type,
@@ -183,12 +185,12 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, Echo] = {}
 
-    def get_session(self, session_id: str) -> Echo:
+    def get_session(self, session_id: str, parent_session_id: str = None) -> Echo:
         if session_id not in self.sessions:
-            self.sessions[session_id] = Echo(session_id)
+            self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id)
         return self.sessions[session_id]
 
 _session_manager = SessionManager()
 
-def get_echo(session_id: str) -> Echo:
-    return _session_manager.get_session(session_id)
+def get_echo(session_id: str, parent_session_id: str = None) -> Echo:
+    return _session_manager.get_session(session_id, parent_session_id)

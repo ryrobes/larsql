@@ -684,38 +684,69 @@ take_screenshot(url="https://example.com")
 
 ### DuckDB Logs
 
-All events → Parquet files in `./logs/` for high-performance querying:
+All events → Parquet files in `./data/` for high-performance querying.
+
+**Quick SQL Queries (No DuckDB Code Required):**
+
+```bash
+# Simple count
+windlass sql "SELECT COUNT(*) FROM all_data"
+
+# Filter and project columns
+windlass sql "SELECT session_id, phase_name, cost FROM all_data WHERE cost > 0 LIMIT 10"
+
+# Aggregate queries
+windlass sql "SELECT session_id, COUNT(*) as msg_count FROM all_data GROUP BY session_id"
+
+# Joins across data sources
+windlass sql "SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id"
+
+# Different output formats
+windlass sql "SELECT * FROM all_data LIMIT 5" --format json
+windlass sql "SELECT * FROM all_data LIMIT 5" --format csv
+windlass sql "SELECT * FROM all_data LIMIT 5" --format table  # default
+```
+
+**Magic Table Names:**
+- `all_data` → `file('data/*.parquet', Parquet)` - main execution logs
+- `all_evals` → `file('data/evals/*.parquet', Parquet)` - evaluation data
+
+The SQL command automatically handles:
+- ✅ Union by name (handles schema evolution across files)
+- ✅ Case-insensitive table names (ALL_DATA, all_data both work)
+- ✅ Table aliases and joins
+- ✅ Multiple output formats
+
+**Python API:**
 
 ```python
 import duckdb
 con = duckdb.connect()
 result = con.execute("""
-    SELECT timestamp, phase, role, content
-    FROM './logs/*.parquet'
+    SELECT timestamp, phase_name, role, content_json
+    FROM './data/*.parquet'
     WHERE session_id = 'session_123'
     ORDER BY timestamp
 """).fetchdf()
 ```
 
 **Schema includes:**
-- `session_id`, `timestamp`, `phase`, `role`, `content`
+- `session_id`, `timestamp`, `phase_name`, `role`, `content_json`
 - `trace_id`, `parent_id`, `depth` (nested cascades)
 - `sounding_index`, `is_winner` (soundings)
 - `reforge_step` (refinement iterations)
-- `cost_usd` (token usage)
+- `cost` (token usage in USD)
 
 **Query examples:**
-```sql
--- Compare sounding attempts
-SELECT sounding_index, content, is_winner
-FROM logs
-WHERE phase = 'generate' AND sounding_index IS NOT NULL
+```bash
+# Compare sounding attempts
+windlass sql "SELECT sounding_index, content_json, is_winner FROM all_data WHERE phase_name = 'generate' AND sounding_index IS NOT NULL"
 
--- Track reforge progression
-SELECT reforge_step, content
-FROM logs
-WHERE is_winner = true
-ORDER BY reforge_step
+# Track reforge progression
+windlass sql "SELECT reforge_step, content_json FROM all_data WHERE is_winner = true ORDER BY reforge_step"
+
+# Cost analysis
+windlass sql "SELECT phase_name, SUM(cost) as total_cost FROM all_data WHERE cost > 0 GROUP BY phase_name ORDER BY total_cost DESC"
 ```
 
 ### Mermaid Graphs

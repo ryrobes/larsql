@@ -8,7 +8,7 @@ from ..config import get_config
 import os
 
 @simple_eddy
-def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str = None) -> str:
+def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str = None, sounding_index: int = None) -> str:
     """
     Spawns a cascade in the background (fire-and-forget).
     Returns the new session ID immediately.
@@ -18,6 +18,7 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
         input_data: Optional dictionary of input data for the spawned cascade.
         parent_trace: The TraceNode of the calling cascade for lineage.
         parent_session_id: The session_id of the parent cascade.
+        sounding_index: The sounding index if spawned from within a sounding.
     """
     # Resolve path. Assume cascade_ref is either absolute or relative to the project root.
     resolved_cascade_ref = cascade_ref
@@ -28,7 +29,11 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
     if not os.path.exists(resolved_cascade_ref) and os.path.exists(resolved_cascade_ref + ".json"):
          resolved_cascade_ref = resolved_cascade_ref + ".json"
 
-    session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    # Generate unique session ID (include sounding index if provided)
+    if sounding_index is not None:
+        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}_sounding_{sounding_index}"
+    else:
+        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}"
 
     def worker():
         # Import locally to avoid circular dependency
@@ -36,8 +41,8 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
 
         # Run in separate thread
         try:
-            # We use a new runner instance, passing the parent trace AND parent_session_id
-            run_cascade(resolved_cascade_ref, input_data or {}, session_id=session_id, parent_trace=parent_trace, parent_session_id=parent_session_id)
+            # We use a new runner instance, passing the parent trace AND parent_session_id AND sounding_index
+            run_cascade(resolved_cascade_ref, input_data or {}, session_id=session_id, parent_trace=parent_trace, parent_session_id=parent_session_id, sounding_index=sounding_index)
         except Exception as e:
             print(f"[Spawn Error] {e}")
 

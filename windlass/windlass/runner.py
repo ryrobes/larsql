@@ -86,7 +86,7 @@ class WindlassRunner:
         self.config = load_cascade_config(config_path)
         self.session_id = session_id
         self.overrides = overrides or {}
-        self.echo = get_echo(session_id)
+        self.echo = get_echo(session_id, parent_session_id=parent_session_id)
         self.depth = depth
         self.max_depth = 5
         self.hooks = hooks or WindlassHooks()
@@ -287,6 +287,7 @@ To use: Output JSON in this format:
         }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cascade_soundings",
            metadata={
                "cascade_id": self.config.cascade_id,
+               "phase_name": "_orchestration",  # Ensure UI can query this
                "factor": factor
            })
 
@@ -303,7 +304,7 @@ To use: Output JSON in this format:
             # Create a fresh Echo for this sounding attempt
             sounding_session_id = f"{self.session_id}_sounding_{i}"
             from .echo import Echo
-            sounding_echo = Echo(sounding_session_id)
+            sounding_echo = Echo(sounding_session_id, parent_session_id=self.session_id)
 
             try:
                 # Create a new runner for this sounding with sounding_index set
@@ -314,7 +315,8 @@ To use: Output JSON in this format:
                     depth=self.depth,
                     parent_trace=sounding_trace,
                     hooks=self.hooks,
-                    sounding_index=i  # Mark this runner as part of a sounding
+                    sounding_index=i,  # Mark this runner as part of a sounding
+                    parent_session_id=self.session_id  # Link child to parent session
                 )
 
                 # Run the cascade with sounding metadata
@@ -341,6 +343,7 @@ To use: Output JSON in this format:
                 }, trace_id=sounding_trace.id, parent_id=soundings_trace.id, node_type="cascade_sounding_attempt",
                    metadata={
                        "cascade_id": self.config.cascade_id,
+                       "phase_name": "_orchestration",  # Ensure UI can query this
                        "sounding_index": i,
                        "sub_session_id": sounding_session_id,
                        "is_winner": False,  # Updated later when winner is selected
@@ -400,6 +403,7 @@ To use: Output JSON in this format:
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
            metadata={
                "cascade_id": self.config.cascade_id,
+               "phase_name": "_orchestration",  # Ensure UI can query this
                "factor": factor,
                "model": self.model
            })
@@ -424,6 +428,26 @@ To use: Output JSON in this format:
             self.echo.history.extend(winner['echo'].history)
             self.echo.lineage.extend(winner['echo'].lineage)
 
+            # IMPORTANT: Re-log winner's phases to parent session so parent shows data
+            # The winner's data lives in the child session, but we need the parent to show phases too
+            # This allows backend queries (which filter by phase_name IS NOT NULL) to find parent's data
+            for lineage_item in winner['echo'].lineage:
+                phase_name = lineage_item.get('phase')
+                output_content = lineage_item.get('output', '')
+
+                # Log phase completion to parent session
+                self.echo.add_history({
+                    "role": "phase_result",
+                    "content": f"Phase {phase_name} completed (from sounding #{winner_index})",
+                    "node_type": "phase_result"
+                }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="phase_result",
+                   metadata={
+                       "cascade_id": self.config.cascade_id,
+                       "phase_name": phase_name,
+                       "source_sounding": winner_index,
+                       "output_preview": str(output_content)[:200] if output_content else ""
+                   })
+
         # Add soundings result to history (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "cascade_soundings_result",
@@ -432,6 +456,7 @@ To use: Output JSON in this format:
         }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cascade_soundings_result",
            metadata={
                "cascade_id": self.config.cascade_id,
+               "phase_name": "_orchestration",  # Ensure UI can query this
                "winner_index": winner_index,
                "winner_session_id": f"{self.session_id}_sounding_{winner_index}",
                "factor": factor,
@@ -504,7 +529,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Create fresh Echo for this refinement
                 refinement_session_id = f"{self.session_id}_reforge{step}_{i}"
                 from .echo import Echo
-                refinement_echo = Echo(refinement_session_id)
+                refinement_echo = Echo(refinement_session_id, parent_session_id=self.session_id)
 
                 try:
                     # Create a new runner for this refinement
@@ -518,7 +543,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         overrides=self.overrides,
                         depth=self.depth,
                         parent_trace=refinement_trace,
-                        hooks=self.hooks
+                        hooks=self.hooks,
+                        parent_session_id=self.session_id  # Link child to parent session
                     )
 
                     # Run the cascade
@@ -676,7 +702,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
                    trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade", depth=self.depth,
-                   sounding_index=self.sounding_index)
+                   sounding_index=self.sounding_index, parent_session_id=self.parent_session_id)
 
         # Add structure to Echo for visualization
         self.echo.add_history({
@@ -732,7 +758,8 @@ Refinement directive: {reforge_config.honing_prompt}
             # Log phase completion for UI visibility
             log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
                        trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
-                       depth=self.depth, phase_name=phase.name, cascade_id=self.config.cascade_id)
+                       depth=self.depth, phase_name=phase.name, cascade_id=self.config.cascade_id,
+                       parent_session_id=self.parent_session_id)
 
             # Hook: Phase Complete
             self.hooks.on_phase_complete(phase.name, self.session_id, {"output": output_or_next_phase})
@@ -774,7 +801,7 @@ Refinement directive: {reforge_config.honing_prompt}
         # Log cascade completion with status
         log_message(self.session_id, "system", f"Cascade {final_status}: {self.config.cascade_id}",
                    metadata={"status": final_status, "error_count": len(result.get("errors", []))},
-                   node_type=f"cascade_{final_status}")
+                   node_type=f"cascade_{final_status}", parent_session_id=self.parent_session_id)
 
         return result
 
@@ -1024,16 +1051,29 @@ If no tools are needed, return an empty array: []
                 cascade_path = manifest[validator_name]["path"]
                 validator_input = {"content": content}
 
+                # Generate unique ward session ID (include sounding index if inside soundings)
+                ward_sounding_index = None
+                if self.current_phase_sounding_index is not None:
+                    ward_session_id = f"{self.session_id}_ward_{self.current_phase_sounding_index}"
+                    ward_sounding_index = self.current_phase_sounding_index
+                elif self.sounding_index is not None:
+                    ward_session_id = f"{self.session_id}_ward_{self.sounding_index}"
+                    ward_sounding_index = self.sounding_index
+                else:
+                    ward_session_id = f"{self.session_id}_ward"
+
                 try:
                     # Run the validator cascade
                     validator_result_echo = run_cascade(
                         cascade_path,
                         validator_input,
-                        f"{self.session_id}_ward",
+                        ward_session_id,
                         self.overrides,
                         self.depth + 1,
                         parent_trace=ward_trace,
-                        hooks=self.hooks
+                        hooks=self.hooks,
+                        parent_session_id=self.session_id,  # Link child to parent session
+                        sounding_index=ward_sounding_index
                     )
 
                     # Extract result from lineage
@@ -1942,7 +1982,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         log_message(self.session_id, "phase_start", phase.name,
                    trace_id=trace.id, parent_id=trace.parent_id, node_type="phase", depth=trace.depth,
-                   model=phase_model)
+                   model=phase_model, parent_session_id=self.parent_session_id)
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
@@ -2118,7 +2158,7 @@ Refinement directive: {reforge_config.honing_prompt}
                             sub_input[child_key] = parent_val
                     
                     console.print(f"{indent}  🔥 [bold orange1]Spawning Side-Effect: {sub.ref}[/bold orange1]")
-                    
+
                     # Resolve path for async_cascades
                     ref_path = sub.ref
                     if not os.path.isabs(ref_path):
@@ -2127,10 +2167,17 @@ Refinement directive: {reforge_config.honing_prompt}
                             ref_path = os.path.join(os.getcwd(), ref_path)
                         elif isinstance(self.config_path, str): # Otherwise, relative to current config file
                             ref_path = os.path.join(os.path.dirname(self.config_path), ref_path)
-                    
+
+                    # Determine sounding_index to pass to spawned cascade
+                    async_sounding_index = None
+                    if self.current_phase_sounding_index is not None:
+                        async_sounding_index = self.current_phase_sounding_index
+                    elif self.sounding_index is not None:
+                        async_sounding_index = self.sounding_index
+
                     # Call spawn (fire and forget). spawn_cascade handles the threading.
-                    # It needs the parent_trace object directly AND parent_session_id
-                    spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id)
+                    # It needs the parent_trace object directly AND parent_session_id AND sounding_index
+                    spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id, sounding_index=async_sounding_index)
 
         # Sub-cascades handling
         if phase.sub_cascades:
@@ -2167,13 +2214,28 @@ Refinement directive: {reforge_config.honing_prompt}
                 console.print(f"{indent}  ↳ [bold yellow]Routing to Sub-Cascade: {sub.ref}[/bold yellow] (In:{sub.context_in}, Out:{sub.context_out})")
                 log_message(self.session_id, "sub_cascade_start", sub.ref, trace_id=trace.id, parent_id=trace.parent_id, node_type="link")
 
-                # Pass trace context AND HOOKS AND parent_session_id
-                sub_result = run_cascade(ref_path, sub_input, f"{self.session_id}_sub", self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks, parent_session_id=self.session_id)
-                
+                # Generate unique sub-cascade session ID (include sounding index if inside soundings)
+                # Also determine which sounding_index to pass through to child
+                sub_sounding_index = None
+                if self.current_phase_sounding_index is not None:
+                    # Inside phase-level sounding - include sounding index
+                    sub_session_id = f"{self.session_id}_sub_{self.current_phase_sounding_index}"
+                    sub_sounding_index = self.current_phase_sounding_index
+                elif self.sounding_index is not None:
+                    # Inside cascade-level sounding - include sounding index
+                    sub_session_id = f"{self.session_id}_sub_{self.sounding_index}"
+                    sub_sounding_index = self.sounding_index
+                else:
+                    # Normal execution - no sounding
+                    sub_session_id = f"{self.session_id}_sub"
+
+                # Pass trace context AND HOOKS AND parent_session_id AND sounding_index
+                sub_result = run_cascade(ref_path, sub_input, sub_session_id, self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks, parent_session_id=self.session_id, sounding_index=sub_sounding_index)
+
                 # 2. Handle Output (Context Out)
                 if sub.context_out:
                     # Merge echoes logic
-                    self.echo.merge(get_echo(f"{self.session_id}_sub"))
+                    self.echo.merge(get_echo(sub_session_id))
                     self._update_graph() # After sub-cascade merge
                 else:
                     # If not merging, we might still want to capture the result in lineage?
@@ -2348,6 +2410,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                 full_response = response_dict.get("full_response")
                                 log_unified(
                                     session_id=self.session_id,
+                                    parent_session_id=self.parent_session_id,
                                     trace_id=turn_trace.id,
                                     parent_id=trace.id,
                                     node_type="error",
@@ -2388,6 +2451,7 @@ Refinement directive: {reforge_config.honing_prompt}
                             failed_request = getattr(infra_error, 'full_request', None)
                             log_unified(
                                 session_id=self.session_id,
+                                parent_session_id=self.parent_session_id,
                                 trace_id=turn_trace.id,
                                 parent_id=trace.id,
                                 node_type="error",
@@ -2717,6 +2781,7 @@ Refinement directive: {reforge_config.honing_prompt}
                             from .unified_logs import log_unified
                             log_unified(
                                 session_id=self.session_id,
+                                parent_session_id=self.parent_session_id,
                                 trace_id=followup_trace.id,
                                 parent_id=turn_trace.id,
                                 node_type="follow_up",
@@ -2977,7 +3042,17 @@ Refinement directive: {reforge_config.honing_prompt}
                         cascade_path = manifest[validator_name]["path"]
                         validator_input = {"content": response_content}
 
-                        validator_session_id = f"{self.session_id}_validator_{attempt}"
+                        # Generate unique validator session ID (include sounding index if inside soundings)
+                        validator_sounding_index = None
+                        if self.current_phase_sounding_index is not None:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_phase_sounding_index}"
+                            validator_sounding_index = self.current_phase_sounding_index
+                        elif self.sounding_index is not None:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.sounding_index}"
+                            validator_sounding_index = self.sounding_index
+                        else:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}"
+
                         console.print(f"{indent}  [dim]Running cascade validator: {validator_name} (session: {validator_session_id})[/dim]")
 
                         # Log sub-cascade reference to parent
@@ -2997,7 +3072,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 self.depth + 1,
                                 parent_trace=validation_trace,
                                 hooks=self.hooks,
-                                parent_session_id=self.session_id
+                                parent_session_id=self.session_id,
+                                sounding_index=validator_sounding_index
                             )
 
                             console.print(f"{indent}  [dim cyan]Validator sub-cascade completed[/dim cyan]")
@@ -3196,8 +3272,9 @@ Refinement directive: {reforge_config.honing_prompt}
         return chosen_next_phase if chosen_next_phase else response_content
 
 def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
-                depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None, parent_session_id: str = None) -> dict:
-    runner = WindlassRunner(config_path, session_id, overrides, depth, parent_trace, hooks, sounding_index=None, parent_session_id=parent_session_id)
+                depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None, parent_session_id: str = None,
+                sounding_index: int = None) -> dict:
+    runner = WindlassRunner(config_path, session_id, overrides, depth, parent_trace, hooks, sounding_index=sounding_index, parent_session_id=parent_session_id)
     result = runner.run(input_data)
     
     if depth == 0:

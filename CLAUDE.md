@@ -89,6 +89,45 @@ windlass examples/simple_flow.json --input input.json
 windlass examples/simple_flow.json --input '{"key": "value"}' --session my_session_123
 ```
 
+### Querying Logs with SQL
+
+Windlass includes a convenient SQL command that automatically translates magic table names to parquet scans:
+
+```bash
+# Simple count
+windlass sql "SELECT COUNT(*) FROM all_data"
+
+# Filter and project columns
+windlass sql "SELECT session_id, phase_name, cost FROM all_data WHERE cost > 0 LIMIT 10"
+
+# Aggregate queries
+windlass sql "SELECT session_id, COUNT(*) as msg_count FROM all_data GROUP BY session_id"
+
+# With table alias
+windlass sql "SELECT a.session_id, a.phase_name FROM all_data a WHERE a.role = 'assistant'"
+
+# Joins across data sources
+windlass sql "SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id"
+
+# Different output formats
+windlass sql "SELECT * FROM all_data LIMIT 5" --format json
+windlass sql "SELECT * FROM all_data LIMIT 5" --format csv
+windlass sql "SELECT * FROM all_data LIMIT 5" --format table  # default
+```
+
+**Magic Table Names:**
+- `all_data` → `file('data/*.parquet', Parquet)` - main execution logs
+- `all_evals` → `file('data/evals/*.parquet', Parquet)` - evaluation data
+
+The SQL command automatically handles:
+- ✅ Union by name (handles schema evolution across files)
+- ✅ Case-insensitive table names (ALL_DATA, all_data work)
+- ✅ Table aliases and joins
+- ✅ Multiple output formats (table, json, csv)
+- ✅ Result limiting with `--limit N`
+
+This makes debugging and data exploration much easier - no need to type out the full `file()` scan syntax!
+
 ### Testing
 
 **Snapshot Testing (Regression Tests):**

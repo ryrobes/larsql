@@ -18,7 +18,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                 images: list = None, has_base64: bool = None, model: str = None,
                 # Additional unified fields
                 cascade_id: str = None, cascade_file: str = None, phase_name: str = None,
-                turn_number: int = None, attempt_number: int = None):
+                turn_number: int = None, attempt_number: int = None, parent_session_id: str = None):
     """
     Log a message to the unified logging system.
 
@@ -34,6 +34,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
 
     log_unified(
         session_id=session_id,
+        parent_session_id=parent_session_id,
         trace_id=trace_id,
         parent_id=parent_id,
         node_type=node_type,

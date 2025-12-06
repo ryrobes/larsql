@@ -113,101 +113,14 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
         instances = [];
       }
 
-      // Create ghost rows for sessions that SSE knows about but SQL doesn't have yet
-      const allActiveSessions = new Set([
-        ...(runningSessions || []),
-        ...(finalizingSessions || [])
-      ]);
-
-      console.log('[GHOST] Active sessions:', Array.from(allActiveSessions));
-      console.log('[GHOST] SQL instances:', instances.map(i => i.session_id));
-      console.log('[GHOST] sessionMetadata:', sessionMetadata);
-
-      // Separate ghost parents and children
-      const ghostParents = [];
-      const ghostChildrenMap = {}; // parent_id -> [children]
-
-      Array.from(allActiveSessions)
-        .filter(sessionId => {
-          const exists = instances.some(i => i.session_id === sessionId);
-          if (!exists) {
-            console.log('[GHOST] Creating ghost for:', sessionId);
-          }
-          return !exists;
-        })
-        .forEach(sessionId => {
-          const metadata = sessionMetadata?.[sessionId] || {};
-          const isChild = metadata.depth > 0 && metadata.parent_session_id;
-
-          console.log('[GHOST] Processing:', sessionId, 'metadata:', metadata, 'isChild:', isChild);
-
-          const ghostInstance = {
-            session_id: sessionId,
-            cascade_id: metadata.cascade_id || cascadeId,
-            parent_session_id: metadata.parent_session_id,
-            depth: metadata.depth || 0,
-            start_time: new Date().toISOString(),
-            status: 'initializing',
-            phases: [],
-            total_cost: 0,
-            duration_seconds: 0,
-            models_used: [],
-            input_data: {},
-            final_output: null,
-            children: [],
-            isGhost: true
-          };
-
-          if (isChild) {
-            // Add to children map
-            const parentId = metadata.parent_session_id;
-            console.log('[GHOST] This is a child! Adding to parent:', parentId);
-            if (!ghostChildrenMap[parentId]) {
-              ghostChildrenMap[parentId] = [];
-            }
-            ghostChildrenMap[parentId].push(ghostInstance);
-          } else {
-            // Top-level ghost parent
-            console.log('[GHOST] This is a parent! Adding to ghostParents');
-            ghostParents.push(ghostInstance);
-          }
-        });
-
-      console.log('[GHOST] Ghost parents:', ghostParents.length);
-      console.log('[GHOST] Ghost children map:', ghostChildrenMap);
-
-      // Merge ghost children into parents (both SQL parents and ghost parents)
-      const allInstances = [...ghostParents, ...instances];
-      allInstances.forEach(parent => {
-        if (ghostChildrenMap[parent.session_id]) {
-          // Deduplicate: only add ghost children that don't already exist in SQL children
-          const existingChildIds = new Set((parent.children || []).map(c => c.session_id));
-          const newGhostChildren = ghostChildrenMap[parent.session_id].filter(ghost =>
-            !existingChildIds.has(ghost.session_id)
-          );
-
-          if (newGhostChildren.length > 0) {
-            console.log('[GHOST] Merging', newGhostChildren.length, 'ghost children into parent:', parent.session_id);
-            parent.children = [...(parent.children || []), ...newGhostChildren];
-          } else {
-            console.log('[GHOST] No new ghost children to merge (all exist in SQL)');
-          }
-        }
-      });
-
-      console.log('[GHOST] Final instances count:', allInstances.length);
-      console.log('[GHOST] Final instances:', allInstances.map(i => ({
-        id: i.session_id,
-        isGhost: i.isGhost,
-        childrenCount: i.children?.length || 0
-      })));
-
-      setInstances(allInstances);
+      // LiveStore now provides real-time data, so we don't need ghost rows
+      // The backend serves from LiveStore first, then falls back to SQL for completed sessions
+      setInstances(instances);
       setLoading(false);
 
       // Auto-expand parents with active children (running or finalizing)
       const autoExpand = new Set();
-      allInstances.forEach(parent => {
+      instances.forEach(parent => {
         if (parent.children && parent.children.length > 0) {
           const hasActiveChildren = parent.children.some(child =>
             runningSessions?.has(child.session_id) ||
@@ -253,7 +166,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
           }
         };
 
-        allInstances.forEach(checkCompletion);
+        instances.forEach(checkCompletion);
       }
     } catch (err) {
       setError(err.message);
@@ -328,7 +241,6 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
 
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
-    const isGhost = instance.isGhost;
     const isCompleted = instance.phases?.every(p => p.status === 'completed');
     const hasRunning = instance.phases?.some(p => p.status === 'running');
     const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
@@ -338,10 +250,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
     let stateClass = '';
     let stateBadge = null;
 
-    if (isGhost) {
-      stateClass = 'ghost';
-      stateBadge = <span className="initializing-badge">⏳ Initializing...</span>;
-    } else if (isFinalizing) {
+    if (isFinalizing) {
       stateClass = 'finalizing';
       stateBadge = <span className="finalizing-badge">🔄 Processing...</span>;
     } else if (hasRunning || isSessionRunning) {
@@ -365,7 +274,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
           <h3 className="session-id">
             {instance.session_id}
             {stateBadge}
-            {instance.status === 'failed' && !isGhost && (
+            {instance.status === 'failed' && (
               <span className="failed-badge">
                 <Icon icon="mdi:alert-circle" width="14" />
                 Failed ({instance.error_count})

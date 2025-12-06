@@ -6,6 +6,7 @@
   },
   "soundings": {
     "factor": 3,
+    "mutate": false,
     "evaluator_instructions": "You are an expert problem-solving evaluator. Compare these three complete solution approaches based on:\n1) Correctness - Does it solve the problem accurately?\n2) Completeness - Does it cover all aspects?\n3) Clarity - Is the solution well-explained?\n4) Innovation - Is the approach creative and effective?\n\nSelect the BEST complete solution."
   },
   "phases": [{

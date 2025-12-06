@@ -192,7 +192,16 @@
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
   font-size: 0.75rem;
+}
+
+.entry-sounding-badge {
+  background: #fbbf24;
+  color: #0a0a0a;
+  padding: 0.15rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
   font-weight: 600;
+  margin-left: 0.5rem;
 }
 
 .phase-cost {

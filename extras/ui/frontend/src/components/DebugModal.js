@@ -17,20 +17,6 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   const [viewMode, setViewMode] = useState('conversation'); // 'all', 'conversation', 'structural'
   const [showStructural, setShowStructural] = useState(false);
 
-  useEffect(() => {
-    if (sessionId) {
-      fetchSessionData();
-    }
-  }, [sessionId]);
-
-  useEffect(() => {
-    // Re-group when view mode changes
-    if (entries.length > 0) {
-      const filtered = filterEntriesByViewMode(entries);
-      groupEntriesByPhase(filtered);
-    }
-  }, [viewMode, showStructural]);
-
   const fetchSessionData = async () => {
     try {
       setLoading(true);
@@ -143,22 +129,25 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   const groupEntriesByPhase = (entries) => {
     const grouped = [];
     let currentPhase = null;
+    let currentSoundingIndex = null;
     let currentGroup = null;
 
     entries.forEach((entry, idx) => {
       const phaseName = entry.phase_name || 'Initialization';
+      const soundingIndex = entry.sounding_index;
 
-      // Start new phase group
-      if (phaseName !== currentPhase) {
+      // Start new phase group when EITHER phase name OR sounding index changes
+      if (phaseName !== currentPhase || soundingIndex !== currentSoundingIndex) {
         if (currentGroup) {
           grouped.push(currentGroup);
         }
         currentPhase = phaseName;
+        currentSoundingIndex = soundingIndex;
         currentGroup = {
           phase: phaseName,
           entries: [],
           totalCost: 0,
-          soundingIndex: entry.sounding_index
+          soundingIndex: soundingIndex
         };
       }
 
@@ -187,6 +176,23 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
 
     setGroupedEntries(grouped);
   };
+
+  // Fetch session data when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      fetchSessionData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // Re-group entries when view mode or entries change
+  useEffect(() => {
+    if (entries.length > 0) {
+      const filtered = filterEntriesByViewMode(entries);
+      groupEntriesByPhase(filtered);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, showStructural, entries]);
 
   const formatCost = (cost) => {
     if (!cost || cost === 0) return '$0';
@@ -342,7 +348,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
             <div key={`img-${idx}`} className="inline-image-container">
               <img
                 src={part.image_url.url}
-                alt={`Inline image ${idx}`}
+                alt={`Inline ${idx}`}
                 className="inline-image"
                 loading="lazy"
               />
@@ -373,7 +379,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
           <div key={`img-${idx}`} className="inline-image-container">
             <img
               src={url}
-              alt={`Inline image ${idx}`}
+              alt={`Inline ${idx}`}
               className="inline-image"
               loading="lazy"
             />
@@ -858,6 +864,11 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
                           <Icon icon={getNodeIcon(entry.node_type)} width="18" />
                         </div>
                         <div className="entry-type">{entry.node_type}</div>
+                        {entry.sounding_index !== null && entry.sounding_index !== undefined && (
+                          <span className="entry-sounding-badge" title="Sounding index">
+                            #{entry.sounding_index}
+                          </span>
+                        )}
                         <div className="entry-time">{formatTimestamp(entry.timestamp)}</div>
                         {entry.cost > 0 && (
                           <div className="entry-cost">{formatCost(entry.cost)}</div>

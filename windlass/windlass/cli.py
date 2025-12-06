@@ -133,6 +133,12 @@ def main():
         help='Also compact subdirectories (e.g., data/evals)'
     )
 
+    # SQL query command
+    sql_parser = subparsers.add_parser('sql', help='Query Parquet logs with SQL (auto-translates table names)')
+    sql_parser.add_argument('query', help='SQL query (use all_data, all_evals as table names)')
+    sql_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
+    sql_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
+
     # Hot or Not command group
     hotornot_parser = subparsers.add_parser('hotornot', help='Human evaluation system', aliases=['hon'])
     hotornot_subparsers = hotornot_parser.add_subparsers(dest='hotornot_command', help='Hot or Not subcommands')
@@ -223,6 +229,8 @@ def main():
         else:
             data_parser.print_help()
             sys.exit(1)
+    elif args.command == 'sql':
+        cmd_sql(args)
     elif args.command in ['hotornot', 'hon']:
         if args.hotornot_command == 'rate':
             cmd_hotornot_rate(args)
@@ -586,6 +594,95 @@ def cmd_analyze(args):
         sys.exit(1)
 
 
+# ========== SQL QUERY COMMAND ==========
+
+def cmd_sql(args):
+    """Execute a SQL query with magic table name translation."""
+    import re
+    from windlass.config import get_config
+    from windlass.db_adapter import get_db_adapter
+    from rich.console import Console
+    from rich.table import Table
+
+    config = get_config()
+    db = get_db_adapter()
+
+    # Magic table name mappings (use config.data_dir which respects WINDLASS_ROOT)
+    table_mappings = {
+        'all_data': f"file('{config.data_dir}/*.parquet', Parquet)",
+        'all_evals': f"file('{config.data_dir}/evals/*.parquet', Parquet)",
+    }
+
+    # Preprocess query to replace magic table names
+    query = args.query
+
+    # Replace table names (case-insensitive)
+    # Match table names in SQL contexts: FROM, JOIN, table aliases
+    for magic_name, replacement in table_mappings.items():
+        # Pattern matches:
+        # - FROM all_data
+        # - JOIN all_data
+        # - FROM all_data AS a
+        # - all_data a (implicit alias)
+        # - all_data.column_name
+        # Case-insensitive replacement
+        pattern = r'\b' + magic_name + r'\b'
+        query = re.sub(pattern, replacement, query, flags=re.IGNORECASE)
+
+    try:
+        # Execute query
+        df = db.query(query, output_format="dataframe")
+
+        # Apply limit if specified
+        if args.limit and len(df) > args.limit:
+            df = df.head(args.limit)
+            print(f"(Showing {args.limit} of {len(df)} rows)")
+            print()
+
+        # Output in requested format
+        if df.empty:
+            print("No results found.")
+            return
+
+        if args.format == 'table':
+            # Pretty table output using Rich
+            console = Console()
+            table = Table(show_header=True, header_style="bold magenta")
+
+            # Add columns
+            for col in df.columns:
+                table.add_column(str(col))
+
+            # Add rows (limit to reasonable display size)
+            for _, row in df.iterrows():
+                table.add_row(*[str(val) for val in row])
+
+            print()
+            console.print(table)
+            print()
+            print(f"({len(df)} rows)")
+        elif args.format == 'json':
+            print(df.to_json(orient='records', indent=2))
+        elif args.format == 'csv':
+            print(df.to_csv(index=False))
+
+    except Exception as e:
+        print(f"✗ Query failed: {e}", file=sys.stderr)
+        print()
+        print("Available magic tables:")
+        print(f"  • all_data  → {config.data_dir}/*.parquet")
+        print(f"  • all_evals → {config.data_dir}/evals/*.parquet")
+        print()
+        print(f"Data directory: {config.data_dir}")
+        print(f"(Set WINDLASS_ROOT env var to change)")
+        print()
+        print("Example queries:")
+        print("  windlass sql \"SELECT * FROM all_data LIMIT 10\"")
+        print("  windlass sql \"SELECT session_id, cost FROM all_data WHERE cost > 0.01\"")
+        print("  windlass sql \"SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id\"")
+        sys.exit(1)
+
+
 # ========== DATA MANAGEMENT COMMANDS ==========
 
 def cmd_data_compact(args):
@@ -610,16 +707,26 @@ def cmd_data_compact(args):
     else:
         base_dirs = [Path(config.data_dir)]
 
+    # Directories to never compact (contain structured data that must remain as-is)
+    EXCLUDED_DIRS = {'rag'}
+
     # Add subdirectories if recursive
     all_dirs = []
     for base_dir in base_dirs:
         if not base_dir.exists():
             print(f"⚠ Directory does not exist: {base_dir}")
             continue
+        # Skip excluded directories even at top level
+        if base_dir.name in EXCLUDED_DIRS:
+            print(f"⚠ Skipping excluded directory: {base_dir}")
+            continue
         all_dirs.append(base_dir)
         if args.recursive:
             for subdir in base_dir.iterdir():
                 if subdir.is_dir():
+                    if subdir.name in EXCLUDED_DIRS:
+                        print(f"⚠ Skipping excluded directory: {subdir}")
+                        continue
                     all_dirs.append(subdir)
 
     if not all_dirs:
