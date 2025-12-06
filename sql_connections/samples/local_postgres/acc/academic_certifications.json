@@ -1,0 +1,172 @@
+{
+  "table_name": "academic_certifications",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 1,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000205",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "student_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000201",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "course_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000202",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "program_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000101",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "certification_type",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "program",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "certification_number",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "CERT-DA-0001",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "issued_date",
+      "type": "DATE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2026-05-20 00:00:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "expiration_date",
+      "type": "DATE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2028-05-20 00:00:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "issuing_authority",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "State Board",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 05:06:00.108671+00\",)",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000205",
+      "student_id": "00000000-0000-0000-0000-000000000201",
+      "course_id": "00000000-0000-0000-0000-000000000202",
+      "program_id": "00000000-0000-0000-0000-000000000101",
+      "certification_type": "program",
+      "certification_number": "CERT-DA-0001",
+      "issued_date": "2026-05-20 00:00:00",
+      "expiration_date": "2028-05-20 00:00:00",
+      "issuing_authority": "State Board",
+      "sys_period": "[\"2025-10-31 05:06:00.108671+00\",)"
+    }
+  ]
+}

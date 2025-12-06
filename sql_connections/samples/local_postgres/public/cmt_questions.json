@@ -1,0 +1,65 @@
+{
+  "table_name": "cmt_questions",
+  "schema": "public",
+  "database": "local_postgres",
+  "row_count": 0,
+  "columns": [
+    {
+      "name": "id",
+      "type": "BIGINT",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "question_id",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "text",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "category",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "active",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    }
+  ],
+  "sample_rows": []
+}

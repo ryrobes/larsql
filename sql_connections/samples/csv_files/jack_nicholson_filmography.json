@@ -1,0 +1,1196 @@
+{
+  "table_name": "jack_nicholson_filmography",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 60,
+  "columns": [
+    {
+      "name": "Year",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 37,
+        "value_distribution": [
+          {
+            "value": 1960,
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": 1967,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1963,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1996,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1971,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1964,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1970,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1975,
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": 1968,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 1966,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 1976,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 1987,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 1992,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 2003,
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": 2010,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1982,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1973,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1962,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1990,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1974,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1986,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 2006,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1994,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1983,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 2002,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 2007,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1981,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1980,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1958,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1995,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1978,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1972,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1997,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1985,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 2001,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1989,
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": 1969,
+            "count": 1,
+            "percentage": 1.67
+          }
+        ]
+      }
+    },
+    {
+      "name": "Title",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 60
+      }
+    },
+    {
+      "name": "Role",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 55
+      }
+    },
+    {
+      "name": "Director",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 28,
+        "value_distribution": [
+          {
+            "value": "N/A",
+            "count": 14,
+            "percentage": 23.33
+          },
+          {
+            "value": "Bob Rafelson",
+            "count": 6,
+            "percentage": 10.0
+          },
+          {
+            "value": "Mike Nichols",
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": "James L. Brooks",
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": "Jack Nicholson",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "Roger Corman",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "Tim Burton",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Monte Hellman",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Sean Penn",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Rob Reiner",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Martin Scorsese",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Vincente Minnelli",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Irving Lerner",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Elia Kazan",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Stanley Kubrick",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Hal Ashby",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Alexander Payne",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Michelangelo Antonioni",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Ken Russell",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Arthur Penn",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Dennis Hopper",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Peter Segal",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Nancy Meyers",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Roman Polanski",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Robert Harling",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "George Miller",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Tony Richardson",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "John Huston",
+            "count": 1,
+            "percentage": 1.67
+          }
+        ]
+      }
+    },
+    {
+      "name": "Genre",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 19,
+        "value_distribution": [
+          {
+            "value": "N/A",
+            "count": 14,
+            "percentage": 23.33
+          },
+          {
+            "value": "Drama",
+            "count": 11,
+            "percentage": 18.33
+          },
+          {
+            "value": "Comedy",
+            "count": 6,
+            "percentage": 10.0
+          },
+          {
+            "value": "Crime",
+            "count": 6,
+            "percentage": 10.0
+          },
+          {
+            "value": "Romantic Comedy",
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": "Western",
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": "Musical",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Horror",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "Black Comedy",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Courtroom Drama",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Horror Comedy",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Horror Romance",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Noir",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Sci-Fi Comedy",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Fantasy Comedy",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Counterculture",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Gangster",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Superhero",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "Satire",
+            "count": 1,
+            "percentage": 1.67
+          }
+        ]
+      }
+    },
+    {
+      "name": "IMDb Rating",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 22,
+        "value_distribution": [
+          {
+            "value": "N/A",
+            "count": 16,
+            "percentage": 26.67
+          },
+          {
+            "value": "6.1",
+            "count": 5,
+            "percentage": 8.33
+          },
+          {
+            "value": "6.2",
+            "count": 5,
+            "percentage": 8.33
+          },
+          {
+            "value": "6.4",
+            "count": 4,
+            "percentage": 6.67
+          },
+          {
+            "value": "6.9",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "6.5",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "5.7",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "7.7",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "6.8",
+            "count": 3,
+            "percentage": 5.0
+          },
+          {
+            "value": "6.6",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "7.5",
+            "count": 2,
+            "percentage": 3.33
+          },
+          {
+            "value": "7.4",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "6.0",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "8.4",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "5.2",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "6.7",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "7.2",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "6.3",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "7.0",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "8.1",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "5.9",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "7.6",
+            "count": 1,
+            "percentage": 1.67
+          }
+        ]
+      }
+    },
+    {
+      "name": "Box Office",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 10,
+        "value_distribution": [
+          {
+            "value": "N/A",
+            "count": 51,
+            "percentage": 85.0
+          },
+          {
+            "value": "47",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "18",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "314",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "411",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "141",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "108",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "60",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "29",
+            "count": 1,
+            "percentage": 1.67
+          },
+          {
+            "value": "10",
+            "count": 1,
+            "percentage": 1.67
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "Year": 1958,
+      "Title": "The Cry Baby Killer",
+      "Role": "Jimmy Wallace",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.1",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1960,
+      "Title": "Too Soon to Love",
+      "Role": "Buddy",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "5.7",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1960,
+      "Title": "The Wild Ride",
+      "Role": "Johnny Varron",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.4",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1960,
+      "Title": "The Little Shop of Horrors",
+      "Role": "Wilbur Force",
+      "Director": "Roger Corman",
+      "Genre": "Horror Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1960,
+      "Title": "Studs Lonigan",
+      "Role": "Weary Reilly",
+      "Director": "Irving Lerner",
+      "Genre": "Drama",
+      "IMDb Rating": "6.8",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1962,
+      "Title": "The Broken Land",
+      "Role": "Will Brocious",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "5.7",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1963,
+      "Title": "The Raven",
+      "Role": "Rexford Bedlo",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.4",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1963,
+      "Title": "The Terror",
+      "Role": "Andre Duvalier",
+      "Director": "Roger Corman",
+      "Genre": "Horror",
+      "IMDb Rating": "6.9",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1963,
+      "Title": "Thunder Island",
+      "Role": "\u2014",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1964,
+      "Title": "Flight to Fury",
+      "Role": "Jay Wickham",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "5.7",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1964,
+      "Title": "Back Door to Hell",
+      "Role": "Burnett",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.1",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1964,
+      "Title": "Ensign Pulver",
+      "Role": "Dolan",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.0",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1966,
+      "Title": "The Shooting",
+      "Role": "Billy Spear",
+      "Director": "Monte Hellman",
+      "Genre": "Western",
+      "IMDb Rating": "6.8",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1966,
+      "Title": "Ride in the Whirlwind",
+      "Role": "Wes",
+      "Director": "Monte Hellman",
+      "Genre": "Western",
+      "IMDb Rating": "6.5",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1967,
+      "Title": "The St. Valentine's Day Massacre",
+      "Role": "Gino",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1967,
+      "Title": "Hells Angels on Wheels",
+      "Role": "Poet",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1967,
+      "Title": "The Trip",
+      "Role": "\u2014",
+      "Director": "Roger Corman",
+      "Genre": "Drama",
+      "IMDb Rating": "6.4",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1968,
+      "Title": "Psych-Out",
+      "Role": "Stoney",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "5.9",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1968,
+      "Title": "Head",
+      "Role": "Movie Director in Restaurant",
+      "Director": "Bob Rafelson",
+      "Genre": "Comedy",
+      "IMDb Rating": "6.9",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1969,
+      "Title": "Easy Rider",
+      "Role": "George Hanson",
+      "Director": "Dennis Hopper",
+      "Genre": "Counterculture",
+      "IMDb Rating": "7.7",
+      "Box Office": "60"
+    },
+    {
+      "Year": 1970,
+      "Title": "On a Clear Day You Can See Forever",
+      "Role": "Tad Pringle",
+      "Director": "Vincente Minnelli",
+      "Genre": "Musical",
+      "IMDb Rating": "6.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1970,
+      "Title": "The Rebel Rousers",
+      "Role": "Bunny",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1970,
+      "Title": "Five Easy Pieces",
+      "Role": "Robert Eroica Dupea",
+      "Director": "Bob Rafelson",
+      "Genre": "Drama",
+      "IMDb Rating": "7.5",
+      "Box Office": "18"
+    },
+    {
+      "Year": 1971,
+      "Title": "Carnal Knowledge",
+      "Role": "Jonathan Fuerst",
+      "Director": "Mike Nichols",
+      "Genre": "Drama",
+      "IMDb Rating": "7.0",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1971,
+      "Title": "A Safe Place",
+      "Role": "Mitch",
+      "Director": "N/A",
+      "Genre": "N/A",
+      "IMDb Rating": "6.6",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1971,
+      "Title": "Drive, He Said",
+      "Role": "\u2014",
+      "Director": "Jack Nicholson",
+      "Genre": "Drama",
+      "IMDb Rating": "6.1",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1972,
+      "Title": "The King of Marvin Gardens",
+      "Role": "David Staebler",
+      "Director": "Bob Rafelson",
+      "Genre": "Drama",
+      "IMDb Rating": "6.4",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1973,
+      "Title": "The Last Detail",
+      "Role": "Signalman 1st Class Billy L. 'Badass' Buddusky",
+      "Director": "Hal Ashby",
+      "Genre": "Comedy",
+      "IMDb Rating": "7.6",
+      "Box Office": "10"
+    },
+    {
+      "Year": 1974,
+      "Title": "Chinatown",
+      "Role": "J. J. 'Jake' Gittes",
+      "Director": "Roman Polanski",
+      "Genre": "Noir",
+      "IMDb Rating": "8.1",
+      "Box Office": "29"
+    },
+    {
+      "Year": 1975,
+      "Title": "Tommy",
+      "Role": "The Specialist",
+      "Director": "Ken Russell",
+      "Genre": "Musical",
+      "IMDb Rating": "6.7",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1975,
+      "Title": "The Passenger",
+      "Role": "David Locke",
+      "Director": "Michelangelo Antonioni",
+      "Genre": "Drama",
+      "IMDb Rating": "7.5",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1975,
+      "Title": "The Fortune",
+      "Role": "Oscar Sullivan",
+      "Director": "Mike Nichols",
+      "Genre": "Crime",
+      "IMDb Rating": "6.8",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1976,
+      "Title": "The Missouri Breaks",
+      "Role": "Tom Logan",
+      "Director": "Arthur Penn",
+      "Genre": "Western",
+      "IMDb Rating": "6.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1976,
+      "Title": "The Last Tycoon",
+      "Role": "Brimmer",
+      "Director": "Elia Kazan",
+      "Genre": "Drama",
+      "IMDb Rating": "6.9",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1978,
+      "Title": "Goin' South",
+      "Role": "Henry Lloyd Moon",
+      "Director": "Jack Nicholson",
+      "Genre": "Western",
+      "IMDb Rating": "6.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1980,
+      "Title": "The Shining",
+      "Role": "Jack Torrance",
+      "Director": "Stanley Kubrick",
+      "Genre": "Horror",
+      "IMDb Rating": "8.4",
+      "Box Office": "47"
+    },
+    {
+      "Year": 1981,
+      "Title": "The Postman Always Rings Twice",
+      "Role": "Frank Chambers",
+      "Director": "Bob Rafelson",
+      "Genre": "Crime",
+      "IMDb Rating": "6.6",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1982,
+      "Title": "The Border",
+      "Role": "Charlie Smith",
+      "Director": "Tony Richardson",
+      "Genre": "Crime",
+      "IMDb Rating": "6.5",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1983,
+      "Title": "Terms of Endearment",
+      "Role": "Garrett Breedlove",
+      "Director": "James L. Brooks",
+      "Genre": "Drama",
+      "IMDb Rating": "7.4",
+      "Box Office": "108"
+    },
+    {
+      "Year": 1985,
+      "Title": "Prizzi's Honor",
+      "Role": "Charley Partanna",
+      "Director": "John Huston",
+      "Genre": "Black Comedy",
+      "IMDb Rating": "7.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1986,
+      "Title": "Heartburn",
+      "Role": "Mark Forman",
+      "Director": "Mike Nichols",
+      "Genre": "Romantic Comedy",
+      "IMDb Rating": "6.1",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1987,
+      "Title": "The Witches of Eastwick",
+      "Role": "Daryl Van Horne",
+      "Director": "George Miller",
+      "Genre": "Fantasy Comedy",
+      "IMDb Rating": "6.5",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1987,
+      "Title": "Broadcast News",
+      "Role": "Bill Rorish",
+      "Director": "James L. Brooks",
+      "Genre": "Satire",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1989,
+      "Title": "Batman",
+      "Role": "\u2014",
+      "Director": "Tim Burton",
+      "Genre": "Superhero",
+      "IMDb Rating": "N/A",
+      "Box Office": "411"
+    },
+    {
+      "Year": 1990,
+      "Title": "The Two Jakes",
+      "Role": "J. J. 'Jake' Gittes",
+      "Director": "Jack Nicholson",
+      "Genre": "Crime",
+      "IMDb Rating": "6.1",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1992,
+      "Title": "Man Trouble",
+      "Role": "Harry Bliss",
+      "Director": "Bob Rafelson",
+      "Genre": "Comedy",
+      "IMDb Rating": "5.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1992,
+      "Title": "A Few Good Men",
+      "Role": "Colonel Nathan R. Jessup",
+      "Director": "Rob Reiner",
+      "Genre": "Courtroom Drama",
+      "IMDb Rating": "7.7",
+      "Box Office": "141"
+    },
+    {
+      "Year": 1994,
+      "Title": "Wolf",
+      "Role": "Will Randall",
+      "Director": "Mike Nichols",
+      "Genre": "Horror Romance",
+      "IMDb Rating": "6.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1995,
+      "Title": "The Crossing Guard",
+      "Role": "Freddy Gale",
+      "Director": "Sean Penn",
+      "Genre": "Drama",
+      "IMDb Rating": "6.3",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1996,
+      "Title": "Blood and Wine",
+      "Role": "Alex Gates",
+      "Director": "Bob Rafelson",
+      "Genre": "Crime",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1996,
+      "Title": "Mars Attacks!",
+      "Role": "President James Dale / Art Land",
+      "Director": "Tim Burton",
+      "Genre": "Sci-Fi Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1996,
+      "Title": "The Evening Star",
+      "Role": "Garrett Breedlove",
+      "Director": "Robert Harling",
+      "Genre": "Drama",
+      "IMDb Rating": "6.2",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 1997,
+      "Title": "As Good as It Gets",
+      "Role": "Melvin Udall",
+      "Director": "James L. Brooks",
+      "Genre": "Romantic Comedy",
+      "IMDb Rating": "7.7",
+      "Box Office": "314"
+    },
+    {
+      "Year": 2001,
+      "Title": "The Pledge",
+      "Role": "Jerry Black",
+      "Director": "Sean Penn",
+      "Genre": "Crime",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2002,
+      "Title": "About Schmidt",
+      "Role": "Warren R. Schmidt",
+      "Director": "Alexander Payne",
+      "Genre": "Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2003,
+      "Title": "Anger Management",
+      "Role": "Dr. Buddy Rydell",
+      "Director": "Peter Segal",
+      "Genre": "Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2003,
+      "Title": "Something's Gotta Give",
+      "Role": "Harry Sanborn",
+      "Director": "Nancy Meyers",
+      "Genre": "Romantic Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2006,
+      "Title": "The Departed",
+      "Role": "Francis 'Frank' Costello",
+      "Director": "Martin Scorsese",
+      "Genre": "Gangster",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2007,
+      "Title": "The Bucket List",
+      "Role": "Edward Perriman Cole",
+      "Director": "Rob Reiner",
+      "Genre": "Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    },
+    {
+      "Year": 2010,
+      "Title": "How Do You Know",
+      "Role": "Charles Madison",
+      "Director": "James L. Brooks",
+      "Genre": "Romantic Comedy",
+      "IMDb Rating": "N/A",
+      "Box Office": "N/A"
+    }
+  ]
+}

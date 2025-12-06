@@ -1,0 +1,780 @@
+{
+  "table_name": "crypto",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 1460,
+  "columns": [
+    {
+      "name": "Date",
+      "type": "DATE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 365,
+        "min": "2024-11-24",
+        "max": "2025-11-23"
+      }
+    },
+    {
+      "name": "Coin",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 4,
+        "value_distribution": [
+          {
+            "value": "Bitcoin",
+            "count": 365,
+            "percentage": 25.0
+          },
+          {
+            "value": "Dogecoin",
+            "count": 365,
+            "percentage": 25.0
+          },
+          {
+            "value": "Solana",
+            "count": 365,
+            "percentage": 25.0
+          },
+          {
+            "value": "Ethereum",
+            "count": 365,
+            "percentage": 25.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Price_USD",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1111,
+        "min": "0.01",
+        "max": "56791.91"
+      }
+    },
+    {
+      "name": "Volume_USD",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1460,
+        "min": "1014085946.72",
+        "max": "49988706931.45"
+      }
+    },
+    {
+      "name": "Market_Cap_USD",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1447,
+        "min": "1200000.0",
+        "max": "1118800634837.26"
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "Date": "2024-11-24 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 50000.0,
+      "Volume_USD": 21428483451.27,
+      "Market_Cap_USD": 985000000000.0
+    },
+    {
+      "Date": "2024-11-25 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 50496.71,
+      "Volume_USD": 44743965127.58,
+      "Market_Cap_USD": 994785268814.32
+    },
+    {
+      "Date": "2024-11-26 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 50358.45,
+      "Volume_USD": 18943833540.78,
+      "Market_Cap_USD": 992061462081.25
+    },
+    {
+      "Date": "2024-11-27 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 51006.14,
+      "Volume_USD": 48528901577.62,
+      "Market_Cap_USD": 1004820926281.83
+    },
+    {
+      "Date": "2024-11-28 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 52529.17,
+      "Volume_USD": 10486178987.59,
+      "Market_Cap_USD": 1034824614453.07
+    },
+    {
+      "Date": "2024-11-29 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 52295.01,
+      "Volume_USD": 48795153068.31,
+      "Market_Cap_USD": 1030211792971.02
+    },
+    {
+      "Date": "2024-11-30 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 52060.88,
+      "Volume_USD": 11726396478.02,
+      "Market_Cap_USD": 1025599294919.12
+    },
+    {
+      "Date": "2024-12-01 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 53640.09,
+      "Volume_USD": 45645724547.92,
+      "Market_Cap_USD": 1056709787384.62
+    },
+    {
+      "Date": "2024-12-02 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 54407.53,
+      "Volume_USD": 31108044363.45,
+      "Market_Cap_USD": 1071828251548.93
+    },
+    {
+      "Date": "2024-12-03 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 53938.05,
+      "Volume_USD": 49718591844.77,
+      "Market_Cap_USD": 1062579606146.01
+    },
+    {
+      "Date": "2024-12-04 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 54480.61,
+      "Volume_USD": 12951862589.42,
+      "Market_Cap_USD": 1073268039004.66
+    },
+    {
+      "Date": "2024-12-05 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 54017.19,
+      "Volume_USD": 32154171376.05,
+      "Market_Cap_USD": 1064138710456.25
+    },
+    {
+      "Date": "2024-12-06 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 53551.46,
+      "Volume_USD": 48772101424.76,
+      "Market_Cap_USD": 1054963834310.92
+    },
+    {
+      "Date": "2024-12-07 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 53793.43,
+      "Volume_USD": 30923913766.81,
+      "Market_Cap_USD": 1059730491060.77
+    },
+    {
+      "Date": "2024-12-08 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 51880.15,
+      "Volume_USD": 35175945525.41,
+      "Market_Cap_USD": 1022038870241.01
+    },
+    {
+      "Date": "2024-12-09 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 50155.23,
+      "Volume_USD": 37829947559.38,
+      "Market_Cap_USD": 988057988940.5
+    },
+    {
+      "Date": "2024-12-10 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 49592.94,
+      "Volume_USD": 28181642590.71,
+      "Market_Cap_USD": 976980924614.45
+    },
+    {
+      "Date": "2024-12-11 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 48580.11,
+      "Volume_USD": 35102323203.36,
+      "Market_Cap_USD": 957028151543.87
+    },
+    {
+      "Date": "2024-12-12 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 48894.36,
+      "Volume_USD": 33372572476.92,
+      "Market_Cap_USD": 963218823995.99
+    },
+    {
+      "Date": "2024-12-13 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 47986.33,
+      "Volume_USD": 46046320419.64,
+      "Market_Cap_USD": 945330749708.22
+    },
+    {
+      "Date": "2024-12-14 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 46574.03,
+      "Volume_USD": 11817855213.66,
+      "Market_Cap_USD": 917508366791.92
+    },
+    {
+      "Date": "2024-12-15 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 48039.68,
+      "Volume_USD": 21238527583.69,
+      "Market_Cap_USD": 946381647539.67
+    },
+    {
+      "Date": "2024-12-16 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 47813.9,
+      "Volume_USD": 48016459363.06,
+      "Market_Cap_USD": 941933854420.09
+    },
+    {
+      "Date": "2024-12-17 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 47881.43,
+      "Volume_USD": 45610551355.64,
+      "Market_Cap_USD": 943264160052.44
+    },
+    {
+      "Date": "2024-12-18 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 46456.68,
+      "Volume_USD": 28226270111.43,
+      "Market_Cap_USD": 915196620784.04
+    },
+    {
+      "Date": "2024-12-19 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 45912.3,
+      "Volume_USD": 34805303912.06,
+      "Market_Cap_USD": 904472281110.89
+    },
+    {
+      "Date": "2024-12-20 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 46023.22,
+      "Volume_USD": 21095247319.25,
+      "Market_Cap_USD": 906657456128.17
+    },
+    {
+      "Date": "2024-12-21 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44872.23,
+      "Volume_USD": 17524846388.95,
+      "Market_Cap_USD": 883982882652.96
+    },
+    {
+      "Date": "2024-12-22 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 45247.93,
+      "Volume_USD": 28547936197.6,
+      "Market_Cap_USD": 891384133614.36
+    },
+    {
+      "Date": "2024-12-23 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44647.29,
+      "Volume_USD": 24134089121.04,
+      "Market_Cap_USD": 879551551422.96
+    },
+    {
+      "Date": "2024-12-24 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44355.59,
+      "Volume_USD": 33346244474.03,
+      "Market_Cap_USD": 873805184552.04
+    },
+    {
+      "Date": "2024-12-25 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 43753.89,
+      "Volume_USD": 13109385478.6,
+      "Market_Cap_USD": 861951564291.12
+    },
+    {
+      "Date": "2024-12-26 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 45606.16,
+      "Volume_USD": 48975792306.65,
+      "Market_Cap_USD": 898441444525.94
+    },
+    {
+      "Date": "2024-12-27 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 45592.67,
+      "Volume_USD": 49448429779.18,
+      "Market_Cap_USD": 898175549198.61
+    },
+    {
+      "Date": "2024-12-28 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44534.96,
+      "Volume_USD": 37926468560.79,
+      "Market_Cap_USD": 877338643898.18
+    },
+    {
+      "Date": "2024-12-29 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 45357.5,
+      "Volume_USD": 31443854653.76,
+      "Market_Cap_USD": 893542778666.61
+    },
+    {
+      "Date": "2024-12-30 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44136.66,
+      "Volume_USD": 22381104651.45,
+      "Market_Cap_USD": 869492158762.18
+    },
+    {
+      "Date": "2024-12-31 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 44345.52,
+      "Volume_USD": 42551800788.28,
+      "Market_Cap_USD": 873606771583.77
+    },
+    {
+      "Date": "2025-01-01 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42385.85,
+      "Volume_USD": 37389246902.16,
+      "Market_Cap_USD": 835001270143.34
+    },
+    {
+      "Date": "2025-01-02 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41057.67,
+      "Volume_USD": 16504677573.8,
+      "Market_Cap_USD": 808836004980.04
+    },
+    {
+      "Date": "2025-01-03 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41254.53,
+      "Volume_USD": 46437087379.75,
+      "Market_Cap_USD": 812714171326.66
+    },
+    {
+      "Date": "2025-01-04 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41992.99,
+      "Volume_USD": 42901489716.93,
+      "Market_Cap_USD": 827261962952.57
+    },
+    {
+      "Date": "2025-01-05 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42164.36,
+      "Volume_USD": 47991996531.68,
+      "Market_Cap_USD": 830637918092.02
+    },
+    {
+      "Date": "2025-01-06 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42048.71,
+      "Volume_USD": 39028780335.53,
+      "Market_Cap_USD": 828359646928.97
+    },
+    {
+      "Date": "2025-01-07 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41747.61,
+      "Volume_USD": 34536607837.43,
+      "Market_Cap_USD": 822427904125.86
+    },
+    {
+      "Date": "2025-01-08 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40269.09,
+      "Volume_USD": 26729721451.62,
+      "Market_Cap_USD": 793301020915.62
+    },
+    {
+      "Date": "2025-01-09 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39549.24,
+      "Volume_USD": 47309139334.16,
+      "Market_Cap_USD": 779120090010.24
+    },
+    {
+      "Date": "2025-01-10 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39088.6,
+      "Volume_USD": 44642555580.02,
+      "Market_Cap_USD": 770045506222.34
+    },
+    {
+      "Date": "2025-01-11 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40145.73,
+      "Volume_USD": 11808746804.25,
+      "Market_Cap_USD": 790870814078.85
+    },
+    {
+      "Date": "2025-01-12 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40489.34,
+      "Volume_USD": 11054678979.89,
+      "Market_Cap_USD": 797640094383.35
+    },
+    {
+      "Date": "2025-01-13 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 38726.3,
+      "Volume_USD": 25058534675.12,
+      "Market_Cap_USD": 762908203322.7
+    },
+    {
+      "Date": "2025-01-14 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39050.39,
+      "Volume_USD": 42422133231.27,
+      "Market_Cap_USD": 769292657519.78
+    },
+    {
+      "Date": "2025-01-15 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 38665.31,
+      "Volume_USD": 49491045172.6,
+      "Market_Cap_USD": 761706536595.58
+    },
+    {
+      "Date": "2025-01-16 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 37988.38,
+      "Volume_USD": 16016675644.14,
+      "Market_Cap_USD": 748371173189.55
+    },
+    {
+      "Date": "2025-01-17 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 38600.06,
+      "Volume_USD": 33765228614.09,
+      "Market_Cap_USD": 760421196079.72
+    },
+    {
+      "Date": "2025-01-18 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39631.06,
+      "Volume_USD": 25235634265.24,
+      "Market_Cap_USD": 780731886672.89
+    },
+    {
+      "Date": "2025-01-19 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40562.34,
+      "Volume_USD": 48796575912.58,
+      "Market_Cap_USD": 799078105019.47
+    },
+    {
+      "Date": "2025-01-20 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39723.12,
+      "Volume_USD": 43684756925.43,
+      "Market_Cap_USD": 782545519811.99
+    },
+    {
+      "Date": "2025-01-21 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39413.91,
+      "Volume_USD": 43533148188.45,
+      "Market_Cap_USD": 776454036007.72
+    },
+    {
+      "Date": "2025-01-22 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39745.17,
+      "Volume_USD": 28747726391.8,
+      "Market_Cap_USD": 782979925606.37
+    },
+    {
+      "Date": "2025-01-23 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40720.72,
+      "Volume_USD": 26592780093.51,
+      "Market_Cap_USD": 802198164610.68
+    },
+    {
+      "Date": "2025-01-24 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40241.54,
+      "Volume_USD": 20936282877.23,
+      "Market_Cap_USD": 792758432125.13
+    },
+    {
+      "Date": "2025-01-25 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40055.89,
+      "Volume_USD": 12255019866.04,
+      "Market_Cap_USD": 789100950284.85
+    },
+    {
+      "Date": "2025-01-26 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 38949.55,
+      "Volume_USD": 44588895050.2,
+      "Market_Cap_USD": 767306151296.93
+    },
+    {
+      "Date": "2025-01-27 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 37753.34,
+      "Volume_USD": 42516040365.2,
+      "Market_Cap_USD": 743740880802.54
+    },
+    {
+      "Date": "2025-01-28 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 38565.87,
+      "Volume_USD": 49988706931.45,
+      "Market_Cap_USD": 759747639503.71
+    },
+    {
+      "Date": "2025-01-29 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39922.11,
+      "Volume_USD": 49865473482.96,
+      "Market_Cap_USD": 786465568066.55
+    },
+    {
+      "Date": "2025-01-30 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39850.1,
+      "Volume_USD": 32217268224.11,
+      "Market_Cap_USD": 785046968671.42
+    },
+    {
+      "Date": "2025-01-31 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40853.63,
+      "Volume_USD": 40759496607.22,
+      "Market_Cap_USD": 804816566759.89
+    },
+    {
+      "Date": "2025-02-01 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41215.27,
+      "Volume_USD": 47790629195.3,
+      "Market_Cap_USD": 811940796453.33
+    },
+    {
+      "Date": "2025-02-02 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40570.15,
+      "Volume_USD": 43985895627.1,
+      "Market_Cap_USD": 799231937287.61
+    },
+    {
+      "Date": "2025-02-03 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40931.54,
+      "Volume_USD": 19893924069.73,
+      "Market_Cap_USD": 806351430716.13
+    },
+    {
+      "Date": "2025-02-04 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42469.58,
+      "Volume_USD": 28021765412.4,
+      "Market_Cap_USD": 836650751075.51
+    },
+    {
+      "Date": "2025-02-05 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42433.76,
+      "Volume_USD": 15166376606.06,
+      "Market_Cap_USD": 835944978105.04
+    },
+    {
+      "Date": "2025-02-06 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 43998.4,
+      "Volume_USD": 48162041090.35,
+      "Market_Cap_USD": 866768458124.58
+    },
+    {
+      "Date": "2025-02-07 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41378.65,
+      "Volume_USD": 34246985378.04,
+      "Market_Cap_USD": 815159479574.01
+    },
+    {
+      "Date": "2025-02-08 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42200.56,
+      "Volume_USD": 19145712220.14,
+      "Market_Cap_USD": 831350958910.2
+    },
+    {
+      "Date": "2025-02-09 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42287.6,
+      "Volume_USD": 36868027376.23,
+      "Market_Cap_USD": 833065786154.49
+    },
+    {
+      "Date": "2025-02-10 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41988.6,
+      "Volume_USD": 34725129618.32,
+      "Market_Cap_USD": 827175341350.32
+    },
+    {
+      "Date": "2025-02-11 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42080.36,
+      "Volume_USD": 24326508721.31,
+      "Market_Cap_USD": 828983028648.06
+    },
+    {
+      "Date": "2025-02-12 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40092.79,
+      "Volume_USD": 14542303687.99,
+      "Market_Cap_USD": 789827921030.43
+    },
+    {
+      "Date": "2025-02-13 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39873.12,
+      "Volume_USD": 36862927823.71,
+      "Market_Cap_USD": 785500384840.03
+    },
+    {
+      "Date": "2025-02-14 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40230.23,
+      "Volume_USD": 30812308036.15,
+      "Market_Cap_USD": 792535502498.81
+    },
+    {
+      "Date": "2025-02-15 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41708.12,
+      "Volume_USD": 40892735669.43,
+      "Market_Cap_USD": 821650015180.22
+    },
+    {
+      "Date": "2025-02-16 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41189.85,
+      "Volume_USD": 30806540044.48,
+      "Market_Cap_USD": 811440091880.23
+    },
+    {
+      "Date": "2025-02-17 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40381.36,
+      "Volume_USD": 44087260012.74,
+      "Market_Cap_USD": 795512767903.23
+    },
+    {
+      "Date": "2025-02-18 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39879.6,
+      "Volume_USD": 32076273550.98,
+      "Market_Cap_USD": 785628154144.62
+    },
+    {
+      "Date": "2025-02-19 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40795.0,
+      "Volume_USD": 32437518861.42,
+      "Market_Cap_USD": 803661575863.35
+    },
+    {
+      "Date": "2025-02-20 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41123.75,
+      "Volume_USD": 45066144106.33,
+      "Market_Cap_USD": 810137972723.64
+    },
+    {
+      "Date": "2025-02-21 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40593.99,
+      "Volume_USD": 26139314648.5,
+      "Market_Cap_USD": 799701696709.43
+    },
+    {
+      "Date": "2025-02-22 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41107.26,
+      "Volume_USD": 15360609138.03,
+      "Market_Cap_USD": 809813065141.76
+    },
+    {
+      "Date": "2025-02-23 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41204.34,
+      "Volume_USD": 11151307052.53,
+      "Market_Cap_USD": 811725492863.92
+    },
+    {
+      "Date": "2025-02-24 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 42172.98,
+      "Volume_USD": 40205490226.94,
+      "Market_Cap_USD": 830807799177.42
+    },
+    {
+      "Date": "2025-02-25 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41470.93,
+      "Volume_USD": 34812382054.14,
+      "Market_Cap_USD": 816977353228.04
+    },
+    {
+      "Date": "2025-02-26 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 41143.27,
+      "Volume_USD": 38163190723.97,
+      "Market_Cap_USD": 810522408940.06
+    },
+    {
+      "Date": "2025-02-27 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 40751.16,
+      "Volume_USD": 18518566460.36,
+      "Market_Cap_USD": 802797878323.36
+    },
+    {
+      "Date": "2025-02-28 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39287.65,
+      "Volume_USD": 15454859023.47,
+      "Market_Cap_USD": 773966633845.15
+    },
+    {
+      "Date": "2025-03-01 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39583.77,
+      "Volume_USD": 10581786626.72,
+      "Market_Cap_USD": 779800203303.33
+    },
+    {
+      "Date": "2025-03-02 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39844.82,
+      "Volume_USD": 24023502352.26,
+      "Market_Cap_USD": 784942992165.27
+    },
+    {
+      "Date": "2025-03-03 00:00:00",
+      "Coin": "Bitcoin",
+      "Price_USD": 39849.94,
+      "Volume_USD": 33596707474.19,
+      "Market_Cap_USD": 785043727261.13
+    }
+  ]
+}

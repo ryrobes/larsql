@@ -41,6 +41,12 @@ register_tackle("append_file", append_file)
 register_tackle("list_files", list_files)
 register_tackle("file_info", file_info)
 
+# SQL tools (multi-database discovery and querying)
+from .sql_tools.tools import sql_search, run_sql as sql_run_sql, list_sql_connections
+register_tackle("sql_search", sql_search)
+register_tackle("sql_query", sql_run_sql)  # Named sql_query to avoid conflict with smart_sql_run
+register_tackle("list_sql_connections", list_sql_connections)
+
 # Conditional: ElevenLabs TTS (only if API key and voice ID are configured)
 from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_available
 if elevenlabs_available():

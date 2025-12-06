@@ -1,0 +1,10 @@
+{
+  "last_discovery": "2025-12-06T00:23:54.429502",
+  "rag_id": "efad9929b653",
+  "databases_indexed": [
+    "csv_files"
+  ],
+  "table_count": 1,
+  "total_columns": 26,
+  "embed_model": "qwen/qwen3-embedding-8b"
+}

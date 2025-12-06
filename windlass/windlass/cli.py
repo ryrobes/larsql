@@ -597,12 +597,18 @@ def cmd_analyze(args):
 # ========== SQL QUERY COMMAND ==========
 
 def cmd_sql(args):
-    """Execute a SQL query with magic table name translation."""
+    """Execute a SQL query with magic table name translation, or trigger schema discovery."""
     import re
     from windlass.config import get_config
     from windlass.db_adapter import get_db_adapter
     from rich.console import Console
     from rich.table import Table
+
+    # Short-circuit for discovery commands
+    if args.query.lower() in ("chart", "discover", "scan"):
+        from windlass.sql_tools.discovery import discover_all_schemas
+        discover_all_schemas()
+        return
 
     config = get_config()
     db = get_db_adapter()

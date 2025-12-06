@@ -1,0 +1,428 @@
+{
+  "table_name": "boston_pd_offense_codes",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 576,
+  "columns": [
+    {
+      "name": "CODE",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 425,
+        "min": "111",
+        "max": "3831"
+      }
+    },
+    {
+      "name": "NAME",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 479
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "CODE": 612,
+      "NAME": "LARCENY PURSE SNATCH - NO FORCE "
+    },
+    {
+      "CODE": 613,
+      "NAME": "LARCENY SHOPLIFTING"
+    },
+    {
+      "CODE": 615,
+      "NAME": "LARCENY THEFT OF MV PARTS & ACCESSORIES"
+    },
+    {
+      "CODE": 1731,
+      "NAME": "INCEST"
+    },
+    {
+      "CODE": 3111,
+      "NAME": "LICENSE PREMISE VIOLATION"
+    },
+    {
+      "CODE": 2646,
+      "NAME": "LIQUOR - DRINKING IN PUBLIC"
+    },
+    {
+      "CODE": 2204,
+      "NAME": "LIQUOR LAW VIOLATION"
+    },
+    {
+      "CODE": 3810,
+      "NAME": "M/V ACCIDENT - INVOLVING \u00caBICYCLE - INJURY"
+    },
+    {
+      "CODE": 3801,
+      "NAME": "M/V ACCIDENT - OTHER"
+    },
+    {
+      "CODE": 3807,
+      "NAME": "M/V ACCIDENT - OTHER CITY VEHICLE"
+    },
+    {
+      "CODE": 3803,
+      "NAME": "M/V ACCIDENT - PERSONAL INJURY"
+    },
+    {
+      "CODE": 3805,
+      "NAME": "M/V ACCIDENT - POLICE VEHICLE"
+    },
+    {
+      "CODE": 3802,
+      "NAME": "M/V ACCIDENT - PROPERTY \u00caDAMAGE"
+    },
+    {
+      "CODE": 3205,
+      "NAME": "M/V PLATES - LOST"
+    },
+    {
+      "CODE": 123,
+      "NAME": "MANSLAUGHTER - NON-VEHICLE - NEGLIGENCE"
+    },
+    {
+      "CODE": 121,
+      "NAME": "MANSLAUGHTER - VEHICLE - NEGLIGENCE"
+    },
+    {
+      "CODE": 3501,
+      "NAME": "MISSING PERSON"
+    },
+    {
+      "CODE": 3502,
+      "NAME": "MISSING PERSON - LOCATED"
+    },
+    {
+      "CODE": 3503,
+      "NAME": "MISSING PERSON - NOT REPORTED - LOCATED"
+    },
+    {
+      "CODE": 111,
+      "NAME": "MURDER, NON-NEGLIGIENT MANSLAUGHTER"
+    },
+    {
+      "CODE": 3303,
+      "NAME": "NOISY PARTY/RADIO-ARREST"
+    },
+    {
+      "CODE": 2623,
+      "NAME": "OBSCENE MATERIALS - PORNOGRAPHY"
+    },
+    {
+      "CODE": 2628,
+      "NAME": "OBSCENE PHONE CALLS"
+    },
+    {
+      "CODE": 1711,
+      "NAME": "OPEN & GROSS LEWDNESS"
+    },
+    {
+      "CODE": 2007,
+      "NAME": "VIOL. OF RESTRAINING ORDER W NO ARREST"
+    },
+    {
+      "CODE": 2102,
+      "NAME": "OPERATING UNDER THE INFLUENCE DRUGS"
+    },
+    {
+      "CODE": 2660,
+      "NAME": "OTHER OFFENSE"
+    },
+    {
+      "CODE": 2900,
+      "NAME": "VAL - VIOLATION OF AUTO LAW - OTHER"
+    },
+    {
+      "CODE": 1109,
+      "NAME": "FRAUD - WIRE"
+    },
+    {
+      "CODE": 2616,
+      "NAME": "POSSESSION OF BURGLARIOUS TOOLS"
+    },
+    {
+      "CODE": 2606,
+      "NAME": "PRISONER ATTEMPT TO RESCUE"
+    },
+    {
+      "CODE": 2636,
+      "NAME": "PRISONER ESCAPE / ESCAPE & RECAPTURE"
+    },
+    {
+      "CODE": 3029,
+      "NAME": "PRISONER - SUICIDE / SUICIDE ATTEMPT"
+    },
+    {
+      "CODE": 3106,
+      "NAME": "PROPERTY - ACCIDENTAL DAMAGE"
+    },
+    {
+      "CODE": 1300,
+      "NAME": "STOLEN PROPERTY - BUYING / RECEIVING / POSSESSING"
+    },
+    {
+      "CODE": 3207,
+      "NAME": "PROPERTY - FOUND"
+    },
+    {
+      "CODE": 3201,
+      "NAME": "PROPERTY - LOST"
+    },
+    {
+      "CODE": 3202,
+      "NAME": "PROPERTY - LOST THEN LOCATED"
+    },
+    {
+      "CODE": 3208,
+      "NAME": "PROPERTY - MISSING"
+    },
+    {
+      "CODE": 1304,
+      "NAME": "PROPERTY - STOLEN THEN RECOVERED"
+    },
+    {
+      "CODE": 1603,
+      "NAME": "PROSTITUTION - ASSISTING OR PROMOTING"
+    },
+    {
+      "CODE": 1605,
+      "NAME": "PROSTITUTION - COMMON NIGHTWALKER"
+    },
+    {
+      "CODE": 1601,
+      "NAME": "PROSTITUTION"
+    },
+    {
+      "CODE": 1602,
+      "NAME": "PROSTITUTION - SOLICITING"
+    },
+    {
+      "CODE": 242,
+      "NAME": "RAPE - ATTEMPT - SODOMY"
+    },
+    {
+      "CODE": 254,
+      "NAME": "RAPE - COMPLETE - FONDLING"
+    },
+    {
+      "CODE": 271,
+      "NAME": "RAPE - COMPLETE - OTHER"
+    },
+    {
+      "CODE": 244,
+      "NAME": "RAPE - ATTEMPT - FONDLING"
+    },
+    {
+      "CODE": 251,
+      "NAME": "RAPE - COMPLETE - FORCIBLE"
+    },
+    {
+      "CODE": 241,
+      "NAME": "RAPE - ATTEMPT - FORCIBLE"
+    },
+    {
+      "CODE": 243,
+      "NAME": "RAPE - ATTEMPT - SEXUAL ASSAULT W/ OBJECT"
+    },
+    {
+      "CODE": 261,
+      "NAME": "RAPE - ATTEMPT - OTHER"
+    },
+    {
+      "CODE": 252,
+      "NAME": "RAPE - COMPLETE - SODOMY"
+    },
+    {
+      "CODE": 253,
+      "NAME": "RAPE - COMPLETE - SEXUAL ASSAULT W/ OBJECT"
+    },
+    {
+      "CODE": 735,
+      "NAME": "RECOVERED - MV RECOVERED IN BOSTON (STOLEN OUTSIDE BOSTON)"
+    },
+    {
+      "CODE": 3620,
+      "NAME": "REPORT AFFECTING OTHER DEPTS."
+    },
+    {
+      "CODE": 301,
+      "NAME": "ROBBERY - STREET"
+    },
+    {
+      "CODE": 311,
+      "NAME": "ROBBERY - COMMERCIAL"
+    },
+    {
+      "CODE": 351,
+      "NAME": "ROBBERY - BANK"
+    },
+    {
+      "CODE": 361,
+      "NAME": "ROBBERY - OTHER"
+    },
+    {
+      "CODE": 371,
+      "NAME": "ROBBERY - HOME INVASION"
+    },
+    {
+      "CODE": 381,
+      "NAME": "ROBBERY - CAR JACKING"
+    },
+    {
+      "CODE": 3403,
+      "NAME": "PROTECTIVE CUSTODY / SAFEKEEPING"
+    },
+    {
+      "CODE": 3109,
+      "NAME": "SERVICE TO OTHER PD INSIDE OF MA."
+    },
+    {
+      "CODE": 3110,
+      "NAME": "SERVICE TO OTHER PD OUTSIDE OF MA."
+    },
+    {
+      "CODE": 1730,
+      "NAME": "SEXUAL ASSAULT INVESTIGATION"
+    },
+    {
+      "CODE": 3006,
+      "NAME": "SICK/INJURED/MEDICAL - PERSON"
+    },
+    {
+      "CODE": 801,
+      "NAME": "ASSAULT - SIMPLE"
+    },
+    {
+      "CODE": 804,
+      "NAME": "STALKING"
+    },
+    {
+      "CODE": 1704,
+      "NAME": "STATUTORY RAPE"
+    },
+    {
+      "CODE": 2647,
+      "NAME": "THREATS TO DO BODILY HARM"
+    },
+    {
+      "CODE": 3410,
+      "NAME": "TOWED MOTOR VEHICLE"
+    },
+    {
+      "CODE": 2610,
+      "NAME": "TRESPASSING"
+    },
+    {
+      "CODE": 2642,
+      "NAME": "TRUANCY / RUNAWAY"
+    },
+    {
+      "CODE": 2915,
+      "NAME": "VAL - MISCELLANEOUS"
+    },
+    {
+      "CODE": 2907,
+      "NAME": "VAL - OPERATING AFTER REV/SUSP."
+    },
+    {
+      "CODE": 2906,
+      "NAME": "VAL - OPERATING UNREG/UNINS \u00caCAR"
+    },
+    {
+      "CODE": 2905,
+      "NAME": "VAL - OPERATING WITHOUT LICENSE"
+    },
+    {
+      "CODE": 2914,
+      "NAME": "VAL - OPERATING W/O AUTHORIZATION LAWFUL"
+    },
+    {
+      "CODE": 1402,
+      "NAME": "VANDALISM"
+    },
+    {
+      "CODE": 1415,
+      "NAME": "GRAFFITI"
+    },
+    {
+      "CODE": 3301,
+      "NAME": "VERBAL DISPUTE"
+    },
+    {
+      "CODE": 2657,
+      "NAME": "VIOLATION - CITY ORDINANCE"
+    },
+    {
+      "CODE": 2641,
+      "NAME": "VIOLATION - HAWKER AND PEDDLER"
+    },
+    {
+      "CODE": 2006,
+      "NAME": "VIOL. OF RESTRAINING ORDER W ARREST"
+    },
+    {
+      "CODE": 2663,
+      "NAME": "VIOLATION - CITY ORDINANCE CONSTRUCTION PERMIT"
+    },
+    {
+      "CODE": 3125,
+      "NAME": "WARRANT ARREST"
+    },
+    {
+      "CODE": 2511,
+      "NAME": "KIDNAPPING - ENTICING OR ATTEMPTED"
+    },
+    {
+      "CODE": 2613,
+      "NAME": "ANIMAL ABUSE"
+    },
+    {
+      "CODE": 3002,
+      "NAME": "ANIMAL CONTROL - DOG BITES - ETC."
+    },
+    {
+      "CODE": 3402,
+      "NAME": "ANIMAL INCIDENTS"
+    },
+    {
+      "CODE": 802,
+      "NAME": "ASSAULT SIMPLE - BATTERY"
+    },
+    {
+      "CODE": 423,
+      "NAME": "ASSAULT - AGGRAVATED"
+    },
+    {
+      "CODE": 413,
+      "NAME": "ASSAULT - AGGRAVATED - BATTERY"
+    },
+    {
+      "CODE": 724,
+      "NAME": "AUTO THEFT"
+    },
+    {
+      "CODE": 727,
+      "NAME": "AUTO THEFT - LEASED/RENTED VEHICLE"
+    },
+    {
+      "CODE": 706,
+      "NAME": "AUTO THEFT - MOTORCYCLE / SCOOTER"
+    },
+    {
+      "CODE": 541,
+      "NAME": "BURGLARY - COMMERICAL - ATTEMPT"
+    },
+    {
+      "CODE": 540,
+      "NAME": "BURGLARY - COMMERICAL - FORCE"
+    },
+    {
+      "CODE": 562,
+      "NAME": "BURGLARY - OTHER - NO FORCE"
+    }
+  ]
+}

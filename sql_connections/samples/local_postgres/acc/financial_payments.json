@@ -1,0 +1,172 @@
+{
+  "table_name": "financial_payments",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 1,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000404",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "scheduled_payment_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000403",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "student_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000201",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "payment_source_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000401",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "amount",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": 500.0,
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "payment_type",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "card",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "succeeded",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "attempted_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2026-01-10 05:00:00-05:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "completed_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2026-01-10 05:01:00-05:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 05:06:00.108671+00\",)",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000404",
+      "scheduled_payment_id": "00000000-0000-0000-0000-000000000403",
+      "student_id": "00000000-0000-0000-0000-000000000201",
+      "payment_source_id": "00000000-0000-0000-0000-000000000401",
+      "amount": 500.0,
+      "payment_type": "card",
+      "status": "succeeded",
+      "attempted_at": "2026-01-10 05:00:00-05:00",
+      "completed_at": "2026-01-10 05:01:00-05:00",
+      "sys_period": "[\"2025-10-31 05:06:00.108671+00\",)"
+    }
+  ]
+}

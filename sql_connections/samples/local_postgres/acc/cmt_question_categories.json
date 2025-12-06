@@ -1,0 +1,210 @@
+{
+  "table_name": "cmt_question_categories",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 3,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": "5d70b4ad-9a62-4069-95c9-1bf33a618c07",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "18c723d8-a69e-484b-af18-b8e947f6b9fa",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "d1afc404-c06c-4960-b788-f999668daa83",
+            "count": 1,
+            "percentage": 33.33
+          }
+        ]
+      }
+    },
+    {
+      "name": "category_code",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": "criminal_history",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "basic",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "additional",
+            "count": 1,
+            "percentage": 33.33
+          }
+        ]
+      }
+    },
+    {
+      "name": "category_name",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": "Additional Questions",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "Criminal History Questions",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "Basic Questions",
+            "count": 1,
+            "percentage": 33.33
+          }
+        ]
+      }
+    },
+    {
+      "name": "description",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": "Required compliance and background questions",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "Optional demographic and preference questions",
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": "Basic demographic and eligibility questions",
+            "count": 1,
+            "percentage": 33.33
+          }
+        ]
+      }
+    },
+    {
+      "name": "display_order",
+      "type": "INTEGER",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": 2,
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": 1,
+            "count": 1,
+            "percentage": 33.33
+          },
+          {
+            "value": 3,
+            "count": 1,
+            "percentage": 33.33
+          }
+        ]
+      }
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": true,
+            "count": 3,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2025-11-19 20:31:27.271725",
+            "count": 3,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2025-11-19 20:31:27.271725",
+            "count": 3,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "5d70b4ad-9a62-4069-95c9-1bf33a618c07",
+      "category_code": "basic",
+      "category_name": "Basic Questions",
+      "description": "Basic demographic and eligibility questions",
+      "display_order": 1,
+      "is_active": true,
+      "created_at": "2025-11-19 20:31:27.271725",
+      "updated_at": "2025-11-19 20:31:27.271725"
+    },
+    {
+      "id": "18c723d8-a69e-484b-af18-b8e947f6b9fa",
+      "category_code": "additional",
+      "category_name": "Additional Questions",
+      "description": "Optional demographic and preference questions",
+      "display_order": 2,
+      "is_active": true,
+      "created_at": "2025-11-19 20:31:27.271725",
+      "updated_at": "2025-11-19 20:31:27.271725"
+    },
+    {
+      "id": "d1afc404-c06c-4960-b788-f999668daa83",
+      "category_code": "criminal_history",
+      "category_name": "Criminal History Questions",
+      "description": "Required compliance and background questions",
+      "display_order": 3,
+      "is_active": true,
+      "created_at": "2025-11-19 20:31:27.271725",
+      "updated_at": "2025-11-19 20:31:27.271725"
+    }
+  ]
+}

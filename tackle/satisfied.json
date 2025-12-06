@@ -1,0 +1,15 @@
+{
+  "cascade_id": "satisfied",
+  "description": "Validates if an agent is satisfied with a request",
+  "tags": ["text", "quality", "writing", "validation"],
+  "inputs_schema": {
+    "content": "The text to check for satisfaction!"
+  },
+  "phases": [{
+    "name": "check",
+    "instructions": "Does the message indicate that the agent or user is satisfied with this output?Look for signs of satisfaction, especially if stated explicity. \n\n IPORTANT: Return ONLY a JSON object with this exact format:\n{\"valid\": true/false, \"reason\": \"explanation of issues found or confirmation it's good\", \"issues\": [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable.",
+    "rules": {
+      "max_turns": 1
+    }
+  }]
+}

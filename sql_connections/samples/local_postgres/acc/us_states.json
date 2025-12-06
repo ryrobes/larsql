@@ -1,0 +1,3116 @@
+{
+  "table_name": "us_states",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 69,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "8f51cc7b-6102-4c57-9d54-2ef6aa3fe9cf",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "0e5343b0-e319-4dc0-9f55-4cacf895ba42",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "a4ef303a-58a6-4fc7-a9c8-e60f4205e5e9",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "1329832e-8c80-4449-af1c-a68d3e7feaa6",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "4a373363-0f50-47b0-9dd1-9fd2707b5718",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "acfd600a-f668-416f-9e49-2aeefe6ed7f1",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ed8f5f32-b234-4aa7-a49b-c512ccf857e8",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "1f3c2571-26a0-4da8-9754-c4695989dadd",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "54af94a4-a929-4a28-ac2d-f6b65bcefe20",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ac14432d-2690-4dc0-b211-e4f5955a7ae8",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "b68a954e-2b31-4346-9c81-15ee541afc9a",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "d4aa4e87-e7da-4a66-9f26-f86e7a8932e3",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "e58bff16-e246-4c9d-9422-5696b713a49a",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "823f4b9c-dcdd-48e7-8311-44089ee5fd31",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "5beb2e05-327d-4801-9def-4668364468ac",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "1aa8af15-3765-4cc9-ba73-3cfad11bc85d",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "fba7020c-2715-4895-9720-658c33c15227",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "822db597-0fd6-4fe2-a035-a7d4af39f7cb",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "9a62dfa4-1e3e-47ee-84b4-0f10a95b1e52",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ec638f0d-f26f-4e77-8ff0-10109b49590f",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "a4457472-a4eb-4fe6-a6f3-7d99fa0b9237",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "f56fe676-f9bd-451a-ac4b-030ca024de07",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "7f6e2a91-b6e7-43a6-b172-6729e841cc1e",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "b4f937b1-db9c-4fb0-acc2-35346435869e",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "195298b1-43b8-4820-a19d-33cc1aab1200",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ae539cee-e313-41a2-8e97-83c1c0477a1b",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "904d2a66-55ee-4e4c-a3fc-4891d576e6b4",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "75d9114c-bd55-4f9f-8644-e056d390a5b3",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "4d3f879b-516f-4011-a2fe-783378e43467",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "79cff1b4-3a89-44e2-8815-5cd710dc59d6",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "4b5b814a-c7c1-45e9-8225-8d5ac2476a59",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "67013e83-3f93-4c34-b4df-85fccbe63fad",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "0e0f62ed-bc38-48ad-98b4-bf5c39ebe0cf",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "dd27dcf6-87b4-4383-87c0-29a967aaf2fc",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "f2563373-9f89-44bf-a201-415d4723cabc",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ad72c9dc-4937-456a-b5ea-d1b7ec52326c",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "cc6022ba-694f-46c7-aa79-91d4c7d85edb",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "e7bf1025-3ec5-435d-af6c-945d1d106a67",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "f2c8ef41-381d-440b-88dd-a852f8ac8d49",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "fd4fd39a-0b50-4c2f-9844-525a603e02a2",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "36e2cef7-a2bf-40a4-80a0-8e4cfafd1ec7",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "b0cdda8a-88eb-4aa9-bac5-3b48c43ac354",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "e4fa474c-5c9b-491b-b492-1c2cc2e69e0c",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "9a53dec8-0cd7-475a-a78b-7ffadbb340d0",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "11f845a8-634b-41ad-85fa-497451030f43",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "b99a3489-3320-47cf-8520-222543fdc529",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "9503584e-af42-4817-99e9-271318680b27",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "16cf3389-9a7a-4f34-acc8-bb1aa2c4166b",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "d6df09ff-b119-42d2-a012-0cd0fe1adc1e",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "468fa3ec-5a3f-4d15-b899-3124050895ce",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "8d895c0b-d1b6-4418-9cf5-edab45ae5b08",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "8e7ee9f4-0966-40e1-ac55-f7af9f279bc3",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "07ef038f-8e9b-4f10-9158-52bd64dbc565",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "6313fcd4-6104-409b-982a-37e52a4d41b1",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "330d4873-5ec0-4334-9b94-8edf1882a952",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "6df33baf-191b-470e-81e7-f32699545a7b",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "e614258e-175a-4bfa-871b-12874139f330",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "14ba1db7-71a6-43af-be76-dceaf6fd29c6",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "10f65168-941e-4edd-8368-1367decf1010",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "fc3e49b3-50c3-46d5-8e8c-09858a6f7378",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "586e0186-26d3-4252-8a54-8a61c53d463c",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "70a86186-fb3f-4cfe-bc5e-9c5dec9d524c",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "11f8ac37-8eda-415f-834f-9a0801d1147d",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2baaeb70-db76-4c43-8cb3-95ff2c0bc50c",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "fb911e38-0616-4d12-bb62-c89e19cb5982",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "47251588-1a3d-45f5-88c4-6b9359a4f386",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "4c592c42-c124-4081-8c58-6c8d590fb9ac",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "1fa9ae7f-be71-4321-80a4-acac2a047b60",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "c2d36070-e402-4462-b28d-66cc9630a0e3",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "state_abbrev",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "CT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PR",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NY",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MD",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PW",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "76",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AR",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "TN",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WV",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "89",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "CO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "IA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "HI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NC",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MH",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "DC",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "IL",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "IN",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "84",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ID",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OH",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "95",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "KY",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NJ",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "RI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "SC",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "SD",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "LA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "FM",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "KS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MN",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "UT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "81",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "FL",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ME",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AK",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "CA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NV",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "TX",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "UM",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MP",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OR",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "GU",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "71",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AZ",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "DE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OK",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NM",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AL",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NH",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WY",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "67",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "79",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "86",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "GA",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "state_name",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "MASSACHUSETTS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "IDAHO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "KENTUCKY",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MICHIGAN",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEW MEXICO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VIRGINIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WYOMING",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MARSHALL ISLANDS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "COLORADO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "DISTRICT OF COLUMBIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MISSOURI",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MONTANA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "TEXAS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PENNSYLVANIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "SOUTH DAKOTA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MARYLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NORTH CAROLINA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PUERTO RICO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "DELAWARE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WEST VIRGINIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "UTAH",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OHIO",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MINNESOTA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ARIZONA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "JARVIS ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "BAKER ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MAINE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WAKE ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PALMYRA ATOLL",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NAVASSA ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MIDWAY ISLANDS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "JOHNSTON ATOLL",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "KANSAS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "CALIFORNIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "PALAU",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "US MINOR OUTLYING ISLANDS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OREGON",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WISCONSIN",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VIRGIN ISLANDS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "IOWA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "LOUISIANA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "WASHINGTON",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "TENNESSEE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "FED. STATES OF MICRONESIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NORTH DAKOTA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ALASKA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "GEORGIA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ILLINOIS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "OKLAHOMA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "SOUTH CAROLINA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "AMERICAN SAMOA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "GUAM",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEBRASKA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "CONNECTICUT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEW HAMPSHIRE",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ALABAMA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "HAWAII",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEW JERSEY",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEW YORK",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "RHODE ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NEVADA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "ARKANSAS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "VERMONT",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "NORTHERN MARIANA ISLANDS",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "HOWLAND ISLAND",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "KINGMAN REEF",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "FLORIDA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "INDIANA",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "MISSISSIPPI",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "fips_state_code",
+      "type": "INTEGER",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": 72,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 26,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 16,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 79,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 89,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 76,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 41,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 38,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 6,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 55,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 56,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 51,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 45,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 48,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 33,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 24,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 23,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 4,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 50,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 27,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 49,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 47,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 34,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 29,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 18,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 10,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 74,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 95,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 11,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 44,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 30,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 17,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 9,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 5,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 67,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 1,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 39,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 15,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 71,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 8,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 13,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 19,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 46,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 66,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 28,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 78,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 53,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 12,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 20,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 36,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 69,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 68,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 81,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 25,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 21,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 86,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 84,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 40,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 22,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 31,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 32,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 60,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 35,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 37,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 54,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 64,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 42,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 70,
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": 2,
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "2025-10-31 21:34:54.771294",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.782317",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.695555",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.749014",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.758931",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.789421",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.810562",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.718351",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.743138",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.693311",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.807946",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.820181",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.680361",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.746404",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.822412",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.850914",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.732609",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.766451",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.697763",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.751346",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.787084",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.798675",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.622075",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.740713",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.761541",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.815575",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.705494",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.844914",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.768913",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.794166",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.796435",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.847681",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.716045",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.791684",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.826825",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.784744",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.824648",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.839747",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.674770",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.737695",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.764040",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.779906",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.670205",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.837336",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.691213",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.708420",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.710956",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.776551",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.842496",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.686746",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.800858",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.817786",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.720635",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.853485",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.689033",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.735028",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.753750",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.803136",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.805350",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.855876",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.713541",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.729056",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.756438",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.773645",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.684335",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.700061",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.813323",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.834776",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.677641",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "2025-10-31 21:34:54.791689",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.844926",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.735031",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.813329",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.847685",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.729071",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.749023",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.787091",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.693314",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.751352",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.695558",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.746414",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.798678",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.803142",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.817789",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.822416",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.680371",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.789426",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.771299",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.768927",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.708425",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.784748",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.855878",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.686750",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.697766",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.713550",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.756443",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.677649",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.782490",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.839749",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.758935",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.800861",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.674778",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.691216",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.716053",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.805354",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.766456",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.796440",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.710963",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.761553",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.794172",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.853488",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.743144",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.622089",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.740719",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.850926",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.700064",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.720641",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.753950",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.815580",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.834779",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.837339",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.827534",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.689036",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.810568",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.684341",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.705500",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.737702",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.764049",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.732615",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.807950",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.773651",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.670216",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.718355",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.824651",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.779913",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.820185",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.842497",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "2025-10-31 21:34:54.776556",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 69,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 21:34:54.851136+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.766819+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.796556+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.82031+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.822522+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.856091+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.693429+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.729403+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.840222+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.759128+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.653126+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.743287+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.749191+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.764337+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.771467+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.845117+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.746622+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.738409+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.78261+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.853658+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.754107+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.751478+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.740871+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.71377+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.691314+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.794309+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.837504+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.716229+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.756578+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.703335+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.684537+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.724024+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.697866+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.805443+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.784862+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.791812+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.78725+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.735408+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.6869+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.671321+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.815685+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.774346+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.83011+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.780088+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.78955+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.675037+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.834973+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.813473+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.761804+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.848057+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.800973+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.798786+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.824746+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.711115+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.695675+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.811073+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.776654+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.769043+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.732886+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.677954+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.842621+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.808323+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.80328+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.718493+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.689147+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.680568+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.817885+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.708538+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          },
+          {
+            "value": "[\"2025-10-31 21:34:54.706266+00\",)",
+            "count": 1,
+            "percentage": 1.45
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "904d2a66-55ee-4e4c-a3fc-4891d576e6b4",
+      "state_abbrev": "AL",
+      "state_name": "ALABAMA",
+      "fips_state_code": 1,
+      "created_at": "2025-10-31 21:34:54.622075",
+      "updated_at": "2025-10-31 21:34:54.622089",
+      "sys_period": "[\"2025-10-31 21:34:54.653126+00\",)"
+    },
+    {
+      "id": "ec638f0d-f26f-4e77-8ff0-10109b49590f",
+      "state_abbrev": "AK",
+      "state_name": "ALASKA",
+      "fips_state_code": 2,
+      "created_at": "2025-10-31 21:34:54.670205",
+      "updated_at": "2025-10-31 21:34:54.670216",
+      "sys_period": "[\"2025-10-31 21:34:54.671321+00\",)"
+    },
+    {
+      "id": "f2563373-9f89-44bf-a201-415d4723cabc",
+      "state_abbrev": "AZ",
+      "state_name": "ARIZONA",
+      "fips_state_code": 4,
+      "created_at": "2025-10-31 21:34:54.674770",
+      "updated_at": "2025-10-31 21:34:54.674778",
+      "sys_period": "[\"2025-10-31 21:34:54.675037+00\",)"
+    },
+    {
+      "id": "a4457472-a4eb-4fe6-a6f3-7d99fa0b9237",
+      "state_abbrev": "AR",
+      "state_name": "ARKANSAS",
+      "fips_state_code": 5,
+      "created_at": "2025-10-31 21:34:54.677641",
+      "updated_at": "2025-10-31 21:34:54.677649",
+      "sys_period": "[\"2025-10-31 21:34:54.677954+00\",)"
+    },
+    {
+      "id": "8d895c0b-d1b6-4418-9cf5-edab45ae5b08",
+      "state_abbrev": "CA",
+      "state_name": "CALIFORNIA",
+      "fips_state_code": 6,
+      "created_at": "2025-10-31 21:34:54.680361",
+      "updated_at": "2025-10-31 21:34:54.680371",
+      "sys_period": "[\"2025-10-31 21:34:54.680568+00\",)"
+    },
+    {
+      "id": "0e5343b0-e319-4dc0-9f55-4cacf895ba42",
+      "state_abbrev": "CO",
+      "state_name": "COLORADO",
+      "fips_state_code": 8,
+      "created_at": "2025-10-31 21:34:54.684335",
+      "updated_at": "2025-10-31 21:34:54.684341",
+      "sys_period": "[\"2025-10-31 21:34:54.684537+00\",)"
+    },
+    {
+      "id": "e7bf1025-3ec5-435d-af6c-945d1d106a67",
+      "state_abbrev": "CT",
+      "state_name": "CONNECTICUT",
+      "fips_state_code": 9,
+      "created_at": "2025-10-31 21:34:54.686746",
+      "updated_at": "2025-10-31 21:34:54.686750",
+      "sys_period": "[\"2025-10-31 21:34:54.6869+00\",)"
+    },
+    {
+      "id": "822db597-0fd6-4fe2-a035-a7d4af39f7cb",
+      "state_abbrev": "DE",
+      "state_name": "DELAWARE",
+      "fips_state_code": 10,
+      "created_at": "2025-10-31 21:34:54.689033",
+      "updated_at": "2025-10-31 21:34:54.689036",
+      "sys_period": "[\"2025-10-31 21:34:54.689147+00\",)"
+    },
+    {
+      "id": "e4fa474c-5c9b-491b-b492-1c2cc2e69e0c",
+      "state_abbrev": "DC",
+      "state_name": "DISTRICT OF COLUMBIA",
+      "fips_state_code": 11,
+      "created_at": "2025-10-31 21:34:54.691213",
+      "updated_at": "2025-10-31 21:34:54.691216",
+      "sys_period": "[\"2025-10-31 21:34:54.691314+00\",)"
+    },
+    {
+      "id": "a4ef303a-58a6-4fc7-a9c8-e60f4205e5e9",
+      "state_abbrev": "FL",
+      "state_name": "FLORIDA",
+      "fips_state_code": 12,
+      "created_at": "2025-10-31 21:34:54.693311",
+      "updated_at": "2025-10-31 21:34:54.693314",
+      "sys_period": "[\"2025-10-31 21:34:54.693429+00\",)"
+    },
+    {
+      "id": "2baaeb70-db76-4c43-8cb3-95ff2c0bc50c",
+      "state_abbrev": "GA",
+      "state_name": "GEORGIA",
+      "fips_state_code": 13,
+      "created_at": "2025-10-31 21:34:54.695555",
+      "updated_at": "2025-10-31 21:34:54.695558",
+      "sys_period": "[\"2025-10-31 21:34:54.695675+00\",)"
+    },
+    {
+      "id": "1329832e-8c80-4449-af1c-a68d3e7feaa6",
+      "state_abbrev": "HI",
+      "state_name": "HAWAII",
+      "fips_state_code": 15,
+      "created_at": "2025-10-31 21:34:54.697763",
+      "updated_at": "2025-10-31 21:34:54.697766",
+      "sys_period": "[\"2025-10-31 21:34:54.697866+00\",)"
+    },
+    {
+      "id": "70a86186-fb3f-4cfe-bc5e-9c5dec9d524c",
+      "state_abbrev": "ID",
+      "state_name": "IDAHO",
+      "fips_state_code": 16,
+      "created_at": "2025-10-31 21:34:54.700061",
+      "updated_at": "2025-10-31 21:34:54.700064",
+      "sys_period": "[\"2025-10-31 21:34:54.703335+00\",)"
+    },
+    {
+      "id": "ad72c9dc-4937-456a-b5ea-d1b7ec52326c",
+      "state_abbrev": "IL",
+      "state_name": "ILLINOIS",
+      "fips_state_code": 17,
+      "created_at": "2025-10-31 21:34:54.705494",
+      "updated_at": "2025-10-31 21:34:54.705500",
+      "sys_period": "[\"2025-10-31 21:34:54.706266+00\",)"
+    },
+    {
+      "id": "14ba1db7-71a6-43af-be76-dceaf6fd29c6",
+      "state_abbrev": "IN",
+      "state_name": "INDIANA",
+      "fips_state_code": 18,
+      "created_at": "2025-10-31 21:34:54.708420",
+      "updated_at": "2025-10-31 21:34:54.708425",
+      "sys_period": "[\"2025-10-31 21:34:54.708538+00\",)"
+    },
+    {
+      "id": "823f4b9c-dcdd-48e7-8311-44089ee5fd31",
+      "state_abbrev": "IA",
+      "state_name": "IOWA",
+      "fips_state_code": 19,
+      "created_at": "2025-10-31 21:34:54.710956",
+      "updated_at": "2025-10-31 21:34:54.710963",
+      "sys_period": "[\"2025-10-31 21:34:54.711115+00\",)"
+    },
+    {
+      "id": "fc3e49b3-50c3-46d5-8e8c-09858a6f7378",
+      "state_abbrev": "KS",
+      "state_name": "KANSAS",
+      "fips_state_code": 20,
+      "created_at": "2025-10-31 21:34:54.713541",
+      "updated_at": "2025-10-31 21:34:54.713550",
+      "sys_period": "[\"2025-10-31 21:34:54.71377+00\",)"
+    },
+    {
+      "id": "b99a3489-3320-47cf-8520-222543fdc529",
+      "state_abbrev": "KY",
+      "state_name": "KENTUCKY",
+      "fips_state_code": 21,
+      "created_at": "2025-10-31 21:34:54.716045",
+      "updated_at": "2025-10-31 21:34:54.716053",
+      "sys_period": "[\"2025-10-31 21:34:54.716229+00\",)"
+    },
+    {
+      "id": "5beb2e05-327d-4801-9def-4668364468ac",
+      "state_abbrev": "LA",
+      "state_name": "LOUISIANA",
+      "fips_state_code": 22,
+      "created_at": "2025-10-31 21:34:54.718351",
+      "updated_at": "2025-10-31 21:34:54.718355",
+      "sys_period": "[\"2025-10-31 21:34:54.718493+00\",)"
+    },
+    {
+      "id": "f56fe676-f9bd-451a-ac4b-030ca024de07",
+      "state_abbrev": "ME",
+      "state_name": "MAINE",
+      "fips_state_code": 23,
+      "created_at": "2025-10-31 21:34:54.720635",
+      "updated_at": "2025-10-31 21:34:54.720641",
+      "sys_period": "[\"2025-10-31 21:34:54.724024+00\",)"
+    },
+    {
+      "id": "6df33baf-191b-470e-81e7-f32699545a7b",
+      "state_abbrev": "MD",
+      "state_name": "MARYLAND",
+      "fips_state_code": 24,
+      "created_at": "2025-10-31 21:34:54.729056",
+      "updated_at": "2025-10-31 21:34:54.729071",
+      "sys_period": "[\"2025-10-31 21:34:54.729403+00\",)"
+    },
+    {
+      "id": "8f51cc7b-6102-4c57-9d54-2ef6aa3fe9cf",
+      "state_abbrev": "MA",
+      "state_name": "MASSACHUSETTS",
+      "fips_state_code": 25,
+      "created_at": "2025-10-31 21:34:54.732609",
+      "updated_at": "2025-10-31 21:34:54.732615",
+      "sys_period": "[\"2025-10-31 21:34:54.732886+00\",)"
+    },
+    {
+      "id": "11f845a8-634b-41ad-85fa-497451030f43",
+      "state_abbrev": "MI",
+      "state_name": "MICHIGAN",
+      "fips_state_code": 26,
+      "created_at": "2025-10-31 21:34:54.735028",
+      "updated_at": "2025-10-31 21:34:54.735031",
+      "sys_period": "[\"2025-10-31 21:34:54.735408+00\",)"
+    },
+    {
+      "id": "1aa8af15-3765-4cc9-ba73-3cfad11bc85d",
+      "state_abbrev": "MN",
+      "state_name": "MINNESOTA",
+      "fips_state_code": 27,
+      "created_at": "2025-10-31 21:34:54.737695",
+      "updated_at": "2025-10-31 21:34:54.737702",
+      "sys_period": "[\"2025-10-31 21:34:54.738409+00\",)"
+    },
+    {
+      "id": "4a373363-0f50-47b0-9dd1-9fd2707b5718",
+      "state_abbrev": "MS",
+      "state_name": "MISSISSIPPI",
+      "fips_state_code": 28,
+      "created_at": "2025-10-31 21:34:54.740713",
+      "updated_at": "2025-10-31 21:34:54.740719",
+      "sys_period": "[\"2025-10-31 21:34:54.740871+00\",)"
+    },
+    {
+      "id": "10f65168-941e-4edd-8368-1367decf1010",
+      "state_abbrev": "MO",
+      "state_name": "MISSOURI",
+      "fips_state_code": 29,
+      "created_at": "2025-10-31 21:34:54.743138",
+      "updated_at": "2025-10-31 21:34:54.743144",
+      "sys_period": "[\"2025-10-31 21:34:54.743287+00\",)"
+    },
+    {
+      "id": "79cff1b4-3a89-44e2-8815-5cd710dc59d6",
+      "state_abbrev": "MT",
+      "state_name": "MONTANA",
+      "fips_state_code": 30,
+      "created_at": "2025-10-31 21:34:54.746404",
+      "updated_at": "2025-10-31 21:34:54.746414",
+      "sys_period": "[\"2025-10-31 21:34:54.746622+00\",)"
+    },
+    {
+      "id": "8e7ee9f4-0966-40e1-ac55-f7af9f279bc3",
+      "state_abbrev": "NE",
+      "state_name": "NEBRASKA",
+      "fips_state_code": 31,
+      "created_at": "2025-10-31 21:34:54.749014",
+      "updated_at": "2025-10-31 21:34:54.749023",
+      "sys_period": "[\"2025-10-31 21:34:54.749191+00\",)"
+    },
+    {
+      "id": "4b5b814a-c7c1-45e9-8225-8d5ac2476a59",
+      "state_abbrev": "NV",
+      "state_name": "NEVADA",
+      "fips_state_code": 32,
+      "created_at": "2025-10-31 21:34:54.751346",
+      "updated_at": "2025-10-31 21:34:54.751352",
+      "sys_period": "[\"2025-10-31 21:34:54.751478+00\",)"
+    },
+    {
+      "id": "75d9114c-bd55-4f9f-8644-e056d390a5b3",
+      "state_abbrev": "NH",
+      "state_name": "NEW HAMPSHIRE",
+      "fips_state_code": 33,
+      "created_at": "2025-10-31 21:34:54.753750",
+      "updated_at": "2025-10-31 21:34:54.753950",
+      "sys_period": "[\"2025-10-31 21:34:54.754107+00\",)"
+    },
+    {
+      "id": "e614258e-175a-4bfa-871b-12874139f330",
+      "state_abbrev": "NJ",
+      "state_name": "NEW JERSEY",
+      "fips_state_code": 34,
+      "created_at": "2025-10-31 21:34:54.756438",
+      "updated_at": "2025-10-31 21:34:54.756443",
+      "sys_period": "[\"2025-10-31 21:34:54.756578+00\",)"
+    },
+    {
+      "id": "c2d36070-e402-4462-b28d-66cc9630a0e3",
+      "state_abbrev": "NM",
+      "state_name": "NEW MEXICO",
+      "fips_state_code": 35,
+      "created_at": "2025-10-31 21:34:54.758931",
+      "updated_at": "2025-10-31 21:34:54.758935",
+      "sys_period": "[\"2025-10-31 21:34:54.759128+00\",)"
+    },
+    {
+      "id": "9503584e-af42-4817-99e9-271318680b27",
+      "state_abbrev": "NY",
+      "state_name": "NEW YORK",
+      "fips_state_code": 36,
+      "created_at": "2025-10-31 21:34:54.761541",
+      "updated_at": "2025-10-31 21:34:54.761553",
+      "sys_period": "[\"2025-10-31 21:34:54.761804+00\",)"
+    },
+    {
+      "id": "586e0186-26d3-4252-8a54-8a61c53d463c",
+      "state_abbrev": "NC",
+      "state_name": "NORTH CAROLINA",
+      "fips_state_code": 37,
+      "created_at": "2025-10-31 21:34:54.764040",
+      "updated_at": "2025-10-31 21:34:54.764049",
+      "sys_period": "[\"2025-10-31 21:34:54.764337+00\",)"
+    },
+    {
+      "id": "67013e83-3f93-4c34-b4df-85fccbe63fad",
+      "state_abbrev": "ND",
+      "state_name": "NORTH DAKOTA",
+      "fips_state_code": 38,
+      "created_at": "2025-10-31 21:34:54.766451",
+      "updated_at": "2025-10-31 21:34:54.766456",
+      "sys_period": "[\"2025-10-31 21:34:54.766819+00\",)"
+    },
+    {
+      "id": "b68a954e-2b31-4346-9c81-15ee541afc9a",
+      "state_abbrev": "OH",
+      "state_name": "OHIO",
+      "fips_state_code": 39,
+      "created_at": "2025-10-31 21:34:54.768913",
+      "updated_at": "2025-10-31 21:34:54.768927",
+      "sys_period": "[\"2025-10-31 21:34:54.769043+00\",)"
+    },
+    {
+      "id": "acfd600a-f668-416f-9e49-2aeefe6ed7f1",
+      "state_abbrev": "OK",
+      "state_name": "OKLAHOMA",
+      "fips_state_code": 40,
+      "created_at": "2025-10-31 21:34:54.771294",
+      "updated_at": "2025-10-31 21:34:54.771299",
+      "sys_period": "[\"2025-10-31 21:34:54.771467+00\",)"
+    },
+    {
+      "id": "ae539cee-e313-41a2-8e97-83c1c0477a1b",
+      "state_abbrev": "OR",
+      "state_name": "OREGON",
+      "fips_state_code": 41,
+      "created_at": "2025-10-31 21:34:54.773645",
+      "updated_at": "2025-10-31 21:34:54.773651",
+      "sys_period": "[\"2025-10-31 21:34:54.774346+00\",)"
+    },
+    {
+      "id": "fb911e38-0616-4d12-bb62-c89e19cb5982",
+      "state_abbrev": "PA",
+      "state_name": "PENNSYLVANIA",
+      "fips_state_code": 42,
+      "created_at": "2025-10-31 21:34:54.776551",
+      "updated_at": "2025-10-31 21:34:54.776556",
+      "sys_period": "[\"2025-10-31 21:34:54.776654+00\",)"
+    },
+    {
+      "id": "7f6e2a91-b6e7-43a6-b172-6729e841cc1e",
+      "state_abbrev": "RI",
+      "state_name": "RHODE ISLAND",
+      "fips_state_code": 44,
+      "created_at": "2025-10-31 21:34:54.779906",
+      "updated_at": "2025-10-31 21:34:54.779913",
+      "sys_period": "[\"2025-10-31 21:34:54.780088+00\",)"
+    },
+    {
+      "id": "ac14432d-2690-4dc0-b211-e4f5955a7ae8",
+      "state_abbrev": "SC",
+      "state_name": "SOUTH CAROLINA",
+      "fips_state_code": 45,
+      "created_at": "2025-10-31 21:34:54.782317",
+      "updated_at": "2025-10-31 21:34:54.782490",
+      "sys_period": "[\"2025-10-31 21:34:54.78261+00\",)"
+    },
+    {
+      "id": "b4f937b1-db9c-4fb0-acc2-35346435869e",
+      "state_abbrev": "SD",
+      "state_name": "SOUTH DAKOTA",
+      "fips_state_code": 46,
+      "created_at": "2025-10-31 21:34:54.784744",
+      "updated_at": "2025-10-31 21:34:54.784748",
+      "sys_period": "[\"2025-10-31 21:34:54.784862+00\",)"
+    },
+    {
+      "id": "ed8f5f32-b234-4aa7-a49b-c512ccf857e8",
+      "state_abbrev": "TN",
+      "state_name": "TENNESSEE",
+      "fips_state_code": 47,
+      "created_at": "2025-10-31 21:34:54.787084",
+      "updated_at": "2025-10-31 21:34:54.787091",
+      "sys_period": "[\"2025-10-31 21:34:54.78725+00\",)"
+    },
+    {
+      "id": "d4aa4e87-e7da-4a66-9f26-f86e7a8932e3",
+      "state_abbrev": "TX",
+      "state_name": "TEXAS",
+      "fips_state_code": 48,
+      "created_at": "2025-10-31 21:34:54.789421",
+      "updated_at": "2025-10-31 21:34:54.789426",
+      "sys_period": "[\"2025-10-31 21:34:54.78955+00\",)"
+    },
+    {
+      "id": "0e0f62ed-bc38-48ad-98b4-bf5c39ebe0cf",
+      "state_abbrev": "UT",
+      "state_name": "UTAH",
+      "fips_state_code": 49,
+      "created_at": "2025-10-31 21:34:54.791684",
+      "updated_at": "2025-10-31 21:34:54.791689",
+      "sys_period": "[\"2025-10-31 21:34:54.791812+00\",)"
+    },
+    {
+      "id": "6313fcd4-6104-409b-982a-37e52a4d41b1",
+      "state_abbrev": "VT",
+      "state_name": "VERMONT",
+      "fips_state_code": 50,
+      "created_at": "2025-10-31 21:34:54.794166",
+      "updated_at": "2025-10-31 21:34:54.794172",
+      "sys_period": "[\"2025-10-31 21:34:54.794309+00\",)"
+    },
+    {
+      "id": "195298b1-43b8-4820-a19d-33cc1aab1200",
+      "state_abbrev": "VA",
+      "state_name": "VIRGINIA",
+      "fips_state_code": 51,
+      "created_at": "2025-10-31 21:34:54.796435",
+      "updated_at": "2025-10-31 21:34:54.796440",
+      "sys_period": "[\"2025-10-31 21:34:54.796556+00\",)"
+    },
+    {
+      "id": "d6df09ff-b119-42d2-a012-0cd0fe1adc1e",
+      "state_abbrev": "WA",
+      "state_name": "WASHINGTON",
+      "fips_state_code": 53,
+      "created_at": "2025-10-31 21:34:54.798675",
+      "updated_at": "2025-10-31 21:34:54.798678",
+      "sys_period": "[\"2025-10-31 21:34:54.798786+00\",)"
+    },
+    {
+      "id": "fba7020c-2715-4895-9720-658c33c15227",
+      "state_abbrev": "WV",
+      "state_name": "WEST VIRGINIA",
+      "fips_state_code": 54,
+      "created_at": "2025-10-31 21:34:54.800858",
+      "updated_at": "2025-10-31 21:34:54.800861",
+      "sys_period": "[\"2025-10-31 21:34:54.800973+00\",)"
+    },
+    {
+      "id": "16cf3389-9a7a-4f34-acc8-bb1aa2c4166b",
+      "state_abbrev": "WI",
+      "state_name": "WISCONSIN",
+      "fips_state_code": 55,
+      "created_at": "2025-10-31 21:34:54.803136",
+      "updated_at": "2025-10-31 21:34:54.803142",
+      "sys_period": "[\"2025-10-31 21:34:54.80328+00\",)"
+    },
+    {
+      "id": "e58bff16-e246-4c9d-9422-5696b713a49a",
+      "state_abbrev": "WY",
+      "state_name": "WYOMING",
+      "fips_state_code": 56,
+      "created_at": "2025-10-31 21:34:54.805350",
+      "updated_at": "2025-10-31 21:34:54.805354",
+      "sys_period": "[\"2025-10-31 21:34:54.805443+00\",)"
+    },
+    {
+      "id": "54af94a4-a929-4a28-ac2d-f6b65bcefe20",
+      "state_abbrev": "AS",
+      "state_name": "AMERICAN SAMOA",
+      "fips_state_code": 60,
+      "created_at": "2025-10-31 21:34:54.807946",
+      "updated_at": "2025-10-31 21:34:54.807950",
+      "sys_period": "[\"2025-10-31 21:34:54.808323+00\",)"
+    },
+    {
+      "id": "f2c8ef41-381d-440b-88dd-a852f8ac8d49",
+      "state_abbrev": "GU",
+      "state_name": "GUAM",
+      "fips_state_code": 66,
+      "created_at": "2025-10-31 21:34:54.810562",
+      "updated_at": "2025-10-31 21:34:54.810568",
+      "sys_period": "[\"2025-10-31 21:34:54.811073+00\",)"
+    },
+    {
+      "id": "47251588-1a3d-45f5-88c4-6b9359a4f386",
+      "state_abbrev": "MP",
+      "state_name": "NORTHERN MARIANA ISLANDS",
+      "fips_state_code": 69,
+      "created_at": "2025-10-31 21:34:54.813323",
+      "updated_at": "2025-10-31 21:34:54.813329",
+      "sys_period": "[\"2025-10-31 21:34:54.813473+00\",)"
+    },
+    {
+      "id": "07ef038f-8e9b-4f10-9158-52bd64dbc565",
+      "state_abbrev": "PR",
+      "state_name": "PUERTO RICO",
+      "fips_state_code": 72,
+      "created_at": "2025-10-31 21:34:54.815575",
+      "updated_at": "2025-10-31 21:34:54.815580",
+      "sys_period": "[\"2025-10-31 21:34:54.815685+00\",)"
+    },
+    {
+      "id": "468fa3ec-5a3f-4d15-b899-3124050895ce",
+      "state_abbrev": "VI",
+      "state_name": "VIRGIN ISLANDS",
+      "fips_state_code": 78,
+      "created_at": "2025-10-31 21:34:54.817786",
+      "updated_at": "2025-10-31 21:34:54.817789",
+      "sys_period": "[\"2025-10-31 21:34:54.817885+00\",)"
+    },
+    {
+      "id": "fd4fd39a-0b50-4c2f-9844-525a603e02a2",
+      "state_abbrev": "FM",
+      "state_name": "FED. STATES OF MICRONESIA",
+      "fips_state_code": 64,
+      "created_at": "2025-10-31 21:34:54.820181",
+      "updated_at": "2025-10-31 21:34:54.820185",
+      "sys_period": "[\"2025-10-31 21:34:54.82031+00\",)"
+    },
+    {
+      "id": "11f8ac37-8eda-415f-834f-9a0801d1147d",
+      "state_abbrev": "UM",
+      "state_name": "US MINOR OUTLYING ISLANDS",
+      "fips_state_code": 74,
+      "created_at": "2025-10-31 21:34:54.822412",
+      "updated_at": "2025-10-31 21:34:54.822416",
+      "sys_period": "[\"2025-10-31 21:34:54.822522+00\",)"
+    },
+    {
+      "id": "36e2cef7-a2bf-40a4-80a0-8e4cfafd1ec7",
+      "state_abbrev": "67",
+      "state_name": "JOHNSTON ATOLL",
+      "fips_state_code": 67,
+      "created_at": "2025-10-31 21:34:54.824648",
+      "updated_at": "2025-10-31 21:34:54.824651",
+      "sys_period": "[\"2025-10-31 21:34:54.824746+00\",)"
+    },
+    {
+      "id": "330d4873-5ec0-4334-9b94-8edf1882a952",
+      "state_abbrev": "MH",
+      "state_name": "MARSHALL ISLANDS",
+      "fips_state_code": 68,
+      "created_at": "2025-10-31 21:34:54.826825",
+      "updated_at": "2025-10-31 21:34:54.827534",
+      "sys_period": "[\"2025-10-31 21:34:54.83011+00\",)"
+    },
+    {
+      "id": "cc6022ba-694f-46c7-aa79-91d4c7d85edb",
+      "state_abbrev": "PW",
+      "state_name": "PALAU",
+      "fips_state_code": 70,
+      "created_at": "2025-10-31 21:34:54.834776",
+      "updated_at": "2025-10-31 21:34:54.834779",
+      "sys_period": "[\"2025-10-31 21:34:54.834973+00\",)"
+    },
+    {
+      "id": "b0cdda8a-88eb-4aa9-bac5-3b48c43ac354",
+      "state_abbrev": "71",
+      "state_name": "MIDWAY ISLANDS",
+      "fips_state_code": 71,
+      "created_at": "2025-10-31 21:34:54.837336",
+      "updated_at": "2025-10-31 21:34:54.837339",
+      "sys_period": "[\"2025-10-31 21:34:54.837504+00\",)"
+    },
+    {
+      "id": "9a53dec8-0cd7-475a-a78b-7ffadbb340d0",
+      "state_abbrev": "76",
+      "state_name": "NAVASSA ISLAND",
+      "fips_state_code": 76,
+      "created_at": "2025-10-31 21:34:54.839747",
+      "updated_at": "2025-10-31 21:34:54.839749",
+      "sys_period": "[\"2025-10-31 21:34:54.840222+00\",)"
+    },
+    {
+      "id": "9a62dfa4-1e3e-47ee-84b4-0f10a95b1e52",
+      "state_abbrev": "79",
+      "state_name": "WAKE ISLAND",
+      "fips_state_code": 79,
+      "created_at": "2025-10-31 21:34:54.842496",
+      "updated_at": "2025-10-31 21:34:54.842497",
+      "sys_period": "[\"2025-10-31 21:34:54.842621+00\",)"
+    },
+    {
+      "id": "1f3c2571-26a0-4da8-9754-c4695989dadd",
+      "state_abbrev": "81",
+      "state_name": "BAKER ISLAND",
+      "fips_state_code": 81,
+      "created_at": "2025-10-31 21:34:54.844914",
+      "updated_at": "2025-10-31 21:34:54.844926",
+      "sys_period": "[\"2025-10-31 21:34:54.845117+00\",)"
+    },
+    {
+      "id": "dd27dcf6-87b4-4383-87c0-29a967aaf2fc",
+      "state_abbrev": "84",
+      "state_name": "HOWLAND ISLAND",
+      "fips_state_code": 84,
+      "created_at": "2025-10-31 21:34:54.847681",
+      "updated_at": "2025-10-31 21:34:54.847685",
+      "sys_period": "[\"2025-10-31 21:34:54.848057+00\",)"
+    },
+    {
+      "id": "4c592c42-c124-4081-8c58-6c8d590fb9ac",
+      "state_abbrev": "86",
+      "state_name": "JARVIS ISLAND",
+      "fips_state_code": 86,
+      "created_at": "2025-10-31 21:34:54.850914",
+      "updated_at": "2025-10-31 21:34:54.850926",
+      "sys_period": "[\"2025-10-31 21:34:54.851136+00\",)"
+    },
+    {
+      "id": "1fa9ae7f-be71-4321-80a4-acac2a047b60",
+      "state_abbrev": "89",
+      "state_name": "KINGMAN REEF",
+      "fips_state_code": 89,
+      "created_at": "2025-10-31 21:34:54.853485",
+      "updated_at": "2025-10-31 21:34:54.853488",
+      "sys_period": "[\"2025-10-31 21:34:54.853658+00\",)"
+    },
+    {
+      "id": "4d3f879b-516f-4011-a2fe-783378e43467",
+      "state_abbrev": "95",
+      "state_name": "PALMYRA ATOLL",
+      "fips_state_code": 95,
+      "created_at": "2025-10-31 21:34:54.855876",
+      "updated_at": "2025-10-31 21:34:54.855878",
+      "sys_period": "[\"2025-10-31 21:34:54.856091+00\",)"
+    }
+  ]
+}

@@ -8,7 +8,7 @@
   "phases": [{
     "name": "create_and_refine_chart",
     "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nUse the create_chart tool to generate an initial visualization.\n\nAfter seeing the chart, describe what you observe and any improvements you'd suggest.",
-    "tackle": ["create_chart"],
+    "tackle": ["create_vega_lite", "create_plotly"],
     "soundings": {
       "factor": 3,
       "evaluator_instructions": "Evaluate the chart descriptions and suggested improvements based on:\n1. Clarity of observations about the chart\n2. Quality of improvement suggestions\n3. Relevance to data visualization best practices\n\nSelect the BEST analysis.",

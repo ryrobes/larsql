@@ -1,0 +1,1060 @@
+{
+  "table_name": "cmt_questions",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 27,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 27,
+        "value_distribution": [
+          {
+            "value": "183502b8-8239-45e6-9808-85b747e7926f",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "84dda54f-ba26-4cb2-9238-96a79bd10853",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "65489067-b38d-4ea2-8677-41daef1d4cb4",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "f9134f20-a99b-42e4-98d2-0e7fbfe0743f",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "a0b889b2-645f-4e97-9e6d-c54e5035d0e1",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "9ee8ba3f-23cd-462b-82df-d64b66eb7168",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "668f2181-07a6-4762-ad75-0bfc2aac1ed5",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "18201ac2-e969-4dea-bd67-ae252b57b8c3",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "0be57176-8357-43aa-946f-cea96cc6be41",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "41b976ad-1378-4d82-a781-e92731d39487",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "20e818ef-3657-41a1-b664-ef89cd52b3f8",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "02fc3d24-b665-4199-998c-68e85b33f2fc",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "53e76340-9eb3-4d74-94cf-13a56ea55598",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "b597a49c-30a3-4fed-b7df-2eadf3a847bb",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "d2301122-5833-4b56-b7c9-83dfa13df3a0",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "248c0598-e8ab-4291-9eb6-da011ad3b889",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "04e27618-b1c2-405f-b2e5-39ae57df7223",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2178327f-5e34-4ce9-b552-f5a339d60b53",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "54fba046-87c8-4566-aa68-969ef296dd5b",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "0ae34d1c-a805-4404-b4ea-1ab37891511b",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "49758ac5-1d67-41c6-af8c-837d13ebd475",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "a626789d-6539-4308-a5c9-9ec0814c6d91",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "78e64ac8-d508-4348-b50c-3ca4fd94426a",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "591f68be-7d0d-437f-8e2a-995b5710c7e8",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "f1c798c0-cc5a-4124-bb68-89d63a5714e9",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "5a599bc3-e686-4985-a3b5-66746e1b76ba",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "aa803498-8cbb-486b-8d4c-9241dbbc1a29",
+            "count": 1,
+            "percentage": 3.7
+          }
+        ]
+      }
+    },
+    {
+      "name": "question_code",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 27,
+        "value_distribution": [
+          {
+            "value": "q_criminal_009",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_003",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_001",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_009",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_005",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_basic_003",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_basic_001",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_004",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_007",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_013",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_012",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_001",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_007",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_008",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_008",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_005",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_010",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_002",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_010",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_006",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_additional_011",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_011",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_006",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_004",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_002",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_basic_002",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "q_criminal_003",
+            "count": 1,
+            "percentage": 3.7
+          }
+        ]
+      }
+    },
+    {
+      "name": "question_text",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 27,
+        "value_distribution": [
+          {
+            "value": "I have a drug or an alcohol abuse problem or a mental or physical disability that, through the practice of dental assisting duties, may be dangerous to patients or the public?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been convicted of a misdemeanor or felony.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "How many children do you have?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been arrested or have any pending criminal charges.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been granted pre-trial diversion.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Can we tag you in our social media posts?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "What is your main reason for choosing our course?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been received deferred adjudication for a felony or misdemeanor.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Gender",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "How did you hear about us?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been subject of a court martial, article 15 violation; or received any form of military judgement, punished or action.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been placed on a community supervision or court-ordered probation, whether or not adjudicated guilty.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Favorite social media",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Marital status",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Household income level",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been sentenced severe jail time or prison time or court ordered confinement.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Do you have a disability?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been denied or had a license/certification revoked?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been formally notified of a complaint against me relative to the practice of radiologic technology?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have been cited or charged with any violation of the law.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Did our price influence your decision?",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have had to seek treatment for the use of alcohol or drugs.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Race",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "I have pled nolo contendere, no contest, or guilty to a felony or misdemeanor.",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Current employment status",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Personal income level",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "Are you a military veteran?",
+            "count": 1,
+            "percentage": 3.7
+          }
+        ]
+      }
+    },
+    {
+      "name": "category_code",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 3,
+        "value_distribution": [
+          {
+            "value": "criminal_history",
+            "count": 13,
+            "percentage": 48.15
+          },
+          {
+            "value": "additional",
+            "count": 11,
+            "percentage": 40.74
+          },
+          {
+            "value": "basic",
+            "count": 3,
+            "percentage": 11.11
+          }
+        ]
+      }
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": true,
+            "count": 27,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "display_order",
+      "type": "INTEGER",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": 0,
+            "count": 27,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 27,
+        "value_distribution": [
+          {
+            "value": "2025-11-18 00:38:58.536450",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.358739",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.408034",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.413979",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.531920",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.401771",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.456640",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.350771",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.464480",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.488551",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.337482",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.395085",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.483724",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.344938",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.330020",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.502825",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.507294",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.378113",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.514339",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.477603",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.433397",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.471371",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.526587",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.421559",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.441736",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.497175",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.427916",
+            "count": 1,
+            "percentage": 3.7
+          }
+        ]
+      }
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 27,
+        "value_distribution": [
+          {
+            "value": "2025-11-18 00:38:58.408034",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.427916",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.441736",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.477603",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.507294",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.502825",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.536450",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.330020",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.488551",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.464480",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.350771",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.456640",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.401771",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.413979",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.531920",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.358739",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.344938",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.526587",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.471371",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.433397",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.497175",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.421559",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.514339",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.378113",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.483724",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.395085",
+            "count": 1,
+            "percentage": 3.7
+          },
+          {
+            "value": "2025-11-18 00:38:58.337482",
+            "count": 1,
+            "percentage": 3.7
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "248c0598-e8ab-4291-9eb6-da011ad3b889",
+      "question_code": "q_basic_001",
+      "question_text": "How did you hear about us?",
+      "category_code": "basic",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.330020",
+      "updated_at": "2025-11-18 00:38:58.330020"
+    },
+    {
+      "id": "668f2181-07a6-4762-ad75-0bfc2aac1ed5",
+      "question_code": "q_basic_002",
+      "question_text": "Are you a military veteran?",
+      "category_code": "basic",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.337482",
+      "updated_at": "2025-11-18 00:38:58.337482"
+    },
+    {
+      "id": "b597a49c-30a3-4fed-b7df-2eadf3a847bb",
+      "question_code": "q_basic_003",
+      "question_text": "Do you have a disability?",
+      "category_code": "basic",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.344938",
+      "updated_at": "2025-11-18 00:38:58.344938"
+    },
+    {
+      "id": "a626789d-6539-4308-a5c9-9ec0814c6d91",
+      "question_code": "q_additional_001",
+      "question_text": "Race",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.350771",
+      "updated_at": "2025-11-18 00:38:58.350771"
+    },
+    {
+      "id": "18201ac2-e969-4dea-bd67-ae252b57b8c3",
+      "question_code": "q_additional_002",
+      "question_text": "Gender",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.358739",
+      "updated_at": "2025-11-18 00:38:58.358739"
+    },
+    {
+      "id": "04e27618-b1c2-405f-b2e5-39ae57df7223",
+      "question_code": "q_additional_003",
+      "question_text": "Marital status",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.378113",
+      "updated_at": "2025-11-18 00:38:58.378113"
+    },
+    {
+      "id": "183502b8-8239-45e6-9808-85b747e7926f",
+      "question_code": "q_additional_004",
+      "question_text": "How many children do you have?",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.395085",
+      "updated_at": "2025-11-18 00:38:58.395085"
+    },
+    {
+      "id": "0be57176-8357-43aa-946f-cea96cc6be41",
+      "question_code": "q_additional_005",
+      "question_text": "Personal income level",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.401771",
+      "updated_at": "2025-11-18 00:38:58.401771"
+    },
+    {
+      "id": "9ee8ba3f-23cd-462b-82df-d64b66eb7168",
+      "question_code": "q_additional_006",
+      "question_text": "Household income level",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.408034",
+      "updated_at": "2025-11-18 00:38:58.408034"
+    },
+    {
+      "id": "2178327f-5e34-4ce9-b552-f5a339d60b53",
+      "question_code": "q_additional_007",
+      "question_text": "Current employment status",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.413979",
+      "updated_at": "2025-11-18 00:38:58.413979"
+    },
+    {
+      "id": "f9134f20-a99b-42e4-98d2-0e7fbfe0743f",
+      "question_code": "q_additional_008",
+      "question_text": "Favorite social media",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.421559",
+      "updated_at": "2025-11-18 00:38:58.421559"
+    },
+    {
+      "id": "20e818ef-3657-41a1-b664-ef89cd52b3f8",
+      "question_code": "q_additional_009",
+      "question_text": "What is your main reason for choosing our course?",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.427916",
+      "updated_at": "2025-11-18 00:38:58.427916"
+    },
+    {
+      "id": "f1c798c0-cc5a-4124-bb68-89d63a5714e9",
+      "question_code": "q_additional_010",
+      "question_text": "Did our price influence your decision?",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.433397",
+      "updated_at": "2025-11-18 00:38:58.433397"
+    },
+    {
+      "id": "d2301122-5833-4b56-b7c9-83dfa13df3a0",
+      "question_code": "q_additional_011",
+      "question_text": "Can we tag you in our social media posts?",
+      "category_code": "additional",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.441736",
+      "updated_at": "2025-11-18 00:38:58.441736"
+    },
+    {
+      "id": "a0b889b2-645f-4e97-9e6d-c54e5035d0e1",
+      "question_code": "q_criminal_001",
+      "question_text": "I have been subject of a court martial, article 15 violation; or received any form of military judgement, punished or action.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.456640",
+      "updated_at": "2025-11-18 00:38:58.456640"
+    },
+    {
+      "id": "84dda54f-ba26-4cb2-9238-96a79bd10853",
+      "question_code": "q_criminal_002",
+      "question_text": "I have had to seek treatment for the use of alcohol or drugs.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.464480",
+      "updated_at": "2025-11-18 00:38:58.464480"
+    },
+    {
+      "id": "54fba046-87c8-4566-aa68-969ef296dd5b",
+      "question_code": "q_criminal_003",
+      "question_text": "I have been convicted of a misdemeanor or felony.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.471371",
+      "updated_at": "2025-11-18 00:38:58.471371"
+    },
+    {
+      "id": "591f68be-7d0d-437f-8e2a-995b5710c7e8",
+      "question_code": "q_criminal_004",
+      "question_text": "I have been granted pre-trial diversion.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.477603",
+      "updated_at": "2025-11-18 00:38:58.477603"
+    },
+    {
+      "id": "02fc3d24-b665-4199-998c-68e85b33f2fc",
+      "question_code": "q_criminal_005",
+      "question_text": "I have been cited or charged with any violation of the law.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.483724",
+      "updated_at": "2025-11-18 00:38:58.483724"
+    },
+    {
+      "id": "41b976ad-1378-4d82-a781-e92731d39487",
+      "question_code": "q_criminal_006",
+      "question_text": "I have been received deferred adjudication for a felony or misdemeanor.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.488551",
+      "updated_at": "2025-11-18 00:38:58.488551"
+    },
+    {
+      "id": "5a599bc3-e686-4985-a3b5-66746e1b76ba",
+      "question_code": "q_criminal_007",
+      "question_text": "I have pled nolo contendere, no contest, or guilty to a felony or misdemeanor.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.497175",
+      "updated_at": "2025-11-18 00:38:58.497175"
+    },
+    {
+      "id": "aa803498-8cbb-486b-8d4c-9241dbbc1a29",
+      "question_code": "q_criminal_008",
+      "question_text": "I have been arrested or have any pending criminal charges.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.502825",
+      "updated_at": "2025-11-18 00:38:58.502825"
+    },
+    {
+      "id": "0ae34d1c-a805-4404-b4ea-1ab37891511b",
+      "question_code": "q_criminal_009",
+      "question_text": "I have been sentenced severe jail time or prison time or court ordered confinement.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.507294",
+      "updated_at": "2025-11-18 00:38:58.507294"
+    },
+    {
+      "id": "78e64ac8-d508-4348-b50c-3ca4fd94426a",
+      "question_code": "q_criminal_010",
+      "question_text": "I have been placed on a community supervision or court-ordered probation, whether or not adjudicated guilty.",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.514339",
+      "updated_at": "2025-11-18 00:38:58.514339"
+    },
+    {
+      "id": "65489067-b38d-4ea2-8677-41daef1d4cb4",
+      "question_code": "q_criminal_011",
+      "question_text": "I have been denied or had a license/certification revoked?",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.526587",
+      "updated_at": "2025-11-18 00:38:58.526587"
+    },
+    {
+      "id": "53e76340-9eb3-4d74-94cf-13a56ea55598",
+      "question_code": "q_criminal_012",
+      "question_text": "I have been formally notified of a complaint against me relative to the practice of radiologic technology?",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.531920",
+      "updated_at": "2025-11-18 00:38:58.531920"
+    },
+    {
+      "id": "49758ac5-1d67-41c6-af8c-837d13ebd475",
+      "question_code": "q_criminal_013",
+      "question_text": "I have a drug or an alcohol abuse problem or a mental or physical disability that, through the practice of dental assisting duties, may be dangerous to patients or the public?",
+      "category_code": "criminal_history",
+      "is_active": true,
+      "display_order": 0,
+      "created_at": "2025-11-18 00:38:58.536450",
+      "updated_at": "2025-11-18 00:38:58.536450"
+    }
+  ]
+}

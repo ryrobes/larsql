@@ -1,0 +1,8 @@
+{
+  "connection_name": "csv_files",
+  "type": "csv_folder",
+  "folder_path": "/home/ryanr/csv-files",
+  "enabled": true,
+  "sample_row_limit": 100,
+  "distinct_value_threshold": 50
+}

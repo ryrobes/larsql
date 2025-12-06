@@ -1,0 +1,124 @@
+{
+  "table_name": "org_instructors",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 1,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000104",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "user_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000012",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "instructor_number",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "INST-1001",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "qualifications",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "{\"cpr\": true, \"years_experience\": 5}",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "hire_date",
+      "type": "DATE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2023-08-15 00:00:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": true,
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 05:06:00.108671+00\",)",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000104",
+      "user_id": "00000000-0000-0000-0000-000000000012",
+      "instructor_number": "INST-1001",
+      "qualifications": "{\"cpr\": true, \"years_experience\": 5}",
+      "hire_date": "2023-08-15 00:00:00",
+      "is_active": true,
+      "sys_period": "[\"2025-10-31 05:06:00.108671+00\",)"
+    }
+  ]
+}

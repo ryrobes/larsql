@@ -1,0 +1,656 @@
+{
+  "table_name": "metallica_notes",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 3665,
+  "columns": [
+    {
+      "name": "show_id",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 565
+      }
+    },
+    {
+      "name": "note_order",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 58,
+        "min": "0",
+        "max": "57"
+      }
+    },
+    {
+      "name": "note_text",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 3545
+      }
+    },
+    {
+      "name": "ts",
+      "type": "TIMESTAMP",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "2023-09-24 19:19:13",
+            "count": 2211,
+            "percentage": 60.33
+          },
+          {
+            "value": "2023-09-24 19:19:14",
+            "count": 1454,
+            "percentage": 39.67
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 0,
+      "note_text": "This was the 153rd show on the World Magnetic Tour and the 34th performance in 2010.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 1,
+      "note_text": "This was the first show that Metallica played with Slayer, Megadeth, and Anthrax\u2026 more commonly known as The Big Four!",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 2,
+      "note_text": "This was the second time that Metallica had played in Warsaw.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 3,
+      "note_text": "Metallica first played Warsaw on June 1, 1999 at Gwardia Stadium.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 4,
+      "note_text": "This was the first time that Welcome Home (Sanitarium) was played in Warsaw.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 5,
+      "note_text": "This was the first time that Blackened was played in Warsaw.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 6,
+      "note_text": "This was the first time that Hit the Lights was played in Warsaw.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "note_order": 7,
+      "note_text": "Metallica performed 18 songs tonight from 8 different albums: Kill \u2018Em All (3 songs), Ride the Lightning (3 songs), Master of Puppets (2 songs), ...And Justice for All (2 songs), The Black Album (3 songs), ReLoad (1 song), Garage, Inc. (1 song), and Death Magnetic (3 songs)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-05-01-cincinnati-ohio.html",
+      "note_order": 0,
+      "note_text": "This was the second time Am I Evil? was played on this leg of the Madly In Anger With the World tour 2004.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-05-01-cincinnati-ohio.html",
+      "note_order": 1,
+      "note_text": "This was the second time Metal Militia has been played live since February 7, 1985 in Cleveland, OH at the Variety Theatre.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-05-01-cincinnati-ohio.html",
+      "note_order": 2,
+      "note_text": "Today was the one year anniversary of Robert Trujillo playing his first show with Metallica. The first show was at the San Quentin Prison the day after filming the St. Anger video there. Half way through Am I Evil? the band & crew pied him on stage. Happy anniversary Robert!",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-05-01-cincinnati-ohio.html",
+      "note_order": 3,
+      "note_text": "The last time Metallica performed in Cincinnati, OH was on July 7, 1998, at the Riverbend Music Center.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "note_order": 0,
+      "note_text": "This was only the third time that Metallica performed in Turkey. They were previously there in 1993 and 1999.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "note_order": 1,
+      "note_text": "This was the first time that Ride the Lightning was performed in Turkey.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "note_order": 2,
+      "note_text": "This was the first time that Leper Messiah was performed in Turkey.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "note_order": 3,
+      "note_text": "This was the first time that \u2026And Justice for All was performed in Turkey in any form. By the time Metallica played Turkey in 1993, the Justice Medley (which included much of \u2026And Justice for All) had been retired and replaced by a medley of Orion, To Live Is To Die, and The Call of Ktulu.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "note_order": 4,
+      "note_text": "This was the first time that Motorbreath was performed in Turkey.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "note_order": 0,
+      "note_text": "This was the fourth time that Metallica performed in Seoul, South Korea.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "note_order": 1,
+      "note_text": "Metallica first played in Seoul on April 24, 1998 during the Poor ReTouring Me tour.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "note_order": 2,
+      "note_text": "Metallica last performed in Seoul on August 15, 2006 during the Escape from the Studio 2006 tour.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "note_order": 3,
+      "note_text": "The boys played six songs that had never been performed in Seoul including \u201cHit the Lights,\u201d \u201cHolier Than Thou,\u201d \u201cRide the Lightning,\u201d \u201cRide the Lightning,\u201d \u201cCyanide,\u201d \u201cBlackened,\u201d and \u201cFight Fire With Fire.\u201d",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "note_order": 4,
+      "note_text": "Metallica performed 18 songs off of seven albums: Kill 'Em All (2), Ride the Lightning (5), Master of Puppets (2), ...And Justice for All (3), Metallica (4), Reload (1), Death Magnetic (1)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "note_order": 0,
+      "note_text": "This was the sixth show that Metallica performed in 2013.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "note_order": 1,
+      "note_text": "This was only the second time that Metallica performed in Abu Dhabi.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "note_order": 2,
+      "note_text": "The last time Metallica performed in Abu Dhabi was on October 25, 2011.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "note_order": 3,
+      "note_text": "Nine out of the 18 songs on the setlist had never been performed in Abu Dhabi. These songs included: \u201cHit the Lights,\u201d \u201cThe Shortest Straw,\u201d \u201cHarvester of Sorrow,\u201d \u201cThe Unforgiven,\u201d \u201cThe Four Horsemen,\u201d \u201cBroken, Beat and Scarred,\u201d \u201cOrion,\u201d \u201cBattery\u201d and \u201cFight Fire With Fire..\u201d",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "note_order": 4,
+      "note_text": "The band performed 18 songs off of six albums: Kill 'Em All (3), Ride the Lightning (4), Master of Puppets (3), ...And Justice for All (3), The Black Album (4), Death Magnetic (1)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "note_order": 0,
+      "note_text": "This was the 11th time that Metallica has performed in Norway.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "note_order": 1,
+      "note_text": "This was the first time that Metallica played Holier Than Thou in Oslo.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "note_order": 2,
+      "note_text": "This was the first time that the band performed Dyers Eve in Oslo.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "note_order": 3,
+      "note_text": "This was the first time in 17 years that Stone Cold Crazy was performed in Oslo. It was last played here on December 14, 1992.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "note_order": 4,
+      "note_text": "This was the first time in 13 years that Motorbreath was performed in Oslo. It was last played here on November 23, 1996.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-03-26-vancouver-canada.html",
+      "note_order": 0,
+      "note_text": "This was the second time No Leaf Clover was played on this leg of the Madly In Anger With the World tour 2004.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-03-26-vancouver-canada.html",
+      "note_order": 1,
+      "note_text": "This was the second time Jump In The Fire was played on this leg of the Madly In Anger With the World tour 2004. Prior to that (Edmonton, March 23, 2004), this song has not been played live since November 18, 1984.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-03-26-vancouver-canada.html",
+      "note_order": 2,
+      "note_text": "This was the second time Last Caress was played on this leg of the Madly In Anger With the World tour 2004.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-03-26-vancouver-canada.html",
+      "note_order": 3,
+      "note_text": "The last time Metallica performed in Vancouver, BC was on September 4, 1998 at the Thunderbird Stadium.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 0,
+      "note_text": "This was the 11th show that Metallica performed in 2012.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 1,
+      "note_text": "This was the 11th show celebrating 20 Years of The Black Album.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 2,
+      "note_text": "This was the 13th time that Metallica performed in Nurnberg.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 3,
+      "note_text": "Metallica first performed in Nurnberg on February 7, 1984.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 4,
+      "note_text": "Metallica last played in Nurnberg on June 8, 2008.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 5,
+      "note_text": "This was the fifth time that Metallica performed at Rock Im Park.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 6,
+      "note_text": "This was the first time that the following songs were performed in Nurnberg: \u201cHell and Back,\u201d \u201cThe Struggle Within,\u201d \u201cMy Friend of Misery,\u201d and \u201cDon't Tread on Me..\u201d",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 7,
+      "note_text": "This was the first time in almost 13 years that \u201cFight Fire With Fire\u201d was performed in Nurnberg. It was last played here on May 21, 1999.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "note_order": 8,
+      "note_text": "Metallica performed 20 songs off of five albums and one EP: Kill 'Em All (3), Ride the Lightning (2), Master of Puppets (1), ...And Justice for All (1), The Black Album (12), Beyond Magnetic (1)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "note_order": 0,
+      "note_text": "This was the second time that Metallica performed in Raleigh.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "note_order": 1,
+      "note_text": "Metallica first played in Raleigh on June 25, 1992 at Walnut Creek Ampitheatre during the Wherever We May Roam tour.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "note_order": 2,
+      "note_text": "This was the first time that \u201cHardwired,\u201d \u201cAtlas, Rise!,\u201d \u201cNow That We\u2019re Dead,\u201d \u201cConfusion,\u201d \u201cFuel,\u201d \u201cMoth Into Flame,\u201d and \u201cFight Fire with Fire\u201d were performed in Raleigh.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "note_order": 3,
+      "note_text": "This was the first time in nearly six years that Metallica performed a version of \u201cWhiplash\u201d that included the third verse. This version was last performed on June 8, 2013 during the Orion Music + More festival.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "note_order": 4,
+      "note_text": "Metallica performed 18 songs from the following albums: ***Kill \u2018Em All*** (2), ***Ride the Lightning*** (3), ***Master of Puppets*** (2), ***\u2026And Justice for All*** (1), ***Metallica*** (4), ***Reload*** (1), and ***Hardwired\u2026To Self-Destruct*** (5)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-20-copenhagen-denmark.html",
+      "note_order": 0,
+      "note_text": "The album breakdown is as follows: Kill \u2018Em All \u2013 2, Ride the Lightning \u2013 1, Master of Puppets \u2013 1, ...And Justice for All \u2013 2, The Black Album \u2013 3, ReLoad \u2013 1, Garage, Inc. - 2, Death Magnetic \u2013 6",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-20-copenhagen-denmark.html",
+      "note_order": 1,
+      "note_text": "This was the first time that Turn the Page was performed in Copenhagen.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-20-copenhagen-denmark.html",
+      "note_order": 2,
+      "note_text": "This was the first time in ten years that Fight Fire With Fire was performed in Denmark. It was last played here on July 1, 1999 at the Roskilde Festival.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-20-copenhagen-denmark.html",
+      "note_order": 3,
+      "note_text": "This was the first time in over 16 years that Motorbreath was performed in Copenhagen. It was last played here on December 10, 1992.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2006-03-18-centurion-south-africa.html",
+      "note_order": 0,
+      "note_text": "This is the first time Metallica has ever performed in South Africa and is the first of a short three show tour in the country.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2006-03-18-centurion-south-africa.html",
+      "note_order": 1,
+      "note_text": "There were 43,000 people in attendance.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2006-03-18-centurion-south-africa.html",
+      "note_order": 2,
+      "note_text": "The show included the 325th time King Nothing has been performed live.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 0,
+      "note_text": "This was the 15th show that Metallica performed in 2012.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 1,
+      "note_text": "This was the 15th show celebrating 20 Years of The Black Album.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 2,
+      "note_text": "This was the seventh time that Metallica, as a full unit, performed in Donington.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 3,
+      "note_text": "Metallica first performed in Donington on August 17, 1985.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 4,
+      "note_text": "Metallica last played in Donington on June 10, 2006.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 5,
+      "note_text": "The following songs were played in Donington for the first time: \u201cHit the Lights,\u201d \u201cHell and Back,\u201d \u201cThe Struggle Within,\u201d \u201cMy Friend of Misery,\u201d \u201cOf Wolf and Man,\u201d \u201cThrough the Never,\u201d \u201cDon't Tread on Me\u201d and \u201cHolier Than Thou..\u201d",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 6,
+      "note_text": "This was the first 2012 performance of \u201cThe Four Horsemen..\u201d",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "note_order": 7,
+      "note_text": "Metallica performed 20 songs off of five albums and one EP: Kill 'Em All (3), Ride the Lightning (1), Master of Puppets (2), ...And Justice for All (1), The Black Album (12), Beyond Magnetic (1)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "note_order": 0,
+      "note_text": "This was the first time that Metallica performed in Hoeckenheim, Germany.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "note_order": 1,
+      "note_text": "This was the first time that Fight Fire With Fire was used as the opening song since January 19, 2004 in Brisbane, Australia.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "note_order": 2,
+      "note_text": "This was the second time that Trapped Under Ice was performed in Germany. It was last played on May 7, 2009 in Leipzig. This was the 11th performance of the song since 1984.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "note_order": 3,
+      "note_text": "This was the first time that My Apocalypse was performed in the #13 slot on the setlist which is normally occupied by it\u2019s older but equally fast brothers like Blackened, Fight Fire With Fire, Battery, Damage Inc. and Dyers Eve.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "note_order": 4,
+      "note_text": "This was only the third performance of Fade to Black in 2009.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 0,
+      "note_text": "This was the 129th show on the World Magnetic Tour and the 10th performance in 2010.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 1,
+      "note_text": "This was the first time that Metallica performed in Monterrey.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 2,
+      "note_text": "This was the fifth time in a year that Metallica performed in Mexico.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 3,
+      "note_text": "This was the first time in eight months that The Thing That Should Not Be was performed. It was last played on July 28, 2009 in Copenhagen, Denmark. The Thing That Should Not Be was only performed 3 times in 2009 and 4 times in 2008. It has also not appeared as the third song in the set in a year and a half. It was last played that early on September 15, 2008 in London, England.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 4,
+      "note_text": "This was the first performance of The Shortest Straw in 2010. It was last played on December 10, 2009 in Anaheim, CA. The Shortest Straw was only played six times in 2009 after being brought back into the set after a 12-year absence.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 5,
+      "note_text": "This was the third performance of Welcome Home (Sanitarium) in 2010. It was last played on January 31, 2010 in Sao Paulo, Brazil.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 6,
+      "note_text": "This was the third performance of My Apocalypse in 2010. It was last played on January 31, 2010 in Sao Paulo, Brazil. My Apocalypse has only been performed 28 times.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 7,
+      "note_text": "This was the second performance of Damage, Inc. in 2010. It was last played on January 24, 2010 in Cordoba, Argentina.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 8,
+      "note_text": "This was the second performance of the Diamond Head classic Am I Evil? in 2010. It was last performed on January 19, 2010. Am I Evil? has been played well over 650 times since 1982.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "note_order": 9,
+      "note_text": "Metallica performed 18 songs tonight from 8 different albums: Kill \u2018Em All (2 songs), Ride the Lightning (1 song), Master of Puppets (4 songs), ...And Justice for All (2 song), The Black Album (3 songs), Re-Load (1 song), Garage, Inc. (1 song), and Death Magnetic (4 songs)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 0,
+      "note_text": "There was a PA failure during The Day That Never Comes The band stopped playing for a minute or two while they addressed the issue before resuming the song where they left off.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 1,
+      "note_text": "This was the 101st show on the World Magnetic Tour and the 75th performance in 2009.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 2,
+      "note_text": "This was the 16th time that Metallica played in the Cleveland area and the 45th time that they played the state of Ohio.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 3,
+      "note_text": "This was the first time in five years and one month that Metallica performed in Cleveland.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 4,
+      "note_text": "Metallica last performed a full concert in Cleveland on September 21, 2004 during the Madly in Anger With the World Tour. You can download a copy of that performance here.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 5,
+      "note_text": "Metallica was inducted into the Rock \u2018N Roll Hall of Fame in Cleveland earlier this year on April 4, 2009.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 6,
+      "note_text": "Metallica first performed in Cleveland on December 18, 1983 during the Kill \u2018Em All Tour. You can download a free copy of that performance here.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 7,
+      "note_text": "Metallica also performed in Cleveland on the Ride the Lightning Tour (February 7, 1985), the Master of Puppets Tour (April 9, 1986), the Damaged Justice Tour (November 26, 1988 and July 8, 1989), the Wherever We May Roam Tour (November 30, 1991, December 1, 1991, and July 3, 1992), the Summer Shit Tour (June 18, 1994), the Poor Touring Me Tour (February 18 and 19, 1997), and the MetLennium Tour (January 1 2000)This was the US debut of The Judas Kiss.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 8,
+      "note_text": "Hit the Lights was performed in Cleveland for the first time in 26 years. It was last played here on December 18, 1983.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 9,
+      "note_text": "The Shortest Straw was performed in Cleveland for the first time in 17 years. It was last played here on July 3, 1992 at the Blossom Music Center in Cuyahoga Falls.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 10,
+      "note_text": "Fade to Black was performed in the 5th slot, normally occupied by One, for the first time in the US on the World Magnetic Tour. It was also the first time in 12 years that Fade was played in Cleveland.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 11,
+      "note_text": "This was the second time that Dyers Eve has been played in the US on this tour. Prior to its performance on September 29, 2009 in Dallas, TX, it was last performed in the US on November 6, 2004 in Ft. Lauderdale, FL. The song has only been performed live in the US 10 times.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 12,
+      "note_text": "Overall, Metallica played 5 songs that haven\u2019t been played in over a decade in Cleveland: Harvester of Sorrow (1994), The Shortest Straw (1992), Fade to Black (1997), Last Caress (1997), and Hit the Lights (1983)Metallica performed 18 songs tonight from 7 different albums: Kill \u2018Em All (2 songs), Ride the Lightning (1 songs), Master of Puppets (1 songs), ...And Justice for All (4 songs), The Black Album (3 songs), Garage, Inc. (1 songs), Death Magnetic (6 songs)Metallica played 7 songs for the first time in Cleveland: That Was Just You Life, The End of the Line, Broken, Beat & Scarred, Cyanide, The Judas Kiss, The Day That Never Comes, Dyers Eve",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "note_order": 13,
+      "note_text": "Metallica played 3 songs that have been played once before in Cleveland: The Shortest Straw (1 time in 1992), Hit the Lights (1 time in 1983)Metallica played 8 songs that have been played multiple times Cleveland: Harvester of Sorrow (6 times), Fade to Black (8 times), Sad But true (9 times), One (11 times), Master of Puppets (11 times), Nothing Else Matters (7 times), Enter Sandman (9 times), Last Caress (8 times), Seek & Destroy (10 times)",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "note_order": 0,
+      "note_text": "This was the third show Metallica has played in Moline, IL. The first time they played in Moline was on February 5, 1997 at the Mark of the Quad Cities on the Poor Touring Me tour. The 1997 show was an unusual one where the band opened with Overkill, debuted Hero of the Day, and played The Shortest Straw.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "note_order": 1,
+      "note_text": "The last time Metallica performed in Moline was on August 22, 2004 at the Mark of the Quad Cities on the Madly in Anger With the World tour.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "note_order": 2,
+      "note_text": "Metallica has played Moline on the following tours: Poor Touring Me and Madly in Anger With the World.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "note_order": 3,
+      "note_text": "This was the first time that Last Caress was performed in Moline.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "note_order": 4,
+      "note_text": "This was the first time that The Four Horsemen was performed in Moline.",
+      "ts": "2023-09-24 19:19:13"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-10-22-east-rutherford-new-jersey.html",
+      "note_order": 0,
+      "note_text": "This was the fourth time The Memory Remains was played on this leg of the Madly In Anger With the World tour 2004.",
+      "ts": "2023-09-24 19:19:13"
+    }
+  ]
+}

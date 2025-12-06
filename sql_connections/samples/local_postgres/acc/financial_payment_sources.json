@@ -1,0 +1,188 @@
+{
+  "table_name": "financial_payment_sources",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 1,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000401",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "student_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000201",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "source_type",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "card",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "processor",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "stripe",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "processor_token",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "tok_123",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "card_info",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "{\"brand\": \"visa\", \"last4\": \"4242\"}",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "is_default",
+      "type": "BOOLEAN",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": true,
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "validated_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2025-10-29 08:25:00-04:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "validation_method",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "micro_charge",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2025-10-29 08:25:00-04:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 05:06:00.108671+00\",)",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000401",
+      "student_id": "00000000-0000-0000-0000-000000000201",
+      "source_type": "card",
+      "processor": "stripe",
+      "processor_token": "tok_123",
+      "card_info": "{\"brand\": \"visa\", \"last4\": \"4242\"}",
+      "is_default": true,
+      "validated_at": "2025-10-29 08:25:00-04:00",
+      "validation_method": "micro_charge",
+      "created_at": "2025-10-29 08:25:00-04:00",
+      "sys_period": "[\"2025-10-31 05:06:00.108671+00\",)"
+    }
+  ]
+}

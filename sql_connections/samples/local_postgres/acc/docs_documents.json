@@ -1,0 +1,188 @@
+{
+  "table_name": "docs_documents",
+  "schema": "acc",
+  "database": "local_postgres",
+  "row_count": 1,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000302",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "student_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000201",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "enrollment_id",
+      "type": "UUID",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "00000000-0000-0000-0000-000000000204",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "document_type",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "id_photo",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "storage_provider",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "s3",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "storage_key",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "docs/0001/id.jpg",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "file_name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "id.jpg",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "mime_type",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "image/jpeg",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "file_size",
+      "type": "INTEGER",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": 123456,
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "uploaded_at",
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "2025-10-29 08:28:00-04:00",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sys_period",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "[\"2025-10-31 05:06:00.108671+00\",)",
+            "count": 1,
+            "percentage": 100.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000302",
+      "student_id": "00000000-0000-0000-0000-000000000201",
+      "enrollment_id": "00000000-0000-0000-0000-000000000204",
+      "document_type": "id_photo",
+      "storage_provider": "s3",
+      "storage_key": "docs/0001/id.jpg",
+      "file_name": "id.jpg",
+      "mime_type": "image/jpeg",
+      "file_size": 123456,
+      "uploaded_at": "2025-10-29 08:28:00-04:00",
+      "sys_period": "[\"2025-10-31 05:06:00.108671+00\",)"
+    }
+  ]
+}

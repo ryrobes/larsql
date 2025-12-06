@@ -1,0 +1,1142 @@
+{
+  "table_name": "metallica_shows",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 2214,
+  "columns": [
+    {
+      "name": "show_id",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2214
+      }
+    },
+    {
+      "name": "show_date",
+      "type": "DATE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2194,
+        "min": "1982-03-14",
+        "max": "2023-09-03"
+      }
+    },
+    {
+      "name": "show_name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1195
+      }
+    },
+    {
+      "name": "location",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 553
+      }
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2212
+      }
+    },
+    {
+      "name": "tour_name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 31,
+        "value_distribution": [
+          {
+            "value": null,
+            "count": 468,
+            "percentage": 21.14
+          },
+          {
+            "value": "Wherever We May Roam",
+            "count": 227,
+            "percentage": 10.25
+          },
+          {
+            "value": "Damaged Justice",
+            "count": 219,
+            "percentage": 9.89
+          },
+          {
+            "value": "World Magnetic",
+            "count": 181,
+            "percentage": 8.18
+          },
+          {
+            "value": "WorldWired",
+            "count": 153,
+            "percentage": 6.91
+          },
+          {
+            "value": "Damage, Inc.",
+            "count": 142,
+            "percentage": 6.41
+          },
+          {
+            "value": "Madly In Anger With The World",
+            "count": 138,
+            "percentage": 6.23
+          },
+          {
+            "value": "Poor Touring Me",
+            "count": 136,
+            "percentage": 6.14
+          },
+          {
+            "value": "Ride the Lightning",
+            "count": 76,
+            "percentage": 3.43
+          },
+          {
+            "value": "Poor ReTouring Me",
+            "count": 60,
+            "percentage": 2.71
+          },
+          {
+            "value": "Summer Shit / Shit Hits the Sheds",
+            "count": 49,
+            "percentage": 2.21
+          },
+          {
+            "value": "The Garage Remains the Same",
+            "count": 41,
+            "percentage": 1.85
+          },
+          {
+            "value": "Kill 'Em All for One",
+            "count": 32,
+            "percentage": 1.45
+          },
+          {
+            "value": "Van Halen's Monsters of Rock",
+            "count": 28,
+            "percentage": 1.26
+          },
+          {
+            "value": "Metallica By Request",
+            "count": 26,
+            "percentage": 1.17
+          },
+          {
+            "value": "Guns N\u2019 Roses/Metallica Stadium Tour",
+            "count": 26,
+            "percentage": 1.17
+          },
+          {
+            "value": "Nowhere Else to Roam",
+            "count": 24,
+            "percentage": 1.08
+          },
+          {
+            "value": "Lollapalooza",
+            "count": 22,
+            "percentage": 0.99
+          },
+          {
+            "value": "M72 World Tour",
+            "count": 20,
+            "percentage": 0.9
+          },
+          {
+            "value": "Summer Sanitarium 2003",
+            "count": 20,
+            "percentage": 0.9
+          },
+          {
+            "value": "European Vacation",
+            "count": 20,
+            "percentage": 0.9
+          },
+          {
+            "value": "Monsters of Rock",
+            "count": 20,
+            "percentage": 0.9
+          },
+          {
+            "value": "Summer Sanitarium",
+            "count": 14,
+            "percentage": 0.63
+          },
+          {
+            "value": "The Full Arsenal",
+            "count": 13,
+            "percentage": 0.59
+          },
+          {
+            "value": "Sick of the Studio '07",
+            "count": 12,
+            "percentage": 0.54
+          },
+          {
+            "value": "Escape from the Studio '06",
+            "count": 12,
+            "percentage": 0.54
+          },
+          {
+            "value": "M2K",
+            "count": 10,
+            "percentage": 0.45
+          },
+          {
+            "value": "Blitzkrieg '97",
+            "count": 9,
+            "percentage": 0.41
+          },
+          {
+            "value": "Seven Dates of Hell",
+            "count": 6,
+            "percentage": 0.27
+          },
+          {
+            "value": "Garage Barrage",
+            "count": 5,
+            "percentage": 0.23
+          },
+          {
+            "value": "Escape from the Studio '95",
+            "count": 3,
+            "percentage": 0.14
+          },
+          {
+            "value": "Hell On Earth Tour",
+            "count": 2,
+            "percentage": 0.09
+          }
+        ]
+      }
+    },
+    {
+      "name": "ts",
+      "type": "TIMESTAMP",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "2023-09-24 19:19:11",
+            "count": 1500,
+            "percentage": 67.75
+          },
+          {
+            "value": "2023-09-24 19:19:12",
+            "count": 714,
+            "percentage": 32.25
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "show_id": "https://www.metallica.com/tour/1991-10-30-madison-wisconsin.html",
+      "show_date": "1991-10-30 00:00:00",
+      "show_name": "Dane County Coliseum",
+      "location": "Madison, WI",
+      "title": "1991-10-30 Madison, WI",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1998-07-10-detroit-michigan.html",
+      "show_date": "1998-07-10 00:00:00",
+      "show_name": "Pine Knob Music Theatre",
+      "location": "Detroit, MI",
+      "title": "1998-07-10 Detroit, MI",
+      "tour_name": "Poor ReTouring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-06-16-warsaw-poland.html",
+      "show_date": "2010-06-16 00:00:00",
+      "show_name": "Sonisphere",
+      "location": "Warsaw, Poland",
+      "title": "2010-06-16 Warsaw, Poland",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-09-30-san-diego-california.html",
+      "show_date": "1992-09-30 00:00:00",
+      "show_name": "Jack Murphy Stadium",
+      "location": "San Diego, CA",
+      "title": "1992-09-30 San Diego, CA",
+      "tour_name": "Guns N\u2019 Roses/Metallica Stadium Tour",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1999-04-11-honolulu-hawaii.html",
+      "show_date": "1999-04-11 00:00:00",
+      "show_name": "Neal S. Blaisdell Arena",
+      "location": "Honolulu, HI",
+      "title": "1999-04-11 Honolulu, HI",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1998-04-18-auckland-new-zealand.html",
+      "show_date": "1998-04-18 00:00:00",
+      "show_name": "The Supertop",
+      "location": "Auckland, New Zealand",
+      "title": "1998-04-18 Auckland, New Zealand",
+      "tour_name": "Poor ReTouring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1997-05-11-oklahoma-city-oklahoma.html",
+      "show_date": "1997-05-11 00:00:00",
+      "show_name": "Myriad Convention Center",
+      "location": "Oklahoma City, OK",
+      "title": "1997-05-11 Oklahoma City, OK",
+      "tour_name": "Poor Touring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2000-08-02-dallas-texas.html",
+      "show_date": "2000-08-02 00:00:00",
+      "show_name": "Smirnoff Music Centre",
+      "location": "Dallas, TX",
+      "title": "2000-08-02 Dallas, TX",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1993-03-31-sydney-australia.html",
+      "show_date": "1993-03-31 00:00:00",
+      "show_name": "Sydney Entertainment Centre",
+      "location": "Sydney, Australia",
+      "title": "1993-03-31 Sydney, Australia",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-05-01-cincinnati-ohio.html",
+      "show_date": "2004-05-01 00:00:00",
+      "show_name": "U.S. Bank Arena",
+      "location": "Cincinnati, OH",
+      "title": "2004-05-01 Cincinnati, OH",
+      "tour_name": "Madly In Anger With The World",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-09-24-edinburgh-scotland.html",
+      "show_date": "1988-09-24 00:00:00",
+      "show_name": "Edinburgh Playhouse",
+      "location": "Edinburgh, Scotland",
+      "title": "1988-09-24 Edinburgh, Scotland",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1990-05-19-hanover-germany.html",
+      "show_date": "1990-05-19 00:00:00",
+      "show_name": "Messehalle",
+      "location": "Hanover, Germany",
+      "title": "1990-05-19 Hanover, Germany",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1999-07-03-werchter-belgium.html",
+      "show_date": "1999-07-03 00:00:00",
+      "show_name": "Rock Werchter",
+      "location": "Werchter, Belgium",
+      "title": "1999-07-03 Werchter, Belgium",
+      "tour_name": "The Garage Remains the Same",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-08-01-petaluma-california.html",
+      "show_date": "1991-08-01 00:00:00",
+      "show_name": "Phoenix Theatre",
+      "location": "Petaluma, CA",
+      "title": "1991-08-01 Petaluma, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-07-27-istanbul-turkey.html",
+      "show_date": "2008-07-27 00:00:00",
+      "show_name": "Ali Sami Yen Stadium",
+      "location": "Istanbul, Turkey",
+      "title": "2008-07-27 Istanbul, Turkey",
+      "tour_name": "European Vacation",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-08-18-seoul-south-korea.html",
+      "show_date": "2013-08-18 00:00:00",
+      "show_name": "City Break",
+      "location": "Seoul, South Korea",
+      "title": "2013-08-18 Seoul, South Korea",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-11-05-milwaukee-wisconsin.html",
+      "show_date": "1991-11-05 00:00:00",
+      "show_name": "Bradley Center",
+      "location": "Milwaukee, WI",
+      "title": "1991-11-05 Milwaukee, WI",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-10-22-saarbrucken-germany.html",
+      "show_date": "1988-10-22 00:00:00",
+      "show_name": "Saarlandhalle",
+      "location": "Saarbr\u00fccken, Germany",
+      "title": "1988-10-22 Saarbr\u00fccken, Germany",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2013-04-19-abu-dhabi-united-arab-emirates.html",
+      "show_date": "2013-04-19 00:00:00",
+      "show_name": "du Arena at Yas Island",
+      "location": "Abu Dhabi, United Arab Emirates",
+      "title": "2013-04-19 Abu Dhabi, United Arab Emirates",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-09-05-dallas-texas.html",
+      "show_date": "1992-09-05 00:00:00",
+      "show_name": "Texas Stadium",
+      "location": "Dallas, TX",
+      "title": "1992-09-05 Dallas, TX",
+      "tour_name": "Guns N\u2019 Roses/Metallica Stadium Tour",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-30-oslo-norway.html",
+      "show_date": "2009-07-30 00:00:00",
+      "show_name": "Oslo Spektrum",
+      "location": "Oslo, Norway",
+      "title": "2009-07-30 Oslo, Norway",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-03-15-troy-new-york.html",
+      "show_date": "1989-03-15 00:00:00",
+      "show_name": "RPI Fieldhouse",
+      "location": "Troy, NY",
+      "title": "1989-03-15 Troy, NY",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-03-19-louisville-kentucky.html",
+      "show_date": "1992-03-19 00:00:00",
+      "show_name": "Freedom Hall",
+      "location": "Louisville, KY",
+      "title": "1992-03-19 Louisville, KY",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-03-26-vancouver-canada.html",
+      "show_date": "2004-03-26 00:00:00",
+      "show_name": "General Motors Place",
+      "location": "Vancouver, BC, Canada",
+      "title": "2004-03-26 Vancouver, BC, Canada",
+      "tour_name": "Madly In Anger With The World",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-04-17-binghamton-new-york.html",
+      "show_date": "1986-04-17 00:00:00",
+      "show_name": "Broome County Veterans Memorial Arena",
+      "location": "Binghamton, NY",
+      "title": "1986-04-17 Binghamton, NY",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-01-nuremberg-germany.html",
+      "show_date": "2012-06-01 00:00:00",
+      "show_name": "Rock im Park",
+      "location": "Nuremberg, Germany",
+      "title": "2012-06-01 Nuremberg, Germany",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-01-28-raleigh-north-carolina.html",
+      "show_date": "2019-01-28 00:00:00",
+      "show_name": "PNC Arena",
+      "location": "Raleigh, NC",
+      "title": "2019-01-28 Raleigh, NC",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-20-copenhagen-denmark.html",
+      "show_date": "2009-07-20 00:00:00",
+      "show_name": "Forum K\u00f8benhavn",
+      "location": "Copenhagen, Denmark",
+      "title": "2009-07-20 Copenhagen, Denmark",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1993-03-27-sydney-australia.html",
+      "show_date": "1993-03-27 00:00:00",
+      "show_name": "Sydney Entertainment Centre",
+      "location": "Sydney, Australia",
+      "title": "1993-03-27 Sydney, Australia",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-03-07-rochester-new-york.html",
+      "show_date": "1989-03-07 00:00:00",
+      "show_name": "Rochester Community War Memorial",
+      "location": "Rochester, NY",
+      "title": "1989-03-07 Rochester, NY",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2006-03-18-centurion-south-africa.html",
+      "show_date": "2006-03-18 00:00:00",
+      "show_name": "The Coca-Cola Colab Massive Mix",
+      "location": "Centurion, South Africa",
+      "title": "2006-03-18 Centurion, South Africa",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1984-03-30-newcastle-england.html",
+      "show_date": "1984-03-30 00:00:00",
+      "show_name": "Mayfair",
+      "location": "Newcastle, England",
+      "title": "1984-03-30 Newcastle, England",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1985-12-29-sacramento-california.html",
+      "show_date": "1985-12-29 00:00:00",
+      "show_name": "Sacramento Memorial Auditorium",
+      "location": "Sacramento, CA",
+      "title": "1985-12-29 Sacramento, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-09-17-dortmund-germany.html",
+      "show_date": "1991-09-17 00:00:00",
+      "show_name": "Monsters of Rock",
+      "location": "Dortmund, Germany",
+      "title": "1991-09-17 Dortmund, Germany",
+      "tour_name": "Monsters of Rock",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-10-03-montreal-canada.html",
+      "show_date": "2004-10-03 00:00:00",
+      "show_name": "Centre Bell",
+      "location": "Montreal, QC, Canada",
+      "title": "2004-10-03 Montreal, QC, Canada",
+      "tour_name": "Madly In Anger With The World",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2003-06-07-berlin-germany.html",
+      "show_date": "2003-06-07 00:00:00",
+      "show_name": "Parkb\u00fchne Wuhlheide",
+      "location": "Berlin, Germany",
+      "title": "2003-06-07 Berlin, Germany",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1994-06-28-st-louis-missouri.html",
+      "show_date": "1994-06-28 00:00:00",
+      "show_name": "Riverport Amphitheatre",
+      "location": "St. Louis, MO",
+      "title": "1994-06-28 St. Louis, MO",
+      "tour_name": "Summer Shit / Shit Hits the Sheds",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-06-09-castle-donington-england.html",
+      "show_date": "2012-06-09 00:00:00",
+      "show_name": "Download Festival",
+      "location": "Castle Donington, England",
+      "title": "2012-06-09 Castle Donington, England",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1998-07-31-dallas-texas.html",
+      "show_date": "1998-07-31 00:00:00",
+      "show_name": "Starplex Amphitheatre",
+      "location": "Dallas, TX",
+      "title": "1998-07-31 Dallas, TX",
+      "tour_name": "Poor ReTouring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-07-04-hockenheim-germany.html",
+      "show_date": "2009-07-04 00:00:00",
+      "show_name": "Sonisphere",
+      "location": "Hockenheim, Germany",
+      "title": "2009-07-04 Hockenheim, Germany",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-03-03-monterrey-mexico.html",
+      "show_date": "2010-03-03 00:00:00",
+      "show_name": "Estadio Universitario",
+      "location": "Monterrey, Mexico",
+      "title": "2010-03-03 Monterrey, Mexico",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-03-16-worcester-massachusetts.html",
+      "show_date": "1989-03-16 00:00:00",
+      "show_name": "Centrum in Worcester",
+      "location": "Worcester, MA",
+      "title": "1989-03-16 Worcester, MA",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1996-07-27-phoenix-arizona.html",
+      "show_date": "1996-07-27 00:00:00",
+      "show_name": "Lollapalooza",
+      "location": "Phoenix, AZ",
+      "title": "1996-07-27 Phoenix, AZ",
+      "tour_name": "Lollapalooza",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1984-03-21-hanley-england.html",
+      "show_date": "1984-03-21 00:00:00",
+      "show_name": "Victoria Hall",
+      "location": "Hanley, England",
+      "title": "1984-03-21 Hanley, England",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-09-20-toulon-france.html",
+      "show_date": "1988-09-20 00:00:00",
+      "show_name": "Espace Culturel des Lices",
+      "location": "Toulon, France",
+      "title": "1988-09-20 Toulon, France",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-10-15-cleveland-ohio.html",
+      "show_date": "2009-10-15 00:00:00",
+      "show_name": "Quicken Loans Arena",
+      "location": "Cleveland, OH",
+      "title": "2009-10-15 Cleveland, OH",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1987-02-13-gothenburg-sweden.html",
+      "show_date": "1987-02-13 00:00:00",
+      "show_name": "Fr\u00f6lundaborg",
+      "location": "Gothenburg, Sweden",
+      "title": "1987-02-13 Gothenburg, Sweden",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2008-11-08-moline-illinois.html",
+      "show_date": "2008-11-08 00:00:00",
+      "show_name": "iWireless Center",
+      "location": "Moline, IL",
+      "title": "2008-11-08 Moline, IL",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1987-01-24-boblingen-germany.html",
+      "show_date": "1987-01-24 00:00:00",
+      "show_name": "Sporthalle",
+      "location": "B\u00f6blingen, Germany",
+      "title": "1987-01-24 B\u00f6blingen, Germany",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1999-07-10-milton-keynes-england.html",
+      "show_date": "1999-07-10 00:00:00",
+      "show_name": "Big Day Out",
+      "location": "Milton Keynes, England",
+      "title": "1999-07-10 Milton Keynes, England",
+      "tour_name": "The Garage Remains the Same",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2019-07-16-hameenlinna-finland.html",
+      "show_date": "2019-07-16 00:00:00",
+      "show_name": "Kantolan Tapahtumapuisto",
+      "location": "Ha\u0308meenlinna, Finland",
+      "title": "2019-07-16 Ha\u0308meenlinna, Finland",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-01-13-san-diego-california.html",
+      "show_date": "1992-01-13 00:00:00",
+      "show_name": "San Diego Sports Arena",
+      "location": "San Diego, CA",
+      "title": "1992-01-13 San Diego, CA",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-10-22-east-rutherford-new-jersey.html",
+      "show_date": "2004-10-22 00:00:00",
+      "show_name": "Continental Airlines Arena",
+      "location": "East Rutherford, NJ",
+      "title": "2004-10-22 East Rutherford, NJ",
+      "tour_name": "Madly In Anger With The World",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-04-27-glenn-falls-new-york.html",
+      "show_date": "1986-04-27 00:00:00",
+      "show_name": "Glenn Falls Civic Center",
+      "location": "Glenn Falls, NY",
+      "title": "1986-04-27 Glenn Falls, NY",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2022-05-24-san-francisco-california.html",
+      "show_date": "2022-05-24 00:00:00",
+      "show_name": "Metallica Night with the San Francisco Giants",
+      "location": "San Francisco, CA",
+      "title": "2022-05-24 San Francisco, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-08-17-castle-donington-england.html",
+      "show_date": "1991-08-17 00:00:00",
+      "show_name": "Monsters of Rock",
+      "location": "Castle Donington, England",
+      "title": "1991-08-17 Castle Donington, England",
+      "tour_name": "Monsters of Rock",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-07-10-kansas-city-missouri.html",
+      "show_date": "1988-07-10 00:00:00",
+      "show_name": "Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "title": "1988-07-10 Kansas City, MO",
+      "tour_name": "Van Halen's Monsters of Rock",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1997-11-14-london-england-tfi-friday.html",
+      "show_date": "1997-11-14 00:00:00",
+      "show_name": "TFI Friday",
+      "location": "London, England (TFI Friday)",
+      "title": "1997-11-14 London, England (TFI Friday)",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-05-18-saskatoon-canada.html",
+      "show_date": "1992-05-18 00:00:00",
+      "show_name": "Saskatchewan Place",
+      "location": "Saskatoon, SK, Canada",
+      "title": "1992-05-18 Saskatoon, SK, Canada",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1996-07-18-west-palm-beach-florida.html",
+      "show_date": "1996-07-18 00:00:00",
+      "show_name": "Lollapalooza",
+      "location": "West Palm Beach, FL",
+      "title": "1996-07-18 West Palm Beach, FL",
+      "tour_name": "Lollapalooza",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-01-13-memphis-tennessee.html",
+      "show_date": "1989-01-13 00:00:00",
+      "show_name": "Mid-South Coliseum",
+      "location": "Memphis, TN",
+      "title": "1989-01-13 Memphis, TN",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-07-30-mexico-city-mexico.html",
+      "show_date": "2012-07-30 00:00:00",
+      "show_name": "Palacio de los Deportes",
+      "location": "Mexico City, Mexico",
+      "title": "2012-07-30 Mexico City, Mexico",
+      "tour_name": "The Full Arsenal",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-12-05-san-diego-california.html",
+      "show_date": "1988-12-05 00:00:00",
+      "show_name": "San Diego Sports Arena",
+      "location": "San Diego, CA",
+      "title": "1988-12-05 San Diego, CA",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-06-17-detroit-michigan.html",
+      "show_date": "1988-06-17 00:00:00",
+      "show_name": "Pontiac Silverdome",
+      "location": "Detroit, MI",
+      "title": "1988-06-17 Detroit, MI",
+      "tour_name": "Van Halen's Monsters of Rock",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2007-07-01-werchter-belgium.html",
+      "show_date": "2007-07-01 00:00:00",
+      "show_name": "Rock Werchter",
+      "location": "Werchter, Belgium",
+      "title": "2007-07-01 Werchter, Belgium",
+      "tour_name": "Sick of the Studio '07",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2018-02-03-madrid-spain.html",
+      "show_date": "2018-02-03 00:00:00",
+      "show_name": "WiZink Center",
+      "location": "Madrid, Spain",
+      "title": "2018-02-03 Madrid, Spain",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1997-02-04-st-louis-missouri.html",
+      "show_date": "1997-02-04 00:00:00",
+      "show_name": "Kiel Center",
+      "location": "St. Louis, MO",
+      "title": "1997-02-04 St. Louis, MO",
+      "tour_name": "Poor Touring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-12-03-buffalo-new-york.html",
+      "show_date": "1991-12-03 00:00:00",
+      "show_name": "Buffalo Memorial Auditorium",
+      "location": "Buffalo, NY",
+      "title": "1991-12-03 Buffalo, NY",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2004-11-24-san-diego-california.html",
+      "show_date": "2004-11-24 00:00:00",
+      "show_name": "San Diego Sports Arena",
+      "location": "San Diego, CA",
+      "title": "2004-11-24 San Diego, CA",
+      "tour_name": "Madly In Anger With The World",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1996-12-30-san-francisco-california.html",
+      "show_date": "1996-12-30 00:00:00",
+      "show_name": "Cow Palace",
+      "location": "San Francisco, CA",
+      "title": "1996-12-30 San Francisco, CA",
+      "tour_name": "Poor Touring Me",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2010-05-22-tel-aviv-israel.html",
+      "show_date": "2010-05-22 00:00:00",
+      "show_name": "Ramat Gan Stadium",
+      "location": "Tel Aviv, Israel",
+      "title": "2010-05-22 Tel Aviv, Israel",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2020-08-10-sonoma-california.html",
+      "show_date": "2020-08-10 00:00:00",
+      "show_name": "Gundlach Bundschu",
+      "location": "Sonoma, CA",
+      "title": "2020-08-10 Sonoma, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1985-01-12-philadelphia-pennsylvania.html",
+      "show_date": "1985-01-12 00:00:00",
+      "show_name": "Tower Theatre",
+      "location": "Philadelphia, PA",
+      "title": "1985-01-12 Philadelphia, PA",
+      "tour_name": "Ride the Lightning",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1984-11-23-bordeaux-france.html",
+      "show_date": "1984-11-23 00:00:00",
+      "show_name": "Salle des F\u00eates du Grand Parc",
+      "location": "Bordeaux, France",
+      "title": "1984-11-23 Bordeaux, France",
+      "tour_name": "Ride the Lightning",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-07-27-nashville-tennessee.html",
+      "show_date": "1986-07-27 00:00:00",
+      "show_name": "Nashville Muncipal Auditorium",
+      "location": "Nashville, TN",
+      "title": "1986-07-27 Nashville, TN",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2017-08-12-san-francisco-california.html",
+      "show_date": "2017-08-12 00:00:00",
+      "show_name": "Outside Lands Music & Arts Festival",
+      "location": "San Francisco, CA",
+      "title": "2017-08-12 San Francisco, CA",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1987-02-03-strasbourg-france.html",
+      "show_date": "1987-02-03 00:00:00",
+      "show_name": "Hall Tivoli",
+      "location": "Strasbourg, France",
+      "title": "1987-02-03 Strasbourg, France",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2018-12-02-spokane-washington.html",
+      "show_date": "2018-12-02 00:00:00",
+      "show_name": "Spokane Arena",
+      "location": "Spokane, WA",
+      "title": "2018-12-02 Spokane, WA",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-09-15-cincinnati-ohio.html",
+      "show_date": "2009-09-15 00:00:00",
+      "show_name": "U.S. Bank Arena",
+      "location": "Cincinnati, OH",
+      "title": "2009-09-15 Cincinnati, OH",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1987-01-09-holstebro-denmark.html",
+      "show_date": "1987-01-09 00:00:00",
+      "show_name": "Holstebrohallen",
+      "location": "Holstebro, Denmark",
+      "title": "1987-01-09 Holstebro, Denmark",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-06-25-portland-oregon.html",
+      "show_date": "1986-06-25 00:00:00",
+      "show_name": "Portland Memorial Coliseum",
+      "location": "Portland, OR",
+      "title": "1986-06-25 Portland, OR",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1985-02-06-minneapolis-minnesota.html",
+      "show_date": "1985-02-06 00:00:00",
+      "show_name": "First Avenue",
+      "location": "Minneapolis, MN",
+      "title": "1985-02-06 Minneapolis, MN",
+      "tour_name": "Ride the Lightning",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-05-08-austin-texas.html",
+      "show_date": "1986-05-08 00:00:00",
+      "show_name": "Frank Erwin Center",
+      "location": "Austin, TX",
+      "title": "1986-05-08 Austin, TX",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2002-06-04-san-francisco-california.html",
+      "show_date": "2002-06-04 00:00:00",
+      "show_name": "Kimo\u2019s",
+      "location": "San Francisco, CA",
+      "title": "2002-06-04 San Francisco, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-11-17-montreal-canada.html",
+      "show_date": "1991-11-17 00:00:00",
+      "show_name": "Forum de Montr\u00e9al",
+      "location": "Montreal, QC, Canada",
+      "title": "1991-11-17 Montreal, QC, Canada",
+      "tour_name": "Wherever We May Roam",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2003-06-22-madrid-spain.html",
+      "show_date": "2003-06-22 00:00:00",
+      "show_name": "La Peineta Stadium",
+      "location": "Madrid, Spain",
+      "title": "2003-06-22 Madrid, Spain",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2018-12-09-fresno-california.html",
+      "show_date": "2018-12-09 00:00:00",
+      "show_name": "Save Mart Center",
+      "location": "Fresno, CA",
+      "title": "2018-12-09 Fresno, CA",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1987-01-30-ludwigshafen-am-rhein-germany.html",
+      "show_date": "1987-01-30 00:00:00",
+      "show_name": "Friederich-Ebert-Halle",
+      "location": "Ludwigshafen am Rhein, Germany",
+      "title": "1987-01-30 Ludwigshafen am Rhein, Germany",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2017-10-24-london-england.html",
+      "show_date": "2017-10-24 00:00:00",
+      "show_name": "The O2 Arena",
+      "location": "London, England",
+      "title": "2017-10-24 London, England",
+      "tour_name": "WorldWired",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1991-08-30-hasselt-belgium.html",
+      "show_date": "1991-08-30 00:00:00",
+      "show_name": "Monsters of Rock",
+      "location": "Hasselt, Belgium",
+      "title": "1991-08-30 Hasselt, Belgium",
+      "tour_name": "Monsters of Rock",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-09-08-salt-lake-city-utah.html",
+      "show_date": "1989-09-08 00:00:00",
+      "show_name": "Salt Palace",
+      "location": "Salt Lake City, UT",
+      "title": "1989-09-08 Salt Lake City, UT",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1982-07-05-west-hollywood-california.html",
+      "show_date": "1982-07-05 00:00:00",
+      "show_name": "Troubadour",
+      "location": "West Hollywood, CA",
+      "title": "1982-07-05 West Hollywood, CA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1992-07-31-foxborough-massachusetts.html",
+      "show_date": "1992-07-31 00:00:00",
+      "show_name": "Foxboro Stadium",
+      "location": "Foxborough, MA",
+      "title": "1992-07-31 Foxborough, MA",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2003-06-01-castle-donington-england.html",
+      "show_date": "2003-06-01 00:00:00",
+      "show_name": "Download Festival",
+      "location": "Castle Donington, England",
+      "title": "2003-06-01 Castle Donington, England",
+      "tour_name": null,
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1986-07-30-knoxville-tennessee.html",
+      "show_date": "1986-07-30 00:00:00",
+      "show_name": "Knoxville Civic Coliseum",
+      "location": "Knoxville, TN",
+      "title": "1986-07-30 Knoxville, TN",
+      "tour_name": "Damage, Inc.",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2009-03-30-rotterdam-netherlands.html",
+      "show_date": "2009-03-30 00:00:00",
+      "show_name": "Ahoy",
+      "location": "Rotterdam, Netherlands",
+      "title": "2009-03-30 Rotterdam, Netherlands",
+      "tour_name": "World Magnetic",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-05-24-honolulu-hawaii.html",
+      "show_date": "1989-05-24 00:00:00",
+      "show_name": "Neal S. Blaisdell Arena",
+      "location": "Honolulu, HI",
+      "title": "1989-05-24 Honolulu, HI",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/2012-08-04-mexico-city-mexico.html",
+      "show_date": "2012-08-04 00:00:00",
+      "show_name": "Palacio de los Deportes",
+      "location": "Mexico City, Mexico",
+      "title": "2012-08-04 Mexico City, Mexico",
+      "tour_name": "The Full Arsenal",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1989-02-08-huntsville-alabama.html",
+      "show_date": "1989-02-08 00:00:00",
+      "show_name": "Von Braun Civic Center",
+      "location": "Huntsville, AL",
+      "title": "1989-02-08 Huntsville, AL",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    },
+    {
+      "show_id": "https://www.metallica.com/tour/1988-10-10-london-england.html",
+      "show_date": "1988-10-10 00:00:00",
+      "show_name": "Hammersmith Odeon",
+      "location": "London, England",
+      "title": "1988-10-10 London, England",
+      "tour_name": "Damaged Justice",
+      "ts": "2023-09-24 19:19:11"
+    }
+  ]
+}

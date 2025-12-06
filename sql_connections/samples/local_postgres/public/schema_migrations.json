@@ -1,0 +1,108 @@
+{
+  "table_name": "schema_migrations",
+  "schema": "public",
+  "database": "local_postgres",
+  "row_count": 11,
+  "columns": [
+    {
+      "name": "version",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 11,
+        "value_distribution": [
+          {
+            "value": "20251202053805",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053801",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053803",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053806",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202110536",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053751",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053804",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053807",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053802",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202063032",
+            "count": 1,
+            "percentage": 9.09
+          },
+          {
+            "value": "20251202053808",
+            "count": 1,
+            "percentage": 9.09
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "version": "20251202053751"
+    },
+    {
+      "version": "20251202053801"
+    },
+    {
+      "version": "20251202053802"
+    },
+    {
+      "version": "20251202053803"
+    },
+    {
+      "version": "20251202053804"
+    },
+    {
+      "version": "20251202053805"
+    },
+    {
+      "version": "20251202053806"
+    },
+    {
+      "version": "20251202053807"
+    },
+    {
+      "version": "20251202053808"
+    },
+    {
+      "version": "20251202063032"
+    },
+    {
+      "version": "20251202110536"
+    }
+  ]
+}

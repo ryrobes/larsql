@@ -1,0 +1,1270 @@
+{
+  "table_name": "adult_depression_lghc_indicator_24",
+  "schema": "csv_files",
+  "database": "csv_files",
+  "row_count": 161,
+  "columns": [
+    {
+      "name": "Year",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 7,
+        "value_distribution": [
+          {
+            "value": 2016,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2012,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2014,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2018,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2015,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2017,
+            "count": 23,
+            "percentage": 14.29
+          },
+          {
+            "value": 2013,
+            "count": 23,
+            "percentage": 14.29
+          }
+        ]
+      }
+    },
+    {
+      "name": "Strata",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 6,
+        "value_distribution": [
+          {
+            "value": "Income",
+            "count": 42,
+            "percentage": 26.09
+          },
+          {
+            "value": "Race-Ethnicity",
+            "count": 35,
+            "percentage": 21.74
+          },
+          {
+            "value": "Age",
+            "count": 35,
+            "percentage": 21.74
+          },
+          {
+            "value": "Education",
+            "count": 28,
+            "percentage": 17.39
+          },
+          {
+            "value": "Sex",
+            "count": 14,
+            "percentage": 8.7
+          },
+          {
+            "value": "Total",
+            "count": 7,
+            "percentage": 4.35
+          }
+        ]
+      }
+    },
+    {
+      "name": "Strata Name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 23,
+        "value_distribution": [
+          {
+            "value": "$50,000 - $74,999",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Female",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Male",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "< $20,000",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Hispanic",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "55 to 64",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "$20,000 - $34,999",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "College Graduate or Post Grad",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "No High School Diploma",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "White",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Other",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "$100,000+",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Black",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "45 to 54",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "35 to 44",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "65+ years",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "18 to 34",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "$75,000 - $99,999",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Some College or Tech School",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Asian/Pacific Islander",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "Total",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "$35,000 - $49,999",
+            "count": 7,
+            "percentage": 4.35
+          },
+          {
+            "value": "High School Graduate or GED Certificate",
+            "count": 7,
+            "percentage": 4.35
+          }
+        ]
+      }
+    },
+    {
+      "name": "Frequency",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 152,
+        "min": "28",
+        "max": "1964"
+      }
+    },
+    {
+      "name": "Weighted Frequency",
+      "type": "BIGINT",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 154,
+        "min": "92309",
+        "max": "3301418"
+      }
+    },
+    {
+      "name": "Percent",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 151,
+        "min": "3.97",
+        "max": "33.09"
+      }
+    },
+    {
+      "name": "Lower 95% CL",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 149,
+        "min": "2.0",
+        "max": "24.6"
+      }
+    },
+    {
+      "name": "Upper 95% CL",
+      "type": "DOUBLE",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 150,
+        "min": "5.34",
+        "max": "44.95"
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "Year": 2012,
+      "Strata": "Total",
+      "Strata Name": "Total",
+      "Frequency": 1920,
+      "Weighted Frequency": null,
+      "Percent": 11.74,
+      "Lower 95% CL": 11.11,
+      "Upper 95% CL": 12.37
+    },
+    {
+      "Year": 2012,
+      "Strata": "Sex",
+      "Strata Name": "Male",
+      "Frequency": 561,
+      "Weighted Frequency": 1116664,
+      "Percent": 8.12,
+      "Lower 95% CL": 7.32,
+      "Upper 95% CL": 8.92
+    },
+    {
+      "Year": 2012,
+      "Strata": "Sex",
+      "Strata Name": "Female",
+      "Frequency": 1359,
+      "Weighted Frequency": 2163108,
+      "Percent": 15.25,
+      "Lower 95% CL": 14.3,
+      "Upper 95% CL": 16.2
+    },
+    {
+      "Year": 2012,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "White",
+      "Frequency": 1314,
+      "Weighted Frequency": 1806371,
+      "Percent": 14.57,
+      "Lower 95% CL": 13.67,
+      "Upper 95% CL": 15.46
+    },
+    {
+      "Year": 2012,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Black",
+      "Frequency": 97,
+      "Weighted Frequency": 222022,
+      "Percent": 13.54,
+      "Lower 95% CL": 10.44,
+      "Upper 95% CL": 16.65
+    },
+    {
+      "Year": 2012,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Hispanic",
+      "Frequency": 412,
+      "Weighted Frequency": 923174,
+      "Percent": 9.98,
+      "Lower 95% CL": 8.91,
+      "Upper 95% CL": 11.05
+    },
+    {
+      "Year": 2012,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Asian/Pacific Islander",
+      "Frequency": 61,
+      "Weighted Frequency": 220418,
+      "Percent": 5.48,
+      "Lower 95% CL": 3.92,
+      "Upper 95% CL": 7.03
+    },
+    {
+      "Year": 2012,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Other",
+      "Frequency": 36,
+      "Weighted Frequency": 107786,
+      "Percent": 17.34,
+      "Lower 95% CL": 11.09,
+      "Upper 95% CL": 23.6
+    },
+    {
+      "Year": 2012,
+      "Strata": "Education",
+      "Strata Name": "No High School Diploma",
+      "Frequency": 282,
+      "Weighted Frequency": 579047,
+      "Percent": 14.43,
+      "Lower 95% CL": 12.6,
+      "Upper 95% CL": 16.26
+    },
+    {
+      "Year": 2012,
+      "Strata": "Education",
+      "Strata Name": "High School Graduate or GED Certificate",
+      "Frequency": 337,
+      "Weighted Frequency": 665672,
+      "Percent": 11.44,
+      "Lower 95% CL": 9.98,
+      "Upper 95% CL": 12.89
+    },
+    {
+      "Year": 2012,
+      "Strata": "Education",
+      "Strata Name": "Some College or Tech School",
+      "Frequency": 563,
+      "Weighted Frequency": 947473,
+      "Percent": 13.25,
+      "Lower 95% CL": 11.95,
+      "Upper 95% CL": 14.55
+    },
+    {
+      "Year": 2012,
+      "Strata": "Education",
+      "Strata Name": "College Graduate or Post Grad",
+      "Frequency": 717,
+      "Weighted Frequency": 1040822,
+      "Percent": 10.0,
+      "Lower 95% CL": 9.11,
+      "Upper 95% CL": 10.9
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "< $20,000",
+      "Frequency": 642,
+      "Weighted Frequency": 1118292,
+      "Percent": 16.97,
+      "Lower 95% CL": 15.42,
+      "Upper 95% CL": 18.51
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "$20,000 - $34,999",
+      "Frequency": 295,
+      "Weighted Frequency": 490532,
+      "Percent": 12.39,
+      "Lower 95% CL": 10.67,
+      "Upper 95% CL": 14.1
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "$35,000 - $49,999",
+      "Frequency": 187,
+      "Weighted Frequency": 296225,
+      "Percent": 9.88,
+      "Lower 95% CL": 8.16,
+      "Upper 95% CL": 11.6
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "$50,000 - $74,999",
+      "Frequency": 250,
+      "Weighted Frequency": 440798,
+      "Percent": 12.65,
+      "Lower 95% CL": 10.82,
+      "Upper 95% CL": 14.49
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "$75,000 - $99,999",
+      "Frequency": 160,
+      "Weighted Frequency": 290492,
+      "Percent": 10.17,
+      "Lower 95% CL": 8.26,
+      "Upper 95% CL": 12.07
+    },
+    {
+      "Year": 2012,
+      "Strata": "Income",
+      "Strata Name": "$100,000+",
+      "Frequency": 270,
+      "Weighted Frequency": 454444,
+      "Percent": 8.31,
+      "Lower 95% CL": 7.17,
+      "Upper 95% CL": 9.46
+    },
+    {
+      "Year": 2012,
+      "Strata": "Age",
+      "Strata Name": "18 to 34",
+      "Frequency": 219,
+      "Weighted Frequency": 705000,
+      "Percent": 7.63,
+      "Lower 95% CL": 6.55,
+      "Upper 95% CL": 8.72
+    },
+    {
+      "Year": 2012,
+      "Strata": "Age",
+      "Strata Name": "35 to 44",
+      "Frequency": 240,
+      "Weighted Frequency": 576639,
+      "Percent": 11.13,
+      "Lower 95% CL": 9.57,
+      "Upper 95% CL": 12.69
+    },
+    {
+      "Year": 2012,
+      "Strata": "Age",
+      "Strata Name": "45 to 54",
+      "Frequency": 409,
+      "Weighted Frequency": 770238,
+      "Percent": 14.67,
+      "Lower 95% CL": 13.14,
+      "Upper 95% CL": 16.2
+    },
+    {
+      "Year": 2012,
+      "Strata": "Age",
+      "Strata Name": "55 to 64",
+      "Frequency": 511,
+      "Weighted Frequency": 692056,
+      "Percent": 17.19,
+      "Lower 95% CL": 15.55,
+      "Upper 95% CL": 18.82
+    },
+    {
+      "Year": 2012,
+      "Strata": "Age",
+      "Strata Name": "65+ years",
+      "Frequency": 541,
+      "Weighted Frequency": 535838,
+      "Percent": 12.63,
+      "Lower 95% CL": 11.38,
+      "Upper 95% CL": 13.87
+    },
+    {
+      "Year": 2013,
+      "Strata": "Total",
+      "Strata Name": "Total",
+      "Frequency": 1689,
+      "Weighted Frequency": null,
+      "Percent": 13.08,
+      "Lower 95% CL": 12.33,
+      "Upper 95% CL": 13.82
+    },
+    {
+      "Year": 2013,
+      "Strata": "Sex",
+      "Strata Name": "Male",
+      "Frequency": 539,
+      "Weighted Frequency": 1307668,
+      "Percent": 9.53,
+      "Lower 95% CL": 8.53,
+      "Upper 95% CL": 10.52
+    },
+    {
+      "Year": 2013,
+      "Strata": "Sex",
+      "Strata Name": "Female",
+      "Frequency": 1150,
+      "Weighted Frequency": 2337817,
+      "Percent": 16.52,
+      "Lower 95% CL": 15.42,
+      "Upper 95% CL": 17.62
+    },
+    {
+      "Year": 2013,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "White",
+      "Frequency": 1103,
+      "Weighted Frequency": 1979888,
+      "Percent": 15.97,
+      "Lower 95% CL": 14.91,
+      "Upper 95% CL": 17.02
+    },
+    {
+      "Year": 2013,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Black",
+      "Frequency": 93,
+      "Weighted Frequency": 252871,
+      "Percent": 15.46,
+      "Lower 95% CL": 11.91,
+      "Upper 95% CL": 19.02
+    },
+    {
+      "Year": 2013,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Hispanic",
+      "Frequency": 403,
+      "Weighted Frequency": 1011594,
+      "Percent": 10.96,
+      "Lower 95% CL": 9.72,
+      "Upper 95% CL": 12.2
+    },
+    {
+      "Year": 2013,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Asian/Pacific Islander",
+      "Frequency": 62,
+      "Weighted Frequency": 308822,
+      "Percent": 7.38,
+      "Lower 95% CL": 5.26,
+      "Upper 95% CL": 9.5
+    },
+    {
+      "Year": 2013,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Other",
+      "Frequency": 28,
+      "Weighted Frequency": 92309,
+      "Percent": 21.63,
+      "Lower 95% CL": 12.57,
+      "Upper 95% CL": 30.69
+    },
+    {
+      "Year": 2013,
+      "Strata": "Education",
+      "Strata Name": "No High School Diploma",
+      "Frequency": 222,
+      "Weighted Frequency": 510371,
+      "Percent": 12.84,
+      "Lower 95% CL": 10.87,
+      "Upper 95% CL": 14.81
+    },
+    {
+      "Year": 2013,
+      "Strata": "Education",
+      "Strata Name": "High School Graduate or GED Certificate",
+      "Frequency": 361,
+      "Weighted Frequency": 841995,
+      "Percent": 14.28,
+      "Lower 95% CL": 12.5,
+      "Upper 95% CL": 16.06
+    },
+    {
+      "Year": 2013,
+      "Strata": "Education",
+      "Strata Name": "Some College or Tech School",
+      "Frequency": 504,
+      "Weighted Frequency": 1069791,
+      "Percent": 15.37,
+      "Lower 95% CL": 13.81,
+      "Upper 95% CL": 16.93
+    },
+    {
+      "Year": 2013,
+      "Strata": "Education",
+      "Strata Name": "College Graduate or Post Grad",
+      "Frequency": 583,
+      "Weighted Frequency": 1170903,
+      "Percent": 11.45,
+      "Lower 95% CL": 10.31,
+      "Upper 95% CL": 12.59
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "< $20,000",
+      "Frequency": 600,
+      "Weighted Frequency": 1286100,
+      "Percent": 18.63,
+      "Lower 95% CL": 16.89,
+      "Upper 95% CL": 20.38
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "$20,000 - $34,999",
+      "Frequency": 283,
+      "Weighted Frequency": 560739,
+      "Percent": 14.57,
+      "Lower 95% CL": 12.5,
+      "Upper 95% CL": 16.64
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "$35,000 - $49,999",
+      "Frequency": 149,
+      "Weighted Frequency": 305677,
+      "Percent": 11.29,
+      "Lower 95% CL": 8.89,
+      "Upper 95% CL": 13.68
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "$50,000 - $74,999",
+      "Frequency": 186,
+      "Weighted Frequency": 394993,
+      "Percent": 12.26,
+      "Lower 95% CL": 10.17,
+      "Upper 95% CL": 14.34
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "$75,000 - $99,999",
+      "Frequency": 155,
+      "Weighted Frequency": 321528,
+      "Percent": 12.04,
+      "Lower 95% CL": 9.88,
+      "Upper 95% CL": 14.2
+    },
+    {
+      "Year": 2013,
+      "Strata": "Income",
+      "Strata Name": "$100,000+",
+      "Frequency": 213,
+      "Weighted Frequency": 541245,
+      "Percent": 9.89,
+      "Lower 95% CL": 8.34,
+      "Upper 95% CL": 11.44
+    },
+    {
+      "Year": 2013,
+      "Strata": "Age",
+      "Strata Name": "18 to 34",
+      "Frequency": 241,
+      "Weighted Frequency": 916614,
+      "Percent": 9.96,
+      "Lower 95% CL": 8.53,
+      "Upper 95% CL": 11.39
+    },
+    {
+      "Year": 2013,
+      "Strata": "Age",
+      "Strata Name": "35 to 44",
+      "Frequency": 198,
+      "Weighted Frequency": 538114,
+      "Percent": 10.42,
+      "Lower 95% CL": 8.84,
+      "Upper 95% CL": 11.99
+    },
+    {
+      "Year": 2013,
+      "Strata": "Age",
+      "Strata Name": "45 to 54",
+      "Frequency": 347,
+      "Weighted Frequency": 880554,
+      "Percent": 16.81,
+      "Lower 95% CL": 14.85,
+      "Upper 95% CL": 18.77
+    },
+    {
+      "Year": 2013,
+      "Strata": "Age",
+      "Strata Name": "55 to 64",
+      "Frequency": 456,
+      "Weighted Frequency": 741063,
+      "Percent": 18.39,
+      "Lower 95% CL": 16.6,
+      "Upper 95% CL": 20.18
+    },
+    {
+      "Year": 2013,
+      "Strata": "Age",
+      "Strata Name": "65+ years",
+      "Frequency": 447,
+      "Weighted Frequency": 569139,
+      "Percent": 13.41,
+      "Lower 95% CL": 12.08,
+      "Upper 95% CL": 14.75
+    },
+    {
+      "Year": 2014,
+      "Strata": "Total",
+      "Strata Name": "Total",
+      "Frequency": 1309,
+      "Weighted Frequency": null,
+      "Percent": 13.3,
+      "Lower 95% CL": 12.29,
+      "Upper 95% CL": 14.31
+    },
+    {
+      "Year": 2014,
+      "Strata": "Sex",
+      "Strata Name": "Male",
+      "Frequency": 469,
+      "Weighted Frequency": 1424768,
+      "Percent": 10.46,
+      "Lower 95% CL": 9.06,
+      "Upper 95% CL": 11.87
+    },
+    {
+      "Year": 2014,
+      "Strata": "Sex",
+      "Strata Name": "Female",
+      "Frequency": 840,
+      "Weighted Frequency": 2268864,
+      "Percent": 16.03,
+      "Lower 95% CL": 14.57,
+      "Upper 95% CL": 17.5
+    },
+    {
+      "Year": 2014,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "White",
+      "Frequency": 832,
+      "Weighted Frequency": 2050639,
+      "Percent": 16.99,
+      "Lower 95% CL": 15.49,
+      "Upper 95% CL": 18.49
+    },
+    {
+      "Year": 2014,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Black",
+      "Frequency": 66,
+      "Weighted Frequency": 200851,
+      "Percent": 13.23,
+      "Lower 95% CL": 8.79,
+      "Upper 95% CL": 17.67
+    },
+    {
+      "Year": 2014,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Hispanic",
+      "Frequency": 299,
+      "Weighted Frequency": 963540,
+      "Percent": 10.7,
+      "Lower 95% CL": 8.89,
+      "Upper 95% CL": 12.52
+    },
+    {
+      "Year": 2014,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Asian/Pacific Islander",
+      "Frequency": 32,
+      "Weighted Frequency": 152340,
+      "Percent": 4.49,
+      "Lower 95% CL": 2.31,
+      "Upper 95% CL": 6.66
+    },
+    {
+      "Year": 2014,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Other",
+      "Frequency": 72,
+      "Weighted Frequency": 305622,
+      "Percent": 20.87,
+      "Lower 95% CL": 14.95,
+      "Upper 95% CL": 26.8
+    },
+    {
+      "Year": 2014,
+      "Strata": "Education",
+      "Strata Name": "No High School Diploma",
+      "Frequency": 172,
+      "Weighted Frequency": 536837,
+      "Percent": 14.69,
+      "Lower 95% CL": 11.42,
+      "Upper 95% CL": 17.97
+    },
+    {
+      "Year": 2014,
+      "Strata": "Education",
+      "Strata Name": "High School Graduate or GED Certificate",
+      "Frequency": 209,
+      "Weighted Frequency": 625805,
+      "Percent": 12.8,
+      "Lower 95% CL": 10.14,
+      "Upper 95% CL": 15.47
+    },
+    {
+      "Year": 2014,
+      "Strata": "Education",
+      "Strata Name": "Some College or Tech School",
+      "Frequency": 365,
+      "Weighted Frequency": 1062519,
+      "Percent": 16.22,
+      "Lower 95% CL": 13.88,
+      "Upper 95% CL": 18.55
+    },
+    {
+      "Year": 2014,
+      "Strata": "Education",
+      "Strata Name": "College Graduate or Post Grad",
+      "Frequency": 433,
+      "Weighted Frequency": 1161091,
+      "Percent": 11.3,
+      "Lower 95% CL": 9.92,
+      "Upper 95% CL": 12.69
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "< $20,000",
+      "Frequency": 379,
+      "Weighted Frequency": 1124912,
+      "Percent": 18.77,
+      "Lower 95% CL": 16.0,
+      "Upper 95% CL": 21.53
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "$20,000 - $34,999",
+      "Frequency": 177,
+      "Weighted Frequency": 452329,
+      "Percent": 12.87,
+      "Lower 95% CL": 9.98,
+      "Upper 95% CL": 15.76
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "$35,000 - $49,999",
+      "Frequency": 129,
+      "Weighted Frequency": 378182,
+      "Percent": 15.26,
+      "Lower 95% CL": 11.67,
+      "Upper 95% CL": 18.85
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "$50,000 - $74,999",
+      "Frequency": 107,
+      "Weighted Frequency": 283214,
+      "Percent": 10.28,
+      "Lower 95% CL": 7.84,
+      "Upper 95% CL": 12.72
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "$75,000 - $99,999",
+      "Frequency": 106,
+      "Weighted Frequency": 306735,
+      "Percent": 13.32,
+      "Lower 95% CL": 10.17,
+      "Upper 95% CL": 16.46
+    },
+    {
+      "Year": 2014,
+      "Strata": "Income",
+      "Strata Name": "$100,000+",
+      "Frequency": 178,
+      "Weighted Frequency": 512469,
+      "Percent": 9.51,
+      "Lower 95% CL": 7.67,
+      "Upper 95% CL": 11.36
+    },
+    {
+      "Year": 2014,
+      "Strata": "Age",
+      "Strata Name": "18 to 34",
+      "Frequency": 225,
+      "Weighted Frequency": 933103,
+      "Percent": 10.18,
+      "Lower 95% CL": 8.46,
+      "Upper 95% CL": 11.91
+    },
+    {
+      "Year": 2014,
+      "Strata": "Age",
+      "Strata Name": "35 to 44",
+      "Frequency": 163,
+      "Weighted Frequency": 641657,
+      "Percent": 12.45,
+      "Lower 95% CL": 9.71,
+      "Upper 95% CL": 15.2
+    },
+    {
+      "Year": 2014,
+      "Strata": "Age",
+      "Strata Name": "45 to 54",
+      "Frequency": 255,
+      "Weighted Frequency": 762139,
+      "Percent": 14.62,
+      "Lower 95% CL": 12.12,
+      "Upper 95% CL": 17.12
+    },
+    {
+      "Year": 2014,
+      "Strata": "Age",
+      "Strata Name": "55 to 64",
+      "Frequency": 335,
+      "Weighted Frequency": 798575,
+      "Percent": 19.91,
+      "Lower 95% CL": 17.25,
+      "Upper 95% CL": 22.56
+    },
+    {
+      "Year": 2014,
+      "Strata": "Age",
+      "Strata Name": "65+ years",
+      "Frequency": 331,
+      "Weighted Frequency": 558159,
+      "Percent": 13.19,
+      "Lower 95% CL": 11.57,
+      "Upper 95% CL": 14.82
+    },
+    {
+      "Year": 2015,
+      "Strata": "Total",
+      "Strata Name": "Total",
+      "Frequency": 1848,
+      "Weighted Frequency": null,
+      "Percent": 12.92,
+      "Lower 95% CL": 11.98,
+      "Upper 95% CL": 13.87
+    },
+    {
+      "Year": 2015,
+      "Strata": "Sex",
+      "Strata Name": "Male",
+      "Frequency": 652,
+      "Weighted Frequency": 1332773,
+      "Percent": 9.73,
+      "Lower 95% CL": 8.47,
+      "Upper 95% CL": 11.0
+    },
+    {
+      "Year": 2015,
+      "Strata": "Sex",
+      "Strata Name": "Female",
+      "Frequency": 1196,
+      "Weighted Frequency": 2264798,
+      "Percent": 16.01,
+      "Lower 95% CL": 14.61,
+      "Upper 95% CL": 17.41
+    },
+    {
+      "Year": 2015,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "White",
+      "Frequency": 1143,
+      "Weighted Frequency": 1992472,
+      "Percent": 16.54,
+      "Lower 95% CL": 15.13,
+      "Upper 95% CL": 17.95
+    },
+    {
+      "Year": 2015,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Black",
+      "Frequency": 84,
+      "Weighted Frequency": 160058,
+      "Percent": 10.68,
+      "Lower 95% CL": 7.37,
+      "Upper 95% CL": 13.98
+    },
+    {
+      "Year": 2015,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Hispanic",
+      "Frequency": 439,
+      "Weighted Frequency": 1004173,
+      "Percent": 11.09,
+      "Lower 95% CL": 9.27,
+      "Upper 95% CL": 12.91
+    },
+    {
+      "Year": 2015,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Asian/Pacific Islander",
+      "Frequency": 58,
+      "Weighted Frequency": 139702,
+      "Percent": 3.97,
+      "Lower 95% CL": 2.6,
+      "Upper 95% CL": 5.34
+    },
+    {
+      "Year": 2015,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Other",
+      "Frequency": 106,
+      "Weighted Frequency": 272175,
+      "Percent": 18.98,
+      "Lower 95% CL": 13.48,
+      "Upper 95% CL": 24.48
+    },
+    {
+      "Year": 2015,
+      "Strata": "Education",
+      "Strata Name": "No High School Diploma",
+      "Frequency": 244,
+      "Weighted Frequency": 499942,
+      "Percent": 13.87,
+      "Lower 95% CL": 11.03,
+      "Upper 95% CL": 16.71
+    },
+    {
+      "Year": 2015,
+      "Strata": "Education",
+      "Strata Name": "High School Graduate or GED Certificate",
+      "Frequency": 328,
+      "Weighted Frequency": 670489,
+      "Percent": 12.47,
+      "Lower 95% CL": 10.28,
+      "Upper 95% CL": 14.66
+    },
+    {
+      "Year": 2015,
+      "Strata": "Education",
+      "Strata Name": "Some College or Tech School",
+      "Frequency": 556,
+      "Weighted Frequency": 1009305,
+      "Percent": 14.52,
+      "Lower 95% CL": 12.63,
+      "Upper 95% CL": 16.42
+    },
+    {
+      "Year": 2015,
+      "Strata": "Education",
+      "Strata Name": "College Graduate or Post Grad",
+      "Frequency": 607,
+      "Weighted Frequency": 1274369,
+      "Percent": 11.98,
+      "Lower 95% CL": 10.44,
+      "Upper 95% CL": 13.52
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "< $20,000",
+      "Frequency": 494,
+      "Weighted Frequency": 896066,
+      "Percent": 18.17,
+      "Lower 95% CL": 15.75,
+      "Upper 95% CL": 20.59
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "$20,000 - $34,999",
+      "Frequency": 258,
+      "Weighted Frequency": 518637,
+      "Percent": 13.82,
+      "Lower 95% CL": 11.04,
+      "Upper 95% CL": 16.59
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "$35,000 - $49,999",
+      "Frequency": 155,
+      "Weighted Frequency": 335393,
+      "Percent": 13.32,
+      "Lower 95% CL": 10.01,
+      "Upper 95% CL": 16.63
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "$50,000 - $74,999",
+      "Frequency": 197,
+      "Weighted Frequency": 471453,
+      "Percent": 14.98,
+      "Lower 95% CL": 10.93,
+      "Upper 95% CL": 19.03
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "$75,000 - $99,999",
+      "Frequency": 150,
+      "Weighted Frequency": 297855,
+      "Percent": 12.24,
+      "Lower 95% CL": 9.37,
+      "Upper 95% CL": 15.12
+    },
+    {
+      "Year": 2015,
+      "Strata": "Income",
+      "Strata Name": "$100,000+",
+      "Frequency": 277,
+      "Weighted Frequency": 571292,
+      "Percent": 9.54,
+      "Lower 95% CL": 7.92,
+      "Upper 95% CL": 11.15
+    },
+    {
+      "Year": 2015,
+      "Strata": "Age",
+      "Strata Name": "18 to 34",
+      "Frequency": 372,
+      "Weighted Frequency": 902797,
+      "Percent": 9.81,
+      "Lower 95% CL": 8.16,
+      "Upper 95% CL": 11.45
+    },
+    {
+      "Year": 2015,
+      "Strata": "Age",
+      "Strata Name": "35 to 44",
+      "Frequency": 306,
+      "Weighted Frequency": 733597,
+      "Percent": 14.21,
+      "Lower 95% CL": 11.55,
+      "Upper 95% CL": 16.87
+    },
+    {
+      "Year": 2015,
+      "Strata": "Age",
+      "Strata Name": "45 to 54",
+      "Frequency": 321,
+      "Weighted Frequency": 694591,
+      "Percent": 13.27,
+      "Lower 95% CL": 11.04,
+      "Upper 95% CL": 15.49
+    },
+    {
+      "Year": 2015,
+      "Strata": "Age",
+      "Strata Name": "55 to 64",
+      "Frequency": 423,
+      "Weighted Frequency": 681328,
+      "Percent": 16.99,
+      "Lower 95% CL": 14.64,
+      "Upper 95% CL": 19.34
+    },
+    {
+      "Year": 2015,
+      "Strata": "Age",
+      "Strata Name": "65+ years",
+      "Frequency": 426,
+      "Weighted Frequency": 585258,
+      "Percent": 13.85,
+      "Lower 95% CL": 12.23,
+      "Upper 95% CL": 15.48
+    },
+    {
+      "Year": 2016,
+      "Strata": "Total",
+      "Strata Name": "Total",
+      "Frequency": 1645,
+      "Weighted Frequency": null,
+      "Percent": 13.77,
+      "Lower 95% CL": 12.53,
+      "Upper 95% CL": 15.0
+    },
+    {
+      "Year": 2016,
+      "Strata": "Sex",
+      "Strata Name": "Male",
+      "Frequency": 590,
+      "Weighted Frequency": 1559409,
+      "Percent": 11.38,
+      "Lower 95% CL": 9.69,
+      "Upper 95% CL": 13.07
+    },
+    {
+      "Year": 2016,
+      "Strata": "Sex",
+      "Strata Name": "Female",
+      "Frequency": 1055,
+      "Weighted Frequency": 2270100,
+      "Percent": 16.09,
+      "Lower 95% CL": 14.3,
+      "Upper 95% CL": 17.88
+    },
+    {
+      "Year": 2016,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "White",
+      "Frequency": 988,
+      "Weighted Frequency": 2061696,
+      "Percent": 17.28,
+      "Lower 95% CL": 15.47,
+      "Upper 95% CL": 19.09
+    },
+    {
+      "Year": 2016,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Black",
+      "Frequency": 91,
+      "Weighted Frequency": 203913,
+      "Percent": 13.55,
+      "Lower 95% CL": 9.15,
+      "Upper 95% CL": 17.96
+    },
+    {
+      "Year": 2016,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Hispanic",
+      "Frequency": 404,
+      "Weighted Frequency": 944105,
+      "Percent": 10.5,
+      "Lower 95% CL": 8.58,
+      "Upper 95% CL": 12.43
+    },
+    {
+      "Year": 2016,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Asian/Pacific Islander",
+      "Frequency": 53,
+      "Weighted Frequency": 181832,
+      "Percent": 5.04,
+      "Lower 95% CL": 2.0,
+      "Upper 95% CL": 8.08
+    },
+    {
+      "Year": 2016,
+      "Strata": "Race-Ethnicity",
+      "Strata Name": "Other",
+      "Frequency": 89,
+      "Weighted Frequency": 373311,
+      "Percent": 25.17,
+      "Lower 95% CL": 16.03,
+      "Upper 95% CL": 34.3
+    }
+  ]
+}

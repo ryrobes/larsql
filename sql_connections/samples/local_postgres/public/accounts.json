@@ -1,0 +1,224 @@
+{
+  "table_name": "accounts",
+  "schema": "public",
+  "database": "local_postgres",
+  "row_count": 2,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "3849a9ea-b257-47e2-bcd1-f6b91c5cc3c5",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "3bbbbd7b-1081-4f7c-ac2c-bc78537b8f70",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "status",
+      "type": "INTEGER",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": 2,
+            "count": 2,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "email",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "ryan@obney.ai",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "admin@acceleratedacademy.com",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "password_hash",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "$2a$04$WlO4mNE2Dwltcmdk6ypSUOHcw0A0emwF6zIOOeJqW08qmVsydGCjK",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": null,
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "first_name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "Ryan",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "Admin",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "last_name",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": "User",
+            "count": 2,
+            "percentage": 100.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "phone",
+      "type": "VARCHAR",
+      "nullable": true,
+      "metadata": {
+        "distinct_count": 1,
+        "value_distribution": [
+          {
+            "value": null,
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "(555) 123-4567",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "role",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "admin",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "student",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "2025-12-02 14:25:26.003584",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "2025-12-02 11:10:41.129230",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 2,
+        "value_distribution": [
+          {
+            "value": "2025-12-02 11:10:41.129230",
+            "count": 1,
+            "percentage": 50.0
+          },
+          {
+            "value": "2025-12-02 14:25:26.003584",
+            "count": 1,
+            "percentage": 50.0
+          }
+        ]
+      }
+    }
+  ],
+  "sample_rows": [
+    {
+      "id": "3849a9ea-b257-47e2-bcd1-f6b91c5cc3c5",
+      "status": 2,
+      "email": "admin@acceleratedacademy.com",
+      "password_hash": "$2a$04$WlO4mNE2Dwltcmdk6ypSUOHcw0A0emwF6zIOOeJqW08qmVsydGCjK",
+      "first_name": "Admin",
+      "last_name": "User",
+      "phone": "(555) 123-4567",
+      "role": "admin",
+      "created_at": "2025-12-02 11:10:41.129230",
+      "updated_at": "2025-12-02 11:10:41.129230"
+    },
+    {
+      "id": "3bbbbd7b-1081-4f7c-ac2c-bc78537b8f70",
+      "status": 2,
+      "email": "ryan@obney.ai",
+      "password_hash": null,
+      "first_name": "Ryan",
+      "last_name": "User",
+      "phone": null,
+      "role": "student",
+      "created_at": "2025-12-02 14:25:26.003584",
+      "updated_at": "2025-12-02 14:25:26.003584"
+    }
+  ]
+}

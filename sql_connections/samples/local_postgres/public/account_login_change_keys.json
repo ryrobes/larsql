@@ -1,0 +1,41 @@
+{
+  "table_name": "account_login_change_keys",
+  "schema": "public",
+  "database": "local_postgres",
+  "row_count": 0,
+  "columns": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "key",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "login",
+      "type": "VARCHAR",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    },
+    {
+      "name": "deadline",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "metadata": {
+        "distinct_count": 0
+      }
+    }
+  ],
+  "sample_rows": []
+}
