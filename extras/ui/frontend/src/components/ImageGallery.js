@@ -67,7 +67,10 @@ function ImageGallery({ sessionId, isRunning, refreshTrigger }) {
           <div
             key={image.path}
             className="image-thumbnail-container"
-            onClick={() => handleImageClick(image)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleImageClick(image);
+            }}
           >
             <img
               src={`http://localhost:5001${image.url}`}

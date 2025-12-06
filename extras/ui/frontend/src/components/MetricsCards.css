@@ -1,0 +1,50 @@
+/* MetricsCards.css - Metrics dashboard cards */
+
+.metrics-section {
+  margin-bottom: 24px;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-card {
+  background: rgba(22, 32, 42, 0.6);
+  border: 1px solid #2C3B4B;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.metric-card:hover {
+  border-color: #2DD4BF;
+  background: rgba(45, 212, 191, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+}
+
+.metric-icon {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #F0F4F8;
+  margin-bottom: 4px;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: #9AA5B1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}

@@ -6,14 +6,14 @@ import './CascadeGridView.css';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// Create dark theme for AG Grid
+// Create dark theme for AG Grid (matching tile mode's darker aesthetic)
 const darkTheme = themeQuartz.withParams({
-  backgroundColor: '#1a1f2e',
+  backgroundColor: '#0b1219',
   foregroundColor: '#cbd5e1',
-  headerBackgroundColor: '#242b3d',
+  headerBackgroundColor: '#0f1821',
   headerTextColor: '#f0f4f8',
-  oddRowBackgroundColor: '#1e2433',
-  borderColor: '#2c3b4b',
+  oddRowBackgroundColor: '#0d1419',
+  borderColor: '#1a2028',
   rowBorder: true,
   wrapperBorder: true,
   wrapperBorderRadius: 12,
@@ -22,7 +22,7 @@ const darkTheme = themeQuartz.withParams({
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
   fontSize: 13,
   accentColor: '#2dd4bf',
-  chromeBackgroundColor: '#1a1f2e',
+  chromeBackgroundColor: '#080c12',
 });
 
 /**
@@ -136,7 +136,9 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
       flex: 3,
       minWidth: 250,
       cellClass: 'description-cell',
-      valueFormatter: (params) => params.value || '—'
+      valueFormatter: (params) => params.value || '—',
+      wrapText: true,
+      autoHeight: true
     },
     {
       field: 'phases',

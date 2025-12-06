@@ -149,7 +149,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         if (!containerRef.current) return; // Check if still mounted
         containerRef.current.innerHTML = '';
 
-        console.log(`[MermaidPreview] Rendering graph for ${sessionId} with id ${renderId}`);
+        //console.log(`[MermaidPreview] Rendering graph for ${sessionId} with id ${renderId}`);
 
         // Render mermaid (now serialized via queue)
         const { svg } = await mermaid.render(renderId, graphData.mermaid);

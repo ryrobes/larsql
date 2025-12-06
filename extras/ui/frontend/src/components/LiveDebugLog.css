@@ -1,0 +1,241 @@
+/* LiveDebugLog.css - Right pane scrolling message log */
+
+.live-debug-log {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  background: #0A0F14;
+  position: relative;
+}
+
+.live-debug-log::-webkit-scrollbar {
+  width: 10px;
+}
+
+.live-debug-log::-webkit-scrollbar-track {
+  background: #0A0F14;
+}
+
+.live-debug-log::-webkit-scrollbar-thumb {
+  background: #2C3B4B;
+  border-radius: 5px;
+}
+
+.live-debug-log::-webkit-scrollbar-thumb:hover {
+  background: #2DD4BF;
+}
+
+/* Empty state */
+.live-debug-log .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #9AA5B1;
+  text-align: center;
+}
+
+.live-debug-log .empty-state p {
+  margin-top: 12px;
+  font-size: 15px;
+}
+
+/* Phase Groups */
+.live-debug-log .phase-group {
+  margin-bottom: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(16, 32, 42, 0.3);
+  transition: all 0.3s ease;
+}
+
+.live-debug-log .phase-group.active {
+  border-color: #2DD4BF;
+  background: rgba(45, 212, 191, 0.1);
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.2);
+}
+
+.live-debug-log .phase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2C3B4B;
+}
+
+.live-debug-log .phase-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2DD4BF;
+}
+
+.live-debug-log .phase-name {
+  color: #F0F4F8;
+}
+
+.live-debug-log .sounding-badge {
+  background: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #fb923c;
+}
+
+.live-debug-log .phase-cost {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* Phase Entries */
+.live-debug-log .phase-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Time Gap Indicator */
+.live-debug-log .time-gap-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px dashed #fbbf24;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #fbbf24;
+  margin: 8px 0;
+}
+
+.live-debug-log .gap-reason {
+  color: #9AA5B1;
+  font-style: italic;
+}
+
+/* Entry Row */
+.live-debug-log .entry-row {
+  background: rgba(22, 32, 42, 0.5);
+  border: 1px solid #2C3B4B;
+  border-left: 3px solid var(--node-color, #666);
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.2s ease;
+}
+
+.live-debug-log .entry-row:hover {
+  background: rgba(45, 212, 191, 0.05);
+  border-color: #2DD4BF;
+}
+
+.live-debug-log .entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.live-debug-log .entry-icon {
+  color: var(--node-color, #666);
+  display: flex;
+  align-items: center;
+}
+
+.live-debug-log .entry-type {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9AA5B1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.live-debug-log .entry-sounding-badge {
+  background: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid #fb923c;
+}
+
+.live-debug-log .entry-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #9AA5B1;
+}
+
+.live-debug-log .entry-cost {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #34d399;
+  font-weight: 600;
+}
+
+.live-debug-log .direction-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.live-debug-log .direction-badge.sent {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+  border: 1px solid #60a5fa;
+}
+
+.live-debug-log .direction-badge.received {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+  border: 1px solid #a78bfa;
+}
+
+.live-debug-log .entry-content {
+  padding-left: 8px;
+  color: #F0F4F8;
+  line-height: 1.6;
+}
+
+/* Scroll to bottom button */
+.scroll-to-bottom {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: linear-gradient(135deg, #2DD4BF 0%, #34d399 100%);
+  color: #0A0F14;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 24px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.4);
+  transition: all 0.3s ease;
+  z-index: 1000;
+}
+
+.scroll-to-bottom:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(45, 212, 191, 0.6);
+}
+
+.scroll-to-bottom:active {
+  transform: translateY(0);
+}

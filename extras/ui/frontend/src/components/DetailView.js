@@ -1,0 +1,322 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Icon } from '@iconify/react';
+import VideoSpinner from './VideoSpinner';
+import LiveDebugLog from './LiveDebugLog';
+import InteractiveMermaid from './InteractiveMermaid';
+import MetricsCards from './MetricsCards';
+import ParametersCard from './ParametersCard';
+import PhaseBar from './PhaseBar';
+import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByPhase } from '../utils/debugUtils';
+import './DetailView.css';
+
+function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizingSessions = new Set() }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [instance, setInstance] = useState(null);
+  const [activePhase, setActivePhase] = useState(null);
+  const [viewMode, setViewMode] = useState('all'); // 'all', 'conversation', 'structural'
+  const [showStructural, setShowStructural] = useState(false);
+  const [lastEntryCount, setLastEntryCount] = useState(0); // Track entry count to detect changes
+
+  const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
+  const fetchingRef = useRef(false); // Prevent concurrent fetches
+
+  // Memoize grouped entries to prevent recalculation on every render
+  const groupedEntries = useMemo(() => {
+    if (entries.length === 0) return [];
+    const filtered = filterEntriesByViewMode(entries, viewMode, showStructural);
+    return groupEntriesByPhase(filtered);
+  }, [entries, viewMode, showStructural]);
+
+  // Parse instance-level metadata from entries
+  const parseInstanceFromEntries = useCallback((entries) => {
+    if (!entries || entries.length === 0) return null;
+
+    const cascadeEntry = entries.find(e => e.node_type === 'cascade');
+    const firstEntry = entries[0];
+    const lastEntry = entries[entries.length - 1];
+
+    // Group entries by phase to calculate phase summaries
+    const phaseMap = {};
+    entries.forEach(entry => {
+      const phaseName = entry.phase_name || 'Initialization';
+      if (!phaseMap[phaseName]) {
+        phaseMap[phaseName] = {
+          name: phaseName,
+          entries: [],
+          totalCost: 0,
+          soundingAttempts: new Map(),
+          toolCalls: new Set(),
+          wardCount: 0,
+          status: 'pending'
+        };
+      }
+      phaseMap[phaseName].entries.push(entry);
+      if (entry.cost) {
+        phaseMap[phaseName].totalCost += entry.cost;
+      }
+      if (entry.node_type === 'tool_call') {
+        try {
+          const meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
+          if (meta?.tool_name) {
+            phaseMap[phaseName].toolCalls.add(meta.tool_name);
+          }
+        } catch (e) {}
+      }
+      if (entry.node_type && entry.node_type.includes('ward')) {
+        phaseMap[phaseName].wardCount++;
+      }
+      if (entry.sounding_index !== null && entry.sounding_index !== undefined) {
+        const idx = entry.sounding_index;
+        if (!phaseMap[phaseName].soundingAttempts.has(idx)) {
+          phaseMap[phaseName].soundingAttempts.set(idx, {
+            index: idx,
+            cost: 0,
+            is_winner: entry.is_winner
+          });
+        }
+        phaseMap[phaseName].soundingAttempts.get(idx).cost += entry.cost || 0;
+      }
+    });
+
+    // Convert phase map to array
+    const phases = Object.values(phaseMap).map(phase => {
+      const lastEntryInPhase = phase.entries[phase.entries.length - 1];
+      const hasError = phase.entries.some(e => e.node_type === 'error');
+
+      return {
+        name: phase.name,
+        status: hasError ? 'error' : (phase.entries.length > 0 ? 'completed' : 'pending'),
+        avg_cost: phase.totalCost,
+        avg_duration: 0,
+        message_count: phase.entries.length,
+        sounding_attempts: Array.from(phase.soundingAttempts.values()),
+        tool_calls: Array.from(phase.toolCalls),
+        ward_count: phase.wardCount,
+        output_snippet: lastEntryInPhase?.content?.substring(0, 100) || ''
+      };
+    });
+
+    const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0);
+    const totalTokensIn = entries.reduce((sum, e) => sum + (e.tokens_in || 0), 0);
+    const totalTokensOut = entries.reduce((sum, e) => sum + (e.tokens_out || 0), 0);
+
+    const modelsSet = new Set();
+    entries.forEach(e => {
+      if (e.model) {
+        modelsSet.add(e.model);
+      }
+    });
+
+    const inputData = cascadeEntry?.metadata ?
+      (typeof cascadeEntry.metadata === 'string' ? JSON.parse(cascadeEntry.metadata).input : cascadeEntry.metadata.input)
+      : {};
+    const finalOutput = lastEntry?.content || '';
+
+    return {
+      session_id: sessionId,
+      cascade_id: cascadeEntry?.cascade_id || 'unknown',
+      status: isRunning ? 'running' : 'completed',
+      start_time: firstEntry?.timestamp || null,
+      total_cost: totalCost,
+      total_tokens_in: totalTokensIn,
+      total_tokens_out: totalTokensOut,
+      models_used: Array.from(modelsSet),
+      input_data: inputData,
+      final_output: finalOutput,
+      phases: phases,
+      error_count: entries.filter(e => e.node_type === 'error').length
+    };
+  }, [sessionId, isRunning]);
+
+  const fetchData = useCallback(async () => {
+    if (fetchingRef.current) return; // Prevent concurrent fetches
+
+    try {
+      fetchingRef.current = true;
+
+      // Fetch debug data
+      const debugResp = await fetch(`http://localhost:5001/api/session/${sessionId}`);
+      const debugData = await debugResp.json();
+
+      if (debugData.error) {
+        setError(debugData.error);
+        setLoading(false);
+        fetchingRef.current = false;
+        return;
+      }
+
+      const newEntries = debugData.entries || [];
+
+      // Only update if entry count changed (new data arrived)
+      if (newEntries.length !== lastEntryCount) {
+        const deduplicated = deduplicateEntries(newEntries);
+        setEntries(deduplicated);
+        setLastEntryCount(newEntries.length);
+
+        // Parse instance metadata
+        const instanceData = parseInstanceFromEntries(newEntries);
+        setInstance(instanceData);
+      }
+
+      setLoading(false);
+      fetchingRef.current = false;
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+      fetchingRef.current = false;
+    }
+  }, [sessionId, lastEntryCount, parseInstanceFromEntries]);
+
+  // Initial fetch
+  useEffect(() => {
+    if (sessionId) {
+      fetchData();
+    }
+  }, [sessionId, fetchData]);
+
+  // Polling for running cascades
+  useEffect(() => {
+    if (isRunning) {
+      const interval = setInterval(() => {
+        fetchData();
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isRunning, fetchData]);
+
+  const handlePhaseClick = useCallback((phaseName) => {
+    setActivePhase(phaseName);
+  }, []);
+
+  const handlePhaseChange = useCallback((phaseName) => {
+    setActivePhase(phaseName);
+  }, []);
+
+  // Memoize max cost calculation for PhaseBar
+  const maxCost = useMemo(() => {
+    if (!instance || !instance.phases || instance.phases.length === 0) return 0;
+    return Math.max(...instance.phases.map(p => p.avg_cost));
+  }, [instance]);
+
+  if (!sessionId) return null;
+
+  return (
+    <div className="detail-view">
+      {/* Header */}
+      <div className="detail-header">
+        <div className="header-left">
+          <button className="back-button" onClick={onBack} title="Back to instances">
+            <Icon icon="mdi:arrow-left" width="20" />
+            Back
+          </button>
+          <div className="session-info">
+            <span className="session-label">Session:</span>
+            <span className="session-id">{sessionId.substring(0, 8)}...</span>
+          </div>
+          {instance && (
+            <>
+              <span className={`status-badge ${instance.status}`}>
+                {instance.status === 'running' && <Icon icon="mdi:loading" width="16" className="spinning" />}
+                {instance.status}
+              </span>
+              <span className="cost-badge">
+                <Icon icon="mdi:currency-usd" width="16" />
+                ${instance.total_cost.toFixed(4)}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="header-right">
+          {/* View mode selector */}
+          <select
+            className="view-mode-select"
+            value={viewMode}
+            onChange={e => setViewMode(e.target.value)}
+            title="Filter message types"
+          >
+            <option value="conversation">💬 Conversation</option>
+            <option value="all">📋 All Entries</option>
+            <option value="structural">⚙️ Structural</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="detail-panes">
+        {/* Left Pane */}
+        <div className="left-pane">
+          {loading ? (
+            <div className="loading-state">
+              <VideoSpinner message="Loading session data..." size={200} opacity={0.6} />
+            </div>
+          ) : error ? (
+            <div className="error-state">
+              <Icon icon="mdi:alert-circle" width="32" />
+              <p>{error}</p>
+            </div>
+          ) : (
+            <>
+              {/* Mermaid Graph */}
+              <div className="detail-mermaid-section">
+                <InteractiveMermaid
+                  sessionId={sessionId}
+                  activePhase={activePhase}
+                  onPhaseClick={handlePhaseClick}
+                  lastUpdate={lastEntryCount}
+                />
+              </div>
+
+              {/* Metrics Cards */}
+              {instance && (
+                <MetricsCards instance={instance} />
+              )}
+
+              {/* Phase Timeline */}
+              {instance && instance.phases && instance.phases.length > 0 && (
+                <div className="phase-timeline-section">
+                  <h3 className="section-title">
+                    <Icon icon="mdi:timeline" width="20" />
+                    Phase Timeline
+                  </h3>
+                  <div className="phase-timeline">
+                    {instance.phases.map((phase, idx) => (
+                      <div
+                        key={phase.name}
+                        className={`phase-timeline-item ${activePhase === phase.name ? 'active' : ''}`}
+                        onClick={() => handlePhaseClick(phase.name)}
+                      >
+                        <PhaseBar phase={phase} maxCost={maxCost} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Parameters Card */}
+              {instance && (
+                <ParametersCard instance={instance} />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right Pane */}
+        <div className="right-pane">
+          {!loading && !error && (
+            <LiveDebugLog
+              sessionId={sessionId}
+              groupedEntries={groupedEntries}
+              activePhase={activePhase}
+              onPhaseChange={handlePhaseChange}
+              isRunning={isRunning}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default React.memo(DetailView);

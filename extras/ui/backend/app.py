@@ -27,6 +27,12 @@ from live_store import get_live_store, process_event as live_store_process
 app = Flask(__name__)
 CORS(app)
 
+# Track open connections globally
+import threading
+_connection_lock = threading.Lock()
+_open_connections = 0
+_total_connections_created = 0
+
 
 def sanitize_for_json(obj):
     """Recursively sanitize an object for JSON serialization.
@@ -61,22 +67,86 @@ TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDL
 CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
 
 
+class LoggingConnectionWrapper:
+    """Wrapper around DuckDB connection that logs all queries."""
+    def __init__(self, conn):
+        self._conn = conn
+        self._query_count = 0
+
+    def execute(self, query, params=None):
+        """Execute query with logging."""
+        self._query_count += 1
+        query_num = self._query_count
+
+        # Truncate long queries for readability
+        query_preview = str(query).strip().replace('\n', ' ')[:200]
+        if len(str(query).strip()) > 200:
+            query_preview += '...'
+
+        print(f"[SQL #{query_num}] {query_preview}")
+        if params:
+            print(f"[SQL #{query_num}]   params: {params}")
+
+        try:
+            import time
+            start = time.time()
+            if params:
+                result = self._conn.execute(query, params)
+            else:
+                result = self._conn.execute(query)
+            elapsed = time.time() - start
+            print(f"[SQL #{query_num}]   ✓ {elapsed*1000:.1f}ms")
+            return result
+        except Exception as e:
+            print(f"[SQL #{query_num}]   ✗ Error: {e}")
+            raise
+
+    def close(self):
+        """Close the underlying connection."""
+        global _open_connections
+        with _connection_lock:
+            _open_connections -= 1
+            open_count = _open_connections
+        print(f"[DB] Closing connection (executed {self._query_count} queries, {open_count} still open)")
+        self._conn.close()
+
+    def __getattr__(self, name):
+        """Proxy all other attributes to the underlying connection."""
+        return getattr(self._conn, name)
+
+
 def get_db_connection():
-    """Create a DuckDB connection to query unified mega-table logs from Parquet files."""
+    """Create a new DuckDB connection to query unified mega-table logs from Parquet files.
+
+    NOTE: Each request gets its own connection because DuckDB connections are NOT thread-safe.
+    This is less efficient (re-loads parquet files each time) but avoids race conditions and segfaults.
+    """
+    global _open_connections, _total_connections_created
+    with _connection_lock:
+        _open_connections += 1
+        _total_connections_created += 1
+        open_count = _open_connections
+        total_count = _total_connections_created
+
+    print(f"[DB] Creating connection #{total_count} (now {open_count} open)")
     conn = duckdb.connect(database=':memory:')
 
     # Load unified logs from DATA_DIR
     if os.path.exists(DATA_DIR):
         data_files = glob.glob(f"{DATA_DIR}/*.parquet")
         if data_files:
-            #print(f"[INFO] Loading unified logs from: {DATA_DIR}")
-            #print(f"[INFO] Found {len(data_files)} parquet files")
+            print(f"[DB] Loading {len(data_files)} parquet files from {DATA_DIR}")
             files_str = "', '".join(data_files)
-            conn.execute(f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)")
-            return conn
-
-    print(f"[WARN] No parquet files found in {DATA_DIR}")
-    return conn
+            query = f"CREATE OR REPLACE VIEW logs AS SELECT * FROM read_parquet(['{files_str}'], union_by_name=true)"
+            conn.execute(query)
+            # Wrap the connection for logging
+            return LoggingConnectionWrapper(conn)
+        else:
+            print(f"[WARN] No parquet files found in {DATA_DIR}")
+            return LoggingConnectionWrapper(conn)
+    else:
+        print(f"[WARN] DATA_DIR does not exist: {DATA_DIR}")
+        return LoggingConnectionWrapper(conn)
 
 
 def get_available_columns(conn):
@@ -346,16 +416,19 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
             if input_data:
                 break
 
-    # Get "final output" - really the most recent message with content (any type)
+    # Get "final output" - exclude structural messages, prefer agent/tool content
     # This provides a live view of what's happening in the cascade
     final_output = None
     for row in reversed(rows):
         content = row.get('content_json')
         node_type = row.get('node_type', '')
+        role = row.get('role', '')
 
-        # Skip certain node types that don't have meaningful content
-        if node_type in ('cascade_start', 'cascade_complete', 'cascade_error',
-                         'phase_start', 'turn_start', 'cost_update'):
+        # Skip structural and system messages - focus on agent/tool content
+        if role in ('structure', 'system'):
+            continue
+        if node_type in ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
+                         'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update'):
             continue
 
         if content:
@@ -1058,23 +1131,24 @@ def get_cascade_instances(cascade_id):
                 if sounding_idx is not None:
                     phases_map[p_name]["has_soundings"] = True
 
-            # Get final output - matches LiveStore logic (all types except blacklist)
+            # Get final output - exclude structural messages, prefer agent/tool content
             final_output = None
             try:
                 output_query = """
-                SELECT content_json, node_type
+                SELECT content_json, node_type, role
                 FROM logs
                 WHERE session_id = ?
-                  AND node_type NOT IN ('cascade_start', 'cascade_complete', 'cascade_error',
-                                       'phase_start', 'turn_start', 'cost_update')
                   AND content_json IS NOT NULL
                   AND content_json != ''
+                  AND role NOT IN ('structure', 'system')
+                  AND node_type NOT IN ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
+                                       'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
                 ORDER BY timestamp DESC
                 LIMIT 1
                 """
                 output_result = conn.execute(output_query, [session_id]).fetchone()
                 if output_result and output_result[0]:
-                    content, node_type = output_result
+                    content, node_type, role = output_result
                     if isinstance(content, str):
                         try:
                             parsed = json.loads(content)
@@ -2243,6 +2317,17 @@ def debug_schema():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
+def log_connection_stats():
+    """Periodically log connection statistics."""
+    import time
+    while True:
+        time.sleep(30)  # Log every 30 seconds
+        with _connection_lock:
+            open_count = _open_connections
+            total_count = _total_connections_created
+        print(f"[STATS] Connections: {open_count} open, {total_count} total created")
+
+
 if __name__ == '__main__':
     print("🌊 Windlass UI Backend Starting...")
     print(f"   Windlass Root: {WINDLASS_ROOT}")
@@ -2250,6 +2335,11 @@ if __name__ == '__main__':
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
     print()
+
+    # Start connection stats logger in background
+    import threading
+    stats_thread = threading.Thread(target=log_connection_stats, daemon=True)
+    stats_thread.start()
 
     # Debug: Check data availability
     parquet_files = glob.glob(f"{DATA_DIR}/*.parquet")

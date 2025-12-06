@@ -47,6 +47,8 @@
   color: #94a3b8 !important;
   font-size: 12px;
   line-height: 1.4;
+  white-space: normal !important;
+  word-wrap: break-word;
 }
 
 .center-cell {
@@ -67,7 +69,7 @@
 .phases-cell-content {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   flex-wrap: wrap;
 }
@@ -131,7 +133,7 @@
 }
 
 .cascade-grid :global(.ag-row:hover) {
-  background-color: #2a3548 !important;
+  background-color: #1a2230 !important;
 }
 
 /* Header styling */
@@ -147,16 +149,16 @@
 }
 
 .cascade-grid :global(::-webkit-scrollbar-track) {
-  background: #1a1f2e;
+  background: #0b1219;
 }
 
 .cascade-grid :global(::-webkit-scrollbar-thumb) {
-  background: #2c3b4b;
+  background: #1a2230;
   border-radius: 5px;
 }
 
 .cascade-grid :global(::-webkit-scrollbar-thumb:hover) {
-  background: #3d4c5f;
+  background: #2a3548;
 }
 
 /* Responsive adjustments */

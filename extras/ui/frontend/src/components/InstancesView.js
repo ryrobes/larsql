@@ -52,7 +52,7 @@ function LiveDuration({ startTime, isRunning, staticDuration }) {
   );
 }
 
-function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sseConnected }) {
+function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sseConnected }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -263,6 +263,8 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
       <div
         key={instance.session_id}
         className={`instance-row ${stateClass} ${isChild ? 'child-row' : ''}`}
+        onClick={() => onSelectInstance && onSelectInstance(instance.session_id)}
+        style={{ cursor: onSelectInstance ? 'pointer' : 'default' }}
       >
         {/* Left: Instance Info */}
         <div className="instance-info">
@@ -328,7 +330,10 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
 
           {/* Mermaid Graph Preview - under inputs on left side */}
           {!isChild && (
-            <div className="mermaid-wrapper">
+            <div
+              className="mermaid-wrapper"
+              onClick={(e) => e.stopPropagation()}
+            >
               <MermaidPreview
                 key={`mermaid-${instance.session_id}`}
                 sessionId={instance.session_id}
@@ -509,9 +514,9 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
           const isExpanded = expandedParents.has(instance.session_id);
           const hasChildren = instance.children && instance.children.length > 0;
 
-          if (hasChildren) {
-            console.log('[RENDER] Parent:', instance.session_id, 'has', instance.children.length, 'children, expanded:', isExpanded);
-          }
+          // if (hasChildren) {
+          //   console.log('[RENDER] Parent:', instance.session_id, 'has', instance.children.length, 'children, expanded:', isExpanded);
+          // }
 
           return (
             <React.Fragment key={instance.session_id}>

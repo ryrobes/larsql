@@ -2,15 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import CascadesView from './components/CascadesView';
 import InstancesView from './components/InstancesView';
 import HotOrNotView from './components/HotOrNotView';
+import DetailView from './components/DetailView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import Toast from './components/Toast';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
+  const [detailSessionId, setDetailSessionId] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
@@ -45,6 +47,16 @@ function App() {
   const handleBack = () => {
     setCurrentView('cascades');
     setSelectedCascadeId(null);
+  };
+
+  const handleBackToInstances = () => {
+    setCurrentView('instances');
+    setDetailSessionId(null);
+  };
+
+  const handleSelectInstance = (sessionId) => {
+    setDetailSessionId(sessionId);
+    setCurrentView('detail');
   };
 
   const handleRunCascade = (cascade) => {
@@ -312,6 +324,7 @@ function App() {
           cascadeId={selectedCascadeId}
           cascadeData={selectedCascadeData}
           onBack={handleBack}
+          onSelectInstance={handleSelectInstance}
           onFreezeInstance={handleFreezeInstance}
           onRunCascade={handleRunCascade}
           onInstanceComplete={handleInstanceComplete}
@@ -322,6 +335,15 @@ function App() {
           sessionMetadata={sessionMetadata}
           sessionUpdates={sessionUpdates}
           sseConnected={sseConnected}
+        />
+      )}
+
+      {currentView === 'detail' && (
+        <DetailView
+          sessionId={detailSessionId}
+          onBack={handleBackToInstances}
+          runningSessions={runningSessions}
+          finalizingSessions={finalizingSessions}
         />
       )}
 
