@@ -26,7 +26,9 @@ from live_store import get_live_store, process_event as live_store_process
 
 app = Flask(__name__)
 CORS(app)
+from message_flow_api import message_flow_bp
 
+app.register_blueprint(message_flow_bp)
 # Track open connections globally
 import threading
 _connection_lock = threading.Lock()
@@ -527,6 +529,31 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
     if error_count > 0:
         cascade_status = "failed"
 
+    # Build token timeseries for sparkline (max 20 buckets)
+    token_timeseries = []
+    if timestamps and len(timestamps) > 0:
+        time_range = max(timestamps) - min(timestamps) if max(timestamps) > min(timestamps) else 1
+        bucket_size = time_range / 20.0 if time_range > 0 else 1
+        buckets = {}  # bucket_idx -> {tokens_in, tokens_out}
+
+        for row in rows:
+            ts = row.get('timestamp')
+            tokens_in = row.get('tokens_in', 0) or 0
+            tokens_out = row.get('tokens_out', 0) or 0
+
+            if ts and (tokens_in or tokens_out):
+                bucket_idx = int((ts - min(timestamps)) / bucket_size)
+                bucket_idx = min(bucket_idx, 19)  # Cap at 19 (0-19 = 20 buckets)
+
+                if bucket_idx not in buckets:
+                    buckets[bucket_idx] = {'bucket': bucket_idx, 'tokens_in': 0, 'tokens_out': 0}
+
+                buckets[bucket_idx]['tokens_in'] += int(tokens_in)
+                buckets[bucket_idx]['tokens_out'] += int(tokens_out)
+
+        # Convert to sorted list
+        token_timeseries = [buckets[i] for i in sorted(buckets.keys())]
+
     return {
         'session_id': session_id,
         'cascade_id': info.cascade_id,
@@ -543,6 +570,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
         'status': cascade_status,
         'error_count': error_count,
         'errors': error_list,
+        'token_timeseries': token_timeseries,
         'children': [],
         '_source': 'live'  # Indicate data source for debugging
     }
@@ -899,7 +927,7 @@ def get_cascade_instances(cascade_id):
         # BATCH QUERIES: Get all data for all sessions at once to avoid N+1 problem
         # TODO: This endpoint currently does ~142 queries (10-15 per session × ~10 sessions)
         # Batching all queries would reduce it to ~10-12 total queries
-        # Current optimizations: models, outputs, errors, phase_costs batched (saves ~40 queries)
+        # Current optimizations: models, outputs, errors, phase_costs, token_timeseries batched (saves ~50 queries)
         # Still needed: input_data, turn_costs, tool_usage, soundings, messages, phases
         session_ids = [row[0] for row in session_results if row[0] not in live_session_ids]
 
@@ -1017,6 +1045,51 @@ def get_cascade_instances(cascade_id):
                     phase_costs_by_session[sid][phase_name] = float(total_cost) if total_cost else 0.0
             except Exception as e:
                 print(f"[ERROR] Batch phase costs query: {e}")
+
+        # Batch 5: Get token timeseries for all sessions (max 20 buckets for sparkline)
+        token_timeseries_by_session = {}
+        if session_ids:
+            try:
+                # Get token data bucketed into max 20 time intervals
+                timeseries_query = """
+                WITH session_times AS (
+                    SELECT
+                        session_id,
+                        MIN(timestamp) as start_time,
+                        MAX(timestamp) as end_time
+                    FROM logs
+                    WHERE session_id IN ({})
+                    GROUP BY session_id
+                ),
+                bucketed_tokens AS (
+                    SELECT
+                        l.session_id,
+                        CAST((l.timestamp - st.start_time) / ((st.end_time - st.start_time + 1) / 20.0) AS INTEGER) as bucket,
+                        SUM(l.tokens_in) as tokens_in,
+                        SUM(l.tokens_out) as tokens_out
+                    FROM logs l
+                    JOIN session_times st ON l.session_id = st.session_id
+                    WHERE l.session_id IN ({})
+                      AND (l.tokens_in IS NOT NULL OR l.tokens_out IS NOT NULL)
+                    GROUP BY l.session_id, bucket
+                    ORDER BY l.session_id, bucket
+                )
+                SELECT session_id, bucket, tokens_in, tokens_out
+                FROM bucketed_tokens
+                WHERE bucket >= 0 AND bucket < 20
+                """.format(','.join('?' * len(session_ids)), ','.join('?' * len(session_ids)))
+                timeseries_results = conn.execute(timeseries_query, session_ids + session_ids).fetchall()
+
+                for sid, bucket, tokens_in, tokens_out in timeseries_results:
+                    if sid not in token_timeseries_by_session:
+                        token_timeseries_by_session[sid] = []
+                    token_timeseries_by_session[sid].append({
+                        'bucket': int(bucket),
+                        'tokens_in': int(tokens_in) if tokens_in else 0,
+                        'tokens_out': int(tokens_out) if tokens_out else 0
+                    })
+            except Exception as e:
+                print(f"[ERROR] Batch token timeseries query: {e}")
 
         instances = []
         for session_row in session_results:
@@ -1349,6 +1422,7 @@ def get_cascade_instances(cascade_id):
                 'status': cascade_status,
                 'error_count': error_count,
                 'errors': error_list,
+                'token_timeseries': token_timeseries_by_session.get(session_id, []),
                 'children': [],
                 '_source': 'sql'  # Indicate data source for debugging
             })

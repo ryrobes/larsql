@@ -6,6 +6,7 @@ import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
 import VideoSpinner from './VideoSpinner';
+import TokenSparkline from './TokenSparkline';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
@@ -420,6 +421,11 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               {formatCost(instance.total_cost)}
             </span>
             <span className="metric-label">cost</span>
+            {instance.token_timeseries && instance.token_timeseries.length > 0 && (
+              <div className="token-sparkline-container">
+                <TokenSparkline data={instance.token_timeseries} width={95} height={24} />
+              </div>
+            )}
           </div>
 
           <button

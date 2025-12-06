@@ -93,6 +93,7 @@ class WindlassRunner:
         self.context_messages: List[Dict[str, str]] = []
         self.sounding_index = sounding_index  # Track which sounding attempt this is (for cascade-level soundings)
         self.current_phase_sounding_index = None  # Track sounding index within current phase
+        self.current_reforge_step = None  # Track which reforge step we're in
         self.current_retry_attempt = None  # Track retry/validation attempt index
         self.current_turn_number = None  # Track turn number within phase (for max_turns)
         self.current_mutation_applied = None  # Track mutation applied to current sounding
@@ -144,11 +145,9 @@ class WindlassRunner:
             # We're inside soundings - don't save until we know if we're a winner
             return
 
-        # Save user, assistant, and tool messages (skip system and structure messages)
+        # NOTE: No longer filtering system messages - we want to see ALL messages
+        # to diagnose root causes instead of hiding symptoms
         role = message.get('role')
-        if role not in ['user', 'assistant', 'tool']:
-            return
-
         content = message.get('content')
         if not content or (isinstance(content, str) and not content.strip()):
             return
@@ -176,6 +175,25 @@ class WindlassRunner:
             # Don't crash cascade if memory save fails
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to save message to memory '{self.memory_name}': {e}")
+
+    def _get_metadata(self, extra: dict = None) -> dict:
+        """
+        Helper to build metadata dict with sounding_index automatically included.
+        Use this in all echo.add_history() calls to ensure consistent tagging.
+        """
+        meta = extra.copy() if extra else {}
+
+        # Auto-inject sounding_index if we're in a sounding
+        if self.current_phase_sounding_index is not None:
+            meta.setdefault("sounding_index", self.current_phase_sounding_index)
+        elif self.sounding_index is not None:
+            meta.setdefault("sounding_index", self.sounding_index)
+
+        # Auto-inject reforge_step if we're in reforge
+        if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
+            meta.setdefault("reforge_step", self.current_reforge_step)
+
+        return meta
 
     def _update_graph(self):
         """Updates the mermaid graph in real-time."""
@@ -1661,6 +1679,9 @@ If no tools are needed, return an empty array: []
         original_instructions = phase.instructions
 
         for step in range(1, reforge_config.steps + 1):
+            # Set current reforge step for metadata tagging
+            self.current_reforge_step = step
+
             console.print(f"{indent}[bold cyan]🔨 Reforge Step {step}/{reforge_config.steps}[/bold cyan]")
 
             # Create reforge trace
@@ -2532,13 +2553,26 @@ Refinement directive: {reforge_config.honing_prompt}
                         try:
                             is_main_thread = threading.current_thread() is threading.main_thread()
 
+                            # Cull old content to prevent token explosion
+                            from .utils import cull_old_base64_images, cull_old_conversation_history
+                            import os
+
+                            # Get config from environment (with defaults)
+                            keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))
+                            keep_turns = int(os.getenv('WINDLASS_KEEP_RECENT_TURNS', '0'))
+
+                            # First cull old conversation history
+                            culled_context = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+                            # Then cull old images
+                            culled_context = cull_old_base64_images(culled_context, keep_recent=keep_images)
+
                             if self.depth == 0 and is_main_thread:
                                 with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status:
-                                    response_dict = agent.run(current_input, context_messages=self.context_messages)
+                                    response_dict = agent.run(current_input, context_messages=culled_context)
                             else:
                                 # For sub-cascades, no spinner to avoid Rich Live conflicts
                                 console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
-                                response_dict = agent.run(current_input, context_messages=self.context_messages)
+                                response_dict = agent.run(current_input, context_messages=culled_context)
 
                             content = response_dict.get("content")
                             tool_calls = response_dict.get("tool_calls")
@@ -2713,7 +2747,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     # Add to Echo (global history)
                     input_trace = turn_trace.create_child("msg", "user_input")
                     if current_input:
-                         self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input")
+                         self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input",
+                                             metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
 
                     # NOTE: Agent output is now logged via cost tracker with cost merged in
                     # No need to log turn_output separately (was duplicate)
@@ -2746,7 +2781,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 "role": "user",
                                 "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
                             }
-                            self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error")
+                            self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error",
+                                                metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
 
                             # CRITICAL: Set validation_passed = False to trigger attempt retry
                             # JSON errors should retry the entire attempt, not just skip to next turn
@@ -2929,12 +2965,25 @@ Refinement directive: {reforge_config.honing_prompt}
                             self._update_graph() # Update after tool
 
                         # Immediate follow-up
+                        # Cull old content to prevent token explosion
+                        from .utils import cull_old_base64_images, cull_old_conversation_history
+                        import os
+
+                        # Get config from environment (with defaults)
+                        keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))
+                        keep_turns = int(os.getenv('WINDLASS_KEEP_RECENT_TURNS', '0'))
+
+                        # First cull old conversation history
+                        culled_context = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+                        # Then cull old images
+                        culled_context = cull_old_base64_images(culled_context, keep_recent=keep_images)
+
                         if self.depth == 0 and is_main_thread:
                             with console.status(f"{indent}[bold green]Agent processing results...[/bold green]", spinner="dots") as status:
-                                follow_up = agent.run(None, context_messages=self.context_messages)
+                                follow_up = agent.run(None, context_messages=culled_context)
                         else:
                             console.print(f"{indent}[dim]Agent processing results (depth {self.depth})...[/dim]")
-                            follow_up = agent.run(None, context_messages=self.context_messages)
+                            follow_up = agent.run(None, context_messages=culled_context)
                          
                         content = follow_up.get("content")
                         request_id = follow_up.get("id")

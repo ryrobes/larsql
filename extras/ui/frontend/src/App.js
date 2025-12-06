@@ -3,13 +3,14 @@ import CascadesView from './components/CascadesView';
 import InstancesView from './components/InstancesView';
 import HotOrNotView from './components/HotOrNotView';
 import DetailView from './components/DetailView';
+import MessageFlowView from './components/MessageFlowView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import Toast from './components/Toast';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
@@ -38,25 +39,60 @@ function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  // Parse hash to determine route
+  const parseHash = useCallback(() => {
+    const hash = window.location.hash.slice(1); // Remove leading #
+    if (!hash || hash === '/') {
+      return { view: 'cascades', cascadeId: null, sessionId: null };
+    }
+
+    const parts = hash.split('/').filter(p => p); // Split and remove empty parts
+
+    if (parts.length === 1) {
+      // /#/cascade_id → instances view
+      return { view: 'instances', cascadeId: parts[0], sessionId: null };
+    } else if (parts.length === 2) {
+      // /#/cascade_id/session_id → detail view
+      return { view: 'detail', cascadeId: parts[0], sessionId: parts[1] };
+    }
+
+    return { view: 'cascades', cascadeId: null, sessionId: null };
+  }, []);
+
+  // Update hash when navigation happens
+  const updateHash = useCallback((view, cascadeId = null, sessionId = null) => {
+    if (view === 'cascades') {
+      window.location.hash = '';
+    } else if (view === 'instances' && cascadeId) {
+      window.location.hash = `#/${cascadeId}`;
+    } else if (view === 'detail' && cascadeId && sessionId) {
+      window.location.hash = `#/${cascadeId}/${sessionId}`;
+    }
+  }, []);
+
   const handleSelectCascade = (cascadeId, cascadeData) => {
     setSelectedCascadeId(cascadeId);
     setSelectedCascadeData(cascadeData);
     setCurrentView('instances');
+    updateHash('instances', cascadeId);
   };
 
   const handleBack = () => {
     setCurrentView('cascades');
     setSelectedCascadeId(null);
+    updateHash('cascades');
   };
 
   const handleBackToInstances = () => {
     setCurrentView('instances');
     setDetailSessionId(null);
+    updateHash('instances', selectedCascadeId);
   };
 
   const handleSelectInstance = (sessionId) => {
     setDetailSessionId(sessionId);
     setCurrentView('detail');
+    updateHash('detail', selectedCascadeId, sessionId);
   };
 
   const handleRunCascade = (cascade) => {
@@ -135,6 +171,67 @@ function App() {
       throw err;  // Let modal handle the error
     }
   };
+
+  // Hash-based routing: parse hash on mount and listen for changes
+  useEffect(() => {
+    const handleHashChange = async () => {
+      const route = parseHash();
+      console.log('[Router] Hash changed:', route);
+
+      if (route.view === 'cascades') {
+        setCurrentView('cascades');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'instances' && route.cascadeId) {
+        // Need to fetch cascade data if not already loaded
+        if (selectedCascadeId !== route.cascadeId) {
+          try {
+            const response = await fetch('http://localhost:5001/api/cascade-definitions');
+            const cascades = await response.json();
+            const cascade = cascades.find(c => c.cascade_id === route.cascadeId);
+            if (cascade) {
+              setSelectedCascadeId(route.cascadeId);
+              setSelectedCascadeData(cascade);
+              setCurrentView('instances');
+              setDetailSessionId(null);
+            } else {
+              console.warn('[Router] Cascade not found:', route.cascadeId);
+              window.location.hash = '';
+            }
+          } catch (err) {
+            console.error('[Router] Error fetching cascade:', err);
+          }
+        } else {
+          setCurrentView('instances');
+          setDetailSessionId(null);
+        }
+      } else if (route.view === 'detail' && route.cascadeId && route.sessionId) {
+        // Need to fetch cascade data if not already loaded
+        if (selectedCascadeId !== route.cascadeId) {
+          try {
+            const response = await fetch('http://localhost:5001/api/cascade-definitions');
+            const cascades = await response.json();
+            const cascade = cascades.find(c => c.cascade_id === route.cascadeId);
+            if (cascade) {
+              setSelectedCascadeId(route.cascadeId);
+              setSelectedCascadeData(cascade);
+            }
+          } catch (err) {
+            console.error('[Router] Error fetching cascade:', err);
+          }
+        }
+        setDetailSessionId(route.sessionId);
+        setCurrentView('detail');
+      }
+    };
+
+    // Parse hash on mount
+    handleHashChange();
+
+    // Listen for hash changes (browser back/forward)
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [parseHash, selectedCascadeId]);
 
   // SSE connection for real-time updates
   useEffect(() => {
@@ -312,6 +409,7 @@ function App() {
           onSelectCascade={handleSelectCascade}
           onRunCascade={handleRunCascade}
           onHotOrNot={() => setCurrentView('hotornot')}
+          onMessageFlow={() => setCurrentView('messageflow')}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -352,6 +450,10 @@ function App() {
           onBack={() => setCurrentView('cascades')}
         />
       )}
+      {currentView === 'messageflow' && (
+        <MessageFlowView />
+      )}
+
 
       {/* Modals */}
       {showRunModal && selectedInstance && (

@@ -747,6 +747,14 @@
   color: #2C3B4B;
 }
 
+/* Token sparkline container */
+.token-sparkline-container {
+  margin-top: 6px;
+  width: 95px;
+  display: flex;
+  justify-content: center;
+}
+
 /* Debug button */
 .debug-button {
   background: rgba(217, 165, 83, 0.1);

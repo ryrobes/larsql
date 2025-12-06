@@ -25,6 +25,8 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   const [groupedEntries, setGroupedEntries] = useState([]);
   const [viewMode, setViewMode] = useState('conversation'); // 'all', 'conversation', 'structural'
   const [showStructural, setShowStructural] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState(null); // Entry with full history to show
+  const [showHistory, setShowHistory] = useState(false);
 
   const fetchSessionData = async () => {
     try {
@@ -204,8 +206,15 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
                     )}
 
                     <div
-                      className={`entry-row ${entry.node_type}`}
+                      className={`entry-row ${entry.node_type} ${entry.full_request_json ? 'has-history' : ''}`}
                       style={{ '--node-color': getNodeColor(entry.node_type) }}
+                      onClick={() => {
+                        if (entry.full_request_json) {
+                          setSelectedEntry(entry);
+                          setShowHistory(true);
+                        }
+                      }}
+                      title={entry.full_request_json ? 'Click to view full request history' : ''}
                     >
                       <div className="entry-meta">
                         <div className="entry-icon">
@@ -224,6 +233,11 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
                         {getDirectionBadge(entry) && (
                           <span className={`direction-badge ${getDirectionBadge(entry).className}`}>
                             {getDirectionBadge(entry).label}
+                          </span>
+                        )}
+                        {entry.full_request_json && (
+                          <span className="history-indicator" title="Has full request history">
+                            <Icon icon="mdi:history" width="16" />
                           </span>
                         )}
                       </div>
@@ -257,6 +271,98 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
             </span>
           </div>
         </div>
+
+        {/* History Panel - shows full request history for selected entry */}
+        {showHistory && selectedEntry && (
+          <div className="history-panel">
+            <div className="history-panel-header">
+              <h3>
+                <Icon icon="mdi:history" width="20" />
+                Request History
+              </h3>
+              <button
+                className="close-history-button"
+                onClick={() => setShowHistory(false)}
+                title="Close history panel"
+              >
+                <Icon icon="mdi:close" width="20" />
+              </button>
+            </div>
+            <div className="history-panel-body">
+              {(() => {
+                try {
+                  const request = typeof selectedEntry.full_request_json === 'string'
+                    ? JSON.parse(selectedEntry.full_request_json)
+                    : selectedEntry.full_request_json;
+
+                  const messages = request?.messages || [];
+
+                  return (
+                    <div className="history-messages">
+                      <div className="history-info">
+                        <p>
+                          <strong>{messages.length}</strong> messages in history
+                          at <strong>{formatTimestamp(selectedEntry.timestamp)}</strong>
+                        </p>
+                        <p className="history-hint">
+                          This is the exact request sent to the LLM at this turn
+                        </p>
+                      </div>
+
+                      {messages.map((msg, idx) => (
+                        <div key={idx} className={`history-message history-role-${msg.role}`}>
+                          <div className="history-message-header">
+                            <span className="history-message-index">#{idx + 1}</span>
+                            <span className="history-message-role">{msg.role}</span>
+                          </div>
+                          <div className="history-message-content">
+                            {typeof msg.content === 'string' ? (
+                              <pre>{msg.content}</pre>
+                            ) : Array.isArray(msg.content) ? (
+                              msg.content.map((part, partIdx) => (
+                                <div key={partIdx} className="content-part">
+                                  {part.type === 'text' && <pre>{part.text}</pre>}
+                                  {part.type === 'image_url' && (
+                                    <div className="image-placeholder">
+                                      <Icon icon="mdi:image" width="24" />
+                                      <span>Image (base64)</span>
+                                    </div>
+                                  )}
+                                  {part.type === 'tool_result' && (
+                                    <div className="tool-result-part">
+                                      <strong>Tool: {part.tool_use_id}</strong>
+                                      <pre>{JSON.stringify(part.content, null, 2)}</pre>
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <pre>{JSON.stringify(msg.content, null, 2)}</pre>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Show full request JSON at bottom for reference */}
+                      <details className="full-request-details">
+                        <summary>Full Request JSON</summary>
+                        <pre>{JSON.stringify(request, null, 2)}</pre>
+                      </details>
+                    </div>
+                  );
+                } catch (err) {
+                  return (
+                    <div className="history-error">
+                      <Icon icon="mdi:alert-circle" width="24" />
+                      <p>Error parsing request: {err.message}</p>
+                      <pre>{selectedEntry.full_request_json}</pre>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body

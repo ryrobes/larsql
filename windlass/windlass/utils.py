@@ -6,8 +6,18 @@ import mimetypes
 import os
 import shutil
 
-def encode_image_base64(image_path: str) -> str:
-    """Encodes a local image to base64 data URL."""
+def encode_image_base64(image_path: str, max_dimension: int = 1280) -> str:
+    """
+    Encodes a local image to base64 data URL with optional resizing.
+
+    Args:
+        image_path: Path to image file
+        max_dimension: Maximum size for longest side (default: 1280px for chart legibility)
+                      Set to None to disable resizing
+
+    Returns:
+        Base64 data URL string
+    """
     if not os.path.exists(image_path):
         return f"[Error: Image not found at {image_path}]"
 
@@ -15,8 +25,51 @@ def encode_image_base64(image_path: str) -> str:
     if not mime_type:
         mime_type = "image/png" # Default
 
-    with open(image_path, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    # Resize image if max_dimension is set
+    if max_dimension:
+        try:
+            from PIL import Image
+            import io
+
+            # Open and process image
+            img = Image.open(image_path)
+            original_size = img.size
+            should_resize = max(img.size) > max_dimension
+
+            # Always optimize images for LLM vision (convert to JPEG, handle transparency)
+            buffer = io.BytesIO()
+
+            # Resize if needed
+            if should_resize:
+                img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+
+            # Convert RGBA->RGB for better compression (LLMs don't need alpha channel)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                rgb_img.save(buffer, format='JPEG', quality=80, optimize=True)
+            else:
+                # RGB or L mode - save as JPEG directly
+                img.save(buffer, format='JPEG', quality=80, optimize=True)
+
+            # Always use JPEG mime type when optimizing
+            mime_type = 'image/jpeg'
+            buffer.seek(0)
+            encoded_string = base64.b64encode(buffer.read()).decode('utf-8')
+
+        except ImportError:
+            # PIL not available, fall back to no optimization
+            with open(image_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            # Any other error, fall back to no optimization
+            with open(image_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    else:
+        # No resizing requested
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
     return f"data:{mime_type};base64,{encoded_string}"
 
@@ -72,6 +125,127 @@ def extract_images_from_messages(messages: List[Dict]) -> List[Tuple[str, str]]:
                             images.append((url, item.get("description", "image")))
 
     return images
+
+def cull_old_base64_images(messages: List[Dict], keep_recent: int = 3) -> List[Dict]:
+    """
+    Cull old base64 images from messages, keeping only the most recent N images.
+
+    Iterates through messages in reverse order, keeps base64 for the last N images,
+    and replaces older base64 data with placeholders to save tokens.
+
+    Args:
+        messages: List of message dicts
+        keep_recent: Number of recent images to keep (default: 3)
+
+    Returns:
+        New list of messages with old base64 culled
+    """
+    import copy
+
+    # Deep copy to avoid mutating original messages
+    culled_messages = copy.deepcopy(messages)
+
+    # Track how many images we've seen (counting from end)
+    images_seen = 0
+
+    # Iterate in reverse order (most recent first)
+    for msg in reversed(culled_messages):
+        content = msg.get("content")
+
+        # Handle multi-modal content (array format) - where images live
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "image_url":
+                    image_url = item.get("image_url", {})
+
+                    if isinstance(image_url, dict):
+                        url = image_url.get("url", "")
+                    else:
+                        url = image_url
+
+                    # If it's a base64 image
+                    if url.startswith("data:"):
+                        images_seen += 1
+
+                        # If we've seen more than keep_recent images, cull this one
+                        if images_seen > keep_recent:
+                            # Remove the entire image_url item from content array
+                            # This is safer than placeholder text which LLMs might reject
+                            content.remove(item)
+
+        # Handle string content with embedded base64 (less common)
+        elif isinstance(content, str):
+            data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
+            matches = list(re.finditer(data_url_pattern, content))
+
+            # Iterate matches in reverse (for proper indexing during replacement)
+            for match in reversed(matches):
+                images_seen += 1
+
+                if images_seen > keep_recent:
+                    # Replace base64 URL with placeholder
+                    start, end = match.span()
+                    placeholder = "[Image previously shown - saved to disk]"
+                    content = content[:start] + placeholder + content[end:]
+
+            msg["content"] = content
+
+    return culled_messages
+
+def cull_old_conversation_history(messages: List[Dict], keep_recent_turns: int = 10) -> List[Dict]:
+    """
+    Cull old conversation messages to prevent context bloat.
+
+    Keeps the most recent conversation turns and system messages in their natural flow position.
+    This prevents token explosion while preserving feedback loop context.
+
+    IMPORTANT: Does NOT move system messages to the front - leaves them in natural position
+    to avoid overriding recent feedback from the conversation.
+
+    Args:
+        messages: List of message dicts
+        keep_recent_turns: Number of recent user/assistant message pairs to keep (default: 10)
+                          Set to 0 or None to disable culling (keep all messages)
+
+    Returns:
+        New list of messages with old conversation culled
+    """
+    import copy
+
+    # If culling disabled, return original messages
+    if not keep_recent_turns or keep_recent_turns <= 0:
+        return messages
+
+    # Strategy: Keep the last N messages total, preserving natural flow
+    # A turn typically has ~3 messages (user, assistant, tool), so multiply by 3
+    keep_count = keep_recent_turns * 3
+
+    if len(messages) <= keep_count:
+        # All messages fit within limit
+        return messages
+
+    # Keep only the most recent messages in their natural order
+    # This preserves the feedback loop context and recent conversation flow
+    culled_messages = messages[-keep_count:]
+
+    # Find if there's a tool definition system message in the kept messages
+    has_tool_def = any(
+        msg.get("role") == "system" and ("Tool" in msg.get("content", "") or "tool" in msg.get("content", ""))
+        for msg in culled_messages
+    )
+
+    # If no tool definition in kept messages, prepend the most recent one from all messages
+    # This ensures agent always knows what tools are available
+    if not has_tool_def:
+        all_tool_systems = [
+            msg for msg in messages
+            if msg.get("role") == "system" and ("Tool" in msg.get("content", "") or "tool" in msg.get("content", ""))
+        ]
+        if all_tool_systems:
+            # Prepend ONLY the most recent tool definition
+            culled_messages.insert(0, all_tool_systems[-1])
+
+    return culled_messages
 
 def get_next_image_index(session_id: str, phase_name: str, sounding_index: int = None) -> int:
     """
