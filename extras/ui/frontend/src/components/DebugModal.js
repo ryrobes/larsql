@@ -335,6 +335,49 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
     }
   };
 
+  // Helper to detect and render audio from entry.audio field
+  const renderAudioFromEntry = (entry, sessionId) => {
+    // Check if entry has audio field (parsed from audio_json)
+    if (!entry.audio || !Array.isArray(entry.audio) || entry.audio.length === 0) {
+      return { hasAudio: false, audioPlayers: [] };
+    }
+
+    // Generate audio player for each audio file
+    const audioPlayers = entry.audio.map((audioPath, idx) => {
+      // Convert absolute path to relative path format: phase_name/audio_N.ext
+      // audioPath format: /path/to/audio/{session_id}/{phase_name}/audio_0.mp3
+      const pathParts = audioPath.split('/');
+      const sessionIndex = pathParts.indexOf(sessionId);
+
+      let relPath = audioPath;
+      if (sessionIndex >= 0 && sessionIndex < pathParts.length - 1) {
+        // Extract phase_name/audio_N.ext
+        relPath = pathParts.slice(sessionIndex + 1).join('/');
+      } else {
+        // Fallback: use phase_name if available
+        const phaseName = entry.phase_name || 'unknown';
+        const filename = pathParts[pathParts.length - 1];
+        relPath = `${phaseName}/${filename}`;
+      }
+
+      const audioUrl = `http://localhost:5001/api/audio/${sessionId}/${relPath}`;
+
+      return (
+        <div key={`audio-${idx}`} className="inline-audio-container" style={{ marginTop: '8px' }}>
+          <audio controls style={{ maxWidth: '100%', height: '40px' }}>
+            <source src={audioUrl} type="audio/mpeg" />
+            Your browser does not support the audio element.
+          </audio>
+          <div style={{ fontSize: '0.85em', color: '#888', marginTop: '4px' }}>
+            🔊 {relPath}
+          </div>
+        </div>
+      );
+    });
+
+    return { hasAudio: true, audioPlayers };
+  };
+
   // Helper to detect and render images from content
   const renderImagesFromContent = (content) => {
     // Handle multi-modal array format (OpenAI/Anthropic style)
@@ -406,8 +449,52 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   const renderContent = (entry) => {
     const { content, node_type, metadata } = entry;
 
-    // First check for images in content
+    // First check for audio in entry
+    const audioResult = renderAudioFromEntry(entry, sessionId);
+
+    // Then check for images in content
     const imageResult = renderImagesFromContent(content);
+
+    // If we have both audio and images, render them together
+    if (audioResult.hasAudio && imageResult.hasImages) {
+      return (
+        <div className="content-with-media">
+          <div className="inline-images-grid">
+            {imageResult.images}
+          </div>
+          <div className="inline-audio-grid">
+            {audioResult.audioPlayers}
+          </div>
+          {imageResult.text && imageResult.text.trim() && (
+            <div className="markdown-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {String(imageResult.text)}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // If only audio, render audio players
+    if (audioResult.hasAudio) {
+      return (
+        <div className="content-with-audio">
+          <div className="inline-audio-grid">
+            {audioResult.audioPlayers}
+          </div>
+          {content && String(content).trim() && (
+            <div className="markdown-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {String(content)}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // If only images, render images
     if (imageResult.hasImages) {
       return (
         <div className="content-with-images">

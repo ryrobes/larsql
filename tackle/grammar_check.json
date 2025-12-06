@@ -7,7 +7,7 @@
   },
   "phases": [{
     "name": "check",
-    "instructions": "Review the provided text for grammar and spelling errors. Check for:\n- Spelling mistakes\n- Grammar issues\n- Punctuation errors\n- Basic readability\n\nReturn ONLY a JSON object with this exact format:\n{\"valid\": true/false, \"reason\": \"explanation of issues found or confirmation it's good\", \"issues\": [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable.",
+    "instructions": "Review the following text for grammar and spelling errors:\n\n{{ input.content }}\n\nCheck for:\n- Spelling mistakes\n- Grammar issues\n- Punctuation errors\n- Basic readability\n\nReturn ONLY a JSON object with this exact format:\n{\"valid\": true/false, \"reason\": \"explanation of issues found or confirmation it's good\", \"issues\": [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable.",
     "rules": {
       "max_turns": 1
     }

@@ -19,6 +19,7 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
     Discovers:
     - Python functions registered in tackle registry
     - Cascade files with inputs_schema (usable as tools)
+    - Memory banks (conversational memory with RAG search)
 
     Returns dict: {tool_name: {type, description, schema/inputs, path?}}
     """
@@ -81,6 +82,49 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
             except Exception as e:
                 # Skip invalid cascade files
                 continue
+
+    # 3. Scan memory banks
+    from .memory import get_memory_system
+    try:
+        memory_system = get_memory_system()
+        for memory_name in memory_system.list_all():
+            metadata = memory_system.get_metadata(memory_name)
+            summary = metadata.get('summary', f'Conversational memory bank: {memory_name}')
+
+            # Build description with stats
+            msg_count = metadata.get('message_count', 0)
+            last_updated = metadata.get('last_updated', 'Never')
+            cascades_using = metadata.get('cascades_using', [])
+
+            description = f"{summary}\n\nMemory Stats:\n"
+            description += f"  - Messages: {msg_count}\n"
+            description += f"  - Last updated: {last_updated}\n"
+            if cascades_using:
+                description += f"  - Used by: {', '.join(cascades_using[:3])}"
+                if len(cascades_using) > 3:
+                    description += f" (+{len(cascades_using) - 3} more)"
+
+            manifest[memory_name] = {
+                "type": "memory",
+                "description": description,
+                "schema": {
+                    "parameters": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language search query"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results (default: 5)",
+                            "default": 5
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+    except Exception as e:
+        # Memory system not available or error occurred
+        pass
 
     _tackle_manifest_cache = manifest
     return manifest

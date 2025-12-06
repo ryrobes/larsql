@@ -28,6 +28,7 @@ class Config(BaseModel):
     graph_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "graphs"))
     state_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "states"))
     image_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "images"))
+    audio_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "audio"))
 
     # Content directories - all derived from WINDLASS_ROOT
     examples_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "examples"))
@@ -59,6 +60,7 @@ def _ensure_directories(config: Config):
         config.graph_dir,
         config.state_dir,
         config.image_dir,
+        config.audio_dir,
     ]
     for dir_path in dirs_to_create:
         os.makedirs(dir_path, exist_ok=True)

@@ -1,10 +1,11 @@
 {
-  "last_discovery": "2025-12-06T00:23:54.429502",
+  "last_discovery": "2025-12-06T01:20:54.156801",
   "rag_id": "efad9929b653",
   "databases_indexed": [
+    "local_postgres",
     "csv_files"
   ],
-  "table_count": 1,
-  "total_columns": 26,
+  "table_count": 106,
+  "total_columns": 1520,
   "embed_model": "qwen/qwen3-embedding-8b"
 }

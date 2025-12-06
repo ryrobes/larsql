@@ -153,6 +153,115 @@ Three modes of validation for different use cases:
 
 Wards ensure bad outputs never propagate to downstream phases.
 
+### Loop Until - Automatic Validation Goal Injection
+
+When using `loop_until` for validation-based retries, Windlass **automatically tells the agent upfront** what validation criteria it needs to satisfy:
+
+**Before (manual redundancy):**
+```json
+{
+  "instructions": "Write a blog post. Make sure it passes grammar_check.",
+  "rules": {
+    "loop_until": "grammar_check"
+  }
+}
+```
+
+**After (automatic injection):**
+```json
+{
+  "instructions": "Write a blog post.",
+  "rules": {
+    "loop_until": "grammar_check"  // Auto-injects validation goal!
+  }
+}
+```
+
+The system automatically appends:
+```
+---
+VALIDATION REQUIREMENT:
+Your output will be validated using 'grammar_check' which checks: Validates grammar and spelling in text
+You have 3 attempt(s) to satisfy this validator.
+---
+```
+
+**Custom validation prompt (optional):**
+```json
+{
+  "rules": {
+    "loop_until": "grammar_check",
+    "loop_until_prompt": "Custom instruction about what makes valid output"
+  }
+}
+```
+
+#### Silent Mode - Impartial Validation
+
+For **subjective quality checks** where you need an impartial third party, use `loop_until_silent: true` to skip auto-injection:
+
+**The Problem with Auto-Injection for Subjective Validators:**
+```json
+{
+  "instructions": "Write a report on the findings.",
+  "rules": {
+    "loop_until": "quality_check"  // Agent knows: "I need high quality"
+  }
+}
+```
+❌ **Gaming Risk**: Agent can optimize output to pass validator ("I'll just say this is high quality")
+
+**Solution - Silent/Impartial Validation:**
+```json
+{
+  "instructions": "Write a report on the findings.",
+  "rules": {
+    "loop_until": "quality_check",
+    "loop_until_silent": true  // Agent doesn't know it's being evaluated
+  }
+}
+```
+✅ **Honest Output**: Agent produces work naturally, impartial validator judges quality
+
+**When to Use Each Mode:**
+
+| Mode | Use For | Example Validators |
+|------|---------|-------------------|
+| **Auto-Injection** (default) | Objective, specification-based checks | `grammar_check`, `code_execution_validator`, `format_check`, `length_check` |
+| **Silent** (`loop_until_silent: true`) | Subjective, quality-based judgments | `satisfied`, `quality_check`, `readability_check`, `creativity_check` |
+
+**Example Cascade:**
+```json
+{
+  "phases": [
+    {
+      "name": "write_code",
+      "instructions": "Generate Python code to solve the problem.",
+      "rules": {
+        "loop_until": "code_execution_validator"
+        // Agent knows: "My code needs to execute successfully"
+      }
+    },
+    {
+      "name": "write_explanation",
+      "instructions": "Explain the solution in plain English.",
+      "rules": {
+        "loop_until": "satisfied",
+        "loop_until_silent": true
+        // Agent doesn't know: Impartial check for clarity
+      }
+    }
+  ]
+}
+```
+
+**Benefits:**
+- ✅ No redundancy - don't duplicate validator descriptions (auto mode)
+- ✅ Stays in sync - change validator, prompt updates automatically (auto mode)
+- ✅ Fewer retries - agent optimizes for validation criteria upfront (auto mode)
+- ✅ Prevents gaming - agent can't optimize for subjective checks (silent mode)
+- ✅ Flexible - mix both modes in same cascade as needed
+
 ## Installation
 
 ```bash
@@ -1177,6 +1286,8 @@ The `examples/` directory contains reference implementations:
 - `ward_blocking_flow.json`: Critical validation
 - `ward_retry_flow.json`: Quality improvement with retries
 - `ward_comprehensive_flow.json`: All three ward modes
+- `loop_until_auto_inject.json`: Automatic validation goal injection (loop_until)
+- `loop_until_silent_demo.json`: Impartial validation with loop_until_silent
 
 **Multi-Modal:**
 - `image_flow.json`: Vision protocol demonstration

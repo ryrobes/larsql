@@ -194,7 +194,7 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `handoffs`: List of next-phase targets (enables dynamic routing via `route_to` tool); can include descriptions for routing menu
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
 - `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"` or `"on_end"`
-- `rules`: Contains `max_turns`, `max_attempts`, `loop_until` (validator name to keep looping until it passes), and `retry_instructions` (injected on retry)
+- `rules`: Contains `max_turns`, `max_attempts`, `loop_until` (validator name to keep looping until it passes), `loop_until_prompt` (optional custom validation goal prompt), `loop_until_silent` (skip auto-injection for impartial validation), and `retry_instructions` (injected on retry)
 - `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, `mutate`, `mutation_mode`, optional `reforge` for iterative refinement)
 - `output_schema`: JSON schema for validating phase output with automatic retry on failure
 - `wards`: Pre/post validation with three modes (blocking, retry, advisory)
@@ -299,7 +299,111 @@ Task: "Brainstorm ideas" → Quartermaster selects `brainstorm_ideas`
 
 All automatic, no manual tool listing required.
 
-### 2.6. Wards - Validation & Guardrails System
+### 2.6. Loop Until Validation - Automatic Goal Injection
+
+When using `loop_until` for validation-based retries, Windlass automatically injects the validation goal into the phase instructions so the agent knows upfront what it needs to satisfy.
+
+**Configuration**:
+```json
+{
+  "name": "generate_content",
+  "instructions": "Write a blog post about {{ input.topic }}",
+  "rules": {
+    "max_attempts": 3,
+    "loop_until": "grammar_check"
+  }
+}
+```
+
+**Auto-Injection Behavior**:
+The system automatically appends to the instructions:
+```
+---
+VALIDATION REQUIREMENT:
+Your output will be validated using 'grammar_check' which checks: Validates grammar and spelling in text
+You have 3 attempt(s) to satisfy this validator.
+---
+```
+
+**Custom Validation Prompt** (Optional):
+Override the auto-generated prompt with a custom one:
+```json
+{
+  "rules": {
+    "loop_until": "grammar_check",
+    "loop_until_prompt": "Custom instruction about what makes valid output"
+  }
+}
+```
+
+**Silent Mode - Impartial Validation**:
+
+For subjective quality checks where you need an impartial third party, use `loop_until_silent: true` to skip auto-injection:
+
+```json
+{
+  "name": "write_report",
+  "instructions": "Write a report on the findings.",
+  "rules": {
+    "loop_until": "quality_check",
+    "loop_until_silent": true  // Agent doesn't know it's being evaluated
+  }
+}
+```
+
+**The Self-Validation Paradox**:
+
+Auto-injection works great for **objective validators** (grammar, code execution, format checks) but creates gaming risk for **subjective validators**:
+
+| Mode | Validator Type | Example | Gaming Risk |
+|------|---------------|---------|-------------|
+| **Auto-Injection** (default) | Objective checks | `grammar_check`, `code_execution_validator` | ✅ Low - clear specs |
+| **Silent** (`loop_until_silent: true`) | Subjective judgments | `satisfied`, `quality_check`, `readability` | ✅ Prevented - impartial |
+
+**Why Silent Mode Matters**:
+
+```json
+// Without silent mode:
+{
+  "instructions": "Write a report.",
+  "rules": { "loop_until": "satisfied" }
+  // Auto-injects: "Ensure you state satisfaction"
+  // ❌ Agent thinks: "I'll just say I'm satisfied"
+}
+
+// With silent mode:
+{
+  "instructions": "Write a report.",
+  "rules": {
+    "loop_until": "satisfied",
+    "loop_until_silent": true
+  }
+  // No injection - agent writes honestly
+  // ✅ Impartial validator judges actual quality
+}
+```
+
+**How It Works**:
+1. If `loop_until_silent: true` → skip auto-injection entirely
+2. If `loop_until_prompt` is provided → use custom prompt
+3. Otherwise → auto-generate from validator description in manifest
+4. Validation prompt is injected **before** phase execution (proactive, not reactive)
+5. Agent knows validation criteria upfront (unless silent), not just after failing
+
+**Benefits**:
+- ✅ No need to manually duplicate validator descriptions in instructions (auto mode)
+- ✅ Reduces brittleness when changing validators (auto mode)
+- ✅ Agent optimizes for validation criteria from the start (auto mode)
+- ✅ Prevents gaming for subjective validators (silent mode)
+- ✅ Fewer retry cycles needed (auto mode)
+- ✅ Consistent with handoff auto-injection pattern
+- ✅ Flexible - mix both modes in same cascade
+
+**Example Cascades**:
+- `examples/loop_until_auto_inject.json` - Auto-injection
+- `examples/loop_until_silent_demo.json` - Silent mode for impartial validation
+
+### 2.7. Wards - Validation & Guardrails System
 
 Wards are protective barriers that validate inputs and outputs at the phase level. Implemented in Phase 3 of the Wards system.
 
@@ -372,7 +476,7 @@ All validators (function or cascade) must return:
 - `ward_retry_flow.json`: Demonstrates retry mode with automatic improvement
 - `ward_comprehensive_flow.json`: All three modes in one flow
 
-### 2.7. Prompt-Based vs Native Tool Calling
+### 2.8. Prompt-Based vs Native Tool Calling
 
 Windlass supports two modes for tool execution: **prompt-based (default, recommended)** and **native tool calling (opt-in)**.
 
@@ -445,7 +549,7 @@ To use: {"tool": "linux_shell", "arguments": {"command": "ls /tmp"}}
 
 **Recommendation:** Use prompt-based (default) unless you have a specific reason for native.
 
-### 2.8. Docker Sandboxed Execution
+### 2.9. Docker Sandboxed Execution
 
 Code execution tools (`linux_shell`, `run_code`) use Docker for safe, isolated execution.
 
@@ -520,7 +624,7 @@ docker update ubuntu-container --memory=512m --cpus=0.5
 docker restart ubuntu-container
 ```
 
-### 2.9. Reforge - Iterative Refinement System
+### 2.10. Reforge - Iterative Refinement System
 
 Reforge extends Soundings (Tree of Thought) with iterative refinement: after soundings complete and a winner is selected, the winner is refined through additional sounding loops with honing prompts.
 
@@ -614,7 +718,7 @@ Each reforge iteration gets unique session ID for image/state isolation:
 - `reforge_image_chart.json`: Chart refinement with visual feedback
 - `reforge_feedback_chart.json`: Feedback loops with manual image injection
 
-### 2.10. Mutation System for Soundings
+### 2.11. Mutation System for Soundings
 
 Soundings support automatic prompt mutation to explore different formulations and learn what works. Three mutation modes are available:
 
@@ -1234,6 +1338,8 @@ The `examples/` directory contains reference implementations:
 - **ward_blocking_flow.json**: Wards in blocking mode for critical validations
 - **ward_retry_flow.json**: Wards in retry mode for automatic quality improvement
 - **ward_comprehensive_flow.json**: All three ward modes (blocking, retry, advisory) together
+- **loop_until_auto_inject.json**: Automatic validation goal injection with loop_until (both auto-generated and custom prompts)
+- **loop_until_silent_demo.json**: Silent mode for impartial validation (prevents gaming for subjective validators)
 - **reforge_dashboard_metrics.json**: Phase-level reforge with mutation for metrics refinement
 - **reforge_cascade_strategy.json**: Cascade-level reforge for complete workflow refinement
 - **reforge_meta_optimizer.json**: META cascade that optimizes other cascade JSONs

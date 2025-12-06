@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 class Echo:
     """
@@ -24,6 +24,8 @@ class Echo:
         # Mermaid continuity - cache last successful generation to ensure every message has a chart
         self._last_mermaid_content: Optional[str] = None
         self._mermaid_failure_count: int = 0  # Track failures to avoid log spam
+        # Memory callback for saving messages
+        self._message_callback: Optional[Callable[[Dict[str, Any]], None]] = None
 
     def set_cascade_context(self, cascade_id: str):
         """Set the current cascade context for metadata enrichment."""
@@ -32,6 +34,10 @@ class Echo:
     def set_phase_context(self, phase_name: str):
         """Set the current phase context for metadata enrichment."""
         self._current_phase_name = phase_name
+
+    def set_message_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Set a callback to be called for each message added to history."""
+        self._message_callback = callback
 
     def update_state(self, key: str, value: Any):
         self.state[key] = value
@@ -71,7 +77,7 @@ class Echo:
         try:
             # Lazy import to avoid circular dependency
             from .unified_logs import log_unified
-            from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result
+            from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result, extract_audio_paths_from_tool_result
             from .visualizer import generate_state_diagram_string
 
             # Extract data from entry
@@ -82,6 +88,9 @@ class Echo:
             # Detect images
             has_base64 = detect_base64_in_content(content) if content else False
             images = extract_image_paths_from_tool_result(content) if isinstance(content, dict) else None
+
+            # Detect audio
+            audio = extract_audio_paths_from_tool_result(content) if isinstance(content, dict) else None
 
             # Extract enrichment data from metadata
             sounding_index = meta.get("sounding_index")
@@ -134,6 +143,7 @@ class Echo:
                 model=model,  # Pass model
                 images=images,
                 has_base64=has_base64,
+                audio=audio,
                 mermaid_content=mermaid_content,
                 mutation_applied=mutation_applied,  # Pass mutation for soundings
                 mutation_type=mutation_type,
@@ -142,6 +152,14 @@ class Echo:
         except Exception as e:
             # Don't fail if logging has issues
             pass  # Silently ignore to avoid spam
+
+        # Call message callback if set (for memory saving, etc.)
+        if self._message_callback:
+            try:
+                self._message_callback(entry)
+            except Exception as e:
+                # Don't fail if callback has issues
+                pass
 
     def add_lineage(self, phase: str, output: Any, trace_id: str = None):
         self.lineage.append({

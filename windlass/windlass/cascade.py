@@ -5,6 +5,8 @@ class RuleConfig(BaseModel):
     max_turns: Optional[int] = None
     max_attempts: Optional[int] = None
     loop_until: Optional[str] = None
+    loop_until_prompt: Optional[str] = None  # Auto-injected validation goal prompt
+    loop_until_silent: bool = False  # Skip auto-injection for impartial validation
     retry_instructions: Optional[str] = None
 
 class SubCascadeRef(BaseModel):
@@ -96,6 +98,7 @@ class CascadeConfig(BaseModel):
     description: Optional[str] = None
     inputs_schema: Optional[Dict[str, str]] = None # name -> description
     soundings: Optional[SoundingsConfig] = None  # Cascade-level soundings (Tree of Thought)
+    memory: Optional[str] = None  # Memory bank name for persistent conversational memory
 
 def load_cascade_config(path_or_dict: Union[str, Dict]) -> CascadeConfig:
     if isinstance(path_or_dict, str):

@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     has_images Bool DEFAULT false,
     has_base64 Bool DEFAULT false,
 
+    -- Audio
+    audio_json Nullable(String),
+    has_audio Bool DEFAULT false,
+
     -- Mermaid diagram state
     mermaid_content Nullable(String),
 

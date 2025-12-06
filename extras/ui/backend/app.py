@@ -55,6 +55,7 @@ DATA_DIR = os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_
 GRAPH_DIR = os.path.abspath(os.getenv("WINDLASS_GRAPH_DIR", os.path.join(WINDLASS_ROOT, "graphs")))
 STATE_DIR = os.path.abspath(os.getenv("WINDLASS_STATE_DIR", os.path.join(WINDLASS_ROOT, "states")))
 IMAGE_DIR = os.path.abspath(os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images")))
+AUDIO_DIR = os.path.abspath(os.getenv("WINDLASS_AUDIO_DIR", os.path.join(WINDLASS_ROOT, "audio")))
 EXAMPLES_DIR = os.path.abspath(os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples")))
 TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle")))
 CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
@@ -1221,7 +1222,8 @@ def get_session_detail(session_id):
                 'metadata_json': 'metadata',
                 'full_request_json': 'full_request',
                 'full_response_json': 'full_response',
-                'images_json': 'images'
+                'images_json': 'images',
+                'audio_json': 'audio'
             }
 
             for json_field, renamed_field in json_field_mappings.items():
@@ -2059,6 +2061,105 @@ def serve_session_image(session_id, subpath):
 
         directory = os.path.dirname(image_path)
         filename = os.path.basename(image_path)
+
+        return send_from_directory(directory, filename, mimetype=mimetype)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+# ==============================================================================
+# Session Audio API
+# ==============================================================================
+
+@app.route('/api/session/<session_id>/audio', methods=['GET'])
+def get_session_audio(session_id):
+    """
+    Get list of all audio files for a session.
+    Audio files are stored in AUDIO_DIR/{session_id}/{phase_name}/audio_{N}.{ext}
+    """
+    try:
+        session_audio_dir = os.path.join(AUDIO_DIR, session_id)
+
+        # Handle case where directory doesn't exist yet
+        if not os.path.exists(session_audio_dir):
+            return jsonify({'session_id': session_id, 'audio': []})
+
+        audio_files = []
+
+        # Walk the session directory to find all audio files
+        for root, dirs, files in os.walk(session_audio_dir):
+            for filename in files:
+                # Only include audio files
+                ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                if ext not in ('mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'):
+                    continue
+
+                full_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(full_path, session_audio_dir)
+
+                # Extract phase name from path (e.g., "speak/audio_0.mp3" -> "speak")
+                path_parts = rel_path.split(os.sep)
+                phase_name = path_parts[0] if len(path_parts) > 1 else None
+
+                # Get file modification time for sorting
+                mtime = os.path.getmtime(full_path)
+
+                audio_files.append({
+                    'filename': filename,
+                    'path': rel_path,
+                    'phase_name': phase_name,
+                    'url': f'/api/audio/{session_id}/{rel_path}',
+                    'mtime': mtime
+                })
+
+        # Sort by modification time (newest first)
+        audio_files.sort(key=lambda x: x['mtime'], reverse=True)
+
+        return jsonify({
+            'session_id': session_id,
+            'audio': audio_files
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/audio/<session_id>/<path:subpath>', methods=['GET'])
+def serve_session_audio(session_id, subpath):
+    """
+    Serve an audio file from the session's audio directory.
+    Path: AUDIO_DIR/{session_id}/{subpath}
+    """
+    try:
+        # Security: prevent path traversal
+        safe_subpath = os.path.normpath(subpath)
+        if safe_subpath.startswith('..') or os.path.isabs(safe_subpath):
+            return jsonify({'error': 'Invalid path'}), 400
+
+        audio_path = os.path.join(AUDIO_DIR, session_id, safe_subpath)
+
+        if not os.path.exists(audio_path):
+            return jsonify({'error': 'Audio file not found'}), 404
+
+        # Determine mimetype
+        ext = safe_subpath.lower().split('.')[-1] if '.' in safe_subpath else ''
+        mimetypes = {
+            'mp3': 'audio/mpeg',
+            'wav': 'audio/wav',
+            'ogg': 'audio/ogg',
+            'm4a': 'audio/mp4',
+            'aac': 'audio/aac',
+            'flac': 'audio/flac'
+        }
+        mimetype = mimetypes.get(ext, 'application/octet-stream')
+
+        directory = os.path.dirname(audio_path)
+        filename = os.path.basename(audio_path)
 
         return send_from_directory(directory, filename, mimetype=mimetype)
 

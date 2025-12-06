@@ -118,6 +118,65 @@ class WindlassRunner:
         # Graph path
         self.graph_path = os.path.join(get_config().graph_dir, f"{self.session_id}.mmd")
 
+        # Memory system (if configured)
+        self.memory_name = self.config.memory  # Store memory bank name if configured
+        if self.memory_name:
+            from .memory import get_memory_system
+            self.memory_system = get_memory_system()
+            # Set callback on echo to save messages
+            self.echo.set_message_callback(self._save_to_memory)
+        else:
+            self.memory_system = None
+
+    def _save_to_memory(self, message: dict):
+        """
+        Save a message to the configured memory bank.
+
+        Args:
+            message: Message dict with role, content, etc.
+        """
+        # Only save if memory is configured and we're not in a sounding (non-winners aren't canon)
+        if not self.memory_name or not self.memory_system:
+            return
+
+        # Skip saving losing soundings (they're alternate universes, not canon)
+        if self.current_phase_sounding_index is not None or self.sounding_index is not None:
+            # We're inside soundings - don't save until we know if we're a winner
+            return
+
+        # Save user, assistant, and tool messages (skip system and structure messages)
+        role = message.get('role')
+        if role not in ['user', 'assistant', 'tool']:
+            return
+
+        content = message.get('content')
+        if not content or (isinstance(content, str) and not content.strip()):
+            return
+
+        # Build metadata
+        metadata = {
+            'session_id': self.session_id,
+            'cascade_id': self.config.cascade_id,
+            'cascade_file': str(self.config_path) if isinstance(self.config_path, str) else 'inline',
+            'phase_name': self.echo._current_phase_name or 'unknown',
+            'timestamp': None,  # Will be set by memory system
+        }
+
+        # Add tool call info if present
+        if 'tool_calls' in message:
+            metadata['tool_calls'] = message['tool_calls']
+
+        try:
+            self.memory_system.save_message(
+                memory_name=self.memory_name,
+                message=message,
+                metadata=metadata
+            )
+        except Exception as e:
+            # Don't crash cascade if memory save fails
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to save message to memory '{self.memory_name}': {e}")
+
     def _update_graph(self):
         """Updates the mermaid graph in real-time."""
         try:
@@ -1011,6 +1070,41 @@ If no tools are needed, return an empty array: []
             return original_prompt
 
         return rewritten_prompt
+
+    def _create_memory_tool(self, memory_name: str):
+        """
+        Dynamically create a callable tool for querying a specific memory bank.
+
+        Args:
+            memory_name: Name of the memory bank
+
+        Returns:
+            Callable function that queries this specific memory bank
+        """
+        from .memory import get_memory_system
+
+        memory_system = get_memory_system()
+        metadata = memory_system.get_metadata(memory_name)
+        summary = metadata.get('summary', f'Conversational memory bank: {memory_name}')
+
+        def memory_query_tool(query: str, limit: int = 5) -> str:
+            """
+            {summary}
+
+            Args:
+                query: Natural language search query
+                limit: Maximum number of results to return (default: 5)
+
+            Returns:
+                Formatted results with relevant past conversations
+            """
+            return memory_system.query(memory_name, query, limit)
+
+        # Set function name and docstring for schema generation
+        memory_query_tool.__name__ = memory_name
+        memory_query_tool.__doc__ = f"{summary}\n\nArgs:\n    query (str): Natural language search query\n    limit (int): Maximum results (default: 5)"
+
+        return memory_query_tool
 
     def _run_ward(self, ward_config, content: str, trace: TraceNode, ward_type: str = "post") -> dict:
         """
@@ -1964,16 +2058,43 @@ Refinement directive: {reforge_config.honing_prompt}
                     normalized_handoffs.append({"target": h.target, "description": h.description})
         
         enable_routing_tool = len(normalized_handoffs) > 1 or any(h['description'] for h in normalized_handoffs)
-        
+
         if enable_routing_tool:
             routing_menu += "\n\n## Routing Options\nYou must decide what to do next. Call the 'route_to' tool with one of these targets:\n"
             for h in normalized_handoffs:
                 desc = f": {h['description']}" if h['description'] else ""
                 routing_menu += f"- '{h['target']}'{desc}\n"
                 valid_handoff_targets.append(h['target'])
-            
+
             rendered_instructions += routing_menu
-        
+
+        # AUTO-INJECT LOOP_UNTIL VALIDATION GOAL
+        # If loop_until is configured, tell the agent upfront what validation it needs to pass
+        # Unless loop_until_silent is True (for impartial/subjective validation)
+        if phase.rules.loop_until and not phase.rules.loop_until_silent:
+            validator_name = phase.rules.loop_until
+            max_attempts = phase.rules.max_attempts if phase.rules.max_attempts else 5
+
+            # Use custom prompt if provided, otherwise auto-generate from validator description
+            if phase.rules.loop_until_prompt:
+                validation_prompt = phase.rules.loop_until_prompt
+            else:
+                # Try to get validator description from manifest
+                validator_description = None
+                from .tackle_manifest import get_tackle_manifest
+                manifest = get_tackle_manifest()
+                if validator_name in manifest:
+                    validator_description = manifest[validator_name].get("description", "")
+
+                # Build validation prompt
+                if validator_description:
+                    validation_prompt = f"Your output will be validated using '{validator_name}' which checks: {validator_description}"
+                else:
+                    validation_prompt = f"Your output will be validated using the '{validator_name}' validator"
+
+            # Inject validation requirement into instructions
+            rendered_instructions += f"\n\n---\n**VALIDATION REQUIREMENT:**\n{validation_prompt}\nYou have {max_attempts} attempt(s) to satisfy this validator.\n---"
+
         # Determine model to use (phase override or default)
         phase_model = phase.model if phase.model else self.model
 
@@ -2000,6 +2121,9 @@ Refinement directive: {reforge_config.honing_prompt}
         tool_descriptions = []  # For prompt-based tool calling
         tool_map = {}
 
+        # Import memory system for dynamic tool registration
+        from .memory import get_memory_system
+
         for t_name in tackle_list:
             t = get_tackle(t_name)
             if t:
@@ -2008,7 +2132,17 @@ Refinement directive: {reforge_config.honing_prompt}
                 tools_schema.append(get_tool_schema(t, name=t_name))
                 tool_descriptions.append(self._generate_tool_description(t, t_name))
             else:
-                pass
+                # Check if this is a memory bank name (either configured or existing)
+                memory_system = get_memory_system()
+                if t_name == self.memory_name or memory_system.exists(t_name):
+                    # Dynamically create and register memory tool
+                    memory_tool = self._create_memory_tool(t_name)
+                    tool_map[t_name] = memory_tool
+                    tools_schema.append(get_tool_schema(memory_tool, name=t_name))
+                    tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
+                else:
+                    # Tool not found
+                    pass
 
         # Inject 'route_to' tool if routing enabled
         chosen_next_phase_by_agent = None
@@ -2724,6 +2858,36 @@ Refinement directive: {reforge_config.honing_prompt}
                                     image_injection_message = {"role": "user", "content": content_block}
                                     console.print(f"{indent}    [bold magenta]📸 Injecting {valid_images} images into next turn[/bold magenta]")
 
+                            # Handle audio files (similar to images, but no LLM injection)
+                            if isinstance(parsed_result, dict) and "audio" in parsed_result:
+                                audio_files = parsed_result.get("audio", [])
+                                saved_audio_paths = []
+
+                                # Get the next available index to avoid overwriting existing audio
+                                from .utils import get_audio_save_path, get_next_audio_index
+                                import shutil
+                                next_audio_idx = get_next_audio_index(self.session_id, phase.name, self.current_phase_sounding_index)
+
+                                for i, audio_path in enumerate(audio_files):
+                                    if os.path.exists(audio_path):
+                                        # Save audio to structured directory
+                                        save_path = get_audio_save_path(
+                                            self.session_id,
+                                            phase.name,
+                                            next_audio_idx + i,
+                                            extension=audio_path.split('.')[-1] if '.' in audio_path else 'mp3',
+                                            sounding_index=self.current_phase_sounding_index
+                                        )
+                                        try:
+                                            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                                            shutil.copy2(audio_path, save_path)
+                                            saved_audio_paths.append(save_path)
+                                            console.print(f"{indent}    [dim]🔊 Saved audio: {save_path}[/dim]")
+                                        except Exception as e:
+                                            console.print(f"{indent}    [dim yellow]⚠️  Failed to save audio: {e}[/dim yellow]")
+                                    else:
+                                        console.print(f"{indent}    [dim yellow]⚠️  Audio file not found: {audio_path}[/dim yellow]")
+
                             # Add tool result message
                             # Native tools use role="tool" with tool_call_id
                             # Prompt-based tools use role="user" to avoid provider-specific formats
@@ -3040,7 +3204,11 @@ Refinement directive: {reforge_config.honing_prompt}
                     if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                         # It's a cascade validator - invoke it as a sub-cascade
                         cascade_path = manifest[validator_name]["path"]
-                        validator_input = {"content": response_content}
+                        # Pass both the output AND original input for context (validators can use what they need)
+                        validator_input = {
+                            "content": response_content,
+                            "original_input": input_data
+                        }
 
                         # Generate unique validator session ID (include sounding index if inside soundings)
                         validator_sounding_index = None

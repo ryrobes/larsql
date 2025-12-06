@@ -2,6 +2,8 @@
 
 import os
 import io
+import json
+import tempfile
 from typing import Optional
 
 from .base import simple_eddy
@@ -25,9 +27,16 @@ def say(text: str) -> str:
 
     This tool converts text to speech using ElevenLabs' API and plays
     the audio through the system speakers. Use this for:
+    
     - Announcing results or status updates
     - Reading content aloud to the user
     - Providing audio feedback
+
+    Note: When generating the text for ElevenLabs v3 TTS, enhance expressiveness by embedding audio tags in square brackets [] directly in the script where they naturally fit the narrative or dialogue. These tags steer the AI voice for emotions, actions, sounds, accents, or styles—use them sparingly (1-3 per sentence max) to avoid overload, and only when they add meaningful impact without disrupting flow. Tags are somewhat free-form: stick to proven examples like [laughs], [sighs], [whispers], [excited], [sarcastic], [crying], [applause], [gunshot], [sings], or [strong French accent], but experiment with descriptive variations (e.g., [laughs nervously], [shouts angrily], [exhales tiredly]) to discover nuanced effects. Combine with punctuation for rhythm: use ellipses (...) for pauses, CAPS for emphasis, and standard marks for natural cadence.
+
+    Prioritize matching tags to the context and voice style—e.g., don't force [shouts] on a whispery voice. Test iterations for best results, aiming for emotional depth and immersion.
+
+    Output the final script with tags embedded inline.
 
     Args:
         text: The text to speak aloud (max ~5000 characters recommended)
@@ -80,6 +89,15 @@ def say(text: str) -> str:
         log_message(None, "system", f"say: received {len(audio_data)} bytes of audio",
                     metadata={"tool": "say", "audio_bytes": len(audio_data)})
 
+        # Save audio to temporary file for persistence
+        temp_audio_file = tempfile.NamedTemporaryFile(mode='wb', suffix='.mp3', delete=False)
+        temp_audio_path = temp_audio_file.name
+        temp_audio_file.write(audio_data)
+        temp_audio_file.close()
+
+        log_message(None, "system", f"say: saved audio to temp file {temp_audio_path}",
+                    metadata={"tool": "say", "temp_path": temp_audio_path})
+
         # Decode MP3 and play using miniaudio
         decoded = miniaudio.decode(audio_data, output_format=miniaudio.SampleFormat.SIGNED16)
 
@@ -105,7 +123,11 @@ def say(text: str) -> str:
         log_message(None, "system", f"say: playback complete",
                     metadata={"tool": "say", "duration_seconds": duration_seconds})
 
-        return f'Spoke: "{text_preview}"'
+        # Return audio protocol (similar to image protocol)
+        return json.dumps({
+            "content": f'Spoke: "{text_preview}"',
+            "audio": [temp_audio_path]
+        })
 
     except requests.exceptions.HTTPError as e:
         error_detail = ""

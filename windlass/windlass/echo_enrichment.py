@@ -224,3 +224,25 @@ def extract_image_paths_from_tool_result(result: Any) -> list:
             return [images]
 
     return []
+
+
+def extract_audio_paths_from_tool_result(result: Any) -> list:
+    """
+    Extract audio file paths from tool result.
+
+    Looks for {"audio": ["/path/to/file.mp3", ...]} pattern.
+
+    Args:
+        result: Tool result (can be dict, str, etc.)
+
+    Returns:
+        List of audio file paths (empty if none found)
+    """
+    if isinstance(result, dict) and "audio" in result:
+        audio = result["audio"]
+        if isinstance(audio, list):
+            return [str(aud) for aud in audio]
+        elif isinstance(audio, str):
+            return [audio]
+
+    return []

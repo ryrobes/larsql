@@ -12,6 +12,7 @@ Generates execution flow diagrams from Echo history showing:
 import json
 import re
 import os
+import glob
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from .echo import Echo
@@ -445,7 +446,6 @@ def extract_tool_calls(history: List[Dict]) -> Dict[str, List[Dict]]:
             if not tool_name:
                 content = entry.get("content", "")
                 if "Tool Result (" in content:
-                    import re
                     match = re.search(r"Tool Result \((\w+)\)", content)
                     if match:
                         tool_name = match.group(1)
@@ -519,7 +519,6 @@ def extract_state_changes(history: List[Dict]) -> Dict[str, List[str]]:
             # Check if this is a set_state result
             # Format: "State updated: {key} = {value}"
             if isinstance(content, str) and ("state updated" in content.lower() or "set_state" in content.lower()):
-                import re
                 # Try multiple patterns
                 match = re.search(r"[Ss]tate\s+updated:\s*(\w+)\s*=", content)
                 if not match:
@@ -942,8 +941,6 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
 
     # Scan for existing sub-cascade mermaid files using predictable naming pattern
     # Pattern: {parent_session_id}_sub_{index}.json
-    import os
-    import glob
     output_dir = os.path.dirname(output_path) if output_path else "graphs"
 
     # Look for all sub-cascade JSON files
@@ -966,7 +963,6 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             # Try to load the JSON to get cascade_id
             cascade_id = None
             try:
-                import json
                 with open(sub_file, 'r') as f:
                     sub_data = json.load(f)
                     # Find cascade node in nodes
@@ -2211,8 +2207,6 @@ def generate_state_diagram_string(echo: Echo) -> str:
             "foo --> bar" -> "prefix_foo --> prefix_bar"
             "state foo {" -> "state prefix_foo {"
         """
-        import re
-
         # First pass: collect all state IDs that are defined in the diagram
         state_ids = set()
         for line in mermaid_content.split('\n'):
@@ -2382,7 +2376,6 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 # Try to extract from content format "Tool Result (tool_name):"
                 content = entry.get("content", "")
                 if "Tool Result (" in content:
-                    import re
                     match = re.search(r"Tool Result \((\w+)\)", content)
                     if match:
                         tool_name = match.group(1)

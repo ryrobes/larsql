@@ -126,6 +126,59 @@ def get_image_save_path(session_id: str, phase_name: str, image_index: int, exte
     path = os.path.join(images_dir, session_id, phase_name, filename)
     return path
 
+def get_next_audio_index(session_id: str, phase_name: str, sounding_index: int = None) -> int:
+    """
+    Find the next available audio index for a session/phase directory.
+    Scans existing files to avoid overwriting.
+    If sounding_index is provided, only considers audio for that sounding.
+    """
+    from .config import get_config
+    config = get_config()
+
+    audio_dir = config.audio_dir
+    phase_dir = os.path.join(audio_dir, session_id, phase_name)
+
+    if not os.path.exists(phase_dir):
+        return 0
+
+    # Find all existing audio files and extract their indices
+    existing_indices = set()
+    for filename in os.listdir(phase_dir):
+        if sounding_index is not None:
+            # Match pattern: sounding_N_audio_M.ext
+            match = re.match(rf'sounding_{sounding_index}_audio_(\d+)\.\w+$', filename)
+        else:
+            # Match pattern: audio_N.ext (without sounding prefix)
+            match = re.match(r'audio_(\d+)\.\w+$', filename)
+        if match:
+            existing_indices.add(int(match.group(1)))
+
+    if not existing_indices:
+        return 0
+
+    # Return next index after the highest existing one
+    return max(existing_indices) + 1
+
+def get_audio_save_path(session_id: str, phase_name: str, audio_index: int, extension: str = "mp3", sounding_index: int = None) -> str:
+    """
+    Generate standardized path for saving audio files.
+    Format: audio/{session_id}/{phase_name}/audio_{index}.{ext}
+    Or with sounding: audio/{session_id}/{phase_name}/sounding_{s}_audio_{index}.{ext}
+    """
+    from .config import get_config
+    config = get_config()
+
+    # Use configured audio_dir
+    audio_dir = config.audio_dir
+
+    if sounding_index is not None:
+        filename = f"sounding_{sounding_index}_audio_{audio_index}.{extension}"
+    else:
+        filename = f"audio_{audio_index}.{extension}"
+
+    path = os.path.join(audio_dir, session_id, phase_name, filename)
+    return path
+
 def python_type_to_json_type(t: Any) -> str:
     if t == str:
         return "string"

@@ -93,6 +93,10 @@ class MegaTableSchema:
             "has_images": "bool",
             "has_base64": "bool",
 
+            # Audio
+            "audio_json": "str (JSON: Array of audio file paths)",
+            "has_audio": "bool",
+
             # Mermaid diagram state
             "mermaid_content": "str (Mermaid diagram at time of message)",
 
@@ -375,6 +379,9 @@ class UnifiedLogger:
         images: List[str] = None,
         has_base64: bool = False,
 
+        # Audio
+        audio: List[str] = None,
+
         # Mermaid diagram state
         mermaid_content: str = None,
 
@@ -408,6 +415,10 @@ class UnifiedLogger:
         # Process images
         image_paths = images or []
         has_images = len(image_paths) > 0
+
+        # Process audio
+        audio_paths = audio or []
+        has_audio = len(audio_paths) > 0
 
         # Serialize JSON fields (with fallback for non-serializable objects)
         def safe_json(obj):
@@ -474,6 +485,10 @@ class UnifiedLogger:
             "images_json": safe_json(image_paths),
             "has_images": has_images,
             "has_base64": has_base64,
+
+            # Audio
+            "audio_json": safe_json(audio_paths),
+            "has_audio": has_audio,
 
             # Mermaid diagram state
             "mermaid_content": mermaid_content,
@@ -646,6 +661,7 @@ def log_unified(
     tool_calls: List[Dict] = None,
     images: List[str] = None,
     has_base64: bool = False,
+    audio: List[str] = None,
     mermaid_content: str = None,
     metadata: Dict = None
 ):
@@ -695,6 +711,7 @@ def log_unified(
         tool_calls=tool_calls,
         images=images,
         has_base64=has_base64,
+        audio=audio,
         mermaid_content=mermaid_content,
         metadata=metadata
     )
