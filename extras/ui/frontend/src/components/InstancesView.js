@@ -65,32 +65,34 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     }
   }, [cascadeId, refreshTrigger]);
 
-  // Add polling for running AND finalizing sessions (every 2 seconds)
+  // Fallback polling ONLY when SSE is disconnected (SSE events trigger refreshTrigger for real-time updates)
   useEffect(() => {
+    // If SSE is connected, rely on events (no polling needed!)
+    if (sseConnected) {
+      console.log('[POLL] SSE connected - relying on events, no polling');
+      return;
+    }
+
+    // SSE disconnected - use slow fallback polling
     const activeSessions = new Set([
       ...(runningSessions || []),
       ...(finalizingSessions || [])
     ]);
 
-    console.log('[POLL] useEffect triggered - runningSessions:', Array.from(runningSessions || []), 'finalizingSessions:', Array.from(finalizingSessions || []));
-
     if (activeSessions.size === 0) {
-      console.log('[POLL] No active sessions - not polling');
+      console.log('[POLL] No active sessions and SSE disconnected - no polling needed');
       return;
     }
 
-    console.log('[POLL] Starting polling interval for', activeSessions.size, 'active sessions');
+    console.log('[POLL] SSE DISCONNECTED - using fallback polling for', activeSessions.size, 'active sessions');
 
     const interval = setInterval(() => {
-      console.log('[POLL] Refreshing instances (active sessions:', activeSessions.size, ')');
+      console.log('[POLL] Fallback poll (SSE disconnected)');
       fetchInstances();
-    }, 1500); // Poll every 1.5 seconds when sessions are active (throttled for CPU)
+    }, 5000); // Slow fallback: 5 seconds when SSE down
 
-    return () => {
-      console.log('[POLL] Cleaning up polling interval');
-      clearInterval(interval);
-    };
-  }, [runningSessions, finalizingSessions]);
+    return () => clearInterval(interval);
+  }, [runningSessions, finalizingSessions, sseConnected]);
 
   const fetchInstances = async () => {
     try {
@@ -396,7 +398,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           <ImageGallery
             sessionId={instance.session_id}
             isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
-            refreshTrigger={refreshTrigger}
+            sessionUpdate={sessionUpdates?.[instance.session_id]}
           />
         </div>
 

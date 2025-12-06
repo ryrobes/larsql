@@ -899,8 +899,8 @@ def get_cascade_instances(cascade_id):
         # BATCH QUERIES: Get all data for all sessions at once to avoid N+1 problem
         # TODO: This endpoint currently does ~142 queries (10-15 per session × ~10 sessions)
         # Batching all queries would reduce it to ~10-12 total queries
-        # Current partial optimization: models batched (saves ~10 queries)
-        # Still needed: input_data, phase_costs, turn_costs, tool_usage, soundings, messages, phases, output, errors
+        # Current optimizations: models, outputs, errors, phase_costs batched (saves ~40 queries)
+        # Still needed: input_data, turn_costs, tool_usage, soundings, messages, phases
         session_ids = [row[0] for row in session_results if row[0] not in live_session_ids]
 
         # Batch 1: Get models for all sessions
@@ -921,6 +921,102 @@ def get_cascade_instances(cascade_id):
                     models_by_session[sid].append(model)
             except Exception as e:
                 print(f"[ERROR] Batch models query: {e}")
+
+        # Batch 2: Get final output for all sessions
+        outputs_by_session = {}
+        if session_ids:
+            try:
+                # Use ROW_NUMBER() to get most recent non-structural message per session
+                outputs_query = """
+                WITH ranked_outputs AS (
+                    SELECT
+                        session_id,
+                        content_json,
+                        node_type,
+                        role,
+                        ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY timestamp DESC) as rn
+                    FROM logs
+                    WHERE session_id IN ({})
+                      AND content_json IS NOT NULL
+                      AND content_json != ''
+                      AND role NOT IN ('structure', 'system')
+                      AND node_type NOT IN ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
+                                           'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
+                )
+                SELECT session_id, content_json, node_type, role
+                FROM ranked_outputs
+                WHERE rn = 1
+                """.format(','.join('?' * len(session_ids)))
+                output_results = conn.execute(outputs_query, session_ids).fetchall()
+                for sid, content, node_type, role in output_results:
+                    if content:
+                        try:
+                            parsed = json.loads(content)
+                            # Format based on type for better display
+                            if isinstance(parsed, str):
+                                final_output = parsed
+                            elif isinstance(parsed, dict):
+                                if 'result' in parsed:
+                                    final_output = str(parsed.get('result', parsed))
+                                elif 'error' in parsed:
+                                    final_output = f"Error: {parsed.get('error')}"
+                                else:
+                                    final_output = str(parsed)
+                            else:
+                                final_output = str(parsed)
+                            outputs_by_session[sid] = final_output
+                        except:
+                            if isinstance(content, str) and content.strip():
+                                outputs_by_session[sid] = content
+            except Exception as e:
+                print(f"[ERROR] Batch outputs query: {e}")
+
+        # Batch 3: Get errors for all sessions
+        errors_by_session = {}
+        if session_ids:
+            try:
+                errors_query = """
+                SELECT session_id, phase_name, content_json
+                FROM logs
+                WHERE session_id IN ({})
+                  AND node_type = 'error'
+                ORDER BY session_id, timestamp
+                """.format(','.join('?' * len(session_ids)))
+                error_results = conn.execute(errors_query, session_ids).fetchall()
+                for sid, err_phase, err_content in error_results:
+                    if sid not in errors_by_session:
+                        errors_by_session[sid] = []
+                    errors_by_session[sid].append({
+                        "phase": err_phase or "unknown",
+                        "message": str(err_content)[:200] if err_content else "Unknown error",
+                        "error_type": "Error"
+                    })
+            except Exception as e:
+                print(f"[ERROR] Batch errors query: {e}")
+
+        # Batch 4: Get phase costs for all sessions
+        phase_costs_by_session = {}
+        if session_ids:
+            try:
+                phase_costs_query = """
+                SELECT
+                    session_id,
+                    phase_name,
+                    SUM(cost) as total_cost
+                FROM logs
+                WHERE session_id IN ({})
+                  AND phase_name IS NOT NULL
+                  AND cost IS NOT NULL
+                  AND cost > 0
+                GROUP BY session_id, phase_name
+                """.format(','.join('?' * len(session_ids)))
+                phase_cost_results = conn.execute(phase_costs_query, session_ids).fetchall()
+                for sid, phase_name, total_cost in phase_cost_results:
+                    if sid not in phase_costs_by_session:
+                        phase_costs_by_session[sid] = {}
+                    phase_costs_by_session[sid][phase_name] = float(total_cost) if total_cost else 0.0
+            except Exception as e:
+                print(f"[ERROR] Batch phase costs query: {e}")
 
         instances = []
         for session_row in session_results:
@@ -965,22 +1061,8 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Getting input data: {e}")
 
-            # Get phase costs
-            phase_costs_map = {}
-            try:
-                phase_cost_query = """
-                SELECT
-                    phase_name,
-                    SUM(cost) as total_cost
-                FROM logs
-                WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                GROUP BY phase_name
-                """
-                phase_cost_results = conn.execute(phase_cost_query, [session_id]).fetchall()
-                for pc_name, pc_cost in phase_cost_results:
-                    phase_costs_map[pc_name] = float(pc_cost) if pc_cost else 0.0
-            except Exception as e:
-                print(f"[ERROR] Phase cost query: {e}")
+            # Get phase costs from batch query
+            phase_costs_map = phase_costs_by_session.get(session_id, {})
 
             # Get turn-level costs grouped by phase and sounding
             turn_costs_map = {}
@@ -1232,72 +1314,13 @@ def get_cascade_instances(cascade_id):
                 if sounding_idx is not None:
                     phases_map[p_name]["has_soundings"] = True
 
-            # Get final output - exclude structural messages, prefer agent/tool content
-            final_output = None
-            try:
-                output_query = """
-                SELECT content_json, node_type, role
-                FROM logs
-                WHERE session_id = ?
-                  AND content_json IS NOT NULL
-                  AND content_json != ''
-                  AND role NOT IN ('structure', 'system')
-                  AND node_type NOT IN ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
-                                       'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """
-                output_result = conn.execute(output_query, [session_id]).fetchone()
-                if output_result and output_result[0]:
-                    content, node_type, role = output_result
-                    if isinstance(content, str):
-                        try:
-                            parsed = json.loads(content)
-                            # Format based on type for better display (matches LiveStore logic)
-                            if isinstance(parsed, str):
-                                final_output = parsed
-                            elif isinstance(parsed, dict):
-                                # For tool results, show the result nicely
-                                if 'result' in parsed:
-                                    final_output = str(parsed.get('result', parsed))
-                                elif 'error' in parsed:
-                                    final_output = f"Error: {parsed.get('error')}"
-                                else:
-                                    final_output = str(parsed)
-                            else:
-                                final_output = str(parsed)
-                        except:
-                            if isinstance(content, str) and content.strip():
-                                final_output = content
-            except:
-                pass
+            # Get final output from batch query
+            final_output = outputs_by_session.get(session_id, None)
 
-            # Check for errors
-            cascade_status = "success"
-            error_count = 0
-            error_list = []
-
-            try:
-                error_query = """
-                SELECT phase_name, content_json
-                FROM logs
-                WHERE session_id = ? AND node_type = 'error'
-                ORDER BY timestamp
-                """
-                error_results = conn.execute(error_query, [session_id]).fetchall()
-
-                error_count = len(error_results)
-                for err_phase, err_content in error_results:
-                    error_list.append({
-                        "phase": err_phase or "unknown",
-                        "message": str(err_content)[:200] if err_content else "Unknown error",
-                        "error_type": "Error"
-                    })
-            except Exception as e:
-                print(f"[ERROR] Querying errors: {e}")
-
-            if error_count > 0:
-                cascade_status = "failed"
+            # Get errors from batch query
+            error_list = errors_by_session.get(session_id, [])
+            error_count = len(error_list)
+            cascade_status = "failed" if error_count > 0 else "success"
 
             # Check state file for status
             try:

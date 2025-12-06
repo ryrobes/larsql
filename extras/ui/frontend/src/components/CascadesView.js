@@ -66,8 +66,14 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredCascades]);
 
-  // Add polling for running cascades AND finalizing sessions (every 2 seconds)
+  // Fallback polling ONLY when SSE is disconnected (SSE events trigger refreshTrigger for real-time updates)
   useEffect(() => {
+    // If SSE is connected, rely on events (no polling needed!)
+    if (sseConnected) {
+      return;
+    }
+
+    // SSE disconnected - use slow fallback polling
     const hasRunning = runningCascades && runningCascades.size > 0;
     const hasFinalizing = finalizingSessions && finalizingSessions.size > 0;
 
@@ -75,14 +81,16 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
       return; // No polling if nothing active
     }
 
+    console.log('[POLL] SSE DISCONNECTED - using fallback polling for cascades');
+
     const interval = setInterval(() => {
-      console.log('[POLL] Refreshing cascade list (active cascades detected)');
+      console.log('[POLL] Fallback poll (SSE disconnected)');
       fetchCascades();
-    }, 1500); // Poll every 1.5 seconds when cascades are active
+    }, 5000); // Slow fallback: 5 seconds when SSE down
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runningCascades, finalizingSessions]);
+  }, [runningCascades, finalizingSessions, sseConnected]);
 
   const fetchCascades = async () => {
     try {
