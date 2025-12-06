@@ -89,6 +89,11 @@ def main():
         help='List all test snapshots'
     )
 
+    # Check command
+    check_parser = subparsers.add_parser('check', help='Check optional dependencies (Rabbitize, Docker, etc.)')
+    check_parser.add_argument('--feature', choices=['rabbitize', 'docker', 'all'], default='all',
+                             help='Check specific feature or all (default: all)')
+
     # Analyze command
     analyze_parser = subparsers.add_parser('analyze', help='Analyze cascades and suggest improvements')
     analyze_parser.add_argument('cascade', help='Path to cascade JSON file')
@@ -209,6 +214,8 @@ def main():
         cmd_render(args)
     elif args.command == 'render-mermaid':
         cmd_render_mermaid(args)
+    elif args.command == 'check':
+        cmd_check(args)
     elif args.command == 'test':
         if args.test_command == 'freeze':
             cmd_test_freeze(args)
@@ -1162,6 +1169,188 @@ def cmd_hotornot_rate(args):
     print(f"  Skipped: {skip_count}")
     print()
     print("View stats with: windlass hotornot stats")
+    print()
+
+
+def cmd_check(args):
+    """Check optional dependencies and provide installation guidance."""
+    import subprocess
+    import requests
+
+    feature = args.feature
+
+    print()
+    print("=" * 70)
+    print("Windlass Optional Dependencies Check")
+    print("=" * 70)
+    print()
+
+    checks = []
+
+    # Check Rabbitize
+    if feature in ['rabbitize', 'all']:
+        print("🌐 Rabbitize (Visual Browser Automation)")
+        print("-" * 70)
+
+        # Check npm/node
+        try:
+            result = subprocess.run(['npm', '--version'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                npm_version = result.stdout.strip()
+                print(f"  ✓ npm: v{npm_version}")
+                npm_installed = True
+            else:
+                print("  ✗ npm: Not found")
+                npm_installed = False
+        except Exception:
+            print("  ✗ npm: Not installed")
+            npm_installed = False
+
+        # Check Rabbitize
+        try:
+            result = subprocess.run(['npx', 'rabbitize', '--version'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                version = result.stdout.strip()
+                print(f"  ✓ Rabbitize: {version}")
+                rabbitize_installed = True
+            else:
+                print("  ✗ Rabbitize: Not installed")
+                rabbitize_installed = False
+        except Exception:
+            print("  ✗ Rabbitize: Not installed")
+            rabbitize_installed = False
+
+        # Check server
+        try:
+            response = requests.get("http://localhost:3037/", timeout=2)
+            print("  ✓ Rabbitize Server: Running")
+            server_running = True
+        except:
+            print("  ✗ Rabbitize Server: Not running")
+            server_running = False
+
+        print()
+
+        if not npm_installed:
+            print("  📦 Install Node.js/npm:")
+            print("     - Ubuntu/Debian: sudo apt install nodejs npm")
+            print("     - macOS: brew install node")
+            print("     - Windows: https://nodejs.org/")
+            print()
+
+        if npm_installed and not rabbitize_installed:
+            print("  📦 Install Rabbitize:")
+            print("     npm install -g rabbitize")
+            print("     sudo npx playwright install-deps")
+            print()
+
+        if rabbitize_installed and not server_running:
+            print("  🚀 Start Rabbitize Server:")
+            print("     npx rabbitize")
+            print("     # Or enable auto-start:")
+            print("     export RABBITIZE_AUTO_START=true")
+            print()
+
+        if rabbitize_installed and server_running:
+            print("  ✅ Rabbitize is fully operational!")
+            print()
+            print("  Try it:")
+            print("     windlass examples/rabbitize_simple_demo.json --input '{\"url\": \"https://example.com\"}'")
+            print()
+
+        checks.append(('Rabbitize', rabbitize_installed and server_running))
+
+    # Check Docker
+    if feature in ['docker', 'all']:
+        print("🐳 Docker (Sandboxed Code Execution)")
+        print("-" * 70)
+
+        try:
+            result = subprocess.run(['docker', '--version'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                docker_version = result.stdout.strip()
+                print(f"  ✓ Docker: {docker_version}")
+                docker_installed = True
+            else:
+                print("  ✗ Docker: Not installed")
+                docker_installed = False
+        except Exception:
+            print("  ✗ Docker: Not installed")
+            docker_installed = False
+
+        # Check if container exists
+        try:
+            result = subprocess.run(
+                ['docker', 'ps', '-a', '--filter', 'name=ubuntu-container', '--format', '{{.Names}}'],
+                capture_output=True, text=True, timeout=2
+            )
+            if 'ubuntu-container' in result.stdout:
+                print("  ✓ ubuntu-container: Exists")
+                container_exists = True
+
+                # Check if running
+                result = subprocess.run(
+                    ['docker', 'ps', '--filter', 'name=ubuntu-container', '--format', '{{.Names}}'],
+                    capture_output=True, text=True, timeout=2
+                )
+                if 'ubuntu-container' in result.stdout:
+                    print("  ✓ ubuntu-container: Running")
+                    container_running = True
+                else:
+                    print("  ⚠  ubuntu-container: Stopped")
+                    container_running = False
+            else:
+                print("  ✗ ubuntu-container: Not created")
+                container_exists = False
+                container_running = False
+        except Exception:
+            container_exists = False
+            container_running = False
+
+        print()
+
+        if not docker_installed:
+            print("  📦 Install Docker:")
+            print("     - Ubuntu: https://docs.docker.com/engine/install/ubuntu/")
+            print("     - macOS: brew install --cask docker")
+            print("     - Windows: https://docs.docker.com/desktop/install/windows-install/")
+            print()
+
+        if docker_installed and not container_exists:
+            print("  🚀 Create Ubuntu Container:")
+            print("     docker run -d --name ubuntu-container ubuntu:latest sleep infinity")
+            print("     docker exec ubuntu-container bash -c \"apt update && apt install -y python3 python3-pip curl wget\"")
+            print()
+
+        if docker_installed and container_exists and not container_running:
+            print("  🚀 Start Container:")
+            print("     docker start ubuntu-container")
+            print()
+
+        if docker_installed and container_running:
+            print("  ✅ Docker environment is ready!")
+            print()
+            print("  Try it:")
+            print("     windlass examples/simple_flow.json --input '{\"data\": \"test\"}'")
+            print()
+
+        checks.append(('Docker', docker_installed and container_running))
+
+    # Summary
+    print("=" * 70)
+    print("Summary")
+    print("=" * 70)
+    print()
+
+    for name, status in checks:
+        icon = "✅" if status else "❌"
+        status_text = "Ready" if status else "Not Ready"
+        print(f"  {icon} {name}: {status_text}")
+
+    print()
+    print("For complete setup guides:")
+    print("  - Rabbitize: See RABBITIZE_INTEGRATION.md")
+    print("  - Docker: See CLAUDE.md section 2.9")
     print()
 
 

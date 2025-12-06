@@ -2490,7 +2490,20 @@ Refinement directive: {reforge_config.honing_prompt}
                 elif i == 0:
                     current_input = None  # Phase task already in context_messages as user message
                 else:
-                    current_input = "Continue/Refine based on previous output."
+                    # Use turn_prompt if provided (with Jinja2 templating support)
+                    if phase.rules.turn_prompt:
+                        turn_render_context = {
+                            "input": input_data,
+                            "state": self.echo.state,
+                            "outputs": outputs,
+                            "lineage": self.echo.lineage,
+                            "history": self.echo.history,
+                            "turn": i + 1,
+                            "max_turns": max_turns
+                        }
+                        current_input = render_instruction(phase.rules.turn_prompt, turn_render_context)
+                    else:
+                        current_input = "Continue/Refine based on previous output."
 
                 # DEBUG: Show context_messages state before agent call (turn 2+)
                 if i > 0:

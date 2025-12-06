@@ -4,17 +4,18 @@
   "inputs_schema": {
     "question": "Natural language question about the data"
   },
+  "memory": "sql_rag_search",
   "phases": [
     {
       "name": "discover_schema",
       "instructions": "The user asked: {{ input.question }}\n\nFirst, use sql_search to find relevant tables that might contain data to answer this question.\n\nSearch for tables using natural language - the tool will return schema information including:\n- Column names and types\n- Value distributions for categorical columns\n- Sample rows\n- Row counts\n\nAnalyze the results and identify which table(s) would be most useful.",
-      "tackle": ["sql_search", "list_sql_connections"],
+      "tackle": ["sql_search", "list_sql_connections", "sql_rag_search"],
       "handoffs": ["write_query"]
     },
     {
       "name": "write_query",
       "instructions": "Based on the schema information from the previous phase, write a SQL query to answer: {{ input.question }}\n\nUse the sql_query tool to execute your query.\n\nIMPORTANT Query Syntax:\n- CSV folders: SELECT * FROM connection_name.table_name\n- PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table\n- Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = 'California'\n\nThe schema info from the previous phase shows you:\n- Exact column names\n- Data types\n- Sample values (use these to understand the data format)\n- Value distributions (shows you what values exist in categorical columns)\n\nWrite a clear, efficient query based on this information.",
-      "tackle": ["sql_query"],
+      "tackle": ["sql_query", "sql_rag_search"],
       "handoffs": ["analyze_results"]
     },
     {

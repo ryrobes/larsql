@@ -4,6 +4,8 @@
 
 Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
 
+**NEW: Visual browser automation with Rabbitize!** Give your agents eyes and hands for the web. [See RABBITIZE_INTEGRATION.md →](RABBITIZE_INTEGRATION.md)
+
 ## The Problem
 
 Building production LLM systems inevitably leads to this:

@@ -1,0 +1,25 @@
+{
+  "cascade_id": "web_goal_achieved",
+  "description": "Validates if a web navigation goal was achieved by examining current page content and screenshots",
+  "inputs_schema": {
+    "goal": "The goal that was supposed to be accomplished",
+    "current_context": "Description of what the agent has done so far"
+  },
+  "phases": [
+    {
+      "name": "evaluate",
+      "instructions": "Evaluate if this goal was achieved: {{ input.goal }}\n\nContext of actions taken: {{ input.current_context }}\n\nYou will see screenshots from the browser session. Examine them carefully.\n\nReturn a JSON response:\n{\n  \"valid\": true or false,\n  \"reason\": \"Explanation of whether the goal was achieved\"\n}\n\nBe strict: only return valid=true if the goal is CLEARLY accomplished based on visible evidence.",
+      "rules": {
+        "max_turns": 1
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "valid": {"type": "boolean"},
+          "reason": {"type": "string"}
+        },
+        "required": ["valid", "reason"]
+      }
+    }
+  ]
+}

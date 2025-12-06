@@ -1058,25 +1058,42 @@ def get_cascade_instances(cascade_id):
                 if sounding_idx is not None:
                     phases_map[p_name]["has_soundings"] = True
 
-            # Get final output (full content, no truncation)
+            # Get final output - matches LiveStore logic (all types except blacklist)
             final_output = None
             try:
                 output_query = """
-                SELECT content_json
+                SELECT content_json, node_type
                 FROM logs
-                WHERE session_id = ? AND (node_type = 'turn_output' OR node_type = 'agent')
+                WHERE session_id = ?
+                  AND node_type NOT IN ('cascade_start', 'cascade_complete', 'cascade_error',
+                                       'phase_start', 'turn_start', 'cost_update')
+                  AND content_json IS NOT NULL
+                  AND content_json != ''
                 ORDER BY timestamp DESC
                 LIMIT 1
                 """
                 output_result = conn.execute(output_query, [session_id]).fetchone()
                 if output_result and output_result[0]:
-                    content = output_result[0]
+                    content, node_type = output_result
                     if isinstance(content, str):
                         try:
                             parsed = json.loads(content)
-                            final_output = str(parsed) if parsed else None
+                            # Format based on type for better display (matches LiveStore logic)
+                            if isinstance(parsed, str):
+                                final_output = parsed
+                            elif isinstance(parsed, dict):
+                                # For tool results, show the result nicely
+                                if 'result' in parsed:
+                                    final_output = str(parsed.get('result', parsed))
+                                elif 'error' in parsed:
+                                    final_output = f"Error: {parsed.get('error')}"
+                                else:
+                                    final_output = str(parsed)
+                            else:
+                                final_output = str(parsed)
                         except:
-                            final_output = content
+                            if isinstance(content, str) and content.strip():
+                                final_output = content
             except:
                 pass
 
@@ -1349,7 +1366,7 @@ def get_mermaid_graph(session_id):
                     mermaid_content = f.read()
                 if mermaid_content and mermaid_content.strip():
                     source = "file"
-                    print(f"[MERMAID] Loaded from file (real-time): {len(mermaid_content)} chars")
+                    #print(f"[MERMAID] Loaded from file (real-time): {len(mermaid_content)} chars")
             except Exception as file_err:
                 print(f"[MERMAID] File read error: {file_err}")
 
@@ -1372,7 +1389,7 @@ def get_mermaid_graph(session_id):
                 if mermaid_result and mermaid_result[0]:
                     mermaid_content = mermaid_result[0]
                     source = "database"
-                    print(f"[MERMAID] Loaded from database: {len(mermaid_content)} chars")
+                    #print(f"[MERMAID] Loaded from database: {len(mermaid_content)} chars")
 
         # No content found anywhere
         if not mermaid_content:
@@ -2278,4 +2295,4 @@ if __name__ == '__main__':
 
     print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)

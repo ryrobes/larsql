@@ -52,6 +52,20 @@ from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_availa
 if elevenlabs_available():
     register_tackle("say", elevenlabs_say)
 
+# Rabbitize - Visual browser automation
+from .eddies.rabbitize import (
+    rabbitize_start,
+    rabbitize_execute,
+    rabbitize_extract,
+    rabbitize_close,
+    rabbitize_status
+)
+register_tackle("rabbitize_start", rabbitize_start)
+register_tackle("rabbitize_execute", rabbitize_execute)
+register_tackle("rabbitize_extract", rabbitize_extract)
+register_tackle("rabbitize_close", rabbitize_close)
+register_tackle("rabbitize_status", rabbitize_status)
+
 __all__ = [
     "run_cascade",
     "set_provider",

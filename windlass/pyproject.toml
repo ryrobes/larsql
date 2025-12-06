@@ -18,16 +18,31 @@ dependencies = [
     "pydantic",
     "rich",
     "jinja2",
-    "altair", 
-    "vl-convert-python", 
-    "plotly", 
+    "altair",
+    "vl-convert-python",
+    "plotly",
     "kaleido",
     "miniaudio",
     "pillow",
+    "gunicorn[gevent]",
     "jsonschema",
     "readchar",  # For Hot or Not interactive rating UI
     "miniaudio",  # For ElevenLabs TTS audio playback
-    "requests",  # For ElevenLabs API calls
+    "requests",  # For ElevenLabs API calls and Rabbitize REST API
+]
+
+[project.optional-dependencies]
+# Extra dependencies for specific features
+browser = [
+    # Rabbitize is npm-based, so we can't install it here
+    # But we list it for documentation purposes
+    # Install with: npm install -g rabbitize
+]
+docker = [
+    "docker",  # For linux_shell and run_code tools
+]
+all = [
+    "docker",
 ]
 
 [project.scripts]

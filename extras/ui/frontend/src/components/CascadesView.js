@@ -3,6 +3,7 @@ import potpack from 'potpack';
 import CascadeTile, { calculateTileDimensions } from './CascadeTile';
 import CascadeGridView from './CascadeGridView';
 import VideoSpinner from './VideoSpinner';
+import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
 function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
@@ -253,6 +254,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, refreshTrigge
     return (
       <div className="cascades-container">
         <div className="error">
+          <img src={windlassErrorImg} alt="" className="error-background-img" />
           <h2>Error Loading Cascades</h2>
           <p>{error}</p>
         </div>

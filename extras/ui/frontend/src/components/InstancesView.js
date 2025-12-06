@@ -6,6 +6,7 @@ import DebugModal from './DebugModal';
 import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
 import VideoSpinner from './VideoSpinner';
+import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
 // Live duration counter that updates every second for running instances
@@ -458,6 +459,7 @@ function InstancesView({ cascadeId, onBack, onFreezeInstance, onRunCascade, onIn
     return (
       <div className="instances-container">
         <div className="error">
+          <img src={windlassErrorImg} alt="" className="error-background-img" />
           <h2>Error Loading Instances</h2>
           <p>{error}</p>
           <button onClick={onBack} className="back-button">← Back to Cascades</button>

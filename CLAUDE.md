@@ -190,11 +190,11 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `tackle`: List of tool names to inject, or `"manifest"` for Quartermaster auto-selection
 - `manifest_context`: Context mode for Quartermaster (`"current"` or `"full"`, default: `"current"`)
 - `model`: Optional model override for this phase (e.g., `"anthropic/claude-opus-4.5"` for expensive phases)
-- `use_native_tools`: Boolean (default: `false`) - Use provider native tool calling vs prompt-based (see section 2.8)
+- `use_native_tools`: Boolean (default: `false`) - Use provider native tool calling vs prompt-based (see section 2.9)
 - `handoffs`: List of next-phase targets (enables dynamic routing via `route_to` tool); can include descriptions for routing menu
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
 - `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"` or `"on_end"`
-- `rules`: Contains `max_turns`, `max_attempts`, `loop_until` (validator name to keep looping until it passes), `loop_until_prompt` (optional custom validation goal prompt), `loop_until_silent` (skip auto-injection for impartial validation), and `retry_instructions` (injected on retry)
+- `rules`: Contains `max_turns`, `max_attempts`, `turn_prompt` (custom prompt for turn 1+ iterations with Jinja2 support), `loop_until` (validator name to keep looping until it passes), `loop_until_prompt` (optional custom validation goal prompt), `loop_until_silent` (skip auto-injection for impartial validation), and `retry_instructions` (injected on retry)
 - `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, `mutate`, `mutation_mode`, optional `reforge` for iterative refinement)
 - `output_schema`: JSON schema for validating phase output with automatic retry on failure
 - `wards`: Pre/post validation with three modes (blocking, retry, advisory)
@@ -216,7 +216,7 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 The framework automatically extracts function signatures using `inspect` and converts them to OpenAI-compatible JSON schemas via `utils.py:get_tool_schema()`.
 
 **Built-in Tools** (registered in `__init__.py`):
-- `linux_shell`: Execute shell commands in sandboxed Ubuntu Docker container (in `eddies/extras.py`) - **NEW!**
+- `linux_shell`: Execute shell commands in sandboxed Ubuntu Docker container (in `eddies/extras.py`)
 - `run_code`: Execute Python code in Docker container (in `eddies/extras.py`) - uses linux_shell internally
 - `smart_sql_run`: Execute DuckDB SQL queries on datasets (in `eddies/sql.py`)
 - `take_screenshot`: Capture web pages using Playwright (in `eddies/extras.py`)
@@ -224,12 +224,18 @@ The framework automatically extracts function signatures using `inspect` and con
 - `set_state`: Persist variables to session state (in `eddies/state_tools.py`)
 - `spawn_cascade`: Programmatically launch cascades from tools (in `eddies/system.py`)
 - `create_chart`: Generate matplotlib charts (in `eddies/chart.py`)
+- `rabbitize_start`: Start visual browser automation session (in `eddies/rabbitize.py`) - **NEW!**
+- `rabbitize_execute`: Execute browser actions with visual feedback (in `eddies/rabbitize.py`) - **NEW!**
+- `rabbitize_extract`: Extract page content as markdown (in `eddies/rabbitize.py`) - **NEW!**
+- `rabbitize_close`: Close browser session (in `eddies/rabbitize.py`) - **NEW!**
+- `rabbitize_status`: Get current session status (in `eddies/rabbitize.py`) - **NEW!**
 
 **Example Cascade Tools** (in `tackle/` directory):
 - `text_analyzer`: Analyzes text for readability, tone, structure
 - `brainstorm_ideas`: Generates creative ideas for topics
 - `summarize_text`: Summarizes long text into key points
 - `fact_check`: Evaluates claims for accuracy
+- `web_navigator`: Navigate websites with visual feedback to accomplish goals - **NEW!**
 
 **Validators** (in `tackle/` directory - used with Wards system):
 - `simple_validator`: Basic content validation (non-empty, minimum length)
@@ -237,6 +243,7 @@ The framework automatically extracts function signatures using `inspect` and con
 - `keyword_validator`: Required keyword presence validation
 - `content_safety`: Safety and moderation checks
 - `length_check`: Length constraint validation
+- `web_goal_achieved`: Validates if web navigation goal was achieved - **NEW!**
 
 All validators must return: `{"valid": true/false, "reason": "explanation"}`
 
@@ -403,7 +410,123 @@ Auto-injection works great for **objective validators** (grammar, code execution
 - `examples/loop_until_auto_inject.json` - Auto-injection
 - `examples/loop_until_silent_demo.json` - Silent mode for impartial validation
 
-### 2.7. Wards - Validation & Guardrails System
+### 2.7. Turn Prompt - Guided Iteration for max_turns
+
+When using `max_turns` for iterative refinement, you can provide custom guidance for subsequent turns instead of the default generic "Continue/Refine based on previous output."
+
+**The Problem:** By default, `max_turns` just loops with a vague continuation prompt. The agent doesn't know what to focus on during iteration.
+
+**The Solution:** `turn_prompt` gives the agent specific guidance for turns 1+ (after the initial turn).
+
+**Configuration:**
+```json
+{
+  "name": "solve_problem",
+  "instructions": "Solve the coding problem: {{ input.problem }}",
+  "tackle": ["run_code"],
+  "rules": {
+    "max_turns": 3,
+    "turn_prompt": "Review your solution. Does it handle edge cases correctly? Test it and refine if needed."
+  }
+}
+```
+
+**How It Works:**
+1. **Turn 0**: Uses the phase `instructions` (your main task)
+2. **Turn 1+**: Uses `turn_prompt` for refinement guidance
+3. **Jinja2 Support**: Full access to context variables like phase instructions
+
+**Available Template Variables:**
+```json
+{
+  "input": {...},           // Original cascade input
+  "state": {...},           // Current session state
+  "outputs": {...},         // Previous phase outputs
+  "lineage": [...],         // Execution history
+  "history": [...],         // Message history
+  "turn": 2,               // Current turn number (1-indexed)
+  "max_turns": 3           // Total turns configured
+}
+```
+
+**Use Cases:**
+
+**1. Code Generation with Self-Review:**
+```json
+{
+  "rules": {
+    "max_turns": 3,
+    "turn_prompt": "Review your code:\n- Does it handle {{ input.edge_case }}?\n- Is it readable?\n- Are there any bugs?\nRefine if needed."
+  }
+}
+```
+
+**2. Content Writing with Quality Check:**
+```json
+{
+  "rules": {
+    "max_turns": 2,
+    "turn_prompt": "Re-read your draft. Is it engaging? Any typos? Does it address the goal: {{ input.goal }}? Polish it."
+  }
+}
+```
+
+**3. Web Navigation with Goal Verification:**
+```json
+{
+  "name": "find_pricing",
+  "tackle": ["rabbitize_execute", "rabbitize_extract"],
+  "rules": {
+    "max_turns": 5,
+    "turn_prompt": "Did you find: {{ input.goal }}? If not, try a different navigation strategy."
+  }
+}
+```
+
+**4. Dynamic Turn-Specific Prompts:**
+```json
+{
+  "rules": {
+    "max_turns": 3,
+    "turn_prompt": "{% if turn == 1 %}First review: Check for major issues{% elif turn == 2 %}Second review: Polish and refine{% else %}Final review: Make it perfect{% endif %}"
+  }
+}
+```
+
+**5. Combo with Validation (Soft + Hard):**
+```json
+{
+  "rules": {
+    "max_turns": 3,
+    "turn_prompt": "Check your grammar and clarity. Make improvements.",
+    "loop_until": "grammar_check",  // Hard enforcement
+    "max_attempts": 2
+  }
+}
+```
+
+**Comparison with Other Features:**
+
+| Feature | Purpose | Enforcement | Cost |
+|---------|---------|-------------|------|
+| `turn_prompt` | Soft guidance for iteration | ❌ None (self-check) | ✅ Free |
+| `loop_until` | Validation-based retry | ✅ Hard (validator) | 🟡 Medium |
+| `output_schema` | Structure validation | ✅ Hard (schema) | ✅ Free |
+| `wards` | Input/output validation | ✅ Configurable | 🟡 Medium |
+
+**turn_prompt is "low-rent validation"** - lighter than full validation, better than blind iteration.
+
+**Benefits:**
+- ✅ Makes `max_turns` actually useful (not just generic looping)
+- ✅ Zero cost (no extra LLM calls, just better prompting)
+- ✅ Context-aware with Jinja2 templating
+- ✅ Complements validation features (use both!)
+- ✅ One line to add, immediate value
+
+**Example Cascade:**
+- `examples/turn_prompt_demo.json` - Demonstrates guided iteration with turn_prompt
+
+### 2.8. Wards - Validation & Guardrails System
 
 Wards are protective barriers that validate inputs and outputs at the phase level. Implemented in Phase 3 of the Wards system.
 
@@ -476,7 +599,7 @@ All validators (function or cascade) must return:
 - `ward_retry_flow.json`: Demonstrates retry mode with automatic improvement
 - `ward_comprehensive_flow.json`: All three modes in one flow
 
-### 2.8. Prompt-Based vs Native Tool Calling
+### 2.9. Prompt-Based vs Native Tool Calling
 
 Windlass supports two modes for tool execution: **prompt-based (default, recommended)** and **native tool calling (opt-in)**.
 
@@ -549,7 +672,7 @@ To use: {"tool": "linux_shell", "arguments": {"command": "ls /tmp"}}
 
 **Recommendation:** Use prompt-based (default) unless you have a specific reason for native.
 
-### 2.9. Docker Sandboxed Execution
+### 2.10. Docker Sandboxed Execution
 
 Code execution tools (`linux_shell`, `run_code`) use Docker for safe, isolated execution.
 
@@ -624,7 +747,241 @@ docker update ubuntu-container --memory=512m --cpus=0.5
 docker restart ubuntu-container
 ```
 
-### 2.10. Reforge - Iterative Refinement System
+### 2.11. Rabbitize - Visual Browser Automation
+
+Rabbitize transforms Playwright into a stateful REST API service with **visual feedback at every step**. Unlike traditional browser automation that uses fragile DOM selectors, Rabbitize uses visual coordinates and captures screenshots/video automatically.
+
+**Key Features:**
+- **Stateful sessions**: Browser state persists between commands (no need to re-navigate)
+- **Visual coordinates**: Click at (x, y) instead of CSS selectors (more robust)
+- **Automatic capture**: Every action generates before/after screenshots + video recording
+- **Rich metadata**: DOM snapshots (markdown), element coordinates (JSON), performance metrics
+- **Multi-modal integration**: Screenshots automatically flow through Windlass image protocol
+
+#### Setup
+
+**1. Install Rabbitize:**
+```bash
+npm install -g rabbitize
+sudo npx playwright install-deps
+```
+
+**2. Start Rabbitize server:**
+```bash
+npx rabbitize  # Runs on localhost:3037
+```
+
+**Or enable auto-start** (optional):
+```bash
+export RABBITIZE_AUTO_START=true
+# Windlass will start Rabbitize when needed (default: false)
+```
+
+**Optional configuration:**
+```bash
+export RABBITIZE_SERVER_URL=http://localhost:3037
+export RABBITIZE_RUNS_DIR=./rabbitize-runs
+```
+
+#### Core Tools
+
+**rabbitize_start(url, session_name=None)**
+- Start browser session and navigate to URL
+- Returns initial screenshot
+- Session ID stored in Windlass state
+
+**rabbitize_execute(command, include_metadata=False)**
+- Execute browser action
+- Command format: JSON array string
+- Returns before/after screenshots
+- Optionally includes DOM/metrics metadata
+
+**Command Examples:**
+```python
+# CRITICAL: Move mouse FIRST, then click (no args!)
+rabbitize_execute('[":move-mouse", ":to", 400, 300]')
+rabbitize_execute('[":click"]')  # NO ARGS - clicks at current cursor position
+
+# Type text
+rabbitize_execute('[":type", "hello world"]')
+
+# Scroll down
+rabbitize_execute('[":scroll-wheel-down", 5]')
+
+# Press key
+rabbitize_execute('[":keypress", "Enter"]')
+
+# Drag operation
+rabbitize_execute('[":drag", ":from", 100, 200, ":to", 300, 400]')
+```
+
+**rabbitize_extract()**
+- Extract page content as markdown
+- Get DOM element coordinates
+- Returns current screenshot
+
+**rabbitize_close()**
+- Close session, save video
+- Returns metrics summary
+
+**rabbitize_status()**
+- Get current session info
+- Show action count, metadata
+
+#### Integration with Windlass
+
+**Session Management:**
+Session ID automatically tracked in Windlass Echo state. All tools use the same session across turns in a phase.
+
+**Image Protocol:**
+Screenshots automatically returned via `{"content": "...", "images": [path]}` protocol. Windlass saves them to `images/{session_id}/{phase}/` and injects into conversation as multi-modal messages. **Agent sees screenshots automatically!**
+
+**Metadata Richness:**
+Every action generates:
+- `screenshots/before-*.jpg` + `screenshots/after-*.jpg`
+- `dom_snapshots/*.md` - Page content as markdown
+- `dom_coords/*.json` - Element positions for clicking
+- `commands.json` - Audit trail
+- `metrics.json` - Performance data
+- `video.webm` - Full session recording
+
+**With `include_metadata=True`, agent gets DOM content + coordinates for better decision-making.**
+
+#### Usage Patterns
+
+**Pattern 1: Simple Navigation**
+```json
+{
+  "name": "check_website",
+  "instructions": "Visit {{ input.url }} and describe what you see",
+  "tackle": ["rabbitize_start", "rabbitize_extract", "rabbitize_close"]
+}
+```
+
+**Pattern 2: Interactive Navigation with loop_until**
+```json
+{
+  "name": "find_information",
+  "instructions": "Navigate to find: {{ input.goal }}",
+  "tackle": ["rabbitize_execute", "rabbitize_extract"],
+  "rules": {
+    "max_turns": 15,
+    "loop_until": "satisfied",
+    "loop_until_prompt": "Continue until you find: {{ input.goal }}"
+  }
+}
+```
+
+Agent takes actions → sees screenshots → adjusts strategy → repeats until goal achieved.
+
+**Pattern 3: Form Filling with Validation**
+```json
+{
+  "name": "fill_form",
+  "instructions": "Fill form with {{ input.data }}",
+  "tackle": ["rabbitize_execute", "rabbitize_extract"],
+  "rules": {
+    "loop_until": "web_goal_achieved",
+    "max_attempts": 3
+  }
+}
+```
+
+Visual validation ensures form was filled correctly before submission.
+
+**Pattern 4: Cascade Tool (web_navigator)**
+```json
+{
+  "name": "research",
+  "instructions": "Research pricing on {{ input.competitors }}",
+  "tackle": ["web_navigator"],
+  "rules": {"max_turns": 5}
+}
+```
+
+`web_navigator` is a reusable cascade tool in `tackle/` that handles all navigation logic.
+
+#### Rabbitize Files Structure
+
+Each session creates:
+```
+rabbitize-runs/
+  {session_id}/
+    screenshots/
+      before-click-001.jpg
+      after-click-001.jpg
+      before-type-002.jpg
+      ...
+    dom_snapshots/
+      snapshot-001.md
+      snapshot-002.md
+    dom_coords/
+      coords-001.json
+    video.webm
+    commands.json
+    metrics.json
+```
+
+**Windlass automatically copies screenshots** to `images/{windlass_session_id}/{phase}/` for persistence and image protocol integration.
+
+#### Advanced: Soundings for Navigation Strategies
+
+Use soundings to try multiple navigation approaches:
+
+```json
+{
+  "name": "find_pricing",
+  "soundings": {
+    "factor": 3,
+    "evaluator_instructions": "Pick the navigation that found pricing fastest"
+  },
+  "tackle": ["rabbitize_execute", "rabbitize_extract"]
+}
+```
+
+Three parallel attempts → Evaluator picks winner based on screenshots/results → Only winner's path continues.
+
+**Perfect for:**
+- Exploring different search strategies
+- Testing multiple form-filling approaches
+- A/B testing navigation flows
+
+#### Visual Loop-Until Feedback
+
+The killer feature: **Visual validation loops**
+
+1. Agent moves mouse: `rabbitize_execute('[":move-mouse", ":to", 400, 300]')`
+2. Agent clicks: `rabbitize_execute('[":click"]')`
+3. Gets screenshot back automatically (via image protocol)
+4. Validator checks: "Did we reach the goal?"
+5. If no → Agent sees the mistake in screenshot, adjusts strategy
+6. If yes → Phase completes
+
+**This is essentially giving Windlass agents eyes and hands for the web.**
+
+All with full video recording + screenshot trail for debugging!
+
+#### Example Cascades
+
+- `examples/rabbitize_simple_demo.json` - Basic navigation + extraction
+- `examples/rabbitize_navigation_demo.json` - Interactive navigation with loop_until
+- `examples/rabbitize_form_fill_demo.json` - Form filling with validation
+- `examples/rabbitize_research_assistant.json` - Multi-site research using web_navigator
+
+#### Comparison: Rabbitize vs Traditional Automation
+
+| Traditional (Selenium/Playwright) | Rabbitize + Windlass |
+|----------------------------------|----------------------|
+| DOM selectors (fragile) | Visual coordinates (robust) |
+| Blind execution | Screenshot at every step |
+| Stateless | Stateful sessions |
+| Code-only | Declarative JSON cascades |
+| No visual verification | Automatic multi-modal feedback |
+| Manual debugging | Video + screenshot trails |
+
+**Rabbitize gives agents visual perception** → loop_until provides iterative correction → Result: Robust web automation that can adapt and self-correct like a human.
+
+### 2.12. Reforge - Iterative Refinement System
 
 Reforge extends Soundings (Tree of Thought) with iterative refinement: after soundings complete and a winner is selected, the winner is refined through additional sounding loops with honing prompts.
 
@@ -718,7 +1075,7 @@ Each reforge iteration gets unique session ID for image/state isolation:
 - `reforge_image_chart.json`: Chart refinement with visual feedback
 - `reforge_feedback_chart.json`: Feedback loops with manual image injection
 
-### 2.11. Mutation System for Soundings
+### 2.13. Mutation System for Soundings
 
 Soundings support automatic prompt mutation to explore different formulations and learn what works. Three mutation modes are available:
 

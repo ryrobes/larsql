@@ -8,6 +8,7 @@ class RuleConfig(BaseModel):
     loop_until_prompt: Optional[str] = None  # Auto-injected validation goal prompt
     loop_until_silent: bool = False  # Skip auto-injection for impartial validation
     retry_instructions: Optional[str] = None
+    turn_prompt: Optional[str] = None  # Custom prompt for turn 1+ iterations (supports Jinja2)
 
 class SubCascadeRef(BaseModel):
     ref: str

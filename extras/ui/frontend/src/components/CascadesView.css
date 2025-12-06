@@ -301,20 +301,42 @@
 
 /* Error State */
 .error {
+  position: relative;
   background: rgba(207, 102, 121, 0.1);
   border: 2px solid #CF6679;
   border-radius: 12px;
   padding: 2rem;
+  padding-bottom: 20rem;
   text-align: center;
   margin: 2rem;
+  overflow: hidden;
+}
+
+.error-background-img {
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 85%;
+  height: auto;
+  max-height: 400px;
+  object-fit: contain;
+  opacity: 0.15;
+  mix-blend-mode: lighten;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .error h2 {
+  position: relative;
+  z-index: 1;
   color: #CF6679;
   margin-bottom: 1rem;
 }
 
 .error p {
+  position: relative;
+  z-index: 1;
   color: #9AA5B1;
 }
 
