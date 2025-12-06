@@ -115,9 +115,23 @@ class WindlassRunner:
         # Configure litellm if needed
         if self.api_key:
             os.environ["OPENROUTER_API_KEY"] = self.api_key
-            
+
         # Graph path
         self.graph_path = os.path.join(get_config().graph_dir, f"{self.session_id}.mmd")
+
+        # Token budget manager (if configured)
+        if self.config.token_budget:
+            from .token_budget import TokenBudgetManager
+            self.token_manager = TokenBudgetManager(self.config.token_budget, self.model)
+        else:
+            self.token_manager = None
+
+        # Tool cache (if configured)
+        if self.config.tool_caching and self.config.tool_caching.enabled:
+            from .tool_cache import ToolCache
+            self.tool_cache = ToolCache(self.config.tool_caching)
+        else:
+            self.tool_cache = None
 
         # Memory system (if configured)
         self.memory_name = self.config.memory  # Store memory bank name if configured
@@ -128,6 +142,34 @@ class WindlassRunner:
             self.echo.set_message_callback(self._save_to_memory)
         else:
             self.memory_system = None
+
+    def _tag_message_with_ttl(self, message: dict, category: str, phase: 'PhaseConfig') -> dict:
+        """Tag a message with TTL metadata if context_ttl is configured."""
+        if not phase.context_ttl or category not in phase.context_ttl:
+            return message
+
+        ttl = phase.context_ttl.get(category)
+        if ttl is None:  # None means keep forever
+            return message
+
+        # Tag with expiry metadata
+        if "metadata" not in message:
+            message["metadata"] = {}
+
+        message["metadata"]["ttl"] = ttl
+        message["metadata"]["category"] = category
+        message["metadata"]["created_at_turn"] = self.current_turn_number or 0
+        message["metadata"]["expires_at_turn"] = (self.current_turn_number or 0) + ttl
+
+        return message
+
+    def _prune_expired_context(self, current_turn: int):
+        """Remove messages that have expired based on their TTL."""
+        self.context_messages = [
+            msg for msg in self.context_messages
+            if not msg.get("metadata", {}).get("expires_at_turn")
+            or msg["metadata"]["expires_at_turn"] > current_turn
+        ]
 
     def _save_to_memory(self, message: dict):
         """
@@ -830,7 +872,27 @@ Refinement directive: {reforge_config.honing_prompt}
             }, trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
                metadata=phase_meta)
 
+            # Snapshot context length before phase (for context_retention pruning)
+            context_snapshot_length = len(self.context_messages)
+
             output_or_next_phase = self.execute_phase(phase, input_data, phase_trace, initial_injection=hook_result)
+
+            # Handle context_retention: prune phase history if output_only
+            if phase.context_retention == "output_only":
+                # Remove all messages added during this phase except the final assistant message
+                phase_messages = self.context_messages[context_snapshot_length:]
+
+                # Find the last assistant message from this phase
+                final_assistant_msg = None
+                for msg in reversed(phase_messages):
+                    if msg.get("role") == "assistant":
+                        final_assistant_msg = msg
+                        break
+
+                # Replace phase's messages with just the final assistant message
+                self.context_messages = self.context_messages[:context_snapshot_length]
+                if final_assistant_msg:
+                    self.context_messages.append(final_assistant_msg)
 
             # Log phase completion for UI visibility
             log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
@@ -2472,6 +2534,10 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Track turn number
                 self.current_turn_number = i if max_turns > 1 else None
 
+                # Prune expired context based on TTL (context timebomb!)
+                if phase.context_ttl and i > 0:  # Don't prune on first turn
+                    self._prune_expired_context(i)
+
                 # Update phase progress for visualization
                 update_phase_progress(
                     self.session_id, self.config.cascade_id, phase.name, self.depth,
@@ -2561,18 +2627,48 @@ Refinement directive: {reforge_config.honing_prompt}
                             keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))
                             keep_turns = int(os.getenv('WINDLASS_KEEP_RECENT_TURNS', '0'))
 
-                            # First cull old conversation history
-                            culled_context = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
-                            # Then cull old images
-                            culled_context = cull_old_base64_images(culled_context, keep_recent=keep_images)
+                            # FIX: Actually update self.context_messages to make culling persistent
+                            # This also handles system prompt positioning (moves to front, keeps only most recent)
+                            self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+                            self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=keep_images)
+
+                            # TOKEN BUDGET ENFORCEMENT: Check and enforce budget before agent call
+                            if self.token_manager:
+                                budget_status = self.token_manager.check_budget(self.context_messages)
+
+                                if budget_status["warning"]:
+                                    percentage = budget_status["percentage"] * 100
+                                    console.print(f"{indent}  [yellow]⚠️  Token budget: {percentage:.1f}% used ({budget_status['current']}/{budget_status['limit']} tokens)[/yellow]")
+
+                                if budget_status["over_budget"]:
+                                    console.print(f"{indent}  [red]💥 Token budget exceeded, enforcing with strategy: {self.config.token_budget.strategy}[/red]")
+                                    self.context_messages = self.token_manager.enforce_budget(self.context_messages)
+
+                                    # Log budget enforcement
+                                    from .unified_logs import log_unified
+                                    log_unified(
+                                        session_id=self.session_id,
+                                        trace_id=turn_trace.id,
+                                        parent_id=trace.id,
+                                        node_type="token_budget_enforcement",
+                                        role="system",
+                                        content=f"Token budget enforced: {budget_status['current']} → {self.token_manager.count_tokens(self.context_messages)} tokens",
+                                        metadata={
+                                            "strategy": self.config.token_budget.strategy,
+                                            "tokens_before": budget_status["current"],
+                                            "tokens_after": self.token_manager.count_tokens(self.context_messages),
+                                            "tokens_limit": budget_status["limit"],
+                                            "phase_name": phase.name
+                                        }
+                                    )
 
                             if self.depth == 0 and is_main_thread:
                                 with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status:
-                                    response_dict = agent.run(current_input, context_messages=culled_context)
+                                    response_dict = agent.run(current_input, context_messages=self.context_messages)
                             else:
                                 # For sub-cascades, no spinner to avoid Rich Live conflicts
                                 console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
-                                response_dict = agent.run(current_input, context_messages=culled_context)
+                                response_dict = agent.run(current_input, context_messages=self.context_messages)
 
                             content = response_dict.get("content")
                             tool_calls = response_dict.get("tool_calls")
@@ -2742,6 +2838,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     # For prompt-based tools, the tool call JSON is already in content
                     if tool_calls and use_native:
                         assistant_msg["tool_calls"] = tool_calls
+                    # Tag with TTL if configured
+                    assistant_msg = self._tag_message_with_ttl(assistant_msg, "assistant", phase)
                     self.context_messages.append(assistant_msg)
 
                     # Add to Echo (global history)
@@ -2836,13 +2934,40 @@ Refinement directive: {reforge_config.honing_prompt}
                                 console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered:[/bold magenta] {chosen_next_phase}")
                         
                             if tool_func:
-                                 # Set context for tool (e.g. spawn_cascade)
-                                 set_current_trace(tool_trace)
-                                 try:
-                                     result = tool_func(**args)
-                                 except Exception as e:
-                                     result = f"Error: {str(e)}"
-                             
+                                 # TOOL CACHING: Check cache before execution
+                                 cached_result = None
+                                 if self.tool_cache:
+                                     cached_result = self.tool_cache.get(func_name, args)
+                                     if cached_result is not None:
+                                         # Cache hit!
+                                         policy = self.tool_cache.config.tools.get(func_name)
+                                         hit_msg = policy.hit_message if policy and policy.hit_message else f"⚡ Cache hit ({func_name})"
+                                         console.print(f"{indent}    [dim green]{hit_msg}[/dim green]")
+                                         result = cached_result
+
+                                         # Hook: Tool Result (cached)
+                                         self.hooks.on_tool_result(func_name, phase.name, self.session_id, cached_result)
+
+                                 if cached_result is None:
+                                     # Cache miss or caching disabled - execute normally
+                                     # Set context for tool (e.g. spawn_cascade)
+                                     set_current_trace(tool_trace)
+                                     try:
+                                         # Hook: Tool Call
+                                         self.hooks.on_tool_call(func_name, phase.name, self.session_id, args)
+
+                                         result = tool_func(**args)
+
+                                         # Hook: Tool Result
+                                         self.hooks.on_tool_result(func_name, phase.name, self.session_id, result)
+
+                                         # TOOL CACHING: Store result after successful execution
+                                         if self.tool_cache:
+                                             self.tool_cache.set(func_name, args, result)
+
+                                     except Exception as e:
+                                         result = f"Error: {str(e)}"
+
                                  console.print(f"{indent}    [green]✔ {func_name}[/green] -> {str(result)[:100]}...")
 
                                  # Capture tool output for validation
@@ -2944,6 +3069,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
                             else:
                                 tool_msg = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
+                            # Tag with TTL if configured
+                            tool_msg = self._tag_message_with_ttl(tool_msg, "tool_results", phase)
                             self.context_messages.append(tool_msg)
 
                             # DEBUG: Verify tool result was added
@@ -2957,6 +3084,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         
                             # Inject Image Message if present
                             if image_injection_message:
+                                # Tag with TTL if configured
+                                image_injection_message = self._tag_message_with_ttl(image_injection_message, "images", phase)
                                 self.context_messages.append(image_injection_message)
                                 img_trace = tool_trace.create_child("msg", "image_injection")
                                 self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection",
@@ -2973,22 +3102,28 @@ Refinement directive: {reforge_config.honing_prompt}
                         keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))
                         keep_turns = int(os.getenv('WINDLASS_KEEP_RECENT_TURNS', '0'))
 
-                        # First cull old conversation history
-                        culled_context = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
-                        # Then cull old images
-                        culled_context = cull_old_base64_images(culled_context, keep_recent=keep_images)
+                        # FIX: Actually update self.context_messages (not just temporary variable!)
+                        # Previous bug: culling was temporary, never persisted, all images accumulated
+                        self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+
+                        # For follow-up, keep ONLY the most recent image (for iterative feedback)
+                        # This retains the latest generated image while dropping all older ones
+                        # Rationale: Agent already saw old images, they're saved to disk, only need latest for refinement
+                        self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=1)
 
                         if self.depth == 0 and is_main_thread:
                             with console.status(f"{indent}[bold green]Agent processing results...[/bold green]", spinner="dots") as status:
-                                follow_up = agent.run(None, context_messages=culled_context)
+                                follow_up = agent.run(None, context_messages=self.context_messages)
                         else:
                             console.print(f"{indent}[dim]Agent processing results (depth {self.depth})...[/dim]")
-                            follow_up = agent.run(None, context_messages=culled_context)
+                            follow_up = agent.run(None, context_messages=self.context_messages)
                          
                         content = follow_up.get("content")
                         request_id = follow_up.get("id")
                         model_used = follow_up.get("model", self.model)
                         provider = follow_up.get("provider", "unknown")
+                        full_request = follow_up.get("full_request")  # Capture full request
+                        full_response = follow_up.get("full_response")  # Capture full response
 
                         # NOTE: Don't call track_request() - old async cost system is deprecated
                         # Cost tracking now handled by unified_logs.py non-blocking worker
@@ -3004,6 +3139,7 @@ Refinement directive: {reforge_config.honing_prompt}
                             followup_trace = turn_trace.create_child("msg", "follow_up")
 
                             # Log to unified system with full context for cost tracking
+                            # IMPORTANT: Include full_request and full_response so we can see what was actually sent
                             from .unified_logs import log_unified
                             log_unified(
                                 session_id=self.session_id,
@@ -3019,6 +3155,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 request_id=request_id,  # For non-blocking cost tracking
                                 provider=provider,
                                 content=content,
+                                full_request=full_request,  # ADD: Include complete request with images
+                                full_response=full_response,  # ADD: Include complete response
                                 metadata={"is_follow_up": True, "turn_number": self.current_turn_number}
                             )
 
@@ -3497,6 +3635,49 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Auto-save any images from final phase context (catches all images before phase completion)
         self._save_images_from_messages(self.context_messages, phase.name)
+
+        # ========== OUTPUT EXTRACTION: Extract structured content from phase output ==========
+        if phase.output_extraction:
+            from .extraction import OutputExtractor, ExtractionError
+
+            console.print(f"{indent}[bold cyan]🔍 Extracting structured content...[/bold cyan]")
+            extractor = OutputExtractor()
+
+            try:
+                extracted = extractor.extract(response_content, phase.output_extraction)
+
+                if extracted is not None:
+                    # Store in state
+                    state_key = phase.output_extraction.store_as
+                    self.echo.update_state(state_key, extracted)
+
+                    console.print(f"{indent}  [green]✓ Extracted '{state_key}': {str(extracted)[:100]}...[/green]")
+
+                    # Log extraction
+                    from .unified_logs import log_unified
+                    log_unified(
+                        session_id=self.session_id,
+                        trace_id=trace.id,
+                        parent_id=trace.parent_id,
+                        node_type="extraction",
+                        role="system",
+                        content=f"Extracted {state_key}",
+                        metadata={
+                            "phase": phase.name,
+                            "key": state_key,
+                            "pattern": phase.output_extraction.pattern,
+                            "size": len(str(extracted))
+                        }
+                    )
+                else:
+                    console.print(f"{indent}  [yellow]⚠️  Pattern not found (optional)[/yellow]")
+
+            except ExtractionError as e:
+                # Required extraction failed
+                console.print(f"{indent}[red]✗ Extraction failed: {e}[/red]")
+                self.echo.add_error(phase.name, "extraction_error", str(e))
+                _cleanup_rag()
+                return f"[EXTRACTION ERROR: {e}]"
 
         _cleanup_rag()
         return chosen_next_phase if chosen_next_phase else response_content

@@ -1,0 +1,28 @@
+{
+  "cascade_id": "context_ttl_demo",
+  "description": "Demonstrates context_ttl: time-to-live for tool results to prevent RAG bloat in multi-turn scenarios",
+  "inputs_schema": {
+    "topic": "What to search for"
+  },
+  "phases": [
+    {
+      "name": "multi_turn_search",
+      "context_ttl": {
+        "tool_results": 1,
+        "images": 2,
+        "assistant": null
+      },
+      "instructions": "Search for information about: {{ input.topic }}\n\nUse sql_search to find relevant tables. You have multiple turns to refine your understanding.\n\nTurn 1: Do the search\nTurn 2: Analyze what you found (RAG results will EXPLODE after this turn)\nTurn 3: Make your final decision WITHOUT seeing the RAG dump (it expired!)\n\nBe explicit about what context you can see in each turn.",
+      "tackle": ["sql_search"],
+      "rules": {
+        "max_turns": 3
+      },
+      "handoffs": ["confirm"]
+    },
+    {
+      "name": "confirm",
+      "instructions": "Confirm that you received a clean decision from the previous phase, not the full RAG dump. What exactly do you see from the previous phase?",
+      "tackle": []
+    }
+  ]
+}

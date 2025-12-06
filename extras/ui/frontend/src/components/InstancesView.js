@@ -376,12 +376,20 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
 
             return (instance.phases || []).map((phase, idx) => (
-              <PhaseBar
-                key={idx}
-                phase={phase}
-                maxCost={normalizedMax}
-                status={phase.status}
-              />
+              <React.Fragment key={idx}>
+                <PhaseBar
+                  phase={phase}
+                  maxCost={normalizedMax}
+                  status={phase.status}
+                />
+                {/* Image Gallery - under each phase bar, filtered to that phase */}
+                <ImageGallery
+                  sessionId={instance.session_id}
+                  phaseName={phase.name}
+                  isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
+                  sessionUpdate={sessionUpdates?.[instance.session_id]}
+                />
+              </React.Fragment>
             ));
           })()}
 
@@ -394,13 +402,6 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               </div>
             </div>
           )}
-
-          {/* Image Gallery - shows generated images */}
-          <ImageGallery
-            sessionId={instance.session_id}
-            isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
-            sessionUpdate={sessionUpdates?.[instance.session_id]}
-          />
         </div>
 
         {/* Right: Instance Metrics */}

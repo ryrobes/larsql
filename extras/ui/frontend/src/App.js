@@ -49,6 +49,10 @@ function App() {
     const parts = hash.split('/').filter(p => p); // Split and remove empty parts
 
     if (parts.length === 1) {
+      if (parts[0] === 'message_flow') {
+        // /#/message_flow → message flow view
+        return { view: 'messageflow', cascadeId: null, sessionId: null };
+      }
       // /#/cascade_id → instances view
       return { view: 'instances', cascadeId: parts[0], sessionId: null };
     } else if (parts.length === 2) {
@@ -63,6 +67,8 @@ function App() {
   const updateHash = useCallback((view, cascadeId = null, sessionId = null) => {
     if (view === 'cascades') {
       window.location.hash = '';
+    } else if (view === 'messageflow') {
+      window.location.hash = '#/message_flow';
     } else if (view === 'instances' && cascadeId) {
       window.location.hash = `#/${cascadeId}`;
     } else if (view === 'detail' && cascadeId && sessionId) {
@@ -180,6 +186,10 @@ function App() {
 
       if (route.view === 'cascades') {
         setCurrentView('cascades');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'messageflow') {
+        setCurrentView('messageflow');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'instances' && route.cascadeId) {
@@ -409,7 +419,10 @@ function App() {
           onSelectCascade={handleSelectCascade}
           onRunCascade={handleRunCascade}
           onHotOrNot={() => setCurrentView('hotornot')}
-          onMessageFlow={() => setCurrentView('messageflow')}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -451,7 +464,12 @@ function App() {
         />
       )}
       {currentView === 'messageflow' && (
-        <MessageFlowView />
+        <MessageFlowView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+        />
       )}
 
 

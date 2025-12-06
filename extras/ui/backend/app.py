@@ -74,6 +74,12 @@ EXAMPLES_DIR = os.path.abspath(os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(W
 TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle")))
 CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
 
+# Force shared session for UI backend (single-process, faster queries)
+# This prevents the "already an active session" warning from stateless mode
+# The UI backend runs in a single process (Flask dev or gevent worker), so shared session is safe
+if 'WINDLASS_CHDB_SHARED_SESSION' not in os.environ:
+    os.environ['WINDLASS_CHDB_SHARED_SESSION'] = 'true'
+
 
 class LoggingConnectionWrapper:
     """Wrapper around DuckDB connection that logs all queries."""
@@ -2283,49 +2289,216 @@ def hotornot_evaluations():
 # Session Images API
 # ==============================================================================
 
+# Cache for reforge enrichment data to avoid repeated database queries
+_reforge_cache = {}
+
 @app.route('/api/session/<session_id>/images', methods=['GET'])
 def get_session_images(session_id):
     """
     Get list of all images for a session.
     Images are stored in IMAGE_DIR/{session_id}/{phase_name}/image_{N}.{ext}
+    Also scans for sounding images in IMAGE_DIR/{session_id}_sounding_{N}/{phase_name}/sounding_{N}_image_{M}.{ext}
     """
+    import re
     try:
-        session_image_dir = os.path.join(IMAGE_DIR, session_id)
-
-        # Handle case where directory doesn't exist yet
-        if not os.path.exists(session_image_dir):
-            return jsonify({'session_id': session_id, 'images': []})
-
         images = []
 
-        # Walk the session directory to find all images
-        for root, dirs, files in os.walk(session_image_dir):
-            for filename in files:
-                # Only include image files
-                ext = filename.lower().split('.')[-1] if '.' in filename else ''
-                if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
-                    continue
+        # Helper function to extract sounding index from session_id or filename
+        def extract_sounding_info(scan_session_id, filename):
+            # Check if this is a sounding session (session_id ends with _sounding_N)
+            sounding_match = re.search(r'_sounding_(\d+)$', scan_session_id)
+            if sounding_match:
+                return int(sounding_match.group(1))
 
-                full_path = os.path.join(root, filename)
-                rel_path = os.path.relpath(full_path, session_image_dir)
+            # Check if filename has sounding prefix (sounding_N_image_M.ext)
+            filename_match = re.search(r'^sounding_(\d+)_', filename)
+            if filename_match:
+                return int(filename_match.group(1))
 
-                # Extract phase name from path (e.g., "generate/image_0.png" -> "generate")
-                path_parts = rel_path.split(os.sep)
-                phase_name = path_parts[0] if len(path_parts) > 1 else None
+            return None
 
-                # Get file modification time for sorting
-                mtime = os.path.getmtime(full_path)
+        # Scan main session directory
+        session_image_dir = os.path.join(IMAGE_DIR, session_id)
+        if os.path.exists(session_image_dir):
+            for root, dirs, files in os.walk(session_image_dir):
+                for filename in files:
+                    # Only include image files
+                    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                    if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
+                        continue
 
-                images.append({
-                    'filename': filename,
-                    'path': rel_path,
-                    'phase_name': phase_name,
-                    'url': f'/api/images/{session_id}/{rel_path}',
-                    'mtime': mtime
-                })
+                    full_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(full_path, session_image_dir)
 
-        # Sort by modification time (newest first)
-        images.sort(key=lambda x: x['mtime'], reverse=True)
+                    # Extract phase name from path (e.g., "generate/image_0.png" -> "generate")
+                    path_parts = rel_path.split(os.sep)
+                    phase_name = path_parts[0] if len(path_parts) > 1 else None
+
+                    # Get file modification time for sorting
+                    mtime = os.path.getmtime(full_path)
+
+                    # Extract sounding index from filename if present
+                    sounding_index = extract_sounding_info(session_id, filename)
+
+                    images.append({
+                        'filename': filename,
+                        'path': rel_path,
+                        'phase_name': phase_name,
+                        'sounding_index': sounding_index,
+                        'url': f'/api/images/{session_id}/{rel_path}',
+                        'mtime': mtime
+                    })
+
+        # Scan for sounding subdirectories (session_id_sounding_0, session_id_sounding_1, etc.)
+        parent_dir = os.path.dirname(session_image_dir)
+        if os.path.exists(parent_dir):
+            for entry in os.listdir(parent_dir):
+                # Look for directories matching pattern: {session_id}_sounding_{N}
+                if entry.startswith(f"{session_id}_sounding_"):
+                    sounding_dir = os.path.join(parent_dir, entry)
+                    if not os.path.isdir(sounding_dir):
+                        continue
+
+                    # Walk this sounding directory
+                    for root, dirs, files in os.walk(sounding_dir):
+                        for filename in files:
+                            ext = filename.lower().split('.')[-1] if '.' in filename else ''
+                            if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
+                                continue
+
+                            full_path = os.path.join(root, filename)
+                            rel_path = os.path.relpath(full_path, sounding_dir)
+
+                            # Extract phase name
+                            path_parts = rel_path.split(os.sep)
+                            phase_name = path_parts[0] if len(path_parts) > 1 else None
+
+                            mtime = os.path.getmtime(full_path)
+
+                            # Extract sounding index from the directory name
+                            sounding_index = extract_sounding_info(entry, filename)
+
+                            images.append({
+                                'filename': filename,
+                                'path': rel_path,
+                                'phase_name': phase_name,
+                                'sounding_index': sounding_index,
+                                'url': f'/api/images/{entry}/{rel_path}',
+                                'mtime': mtime
+                            })
+
+        # Enrich images with reforge step information from database (with caching)
+        if images:
+            # Check if we have cached reforge data for this session
+            if session_id not in _reforge_cache:
+                try:
+                    import json
+                    import pandas as pd
+
+                    # Query for reforge_attempt messages to get attempt_index
+                    # Use direct SQL to avoid connection pooling issues
+                    try:
+                        import chdb
+                        attempt_df = chdb.query(
+                            f"SELECT * FROM file('/home/ryanr/repos/windlass/data/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_attempt' ORDER BY timestamp",
+                            'DataFrame'
+                        )
+                    except Exception as query_err:
+                        print(f"Warning: Database query for reforge attempts failed: {query_err}")
+                        attempt_df = pd.DataFrame()
+
+                    reforge_ranges = []
+                    if not attempt_df.empty:
+                        # Get reforge winner information
+                        try:
+                            winner_df = chdb.query(
+                                f"SELECT * FROM file('/home/ryanr/repos/windlass/data/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_winner' ORDER BY timestamp",
+                                'DataFrame'
+                            )
+                        except Exception as query_err:
+                            print(f"Warning: Database query for reforge winners failed: {query_err}")
+                            winner_df = pd.DataFrame()
+                        reforge_winners = {}
+                        if not winner_df.empty:
+                            for _, row in winner_df.iterrows():
+                                step = int(row['reforge_step']) if row['reforge_step'] is not None else None
+                                if step is not None:
+                                    # Parse metadata_json to get winner_index
+                                    metadata = row.get('metadata_json')
+                                    if metadata:
+                                        try:
+                                            meta_dict = json.loads(metadata)
+                                            winner_index = meta_dict.get('winner_index')
+                                            if winner_index is not None:
+                                                reforge_winners[step] = winner_index
+                                        except:
+                                            pass
+
+                        # Build timestamp ranges for each (reforge_step, attempt_index) pair
+                        for _, row in attempt_df.iterrows():
+                            step = int(row['reforge_step']) if row['reforge_step'] is not None else None
+                            timestamp = row['timestamp']
+                            metadata = row.get('metadata_json')
+                            attempt_index = None
+
+                            if metadata:
+                                try:
+                                    meta_dict = json.loads(metadata)
+                                    attempt_index = meta_dict.get('attempt_index')
+                                except:
+                                    pass
+
+                            if step is not None and timestamp is not None and attempt_index is not None:
+                                reforge_ranges.append({
+                                    'step': step,
+                                    'attempt_index': attempt_index,
+                                    'timestamp': float(timestamp),
+                                    'winner_index': reforge_winners.get(step)
+                                })
+
+                    # Cache the reforge ranges for this session
+                    _reforge_cache[session_id] = reforge_ranges
+                    print(f"[REFORGE CACHE] Built cache for session {session_id}: {len(reforge_ranges)} ranges")
+
+                except Exception as e:
+                    print(f"Warning: Could not build reforge cache: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    _reforge_cache[session_id] = []
+            else:
+                print(f"[REFORGE CACHE] Using cached data for session {session_id}: {len(_reforge_cache[session_id])} ranges")
+
+            # Use cached reforge ranges to enrich images
+            reforge_ranges = _reforge_cache.get(session_id, [])
+            if reforge_ranges:
+                # Match images to reforge attempts by timestamp
+                # Images can be created slightly before or after the log entry, so use wider tolerance
+                for img in images:
+                    img_time = img['mtime']
+                    # Find the reforge range this image falls into (within 60 seconds tolerance)
+                    # Use the closest match if multiple candidates
+                    best_match = None
+                    best_diff = float('inf')
+
+                    for r in reforge_ranges:
+                        diff = abs(img_time - r['timestamp'])
+                        if diff < 60.0 and diff < best_diff:
+                            best_match = r
+                            best_diff = diff
+
+                    if best_match:
+                        img['reforge_step'] = best_match['step']
+                        img['reforge_attempt_index'] = best_match['attempt_index']
+                        img['reforge_winner_index'] = best_match['winner_index']
+                        img['reforge_is_winner'] = best_match['attempt_index'] == best_match['winner_index']
+
+        # Sort by phase, then sounding index, then reforge step, then modification time
+        images.sort(key=lambda x: (
+            x['phase_name'] or '',
+            x['sounding_index'] if x['sounding_index'] is not None else -1,
+            x.get('reforge_step', -1),
+            x['mtime']
+        ))
 
         return jsonify({
             'session_id': session_id,

@@ -117,10 +117,13 @@ class TableMetadata:
                 row_count
             )
 
-            # Get sample rows
+            # Get sample rows in compact array-of-arrays format
             sample_sql = f"SELECT * FROM {full_table_name} LIMIT {config.sample_row_limit}"
             sample_df = self.conn.fetch_df(sample_sql)
-            sample_rows = sample_df.to_dict('records')
+
+            # Convert to array-of-arrays (columns defined once, rows are just value arrays)
+            sample_columns = list(sample_df.columns)
+            sample_rows = sample_df.values.tolist()
 
             return {
                 "table_name": table_name,
@@ -128,7 +131,8 @@ class TableMetadata:
                 "database": config.connection_name,
                 "row_count": row_count,
                 "columns": columns,
-                "sample_rows": sample_rows
+                "sample_columns": sample_columns,  # Column names (defined once)
+                "sample_rows": sample_rows  # Array of arrays (no repeated keys!)
             }
 
         except Exception as e:

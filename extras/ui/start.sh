@@ -41,6 +41,8 @@ fi
 echo "Starting backend server (port 5001)..."
 cd backend
 python app.py &
+#gunicorn -w 1 -k gevent --worker-connections 1000 -b 0.0.0.0:5001 app:app &
+#gunicorn -w 4 -k gevent --worker-connections 1000 -b 0.0.0.0:5001 app:app &
 BACKEND_PID=$!
 cd ..
 

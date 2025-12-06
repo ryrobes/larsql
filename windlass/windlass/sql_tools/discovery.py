@@ -164,6 +164,25 @@ def discover_all_schemas(session_id: str = None):
         console.print("[cyan]💡 Use sql_search tool in cascades to search schemas[/cyan]")
 
     except Exception as e:
-        console.print(f"[red]✗ Failed to build RAG index: {e}[/red]")
+        console.print(f"[yellow]⚠️  Failed to build RAG index: {e}[/yellow]")
+        console.print(f"[dim]RAG semantic search will not be available, but schema files were saved.[/dim]")
         import traceback
         traceback.print_exc()
+
+        # Save metadata without RAG info so schema files are still usable
+        metadata = DiscoveryMetadata(
+            last_discovery=datetime.now().isoformat(),
+            rag_id=f"sql_schemas_{int(time.time())}",  # Fallback ID
+            databases_indexed=databases_indexed,
+            table_count=total_tables,
+            total_columns=total_columns,
+            embed_model="none"
+        )
+        save_discovery_metadata(metadata)
+
+        console.print(f"[bold green]✓ Schema discovery completed![/bold green]")
+        console.print(f"[dim]  Tables saved: {total_tables}[/dim]")
+        console.print(f"[dim]  Location: sql_connections/samples/[/dim]")
+        console.print()
+        console.print("[yellow]💡 Note: sql_search tool requires RAG index. Check embedding API configuration.[/yellow]")
+        console.print("[dim]     You can still use sql_query tool with qualified table names.[/dim]")

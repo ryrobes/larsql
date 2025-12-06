@@ -307,7 +307,10 @@ class Agent:
         with httpx.Client(timeout=60.0) as client:
             resp = client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception as e:
+                raise RuntimeError(f"Failed to parse embedding response as JSON. Status: {resp.status_code}, Body: {resp.text[:500]}") from e
 
         embeddings_data = data.get("data", [])
         if not embeddings_data:

@@ -202,6 +202,47 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
 
       </div>
 
+      {/* Individual sounding bars - normalized view */}
+      {phase.sounding_attempts && phase.sounding_attempts.length > 1 && (
+        <div className="individual-soundings">
+          {(() => {
+            // Deduplicate by index
+            const uniqueAttempts = Array.from(
+              new Map(phase.sounding_attempts.map(a => [a.index, a])).values()
+            ).sort((a, b) => a.index - b.index);
+
+            // Find max cost for normalization
+            const maxCost = Math.max(...uniqueAttempts.map(a => a.cost || 0), 0.001);
+
+            return uniqueAttempts.map((attempt) => {
+              const isWinner = attempt.is_winner;
+              const widthPercent = maxCost > 0 ? ((attempt.cost || 0) / maxCost) * 100 : 10;
+              const barWidth = Math.max(widthPercent, 5); // Minimum 5% for visibility
+
+              return (
+                <div key={attempt.index} className="individual-sounding-row">
+                  <span className="sounding-index-label">
+                    <span className="source-badge" style={{background: '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
+                      S{attempt.index}
+                    </span>
+                    {isWinner && <span className="winner-icon" title="Winner">🏆</span>}
+                  </span>
+                  <div className="individual-sounding-track">
+                    <div
+                      className={`individual-sounding-bar ${isWinner ? 'winner' : 'loser'}`}
+                      style={{ width: `${barWidth}%` }}
+                      title={`Sounding ${attempt.index}: ${formatCost(attempt.cost)}`}
+                    >
+                      <span className="sounding-cost-label">{formatCost(attempt.cost)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      )}
+
       <div className="phase-badges">
         <ComplexityBadges phase={phase} weight={weight} />
 

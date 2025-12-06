@@ -50,21 +50,28 @@ class ChDBAdapter(DatabaseAdapter):
     No server process needed, just point at parquet files.
     """
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, use_shared_session: bool = False):
         """
         Initialize chDB adapter.
 
         Args:
             data_dir: Directory containing parquet files
+            use_shared_session: If True, use a persistent session (not safe for multi-worker).
+                               If False, create new session per query (safe for gunicorn).
         """
         self.data_dir = data_dir
+        self.use_shared_session = use_shared_session
         # Import here to avoid hard dependency if using ClickHouse server
         try:
             import chdb
             import chdb.session
             self.chdb = chdb
-            # Create a session for consistent state across queries
-            self.session = chdb.session.Session()
+            if use_shared_session:
+                # Create a session for consistent state across queries
+                # WARNING: Not safe for multi-worker/multi-process deployments
+                self.session = chdb.session.Session()
+            else:
+                self.session = None
         except ImportError:
             raise ImportError(
                 "chdb is not installed. Install it with: pip install chdb"
@@ -93,7 +100,14 @@ class ChDBAdapter(DatabaseAdapter):
         chdb_format = format_map.get(output_format, "DataFrame")
 
         try:
-            result = self.session.query(sql, chdb_format)
+            if self.session:
+                # Use persistent session (faster but not multi-worker safe)
+                result = self.session.query(sql, chdb_format)
+            else:
+                # Create new session per query (slower but multi-worker safe)
+                import chdb.session
+                session = chdb.session.Session()
+                result = session.query(sql, chdb_format)
             return result
         except Exception as e:
             # Add more context to errors
@@ -286,6 +300,9 @@ class ClickHouseServerAdapter(DatabaseAdapter):
             print(f"[Windlass] ✓ Table '{table_name}' created")
 
 
+# Global adapter singleton (to reuse shared sessions)
+_adapter_singleton = None
+
 def get_db_adapter() -> DatabaseAdapter:
     """
     Get the appropriate database adapter based on configuration.
@@ -296,22 +313,35 @@ def get_db_adapter() -> DatabaseAdapter:
     2. ChDBAdapter (embedded chDB, if available)
     3. DuckDBAdapter (fallback, widely available)
 
+    Returns a singleton instance to reuse shared sessions and avoid chdb warnings.
+
     Returns:
         DatabaseAdapter instance
     """
+    global _adapter_singleton
+
+    # Return cached adapter if available
+    if _adapter_singleton is not None:
+        return _adapter_singleton
+
     from .config import get_config
 
     config = get_config()
 
     # Check if ClickHouse server is configured
     if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-        return ClickHouseServerAdapter(
+        _adapter_singleton = ClickHouseServerAdapter(
             host=config.clickhouse_host,
             port=config.clickhouse_port,
             database=config.clickhouse_database,
             user=getattr(config, 'clickhouse_user', 'default'),
             password=getattr(config, 'clickhouse_password', '')
         )
+        return _adapter_singleton
 
     # Use chDB (embedded ClickHouse)
-    return ChDBAdapter(config.data_dir)
+    # Check if we should use stateless mode (for multi-worker deployments like gunicorn)
+    import os
+    use_shared_session = os.getenv('WINDLASS_CHDB_SHARED_SESSION', 'false').lower() == 'true'
+    _adapter_singleton = ChDBAdapter(config.data_dir, use_shared_session=use_shared_session)
+    return _adapter_singleton

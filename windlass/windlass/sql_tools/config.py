@@ -28,7 +28,7 @@ class SqlConnectionConfig(BaseModel):
     # Query: SELECT * FROM csv_files.bigfoot_sightings LIMIT 10
 
     # Discovery settings
-    sample_row_limit: int = 500
+    sample_row_limit: int = 50
     distinct_value_threshold: int = 100  # Show distribution if < this
 
     # DuckDB extension (auto-install if needed)

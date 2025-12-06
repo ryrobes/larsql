@@ -36,27 +36,34 @@ def encode_image_base64(image_path: str, max_dimension: int = 1280) -> str:
             original_size = img.size
             should_resize = max(img.size) > max_dimension
 
-            # Always optimize images for LLM vision (convert to JPEG, handle transparency)
-            buffer = io.BytesIO()
-
-            # Resize if needed
+            # ONLY optimize/re-encode if we're actually resizing
+            # Otherwise, use original file to avoid unnecessary re-compression
             if should_resize:
+                # Resize and optimize images for LLM vision
+                buffer = io.BytesIO()
+
+                # Resize
                 img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
 
-            # Convert RGBA->RGB for better compression (LLMs don't need alpha channel)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                # Create white background
-                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                rgb_img.save(buffer, format='JPEG', quality=80, optimize=True)
-            else:
-                # RGB or L mode - save as JPEG directly
-                img.save(buffer, format='JPEG', quality=80, optimize=True)
+                # Convert RGBA->RGB for better compression (LLMs don't need alpha channel)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    # Create white background
+                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    rgb_img.save(buffer, format='JPEG', quality=80, optimize=True)
+                else:
+                    # RGB or L mode - save as JPEG directly
+                    img.save(buffer, format='JPEG', quality=80, optimize=True)
 
-            # Always use JPEG mime type when optimizing
-            mime_type = 'image/jpeg'
-            buffer.seek(0)
-            encoded_string = base64.b64encode(buffer.read()).decode('utf-8')
+                # Always use JPEG mime type when optimizing
+                mime_type = 'image/jpeg'
+                buffer.seek(0)
+                encoded_string = base64.b64encode(buffer.read()).decode('utf-8')
+            else:
+                # Image is already small enough - use original file without re-encoding
+                # This preserves the original compression and avoids making small images bigger
+                with open(image_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
         except ImportError:
             # PIL not available, fall back to no optimization

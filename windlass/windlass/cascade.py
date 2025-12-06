@@ -77,6 +77,68 @@ class RagConfig(BaseModel):
     chunk_overlap: int = 200
     model: Optional[str] = None  # Embedding model override (defaults to WINDLASS_DEFAULT_EMBED_MODEL)
 
+class TokenBudgetConfig(BaseModel):
+    """
+    Token budget enforcement to prevent context explosion.
+
+    Minimal usage:
+    {
+        "token_budget": {
+            "max_total": 100000,
+            "strategy": "sliding_window"
+        }
+    }
+    """
+    max_total: int = 100000  # Hard limit for context
+    reserve_for_output: int = 4000  # Always leave room for response
+    strategy: Literal["sliding_window", "prune_oldest", "summarize", "fail"] = "sliding_window"
+    warning_threshold: float = 0.8  # Warn at 80% capacity
+    phase_overrides: Optional[Dict[str, int]] = None  # Per-phase budgets
+    summarizer: Optional[Dict[str, Any]] = None  # Config for summarize strategy
+
+class ToolCachePolicy(BaseModel):
+    """Policy for caching a specific tool."""
+    enabled: bool = True
+    ttl: int = 3600  # Seconds
+    key: Literal["args_hash", "query", "sql_hash", "custom"] = "args_hash"
+    custom_key_fn: Optional[str] = None  # Python callable name
+    hit_message: Optional[str] = None  # Message returned on cache hit
+    invalidate_on: List[str] = Field(default_factory=list)  # Events that clear cache
+
+class ToolCachingConfig(BaseModel):
+    """
+    Content-addressed caching for deterministic tools.
+
+    Minimal usage:
+    {
+        "tool_caching": {
+            "enabled": true
+        }
+    }
+    """
+    enabled: bool = False
+    storage: Literal["memory", "redis", "sqlite"] = "memory"
+    global_ttl: int = 3600  # Default TTL in seconds
+    max_cache_size: int = 1000  # Max entries before LRU eviction
+    tools: Dict[str, ToolCachePolicy] = Field(default_factory=dict)
+
+class OutputExtractionConfig(BaseModel):
+    """
+    Extract structured data from phase output.
+
+    Usage:
+    {
+        "output_extraction": {
+            "pattern": "<scratchpad>(.*?)</scratchpad>",
+            "store_as": "reasoning"
+        }
+    }
+    """
+    pattern: str  # Regex pattern
+    store_as: str  # State variable name
+    required: bool = False  # Fail if pattern not found
+    format: Literal["text", "json", "code"] = "text"  # Parse extracted content
+
 class PhaseConfig(BaseModel):
     name: str
     instructions: str
@@ -92,6 +154,9 @@ class PhaseConfig(BaseModel):
     output_schema: Optional[Dict[str, Any]] = None
     wards: Optional[WardsConfig] = None
     rag: Optional[RagConfig] = None
+    context_retention: Literal["full", "output_only"] = "full"  # How much of this phase's context to keep in lineage
+    context_ttl: Optional[Dict[str, Optional[int]]] = None  # Time-to-live (in turns) for different message categories: tool_results, images, assistant
+    output_extraction: Optional[OutputExtractionConfig] = None  # Extract structured content from output
 
 class CascadeConfig(BaseModel):
     cascade_id: str
@@ -100,6 +165,8 @@ class CascadeConfig(BaseModel):
     inputs_schema: Optional[Dict[str, str]] = None # name -> description
     soundings: Optional[SoundingsConfig] = None  # Cascade-level soundings (Tree of Thought)
     memory: Optional[str] = None  # Memory bank name for persistent conversational memory
+    token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
+    tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
 
 def load_cascade_config(path_or_dict: Union[str, Dict]) -> CascadeConfig:
     if isinstance(path_or_dict, str):

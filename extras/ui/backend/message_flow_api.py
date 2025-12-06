@@ -170,6 +170,31 @@ def get_message_flow(session_id):
                 # All messages from winner reforge step
                 main_flow.append(msg)
 
+        # Calculate cost summary
+        total_cost = sum(msg.get('cost', 0) or 0 for msg in messages)
+        total_tokens_in = sum(msg.get('tokens_in', 0) or 0 for msg in messages)
+        total_tokens_out = sum(msg.get('tokens_out', 0) or 0 for msg in messages)
+        messages_with_cost = sum(1 for msg in messages if msg.get('cost'))
+
+        # Find most expensive message
+        most_expensive = None
+        max_cost = 0
+        for i, msg in enumerate(messages):
+            cost = msg.get('cost', 0) or 0
+            if cost > max_cost:
+                max_cost = cost
+                most_expensive = {
+                    'index': i,
+                    'cost': cost,
+                    'tokens_in': msg.get('tokens_in', 0),
+                    'role': msg.get('role'),
+                    'node_type': msg.get('node_type'),
+                    'phase_name': msg.get('phase_name'),
+                    'sounding_index': msg.get('sounding_index'),
+                    'reforge_step': msg.get('reforge_step'),
+                    'turn_number': msg.get('turn_number')
+                }
+
         conn.close()
 
         return jsonify({
@@ -178,7 +203,15 @@ def get_message_flow(session_id):
             'soundings': soundings_list,
             'reforge_steps': reforge_list,
             'main_flow': main_flow,
-            'all_messages': messages
+            'all_messages': messages,
+            'cost_summary': {
+                'total_cost': total_cost,
+                'total_tokens_in': total_tokens_in,
+                'total_tokens_out': total_tokens_out,
+                'messages_with_cost': messages_with_cost,
+                'total_tokens': total_tokens_in + total_tokens_out,
+                'most_expensive': most_expensive
+            }
         })
 
     except Exception as e:

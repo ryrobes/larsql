@@ -11,3 +11,8 @@ extras/ui/backend/__pycache__/app.cpython-314.pyc
 memories
 audio
 rabbitize-runs
+sql_connections/samples
+samples
+*sql_connections*
+
+sql_connections/discovery_metadata.json

@@ -1,6 +1,67 @@
 import json
 import os
+import re
 from windlass.eddies.base import simple_eddy
+
+
+def truncate_validation_error(error_msg: str, max_lines: int = 10) -> str:
+    """
+    Truncate verbose validation errors from charting libraries.
+
+    Many libraries (Plotly, Vega-Lite, etc.) include massive schema documentation
+    in their error messages. This strips out everything after "Valid properties:"
+    or similar markers, keeping only the essential error information.
+
+    Args:
+        error_msg: The full error message
+        max_lines: Maximum number of lines to keep (default: 10)
+
+    Returns:
+        Truncated error message that preserves the actual error but removes schema dumps
+    """
+    if not error_msg or len(error_msg) < 500:
+        # Short errors are fine as-is
+        return error_msg
+
+    # Markers that indicate the start of verbose schema documentation
+    truncation_markers = [
+        "Valid properties:",
+        "Valid values:",
+        "See the",
+        "Documentation:",
+        "For more information:",
+        "Supported types:",
+        "Available options:",
+    ]
+
+    # Find the earliest truncation marker
+    truncate_at = len(error_msg)
+    for marker in truncation_markers:
+        idx = error_msg.find(marker)
+        if idx != -1 and idx < truncate_at:
+            truncate_at = idx
+
+    # If we found a marker, truncate there
+    if truncate_at < len(error_msg):
+        truncated = error_msg[:truncate_at].rstrip()
+
+        # Count how many characters we're removing
+        removed_chars = len(error_msg) - len(truncated)
+
+        return (
+            f"{truncated}\n\n"
+            f"[Schema documentation truncated - {removed_chars:,} chars removed to save tokens. "
+            f"The key error is shown above.]"
+        )
+
+    # No marker found, but message is still long - truncate by lines
+    lines = error_msg.split('\n')
+    if len(lines) > max_lines:
+        truncated_lines = lines[:max_lines]
+        removed_lines = len(lines) - max_lines
+        return '\n'.join(truncated_lines) + f"\n\n[{removed_lines} additional lines truncated]"
+
+    return error_msg
 
 @simple_eddy
 def create_chart(title: str, data_points: str) -> str:
@@ -139,7 +200,8 @@ def create_vega_lite(spec_json: str, width: int = 600, height: int = 400) -> str
         })
 
     except Exception as e:
-        return f"Error rendering Vega-Lite chart: {type(e).__name__}: {e}"
+        error_msg = f"Error rendering Vega-Lite chart: {type(e).__name__}: {e}"
+        return truncate_validation_error(error_msg)
 
 
 @simple_eddy
@@ -271,4 +333,5 @@ def create_plotly(spec_json: str, width: int = 800, height: int = 600) -> str:
         })
 
     except Exception as e:
-        return f"Error rendering Plotly chart: {type(e).__name__}: {e}"
+        error_msg = f"Error rendering Plotly chart: {type(e).__name__}: {e}"
+        return truncate_validation_error(error_msg)
