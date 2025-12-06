@@ -63,6 +63,45 @@
   gap: 1rem;
 }
 
+/* View Mode Toggle */
+.view-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: rgba(22, 32, 42, 0.6);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.15);
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #9AA5B1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-mode-btn:hover {
+  background: rgba(45, 212, 191, 0.1);
+  color: #2DD4BF;
+}
+
+.view-mode-btn.active {
+  background: rgba(45, 212, 191, 0.2);
+  color: #2DD4BF;
+  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
+}
+
+.view-mode-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .hotornot-btn {
   display: flex;
   align-items: center;

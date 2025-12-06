@@ -1,0 +1,167 @@
+/* Grid container */
+.cascade-grid-container {
+  width: 100%;
+  height: calc(100vh - 240px); /* Full viewport height minus header and search */
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.5rem;
+}
+
+.cascade-grid {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+}
+
+/* Cell styling */
+.cascade-id-cell {
+  font-weight: 600;
+  color: #2dd4bf !important;
+  cursor: pointer;
+}
+
+.cascade-id-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cascade-id-text {
+  flex: 1;
+}
+
+.no-runs-badge {
+  display: inline-block;
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.description-cell {
+  color: #94a3b8 !important;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.center-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.cost-cell {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #d9a553 !important;
+  text-align: right;
+}
+
+/* Phases cell with badges */
+.phases-cell-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.phase-count {
+  font-weight: 600;
+  color: #f0f4f8;
+}
+
+.phase-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.phase-badge.soundings {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.phase-badge.reforges {
+  background: rgba(217, 165, 83, 0.2);
+  color: #d9a553;
+}
+
+.phase-badge.wards {
+  background: rgba(45, 212, 191, 0.2);
+  color: #2dd4bf;
+}
+
+/* Actions cell */
+.actions-cell {
+  padding: 0 !important;
+}
+
+.view-btn {
+  background: transparent;
+  border: 1px solid #2dd4bf;
+  color: #2dd4bf;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.view-btn:hover {
+  background: rgba(45, 212, 191, 0.1);
+  border-color: #2dd4bf;
+  transform: translateX(2px);
+}
+
+/* Custom styling for AG Grid cells (v33+ Theming API) */
+.cascade-grid :global(.ag-row) {
+  cursor: pointer;
+}
+
+.cascade-grid :global(.ag-row:hover) {
+  background-color: #2a3548 !important;
+}
+
+/* Header styling */
+.cascade-grid :global(.ag-header-cell-label) {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Scrollbar styling */
+.cascade-grid :global(::-webkit-scrollbar) {
+  width: 10px;
+  height: 10px;
+}
+
+.cascade-grid :global(::-webkit-scrollbar-track) {
+  background: #1a1f2e;
+}
+
+.cascade-grid :global(::-webkit-scrollbar-thumb) {
+  background: #2c3b4b;
+  border-radius: 5px;
+}
+
+.cascade-grid :global(::-webkit-scrollbar-thumb:hover) {
+  background: #3d4c5f;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .cascade-grid {
+    min-height: 400px;
+  }
+}

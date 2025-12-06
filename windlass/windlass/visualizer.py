@@ -936,6 +936,60 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
                 "reforge_step": node.get("reforge_step")
             })
 
+    # Build sub-cascade mapping for mermaid node IDs
+    # Maps mermaid node IDs (like "call_child_a0") to sub-cascade session IDs
+    sub_cascade_mapping = {}
+
+    # Scan for existing sub-cascade mermaid files using predictable naming pattern
+    # Pattern: {parent_session_id}_sub_{index}.json
+    import os
+    import glob
+    output_dir = os.path.dirname(output_path) if output_path else "graphs"
+
+    # Look for all sub-cascade JSON files
+    pattern = os.path.join(output_dir, f"{echo.session_id}_sub_*.json")
+    sub_files = glob.glob(pattern)
+
+    for sub_file in sub_files:
+        # Extract sub-cascade session ID from filename
+        basename = os.path.basename(sub_file)
+        sub_session_id = basename.replace(".json", "")
+
+        # Extract sounding index from session ID
+        if "_sub_" in sub_session_id:
+            try:
+                idx_str = sub_session_id.split("_sub_")[-1]
+                sounding_index = int(idx_str)
+            except (ValueError, IndexError):
+                continue
+
+            # Try to load the JSON to get cascade_id
+            cascade_id = None
+            try:
+                import json
+                with open(sub_file, 'r') as f:
+                    sub_data = json.load(f)
+                    # Find cascade node in nodes
+                    for node in sub_data.get("nodes", []):
+                        if node.get("node_type") == "cascade":
+                            cascade_id = node.get("cascade_id")
+                            break
+            except Exception:
+                pass  # Gracefully handle missing/corrupt files
+
+            # Build mermaid node ID by checking which phase has this sounding
+            # For now, we need to infer the phase name from the mermaid structure
+            # Since we're generating this mapping AFTER mermaid is generated,
+            # we can scan the actual mermaid content for the node IDs
+
+            # This mapping is session_id-based, UI can match by pattern
+            # Store with a generic key that UI can search
+            sub_cascade_mapping[f"sounding_{sounding_index}"] = {
+                "session_id": sub_session_id,
+                "cascade_id": cascade_id,
+                "sounding_index": sounding_index
+            }
+
     # Build output structure
     graph = {
         "session_id": echo.session_id,
@@ -946,6 +1000,9 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
 
         "phases": phases,
         "soundings": soundings_groups,
+
+        # NEW: Sub-cascade mapping for UI
+        "sub_cascade_mapping": sub_cascade_mapping,
 
         "summary": {
             "total_nodes": len(nodes),

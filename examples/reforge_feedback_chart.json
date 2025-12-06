@@ -9,9 +9,9 @@
   "phases": [{
     "name": "create_initial_chart",
     "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nRequirements: {{ input.requirements }}\n\nUse the create_chart tool. After creating it, the image will be automatically injected for you to see.\n\nOnce you see the chart image, analyze it against the requirements and describe:\n1. What you observe visually\n2. How well it meets the requirements\n3. What specific improvements are needed",
-    "tackle": ["create_chart"],
+    "tackle": ["create_vega_lite", "create_plotly"],
     "soundings": {
-      "factor": 3,
+      "factor": 4,
       "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable.",
       "reforge": {
         "steps": 2,
@@ -21,12 +21,20 @@
         "evaluator_override": "Evaluate refinements on:\n1. Specificity (exact values, not vague suggestions)\n2. Visual awareness (referencing actual chart elements)\n3. Implementation feasibility\n4. Completeness of improvements\n\nPick the most production-ready, implementable analysis."
       }
     },
-    "rules": {"max_turns": 2},
+    "rules": {"max_turns": 1},
     "handoffs": ["summarize"]
   }, {
     "name": "summarize",
     "instructions": "Summarize the complete chart refinement process:\n\n## Initial Chart Analysis\n{{ state.validated_output }}\n\n## Refinement Journey\nDescribe how the analysis evolved through reforge iterations.\n\n## Final Recommendations\nList the top 5 most critical improvements identified.\n\nNote: All chart images have been saved to the images directory for review.",
     "tackle": [],
+    "rules": {"max_turns": 1},
+    "handoffs": ["say_summary_summarize"]
+  },
+{
+    "name": "say_summary_summarize",
+    "instructions": "Use the `say` tool to speak to the user and give a VERY short summary of the findings.",
+    "tackle": ["say"],
     "rules": {"max_turns": 1}
-  }]
+  }
+]
 }
