@@ -32,6 +32,8 @@ from .prompts import render_instruction
 from .state import update_session_state, update_phase_progress, clear_phase_progress
 from .eddies.system import spawn_cascade
 from .eddies.state_tools import set_current_session_id
+from .rag.indexer import ensure_rag_index
+from .rag.context import set_current_rag_context, clear_current_rag_context
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
 
 from rich.tree import Tree
@@ -1775,6 +1777,13 @@ Refinement directive: {reforge_config.honing_prompt}
 
     def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None) -> Any:
         indent = "  " * self.depth
+        rag_context = None
+        rag_prompt = ""
+        rag_tool_names: List[str] = []
+
+        def _cleanup_rag():
+            if rag_context:
+                clear_current_rag_context()
 
         # Prepare outputs dict for easier templating
         outputs = {item['phase']: item['output'] for item in self.echo.lineage}
@@ -1787,6 +1796,58 @@ Refinement directive: {reforge_config.honing_prompt}
             "outputs": outputs,
             "lineage": self.echo.lineage
         }
+
+        # Build/update RAG index if configured for this phase
+        if phase.rag:
+            rag_context = ensure_rag_index(
+                phase.rag,
+                self.config_path,
+                self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                phase_name=phase.name,
+                cascade_id=self.config.cascade_id
+            )
+            set_current_rag_context(rag_context)
+            rag_tool_names = ["rag_search", "rag_read_chunk", "rag_list_sources"]
+            rag_prompt = (
+                f"\n\n## Retrieval Context\n"
+                f"A retrieval index is available for `{rag_context.directory}` "
+                f"(recursive: {phase.rag.recursive}), RAG ID: `{rag_context.rag_id}`.\n\n"
+                f"**CRITICAL: You MUST use `rag_search` first to get valid chunk_ids.** "
+                f"Chunk IDs are opaque strings like `9de9b0d4a33d_1` - never invent or guess them! "
+                f"Only use the exact chunk_id values returned by `rag_search` in the results array.\n\n"
+                f"Workflow: 1) `rag_search` to find chunks → 2) copy exact `chunk_id` from results → 3) `rag_read_chunk` to get full text.\n"
+                f"Cite sources as path#line_start-line_end."
+            )
+        else:
+            # No rag block on this phase - check if RAG tools are in tackle list
+            # If so, reuse the existing RAG context from an earlier phase
+            from .rag.context import get_current_rag_context
+            existing_ctx = get_current_rag_context()
+            rag_tools_in_tackle = {"rag_search", "rag_read_chunk", "rag_list_sources"}
+            phase_uses_rag_tools = bool(
+                phase.tackle and
+                isinstance(phase.tackle, list) and
+                rag_tools_in_tackle.intersection(phase.tackle)
+            )
+
+            if existing_ctx and phase_uses_rag_tools:
+                # Reuse existing RAG context - no rebuild needed
+                rag_context = existing_ctx
+                rag_tool_names = list(rag_tools_in_tackle.intersection(phase.tackle))
+                rag_prompt = (
+                    f"\n\n## Retrieval Context\n"
+                    f"A retrieval index is available for `{rag_context.directory}`, "
+                    f"RAG ID: `{rag_context.rag_id}`.\n\n"
+                    f"**CRITICAL: You MUST use `rag_search` first to get valid chunk_ids.** "
+                    f"Chunk IDs are opaque strings like `9de9b0d4a33d_1` - never invent or guess them! "
+                    f"Only use the exact chunk_id values returned by `rag_search` in the results array.\n\n"
+                    f"Workflow: 1) `rag_search` to find chunks → 2) copy exact `chunk_id` from results → 3) `rag_read_chunk` to get full text.\n"
+                    f"Cite sources as path#line_start-line_end."
+                )
+            # else: no RAG context and no RAG tools requested - leave context as-is
+
         rendered_instructions = render_instruction(phase.instructions, render_context)
 
         # Apply mutation if provided (for sounding variations)
@@ -1841,6 +1902,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                    {"reason": ward_result["reason"]},
                                    trace_id=trace.id, parent_id=trace.parent_id,
                                    node_type="ward_block", depth=self.depth)
+                        _cleanup_rag()
                         return f"[BLOCKED by pre-ward: {ward_result['reason']}]"
 
                     elif ward_result["mode"] == "advisory":
@@ -1889,6 +1951,11 @@ Refinement directive: {reforge_config.honing_prompt}
             tackle_list = self._run_quartermaster(phase, input_data, trace, phase_model)
             console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(tackle_list)}[/bold cyan]")
 
+        if rag_tool_names:
+            for rag_tool in rag_tool_names:
+                if rag_tool not in tackle_list:
+                    tackle_list.append(rag_tool)
+
         tools_schema = []  # For native tool calling
         tool_descriptions = []  # For prompt-based tool calling
         tool_map = {}
@@ -1931,7 +1998,7 @@ Refinement directive: {reforge_config.honing_prompt}
         # user_content = f"## Input Data:\n{json.dumps(input_data or {})}"  # REMOVED - redundant!
 
         # Add tool descriptions to instructions if using prompt-based tools
-        final_instructions = rendered_instructions
+        final_instructions = rendered_instructions + rag_prompt
         use_native = phase.use_native_tools
 
         if not use_native and tool_descriptions:
@@ -1956,19 +2023,58 @@ Refinement directive: {reforge_config.honing_prompt}
             use_native_tools=use_native  # Pass flag so Agent can strip tool_calls/tool_call_id from messages
         )
 
-        # Add initial messages to echo history
-        sys_trace = trace.create_child("msg", "system_instructions")
-        sys_msg = {"role": "system", "content": final_instructions}
-        self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
+        # Determine if this is the first phase (no prior assistant messages in context)
+        has_prior_context = any(m.get("role") == "assistant" for m in self.context_messages)
 
-        # Append to snowball context
-        self.context_messages.append(sys_msg)
+        # Build phase messages based on context:
+        # - First phase: system message (tools) + user message (task)
+        # - Subsequent phases: user message only (task) - tools already in context
+        #
+        # This ensures proper conversation flow: user messages prompt responses,
+        # while multiple system messages can confuse LLM APIs.
 
-        # NOTE: We do NOT add a separate "## Input Data:" user message
-        # Input data is already available to the agent via:
-        # 1. Jinja2 template rendering in system prompt (e.g., {{ input.problem }})
-        # 2. Snowball context from previous phases (full conversation history)
-        # Adding a redundant user message would confuse the agent with duplicate information.
+        # Build tool definitions prompt (for prompt-based tools only)
+        tools_prompt = ""
+        if not use_native and tool_descriptions:
+            tools_prompt = "\n\n".join(tool_descriptions)
+            tools_prompt += "\n\n**Important:** To call a tool, you MUST wrap your JSON in a ```json code fence:\n\n"
+            tools_prompt += "Example:\n```json\n"
+            tools_prompt += '{"tool": "tool_name", "arguments": {"param": "value"}}\n```\n\n'
+            tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
+
+        if has_prior_context:
+            # Subsequent phase: task as user message
+            # For prompt-based tools: include tool definitions in a system message if tools changed,
+            # otherwise include in user message for cleaner flow
+            # For native tools: tools are passed via API parameter, no message needed
+
+            if not use_native and tool_descriptions:
+                # Add system message with tool definitions (Quartermaster may have selected different tools)
+                sys_trace = trace.create_child("msg", "tool_definitions")
+                sys_msg = {"role": "system", "content": f"## Tools for this phase\n\n{tools_prompt}"}
+                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
+                self.context_messages.append(sys_msg)
+
+            # User message with the task
+            task_content = f"## New Task\n\n{rendered_instructions}{rag_prompt}"
+            user_trace = trace.create_child("msg", "phase_task")
+            user_msg = {"role": "user", "content": task_content}
+            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user")
+            self.context_messages.append(user_msg)
+        else:
+            # First phase: system message with tools + user message with task
+            if not use_native and tool_descriptions:
+                sys_trace = trace.create_child("msg", "tool_definitions")
+                sys_msg = {"role": "system", "content": f"## Available Tools\n\n{tools_prompt}"}
+                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
+                self.context_messages.append(sys_msg)
+
+            # User message with the actual task
+            task_content = rendered_instructions + rag_prompt
+            user_trace = trace.create_child("msg", "phase_task")
+            user_msg = {"role": "user", "content": task_content}
+            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user")
+            self.context_messages.append(user_msg)
 
         # For debugging, log input data to echo (but NOT to context_messages)
         if input_data:
@@ -2181,10 +2287,12 @@ Refinement directive: {reforge_config.honing_prompt}
                     console.print(f"{indent}  [dim]Turn {i+1}/{max_turns}[/dim]")
 
                 # Determine current_input before calling agent
+                # Phase task is already in context_messages as a user message,
+                # so turn 0 doesn't need additional input. Subsequent turns get a continuation prompt.
                 if turn_injection:
                     current_input = f"USER INJECTION: {turn_injection}"
                 elif i == 0:
-                    current_input = None # Handled by snowball
+                    current_input = None  # Phase task already in context_messages as user message
                 else:
                     current_input = "Continue/Refine based on previous output."
 
@@ -2234,6 +2342,29 @@ Refinement directive: {reforge_config.honing_prompt}
                                 console.print(f"{indent}  [bold red]⚠️  Infrastructure Error: {error_msg}[/bold red]")
                                 last_infrastructure_error = error_msg
 
+                                # Log the failed request for debugging (even though response was empty)
+                                from .unified_logs import log_unified
+                                full_request = response_dict.get("full_request")
+                                full_response = response_dict.get("full_response")
+                                log_unified(
+                                    session_id=self.session_id,
+                                    trace_id=turn_trace.id,
+                                    parent_id=trace.id,
+                                    node_type="error",
+                                    role="error",
+                                    content=f"Empty response (0 tokens). Attempt {infra_attempt + 1}/{infrastructure_max_retries}",
+                                    model=phase_model,
+                                    full_request=full_request,
+                                    full_response=full_response,
+                                    metadata={
+                                        "error_type": "empty_response",
+                                        "attempt": infra_attempt + 1,
+                                        "max_attempts": infrastructure_max_retries,
+                                        "phase_name": phase.name,
+                                        "cascade_id": self.config.cascade_id
+                                    }
+                                )
+
                                 if infra_attempt + 1 >= infrastructure_max_retries:
                                     console.print(f"{indent}  [bold red]Max infrastructure retries reached. Failing.[/bold red]")
                                     raise Exception(error_msg)
@@ -2251,6 +2382,29 @@ Refinement directive: {reforge_config.honing_prompt}
                                 'timeout', 'connection', 'empty response', 'rate limit',
                                 'api error', 'service unavailable', '503', '502', '500', '429'
                             ])
+
+                            # Log the failed request if available (Agent attaches full_request to exception)
+                            from .unified_logs import log_unified
+                            failed_request = getattr(infra_error, 'full_request', None)
+                            log_unified(
+                                session_id=self.session_id,
+                                trace_id=turn_trace.id,
+                                parent_id=trace.id,
+                                node_type="error",
+                                role="error",
+                                content=f"API Error: {type(infra_error).__name__}: {str(infra_error)[:500]}",
+                                model=phase_model,
+                                full_request=failed_request,
+                                metadata={
+                                    "error_type": type(infra_error).__name__,
+                                    "error_message": str(infra_error)[:1000],
+                                    "attempt": infra_attempt + 1,
+                                    "max_attempts": infrastructure_max_retries,
+                                    "is_infrastructure_error": is_infrastructure_error,
+                                    "phase_name": phase.name,
+                                    "cascade_id": self.config.cascade_id
+                                }
+                            )
 
                             if is_infrastructure_error:
                                 last_infrastructure_error = str(infra_error)
@@ -2993,6 +3147,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                        {"reason": ward_result["reason"]},
                                        trace_id=trace.id, parent_id=trace.parent_id,
                                        node_type="ward_block", depth=self.depth)
+                            _cleanup_rag()
                             return f"[BLOCKED by post-ward: {ward_result['reason']}]"
 
                         elif ward_result["mode"] == "retry":
@@ -3037,6 +3192,7 @@ Refinement directive: {reforge_config.honing_prompt}
         # Auto-save any images from final phase context (catches all images before phase completion)
         self._save_images_from_messages(self.context_messages, phase.name)
 
+        _cleanup_rag()
         return chosen_next_phase if chosen_next_phase else response_content
 
 def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,

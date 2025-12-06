@@ -14,6 +14,11 @@ class Config(BaseModel):
     #default_model: str = Field(default="x-ai/grok-4.1-fast")
     #default_model: str = Field(default="google/gemini-2.5-flash-lite")
 
+    # Default embedding model (used by RAG and Agent.embed())
+    default_embed_model: str = Field(
+        default_factory=lambda: os.getenv("WINDLASS_DEFAULT_EMBED_MODEL", "qwen/qwen3-embedding-8b")
+    )
+
     # Root directory - single source of truth
     root_dir: str = Field(default=_WINDLASS_ROOT)
 

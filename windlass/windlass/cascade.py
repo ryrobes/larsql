@@ -49,6 +49,31 @@ class SoundingsConfig(BaseModel):
     mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
     mutations: Optional[List[str]] = None  # Custom mutations/templates, or use built-in if None
 
+class RagConfig(BaseModel):
+    """
+    RAG configuration for a phase.
+
+    Minimal usage:
+    {
+        "rag": {"directory": "docs"}
+    }
+
+    Uses the standard Windlass provider config for embeddings.
+    Set WINDLASS_DEFAULT_EMBED_MODEL to override the default embedding model.
+    """
+    directory: str
+    recursive: bool = False
+    include: List[str] = Field(default_factory=lambda: [
+        "*.md", "*.markdown", "*.txt", "*.rst", "*.json", "*.yaml", "*.yml", "*.csv", "*.tsv", "*.py"
+    ])
+    exclude: List[str] = Field(default_factory=lambda: [
+        ".git/**", "node_modules/**", "__pycache__/**", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.svg",
+        "*.pdf", "*.zip", "*.tar", "*.gz", "*.parquet", "*.feather"
+    ])
+    chunk_chars: int = 1200
+    chunk_overlap: int = 200
+    model: Optional[str] = None  # Embedding model override (defaults to WINDLASS_DEFAULT_EMBED_MODEL)
+
 class PhaseConfig(BaseModel):
     name: str
     instructions: str
@@ -63,6 +88,7 @@ class PhaseConfig(BaseModel):
     soundings: Optional[SoundingsConfig] = None
     output_schema: Optional[Dict[str, Any]] = None
     wards: Optional[WardsConfig] = None
+    rag: Optional[RagConfig] = None
 
 class CascadeConfig(BaseModel):
     cascade_id: str

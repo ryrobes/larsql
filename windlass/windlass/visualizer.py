@@ -359,6 +359,53 @@ def extract_turns(history: List[Dict]) -> Dict[str, List[Dict]]:
     return turns
 
 
+def extract_tool_calls(history: List[Dict]) -> Dict[str, List[Dict]]:
+    """
+    Extract detailed tool call information per phase.
+
+    Returns:
+        Dict: phase_name -> [
+            {'tool_name': str, 'trace_id': str, 'turn_number': int, 'success': bool}
+        ]
+    """
+    tool_calls = {}
+
+    for entry in history:
+        node_type = entry.get("node_type", "")
+        if node_type == "tool_result":
+            meta = extract_metadata(entry)
+            phase_name = meta.get("phase_name", "unknown")
+            tool_name = meta.get("tool_name")
+            trace_id = entry.get("trace_id", "")
+            turn_number = meta.get("turn_number", 1)
+
+            # Try to extract tool name from content if not in metadata
+            if not tool_name:
+                content = entry.get("content", "")
+                if "Tool Result (" in content:
+                    import re
+                    match = re.search(r"Tool Result \((\w+)\)", content)
+                    if match:
+                        tool_name = match.group(1)
+
+            if tool_name:
+                if phase_name not in tool_calls:
+                    tool_calls[phase_name] = []
+
+                # Check if this looks like an error result
+                content = entry.get("content", "")
+                success = "error" not in content.lower()[:100]
+
+                tool_calls[phase_name].append({
+                    'tool_name': tool_name,
+                    'trace_id': trace_id,
+                    'turn_number': turn_number,
+                    'success': success
+                })
+
+    return tool_calls
+
+
 def extract_blocked_phases(history: List[Dict]) -> Dict[str, Dict]:
     """
     Extract phases that were blocked by blocking-mode wards.
@@ -1917,6 +1964,9 @@ def generate_state_diagram_string(echo: Echo) -> str:
     # Extract detailed turn info per phase
     turns_detail = extract_turns(history)
 
+    # Extract detailed tool call info per phase
+    tool_calls_detail = extract_tool_calls(history)
+
     # Get live session state for running indicator
     live_state = get_live_session_state(echo.session_id)
     running_phase = None
@@ -2100,10 +2150,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
     lines.append("    %% Style for running states - thick green border for visibility")
     lines.append("    classDef running fill:#1a2a1a,stroke:#00ff00,stroke-width:4px,color:#00ff00")
     lines.append("    classDef blocked fill:#2a1a1a,stroke:#ff4444,stroke-width:3px,color:#ff4444")
+    lines.append("    classDef failed fill:#2a1a1a,stroke:#ff6b6b,stroke-width:2px,color:#ff6b6b")
     lines.append("")
 
-    # Track which phase IDs need the running class applied
+    # Track which phase IDs need styling classes applied
     running_phase_ids = []
+    failed_phase_ids = []
 
     # Cascade-level soundings (if present)
     first_state = None
@@ -2173,6 +2225,10 @@ def generate_state_diagram_string(echo: Echo) -> str:
         detailed_turns = turns_detail.get(phase_name, [])
         has_multi_turns = len(detailed_turns) > 1
 
+        # Get tool calls detail for this phase
+        phase_tool_calls = tool_calls_detail.get(phase_name, [])
+        has_many_tool_calls = len(phase_tool_calls) >= 3  # Show composite if 3+ tool calls
+
         # Get tools and state changes for this phase
         phase_tools = tools_by_phase.get(phase_name, [])
         phase_state_changes = state_changes.get(phase_name, [])
@@ -2222,11 +2278,13 @@ def generate_state_diagram_string(echo: Echo) -> str:
             annotations.append(f"📝{state_keys}")
         annotation_str = " " + " ".join(annotations) if annotations else ""
 
-        # Override status if blocked
+        # Override status if blocked or has errors
         if is_blocked:
             status = "⛔"
+        elif has_errors:
+            status = "✗"  # Failed but not blocked
 
-        # Track running and blocked phases for styling
+        # Track running, blocked, and failed phases for styling
         is_phase_running = is_running and phase_name == running_phase
         phase_running_internal_node = None
 
@@ -2236,10 +2294,15 @@ def generate_state_diagram_string(echo: Echo) -> str:
             if phase_progress:
                 phase_running_internal_node = get_running_internal_node_id(phase_progress, pid)
 
+        # Track phases with errors for red styling (use outer-scope list)
+        if has_errors and not is_blocked:
+            failed_phase_ids.append(pid)
+
         # Decide if phase needs composite state
-        # Include errors and multi-turns as reasons for composite rendering
+        # Note: errors alone don't force composite - show as simple failed phase
+        # Only render composite if there's meaningful internal structure to show
         needs_composite = (has_soundings or has_reforge or has_wards or has_sub_cascades
-                          or has_errors or has_multi_turns or has_qm_selection)
+                          or has_multi_turns or has_qm_selection or has_many_tool_calls)
 
         if not needs_composite:
             # Simple phase - single state
@@ -2564,6 +2627,33 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         lines.append(f"        {turn_ids[k]} --> {turn_ids[k+1]}")
                     last_node = turn_ids[-1]
 
+            # TOOL CALLS (show individual tool calls for phases with many tools but not multi-turn)
+            if has_many_tool_calls and not has_multi_turns and not has_soundings:
+                lines.append("")
+                lines.append(f"        %% Tool calls")
+                tool_ids = []
+                for tc_idx, tc_info in enumerate(phase_tool_calls):
+                    tool_name = tc_info.get('tool_name', 'tool')
+                    success = tc_info.get('success', True)
+                    tc_id = f"{pid}_tc{tc_idx}"
+                    tool_ids.append(tc_id)
+
+                    # Show tool with success/failure indicator
+                    status_mark = "✓" if success else "✗"
+                    # Truncate long tool names
+                    short_name = tool_name[:12] + ".." if len(tool_name) > 14 else tool_name
+                    lines.append(f"        {tc_id} : 🔧 {short_name} {status_mark}")
+
+                # Connect tool calls in sequence
+                if tool_ids:
+                    if last_node:
+                        lines.append(f"        {last_node} --> {tool_ids[0]}")
+                    else:
+                        first_internal = tool_ids[0]
+                    for k in range(len(tool_ids) - 1):
+                        lines.append(f"        {tool_ids[k]} --> {tool_ids[k+1]}")
+                    last_node = tool_ids[-1]
+
             # ERRORS (show error nodes if errors occurred)
             if has_errors:
                 lines.append("")
@@ -2583,10 +2673,16 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
                     lines.append(f"        {e_id} : {err_icon} {error_msg}")
 
-                    # Errors branch off but don't necessarily block flow
-                    # Connect from last node (error happened during processing)
+                    # Connect error nodes into the flow
                     if last_node:
+                        # Errors branch off from the last node
                         lines.append(f"        {last_node} --> {e_id}")
+                    else:
+                        # Error is the first (and possibly only) internal node
+                        if first_internal is None:
+                            first_internal = e_id
+                    # Update last_node so subsequent errors chain together
+                    last_node = e_id
 
             # Connect internal flow
             if first_internal:
@@ -2708,6 +2804,13 @@ def generate_state_diagram_string(echo: Echo) -> str:
         lines.append("    %% Apply running style to active phases")
         for pid in running_phase_ids:
             lines.append(f"    class {pid} running")
+
+    # Apply failed class to phases with errors (red border)
+    if failed_phase_ids:
+        lines.append("")
+        lines.append("    %% Apply failed style to phases with errors")
+        for pid in failed_phase_ids:
+            lines.append(f"    class {pid} failed")
 
     return "\n".join(lines)
 

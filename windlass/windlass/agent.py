@@ -246,5 +246,143 @@ class Agent:
                 print(f"\n  Full Error Details:")
                 print(json.dumps(error_info, indent=2, default=str))
 
+                # Re-raise with full_request attached for upstream logging
+                # This allows runner to capture the request even on failure
+                e.full_request = full_request
                 raise e
+
+    @classmethod
+    def embed(
+        cls,
+        texts: List[str],
+        model: str = None,
+        session_id: str = None,
+        trace_id: str = None,
+        parent_id: str = None,
+        phase_name: str = None,
+        cascade_id: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate embeddings using the standard provider config.
+
+        Set WINDLASS_EMBED_BACKEND=deterministic for offline/testing mode.
+
+        Returns:
+            dict with keys:
+                - embeddings: List of embedding vectors
+                - model: Model used
+                - dim: Embedding dimension
+                - request_id: Provider request ID
+                - tokens: Total tokens used
+                - provider: Provider name
+        """
+        import os
+        import hashlib
+        import math
+
+        cfg = get_config()
+
+        # Check for deterministic mode (for testing without API calls)
+        backend = os.getenv("WINDLASS_EMBED_BACKEND", "").lower()
+        if backend == "deterministic":
+            return cls._deterministic_embed(texts, model or "deterministic")
+
+        # Use provided model or fall back to default embedding model
+        embed_model = model or cfg.default_embed_model
+
+        # Direct HTTP call to embeddings endpoint - same pattern as chat completions
+        # No need for litellm complexity, it's just a POST request
+        import httpx
+
+        url = f"{cfg.provider_base_url.rstrip('/')}/embeddings"
+        headers = {
+            "Authorization": f"Bearer {cfg.provider_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": embed_model,
+            "input": texts,
+        }
+
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        embeddings_data = data.get("data", [])
+        if not embeddings_data:
+            raise RuntimeError(f"No embedding data returned: {data}")
+
+        vectors = [d["embedding"] for d in embeddings_data]
+        if not vectors or not vectors[0]:
+            raise RuntimeError("Empty embedding response")
+
+        dim = len(vectors[0])
+        request_id = data.get("id")
+        usage = data.get("usage", {})
+        tokens = usage.get("total_tokens", 0)
+        model_used = data.get("model", embed_model)
+
+        # Extract provider
+        from .blocking_cost import extract_provider_from_model
+        provider = extract_provider_from_model(embed_model)
+
+        # Log to unified system (same path as chat completions)
+        from .unified_logs import log_unified
+        log_unified(
+            session_id=session_id,
+            trace_id=trace_id,
+            parent_id=parent_id,
+            node_type="embedding",
+            role="assistant",
+            depth=0,
+            phase_name=phase_name,
+            cascade_id=cascade_id,
+            model=model_used,
+            provider=provider,
+            request_id=request_id,
+            content=f"Embedded {len(texts)} texts ({dim} dimensions)",
+            metadata={"text_count": len(texts), "dimension": dim},
+            tokens_in=tokens,
+            tokens_out=None,
+            cost=None,  # Will be fetched by unified logger if request_id available
+        )
+
+        return {
+            "embeddings": vectors,
+            "model": model_used,
+            "dim": dim,
+            "request_id": request_id,
+            "tokens": tokens,
+            "provider": provider,
+        }
+
+    @classmethod
+    def _deterministic_embed(cls, texts: List[str], model: str) -> Dict[str, Any]:
+        """
+        Deterministic embedding using hashed token counts.
+        Used for offline testing without API calls.
+        """
+        import hashlib
+        import math
+
+        dim = 256  # Fixed dimension for deterministic embeddings
+        embeddings = []
+
+        for text in texts:
+            vec = [0.0] * dim
+            for token in text.split():
+                h = int(hashlib.sha1(token.encode()).hexdigest(), 16)
+                vec[h % dim] += 1.0
+            norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+            embeddings.append([v / norm for v in vec])
+
+        return {
+            "embeddings": embeddings,
+            "model": model,
+            "dim": dim,
+            "request_id": None,
+            "tokens": 0,
+            "provider": "deterministic",
+        }
 

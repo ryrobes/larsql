@@ -200,18 +200,12 @@ class UnifiedLogger:
                     self.pending_cost_buffer = still_pending
 
                 # Process ready items outside the lock
-                if ready_items:
-                    print(f"[Cost Worker] Processing {len(ready_items)} ready items for cost fetch")
-
                 for item in ready_items:
                     request_id = item.get("request_id")
                     row = item["_row"]
 
-                    print(f"[Cost Worker] Fetching cost for request_id={request_id[:20] if request_id else 'None'}..., session={row.get('session_id')}")
-
                     if request_id:
                         cost_data = self._fetch_cost_with_retry(request_id, config.provider_api_key)
-                        print(f"[Cost Worker] Got cost_data: cost={cost_data.get('cost')}, tokens_in={cost_data.get('tokens_in')}, tokens_out={cost_data.get('tokens_out')}")
 
                         # Merge cost data into row
                         row["cost"] = cost_data.get("cost")
@@ -241,10 +235,8 @@ class UnifiedLogger:
                 # Sleep briefly before next iteration
                 time.sleep(0.5)
 
-            except Exception as e:
-                print(f"[Cost Worker] Error: {e}")
-                import traceback
-                traceback.print_exc()
+            except Exception:
+                # Worker loop error - continue processing
                 time.sleep(1)
 
     def _fetch_cost_with_retry(self, request_id: str, api_key: str) -> Dict:
@@ -277,7 +269,6 @@ class UnifiedLogger:
                     provider = data.get("provider", "unknown")
 
                     if cost > 0 or tokens_in > 0 or tokens_out > 0:
-                        print(f"[Cost Worker] Fetched for {request_id[:16]}...: ${cost} ({tokens_in}+{tokens_out} tokens)")
                         return {"cost": cost, "tokens_in": tokens_in, "tokens_out": tokens_out, "provider": provider}
 
                     # Data empty but OK - continue retrying
@@ -289,11 +280,10 @@ class UnifiedLogger:
 
                 else:
                     # Other error - stop retrying
-                    print(f"[Cost Worker] API error {resp.status_code} for {request_id[:16]}...")
                     break
 
-            except Exception as e:
-                print(f"[Cost Worker] Request error: {e}")
+            except Exception:
+                # Request failed - stop retrying
                 break
 
         # All retries exhausted
@@ -308,7 +298,6 @@ class UnifiedLogger:
             # Only publish if we have cost data (allow 0 for free models)
             cost = cost_data.get("cost")
             if cost is None:
-                print(f"[Cost Worker] Skipping publish - cost is None for {row.get('session_id')}")
                 return
 
             bus = get_event_bus()
@@ -324,20 +313,15 @@ class UnifiedLogger:
                 "turn_number": row.get("turn_number"),
             }
 
-            print(f"[Cost Worker] Publishing cost_update: session={row.get('session_id')}, phase={row.get('phase_name')}, cost=${cost:.6f}, subscribers={bus.subscriber_count()}")
-
             bus.publish(Event(
                 type="cost_update",
                 session_id=row.get("session_id", "unknown"),
                 timestamp=datetime.now().isoformat(),
                 data=event_data
             ))
-            print(f"[Cost Worker] Published cost_update event: ${cost:.6f} for trace {row.get('trace_id', 'unknown')[:16]}...")
-        except Exception as e:
+        except Exception:
             # Don't let event publishing errors break cost tracking
-            import traceback
-            print(f"[Cost Worker] Event publish error: {e}")
-            traceback.print_exc()
+            pass
 
     def log(
         self,

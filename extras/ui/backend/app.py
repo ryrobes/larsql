@@ -1466,11 +1466,12 @@ def event_stream():
             connection_msg = json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})
             yield f"data: {connection_msg}\n\n"
 
-            heartbeat_count = 0
             try:
                 while True:
                     try:
-                        event = queue.get(timeout=0.5)
+                        # Use longer timeout (15s) to reduce CPU usage when idle
+                        # Heartbeat sent on each timeout to keep connection alive
+                        event = queue.get(timeout=15.0)
                         event_type = event.type if hasattr(event, 'type') else 'unknown'
                         print(f"[SSE] Event from bus: {event_type}")
                         event_dict = event.to_dict() if hasattr(event, 'to_dict') else event
@@ -1483,10 +1484,8 @@ def event_stream():
 
                         yield f"data: {json.dumps(event_dict, default=str)}\n\n"
                     except Empty:
-                        heartbeat_count += 1
-                        if heartbeat_count >= 10:
-                            yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
-                            heartbeat_count = 0
+                        # Send heartbeat on timeout to keep connection alive
+                        yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
             except GeneratorExit:
                 print("[SSE] Client disconnected")
             except Exception as e:
@@ -2156,4 +2155,4 @@ if __name__ == '__main__':
 
     print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=False)
