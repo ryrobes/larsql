@@ -1630,12 +1630,13 @@ def get_soundings_tree(session_id):
     and the winner path through the cascade execution.
     """
     try:
-        # Query unified logs for soundings data
+        # Query unified logs for soundings data (including reforge refinements)
         # Need to get both 'sounding_attempt' rows (metadata) and 'agent' rows (cost, content)
         query = f"""
         SELECT
             phase_name,
             sounding_index,
+            reforge_step,
             is_winner,
             content_json,
             cost,
@@ -1650,7 +1651,7 @@ def get_soundings_tree(session_id):
         WHERE session_id = '{session_id}'
           AND sounding_index IS NOT NULL
           AND node_type IN ('sounding_attempt', 'agent')
-        ORDER BY phase_name, sounding_index, turn_number, timestamp
+        ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
         """
 
         with get_db_connection() as conn:
@@ -1661,19 +1662,138 @@ def get_soundings_tree(session_id):
 
         # Group by phase
         phases_dict = {}
+        phase_order = []  # Track execution order by first appearance
         winner_path = []
 
         for _, row in df.iterrows():
             phase_name = row['phase_name']
             sounding_idx = int(row['sounding_index'])
+            reforge_step = row['reforge_step']
 
             if phase_name not in phases_dict:
                 phases_dict[phase_name] = {
                     'name': phase_name,
                     'soundings': {},
+                    'reforge_steps': {},
                     'eval_reasoning': None
                 }
+                # Track execution order by first appearance (preserves timestamp order from query)
+                phase_order.append(phase_name)
 
+            # Separate initial soundings from reforge refinements
+            is_reforge = pd.notna(reforge_step)
+
+            if is_reforge:
+                # REFORGE REFINEMENT
+                step_num = int(reforge_step)
+
+                # Initialize reforge step if needed
+                if step_num not in phases_dict[phase_name]['reforge_steps']:
+                    phases_dict[phase_name]['reforge_steps'][step_num] = {
+                        'step': step_num,
+                        'refinements': {},
+                        'eval_reasoning': None,
+                        'honing_prompt': None
+                    }
+
+                # Initialize refinement if needed
+                if sounding_idx not in phases_dict[phase_name]['reforge_steps'][step_num]['refinements']:
+                    is_winner_val = row['is_winner']
+                    if pd.isna(is_winner_val):
+                        is_winner = False
+                    else:
+                        is_winner = bool(is_winner_val)
+
+                    phases_dict[phase_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
+                        'index': sounding_idx,
+                        'cost': 0,
+                        'turns': [],
+                        'is_winner': is_winner,
+                        'failed': False,
+                        'output': '',
+                        'tool_calls': [],
+                        'error': None,
+                        'model': None,
+                        'start_time': None,
+                        'end_time': None,
+                        'duration': 0
+                    }
+
+                refinement = phases_dict[phase_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
+
+                # Update is_winner if definitive
+                is_winner_val = row['is_winner']
+                if pd.notna(is_winner_val) and bool(is_winner_val):
+                    refinement['is_winner'] = True
+
+                # Set model
+                if pd.notna(row['model']) and not refinement['model']:
+                    refinement['model'] = row['model']
+
+                # Track timestamps
+                if pd.notna(row['timestamp']):
+                    timestamp = float(row['timestamp'])
+                    if refinement['start_time'] is None or timestamp < refinement['start_time']:
+                        refinement['start_time'] = timestamp
+                    if refinement['end_time'] is None or timestamp > refinement['end_time']:
+                        refinement['end_time'] = timestamp
+
+                # Accumulate data
+                refinement['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
+                refinement['turns'].append({
+                    'turn': int(row['turn_number']) if pd.notna(row['turn_number']) else 0,
+                    'cost': float(row['cost']) if pd.notna(row['cost']) else 0
+                })
+
+                # Parse content
+                try:
+                    if pd.notna(row['content_json']):
+                        content = row['content_json']
+                        if isinstance(content, str):
+                            try:
+                                parsed = json.loads(content)
+                                if isinstance(parsed, str):
+                                    refinement['output'] += parsed + '\n'
+                                elif isinstance(parsed, dict) and 'content' in parsed:
+                                    refinement['output'] += str(parsed['content']) + '\n'
+                                else:
+                                    refinement['output'] += str(parsed) + '\n'
+                            except (json.JSONDecodeError, TypeError):
+                                refinement['output'] += content + '\n'
+                        else:
+                            refinement['output'] += str(content) + '\n'
+                except:
+                    pass
+
+                # Parse tool calls
+                try:
+                    if pd.notna(row['tool_calls_json']):
+                        tool_calls = json.loads(row['tool_calls_json'])
+                        if isinstance(tool_calls, list):
+                            for tool_call in tool_calls:
+                                if isinstance(tool_call, dict) and 'tool' in tool_call:
+                                    tool_name = tool_call['tool']
+                                    if tool_name not in refinement['tool_calls']:
+                                        refinement['tool_calls'].append(tool_name)
+                except:
+                    pass
+
+                # Check for errors
+                try:
+                    if pd.notna(row['metadata_json']):
+                        metadata = json.loads(row['metadata_json'])
+                        if isinstance(metadata, dict) and metadata.get('error'):
+                            refinement['error'] = metadata.get('error')
+                            refinement['failed'] = True
+                        # Extract honing prompt from metadata
+                        if isinstance(metadata, dict) and metadata.get('honing_prompt'):
+                            phases_dict[phase_name]['reforge_steps'][step_num]['honing_prompt'] = metadata.get('honing_prompt')
+                except:
+                    pass
+
+                continue  # Skip to next row (reforge handled)
+
+            # INITIAL SOUNDING (reforge_step IS NULL)
             if sounding_idx not in phases_dict[phase_name]['soundings']:
                 # Handle NA values for is_winner (agent rows may not have this set)
                 is_winner_val = row['is_winner']
@@ -1776,10 +1896,11 @@ def get_soundings_tree(session_id):
                     'sounding_index': sounding_idx
                 })
 
-        # Query for eval reasoning (evaluator agent messages)
+        # Query for eval reasoning (evaluator agent messages, including reforge)
         eval_query = f"""
         SELECT
             phase_name,
+            reforge_step,
             content_json,
             role
         FROM read_parquet('{DATA_DIR}/*.parquet')
@@ -1795,30 +1916,77 @@ def get_soundings_tree(session_id):
         # Extract evaluator reasoning - look for assistant messages with eval-like content
         for _, row in eval_df.iterrows():
             phase_name = row['phase_name']
+            reforge_step = row['reforge_step']
+
             if phase_name in phases_dict:
                 try:
                     if pd.notna(row['content_json']):
                         content = json.loads(row['content_json'])
                         content_text = ''
+
+                        def extract_text_from_content(c):
+                            """Recursively extract text from various content formats."""
+                            if isinstance(c, str):
+                                return c
+                            elif isinstance(c, list):
+                                # Handle list of content parts (OpenAI multi-part format)
+                                # e.g., [{"type": "text", "text": "..."}]
+                                parts = []
+                                for item in c:
+                                    if isinstance(item, str):
+                                        parts.append(item)
+                                    elif isinstance(item, dict):
+                                        # Extract text from dict items
+                                        if 'text' in item:
+                                            parts.append(str(item['text']))
+                                        elif 'content' in item:
+                                            parts.append(extract_text_from_content(item['content']))
+                                return '\n'.join(parts)
+                            elif isinstance(c, dict):
+                                # Handle dict with text or content key
+                                if 'text' in c:
+                                    return str(c['text'])
+                                elif 'content' in c:
+                                    return extract_text_from_content(c['content'])
+                                else:
+                                    return str(c)
+                            else:
+                                return str(c)
+
                         if isinstance(content, str):
                             content_text = content
                         elif isinstance(content, dict) and 'content' in content:
-                            content_text = str(content['content'])
+                            content_text = extract_text_from_content(content['content'])
+                        elif isinstance(content, list):
+                            # Direct list content
+                            content_text = extract_text_from_content(content)
+                        else:
+                            content_text = str(content)
 
                         # Heuristic: if content mentions evaluation-related keywords, it's likely evaluator reasoning
-                        eval_keywords = ['sounding', 'evaluate', 'winner', 'attempt', 'explanation', 'best']
+                        eval_keywords = ['sounding', 'evaluate', 'winner', 'attempt', 'explanation', 'best', 'refinement', 'reforge']
                         has_eval_keyword = any(keyword in content_text.lower() for keyword in eval_keywords)
 
                         if content_text and has_eval_keyword:
-                            if not phases_dict[phase_name]['eval_reasoning']:
-                                # Store full eval reasoning (no truncation)
-                                phases_dict[phase_name]['eval_reasoning'] = content_text
+                            # Check if this is reforge eval or initial soundings eval
+                            if pd.notna(reforge_step):
+                                # Reforge step evaluation
+                                step_num = int(reforge_step)
+                                if step_num in phases_dict[phase_name]['reforge_steps']:
+                                    if not phases_dict[phase_name]['reforge_steps'][step_num]['eval_reasoning']:
+                                        phases_dict[phase_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
+                            else:
+                                # Initial soundings evaluation
+                                if not phases_dict[phase_name]['eval_reasoning']:
+                                    # Store full eval reasoning (no truncation)
+                                    phases_dict[phase_name]['eval_reasoning'] = content_text
                 except:
                     pass
 
         # Convert dicts to lists and calculate durations
+        # Use phase_order to maintain execution order (not alphabetical!)
         phases = []
-        for phase_name in sorted(phases_dict.keys()):
+        for phase_name in phase_order:
             phase = phases_dict[phase_name]
             soundings_list = list(phase['soundings'].values())
 
@@ -1833,7 +2001,105 @@ def get_soundings_tree(session_id):
                 del sounding['end_time']
 
             phase['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
+
+            # Attach images to soundings
+            # Check main session images
+            phase_dir = os.path.join(IMAGE_DIR, session_id, phase_name)
+            if os.path.exists(phase_dir):
+                for img_file in sorted(os.listdir(phase_dir)):
+                    if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                        # Main session image (no specific sounding)
+                        pass
+
+            # Check sounding-specific images
+            parent_dir = os.path.dirname(os.path.join(IMAGE_DIR, session_id))
+            if os.path.exists(parent_dir):
+                import re
+                for entry in os.listdir(parent_dir):
+                    if entry.startswith(f"{session_id}_sounding_"):
+                        sounding_match = re.search(r'_sounding_(\d+)$', entry)
+                        if sounding_match:
+                            sounding_idx = int(sounding_match.group(1))
+                            sounding_img_dir = os.path.join(parent_dir, entry, phase_name)
+                            if os.path.exists(sounding_img_dir):
+                                # Find corresponding sounding in our list
+                                for sounding in soundings_list:
+                                    if sounding['index'] == sounding_idx:
+                                        if 'images' not in sounding:
+                                            sounding['images'] = []
+                                        for img_file in sorted(os.listdir(sounding_img_dir)):
+                                            if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                                                sounding['images'].append({
+                                                    'filename': img_file,
+                                                    'url': f'/api/images/{entry}/{phase_name}/{img_file}'
+                                                })
+
+            # Convert reforge dicts to lists and attach images
+            reforge_steps_list = []
+            for step_num in sorted(phase['reforge_steps'].keys()):
+                step = phase['reforge_steps'][step_num]
+                refinements_list = list(step['refinements'].values())
+
+                # Calculate duration for each refinement
+                for refinement in refinements_list:
+                    if refinement['start_time'] and refinement['end_time']:
+                        refinement['duration'] = refinement['end_time'] - refinement['start_time']
+                    else:
+                        refinement['duration'] = 0
+                    # Remove raw timestamps
+                    del refinement['start_time']
+                    del refinement['end_time']
+
+                step['refinements'] = sorted(refinements_list, key=lambda r: r['index'])
+
+                # Check reforge-specific images
+                # Pattern: {session_id}_reforge{step}_{attempt}/{phase_name}/
+                if os.path.exists(parent_dir):
+                    for entry in os.listdir(parent_dir):
+                        if entry.startswith(f"{session_id}_reforge{step_num}_"):
+                            reforge_match = re.search(r'_reforge(\d+)_(\d+)$', entry)
+                            if reforge_match:
+                                step_check = int(reforge_match.group(1))
+                                attempt_idx = int(reforge_match.group(2))
+                                if step_check == step_num:
+                                    reforge_img_dir = os.path.join(parent_dir, entry, phase_name)
+                                    if os.path.exists(reforge_img_dir):
+                                        # Find corresponding refinement
+                                        for refinement in step['refinements']:
+                                            if refinement['index'] == attempt_idx:
+                                                if 'images' not in refinement:
+                                                    refinement['images'] = []
+                                                for img_file in sorted(os.listdir(reforge_img_dir)):
+                                                    if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                                                        refinement['images'].append({
+                                                            'filename': img_file,
+                                                            'url': f'/api/images/{entry}/{phase_name}/{img_file}'
+                                                        })
+
+                reforge_steps_list.append(step)
+
+            phase['reforge_steps'] = reforge_steps_list
+
             phases.append(phase)
+
+        # Build reforge trails for winner_path
+        for winner_entry in winner_path:
+            phase_name = winner_entry['phase_name']
+            # Find the phase in our phases list
+            for phase in phases:
+                if phase['name'] == phase_name:
+                    # Check if this phase has reforge steps
+                    if phase['reforge_steps']:
+                        reforge_trail = []
+                        # For each reforge step, find the winner
+                        for step in phase['reforge_steps']:
+                            for refinement in step['refinements']:
+                                if refinement['is_winner']:
+                                    reforge_trail.append(refinement['index'])
+                                    break
+                        if reforge_trail:
+                            winner_entry['reforge_trail'] = reforge_trail
+                    break
 
         result = {
             'phases': phases,

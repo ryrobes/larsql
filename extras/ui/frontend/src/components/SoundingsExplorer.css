@@ -246,6 +246,80 @@
   border-left: 2px solid rgba(78, 201, 176, 0.3);
 }
 
+/* Image Thumbnails */
+.image-thumbnails {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.image-thumbnails .thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #3a3f4b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.image-thumbnails .thumbnail:hover {
+  border-color: #4ec9b0;
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(78, 201, 176, 0.3);
+}
+
+.thumbnail-overflow {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed #3a3f4b;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #8b92a0;
+  font-weight: 600;
+}
+
+/* Image Gallery (expanded state) */
+.image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.gallery-item {
+  background: #1a1d24;
+  border: 1px solid #2d3139;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.gallery-item:hover {
+  border-color: #4ec9b0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(78, 201, 176, 0.2);
+}
+
+.gallery-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  cursor: pointer;
+}
+
+.image-label {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #8b92a0;
+  font-family: 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.2);
+}
+
 /* Cost Bar */
 .cost-bar-track {
   height: 6px;
@@ -402,6 +476,34 @@
   font-size: 13px;
   line-height: 1.6;
   color: #d4d7dd;
+  /* Allow long content to be scrollable */
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  padding-right: 8px;
+  /* Scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: #4ec9b0 rgba(78, 201, 176, 0.1);
+}
+
+.eval-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.eval-content::-webkit-scrollbar-track {
+  background: rgba(78, 201, 176, 0.1);
+  border-radius: 3px;
+}
+
+.eval-content::-webkit-scrollbar-thumb {
+  background: #4ec9b0;
+  border-radius: 3px;
+}
+
+.eval-content::-webkit-scrollbar-thumb:hover {
+  background: #5ed9c0;
 }
 
 /* Winner Path Summary */
@@ -467,6 +569,216 @@
   padding: 60px 20px;
   color: #8b92a0;
   font-size: 15px;
+}
+
+/* ===================================
+   REFORGE SECTION
+   =================================== */
+
+/* Reforge Container */
+.reforge-container {
+  margin-top: 20px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(139, 92, 246, 0.03));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+}
+
+.reforge-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #a78bfa;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.reforge-header:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.reforge-header svg {
+  flex-shrink: 0;
+}
+
+.step-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #c4b5fd;
+  padding: 3px 8px;
+  background: rgba(167, 139, 250, 0.2);
+  border-radius: 4px;
+}
+
+/* Reforge Steps */
+.reforge-steps {
+  margin-top: 16px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(139, 92, 246, 0.3);
+}
+
+.reforge-step {
+  margin-bottom: 20px;
+  padding: 14px;
+  background: rgba(139, 92, 246, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.reforge-step-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c4b5fd;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.honing-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: #9ca3af;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border-left: 3px solid #a78bfa;
+}
+
+.honing-prompt svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #fbbf24;
+}
+
+/* Refinements Grid */
+.refinements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.refinement-card {
+  background: #1e2229;
+  border: 2px solid #5b21b6;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.refinement-card:hover {
+  border-color: #a78bfa;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.refinement-card.winner {
+  border-color: #34d399;
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(52, 211, 153, 0.03));
+}
+
+.refinement-card.failed {
+  border-color: #ef4444;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.03));
+}
+
+.refinement-card.expanded {
+  grid-column: 1 / -1;
+  border-color: #a78bfa;
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+}
+
+.refinement-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c4b5fd;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.refinement-cost {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+  font-family: 'Courier New', monospace;
+}
+
+/* Step Evaluator Reasoning */
+.step-eval {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px;
+  background: rgba(167, 139, 250, 0.08);
+  border-radius: 6px;
+  border-left: 2px solid #a78bfa;
+  margin-top: 12px;
+}
+
+.step-eval svg {
+  flex-shrink: 0;
+  color: #a78bfa;
+  margin-top: 2px;
+}
+
+.step-eval-content {
+  flex: 1;
+  min-width: 0; /* Allow flex child to shrink below content size */
+  color: #d4d7dd;
+  /* Allow long content to be scrollable */
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  padding-right: 6px;
+  /* Scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: #a78bfa rgba(139, 92, 246, 0.1);
+}
+
+.step-eval-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.step-eval-content::-webkit-scrollbar-track {
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 3px;
+}
+
+.step-eval-content::-webkit-scrollbar-thumb {
+  background: #a78bfa;
+  border-radius: 3px;
+}
+
+.step-eval-content::-webkit-scrollbar-thumb:hover {
+  background: #b79cfd;
+}
+
+/* Reforge Trail in Winner Path */
+.reforge-trail {
+  color: #a78bfa;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.reforge-trail sub {
+  font-size: 9px;
+  color: #8b92a0;
 }
 
 /* Scrollbar Styling */

@@ -212,12 +212,37 @@ Add 👍/👎 buttons → Generate RLHF training data
 - [ ] Verify winner path at bottom
 - [ ] Click X or outside modal → closes
 
-## 📈 Next Steps
+## 📈 Development Phases
 
-### Immediate Enhancements
+### ✅ Phase 1: Basic Soundings Explorer - COMPLETE
+- Full-screen modal with vertical phase timeline
+- Horizontal sounding spread per phase
+- Winner highlighting with evaluator reasoning
+- Click-to-expand for drill-down
+
+### ✅ Phase 2: Image Support - COMPLETE
+- Image thumbnails in collapsed cards
+- Full image gallery in expanded view
+- Automatic image scanning and attachment
+- See: `PHASE_2_IMAGE_SUPPORT_COMPLETE.md`
+
+### ✅ Phase 3: Reforge Visualization - COMPLETE
+- Progressive refinement display (winner → R1step1 → R0step2)
+- Honing prompts with lightbulb icons
+- Step-level evaluator reasoning
+- Purple/violet theme for refinements
+- Complete reforge trail in winner path
+- See: `PHASE_3_REFORGE_COMPLETE.md`
+
+---
+
+## 📈 Future Enhancements
+
+### Immediate Improvements
 1. **Eval score breakdown** - If evaluator returns structured scores, show them
 2. **Search/filter** - Find specific tool calls or error patterns
 3. **Export to JSON** - Download decision tree for analysis
+4. **Refinement diff view** - Side-by-side comparison of reforge outputs
 
 ### Human Feedback System
 1. **Agree/Disagree buttons** - On evaluator decisions
@@ -228,7 +253,7 @@ Add 👍/👎 buttons → Generate RLHF training data
 ### Advanced Visualizations
 1. **Sankey diagram** - Flow visualization of paths
 2. **Cost heatmap** - Color-code by cost
-3. **Diff view** - Side-by-side comparison of two soundings
+3. **Image comparison slider** - Before/after for reforge refinements
 4. **Time series** - Show cost/tokens over time
 
 ## 🎓 Training Data Collection Ideas

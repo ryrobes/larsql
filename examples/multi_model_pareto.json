@@ -1,0 +1,31 @@
+{
+  "cascade_id": "multi_model_pareto",
+  "description": "Phase 3 Multi-Model Soundings - Pareto frontier analysis for optimal cost/quality tradeoff",
+  "inputs_schema": {
+    "task": "The task to complete with Pareto optimization"
+  },
+  "phases": [
+    {
+      "name": "generate",
+      "instructions": "Complete this task: {{ input.task }}",
+      "tackle": [],
+      "soundings": {
+        "factor": 6,
+        "evaluator_instructions": "Evaluate the quality of each response for clarity, accuracy, and usefulness.",
+        "models": {
+          "anthropic/claude-sonnet-4.5": {"factor": 2},
+          "x-ai/grok-4.1-fast": {"factor": 2},
+          "google/gemini-2.5-flash-lite": {"factor": 2}
+        },
+        "mutate": false,
+        "pareto_frontier": {
+          "enabled": true,
+          "policy": "balanced",
+          "show_frontier": true,
+          "quality_metric": "evaluator_score",
+          "include_dominated": true
+        }
+      }
+    }
+  ]
+}

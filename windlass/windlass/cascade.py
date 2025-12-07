@@ -44,6 +44,45 @@ class ReforgeConfig(BaseModel):
     evaluator_override: Optional[str] = None  # Custom evaluator for refinement steps
     threshold: Optional[WardConfig] = None  # Early stopping validation (ward-like)
 
+class ModelConfig(BaseModel):
+    """Per-model configuration for multi-model soundings."""
+    factor: int = 1  # How many soundings for this model
+    temperature: Optional[float] = None  # Model-specific temperature override
+    max_tokens: Optional[int] = None  # Model-specific max_tokens override
+
+
+class CostAwareEvaluation(BaseModel):
+    """
+    Cost-aware evaluation settings for multi-model soundings.
+
+    When enabled, the evaluator considers both output quality and cost
+    when selecting the winning sounding.
+    """
+    enabled: bool = True
+    quality_weight: float = 0.7  # Weight for quality (0-1)
+    cost_weight: float = 0.3  # Weight for cost (0-1, should sum to 1 with quality_weight)
+    show_costs_to_evaluator: bool = True  # Whether to show costs to the LLM evaluator
+    cost_normalization: Literal["min_max", "z_score", "log_scale"] = "min_max"  # How to normalize costs for comparison
+
+
+class ParetoFrontier(BaseModel):
+    """
+    Pareto frontier analysis settings for multi-model soundings.
+
+    When enabled, computes the Pareto frontier of cost vs quality,
+    identifies non-dominated solutions, and selects winner from the frontier
+    based on the specified policy.
+    """
+    enabled: bool = False
+    policy: Literal["prefer_cheap", "prefer_quality", "balanced", "interactive"] = "balanced"
+    # prefer_cheap: Pick cheapest on frontier
+    # prefer_quality: Pick highest quality on frontier
+    # balanced: Maximize quality/cost ratio on frontier
+    # interactive: Show frontier options, prompt user (dev/research only)
+    show_frontier: bool = True  # Log frontier data for visualization
+    quality_metric: str = "evaluator_score"  # "evaluator_score" | "validator:<name>" | "custom"
+    include_dominated: bool = True  # Log dominated solutions for analysis
+
 class SoundingsConfig(BaseModel):
     factor: int = 1
     evaluator_instructions: str
@@ -51,6 +90,16 @@ class SoundingsConfig(BaseModel):
     mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)
     mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
     mutations: Optional[List[str]] = None  # Custom mutations/templates, or use built-in if None
+
+    # Multi-model soundings (Phase 1: Simple Model Pool)
+    models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
+    model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across soundings
+
+    # Cost-aware evaluation (Phase 2: Cost-Aware Evaluation)
+    cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model soundings
+
+    # Pareto frontier analysis (Phase 3: Pareto Frontier Analysis)
+    pareto_frontier: Optional[ParetoFrontier] = None  # Enable Pareto frontier computation and selection
 
 class RagConfig(BaseModel):
     """

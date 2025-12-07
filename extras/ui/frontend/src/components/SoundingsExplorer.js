@@ -13,6 +13,8 @@ function SoundingsExplorer({ sessionId, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedAttempt, setExpandedAttempt] = useState(null); // {phaseIdx, soundingIdx}
+  const [reforgeExpanded, setReforgeExpanded] = useState({}); // {phaseIdx: boolean}
+  const [expandedRefinement, setExpandedRefinement] = useState(null); // {phaseIdx, stepIdx, refIdx}
 
   useEffect(() => {
     fetchSoundingsData();
@@ -61,6 +63,24 @@ function SoundingsExplorer({ sessionId, onClose }) {
       setExpandedAttempt(null);
     } else {
       setExpandedAttempt({ phaseIdx, soundingIdx });
+    }
+  };
+
+  const toggleReforgeExpanded = (phaseIdx) => {
+    setReforgeExpanded(prev => ({
+      ...prev,
+      [phaseIdx]: !prev[phaseIdx]
+    }));
+  };
+
+  const handleRefinementClick = (phaseIdx, stepIdx, refIdx) => {
+    // Toggle expansion
+    if (expandedRefinement?.phaseIdx === phaseIdx &&
+        expandedRefinement?.stepIdx === stepIdx &&
+        expandedRefinement?.refIdx === refIdx) {
+      setExpandedRefinement(null);
+    } else {
+      setExpandedRefinement({ phaseIdx, stepIdx, refIdx });
     }
   };
 
@@ -200,6 +220,26 @@ function SoundingsExplorer({ sessionId, onClose }) {
                           )}
                         </div>
 
+                        {/* Image Thumbnails (collapsed state) */}
+                        {!isExpanded && sounding.images && sounding.images.length > 0 && (
+                          <div className="image-thumbnails">
+                            {sounding.images.slice(0, 3).map((img, imgIdx) => (
+                              <img
+                                key={imgIdx}
+                                src={`http://localhost:5001${img.url}`}
+                                alt={img.filename}
+                                className="thumbnail"
+                                title={img.filename}
+                              />
+                            ))}
+                            {sounding.images.length > 3 && (
+                              <div className="thumbnail-overflow">
+                                +{sounding.images.length - 3}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Output Preview (collapsed state) */}
                         {!isExpanded && sounding.output && (
                           <div className="output-preview">
@@ -215,6 +255,24 @@ function SoundingsExplorer({ sessionId, onClose }) {
                         {/* Expanded Detail */}
                         {isExpanded && (
                           <div className="expanded-detail">
+                            {/* Images Section - FIRST */}
+                            {sounding.images && sounding.images.length > 0 && (
+                              <div className="detail-section">
+                                <h4>Images ({sounding.images.length})</h4>
+                                <div className="image-gallery">
+                                  {sounding.images.map((img, idx) => (
+                                    <div key={idx} className="gallery-item">
+                                      <img
+                                        src={`http://localhost:5001${img.url}`}
+                                        alt={img.filename}
+                                        className="gallery-image"
+                                      />
+                                      <div className="image-label">{img.filename}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <div className="detail-section">
                               <h4>Output</h4>
                               <div className="output-content">
@@ -256,6 +314,202 @@ function SoundingsExplorer({ sessionId, onClose }) {
                     </div>
                   </div>
                 )}
+
+                {/* Reforge Section */}
+                {phase.reforge_steps && phase.reforge_steps.length > 0 && (
+                  <div className="reforge-container">
+                    <div
+                      className="reforge-header"
+                      onClick={() => toggleReforgeExpanded(phaseIdx)}
+                    >
+                      <Icon icon="mdi:hammer-wrench" width="18" />
+                      <span>Reforge: Winner Refinement</span>
+                      <span className="step-count">{phase.reforge_steps.length} step{phase.reforge_steps.length > 1 ? 's' : ''}</span>
+                      <Icon
+                        icon={reforgeExpanded[phaseIdx] ? "mdi:chevron-up" : "mdi:chevron-down"}
+                        width="20"
+                      />
+                    </div>
+
+                    {reforgeExpanded[phaseIdx] && (
+                      <div className="reforge-steps">
+                        {phase.reforge_steps.map((step, stepIdx) => {
+                          const maxCost = Math.max(...step.refinements.map(r => r.cost || 0), 0.001);
+
+                          return (
+                            <div key={stepIdx} className="reforge-step">
+                              <div className="reforge-step-header">
+                                <Icon icon="mdi:numeric" width="16" />
+                                Step {step.step + 1}: Refinement Iteration
+                              </div>
+
+                              {step.honing_prompt && (
+                                <div className="honing-prompt">
+                                  <Icon icon="mdi:lightbulb-on" width="14" />
+                                  <span>{step.honing_prompt}</span>
+                                </div>
+                              )}
+
+                              {/* Refinements Grid */}
+                              <div className="refinements-grid">
+                                {step.refinements.map((refinement, refIdx) => {
+                                  const isWinner = refinement.is_winner;
+                                  const hasFailed = refinement.failed || false;
+                                  const costPercent = (refinement.cost / maxCost) * 100;
+                                  const isExpanded = expandedRefinement?.phaseIdx === phaseIdx &&
+                                                     expandedRefinement?.stepIdx === stepIdx &&
+                                                     expandedRefinement?.refIdx === refIdx;
+
+                                  return (
+                                    <div
+                                      key={refIdx}
+                                      className={`refinement-card ${isWinner ? 'winner' : ''} ${hasFailed ? 'failed' : ''} ${isExpanded ? 'expanded' : ''}`}
+                                      onClick={() => handleRefinementClick(phaseIdx, stepIdx, refIdx)}
+                                    >
+                                      {/* Card Header */}
+                                      <div className="card-header">
+                                        <span className="refinement-label">
+                                          R{refinement.index}
+                                          {isWinner && <Icon icon="mdi:trophy" width="14" className="trophy-icon" />}
+                                        </span>
+                                        <div className="header-right">
+                                          {refinement.model && (
+                                            <span className="model-badge" title={refinement.model}>
+                                              {refinement.model.split('/').pop().substring(0, 12)}
+                                            </span>
+                                          )}
+                                          <span className="refinement-cost">{formatCost(refinement.cost)}</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Cost Bar */}
+                                      <div className="cost-bar-track">
+                                        <div
+                                          className={`cost-bar-fill ${isWinner ? 'winner-bar' : ''} ${hasFailed ? 'failed-bar' : ''}`}
+                                          style={{ width: `${costPercent}%` }}
+                                        />
+                                      </div>
+
+                                      {/* Metadata */}
+                                      <div className="card-metadata">
+                                        {refinement.duration > 0 && (
+                                          <span className="metadata-item">
+                                            <Icon icon="mdi:clock-outline" width="14" />
+                                            {formatDuration(refinement.duration)}
+                                          </span>
+                                        )}
+                                        {refinement.turns && (
+                                          <span className="metadata-item">
+                                            <Icon icon="mdi:repeat" width="14" />
+                                            {refinement.turns.length} turn{refinement.turns.length > 1 ? 's' : ''}
+                                          </span>
+                                        )}
+                                        {hasFailed && (
+                                          <span className="metadata-item error">
+                                            <Icon icon="mdi:alert-circle" width="14" />
+                                            Failed
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Image Thumbnails (collapsed) */}
+                                      {!isExpanded && refinement.images && refinement.images.length > 0 && (
+                                        <div className="image-thumbnails">
+                                          {refinement.images.slice(0, 2).map((img, imgIdx) => (
+                                            <img
+                                              key={imgIdx}
+                                              src={`http://localhost:5001${img.url}`}
+                                              alt={img.filename}
+                                              className="thumbnail"
+                                              title={img.filename}
+                                            />
+                                          ))}
+                                          {refinement.images.length > 2 && (
+                                            <div className="thumbnail-overflow">
+                                              +{refinement.images.length - 2}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Output Preview (collapsed) */}
+                                      {!isExpanded && refinement.output && (
+                                        <div className="output-preview">
+                                          {refinement.output.slice(0, 100)}{refinement.output.length > 100 ? '...' : ''}
+                                        </div>
+                                      )}
+
+                                      {/* Status Label */}
+                                      <div className="status-label">
+                                        {isWinner ? '✓ Selected' : hasFailed ? '✗ Failed' : 'Not selected'}
+                                      </div>
+
+                                      {/* Expanded Detail */}
+                                      {isExpanded && (
+                                        <div className="expanded-detail">
+                                          {/* Images Section */}
+                                          {refinement.images && refinement.images.length > 0 && (
+                                            <div className="detail-section">
+                                              <h4>Images ({refinement.images.length})</h4>
+                                              <div className="image-gallery">
+                                                {refinement.images.map((img, idx) => (
+                                                  <div key={idx} className="gallery-item">
+                                                    <img
+                                                      src={`http://localhost:5001${img.url}`}
+                                                      alt={img.filename}
+                                                      className="gallery-image"
+                                                    />
+                                                    <div className="image-label">{img.filename}</div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          <div className="detail-section">
+                                            <h4>Output</h4>
+                                            <div className="output-content">
+                                              <ReactMarkdown>{refinement.output || 'No output'}</ReactMarkdown>
+                                            </div>
+                                          </div>
+                                          {refinement.tool_calls && refinement.tool_calls.length > 0 && (
+                                            <div className="detail-section">
+                                              <h4>Tool Calls</h4>
+                                              <ul className="tool-list">
+                                                {refinement.tool_calls.map((tool, idx) => (
+                                                  <li key={idx}>{tool}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                          {refinement.error && (
+                                            <div className="detail-section error-section">
+                                              <h4>Error</h4>
+                                              <pre>{refinement.error}</pre>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Step Evaluator Reasoning */}
+                              {step.eval_reasoning && (
+                                <div className="step-eval">
+                                  <Icon icon="mdi:gavel" width="14" />
+                                  <div className="step-eval-content">
+                                    <ReactMarkdown>{step.eval_reasoning}</ReactMarkdown>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -271,6 +525,17 @@ function SoundingsExplorer({ sessionId, onClose }) {
                 <React.Fragment key={idx}>
                   <span className="path-node">
                     {w.phase_name}: S{w.sounding_index}
+                    {w.reforge_trail && w.reforge_trail.length > 0 && (
+                      <span className="reforge-trail">
+                        {w.reforge_trail.map((refIdx, rIdx) => (
+                          <React.Fragment key={rIdx}>
+                            {' → R'}
+                            {refIdx}
+                            <sub>step{rIdx + 1}</sub>
+                          </React.Fragment>
+                        ))}
+                      </span>
+                    )}
                   </span>
                   {idx < data.winner_path.length - 1 && (
                     <Icon icon="mdi:arrow-right" width="16" className="path-arrow" />

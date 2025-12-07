@@ -1161,6 +1161,135 @@ All mutation data is tracked in unified logs:
 **Environment Variables:**
 - `WINDLASS_REWRITE_MODEL`: Model used for prompt rewrites (default: `google/gemini-2.5-flash-lite`)
 
+### 2.14. Multi-Model Soundings
+
+Run soundings across different LLM providers to find the best cost/quality tradeoff. Three evaluation strategies available.
+
+#### Phase 1: Simple Model Pool
+
+Distribute soundings across multiple models with round-robin or random assignment.
+
+**Array Format (round-robin):**
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "evaluator_instructions": "Pick the best response based on quality",
+    "models": [
+      "anthropic/claude-sonnet-4.5",
+      "x-ai/grok-4.1-fast",
+      "google/gemini-2.5-flash-lite"
+    ],
+    "model_strategy": "round_robin"
+  }
+}
+```
+
+**Dict Format (per-model factors):**
+```json
+{
+  "soundings": {
+    "factor": 7,
+    "models": {
+      "anthropic/claude-sonnet-4.5": {"factor": 2},
+      "x-ai/grok-4.1-fast": {"factor": 2},
+      "google/gemini-2.5-flash-lite": {"factor": 3}
+    }
+  }
+}
+```
+
+**Model Assignment Strategies:**
+- `round_robin` (default): Cycles through models in order
+- `random`: Random assignment with replacement
+
+#### Phase 2: Cost-Aware Evaluation
+
+Evaluator considers both quality and cost when selecting winner.
+
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "models": ["anthropic/claude-sonnet-4.5", "x-ai/grok-4.1-fast", "google/gemini-2.5-flash-lite"],
+    "cost_aware_evaluation": {
+      "enabled": true,
+      "quality_weight": 0.7,
+      "cost_weight": 0.3,
+      "show_costs_to_evaluator": true,
+      "cost_normalization": "min_max"
+    }
+  }
+}
+```
+
+**Cost Normalization Methods:**
+- `min_max`: Scale costs to 0-1 range
+- `z_score`: Standardize using mean/std deviation
+- `log_scale`: Logarithmic normalization for large cost differences
+
+**How It Works:**
+1. Soundings execute across different models
+2. Costs retrieved from unified logs (or estimated if unavailable)
+3. Evaluator prompt includes cost context if `show_costs_to_evaluator: true`
+4. Quality/cost tradeoff influences winner selection
+
+#### Phase 3: Pareto Frontier Analysis
+
+Compute non-dominated solutions and select winner based on policy.
+
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "models": {
+      "anthropic/claude-sonnet-4.5": {"factor": 2},
+      "x-ai/grok-4.1-fast": {"factor": 2},
+      "google/gemini-2.5-flash-lite": {"factor": 2}
+    },
+    "pareto_frontier": {
+      "enabled": true,
+      "policy": "balanced",
+      "show_frontier": true,
+      "quality_metric": "evaluator_score",
+      "include_dominated": true
+    }
+  }
+}
+```
+
+**Pareto Policies:**
+- `prefer_cheap`: Select lowest cost from frontier
+- `prefer_quality`: Select highest quality from frontier
+- `balanced`: Maximize quality/cost ratio
+- `interactive`: Present frontier to user for selection (future)
+
+**How It Works:**
+1. All soundings execute and get quality scores from evaluator
+2. Pareto frontier computed (non-dominated solutions)
+3. Winner selected based on policy
+4. Frontier data logged to `graphs/pareto_{session_id}.json` for visualization
+
+**Pareto Output Example:**
+```json
+{
+  "frontier": [
+    {"sounding_index": 1, "model": "anthropic/claude-sonnet-4.5", "quality": 98.0, "cost": 0.006},
+    {"sounding_index": 3, "model": "x-ai/grok-4.1-fast", "quality": 92.0, "cost": 0.0003},
+    {"sounding_index": 5, "model": "google/gemini-2.5-flash-lite", "quality": 85.0, "cost": 0.0002, "is_winner": true}
+  ],
+  "dominated": [
+    {"sounding_index": 0, "dominated_by": 1, "quality": 96.0, "cost": 0.0062}
+  ]
+}
+```
+
+**Example Cascades:**
+- `examples/multi_model_simple.json` - Phase 1: Round-robin across models
+- `examples/multi_model_per_model_factors.json` - Phase 1: Per-model factor configuration
+- `examples/multi_model_cost_aware.json` - Phase 2: Cost-aware evaluation
+- `examples/multi_model_pareto.json` - Phase 3: Pareto frontier analysis
+
 ### 3. Execution Flow (Runner)
 The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).
 

@@ -517,7 +517,7 @@ To use: Output JSON in this format:
         # Add evaluator to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "cascade_evaluator",
-            "content": eval_content[:150] if eval_content else "Evaluating...",
+            "content": eval_content if eval_content else "Evaluating...",  # Full content, no truncation
             "node_type": "cascade_evaluator"
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
            metadata={
@@ -579,7 +579,7 @@ To use: Output JSON in this format:
                "winner_index": winner_index,
                "winner_session_id": f"{self.session_id}_sounding_{winner_index}",
                "factor": factor,
-               "evaluation": eval_content[:200],
+               "evaluation": eval_content,  # Full content, no truncation
                "winner_trace_id": winner['trace_id'],
                "sounding_index": winner_index,
                "is_winner": True
@@ -1051,7 +1051,7 @@ If no tools are needed, return an empty array: []
            metadata={
                "phase_name": phase.name,
                "selected_tackle": valid_tackle,
-               "reasoning": response_content[:200],
+               "reasoning": response_content,  # Full content, no truncation
                "manifest_context": phase.manifest_context,
                "model": qm_model
            })
@@ -1323,6 +1323,471 @@ If no tools are needed, return an empty array: []
             "validator": validator_name
         }
 
+    def _assign_models(self, soundings_config) -> List[str]:
+        """
+        Assign models to sounding attempts based on configuration.
+
+        Returns a list of model names, one per sounding attempt.
+
+        Args:
+            soundings_config: SoundingsConfig with optional multi-model settings
+
+        Returns:
+            List of model names to use for each sounding
+        """
+        import random
+
+        # Case 1: No multi-model configuration - use default model for all
+        if soundings_config.models is None:
+            return [self.model] * soundings_config.factor
+
+        # Case 2: List of models - apply strategy (round-robin, random, etc.)
+        if isinstance(soundings_config.models, list):
+            models = soundings_config.models
+            strategy = soundings_config.model_strategy
+
+            if strategy == "round_robin":
+                # Cycle through models in order
+                return [models[i % len(models)] for i in range(soundings_config.factor)]
+
+            elif strategy == "random":
+                # Random selection for each sounding
+                return [random.choice(models) for _ in range(soundings_config.factor)]
+
+            else:
+                # Default to round-robin if unknown strategy
+                return [models[i % len(models)] for i in range(soundings_config.factor)]
+
+        # Case 3: Dict with per-model factors - expand based on each model's factor
+        elif isinstance(soundings_config.models, dict):
+            assigned = []
+            for model_name, config in soundings_config.models.items():
+                # Add this model N times based on its factor
+                assigned.extend([model_name] * config.factor)
+            return assigned
+
+        # Fallback: use default
+        return [self.model] * soundings_config.factor
+
+    def _get_sounding_costs(self, sounding_results: List[Dict], timeout: float = 5.0) -> List[float]:
+        """
+        Get costs for each sounding attempt from unified logs.
+
+        Waits briefly for async cost tracking to complete, then queries logs.
+        Falls back to cost estimation if costs aren't available.
+
+        Args:
+            sounding_results: List of sounding result dicts with trace_id
+            timeout: Max seconds to wait for costs
+
+        Returns:
+            List of costs, one per sounding
+        """
+        import time
+
+        # Give the async cost tracker time to complete (OpenRouter delays ~3s)
+        time.sleep(min(timeout, 2.0))
+
+        costs = []
+        for sr in sounding_results:
+            trace_id = sr.get("trace_id")
+            model = sr.get("model", self.model)
+
+            # Try to get cost from logs
+            cost = self._query_sounding_cost(trace_id)
+
+            if cost is None or cost == 0:
+                # Estimate cost based on model and typical token usage
+                cost = self._estimate_cost(model, sr.get("result", ""))
+
+            costs.append(cost)
+
+        return costs
+
+    def _query_sounding_cost(self, trace_id: str) -> Optional[float]:
+        """Query unified logs for cost of a specific trace."""
+        try:
+            from .unified_logs import query_unified
+            df = query_unified(f"trace_id = '{trace_id}' AND cost > 0", limit=10)
+            if df is not None and len(df) > 0:
+                return df['cost'].sum()
+        except Exception:
+            pass
+        return None
+
+    def _estimate_cost(self, model: str, result: str) -> float:
+        """
+        Estimate cost based on model and output length.
+
+        Very rough estimates - actual costs vary significantly.
+        """
+        # Rough per-1M-token pricing (input + output averaged)
+        model_pricing = {
+            "anthropic/claude-sonnet-4": 9.0,
+            "anthropic/claude-3-5-sonnet": 9.0,
+            "anthropic/claude-3-opus": 45.0,
+            "openai/gpt-4o": 7.5,
+            "openai/gpt-4o-mini": 0.4,
+            "google/gemini-2.0-flash-001": 0.3,
+            "google/gemini-2.0-flash-exp": 0.3,
+            "google/gemini-2.5-flash-lite": 0.075,
+        }
+
+        # Default to mid-tier pricing
+        price_per_million = model_pricing.get(model, 5.0)
+
+        # Estimate tokens (very rough: ~4 chars per token)
+        estimated_tokens = len(result) / 4 if result else 100
+
+        # Add typical input tokens (prompt)
+        estimated_tokens += 500
+
+        # Calculate cost
+        return (estimated_tokens / 1_000_000) * price_per_million
+
+    def _normalize_costs(self, costs: List[float], method: str = "min_max") -> List[float]:
+        """
+        Normalize costs for fair comparison in cost-aware evaluation.
+
+        Args:
+            costs: List of raw costs
+            method: Normalization method ("min_max", "z_score", "log_scale")
+
+        Returns:
+            List of normalized costs (0-1 for min_max, standardized for z_score)
+        """
+        import math
+
+        if not costs or all(c == 0 for c in costs):
+            return [0.0] * len(costs)
+
+        if method == "min_max":
+            min_c, max_c = min(costs), max(costs)
+            if max_c == min_c:
+                return [0.0] * len(costs)
+            return [(c - min_c) / (max_c - min_c) for c in costs]
+
+        elif method == "z_score":
+            mean = sum(costs) / len(costs)
+            variance = sum((c - mean) ** 2 for c in costs) / len(costs)
+            std = math.sqrt(variance) if variance > 0 else 1.0
+            if std == 0:
+                return [0.0] * len(costs)
+            return [(c - mean) / std for c in costs]
+
+        elif method == "log_scale":
+            return [math.log(c + 1e-6) for c in costs]
+
+        else:
+            return costs
+
+    def _build_cost_aware_eval_prompt(
+        self,
+        sounding_results: List[Dict],
+        costs: List[float],
+        soundings_config,
+        base_instructions: str
+    ) -> str:
+        """
+        Build an evaluation prompt that includes cost information.
+
+        Args:
+            sounding_results: List of sounding result dicts
+            costs: List of costs per sounding
+            soundings_config: SoundingsConfig with cost_aware_evaluation settings
+            base_instructions: Original evaluator instructions
+
+        Returns:
+            Complete evaluation prompt with cost context
+        """
+        cost_config = soundings_config.cost_aware_evaluation
+
+        eval_prompt = f"{base_instructions}\n\n"
+
+        if cost_config.show_costs_to_evaluator:
+            quality_pct = int(cost_config.quality_weight * 100)
+            cost_pct = int(cost_config.cost_weight * 100)
+
+            eval_prompt += f"""COST-QUALITY BALANCE:
+Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winner.
+- If two outputs have similar quality, prefer the cheaper one.
+- If one is significantly higher quality, it may justify higher cost.
+
+"""
+
+        eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
+
+        for i, sounding in enumerate(sounding_results):
+            eval_prompt += f"## Attempt {i+1}\n"
+
+            if cost_config.show_costs_to_evaluator:
+                model = sounding.get("model", "unknown")
+                cost = costs[i]
+                eval_prompt += f"Model: {model}\n"
+                eval_prompt += f"Cost: ${cost:.6f}\n"
+
+            eval_prompt += f"Result: {sounding['result']}\n\n"
+
+        eval_prompt += f"\nRespond with ONLY the number of the best attempt (1-{len(sounding_results)}) and a brief explanation."
+
+        return eval_prompt
+
+    def _compute_pareto_frontier(
+        self,
+        sounding_results: List[Dict],
+        quality_scores: List[float],
+        costs: List[float]
+    ) -> tuple:
+        """
+        Compute the Pareto frontier for cost vs quality.
+
+        A sounding is Pareto-optimal (non-dominated) if no other sounding is
+        both cheaper AND higher quality.
+
+        Args:
+            sounding_results: List of sounding result dicts
+            quality_scores: List of quality scores (higher is better)
+            costs: List of costs (lower is better)
+
+        Returns:
+            Tuple of (frontier_indices, dominated_map, pareto_ranks)
+            - frontier_indices: List of indices that are on the frontier
+            - dominated_map: Dict mapping dominated index -> dominating index
+            - pareto_ranks: Dict mapping index -> rank (1 = frontier, 2+ = dominated)
+        """
+        n = len(sounding_results)
+        frontier_indices = []
+        dominated_map = {}
+
+        for i in range(n):
+            dominated = False
+            dominator = None
+
+            for j in range(n):
+                if i == j:
+                    continue
+
+                # Check if j dominates i
+                # j dominates i if: j has >= quality AND <= cost AND is strictly better in at least one
+                quality_better_or_equal = quality_scores[j] >= quality_scores[i]
+                cost_better_or_equal = costs[j] <= costs[i]
+                strictly_better = (quality_scores[j] > quality_scores[i]) or (costs[j] < costs[i])
+
+                if quality_better_or_equal and cost_better_or_equal and strictly_better:
+                    dominated = True
+                    dominator = j
+                    break
+
+            if not dominated:
+                frontier_indices.append(i)
+            else:
+                dominated_map[i] = dominator
+
+        # Compute Pareto ranks (distance from frontier)
+        pareto_ranks = {}
+        for i in range(n):
+            if i in frontier_indices:
+                pareto_ranks[i] = 1
+            else:
+                # Rank 2 = dominated by frontier, could compute deeper ranks if needed
+                pareto_ranks[i] = 2
+
+        return frontier_indices, dominated_map, pareto_ranks
+
+    def _select_from_pareto_frontier(
+        self,
+        sounding_results: List[Dict],
+        frontier_indices: List[int],
+        quality_scores: List[float],
+        costs: List[float],
+        policy: str
+    ) -> int:
+        """
+        Select winner from Pareto frontier based on policy.
+
+        Args:
+            sounding_results: List of sounding result dicts
+            frontier_indices: Indices of frontier members
+            quality_scores: Quality scores for all soundings
+            costs: Costs for all soundings
+            policy: Selection policy
+
+        Returns:
+            Index of selected winner
+        """
+        indent = "  " * self.depth
+
+        if policy == "prefer_cheap":
+            # Pick cheapest on frontier
+            best_idx = min(frontier_indices, key=lambda i: costs[i])
+            console.print(f"{indent}  [dim]Policy: prefer_cheap - selecting cheapest frontier member[/dim]")
+
+        elif policy == "prefer_quality":
+            # Pick highest quality on frontier
+            best_idx = max(frontier_indices, key=lambda i: quality_scores[i])
+            console.print(f"{indent}  [dim]Policy: prefer_quality - selecting highest quality frontier member[/dim]")
+
+        elif policy == "balanced":
+            # Maximize quality per dollar (quality / cost ratio)
+            def quality_per_dollar(i):
+                if costs[i] == 0:
+                    return float('inf') if quality_scores[i] > 0 else 0
+                return quality_scores[i] / costs[i]
+
+            best_idx = max(frontier_indices, key=quality_per_dollar)
+            console.print(f"{indent}  [dim]Policy: balanced - maximizing quality/cost ratio on frontier[/dim]")
+
+        elif policy == "interactive":
+            # Show options and prompt user (dev/research mode)
+            console.print(f"\n{indent}[bold yellow]Pareto Frontier (non-dominated solutions):[/bold yellow]")
+            for i, idx in enumerate(frontier_indices):
+                model = sounding_results[idx].get("model", "unknown")
+                quality = quality_scores[idx]
+                cost = costs[idx]
+                console.print(f"{indent}  [{i+1}] Model: {model}, Quality: {quality:.2f}, Cost: ${cost:.6f}")
+
+            try:
+                choice = int(input(f"{indent}Select winner (1-{len(frontier_indices)}): ")) - 1
+                if 0 <= choice < len(frontier_indices):
+                    best_idx = frontier_indices[choice]
+                else:
+                    best_idx = frontier_indices[0]
+            except (ValueError, EOFError):
+                # Fall back to balanced if interactive input fails
+                best_idx = max(frontier_indices, key=lambda i: quality_scores[i] / costs[i] if costs[i] > 0 else 0)
+
+        else:
+            # Default to balanced
+            best_idx = max(frontier_indices, key=lambda i: quality_scores[i] / costs[i] if costs[i] > 0 else 0)
+
+        return best_idx
+
+    def _get_quality_scores_from_evaluator(
+        self,
+        sounding_results: List[Dict],
+        evaluator_instructions: str,
+        evaluator_trace
+    ) -> List[float]:
+        """
+        Get quality scores for each sounding from the evaluator.
+
+        Uses LLM to assign numeric quality scores to each sounding.
+
+        Returns:
+            List of quality scores (0-100 scale)
+        """
+        indent = "  " * self.depth
+
+        # Build prompt for quality scoring
+        score_prompt = f"""{evaluator_instructions}
+
+Rate each of the following attempts on a scale of 0-100 for quality.
+Consider clarity, completeness, accuracy, and usefulness.
+
+"""
+        for i, sounding in enumerate(sounding_results):
+            score_prompt += f"## Attempt {i+1}\n"
+            score_prompt += f"Result: {sounding['result']}\n\n"
+
+        score_prompt += """
+Respond with scores in this exact format:
+Attempt 1: [score]
+Attempt 2: [score]
+...etc
+
+Use only numbers 0-100 for scores."""
+
+        # Create scoring agent
+        scoring_agent = Agent(
+            model=self.model,
+            system_prompt="You are an expert evaluator. Rate each response objectively on a 0-100 scale.",
+            tools=[],
+            base_url=self.base_url,
+            api_key=self.api_key
+        )
+
+        # Get scores
+        score_response = scoring_agent.run(score_prompt, context_messages=[])
+        score_content = score_response.get("content", "")
+
+        console.print(f"{indent}  [dim]Quality scores: {score_content[:100]}...[/dim]")
+
+        # Parse scores from response
+        import re
+        scores = []
+        pattern = r'Attempt\s*(\d+)\s*:\s*(\d+(?:\.\d+)?)'
+        matches = re.findall(pattern, score_content, re.IGNORECASE)
+
+        # Build score list in order
+        score_map = {int(m[0]): float(m[1]) for m in matches}
+        for i in range(len(sounding_results)):
+            scores.append(score_map.get(i + 1, 50.0))  # Default to 50 if not found
+
+        return scores
+
+    def _log_pareto_frontier(
+        self,
+        session_id: str,
+        phase_name: str,
+        sounding_results: List[Dict],
+        frontier_indices: List[int],
+        dominated_map: Dict[int, int],
+        quality_scores: List[float],
+        costs: List[float],
+        winner_index: int
+    ):
+        """Log Pareto frontier data for visualization."""
+        import json
+        import os
+        from .config import get_config
+
+        config = get_config()
+        graph_dir = config.graph_dir
+
+        pareto_data = {
+            "session_id": session_id,
+            "phase_name": phase_name,
+            "frontier": [
+                {
+                    "sounding_index": idx,
+                    "model": sounding_results[idx].get("model", "unknown"),
+                    "quality": quality_scores[idx],
+                    "cost": costs[idx],
+                    "is_winner": idx == winner_index
+                }
+                for idx in frontier_indices
+            ],
+            "dominated": [
+                {
+                    "sounding_index": idx,
+                    "dominated_by": dom_idx,
+                    "model": sounding_results[idx].get("model", "unknown"),
+                    "quality": quality_scores[idx],
+                    "cost": costs[idx]
+                }
+                for idx, dom_idx in dominated_map.items()
+            ],
+            "all_soundings": [
+                {
+                    "index": i,
+                    "model": sr.get("model", "unknown"),
+                    "quality": quality_scores[i],
+                    "cost": costs[i],
+                    "is_pareto_optimal": i in frontier_indices,
+                    "is_winner": i == winner_index
+                }
+                for i, sr in enumerate(sounding_results)
+            ]
+        }
+
+        # Write to pareto file
+        pareto_file = os.path.join(graph_dir, f"pareto_{session_id}.json")
+        os.makedirs(graph_dir, exist_ok=True)
+        with open(pareto_file, "w") as f:
+            json.dump(pareto_data, f, indent=2)
+
+        console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
+
     def _execute_phase_with_soundings(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
         """
         Execute a phase with soundings (Tree of Thought).
@@ -1409,6 +1874,10 @@ If no tools are needed, return an empty array: []
                     "Challenge the obvious interpretation - what's the deeper layer?"
                 ]
 
+        # Assign models to soundings (Phase 1: Multi-Model Soundings)
+        assigned_models = self._assign_models(phase.soundings)
+        console.print(f"{indent}  [dim]Models: {', '.join(set(assigned_models))}[/dim]")
+
         # Execute each sounding in sequence (to avoid threading complexity with Rich output)
         # Each sounding gets the same starting context
         for i in range(factor):
@@ -1450,6 +1919,12 @@ If no tools are needed, return an empty array: []
             self.current_mutation_type = mutation_type  # Track type: rewrite, augment, approach
             self.current_mutation_template = mutation_template  # Track template/instruction used
 
+            # Get model for this sounding (Phase 1: Multi-Model Soundings)
+            sounding_model = assigned_models[i]
+            original_model = self.model  # Save original model to restore later
+            self.model = sounding_model  # Temporarily override model for this sounding
+            console.print(f"{indent}    [dim]Using model: {sounding_model}[/dim]")
+
             # Create trace for this sounding
             sounding_trace = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
 
@@ -1479,7 +1954,8 @@ If no tools are needed, return an empty array: []
                     "final_state": self.echo.state.copy(),
                     "mutation_applied": mutation_applied,
                     "mutation_type": mutation_type,
-                    "mutation_template": mutation_template
+                    "mutation_template": mutation_template,
+                    "model": sounding_model  # Track which model was used (Phase 1: Multi-Model)
                 })
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
@@ -1496,8 +1972,13 @@ If no tools are needed, return an empty array: []
                     "final_state": {},
                     "mutation_applied": mutation_applied,
                     "mutation_type": mutation_type,
-                    "mutation_template": mutation_template
+                    "mutation_template": mutation_template,
+                    "model": sounding_model  # Track which model was used (Phase 1: Multi-Model)
                 })
+
+            finally:
+                # Restore original model after sounding execution (Phase 1: Multi-Model)
+                self.model = original_model
 
         # Clear mutation tracking
         self.current_mutation_applied = None
@@ -1521,39 +2002,154 @@ If no tools are needed, return an empty array: []
         # Create evaluator trace
         evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
 
-        # Build evaluation prompt
-        eval_prompt = f"{phase.soundings.evaluator_instructions}\n\n"
-        eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
+        # Get costs for cost-aware or Pareto evaluation (Phase 2/3: Multi-Model Soundings)
+        sounding_costs = None
+        quality_scores = None
+        frontier_indices = None
+        dominated_map = None
+        pareto_ranks = None
 
-        for i, sounding in enumerate(sounding_results):
-            eval_prompt += f"## Attempt {i+1}\n"
-            eval_prompt += f"Result: {sounding['result']}\n\n"
+        use_cost_aware = phase.soundings.cost_aware_evaluation and phase.soundings.cost_aware_evaluation.enabled
+        use_pareto = phase.soundings.pareto_frontier and phase.soundings.pareto_frontier.enabled
 
-        eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(sounding_results))
+        # Phase 3: Pareto Frontier Analysis
+        if use_pareto:
+            console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
 
-        # Create evaluator agent
-        evaluator_agent = Agent(
-            model=self.model,
-            system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one.",
-            tools=[],
-            base_url=self.base_url,
-            api_key=self.api_key
-        )
+            # Get costs
+            console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
+            sounding_costs = self._get_sounding_costs(sounding_results)
+            for i, sr in enumerate(sounding_results):
+                sr["cost"] = sounding_costs[i]
+            console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
-        # Run evaluation
-        eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
-        eval_content = eval_response.get("content", "")
+            # Get quality scores
+            console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
+            quality_scores = self._get_quality_scores_from_evaluator(
+                sounding_results,
+                phase.soundings.evaluator_instructions,
+                evaluator_trace
+            )
+            for i, sr in enumerate(sounding_results):
+                sr["quality_score"] = quality_scores[i]
+            console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
 
-        console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+            # Compute Pareto frontier
+            frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
+                sounding_results, quality_scores, sounding_costs
+            )
 
-        # Extract winner index from evaluation (simple parsing - look for first digit)
-        winner_index = 0
-        import re
-        match = re.search(r'\b([1-9]\d*)\b', eval_content)
-        if match:
-            winner_index = int(match.group(1)) - 1  # Convert to 0-indexed
-            if winner_index >= len(sounding_results):
-                winner_index = 0
+            # Store Pareto data in sounding results
+            for i, sr in enumerate(sounding_results):
+                sr["is_pareto_optimal"] = i in frontier_indices
+                sr["dominated_by"] = dominated_map.get(i)
+                sr["pareto_rank"] = pareto_ranks.get(i, 2)
+
+            # Display frontier
+            console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
+            for idx in frontier_indices:
+                model = sounding_results[idx].get("model", "unknown")
+                quality = quality_scores[idx]
+                cost = sounding_costs[idx]
+                console.print(f"{indent}    • Sounding {idx+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+
+            # Select winner from frontier
+            winner_index = self._select_from_pareto_frontier(
+                sounding_results,
+                frontier_indices,
+                quality_scores,
+                sounding_costs,
+                phase.soundings.pareto_frontier.policy
+            )
+            eval_content = f"Pareto frontier analysis: {len(frontier_indices)} non-dominated solutions. Winner selected by '{phase.soundings.pareto_frontier.policy}' policy."
+
+            # Log Pareto data for visualization
+            if phase.soundings.pareto_frontier.show_frontier:
+                self._log_pareto_frontier(
+                    self.session_id,
+                    phase.name,
+                    sounding_results,
+                    frontier_indices,
+                    dominated_map,
+                    quality_scores,
+                    sounding_costs,
+                    winner_index
+                )
+
+        # Phase 2: Cost-Aware Evaluation
+        elif use_cost_aware:
+            console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
+            sounding_costs = self._get_sounding_costs(sounding_results)
+            normalized_costs = self._normalize_costs(
+                sounding_costs,
+                phase.soundings.cost_aware_evaluation.cost_normalization
+            )
+            # Store costs in sounding results for logging
+            for i, sr in enumerate(sounding_results):
+                sr["cost"] = sounding_costs[i]
+                sr["normalized_cost"] = normalized_costs[i]
+
+            # Build cost-aware evaluation prompt
+            eval_prompt = self._build_cost_aware_eval_prompt(
+                sounding_results,
+                sounding_costs,
+                phase.soundings,
+                phase.soundings.evaluator_instructions
+            )
+            console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
+
+            # Create evaluator agent and run
+            evaluator_agent = Agent(
+                model=self.model,
+                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one.",
+                tools=[],
+                base_url=self.base_url,
+                api_key=self.api_key
+            )
+            eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
+            eval_content = eval_response.get("content", "")
+            console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+
+            # Extract winner index
+            winner_index = 0
+            import re
+            match = re.search(r'\b([1-9]\d*)\b', eval_content)
+            if match:
+                winner_index = int(match.group(1)) - 1
+                if winner_index >= len(sounding_results):
+                    winner_index = 0
+
+        # Phase 1: Standard quality-only evaluation
+        else:
+            eval_prompt = f"{phase.soundings.evaluator_instructions}\n\n"
+            eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
+
+            for i, sounding in enumerate(sounding_results):
+                eval_prompt += f"## Attempt {i+1}\n"
+                eval_prompt += f"Result: {sounding['result']}\n\n"
+
+            eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(sounding_results))
+
+            # Create evaluator agent and run
+            evaluator_agent = Agent(
+                model=self.model,
+                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one.",
+                tools=[],
+                base_url=self.base_url,
+                api_key=self.api_key
+            )
+            eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
+            eval_content = eval_response.get("content", "")
+            console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+
+            # Extract winner index
+            winner_index = 0
+            import re
+            match = re.search(r'\b([1-9]\d*)\b', eval_content)
+            if match:
+                winner_index = int(match.group(1)) - 1
+                if winner_index >= len(sounding_results):
+                    winner_index = 0
 
         winner = sounding_results[winner_index]
 
@@ -1569,32 +2165,67 @@ If no tools are needed, return an empty array: []
         # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
             is_winner = sr["index"] == winner_index
+            sounding_metadata = {
+                "phase_name": phase.name,
+                "sounding_index": sr["index"],
+                "is_winner": is_winner,
+                "factor": factor,
+                "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
+                "model": sr.get("model"),  # Log which model was used (Phase 1: Multi-Model Soundings)
+            }
+            # Add cost data if available (Phase 2: Cost-Aware Evaluation)
+            if sr.get("cost") is not None:
+                sounding_metadata["cost"] = sr["cost"]
+                sounding_metadata["normalized_cost"] = sr.get("normalized_cost")
+            # Add Pareto data if available (Phase 3: Pareto Frontier Analysis)
+            if sr.get("quality_score") is not None:
+                sounding_metadata["quality_score"] = sr["quality_score"]
+            if sr.get("is_pareto_optimal") is not None:
+                sounding_metadata["is_pareto_optimal"] = sr["is_pareto_optimal"]
+                sounding_metadata["dominated_by"] = sr.get("dominated_by")
+                sounding_metadata["pareto_rank"] = sr.get("pareto_rank")
+
             self.echo.add_history({
                 "role": "sounding_attempt",
                 "content": str(sr["result"])[:200] if sr["result"] else "",
                 "node_type": "sounding_attempt"
             }, trace_id=sr["trace_id"], parent_id=soundings_trace.id, node_type="sounding_attempt",
-               metadata={
-                   "phase_name": phase.name,
-                   "sounding_index": sr["index"],
-                   "is_winner": is_winner,
-                   "factor": factor,
-                   "mutation_applied": sr.get("mutation_applied")  # Log what mutation was used
-               })
+               metadata=sounding_metadata)
 
         # Add evaluator entry (auto-logs via unified_logs)
+        evaluator_metadata = {
+            "phase_name": phase.name,
+            "winner_index": winner_index,
+            "winner_trace_id": winner['trace_id'],
+            "evaluation": eval_content,
+            "model": self.model,
+        }
+        # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
+        if use_cost_aware:
+            evaluator_metadata["cost_aware"] = True
+            evaluator_metadata["quality_weight"] = phase.soundings.cost_aware_evaluation.quality_weight
+            evaluator_metadata["cost_weight"] = phase.soundings.cost_aware_evaluation.cost_weight
+            if sounding_costs:
+                evaluator_metadata["sounding_costs"] = sounding_costs
+                evaluator_metadata["winner_cost"] = winner.get("cost")
+        # Add Pareto frontier info (Phase 3: Pareto Frontier Analysis)
+        if use_pareto:
+            evaluator_metadata["pareto_enabled"] = True
+            evaluator_metadata["pareto_policy"] = phase.soundings.pareto_frontier.policy
+            evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
+            if quality_scores:
+                evaluator_metadata["quality_scores"] = quality_scores
+                evaluator_metadata["winner_quality"] = winner.get("quality_score")
+            if sounding_costs:
+                evaluator_metadata["sounding_costs"] = sounding_costs
+                evaluator_metadata["winner_cost"] = winner.get("cost")
+
         self.echo.add_history({
             "role": "evaluator",
-            "content": eval_content[:200],
+            "content": eval_content,  # Full content, no truncation
             "node_type": "evaluator"
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
-           metadata={
-               "phase_name": phase.name,
-               "winner_index": winner_index,
-               "winner_trace_id": winner['trace_id'],
-               "evaluation": eval_content,
-               "model": self.model
-           })
+           metadata=evaluator_metadata)
 
         # Add winning result to history
         self.echo.add_history({
@@ -1910,7 +2541,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Add evaluator to echo history for visualization
             self.echo.add_history({
                 "role": "reforge_evaluator",
-                "content": eval_content[:150] if eval_content else "Evaluating...",
+                "content": eval_content if eval_content else "Evaluating...",  # Full content, no truncation
                 "node_type": "reforge_evaluator"
             }, trace_id=evaluator_trace.id, parent_id=reforge_trace.id, node_type="reforge_evaluator",
                metadata={
