@@ -437,6 +437,45 @@
   color: #2DD4BF;
 }
 
+.soundings-explorer-button-prominent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, rgba(78, 201, 176, 0.15), rgba(78, 201, 176, 0.08));
+  border: 2px solid rgba(78, 201, 176, 0.4);
+  border-radius: 8px;
+  color: #4ec9b0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: fit-content;
+  box-shadow: 0 2px 8px rgba(78, 201, 176, 0.1);
+}
+
+.soundings-explorer-button-prominent:hover {
+  background: linear-gradient(135deg, rgba(78, 201, 176, 0.25), rgba(78, 201, 176, 0.15));
+  border-color: #4ec9b0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(78, 201, 176, 0.3);
+}
+
+.soundings-explorer-button-prominent svg {
+  flex-shrink: 0;
+}
+
+.soundings-explorer-button-prominent .soundings-count {
+  margin-left: 4px;
+  padding: 2px 8px;
+  background: rgba(78, 201, 176, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .model-tag {
   font-size: 0.7rem;
   background: #0B1219;

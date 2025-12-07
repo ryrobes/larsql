@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
 import DebugModal from './DebugModal';
+import SoundingsExplorer from './SoundingsExplorer';
 import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
 import VideoSpinner from './VideoSpinner';
@@ -58,6 +59,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [debugSessionId, setDebugSessionId] = useState(null);
+  const [soundingsExplorerSession, setSoundingsExplorerSession] = useState(null);
   const [expandedParents, setExpandedParents] = useState(new Set());
 
   useEffect(() => {
@@ -288,6 +290,27 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             )}
           </h3>
           <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+
+          {/* Prominent Soundings Explorer Button - Right below timestamp */}
+          {instance.has_soundings && (
+            <button
+              className="soundings-explorer-button-prominent"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSoundingsExplorerSession(instance.session_id);
+              }}
+              title="Explore all soundings across all phases in this cascade"
+            >
+              <Icon icon="mdi:sign-direction" width="18" />
+              <span>Explore Soundings</span>
+              <span className="soundings-count">
+                {(() => {
+                  const soundingsCount = instance.phases?.filter(p => p.sounding_total > 1).length || 0;
+                  return `${soundingsCount} phase${soundingsCount !== 1 ? 's' : ''}`;
+                })()}
+              </span>
+            </button>
+          )}
 
           <div className="instance-actions-row">
             {instance.models_used?.length > 0 && (
@@ -555,6 +578,14 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           sessionId={debugSessionId}
           onClose={() => setDebugSessionId(null)}
           lastUpdate={sessionUpdates?.[debugSessionId]}
+        />
+      )}
+
+      {/* Soundings Explorer Modal */}
+      {soundingsExplorerSession && (
+        <SoundingsExplorer
+          sessionId={soundingsExplorerSession}
+          onClose={() => setSoundingsExplorerSession(null)}
         />
       )}
     </div>

@@ -6,36 +6,36 @@ Windlass is a production-grade agent framework for **long-running, iterative wor
 
 **NEW: Visual browser automation with Rabbitize!** Give your agents eyes and hands for the web. [See RABBITIZE_INTEGRATION.md →](RABBITIZE_INTEGRATION.md)
 
-## The Problem
+## The Retry Loop Problem Everyone Faces
 
-Building production LLM systems inevitably leads to this:
+You start with clean code. Six months later, you're debugging this:
 
 ```python
-# It starts clean...
-result = llm.call("Generate dashboard")
-
-# Then you add retries...
+# The retry hell that ruins every LLM project
 for attempt in range(max_retries):
-    result = llm.call(...)
-    if validate(result): break
+    try:
+        result = llm.call(prompt)
+        validation = validate(result)
+        if validation.passed:
+            return result
+        # Error feedback accumulation
+        prompt += f"\n\nError: {validation.error}. Try again."
+    except JSONDecodeError as e:
+        prompt += f"\nFailed to parse JSON: {e}"
+    except ToolCallError as e:
+        prompt += f"\nTool call failed: {e}"
 
-# Then validation...
-global state, errors, history
-for validator in validators:
-    if not validator.check(result):
-        errors.append(...)
-        result = llm.call(f"Fix: {errors}")
-
-# Then vision feedback...
-for iteration in range(refinement_loops):
-    image = render(result)
-    feedback = vision_llm.call(image)
-    result = llm.call(f"Improve: {feedback}")
-
-# Six months later: unmaintainable spaghetti
+# 47 lines later... still doesn't work reliably
 ```
 
-**Result:** Global state, nested loops, unpredictable LLM errors propagating through your system, and debugging nightmares.
+**The problems:**
+- ❌ **Slow**: Sequential execution (wait for each failure before trying again)
+- ❌ **Complex**: Error handling, context accumulation, nested loops, global state
+- ❌ **Brittle**: One random LLM hiccup blocks everything
+- ❌ **Lower quality**: Get whatever attempt N produces, not the best attempt
+- ❌ **Unmaintainable**: Debugging nested loops with accumulated error context
+
+**LLMs fail randomly.** JSON parsing errors. Context confusion. Tool calling mistakes. You can't eliminate these - you have to filter them.
 
 ### This is What Imperative Agent Code Looks Like
 
@@ -45,9 +45,54 @@ for iteration in range(refinement_loops):
 
 **This was 2000+ lines of Python with global variables and nested loops.**
 
-## The Solution
+## The Solution: Stop Retrying, Start Filtering
 
-Windlass turns that nightmare into **20 lines of declarative JSON**:
+**The insight:** Instead of fighting errors serially, **run multiple attempts in parallel and filter errors out naturally.**
+
+Windlass turns retry loops into **4 lines of declarative JSON**:
+
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "evaluator_instructions": "Pick the best"
+  }
+}
+```
+
+**What happens:**
+1. ✅ Run 3 attempts **in parallel** (not sequential)
+2. ✅ Random LLM errors **naturally filtered out** by evaluator
+3. ✅ Evaluator picks **THE BEST** of the successes (not just "whatever worked")
+4. ✅ Zero error handling code needed
+
+### The Math: Why Soundings Are Faster & Cheaper
+
+**Serial Retries (Traditional):**
+```
+Attempt 1 (2s) → Validate → FAIL (random error) →
+Attempt 2 (2s) → Validate → FAIL (different error) →
+Attempt 3 (2s) → Validate → SUCCESS
+
+Wall time: 6 seconds
+LLM calls: 3 sequential
+Result: Whatever attempt 3 produces
+```
+
+**Soundings (Windlass):**
+```
+Attempt 1 ┐
+Attempt 2 ├→ All parallel (2s) → Evaluate (1s) → Winner
+Attempt 3 ┘
+
+Wall time: 3 seconds
+LLM calls: 3 parallel + 1 evaluator
+Result: Best of all successful attempts
+```
+
+**Performance: 2x faster wall time, higher quality output.**
+
+### Beyond Simple Retries: Complete Example
 
 ```json
 {
@@ -94,30 +139,76 @@ Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), W
 - **Code generation**: Explore → Implement → Test → Optimize
 - **Design systems**: Generate → Render → Critique → Iterate
 
-### Soundings: Parallel Exploration That's Actually More Efficient
+### Soundings: The Killer Feature That Emerged By Accident
 
-Counterintuitively, running multiple parallel attempts is often **faster and cheaper** than serial retries:
+**The problem everyone solves wrong:** LLMs fail randomly (JSON errors, context confusion, tool calling mistakes). Traditional solution: serial retries with error feedback.
 
-**Traditional (Serial Retries):**
-```
-Attempt 1 → Validate → FAIL →
-Attempt 2 → Validate → FAIL →
-Attempt 3 → Validate → SUCCESS
-= 6 LLM calls
+**Why serial retries are terrible:**
+```python
+attempt = 1
+while attempt <= 3:
+    result = llm.call(prompt)
+    if validate(result).passed:
+        break
+    prompt += f"Error: {validation.error}. Try again."
+    attempt += 1
+
+# Slow (sequential), complex (error handling), brittle (one hiccup blocks all)
 ```
 
-**Soundings (Parallel + Selection):**
+**Windlass solution: Parallel exploration + natural error filtering:**
+```json
+{"soundings": {"factor": 3, "evaluator_instructions": "Pick the best"}}
 ```
-Attempt 1 ┐
-Attempt 2 ├→ Evaluate → Winner
-Attempt 3 ┘
-= 4 LLM calls (faster, fewer tokens, errors filtered)
-```
+
+**The counterintuitive economics:**
+
+| Metric | Serial Retries | Soundings |
+|--------|---------------|-----------|
+| **Wall time** | 6 seconds (sequential) | 3 seconds (parallel) |
+| **Success probability** | 97.3% (compound) | 97.3% (independent trials) |
+| **Quality** | "Whatever worked" | "Best of successes" |
+| **Complexity** | 47 lines of error handling | 4 lines of JSON |
+| **Error handling** | Manual (nested try/catch) | Automatic (filter noise) |
 
 **Why this works:**
-- Random LLM errors get filtered out in evaluation
-- Parallel execution is faster than serial (lower latency)
-- Evaluator sees all options at once (better selection)
+- ✅ **Errors become noise**: Random failures filtered out by evaluator, not debugged
+- ✅ **Parallel > Sequential**: Run all attempts at once (2x faster wall time)
+- ✅ **Quality selection**: Evaluator picks best, not just first success
+- ✅ **Zero complexity**: No error handling code, no nested loops, no global state
+
+**LLM failures with 70% success rate:**
+- Serial: Attempt 1 fails → Attempt 2 fails → Attempt 3 succeeds (get result from attempt 3)
+- Soundings: 2-3 attempts succeed → Evaluator picks THE BEST one
+
+**This is genetic algorithms for LLM outputs.**
+
+#### With Mutations: Systematic Prompt Exploration
+
+Add `mutate: true` to explore **different formulations** of the same task:
+
+```json
+{
+  "soundings": {
+    "factor": 5,
+    "mutate": true,
+    "mutation_mode": "rewrite"
+  }
+}
+```
+
+**What happens:**
+- Baseline: Original prompt
+- Mutation 1: "Rewrite to emphasize step-by-step reasoning"
+- Mutation 2: "Rewrite to focus on concrete examples"
+- Mutation 3: "Rewrite to be more concise and direct"
+- Mutation 4: "Rewrite to be more specific and detailed"
+
+Each mutation is a **different approach** to the same problem. Evaluator picks winner. All logged for analysis.
+
+**This is how passive optimization works:** After 10-20 runs, system analyzes which approaches win most often → suggests improved prompts with impact estimates (-32% cost, +25% quality).
+
+**Prompt engineering becomes data science, not dark art.**
 
 ### Observable by Default
 
@@ -958,11 +1049,21 @@ Real-time flowcharts in `./graphs/` with enhanced visualization:
 - **Loser dimming**: Gray dashed borders
 - **Reforge steps**: Orange progressive refinement with 🔨 icon
 - **Visual hierarchy**: Nested subgraphs
+- **Auto-validation**: Invalid diagrams logged to `graphs/mermaid_failures/` for debugging
 
 **View graphs:**
 - Open `.mmd` files in Mermaid viewer
 - GitHub (native Mermaid support)
 - Mermaid Live Editor: https://mermaid.live
+
+**Validation & Debugging:**
+```bash
+# Review invalid diagrams
+python scripts/review_mermaid_failures.py
+
+# Shows common errors, statistics, and recent failures
+# See MERMAID_VALIDATION.md for details
+```
 
 ### Real-Time Events (SSE)
 

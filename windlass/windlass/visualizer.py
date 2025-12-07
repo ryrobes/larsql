@@ -13,6 +13,9 @@ import json
 import re
 import os
 import glob
+import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from .echo import Echo
@@ -64,6 +67,138 @@ def sanitize_label(content: Any, max_length: int = 50) -> str:
 def safe_id(trace_id: str) -> str:
     """Create a safe Mermaid node ID from trace ID."""
     return "n_" + trace_id.replace("-", "")[:12]
+
+
+def _validate_mermaid_syntax(content: str) -> Tuple[bool, str]:
+    """
+    Validate Mermaid syntax using CLI.
+    Falls back to basic regex checks if CLI unavailable.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    # Try CLI validation first
+    try:
+        temp_file = Path("/tmp/windlass_mermaid_check.mmd")
+        temp_file.write_text(content)
+
+        result = subprocess.run(
+            ["mmdc", "-i", str(temp_file), "-o", "/tmp/windlass_mermaid_out.svg", "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+
+        if result.returncode == 0:
+            return True, ""
+        else:
+            return False, result.stderr or "Mermaid CLI validation failed"
+
+    except FileNotFoundError:
+        # CLI not installed - do basic sanity checks
+        return _basic_mermaid_checks(content)
+    except subprocess.TimeoutExpired:
+        return False, "Mermaid validation timeout (possible infinite loop in syntax)"
+    except Exception as e:
+        # Don't fail hard - just warn
+        print(f"[Warning] Mermaid validation skipped: {e}")
+        return True, ""  # Assume valid if can't check
+
+
+def _basic_mermaid_checks(content: str) -> Tuple[bool, str]:
+    """Basic regex-based syntax checks when CLI unavailable"""
+    lines = content.strip().split('\n')
+
+    if not lines:
+        return False, "Empty diagram"
+
+    # Check for common syntax errors
+    first_line = lines[0].strip()
+    valid_starts = ['graph', 'flowchart', 'sequenceDiagram', 'stateDiagram', 'classDiagram',
+                    'erDiagram', 'journey', 'gantt', 'pie', 'gitGraph', 'mindmap']
+
+    if not any(first_line.startswith(start) for start in valid_starts):
+        return False, f"Invalid diagram type: {first_line}"
+
+    # Check for balanced brackets (approximate - can have false positives)
+    for i, line in enumerate(lines, 1):
+        # Skip comment lines
+        if line.strip().startswith('%%'):
+            continue
+        opens = line.count('[') + line.count('(') + line.count('{')
+        closes = line.count(']') + line.count(')') + line.count('}')
+        if opens != closes:
+            return False, f"Unbalanced brackets on line {i}: {line[:50]}"
+
+    return True, ""
+
+
+def _log_invalid_mermaid(content: str, error: str, context: Optional[Dict], output_path: str):
+    """Log invalid Mermaid for later debugging"""
+    config = get_config()
+
+    log_dir = Path(config.graph_dir) / "mermaid_failures"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filename = Path(output_path).stem
+    log_file = log_dir / f"{filename}_{timestamp}.json"
+
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "original_path": output_path,
+        "error": error,
+        "mermaid_content": content,
+        "context": context or {},
+        "content_stats": {
+            "line_count": len(content.split('\n')),
+            "char_count": len(content),
+            "has_soundings": "fork" in content.lower(),
+            "has_reforge": "reforge" in content.lower(),
+        }
+    }
+
+    log_file.write_text(json.dumps(log_entry, indent=2))
+    print(f"📝 Invalid Mermaid logged: {log_file}")
+
+
+def validate_and_write_mermaid(
+    mermaid_content: str,
+    output_path: str,
+    source_context: Optional[Dict] = None
+) -> Tuple[bool, str]:
+    """
+    Validate Mermaid content before writing to file.
+    If invalid, log to failures directory and write anyway (with warning comment).
+
+    Returns:
+        (success, path_written)
+    """
+    is_valid, error = _validate_mermaid_syntax(mermaid_content)
+
+    if not is_valid:
+        # Log the failure for review
+        _log_invalid_mermaid(mermaid_content, error, source_context, output_path)
+
+        # Write with warning comment so it's clear it's invalid
+        safe_content = f"""%%{{init: {{'theme':'base'}}}}%%
+%% WARNING: This diagram failed validation
+%% Error: {error}
+%% Generated: {datetime.now().isoformat()}
+
+{mermaid_content}
+"""
+        with open(output_path, "w") as f:
+            f.write(safe_content)
+
+        print(f"⚠️  Invalid Mermaid diagram written to {output_path} (see mermaid_failures/ for details)")
+        return False, output_path
+
+    # Valid - write normally
+    with open(output_path, "w") as f:
+        f.write(mermaid_content)
+
+    return True, output_path
 
 
 def load_sub_cascade_mermaid(sub_session_id: str, graph_dir: Optional[str] = None) -> Optional[str]:
@@ -3453,11 +3588,20 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     except Exception as e:
         print(f"[Warning] Failed to generate React Flow JSON: {e}")
 
-    # Write to file
-    with open(output_path, "w") as f:
-        f.write(mermaid_content)
+    # Validate and write with source context for debugging
+    context = {
+        "session_id": echo.session_id,
+        "phase_count": len(echo.lineage),
+        "message_count": len(echo.history),
+        "has_soundings": any("sounding_index" in str(msg) for msg in echo.history),
+    }
 
-    return output_path
+    is_valid, path = validate_and_write_mermaid(mermaid_content, output_path, context)
+
+    if not is_valid:
+        print(f"⚠️  Generated diagram may not render correctly")
+
+    return path
 
 
 def generate_mermaid_from_config(config: Any, output_path: str) -> str:

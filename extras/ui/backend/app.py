@@ -131,6 +131,15 @@ class LoggingConnectionWrapper:
         print(f"[DB] Closed connection: {self._query_count} queries, {self._total_time*1000:.1f}ms total, {avg_time:.1f}ms avg ({open_count} still open)")
         self._conn.close()
 
+    def __enter__(self):
+        """Enter context manager - return self for use in 'with' statements."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager - automatically close connection."""
+        self.close()
+        return False  # Don't suppress exceptions
+
     def __getattr__(self, name):
         """Proxy all other attributes to the underlying connection."""
         return getattr(self._conn, name)
@@ -560,6 +569,9 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
         # Convert to sorted list
         token_timeseries = [buckets[i] for i in sorted(buckets.keys())]
 
+    # Check if any phase has soundings
+    has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())
+
     return {
         'session_id': session_id,
         'cascade_id': info.cascade_id,
@@ -577,6 +589,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
         'error_count': error_count,
         'errors': error_list,
         'token_timeseries': token_timeseries,
+        'has_soundings': has_soundings,
         'children': [],
         '_source': 'live'  # Indicate data source for debugging
     }
@@ -1412,6 +1425,9 @@ def get_cascade_instances(cascade_id):
             except:
                 pass
 
+            # Check if any phase has soundings
+            has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())
+
             instances.append({
                 'session_id': session_id,
                 'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
@@ -1429,6 +1445,7 @@ def get_cascade_instances(cascade_id):
                 'error_count': error_count,
                 'errors': error_list,
                 'token_timeseries': token_timeseries_by_session.get(session_id, []),
+                'has_soundings': has_soundings,
                 'children': [],
                 '_source': 'sql'  # Indicate data source for debugging
             })
@@ -1602,6 +1619,234 @@ def dump_session(session_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/soundings-tree/<session_id>', methods=['GET'])
+def get_soundings_tree(session_id):
+    """
+    Returns hierarchical soundings data for visualization.
+
+    Shows all soundings across all phases, evaluator reasoning,
+    and the winner path through the cascade execution.
+    """
+    try:
+        # Query unified logs for soundings data
+        # Need to get both 'sounding_attempt' rows (metadata) and 'agent' rows (cost, content)
+        query = f"""
+        SELECT
+            phase_name,
+            sounding_index,
+            is_winner,
+            content_json,
+            cost,
+            tool_calls_json,
+            turn_number,
+            metadata_json,
+            timestamp,
+            node_type,
+            role,
+            model
+        FROM read_parquet('{DATA_DIR}/*.parquet')
+        WHERE session_id = '{session_id}'
+          AND sounding_index IS NOT NULL
+          AND node_type IN ('sounding_attempt', 'agent')
+        ORDER BY phase_name, sounding_index, turn_number, timestamp
+        """
+
+        with get_db_connection() as conn:
+            df = conn.execute(query).fetchdf()
+
+        if df.empty:
+            return jsonify({"phases": [], "winner_path": []})
+
+        # Group by phase
+        phases_dict = {}
+        winner_path = []
+
+        for _, row in df.iterrows():
+            phase_name = row['phase_name']
+            sounding_idx = int(row['sounding_index'])
+
+            if phase_name not in phases_dict:
+                phases_dict[phase_name] = {
+                    'name': phase_name,
+                    'soundings': {},
+                    'eval_reasoning': None
+                }
+
+            if sounding_idx not in phases_dict[phase_name]['soundings']:
+                # Handle NA values for is_winner (agent rows may not have this set)
+                is_winner_val = row['is_winner']
+                if pd.isna(is_winner_val):
+                    is_winner = False  # Default to False for NA
+                else:
+                    is_winner = bool(is_winner_val)
+
+                phases_dict[phase_name]['soundings'][sounding_idx] = {
+                    'index': sounding_idx,
+                    'cost': 0,
+                    'turns': [],
+                    'is_winner': is_winner,
+                    'failed': False,
+                    'output': '',
+                    'tool_calls': [],
+                    'error': None,
+                    'model': None,
+                    'start_time': None,
+                    'end_time': None,
+                    'duration': 0
+                }
+
+            sounding = phases_dict[phase_name]['soundings'][sounding_idx]
+
+            # Update is_winner if we have a definitive value (sounding_attempt rows have this)
+            is_winner_val = row['is_winner']
+            if pd.notna(is_winner_val) and bool(is_winner_val):
+                sounding['is_winner'] = True
+
+            # Set model if we haven't already (take first non-null value)
+            if pd.notna(row['model']) and not sounding['model']:
+                sounding['model'] = row['model']
+
+            # Track timestamps for duration calculation
+            if pd.notna(row['timestamp']):
+                timestamp = float(row['timestamp'])
+                if sounding['start_time'] is None or timestamp < sounding['start_time']:
+                    sounding['start_time'] = timestamp
+                if sounding['end_time'] is None or timestamp > sounding['end_time']:
+                    sounding['end_time'] = timestamp
+
+            # Accumulate data
+            sounding['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
+            sounding['turns'].append({
+                'turn': int(row['turn_number']) if pd.notna(row['turn_number']) else 0,
+                'cost': float(row['cost']) if pd.notna(row['cost']) else 0
+            })
+
+            # Parse content
+            try:
+                if pd.notna(row['content_json']):
+                    content = row['content_json']
+                    # Try to parse as JSON first
+                    if isinstance(content, str):
+                        try:
+                            parsed = json.loads(content)
+                            if isinstance(parsed, str):
+                                sounding['output'] += parsed + '\n'
+                            elif isinstance(parsed, dict) and 'content' in parsed:
+                                sounding['output'] += str(parsed['content']) + '\n'
+                            else:
+                                sounding['output'] += str(parsed) + '\n'
+                        except (json.JSONDecodeError, TypeError):
+                            # If JSON parsing fails, treat as plain string
+                            sounding['output'] += content + '\n'
+                    else:
+                        sounding['output'] += str(content) + '\n'
+            except Exception as e:
+                pass
+
+            # Parse tool calls
+            try:
+                if pd.notna(row['tool_calls_json']):
+                    tool_calls = json.loads(row['tool_calls_json'])
+                    if isinstance(tool_calls, list):
+                        for tool_call in tool_calls:
+                            if isinstance(tool_call, dict) and 'tool' in tool_call:
+                                tool_name = tool_call['tool']
+                                if tool_name not in sounding['tool_calls']:
+                                    sounding['tool_calls'].append(tool_name)
+            except:
+                pass
+
+            # Check for errors in metadata
+            try:
+                if pd.notna(row['metadata_json']):
+                    metadata = json.loads(row['metadata_json'])
+                    if isinstance(metadata, dict) and metadata.get('error'):
+                        sounding['error'] = metadata.get('error')
+                        sounding['failed'] = True
+            except:
+                pass
+
+            # Track winner path (only from rows where is_winner is explicitly True)
+            is_winner_val = row['is_winner']
+            if pd.notna(is_winner_val) and bool(is_winner_val) and phase_name not in [w['phase_name'] for w in winner_path]:
+                winner_path.append({
+                    'phase_name': phase_name,
+                    'sounding_index': sounding_idx
+                })
+
+        # Query for eval reasoning (evaluator agent messages)
+        eval_query = f"""
+        SELECT
+            phase_name,
+            content_json,
+            role
+        FROM read_parquet('{DATA_DIR}/*.parquet')
+        WHERE session_id = '{session_id}'
+          AND (node_type = 'evaluator' OR role = 'assistant')
+          AND phase_name IS NOT NULL
+        ORDER BY timestamp
+        """
+
+        with get_db_connection() as conn:
+            eval_df = conn.execute(eval_query).fetchdf()
+
+        # Extract evaluator reasoning - look for assistant messages with eval-like content
+        for _, row in eval_df.iterrows():
+            phase_name = row['phase_name']
+            if phase_name in phases_dict:
+                try:
+                    if pd.notna(row['content_json']):
+                        content = json.loads(row['content_json'])
+                        content_text = ''
+                        if isinstance(content, str):
+                            content_text = content
+                        elif isinstance(content, dict) and 'content' in content:
+                            content_text = str(content['content'])
+
+                        # Heuristic: if content mentions evaluation-related keywords, it's likely evaluator reasoning
+                        eval_keywords = ['sounding', 'evaluate', 'winner', 'attempt', 'explanation', 'best']
+                        has_eval_keyword = any(keyword in content_text.lower() for keyword in eval_keywords)
+
+                        if content_text and has_eval_keyword:
+                            if not phases_dict[phase_name]['eval_reasoning']:
+                                # Store full eval reasoning (no truncation)
+                                phases_dict[phase_name]['eval_reasoning'] = content_text
+                except:
+                    pass
+
+        # Convert dicts to lists and calculate durations
+        phases = []
+        for phase_name in sorted(phases_dict.keys()):
+            phase = phases_dict[phase_name]
+            soundings_list = list(phase['soundings'].values())
+
+            # Calculate duration for each sounding
+            for sounding in soundings_list:
+                if sounding['start_time'] and sounding['end_time']:
+                    sounding['duration'] = sounding['end_time'] - sounding['start_time']
+                else:
+                    sounding['duration'] = 0
+                # Remove raw timestamps (don't need to send to frontend)
+                del sounding['start_time']
+                del sounding['end_time']
+
+            phase['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
+            phases.append(phase)
+
+        result = {
+            'phases': phases,
+            'winner_path': winner_path
+        }
+
+        return jsonify(sanitize_for_json(result))
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get soundings tree: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/graphs/<session_id>', methods=['GET'])

@@ -1,0 +1,65 @@
+{
+  "cascade_id": "sql_chart_gen_analysis_full",
+  "description": "Demonstrates SQL schema discovery and query execution with natural language, creates a chart, iterates on it, tells you about it.",
+  "inputs_schema": {
+    "question": "Natural language question about the data"
+  },
+  "memory": "sql_rag_search",
+  "phases": [
+    {
+      "name": "discover_schema",
+      "context_retention": "output_only",
+      "instructions": "The user asked: {{ input.question }}\n\nFirst, use sql_search to find relevant tables that might contain data to answer this question.\n\nSearch for tables using natural language - the tool will return schema information including:\n- Column names and types\n- Value distributions for categorical columns\n- Sample rows\n- Row counts\n\nAnalyze the results and identify which table(s) would be most useful. \nNote: the search data is ephemeral, so if you need access to it later please include important parts in your reply.",
+      "tackle": ["sql_search", "list_sql_connections", "sql_rag_search"],
+      "soundings": {
+        "factor": 4,
+        "evaluator_instructions": "Evaluate schema discovery attempts based on:\n\n1. **Relevance** (40%): Did they find tables that directly answer the user's question?\n2. **Thoroughness** (30%): Did they examine multiple relevant tables and understand the schema structure?\n3. **Data Understanding** (20%): Do they demonstrate understanding of column types, value distributions, and data quality?\n4. **Actionability** (10%): Did they provide clear next steps for query writing, including specific column names and table references?\n\nSelect the attempt that:\n- Found the MOST relevant table(s) for the question\n- Demonstrated deepest understanding of the data structure\n- Provided most useful information for the next phase (query writing)\n- Avoided irrelevant tables while being thorough\n\nPrefer attempts that balance breadth (checking multiple options) with depth (understanding what's useful)."
+      },
+      "handoffs": ["write_query"]
+    },
+    {
+      "name": "write_query",
+      "instructions": "Based on the schema information from the previous phase, write a SQL query to answer: {{ input.question }}\n\nUse the sql_query tool to execute your query.\n\nIMPORTANT Query Syntax:\n- CSV folders: SELECT * FROM connection_name.table_name\n- PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table\n- Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = 'California'\n\nThe schema info from the previous phase shows you:\n- Exact column names\n- Data types\n- Sample values (use these to understand the data format)\n- Value distributions (shows you what values exist in categorical columns)\n\nWrite a clear, efficient query based on this information.",
+      "tackle": ["sql_query", "sql_rag_search"],
+      "soundings": {
+        "factor": 5,
+        "evaluator_instructions": "Evaluate SQL query attempts based on:\n\n1. **Correctness** (40%): Does the query execute without errors and return results?\n2. **Accuracy** (30%): Do the results actually answer the user's question?\n3. **Efficiency** (15%): Is the query optimized (proper filters, aggregations, no unnecessary data)?\n4. **Completeness** (15%): Does it return all relevant data needed to answer the question?\n\nSelect the attempt that:\n- Executed successfully (queries with errors are automatic losers)\n- Returns the MOST relevant data for the user's question\n- Uses proper SQL syntax for the connection type\n- Applies appropriate filters, aggregations, or joins\n- Returns a reasonable amount of data (not too little, not too much)\n\nCRITICAL: Syntax errors or failed queries should be heavily penalized. A working query that's slightly less optimal is better than a perfect-looking query that fails.\n\nPrefer queries that demonstrate understanding of the schema and make smart decisions about what columns/rows to include."
+      },
+      "handoffs": ["analyze_results"]
+    },
+    {
+      "name": "analyze_results",
+      "instructions": "Analyze the query results from the previous phase and provide a clear answer to: {{ input.question }}\n\nSummarize:\n- Key findings from the data\n- Any interesting patterns or insights\n- Direct answer to the user's question\n\nBe specific and reference actual numbers from the results.",
+      "tackle": [],
+      "soundings": {
+        "factor": 4,
+        "evaluator_instructions": "Evaluate data analysis attempts based on:\n\n1. **Accuracy** (35%): Does the analysis correctly interpret the query results?\n2. **Insight Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n3. **Specificity** (20%): Does it reference actual numbers, percentages, or concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear, well-structured, and directly addresses the user's question?\n\nSelect the attempt that:\n- Provides the MOST insightful interpretation of the data\n- Directly and clearly answers the user's original question\n- Supports claims with specific numbers/evidence from the results\n- Identifies interesting patterns beyond just the obvious\n- Avoids vague or generic statements\n- Demonstrates quantitative thinking (percentages, comparisons, trends)\n\nPrefer analyses that go beyond surface-level observations and provide actionable insights. An analysis that says \"Sales increased by 47% in Q3, primarily driven by the Northeast region (23% growth)\" is better than \"Sales went up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n- Are too vague or generic\n- Miss obvious patterns in the results\n- Don't directly answer the user's question"
+      },
+      "handoffs": ["create_initial_chart"]
+    },
+        {
+    "name": "create_initial_chart",
+    "instructions": "Create a chart based on this data to help illustrate the findings. \n\nUse the create_vega_lite or create_plotly tool. After creating it, the image will be automatically injected for you to see.\n\nOnce you see the chart image, analyze it against the requirements and describe:\n1. What you observe visually\n2. How well it meets the requirements\n3. What specific improvements are needed - does it help to answer the users question? If mutiple compound charts would help visualize, go for that. For styling use dark mode and give it some flair and personality.",
+    "tackle": ["create_vega_lite", "create_plotly"],
+    "soundings": {
+      "factor": 3,
+      "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable.",
+      "reforge": {
+        "steps": 2,
+        "honing_prompt": "You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:\n\n- Exact color codes for better contrast (hex values)\n- Precise font sizes for labels\n- Specific axis range adjustments\n- Data point annotation placement\n- Are things being overlapped or clipped? \nLegend positioning coordinates\n\nBe EXTREMELY specific and actionable. Reference exact elements you see in the image.",
+        "factor_per_step": 2,
+        "mutate": true,
+        "evaluator_override": "Evaluate refinements on:\n1. Specificity (exact values, not vague suggestions)\n2. Visual awareness (referencing actual chart elements)\n3. Implementation feasibility\n4. Completeness of improvements\n\nPick the most production-ready, implementable analysis."
+      }
+    },
+    "rules": {"max_turns": 1},
+    "handoffs": ["say_summary_summarize"]
+  },
+  {
+    "name": "say_summary_summarize",
+    "instructions": "Use the `say` tool to speak to the user and give a VERY short summary of the findings and chart. Persona is a sassy, foul mouthed, street kid turned corpo. Yet a beautiful vixen, none the less.",
+    "tackle": ["say"],
+    "rules": {"max_turns": 1}
+  }
+  ]
+}
