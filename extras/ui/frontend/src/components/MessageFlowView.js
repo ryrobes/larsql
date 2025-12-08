@@ -5,19 +5,18 @@ import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
-function MessageFlowView({ onBack }) {
-  const [sessionId, setSessionId] = useState('');
+function MessageFlowView({ onBack, initialSessionId, onSessionChange }) {
+  const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedMessages, setExpandedMessages] = useState(new Set());
   const [highlightedMessage, setHighlightedMessage] = useState(null);
   const [runningSessions, setRunningSessions] = useState([]);
-  const [showSessionDropdown, setShowSessionDropdown] = useState(false);
+  const [recentSessions, setRecentSessions] = useState([]); // Combined recent + running sessions for button row
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [waitingForData, setWaitingForData] = useState(false); // True when session is running but no data yet
-  const dropdownRef = useRef(null);
-  const currentSessionIdRef = useRef(null);
+  const currentSessionIdRef = useRef(initialSessionId || null);
 
   // Check if a session ID is in the running sessions list
   const isSessionRunning = useCallback((sid) => {
@@ -45,6 +44,10 @@ function MessageFlowView({ onBack }) {
       if (targetSessionId && targetSessionId !== sessionId) {
         setSessionId(targetSessionId);
       }
+      // Notify parent of session change for URL update
+      if (onSessionChange && sid) {
+        onSessionChange(sid);
+      }
     } catch (err) {
       const errorMsg = err.response?.data?.error || err.message;
       const isNotFound = err.response?.status === 404 || errorMsg.includes('No data found');
@@ -56,6 +59,10 @@ function MessageFlowView({ onBack }) {
         currentSessionIdRef.current = sid;
         if (targetSessionId && targetSessionId !== sessionId) {
           setSessionId(targetSessionId);
+        }
+        // Notify parent of session change for URL update
+        if (onSessionChange && sid) {
+          onSessionChange(sid);
         }
       } else if (!silent) {
         setError(errorMsg);
@@ -71,11 +78,40 @@ function MessageFlowView({ onBack }) {
   const fetchRunningSessions = useCallback(async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/running-sessions`);
-      setRunningSessions(response.data.sessions || []);
+      const sessions = response.data.sessions || [];
+      setRunningSessions(sessions);
+
+      // Update recent sessions list (combine running sessions with history)
+      setRecentSessions(prev => {
+        // Start with running sessions
+        const sessionMap = new Map();
+        sessions.forEach(s => sessionMap.set(s.session_id, { ...s, isActive: true }));
+
+        // Add previous sessions that aren't in running list
+        prev.forEach(s => {
+          if (!sessionMap.has(s.session_id)) {
+            sessionMap.set(s.session_id, { ...s, isActive: false });
+          }
+        });
+
+        // Convert to array and sort by start_time (most recent first)
+        const combined = Array.from(sessionMap.values());
+        combined.sort((a, b) => (b.start_time || 0) - (a.start_time || 0));
+
+        // Keep only last 10
+        return combined.slice(0, 10);
+      });
     } catch (err) {
       console.error('Failed to fetch running sessions:', err);
     }
   }, []);
+
+  // Load initial session from URL on mount
+  useEffect(() => {
+    if (initialSessionId) {
+      fetchMessages(initialSessionId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch running sessions on mount and every 5 seconds
   useEffect(() => {
@@ -83,20 +119,6 @@ function MessageFlowView({ onBack }) {
     const interval = setInterval(fetchRunningSessions, 5000);
     return () => clearInterval(interval);
   }, [fetchRunningSessions]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowSessionDropdown(false);
-      }
-    };
-
-    if (showSessionDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showSessionDropdown]);
 
   // Check if current session is running (works even without data)
   const isCurrentSessionRunning = useCallback(() => {
@@ -122,8 +144,14 @@ function MessageFlowView({ onBack }) {
   }, [autoRefresh, data?.session_id, isCurrentSessionRunning, waitingForData, fetchMessages]);
 
   const handleSessionSelect = (session) => {
-    setShowSessionDropdown(false);
     fetchMessages(session.session_id);
+    // Add to recent sessions if not already there
+    setRecentSessions(prev => {
+      const exists = prev.some(s => s.session_id === session.session_id);
+      if (exists) return prev;
+      const updated = [{ ...session, isActive: session.status === 'running' }, ...prev];
+      return updated.slice(0, 10);
+    });
   };
 
   const formatAge = (seconds) => {
@@ -374,44 +402,32 @@ function MessageFlowView({ onBack }) {
     <div className="message-flow-view">
       <div className="controls">
         {onBack && (
-          <button onClick={onBack} className="back-button">
-            <Icon icon="mdi:arrow-left" width="16" style={{ marginRight: '4px' }} />Back
+          <button onClick={onBack} className="back-button" title="Back to Cascades">
+            <Icon icon="mdi:arrow-left" width="18" />
           </button>
         )}
 
-        {/* Running Sessions Dropdown */}
-        <div className="running-sessions-wrapper" ref={dropdownRef}>
-          <button
-            className={`running-sessions-button ${runningSessions.length > 0 ? 'has-sessions' : ''}`}
-            onClick={() => setShowSessionDropdown(!showSessionDropdown)}
-            title={runningSessions.length > 0 ? `${runningSessions.length} active session(s)` : 'No active sessions'}
-          >
-            <span className="pulse-dot" style={{ display: runningSessions.some(s => s.status === 'running') ? 'inline-block' : 'none' }}></span>
-            {runningSessions.length > 0 ? `${runningSessions.length} Active` : 'No Active'}
-            <span className="dropdown-arrow"><Icon icon={showSessionDropdown ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" /></span>
-          </button>
-
-          {showSessionDropdown && (
-            <div className="running-sessions-dropdown">
-              {runningSessions.length === 0 ? (
-                <div className="no-sessions">No active sessions</div>
-              ) : (
-                runningSessions.map((session) => (
-                  <button
-                    key={session.session_id}
-                    className={`session-item ${session.status === 'running' ? 'running' : 'completing'}`}
-                    onClick={() => handleSessionSelect(session)}
-                  >
-                    <div className="session-item-header">
-                      <span className={`status-indicator ${session.status}`}></span>
-                      <span className="session-cascade">{session.cascade_id || 'unknown'}</span>
-                      <span className="session-age">{formatAge(session.age_seconds)}</span>
-                    </div>
-                    <div className="session-id-preview">{session.session_id}</div>
-                  </button>
-                ))
-              )}
-            </div>
+        {/* Recent Sessions Row */}
+        <div className="recent-sessions-row">
+          {recentSessions.length === 0 ? (
+            <span className="no-recent-sessions">No recent sessions</span>
+          ) : (
+            recentSessions.map((session) => {
+              const isSelected = currentSessionIdRef.current === session.session_id;
+              const isRunning = session.isActive || session.status === 'running';
+              return (
+                <button
+                  key={session.session_id}
+                  className={`session-button ${isSelected ? 'selected' : ''} ${isRunning ? 'running' : ''}`}
+                  onClick={() => handleSessionSelect(session)}
+                  title={`${session.cascade_id || 'unknown'}\n${session.session_id}`}
+                >
+                  {isRunning && <span className="session-pulse"></span>}
+                  <span className="session-button-cascade">{session.cascade_id || 'unknown'}</span>
+                  <span className="session-button-id">{session.session_id.slice(-8)}</span>
+                </button>
+              );
+            })
           )}
         </div>
 

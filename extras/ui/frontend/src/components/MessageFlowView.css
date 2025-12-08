@@ -42,53 +42,92 @@
   color: #2DD4BF;
 }
 
-/* Running Sessions Dropdown */
-.running-sessions-wrapper {
-  position: relative;
-}
-
-.running-sessions-button {
-  background: rgba(22, 32, 42, 0.6);
-  border: 1px solid #2C3B4B;
-  color: #9AA5B1;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  font-family: 'Space Grotesk', sans-serif;
-  cursor: pointer;
-  transition: all 0.2s ease;
+/* Recent Sessions Row */
+.recent-sessions-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex: 1;
+  overflow-x: auto;
+  padding: 0.25rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(45, 212, 191, 0.3) transparent;
+}
+
+.recent-sessions-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.recent-sessions-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.recent-sessions-row::-webkit-scrollbar-thumb {
+  background: rgba(45, 212, 191, 0.3);
+  border-radius: 2px;
+}
+
+.no-recent-sessions {
+  color: #6B7280;
+  font-size: 0.8rem;
+  font-style: italic;
   white-space: nowrap;
 }
 
-.running-sessions-button:hover {
-  background: rgba(22, 32, 42, 0.9);
-  border-color: rgba(45, 212, 191, 0.4);
-  color: #F0F4F8;
+.session-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(22, 32, 42, 0.6);
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  min-width: 100px;
+  flex-shrink: 0;
 }
 
-.running-sessions-button.has-sessions {
-  border-color: #2DD4BF;
-  color: #2DD4BF;
+.session-button:hover {
   background: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.4);
 }
 
-.running-sessions-button.has-sessions:hover {
-  background: rgba(45, 212, 191, 0.2);
+.session-button.selected {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: #2DD4BF;
 }
 
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  background: #2DD4BF;
+.session-button.running {
+  border-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.session-button.running:hover {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: #fbbf24;
+}
+
+.session-button.running.selected {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+}
+
+.session-pulse {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: #fbbf24;
   border-radius: 50%;
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: sessionPulse 1.5s ease-in-out infinite;
 }
 
-@keyframes pulse {
+@keyframes sessionPulse {
   0%, 100% {
     opacity: 1;
     transform: scale(1);
@@ -99,83 +138,29 @@
   }
 }
 
-.dropdown-arrow {
+.session-button-cascade {
   font-size: 0.7rem;
-  margin-left: 0.25rem;
-}
-
-.running-sessions-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  min-width: 280px;
-  background: #16202A;
-  border: 1px solid rgba(45, 212, 191, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  overflow: hidden;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.no-sessions {
-  padding: 1rem;
+  font-weight: 600;
   color: #9AA5B1;
-  text-align: center;
-  font-size: 0.85rem;
-  font-style: italic;
+  font-family: 'Space Grotesk', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
 }
 
-.session-item {
-  display: block;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(45, 212, 191, 0.1);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
+.session-button.running .session-button-cascade {
+  color: #fbbf24;
 }
 
-.session-item:last-child {
-  border-bottom: none;
+.session-button.selected .session-button-cascade {
+  color: #2DD4BF;
 }
 
-.session-item:hover {
-  background: rgba(45, 212, 191, 0.1);
-}
-
-.session-item.running {
-  border-left: 3px solid #2DD4BF;
-}
-
-.session-item.completing {
-  border-left: 3px solid #fb923c;
-}
-
-.session-item-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-indicator.running {
-  background: #2DD4BF;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.status-indicator.completing {
-  background: #fb923c;
+.session-button-id {
+  font-size: 0.65rem;
+  color: #6B7280;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .session-cascade {

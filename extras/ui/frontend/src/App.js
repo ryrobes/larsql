@@ -18,6 +18,7 @@ function App() {
   const [activeCheckpointId, setActiveCheckpointId] = useState(null);  // Currently viewing checkpoint
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
+  const [messageFlowSessionId, setMessageFlowSessionId] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
@@ -65,6 +66,10 @@ function App() {
         // /#/checkpoint/checkpoint_id → checkpoint view
         return { view: 'checkpoint', cascadeId: null, sessionId: null, checkpointId: parts[1] };
       }
+      if (parts[0] === 'message_flow') {
+        // /#/message_flow/session_id → message flow view with session
+        return { view: 'messageflow', cascadeId: null, sessionId: parts[1], checkpointId: null };
+      }
       // /#/cascade_id/session_id → detail view
       return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null };
     }
@@ -77,7 +82,11 @@ function App() {
     if (view === 'cascades') {
       window.location.hash = '';
     } else if (view === 'messageflow') {
-      window.location.hash = '#/message_flow';
+      if (sessionId) {
+        window.location.hash = `#/message_flow/${sessionId}`;
+      } else {
+        window.location.hash = '#/message_flow';
+      }
     } else if (view === 'checkpoint' && checkpointId) {
       window.location.hash = `#/checkpoint/${checkpointId}`;
     } else if (view === 'instances' && cascadeId) {
@@ -203,6 +212,7 @@ function App() {
         setCurrentView('messageflow');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
+        setMessageFlowSessionId(route.sessionId || null);
       } else if (route.view === 'instances' && route.cascadeId) {
         // Need to fetch cascade data if not already loaded
         if (selectedCascadeId !== route.cascadeId) {
@@ -606,6 +616,11 @@ function App() {
       )}
       {currentView === 'messageflow' && (
         <MessageFlowView
+          initialSessionId={messageFlowSessionId}
+          onSessionChange={(sessionId) => {
+            setMessageFlowSessionId(sessionId);
+            updateHash('messageflow', null, sessionId);
+          }}
           onBack={() => {
             setCurrentView('cascades');
             updateHash('cascades');
