@@ -21,15 +21,35 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
   const [reasoning, setReasoning] = useState('');
   const [confidence, setConfidence] = useState(null);
 
+  // Get the return path from sessionStorage (set when navigating to checkpoint)
+  const getReturnPath = useCallback(() => {
+    const stored = sessionStorage.getItem('checkpointReturnPath');
+    // Clear it after reading so it doesn't persist across sessions
+    if (stored) {
+      sessionStorage.removeItem('checkpointReturnPath');
+    }
+    return stored || '';
+  }, []);
+
   // Go back handler
   const handleGoBack = useCallback(() => {
     if (onBack) {
       onBack();
     } else {
-      // Default: go to cascades view
-      window.location.hash = '';
+      // Try to return to where we came from, or fall back to session detail view
+      const returnPath = sessionStorage.getItem('checkpointReturnPath');
+      if (returnPath) {
+        sessionStorage.removeItem('checkpointReturnPath');
+        window.location.hash = returnPath;
+      } else if (checkpoint?.cascade_id && checkpoint?.session_id) {
+        // Fall back to session detail view
+        window.location.hash = `#/${checkpoint.cascade_id}/${checkpoint.session_id}`;
+      } else {
+        // Last resort: go to cascades view
+        window.location.hash = '';
+      }
     }
-  }, [onBack]);
+  }, [onBack, checkpoint]);
 
   // Fetch checkpoint data
   useEffect(() => {
@@ -80,8 +100,15 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
       if (onComplete) {
         onComplete(result);
       } else {
-        // Navigate to cascade view using hash routing
-        window.location.hash = `#/${checkpoint?.cascade_id}/${checkpoint?.session_id}`;
+        // Navigate back to where we came from, or to session detail view
+        const returnPath = sessionStorage.getItem('checkpointReturnPath');
+        if (returnPath) {
+          sessionStorage.removeItem('checkpointReturnPath');
+          window.location.hash = returnPath;
+        } else {
+          // Fall back to session detail view
+          window.location.hash = `#/${checkpoint?.cascade_id}/${checkpoint?.session_id}`;
+        }
       }
     } catch (err) {
       setError(err.message);

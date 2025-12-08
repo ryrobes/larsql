@@ -758,3 +758,35 @@
     width: 100% !important;
   }
 }
+
+/* ===========================================================================
+   SOUNDING EVAL LINK
+   =========================================================================== */
+
+.sounding-eval-link {
+  padding: 16px;
+  text-align: center;
+}
+
+.sounding-eval-message {
+  color: #a78bfa;
+  font-size: 1.1em;
+  margin-bottom: 16px;
+}
+
+.open-comparison-btn {
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.open-comparison-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.4);
+}

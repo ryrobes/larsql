@@ -38,6 +38,33 @@ class SessionInfo:
     checkpoint_id: str = None  # If waiting for input, the checkpoint ID
 
 
+# Global checkpoint cache for cross-process sharing via SSE
+# This stores checkpoint data received from the runner process
+_checkpoint_cache: Dict[str, Dict[str, Any]] = {}
+_checkpoint_cache_lock = threading.Lock()
+
+
+def cache_checkpoint(checkpoint_id: str, data: Dict[str, Any]):
+    """Cache checkpoint data received via SSE for later retrieval."""
+    with _checkpoint_cache_lock:
+        _checkpoint_cache[checkpoint_id] = data
+        print(f"[LiveStore] Cached checkpoint: {checkpoint_id}")
+
+
+def get_cached_checkpoint(checkpoint_id: str) -> Optional[Dict[str, Any]]:
+    """Get cached checkpoint data."""
+    with _checkpoint_cache_lock:
+        return _checkpoint_cache.get(checkpoint_id)
+
+
+def clear_cached_checkpoint(checkpoint_id: str):
+    """Clear checkpoint from cache."""
+    with _checkpoint_cache_lock:
+        if checkpoint_id in _checkpoint_cache:
+            del _checkpoint_cache[checkpoint_id]
+            print(f"[LiveStore] Cleared cached checkpoint: {checkpoint_id}")
+
+
 class LiveSessionStore:
     """In-memory store for live cascade sessions using DuckDB.
 
@@ -722,6 +749,26 @@ def process_event(event: Dict[str, Any]) -> bool:
         })
         # Mark that session is waiting for input (stays running)
         store.mark_checkpoint_waiting(session_id, checkpoint_id)
+
+        # Cache the full checkpoint data for cross-process sharing
+        # This allows the API to serve checkpoint data received via SSE
+        if checkpoint_id:
+            cache_checkpoint(checkpoint_id, {
+                'id': checkpoint_id,
+                'session_id': session_id,
+                'cascade_id': data.get('cascade_id'),
+                'phase_name': data.get('phase_name'),
+                'checkpoint_type': data.get('checkpoint_type'),
+                'ui_spec': data.get('ui_spec'),
+                'phase_output': data.get('preview'),
+                'sounding_outputs': data.get('sounding_outputs'),
+                'sounding_metadata': data.get('sounding_metadata'),
+                'echo_snapshot': data.get('echo_snapshot'),
+                'timeout_at': data.get('timeout_at'),
+                'status': 'pending',
+                'created_at': ts
+            })
+
         print(f"[LiveStore] checkpoint_waiting: session={session_id}, checkpoint={checkpoint_id}")
         return True
 

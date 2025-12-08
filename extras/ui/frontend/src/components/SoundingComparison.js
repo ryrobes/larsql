@@ -22,26 +22,26 @@ function SoundingComparison({ spec, outputs, metadata, onSubmit, isLoading }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [rankings, setRankings] = useState([]);
   const [ratings, setRatings] = useState({});
-  const [reasoning, setReasoning] = useState('');
 
   const presentation = spec?.presentation || 'side_by_side';
   const selectionMode = spec?.selection_mode || 'pick_one';
   const options = spec?.options || {};
 
-  // Build attempts array
+  // Build attempts array with images
   const attempts = outputs.map((output, idx) => ({
     index: idx,
     output,
     metadata: metadata?.[idx] || {},
-    mutation: metadata?.[idx]?.mutation_applied
+    mutation: metadata?.[idx]?.mutation_applied,
+    images: metadata?.[idx]?.images || []
   }));
 
   const handleSubmit = () => {
     const response = {
       winner_index: selectedIndex,
       rankings: selectionMode === 'rank_all' ? rankings : undefined,
-      ratings: selectionMode === 'rate_each' ? ratings : undefined,
-      reasoning: options.require_reasoning ? reasoning : undefined
+      ratings: selectionMode === 'rate_each' ? ratings : undefined
+      // Note: reasoning is collected by CheckpointView wrapper
     };
     onSubmit(response);
   };
@@ -152,21 +152,7 @@ function SoundingComparison({ spec, outputs, metadata, onSubmit, isLoading }) {
         </div>
       )}
 
-      {/* Reasoning Input */}
-      {options.require_reasoning && (
-        <div className="reasoning-section">
-          <label className="reasoning-label">
-            Why did you choose this? <span className="required">*</span>
-          </label>
-          <textarea
-            value={reasoning}
-            onChange={(e) => setReasoning(e.target.value)}
-            placeholder="Explain your selection..."
-            rows={3}
-            className="reasoning-input"
-          />
-        </div>
-      )}
+      {/* Note: Reasoning input is handled by CheckpointView wrapper */}
 
       {/* Actions */}
       <div className="comparison-actions">
@@ -183,7 +169,7 @@ function SoundingComparison({ spec, outputs, metadata, onSubmit, isLoading }) {
 
         <button
           onClick={handleSubmit}
-          disabled={!canSubmit() || isLoading || (options.require_reasoning && !reasoning)}
+          disabled={!canSubmit() || isLoading}
           className="submit-btn"
         >
           {isLoading ? 'Submitting...' : 'Confirm Selection'}
@@ -346,38 +332,59 @@ function AttemptCard({
     ? attempt.output.slice(0, maxLength) + '...'
     : attempt.output;
 
-  // Auto-detect render type
+  // Auto-detect render type - default to markdown for better formatting
   const detectRenderType = (text) => {
-    if (!text) return 'text';
+    if (!text) return 'markdown';
     const trimmed = text.trim();
     if (trimmed.startsWith('```') || trimmed.startsWith('def ') || trimmed.startsWith('function ')) return 'code';
-    if (/^#+\s|^\*\*|\[.*\]\(|^-\s/.test(trimmed)) return 'markdown';
-    return 'text';
+    // Default to markdown - it handles plain text gracefully
+    return 'markdown';
   };
 
-  const actualRender = previewRender === 'auto' ? detectRenderType(output) : (previewRender || 'text');
+  const actualRender = previewRender === 'auto' ? detectRenderType(output) : (previewRender || 'markdown');
+
+  // Check for images in attempt
+  const images = attempt.images || [];
 
   const renderContent = () => {
-    switch (actualRender) {
-      case 'markdown':
-        return (
-          <div className="attempt-markdown">
-            <ReactMarkdown>{output}</ReactMarkdown>
+    return (
+      <>
+        {/* Render images if present */}
+        {images.length > 0 && (
+          <div className="attempt-images">
+            {images.map((img, imgIdx) => (
+              <img
+                key={imgIdx}
+                src={img.startsWith('/') ? img : `/api/images/${img}`}
+                alt={`Output ${index + 1} - Image ${imgIdx + 1}`}
+                className="attempt-image"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(img.startsWith('/') ? img : `/api/images/${img}`, '_blank');
+                }}
+              />
+            ))}
           </div>
-        );
-      case 'code':
-        return (
-          <SyntaxHighlighter
-            language="javascript"
-            style={vscDarkPlus}
-            customStyle={{ margin: 0, borderRadius: '6px', fontSize: '0.85em' }}
-          >
-            {output}
-          </SyntaxHighlighter>
-        );
-      default:
-        return <pre className="attempt-text">{output}</pre>;
-    }
+        )}
+
+        {/* Render text content */}
+        {output && (
+          actualRender === 'code' ? (
+            <SyntaxHighlighter
+              language="javascript"
+              style={vscDarkPlus}
+              customStyle={{ margin: 0, borderRadius: '6px', fontSize: '0.85em' }}
+            >
+              {output}
+            </SyntaxHighlighter>
+          ) : (
+            <div className="attempt-markdown">
+              <ReactMarkdown>{output}</ReactMarkdown>
+            </div>
+          )
+        )}
+      </>
+    );
   };
 
   return (

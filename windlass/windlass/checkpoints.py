@@ -261,7 +261,11 @@ class CheckpointManager:
                 "ui_spec": ui_spec,
                 "preview": phase_output[:1500] if phase_output else None,
                 "timeout_at": timeout_at.isoformat() if timeout_at else None,
-                "num_soundings": len(sounding_outputs) if sounding_outputs else None
+                "num_soundings": len(sounding_outputs) if sounding_outputs else None,
+                # Include sounding data for cross-process checkpoint sharing
+                "sounding_outputs": sounding_outputs,
+                "sounding_metadata": sounding_metadata,
+                "echo_snapshot": echo_snapshot
             }
         ))
 

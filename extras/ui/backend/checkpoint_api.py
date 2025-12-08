@@ -27,6 +27,12 @@ except ImportError as e:
     get_checkpoint_manager = None
     CheckpointStatus = None
 
+try:
+    from live_store import get_cached_checkpoint, clear_cached_checkpoint
+except ImportError:
+    get_cached_checkpoint = None
+    clear_cached_checkpoint = None
+
 checkpoint_bp = Blueprint('checkpoints', __name__)
 
 # Get IMAGE_DIR from environment or default
@@ -242,40 +248,67 @@ def get_checkpoint(checkpoint_id):
     Returns:
     - Full checkpoint object including UI spec and outputs
     """
-    if not get_checkpoint_manager:
-        return jsonify({"error": "Checkpoint system not available"}), 500
-
     try:
-        cm = get_checkpoint_manager()
-        cp = cm.get_checkpoint(checkpoint_id)
+        # First try to get from CheckpointManager (same-process case)
+        cp = None
+        if get_checkpoint_manager:
+            cm = get_checkpoint_manager()
+            cp = cm.get_checkpoint(checkpoint_id)
 
-        if not cp:
-            return jsonify({"error": f"Checkpoint {checkpoint_id} not found"}), 404
+        if cp:
+            # Found in CheckpointManager
+            resolved_ui_spec = resolve_image_paths_to_urls(cp.ui_spec, cp.session_id)
 
-        # Resolve image paths to URLs in the UI spec
-        resolved_ui_spec = resolve_image_paths_to_urls(cp.ui_spec, cp.session_id)
+            return jsonify({
+                "id": cp.id,
+                "session_id": cp.session_id,
+                "cascade_id": cp.cascade_id,
+                "phase_name": cp.phase_name,
+                "checkpoint_type": cp.checkpoint_type.value,
+                "status": cp.status.value,
+                "created_at": cp.created_at.isoformat() if cp.created_at else None,
+                "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
+                "responded_at": cp.responded_at.isoformat() if cp.responded_at else None,
+                "ui_spec": resolved_ui_spec,
+                "phase_output": cp.phase_output,
+                "sounding_outputs": cp.sounding_outputs,
+                "sounding_metadata": cp.sounding_metadata,
+                "response": cp.response,
+                "response_reasoning": cp.response_reasoning,
+                "response_confidence": cp.response_confidence,
+                "winner_index": cp.winner_index,
+                "rankings": cp.rankings,
+                "ratings": cp.ratings
+            })
 
-        return jsonify({
-            "id": cp.id,
-            "session_id": cp.session_id,
-            "cascade_id": cp.cascade_id,
-            "phase_name": cp.phase_name,
-            "checkpoint_type": cp.checkpoint_type.value,
-            "status": cp.status.value,
-            "created_at": cp.created_at.isoformat() if cp.created_at else None,
-            "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
-            "responded_at": cp.responded_at.isoformat() if cp.responded_at else None,
-            "ui_spec": resolved_ui_spec,
-            "phase_output": cp.phase_output,
-            "sounding_outputs": cp.sounding_outputs,
-            "sounding_metadata": cp.sounding_metadata,
-            "response": cp.response,
-            "response_reasoning": cp.response_reasoning,
-            "response_confidence": cp.response_confidence,
-            "winner_index": cp.winner_index,
-            "rankings": cp.rankings,
-            "ratings": cp.ratings
-        })
+        # Fallback to SSE cache (cross-process case)
+        if get_cached_checkpoint:
+            cached = get_cached_checkpoint(checkpoint_id)
+            if cached:
+                resolved_ui_spec = resolve_image_paths_to_urls(cached.get('ui_spec'), cached.get('session_id'))
+                return jsonify({
+                    "id": cached.get('id'),
+                    "session_id": cached.get('session_id'),
+                    "cascade_id": cached.get('cascade_id'),
+                    "phase_name": cached.get('phase_name'),
+                    "checkpoint_type": cached.get('checkpoint_type'),
+                    "status": cached.get('status', 'pending'),
+                    "created_at": cached.get('created_at'),
+                    "timeout_at": cached.get('timeout_at'),
+                    "responded_at": None,
+                    "ui_spec": resolved_ui_spec,
+                    "phase_output": cached.get('phase_output'),
+                    "sounding_outputs": cached.get('sounding_outputs'),
+                    "sounding_metadata": cached.get('sounding_metadata'),
+                    "response": None,
+                    "response_reasoning": None,
+                    "response_confidence": None,
+                    "winner_index": None,
+                    "rankings": None,
+                    "ratings": None
+                })
+
+        return jsonify({"error": f"Checkpoint {checkpoint_id} not found"}), 404
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

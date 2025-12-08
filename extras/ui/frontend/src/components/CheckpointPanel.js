@@ -817,26 +817,47 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
             {expandedCheckpoint === checkpoint.id && (
               <div className="checkpoint-details">
-                {/* UI Spec Title (if present) */}
-                {checkpoint.ui_spec?.title && (
-                  <div className="checkpoint-title-text">
-                    {checkpoint.ui_spec.title}
+                {/* For sounding_eval checkpoints, link to full comparison view */}
+                {checkpoint.checkpoint_type === 'sounding_eval' ? (
+                  <div className="sounding-eval-link">
+                    <p className="sounding-eval-message">
+                      {checkpoint.sounding_outputs?.length || checkpoint.ui_spec?.num_soundings || 'Multiple'} sounding attempts ready for comparison
+                    </p>
+                    <button
+                      className="open-comparison-btn"
+                      onClick={() => {
+                        // Store current location so we can return after checkpoint completion
+                        sessionStorage.setItem('checkpointReturnPath', window.location.hash);
+                        window.location.hash = `#/checkpoint/${checkpoint.id}`;
+                      }}
+                    >
+                      Open Comparison View →
+                    </button>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {/* UI Spec Title (if present) */}
+                    {checkpoint.ui_spec?.title && (
+                      <div className="checkpoint-title-text">
+                        {checkpoint.ui_spec.title}
+                      </div>
+                    )}
 
-                {/* Main content area with layout support */}
-                {renderContent(checkpoint)}
+                    {/* Main content area with layout support */}
+                    {renderContent(checkpoint)}
 
-                {/* Reasoning capture (if enabled) */}
-                {checkpoint.ui_spec?.capture_reasoning && (
-                  <div className="checkpoint-reasoning">
-                    <textarea
-                      value={reasoning[checkpoint.id] || ''}
-                      onChange={(e) => handleReasoningChange(checkpoint.id, e.target.value)}
-                      placeholder="Explain your choice (optional)..."
-                      rows={2}
-                    />
-                  </div>
+                    {/* Reasoning capture (if enabled) */}
+                    {checkpoint.ui_spec?.capture_reasoning && (
+                      <div className="checkpoint-reasoning">
+                        <textarea
+                          value={reasoning[checkpoint.id] || ''}
+                          onChange={(e) => handleReasoningChange(checkpoint.id, e.target.value)}
+                          placeholder="Explain your choice (optional)..."
+                          rows={2}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

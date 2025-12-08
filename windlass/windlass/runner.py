@@ -2641,77 +2641,248 @@ Use only numbers 0-100 for scores."""
             self.session_id, self.config.cascade_id, phase.name, self.depth,
             sounding_stage="evaluating"
         )
-        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
 
         # Create evaluator trace
         evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
 
-        # Get costs for cost-aware or Pareto evaluation (Phase 2/3: Multi-Model Soundings)
+        # Check for human evaluation mode
+        use_human_eval = phase.soundings.evaluator == "human"
+        use_hybrid_eval = phase.soundings.evaluator == "hybrid"
+
+        # Human evaluation: block for human to pick winner via UI
+        if use_human_eval or use_hybrid_eval:
+            # For hybrid: first do LLM prefilter, then human picks from top N
+            eval_candidates = valid_sounding_results
+            if use_hybrid_eval and phase.soundings.llm_prefilter:
+                prefilter_n = phase.soundings.llm_prefilter
+                console.print(f"{indent}[bold cyan]🔀 Hybrid mode: LLM prefiltering to top {prefilter_n}...[/bold cyan]")
+                eval_candidates = self._llm_prefilter_soundings(
+                    valid_sounding_results,
+                    prefilter_n,
+                    phase.soundings.llm_prefilter_instructions or phase.soundings.evaluator_instructions,
+                    evaluator_trace
+                )
+                console.print(f"{indent}  [dim]Filtered to {len(eval_candidates)} candidates for human evaluation[/dim]")
+
+            console.print(f"{indent}[bold yellow]👤 Human Evaluation: Waiting for human to pick winner...[/bold yellow]")
+
+            # Get costs for each sounding from unified logs
+            sounding_costs = self._get_sounding_costs(eval_candidates)
+
+            # Build sounding outputs and metadata for the UI
+            sounding_outputs = [str(sr.get("result", "")) for sr in eval_candidates]
+            sounding_metadata = []
+            for idx, sr in enumerate(eval_candidates):
+                # Extract images from sounding results
+                # Images are stored as (base64_data_url, description) tuples
+                sounding_images = sr.get("images", [])
+                image_urls = []
+                for img_data in sounding_images:
+                    if isinstance(img_data, tuple) and len(img_data) >= 1:
+                        # First element is base64 data URL
+                        image_urls.append(img_data[0])
+                    elif isinstance(img_data, str):
+                        # Direct data URL or path
+                        image_urls.append(img_data)
+
+                meta = {
+                    "index": sr["index"],
+                    "cost": sounding_costs[idx] if idx < len(sounding_costs) else None,
+                    "tokens": None,  # Could extract from trace
+                    "model": sr.get("model"),
+                    "mutation_applied": sr.get("mutation_applied"),
+                    "mutation_type": sr.get("mutation_type"),
+                    "validation": sr.get("validation"),
+                    "images": image_urls,
+                }
+                sounding_metadata.append(meta)
+
+            # Build UI spec from human_eval config
+            human_eval_config = phase.soundings.human_eval
+            ui_spec = {
+                "type": "sounding_comparison",
+                "presentation": human_eval_config.presentation.value if human_eval_config else "side_by_side",
+                "selection_mode": human_eval_config.selection_mode.value if human_eval_config else "pick_one",
+                "attempts": [
+                    {
+                        "index": i,
+                        "output": output,
+                        "metadata": meta,
+                    }
+                    for i, (output, meta) in enumerate(zip(sounding_outputs, sounding_metadata))
+                ],
+                "options": {
+                    "show_index": human_eval_config.show_index if human_eval_config else False,
+                    "show_metadata": human_eval_config.show_metadata if human_eval_config else True,
+                    "show_mutations": human_eval_config.show_mutations if human_eval_config else True,
+                    "preview_render": human_eval_config.preview_render if human_eval_config else "auto",
+                    "max_preview_length": human_eval_config.max_preview_length if human_eval_config else None,
+                    "allow_reject_all": human_eval_config.allow_reject_all if human_eval_config else True,
+                    "allow_tie": human_eval_config.allow_tie if human_eval_config else False,
+                    "require_reasoning": human_eval_config.require_reasoning if human_eval_config else False,
+                }
+            }
+
+            # Create checkpoint for human evaluation
+            checkpoint_manager = get_checkpoint_manager()
+            checkpoint = checkpoint_manager.create_checkpoint(
+                session_id=self.session_id,
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                checkpoint_type=CheckpointType.SOUNDING_EVAL,
+                ui_spec=ui_spec,
+                echo_snapshot=self.echo.get_full_echo(),
+                phase_output=f"Comparing {len(eval_candidates)} sounding attempts",
+                sounding_outputs=sounding_outputs,
+                sounding_metadata=sounding_metadata,
+                timeout_seconds=human_eval_config.timeout_seconds if human_eval_config else None
+            )
+
+            console.print(f"{indent}  [dim]Checkpoint created: {checkpoint.id[:12]}...[/dim]")
+            console.print(f"{indent}  [bold]Open the Windlass UI to select a winner[/bold]")
+
+            # Block until human responds
+            response = checkpoint_manager.wait_for_response(
+                checkpoint.id,
+                timeout=human_eval_config.timeout_seconds if human_eval_config else None
+            )
+
+            if response is None:
+                # Timeout or cancelled - handle based on config
+                on_timeout = human_eval_config.on_timeout if human_eval_config else "llm_fallback"
+                console.print(f"{indent}[yellow]⚠ Human evaluation timed out or cancelled[/yellow]")
+
+                if on_timeout == "abort":
+                    raise TimeoutError(f"Human evaluation timed out for checkpoint {checkpoint.id}")
+                elif on_timeout == "random":
+                    import random
+                    winner_index = random.randint(0, len(eval_candidates) - 1)
+                    eval_content = f"[Timeout: Random selection] Selected attempt {winner_index + 1}"
+                elif on_timeout == "first":
+                    winner_index = 0
+                    eval_content = f"[Timeout: First selection] Selected attempt 1"
+                else:  # llm_fallback
+                    console.print(f"{indent}[cyan]Falling back to LLM evaluation...[/cyan]")
+                    # Fall through to LLM evaluation (handled below)
+                    use_human_eval = False
+                    use_hybrid_eval = False
+            else:
+                # Got human response
+                if response.get("reject_all"):
+                    # Human rejected all - could retry or abort
+                    console.print(f"{indent}[yellow]⚠ Human rejected all soundings[/yellow]")
+                    raise ValueError("Human rejected all sounding attempts")
+
+                # Get winner index (relative to eval_candidates)
+                relative_winner_index = response.get("winner_index", 0)
+
+                # Map back to original index in valid_sounding_results
+                winner_candidate = eval_candidates[relative_winner_index]
+                winner_index = next(
+                    i for i, sr in enumerate(valid_sounding_results)
+                    if sr["index"] == winner_candidate["index"]
+                )
+
+                # Build eval_content for logging
+                reasoning = response.get("reasoning", "")
+                eval_content = f"[Human selection] Selected attempt {winner_candidate['index'] + 1}"
+                if reasoning:
+                    eval_content += f"\nReasoning: {reasoning}"
+
+                console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_candidate['index'] + 1}[/bold green]")
+                if reasoning:
+                    console.print(f"{indent}  [dim]Reasoning: {reasoning[:100]}...[/dim]")
+
+                # Log human evaluation for training data
+                from .hotornot import log_preference_eval
+                log_preference_eval(
+                    session_id=self.session_id,
+                    phase_name=phase.name,
+                    preferred_index=winner_candidate["index"],
+                    system_winner_index=-1,  # No system winner in pure human eval
+                    sounding_outputs=[
+                        {"index": sr["index"], "content": str(sr.get("result", "")), "metadata": sr}
+                        for sr in eval_candidates
+                    ],
+                    cascade_id=self.config.cascade_id,
+                    notes=reasoning,
+                    metadata={
+                        "evaluation_mode": "human" if use_human_eval else "hybrid",
+                        "checkpoint_id": checkpoint.id,
+                        "rankings": response.get("rankings"),
+                        "ratings": response.get("ratings"),
+                    }
+                )
+
+        # Initialize variables used in both human eval and LLM eval paths
         sounding_costs = None
         quality_scores = None
         frontier_indices = None
         dominated_map = None
         pareto_ranks = None
-
         use_cost_aware = phase.soundings.cost_aware_evaluation and phase.soundings.cost_aware_evaluation.enabled
         use_pareto = phase.soundings.pareto_frontier and phase.soundings.pareto_frontier.enabled
 
-        # Phase 3: Pareto Frontier Analysis
-        if use_pareto:
-            console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
+        # Only run LLM evaluation if we didn't do human eval (or fell back from timeout)
+        if not (use_human_eval or use_hybrid_eval):
+            console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
 
-            # Get costs
-            console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
-            sounding_costs = self._get_sounding_costs(valid_sounding_results)
-            for i, sr in enumerate(valid_sounding_results):
-                sr["cost"] = sounding_costs[i]
-            console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
+            # Phase 3: Pareto Frontier Analysis
+            if use_pareto:
+                console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
 
-            # Get quality scores
-            console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
-            quality_scores, evaluator_reasoning = self._get_quality_scores_from_evaluator(
-                valid_sounding_results,
-                phase.soundings.evaluator_instructions,
-                evaluator_trace
-            )
-            for i, sr in enumerate(valid_sounding_results):
-                sr["quality_score"] = quality_scores[i]
-            console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
+                # Get costs
+                console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
+                sounding_costs = self._get_sounding_costs(valid_sounding_results)
+                for i, sr in enumerate(valid_sounding_results):
+                    sr["cost"] = sounding_costs[i]
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
-            # Compute Pareto frontier
-            frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
-                valid_sounding_results, quality_scores, sounding_costs
-            )
+                # Get quality scores
+                console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
+                quality_scores, evaluator_reasoning = self._get_quality_scores_from_evaluator(
+                    valid_sounding_results,
+                    phase.soundings.evaluator_instructions,
+                    evaluator_trace
+                )
+                for i, sr in enumerate(valid_sounding_results):
+                    sr["quality_score"] = quality_scores[i]
+                console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
 
-            # Store Pareto data in sounding results
-            for i, sr in enumerate(valid_sounding_results):
-                sr["is_pareto_optimal"] = i in frontier_indices
-                sr["dominated_by"] = dominated_map.get(i)
-                sr["pareto_rank"] = pareto_ranks.get(i, 2)
+                # Compute Pareto frontier
+                frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
+                    valid_sounding_results, quality_scores, sounding_costs
+                )
 
-            # Display frontier
-            console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
-            for idx in frontier_indices:
-                model = valid_sounding_results[idx].get("model", "unknown")
-                quality = quality_scores[idx]
-                cost = sounding_costs[idx]
-                console.print(f"{indent}    • Sounding {valid_sounding_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+                # Store Pareto data in sounding results
+                for i, sr in enumerate(valid_sounding_results):
+                    sr["is_pareto_optimal"] = i in frontier_indices
+                    sr["dominated_by"] = dominated_map.get(i)
+                    sr["pareto_rank"] = pareto_ranks.get(i, 2)
 
-            # Select winner from frontier
-            winner_index = self._select_from_pareto_frontier(
-                valid_sounding_results,
-                frontier_indices,
-                quality_scores,
-                sounding_costs,
-                phase.soundings.pareto_frontier.policy
-            )
+                # Display frontier
+                console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
+                for idx in frontier_indices:
+                    model = valid_sounding_results[idx].get("model", "unknown")
+                    quality = quality_scores[idx]
+                    cost = sounding_costs[idx]
+                    console.print(f"{indent}    • Sounding {valid_sounding_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
 
-            # Build comprehensive eval_content with quality reasoning + Pareto selection
-            winner_model = valid_sounding_results[winner_index].get("model", "unknown")
-            winner_quality = quality_scores[winner_index]
-            winner_cost = sounding_costs[winner_index]
+                # Select winner from frontier
+                winner_index = self._select_from_pareto_frontier(
+                    valid_sounding_results,
+                    frontier_indices,
+                    quality_scores,
+                    sounding_costs,
+                    phase.soundings.pareto_frontier.policy
+                )
 
-            eval_content = f"""## Quality Assessment
+                # Build comprehensive eval_content with quality reasoning + Pareto selection
+                winner_model = valid_sounding_results[winner_index].get("model", "unknown")
+                winner_quality = quality_scores[winner_index]
+                winner_cost = sounding_costs[winner_index]
+
+                eval_content = f"""## Quality Assessment
 
 {evaluator_reasoning}
 
@@ -2723,179 +2894,179 @@ Use only numbers 0-100 for scores."""
 
 ### Frontier Members:
 """
-            for idx in frontier_indices:
-                model = valid_sounding_results[idx].get("model", "unknown")
-                quality = quality_scores[idx]
-                cost = sounding_costs[idx]
-                is_winner = "**WINNER**" if idx == winner_index else ""
-                eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
+                for idx in frontier_indices:
+                    model = valid_sounding_results[idx].get("model", "unknown")
+                    quality = quality_scores[idx]
+                    cost = sounding_costs[idx]
+                    is_winner = "**WINNER**" if idx == winner_index else ""
+                    eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
 
-            # Log Pareto data for visualization
-            if phase.soundings.pareto_frontier.show_frontier:
-                self._log_pareto_frontier(
-                    self.session_id,
-                    phase.name,
-                    valid_sounding_results,
-                    frontier_indices,
-                    dominated_map,
-                    quality_scores,
+                # Log Pareto data for visualization
+                if phase.soundings.pareto_frontier.show_frontier:
+                    self._log_pareto_frontier(
+                        self.session_id,
+                        phase.name,
+                        valid_sounding_results,
+                        frontier_indices,
+                        dominated_map,
+                        quality_scores,
+                        sounding_costs,
+                        winner_index
+                    )
+
+            # Phase 2: Cost-Aware Evaluation
+            elif use_cost_aware:
+                console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
+                sounding_costs = self._get_sounding_costs(valid_sounding_results)
+                normalized_costs = self._normalize_costs(
                     sounding_costs,
-                    winner_index
+                    phase.soundings.cost_aware_evaluation.cost_normalization
                 )
+                # Store costs in sounding results for logging
+                for i, sr in enumerate(valid_sounding_results):
+                    sr["cost"] = sounding_costs[i]
+                    sr["normalized_cost"] = normalized_costs[i]
 
-        # Phase 2: Cost-Aware Evaluation
-        elif use_cost_aware:
-            console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
-            sounding_costs = self._get_sounding_costs(valid_sounding_results)
-            normalized_costs = self._normalize_costs(
-                sounding_costs,
-                phase.soundings.cost_aware_evaluation.cost_normalization
-            )
-            # Store costs in sounding results for logging
-            for i, sr in enumerate(valid_sounding_results):
-                sr["cost"] = sounding_costs[i]
-                sr["normalized_cost"] = normalized_costs[i]
+                # Build cost-aware evaluation prompt
+                eval_prompt = self._build_cost_aware_eval_prompt(
+                    valid_sounding_results,
+                    sounding_costs,
+                    phase.soundings,
+                    phase.soundings.evaluator_instructions
+                )
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
-            # Build cost-aware evaluation prompt
-            eval_prompt = self._build_cost_aware_eval_prompt(
-                valid_sounding_results,
-                sounding_costs,
-                phase.soundings,
-                phase.soundings.evaluator_instructions
-            )
-            console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
+                # Check if any soundings have images for multi-modal evaluation
+                any_images = any(sounding.get('images') for sounding in valid_sounding_results)
+                eval_context_messages = []
 
-            # Check if any soundings have images for multi-modal evaluation
-            any_images = any(sounding.get('images') for sounding in valid_sounding_results)
-            eval_context_messages = []
+                if any_images:
+                    # Build multi-modal context messages with images
+                    # Images are shown with clear attempt labels for association
+                    for i, sounding in enumerate(valid_sounding_results):
+                        sounding_images = sounding.get('images', [])
+                        if sounding_images:
+                            num_images = len(sounding_images)
+                            attempt_content = [{
+                                "type": "text",
+                                "text": f"═══ ATTEMPT {i+1} VISUAL OUTPUT ({num_images} image{'s' if num_images > 1 else ''}) ═══"
+                            }]
+                            for img_idx, (img_data, desc) in enumerate(sounding_images):
+                                attempt_content.append({
+                                    "type": "image_url",
+                                    "image_url": {"url": img_data}
+                                })
+                                attempt_content.append({
+                                    "type": "text",
+                                    "text": f"↑ Attempt {i+1}, Image {img_idx+1}/{num_images}"
+                                })
+                            eval_context_messages.append({
+                                "role": "user",
+                                "content": attempt_content
+                            })
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
 
-            if any_images:
-                # Build multi-modal context messages with images
-                # Images are shown with clear attempt labels for association
-                for i, sounding in enumerate(valid_sounding_results):
-                    sounding_images = sounding.get('images', [])
-                    if sounding_images:
+                # Create evaluator agent and run
+                evaluator_agent = Agent(
+                    model=self.model,
+                    system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
+                    tools=[],
+                    base_url=self.base_url,
+                    api_key=self.api_key
+                )
+                eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
+                eval_content = eval_response.get("content", "")
+                console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+
+                # Extract winner index
+                winner_index = 0
+                import re
+                match = re.search(r'\b([1-9]\d*)\b', eval_content)
+                if match:
+                    winner_index = int(match.group(1)) - 1
+                    if winner_index >= len(valid_sounding_results):
+                        winner_index = 0
+
+            # Phase 1: Standard quality-only evaluation
+            else:
+                eval_prompt = f"{phase.soundings.evaluator_instructions}\n\n"
+                eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
+
+                # Check if any soundings have images
+                any_images = any(sounding.get('images') for sounding in valid_sounding_results)
+
+                if any_images:
+                    # Multi-modal evaluation: build context with images
+                    # Each attempt gets its own message with clear labeling: text result + images together
+                    eval_context_messages = []
+
+                    for i, sounding in enumerate(valid_sounding_results):
+                        sounding_images = sounding.get('images', [])
                         num_images = len(sounding_images)
-                        attempt_content = [{
-                            "type": "text",
-                            "text": f"═══ ATTEMPT {i+1} VISUAL OUTPUT ({num_images} image{'s' if num_images > 1 else ''}) ═══"
-                        }]
+
+                        # Build content block with clear attempt identification
+                        header = f"═══════════════════════════════════════\n"
+                        header += f"ATTEMPT {i+1} OF {len(valid_sounding_results)}\n"
+                        header += f"═══════════════════════════════════════\n\n"
+                        header += f"Text Result:\n{sounding['result']}"
+
+                        if num_images > 0:
+                            header += f"\n\n📸 Visual Output ({num_images} image{'s' if num_images > 1 else ''} follow):"
+
+                        attempt_content = [{"type": "text", "text": header}]
+
+                        # Add images immediately after the header (same message = clear association)
                         for img_idx, (img_data, desc) in enumerate(sounding_images):
                             attempt_content.append({
                                 "type": "image_url",
                                 "image_url": {"url": img_data}
                             })
+                            # Add image label after each image for clarity
                             attempt_content.append({
                                 "type": "text",
                                 "text": f"↑ Attempt {i+1}, Image {img_idx+1}/{num_images}"
                             })
+
                         eval_context_messages.append({
                             "role": "user",
                             "content": attempt_content
                         })
-                console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
 
-            # Create evaluator agent and run
-            evaluator_agent = Agent(
-                model=self.model,
-                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
-                tools=[],
-                base_url=self.base_url,
-                api_key=self.api_key
-            )
-            eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
-            eval_content = eval_response.get("content", "")
-            console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+                    # Add final evaluation instruction
+                    eval_prompt += f"\n\nI've shown you {len(valid_sounding_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
+                    eval_prompt += f"Compare both the text quality AND visual output quality. "
+                    eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_sounding_results)}) and a brief explanation."
 
-            # Extract winner index
-            winner_index = 0
-            import re
-            match = re.search(r'\b([1-9]\d*)\b', eval_content)
-            if match:
-                winner_index = int(match.group(1)) - 1
-                if winner_index >= len(valid_sounding_results):
-                    winner_index = 0
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
+                else:
+                    # Text-only evaluation (original behavior)
+                    eval_context_messages = []
+                    for i, sounding in enumerate(valid_sounding_results):
+                        eval_prompt += f"## Attempt {i+1}\n"
+                        eval_prompt += f"Result: {sounding['result']}\n\n"
 
-        # Phase 1: Standard quality-only evaluation
-        else:
-            eval_prompt = f"{phase.soundings.evaluator_instructions}\n\n"
-            eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
+                    eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_sounding_results))
 
-            # Check if any soundings have images
-            any_images = any(sounding.get('images') for sounding in valid_sounding_results)
+                # Create evaluator agent and run
+                evaluator_agent = Agent(
+                    model=self.model,
+                    system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
+                    tools=[],
+                    base_url=self.base_url,
+                    api_key=self.api_key
+                )
+                eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
+                eval_content = eval_response.get("content", "")
+                console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
 
-            if any_images:
-                # Multi-modal evaluation: build context with images
-                # Each attempt gets its own message with clear labeling: text result + images together
-                eval_context_messages = []
-
-                for i, sounding in enumerate(valid_sounding_results):
-                    sounding_images = sounding.get('images', [])
-                    num_images = len(sounding_images)
-
-                    # Build content block with clear attempt identification
-                    header = f"═══════════════════════════════════════\n"
-                    header += f"ATTEMPT {i+1} OF {len(valid_sounding_results)}\n"
-                    header += f"═══════════════════════════════════════\n\n"
-                    header += f"Text Result:\n{sounding['result']}"
-
-                    if num_images > 0:
-                        header += f"\n\n📸 Visual Output ({num_images} image{'s' if num_images > 1 else ''} follow):"
-
-                    attempt_content = [{"type": "text", "text": header}]
-
-                    # Add images immediately after the header (same message = clear association)
-                    for img_idx, (img_data, desc) in enumerate(sounding_images):
-                        attempt_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": img_data}
-                        })
-                        # Add image label after each image for clarity
-                        attempt_content.append({
-                            "type": "text",
-                            "text": f"↑ Attempt {i+1}, Image {img_idx+1}/{num_images}"
-                        })
-
-                    eval_context_messages.append({
-                        "role": "user",
-                        "content": attempt_content
-                    })
-
-                # Add final evaluation instruction
-                eval_prompt += f"\n\nI've shown you {len(valid_sounding_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
-                eval_prompt += f"Compare both the text quality AND visual output quality. "
-                eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_sounding_results)}) and a brief explanation."
-
-                console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
-            else:
-                # Text-only evaluation (original behavior)
-                eval_context_messages = []
-                for i, sounding in enumerate(valid_sounding_results):
-                    eval_prompt += f"## Attempt {i+1}\n"
-                    eval_prompt += f"Result: {sounding['result']}\n\n"
-
-                eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_sounding_results))
-
-            # Create evaluator agent and run
-            evaluator_agent = Agent(
-                model=self.model,
-                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
-                tools=[],
-                base_url=self.base_url,
-                api_key=self.api_key
-            )
-            eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
-            eval_content = eval_response.get("content", "")
-            console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
-
-            # Extract winner index
-            winner_index = 0
-            import re
-            match = re.search(r'\b([1-9]\d*)\b', eval_content)
-            if match:
-                winner_index = int(match.group(1)) - 1
-                if winner_index >= len(valid_sounding_results):
-                    winner_index = 0
+                # Extract winner index
+                winner_index = 0
+                import re
+                match = re.search(r'\b([1-9]\d*)\b', eval_content)
+                if match:
+                    winner_index = int(match.group(1)) - 1
+                    if winner_index >= len(valid_sounding_results):
+                        winner_index = 0
 
         # Get winner from valid_sounding_results (winner_index is relative to this filtered list)
         winner = valid_sounding_results[winner_index]
