@@ -1,8 +1,8 @@
-/* Mermaid Preview Component */
+/* Mermaid Preview Component - seamless neon integration */
 .mermaid-preview {
   position: relative;
   padding: 0px;
-  overflow: hidden;
+  overflow: visible;
   z-index: 1;
 }
 
@@ -11,9 +11,9 @@
   width: 100%;
   height: 100%;
   flex-shrink: 0;
-  padding: 0.25rem;
+  padding: 0;
   margin: 0;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   cursor: pointer;
   background: transparent;
   border: none;
@@ -26,7 +26,7 @@
 }
 
 .mermaid-preview.small:hover {
-  opacity: 0.9;
+  transform: scale(1.02);
 }
 
 /* Medium size - for debug modal top */

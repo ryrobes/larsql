@@ -160,38 +160,43 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         const svgElement = containerRef.current.querySelector('svg');
 
         if (svgElement) {
-          // Cyberpunk/vaporwave color palette - outline only, no fills
+          // Neon cyberpunk color palette - brighter, more vibrant
           const colors = {
-            purple: '#a78bfa',    // Primary - boxes
-            cyan: '#06b6d4',      // Secondary - lines/arrows
+            teal: '#2DD4BF',      // Primary accent (matches theme)
+            purple: '#a78bfa',    // Secondary - boxes
+            cyan: '#22d3ee',      // Brighter cyan for lines
             pink: '#f472b6',      // Accent
-            text: '#e0f0ff'       // Bright text
+            text: '#F0F4F8'       // Crisp white text
           };
 
-          // Style shapes - transparent fill, colored strokes
+          // Style shapes - transparent fill, colored strokes with varying colors
           const allShapes = svgElement.querySelectorAll('rect, circle, polygon, ellipse');
           allShapes.forEach((shape, index) => {
             shape.setAttribute('fill', 'none');
             shape.setAttribute('fill-opacity', '0');
-            // Alternate purple and cyan strokes
-            const strokeColor = index % 2 === 0 ? colors.purple : colors.cyan;
+            // Cycle through teal, purple, cyan for variety
+            const strokeColors = [colors.teal, colors.purple, colors.cyan];
+            const strokeColor = strokeColors[index % strokeColors.length];
             shape.setAttribute('stroke', strokeColor);
-            shape.setAttribute('stroke-width', '2');
+            shape.setAttribute('stroke-width', '1.5');
           });
 
-          // Style paths (arrows/lines) with cyan
+          // Style paths (arrows/lines) with teal (matches theme accent)
           const allPaths = svgElement.querySelectorAll('path');
           allPaths.forEach(path => {
-            path.setAttribute('stroke', colors.cyan);
-            path.setAttribute('fill', 'none');
-            path.setAttribute('stroke-width', '2');
+            // Don't override marker paths
+            if (!path.closest('marker')) {
+              path.setAttribute('stroke', colors.teal);
+              path.setAttribute('fill', 'none');
+              path.setAttribute('stroke-width', '1.5');
+            }
           });
 
           // Style lines
           const allLines = svgElement.querySelectorAll('line');
           allLines.forEach(line => {
-            line.setAttribute('stroke', colors.cyan);
-            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke', colors.teal);
+            line.setAttribute('stroke-width', '1.5');
           });
 
           // Make text bright and readable
@@ -199,13 +204,14 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
           allText.forEach(text => {
             text.setAttribute('fill', colors.text);
             text.setAttribute('stroke', 'none');
+            text.style.textShadow = '0 0 4px rgba(45, 212, 191, 0.5)';
           });
 
           // Style arrowheads - these need fill to be visible
           const allMarkers = svgElement.querySelectorAll('marker path, marker polygon');
           allMarkers.forEach(marker => {
-            marker.setAttribute('fill', colors.cyan);
-            marker.setAttribute('stroke', colors.cyan);
+            marker.setAttribute('fill', colors.teal);
+            marker.setAttribute('stroke', colors.teal);
           });
 
           // Remove width/height first so getBBox works properly

@@ -622,23 +622,37 @@
   overflow-wrap: break-word;
 }
 
-/* Mermaid Graph Preview Wrapper - sits below inputs, expands to fit diagram */
+/* Mermaid Graph Preview Wrapper - seamless integration with neon glow */
 .mermaid-wrapper {
   margin-top: 0.75rem;
   width: 100%;
   height: auto;
   min-height: 100px;
-  background: #0B1219;
-  border: 1px solid #2C3B4B;
-  border-radius: 6px;
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(45, 212, 191, 0.15);
+  border-radius: 0;
+  overflow: visible;
   flex-shrink: 0;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  padding-top: 0.75rem;
+  transition: all 0.3s ease;
 }
 
 .mermaid-wrapper:hover {
-  border-color: #2DD4BF;
-  box-shadow: 0 0 8px rgba(45, 212, 191, 0.2);
+  border-top-color: rgba(45, 212, 191, 0.3);
+}
+
+/* Neon glow effect on the SVG */
+.mermaid-wrapper svg {
+  filter: drop-shadow(0 0 3px rgba(167, 139, 250, 0.4))
+          drop-shadow(0 0 6px rgba(6, 182, 212, 0.3));
+  transition: filter 0.3s ease;
+}
+
+.mermaid-wrapper:hover svg {
+  filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.6))
+          drop-shadow(0 0 10px rgba(6, 182, 212, 0.4))
+          drop-shadow(0 0 20px rgba(45, 212, 191, 0.2));
 }
 
 /* Middle: Phase Bars Container */
