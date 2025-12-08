@@ -161,3 +161,446 @@ def _store_response(phase_name: str, response: str) -> None:
         set_state_internal(phase_name, response)
         from rich.console import Console
         Console().print(f"[dim]Stored response in state.{phase_name}[/dim]")
+
+
+# =============================================================================
+# ask_human_custom - Generative UI Tool
+# =============================================================================
+
+@simple_eddy
+def ask_human_custom(
+    question: str,
+    context: str = None,
+    images: list = None,
+    data: dict = None,
+    options: list = None,
+    ui_hint: str = None,
+    layout_hint: str = None,
+    auto_detect: bool = True
+) -> str:
+    """
+    Ask the human user a question with a rich, auto-generated UI.
+
+    Unlike basic ask_human, this tool can:
+    - Display images (charts, screenshots, diagrams)
+    - Show data tables with structured information
+    - Present options as rich cards with images and descriptions
+    - Create multi-column layouts for complex content
+    - Auto-detect relevant content from the current phase
+
+    Args:
+        question: The question to ask the human
+        context: Text context to display (markdown supported)
+        images: List of image paths to display
+        data: Structured data to show in tables
+              Format: {"table_name": [{"col1": "val1", ...}, ...]}
+              Or simple: {"key1": value1, "key2": value2}
+        options: Rich options for selection
+                 Format: [{"id": "opt1", "title": "...", "content": "...", "image": "...", "metadata": {...}}, ...]
+        ui_hint: Force a specific input type ("confirmation", "choice", "rating", "text")
+        layout_hint: Suggest a layout ("simple", "two-column", "card-grid", "tabs")
+        auto_detect: If True, automatically detect images/data from phase context
+
+    Returns:
+        The human's response as a string.
+        - For confirmation: "yes" or "no"
+        - For choice/card selection: the selected option ID
+        - For multi_choice: comma-separated selected IDs
+        - For rating: the numeric rating
+        - For text: the entered text
+        - For forms: JSON string of all field values
+
+    Examples:
+        # Chart review with data summary
+        ask_human_custom(
+            question="Does this chart accurately represent the data?",
+            images=["/images/session/chart.png"],
+            data={"metrics": [
+                {"name": "Revenue", "value": "$1.2M", "change": "+12%"},
+                {"name": "Users", "value": "50K", "change": "+8%"}
+            ]},
+            ui_hint="confirmation"
+        )
+
+        # Deployment strategy selection
+        ask_human_custom(
+            question="Which deployment strategy should we use?",
+            options=[
+                {
+                    "id": "blue_green",
+                    "title": "Blue-Green",
+                    "content": "Run two identical environments...",
+                    "image": "/images/blue_green.png",
+                    "metadata": {"risk": "Low", "cost": "High"}
+                },
+                {
+                    "id": "canary",
+                    "title": "Canary",
+                    "content": "Gradually roll out to subset...",
+                    "metadata": {"risk": "Medium", "cost": "Low"}
+                }
+            ],
+            layout_hint="card-grid"
+        )
+
+        # Code review with diff
+        ask_human_custom(
+            question="Approve these changes?",
+            context="```python\\ndef new_function():\\n    ...\\n```",
+            ui_hint="confirmation"
+        )
+    """
+    from rich.console import Console
+    from .state_tools import get_current_session_id, get_current_phase_name
+
+    console = Console()
+    phase_name = get_current_phase_name()
+    session_id = get_current_session_id()
+
+    # Auto-detect content from Echo context if enabled
+    if auto_detect:
+        images, data = _auto_detect_content(images, data, session_id, phase_name)
+
+    # Check if we're in UI mode (non-interactive / web environment)
+    use_checkpoint = os.environ.get('WINDLASS_USE_CHECKPOINTS', 'false').lower() == 'true'
+
+    import sys
+    if not sys.stdin.isatty():
+        use_checkpoint = True
+
+    console.print(f"[dim cyan][DEBUG] ask_human_custom called[/dim cyan]")
+    console.print(f"[dim cyan][DEBUG]   use_checkpoint={use_checkpoint}, WINDLASS_USE_CHECKPOINTS={os.environ.get('WINDLASS_USE_CHECKPOINTS', 'not set')}[/dim cyan]")
+    console.print(f"[dim cyan][DEBUG]   stdin.isatty()={sys.stdin.isatty()}[/dim cyan]")
+    console.print(f"[dim cyan][DEBUG]   session_id={session_id}, phase_name={phase_name}[/dim cyan]")
+    console.print(f"[dim cyan][DEBUG]   images={images}, data keys={list(data.keys()) if data else None}[/dim cyan]")
+
+    if use_checkpoint:
+        try:
+            result = _ask_via_checkpoint_custom(
+                question=question,
+                context=context,
+                images=images,
+                data=data,
+                options=options,
+                ui_hint=ui_hint,
+                layout_hint=layout_hint,
+                session_id=session_id,
+                phase_name=phase_name,
+                console=console
+            )
+            console.print(f"[dim cyan][DEBUG] _ask_via_checkpoint_custom returned: {result[:100] if result else 'None'}[/dim cyan]")
+            return result
+        except Exception as e:
+            console.print(f"[bold red][ERROR] _ask_via_checkpoint_custom failed: {e}[/bold red]")
+            import traceback
+            traceback.print_exc()
+            return f"[Error in checkpoint: {e}]"
+    else:
+        # CLI mode - fall back to basic prompt
+        return _cli_prompt_custom(question, context, images, data, options, phase_name, console)
+
+
+def _auto_detect_content(
+    images: list,
+    data: dict,
+    session_id: str,
+    phase_name: str
+) -> tuple:
+    """
+    Auto-detect images and structured data from the current phase context.
+
+    This enables agents to simply call ask_human_custom(question="...")
+    and have relevant charts/data automatically included.
+
+    Args:
+        images: Explicitly provided images (if any)
+        data: Explicitly provided data (if any)
+        session_id: Current session ID
+        phase_name: Current phase name
+
+    Returns:
+        Tuple of (images_list, data_dict)
+    """
+    from ..config import get_config
+    import glob as glob_module
+
+    config = get_config()
+
+    # === Image Auto-Detection ===
+    if images is None:
+        images = []
+
+        if session_id and phase_name:
+            # 1. Check phase-specific image directory
+            phase_image_dir = os.path.join(config.image_dir, session_id, phase_name)
+            if os.path.exists(phase_image_dir):
+                for ext in ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.svg']:
+                    found = glob_module.glob(os.path.join(phase_image_dir, ext))
+                    images.extend(sorted(found))
+
+            # 2. Check session-level image directory
+            session_image_dir = os.path.join(config.image_dir, session_id)
+            if os.path.exists(session_image_dir) and not images:
+                for ext in ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.svg']:
+                    found = glob_module.glob(os.path.join(session_image_dir, ext))
+                    images.extend(sorted(found))
+
+        # 3. Check Echo for phase images (if available)
+        try:
+            from ..echo import get_current_echo
+            echo = get_current_echo()
+            if echo and hasattr(echo, '_phase_images') and phase_name in echo._phase_images:
+                images.extend(echo._phase_images[phase_name])
+        except Exception:
+            pass
+
+        # Limit and deduplicate
+        images = list(dict.fromkeys(images))[:5]
+
+    # === Data Auto-Detection ===
+    if data is None:
+        data = {}
+
+        try:
+            from ..echo import get_current_echo
+            echo = get_current_echo()
+
+            if echo:
+                # 1. Check state for this phase
+                if phase_name and phase_name in echo.state:
+                    phase_state = echo.state.get(phase_name)
+                    if isinstance(phase_state, dict):
+                        data = phase_state
+
+                # 2. Check last assistant message for JSON
+                if not data and echo.history:
+                    for msg in reversed(echo.history):
+                        if msg.get('role') == 'assistant':
+                            content = msg.get('content', '')
+                            if isinstance(content, str):
+                                extracted = _extract_json_from_content(content)
+                                if extracted:
+                                    data = extracted
+                                    break
+        except Exception:
+            pass
+
+    return images, data
+
+
+def _extract_json_from_content(content: str) -> dict:
+    """
+    Extract JSON data from message content.
+
+    Looks for JSON code blocks or inline JSON objects.
+    """
+    import json
+    import re
+
+    # Try to find JSON in code blocks
+    json_blocks = re.findall(r'```(?:json)?\s*\n?({[\s\S]*?})\s*\n?```', content)
+    for block in json_blocks:
+        try:
+            return json.loads(block)
+        except json.JSONDecodeError:
+            continue
+
+    # Try to find inline JSON
+    json_matches = re.findall(r'({[^{}]*(?:{[^{}]*}[^{}]*)*})', content)
+    for match in json_matches:
+        try:
+            parsed = json.loads(match)
+            if isinstance(parsed, dict) and len(parsed) > 0:
+                return parsed
+        except json.JSONDecodeError:
+            continue
+
+    return {}
+
+
+def _ask_via_checkpoint_custom(
+    question: str,
+    context: str,
+    images: list,
+    data: dict,
+    options: list,
+    ui_hint: str,
+    layout_hint: str,
+    session_id: str,
+    phase_name: str,
+    console
+) -> str:
+    """
+    Create checkpoint with generative UI and wait for response.
+    """
+    from ..checkpoints import get_checkpoint_manager, CheckpointType
+    from ..tracing import get_current_trace
+    from ..generative_ui import generate_ui_with_fallback, extract_response_value_extended
+
+    trace = get_current_trace()
+
+    if not session_id:
+        console.print("[yellow]Warning: No session ID, falling back to CLI prompt[/yellow]")
+        return _cli_prompt_custom(question, context, images, data, options, phase_name, console)
+
+    checkpoint_manager = get_checkpoint_manager()
+
+    # Generate contextually-appropriate UI using smart generator
+    console.print(f"[dim cyan][DEBUG] _ask_via_checkpoint_custom: Entering checkpoint path[/dim cyan]")
+    console.print(f"[dim]Generating rich UI for question...[/dim]")
+
+    ui_spec = generate_ui_with_fallback(
+        question=question,
+        context=context,
+        images=images,
+        data=data,
+        options=options,
+        ui_hint=ui_hint,
+        layout_hint=layout_hint,
+        session_id=session_id,
+        phase_name=phase_name
+    )
+
+    complexity = ui_spec.get("_meta", {}).get("complexity", "unknown")
+    generated_by = ui_spec.get("_meta", {}).get("generated_by", "unknown")
+    console.print(f"[dim]UI complexity: {complexity}, generator: {generated_by}[/dim]")
+
+    # Determine checkpoint type based on primary input
+    checkpoint_type = _determine_checkpoint_type(ui_spec)
+
+    # Create checkpoint with generated UI
+    console.print(f"[dim cyan][DEBUG] Creating checkpoint with UI spec: layout={ui_spec.get('layout')}, sections={len(ui_spec.get('sections', []))}[/dim cyan]")
+    checkpoint = checkpoint_manager.create_checkpoint(
+        session_id=session_id,
+        cascade_id=trace.name if trace else "unknown",
+        phase_name=phase_name or "ask_human_custom",
+        checkpoint_type=checkpoint_type,
+        phase_output=question,
+        ui_spec=ui_spec,
+        echo_snapshot={},
+        timeout_seconds=3600
+    )
+
+    console.print(f"\n[bold yellow]🤖 Agent asks:[/bold yellow] {question}")
+    if images:
+        console.print(f"[dim]With {len(images)} image(s)[/dim]")
+    if data:
+        console.print(f"[dim]With data table ({len(data)} fields)[/dim]")
+    if options:
+        console.print(f"[dim]With {len(options)} options[/dim]")
+    console.print(f"[dim]Waiting for response (checkpoint: {checkpoint.id[:8]}...)[/dim]")
+
+    # Block waiting for response
+    response = checkpoint_manager.wait_for_response(
+        checkpoint_id=checkpoint.id,
+        timeout=3600,
+        poll_interval=0.5
+    )
+
+    if response is None:
+        console.print("[yellow]⚠ No response received (timeout or cancelled)[/yellow]")
+        return "[No response from human]"
+
+    # Extract response value based on UI type
+    if isinstance(response, dict):
+        answer = extract_response_value_extended(response, ui_spec)
+    else:
+        answer = str(response)
+
+    console.print(f"[green]✓ Received response: {answer[:100]}{'...' if len(str(answer)) > 100 else ''}[/green]")
+
+    # Store in state
+    _store_response(phase_name, answer)
+
+    return answer
+
+
+def _determine_checkpoint_type(ui_spec: dict):
+    """Determine the checkpoint type based on UI spec content."""
+    from ..checkpoints import CheckpointType
+
+    # Look for primary input section
+    sections = ui_spec.get("sections", [])
+
+    # Also check columns for multi-column layouts
+    for col in ui_spec.get("columns", []):
+        sections.extend(col.get("sections", []))
+
+    for section in sections:
+        section_type = section.get("type")
+        if section_type == "confirmation":
+            return CheckpointType.CONFIRMATION
+        elif section_type == "choice":
+            return CheckpointType.CHOICE
+        elif section_type == "multi_choice":
+            return CheckpointType.MULTI_CHOICE
+        elif section_type == "rating":
+            return CheckpointType.RATING
+        elif section_type == "text":
+            return CheckpointType.FREE_TEXT
+        elif section_type == "card_grid":
+            selection_mode = section.get("selection_mode", "single")
+            return CheckpointType.MULTI_CHOICE if selection_mode == "multiple" else CheckpointType.CHOICE
+
+    return CheckpointType.FREE_TEXT
+
+
+def _cli_prompt_custom(
+    question: str,
+    context: str,
+    images: list,
+    data: dict,
+    options: list,
+    phase_name: str,
+    console
+) -> str:
+    """Handle CLI mode prompting for ask_human_custom."""
+    from rich.prompt import Prompt
+    from rich.table import Table
+    from rich.panel import Panel
+
+    console.print(f"\n[bold yellow]🤖 Agent asks:[/bold yellow] {question}")
+
+    # Display context
+    if context:
+        console.print(Panel(context[:500] + ("..." if len(context) > 500 else ""), title="Context"))
+
+    # Display images info
+    if images:
+        console.print(f"[dim]📷 Images available: {', '.join(os.path.basename(img) for img in images)}[/dim]")
+
+    # Display data as table
+    if data:
+        table = Table(title="Data")
+        if isinstance(data, dict):
+            # Check if it's a list of dicts
+            for key, value in data.items():
+                if isinstance(value, list) and len(value) > 0 and isinstance(value[0], dict):
+                    # Table data
+                    first_row = value[0]
+                    for col in first_row.keys():
+                        table.add_column(col)
+                    for row in value[:5]:  # Max 5 rows in CLI
+                        table.add_row(*[str(row.get(col, "")) for col in first_row.keys()])
+                else:
+                    table.add_column("Field")
+                    table.add_column("Value")
+                    table.add_row(key, str(value))
+                break
+        console.print(table)
+
+    # Display options
+    if options:
+        console.print("[bold]Options:[/bold]")
+        for i, opt in enumerate(options, 1):
+            title = opt.get("title", opt.get("label", f"Option {i}"))
+            desc = opt.get("content", opt.get("description", ""))[:100]
+            console.print(f"  {i}. [cyan]{title}[/cyan]: {desc}")
+
+    # Get response
+    answer = Prompt.ask("[bold green]👤 You[/bold green]")
+
+    # Store in state
+    _store_response(phase_name, answer)
+
+    return answer

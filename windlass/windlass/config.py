@@ -20,6 +20,11 @@ class Config(BaseModel):
         default_factory=lambda: os.getenv("WINDLASS_DEFAULT_EMBED_MODEL", "qwen/qwen3-embedding-8b")
     )
 
+    # Model for generative UI generation (used by ask_human_custom)
+    generative_ui_model: str = Field(
+        default_factory=lambda: os.getenv("WINDLASS_GENERATIVE_UI_MODEL", "google/gemini-3-pro-preview")
+    )
+
     # Root directory - single source of truth
     root_dir: str = Field(default=_WINDLASS_ROOT)
 

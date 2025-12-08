@@ -14,7 +14,7 @@ from .visualizer import (
 # Register batteries-included eddies
 from .eddies.sql import run_sql
 from .eddies.extras import run_code, take_screenshot, linux_shell
-from .eddies.human import ask_human
+from .eddies.human import ask_human, ask_human_custom
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
@@ -26,6 +26,7 @@ register_tackle("linux_shell", linux_shell)
 register_tackle("run_code", run_code)
 register_tackle("take_screenshot", take_screenshot)
 register_tackle("ask_human", ask_human)
+register_tackle("ask_human_custom", ask_human_custom)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
 register_tackle("create_chart", create_chart)

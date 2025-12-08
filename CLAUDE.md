@@ -221,14 +221,15 @@ The framework automatically extracts function signatures using `inspect` and con
 - `smart_sql_run`: Execute DuckDB SQL queries on datasets (in `eddies/sql.py`)
 - `take_screenshot`: Capture web pages using Playwright (in `eddies/extras.py`)
 - `ask_human`: Human-in-the-loop input (in `eddies/human.py`)
+- `ask_human_custom`: Generative UI for rich human-in-the-loop interactions (in `eddies/human.py`) - **NEW!**
 - `set_state`: Persist variables to session state (in `eddies/state_tools.py`)
 - `spawn_cascade`: Programmatically launch cascades from tools (in `eddies/system.py`)
 - `create_chart`: Generate matplotlib charts (in `eddies/chart.py`)
-- `rabbitize_start`: Start visual browser automation session (in `eddies/rabbitize.py`) - **NEW!**
-- `rabbitize_execute`: Execute browser actions with visual feedback (in `eddies/rabbitize.py`) - **NEW!**
-- `rabbitize_extract`: Extract page content as markdown (in `eddies/rabbitize.py`) - **NEW!**
-- `rabbitize_close`: Close browser session (in `eddies/rabbitize.py`) - **NEW!**
-- `rabbitize_status`: Get current session status (in `eddies/rabbitize.py`) - **NEW!**
+- `rabbitize_start`: Start visual browser automation session (in `eddies/rabbitize.py`)
+- `rabbitize_execute`: Execute browser actions with visual feedback (in `eddies/rabbitize.py`)
+- `rabbitize_extract`: Extract page content as markdown (in `eddies/rabbitize.py`)
+- `rabbitize_close`: Close browser session (in `eddies/rabbitize.py`)
+- `rabbitize_status`: Get current session status (in `eddies/rabbitize.py`)
 
 **Example Cascade Tools** (in `tackle/` directory):
 - `text_analyzer`: Analyzes text for readability, tone, structure
@@ -1648,6 +1649,149 @@ windlass sql "SELECT * FROM all_data WHERE node_type = 'context_injection'"
 - `examples/context_messages_demo.json` - Message injection with full conversation replay
 - `examples/context_sugar_demo.json` - Context keywords (first, previous, all)
 
+### 2.17. Generative UI - Rich Human-in-the-Loop Interfaces
+
+The Generative UI system enables agents to create rich, contextually-appropriate interfaces for human input using the `ask_human_custom` tool.
+
+#### Core Concept
+
+Instead of simple text prompts, agents can specify:
+- **Images**: Display charts, screenshots, or generated visuals
+- **Data Tables**: Show structured data with sorting and selection
+- **Comparison Views**: Side-by-side option comparisons with pros/cons
+- **Card Grids**: Rich option cards with images and metadata
+- **Multi-Column Layouts**: Organized content in columns or sidebars
+
+The system uses a two-phase generation approach:
+1. **Intent Analysis**: Determine UI complexity (low/medium/high)
+2. **UI Spec Generation**: Template-based for simple cases, LLM-powered for complex
+
+#### ask_human_custom Tool
+
+```python
+ask_human_custom(
+    question: str,           # The question to ask
+    context: str = None,     # Background context for the human
+    images: list = None,     # Image file paths to display
+    data: dict = None,       # Structured data for tables
+    options: list = None,    # Options for selection/comparison
+    ui_hint: str = None,     # UI type hint: "simple", "image_review", "comparison", etc.
+    layout_hint: str = None, # Layout hint: "vertical", "sidebar", "grid"
+    auto_detect: bool = True # Auto-detect content from Echo context
+)
+```
+
+#### Section Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `markdown` | Rich text content | Context, explanations |
+| `input` | Text input field | Free-form responses |
+| `select` | Dropdown or radio | Single choice |
+| `multi_select` | Checkboxes | Multiple selections |
+| `image` | Image display with lightbox | Visual content review |
+| `data_table` | Interactive table | Data review, row selection |
+| `code` | Syntax-highlighted code | Code review with diff |
+| `card_grid` | Rich option cards | Visual option selection |
+| `comparison` | Side-by-side comparison | A/B decisions with pros/cons |
+| `accordion` | Collapsible sections | Detailed content organization |
+| `tabs` | Tabbed content | Categorized information |
+
+#### Layout Types
+
+| Layout | Description |
+|--------|-------------|
+| `vertical` | Simple stacked sections (default) |
+| `horizontal` | Side-by-side sections |
+| `two-column` | Two equal columns |
+| `three-column` | Three equal columns |
+| `grid` | CSS Grid layout |
+| `sidebar-left` | Sidebar on left, main content on right |
+| `sidebar-right` | Main content on left, sidebar on right |
+
+#### Usage Examples
+
+**Image Review:**
+```json
+{
+  "tool": "ask_human_custom",
+  "arguments": {
+    "question": "Does this chart accurately represent the data?",
+    "images": ["/path/to/chart.png"],
+    "options": [
+      {"id": "approve", "label": "Looks good"},
+      {"id": "revise", "label": "Needs changes"}
+    ],
+    "ui_hint": "image_review"
+  }
+}
+```
+
+**Data Table Review:**
+```json
+{
+  "tool": "ask_human_custom",
+  "arguments": {
+    "question": "Select the rows that need attention",
+    "data": {
+      "columns": ["Task", "Status", "Priority"],
+      "rows": [
+        ["Task A", "Pending", "High"],
+        ["Task B", "In Progress", "Medium"]
+      ]
+    },
+    "ui_hint": "data_review"
+  }
+}
+```
+
+**Comparison View:**
+```json
+{
+  "tool": "ask_human_custom",
+  "arguments": {
+    "question": "Which approach do you prefer?",
+    "options": [
+      {
+        "id": "option_a",
+        "title": "Conservative",
+        "description": "Lower risk approach",
+        "pros": ["Safe", "Predictable"],
+        "cons": ["Slower"]
+      },
+      {
+        "id": "option_b",
+        "title": "Aggressive",
+        "description": "Higher risk approach",
+        "pros": ["Fast", "Innovative"],
+        "cons": ["Risky"]
+      }
+    ],
+    "ui_hint": "comparison"
+  }
+}
+```
+
+#### Auto-Detection
+
+When `auto_detect=True` (default), the system automatically:
+- Extracts recent images from the Echo context
+- Parses JSON data from tool results
+- Infers appropriate UI layout based on content
+
+#### Implementation Files
+
+- `windlass/generative_ui_schema.py` - Pydantic models for UI specs
+- `windlass/generative_ui.py` - Intent analyzer and spec generator
+- `windlass/eddies/human.py` - `ask_human_custom` tool implementation
+- `extras/ui/frontend/src/components/sections/` - React section components
+- `extras/ui/frontend/src/components/layouts/` - React layout components
+- `extras/ui/frontend/src/components/DynamicUI.js` - Main rendering component
+
+**Example Cascades:**
+- `examples/generative_ui_demo.json` - Basic generative UI demonstration
+- `examples/generative_ui_showcase.json` - All section types and layouts
+
 ### 3. Execution Flow (Runner)
 The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).
 
@@ -2057,11 +2201,13 @@ windlass/
 ├── prompts.py           # Jinja2 prompt rendering
 ├── state.py             # Session state management
 ├── cost.py              # Cost tracking (legacy async, now mostly blocking in agent.py)
+├── generative_ui_schema.py  # Pydantic models for Generative UI DSL
+├── generative_ui.py     # Intent analyzer and UI spec generator
 └── eddies/              # Built-in tools
     ├── base.py          # Eddy wrapper (retry logic)
     ├── sql.py           # DuckDB SQL execution (smart_sql_run)
     ├── extras.py        # linux_shell, run_code, take_screenshot
-    ├── human.py         # ask_human HITL tool
+    ├── human.py         # ask_human, ask_human_custom HITL tools
     ├── state_tools.py   # set_state tool
     ├── system.py        # spawn_cascade tool
     └── chart.py         # create_chart tool
@@ -2071,6 +2217,7 @@ extras/
 │   ├── start_backend.sh # Backend startup script
 │   ├── backend/
 │   │   ├── app.py       # Flask API server
+│   │   ├── checkpoint_api.py  # Checkpoint endpoints with image URL resolution
 │   │   └── execution_tree.py  # Execution tree builder for React Flow
 │   └── frontend/
 │       └── src/
@@ -2080,7 +2227,11 @@ extras/
 │           │   ├── MermaidViewer.js
 │           │   └── LogsPanel.js
 │           └── VISUALIZATION_GUIDE.md  # React Flow patterns
-└── ui/                  # Production UI (separate from debug_ui)
+└── ui/                  # Production UI
+    └── frontend/src/components/
+        ├── DynamicUI.js       # Main generative UI renderer
+        ├── sections/          # Section components (ImageSection, DataTableSection, etc.)
+        └── layouts/           # Layout components (TwoColumnLayout, GridLayout, etc.)
 ```
 
 ## Important Implementation Details

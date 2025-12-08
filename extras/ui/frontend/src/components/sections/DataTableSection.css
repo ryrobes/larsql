@@ -1,0 +1,156 @@
+.data-table-section {
+  margin-bottom: 16px;
+}
+
+.table-container {
+  overflow: auto;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #1a1a1a;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.data-table.compact th,
+.data-table.compact td {
+  padding: 8px;
+}
+
+.data-table thead {
+  background: #242424;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.data-table th {
+  font-weight: 600;
+  color: #a78bfa;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.sortable:hover {
+  background: #2a2a2a;
+}
+
+.data-table th.sorted {
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.th-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sort-indicator {
+  color: #a78bfa;
+  font-size: 0.8rem;
+}
+
+.data-table td {
+  color: #e0e0e0;
+}
+
+/* Alignment */
+.align-left {
+  text-align: left;
+}
+
+.align-center {
+  text-align: center;
+}
+
+.align-right {
+  text-align: right;
+}
+
+/* Striped rows */
+.data-table.striped tbody tr:nth-child(odd) {
+  background: #181818;
+}
+
+.data-table.striped tbody tr:nth-child(even) {
+  background: #1a1a1a;
+}
+
+/* Selectable rows */
+.data-table tbody tr.selectable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.data-table tbody tr.selectable:hover {
+  background: #252525;
+}
+
+.data-table tbody tr.selected {
+  background: rgba(167, 139, 250, 0.15) !important;
+}
+
+.data-table tbody tr.selected td {
+  color: #fff;
+}
+
+/* Row number column */
+.row-number-header,
+.row-number {
+  color: #666;
+  width: 40px;
+  text-align: center;
+}
+
+/* Selection column */
+.select-header,
+.select-cell {
+  width: 40px;
+  text-align: center;
+}
+
+.select-cell input {
+  width: 16px;
+  height: 16px;
+  accent-color: #a78bfa;
+  cursor: pointer;
+}
+
+/* Last row no border */
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Scrollbar styling */
+.table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

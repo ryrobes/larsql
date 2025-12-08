@@ -1,0 +1,128 @@
+.code-section {
+  margin-bottom: 16px;
+}
+
+.code-label {
+  color: #888;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.code-wrapper {
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+/* Diff view */
+.diff-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diff-view.split {
+  flex-direction: row;
+}
+
+.diff-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-label {
+  background: #242424;
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #a78bfa;
+  border: 1px solid #333;
+  border-bottom: none;
+}
+
+.diff-pane .code-wrapper {
+  border-radius: 0 0 8px 8px;
+}
+
+/* Unified diff */
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #242424;
+  border: 1px solid #333;
+  border-radius: 8px 8px 0 0;
+  font-size: 0.8rem;
+}
+
+.removed-label {
+  color: #f87171;
+}
+
+.added-label {
+  color: #34d399;
+}
+
+.arrow {
+  color: #666;
+}
+
+.unified-diff {
+  margin: 0;
+  padding: 12px;
+  background: #1a1a1a;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85rem;
+}
+
+.diff-line {
+  display: flex;
+  padding: 2px 0;
+}
+
+.diff-line.added {
+  background: rgba(52, 211, 153, 0.15);
+}
+
+.diff-line.removed {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.diff-indicator {
+  width: 20px;
+  flex-shrink: 0;
+  color: #666;
+  user-select: none;
+}
+
+.diff-line.added .diff-indicator {
+  color: #34d399;
+}
+
+.diff-line.removed .diff-indicator {
+  color: #f87171;
+}
+
+.diff-content {
+  white-space: pre;
+}
+
+.diff-line.added .diff-content {
+  color: #34d399;
+}
+
+.diff-line.removed .diff-content {
+  color: #f87171;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .diff-view.split {
+    flex-direction: column;
+  }
+}

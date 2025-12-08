@@ -144,11 +144,47 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
         if (choiceSection) {
           rawOptions = choiceSection.options || [];
         }
+        // Also check for card_grid sections (generative UI format)
+        if (rawOptions.length === 0) {
+          const cardGridSection = uiSpec.sections.find(s => s.type === 'card_grid');
+          if (cardGridSection && cardGridSection.cards) {
+            rawOptions = cardGridSection.cards.map(card => ({
+              label: card.title || card.id,
+              value: card.id,
+              description: card.content
+            }));
+          }
+        }
       }
       // Try to extract actual option text from phase output
       const phaseOutput = checkpoint.phase_output_preview || checkpoint.phase_output || '';
       const options = extractOptionsFromOutput(phaseOutput, rawOptions);
       const selected = responses[checkpoint.id];
+
+      // Fallback to confirmation if no options available
+      if (options.length === 0) {
+        return (
+          <div className="checkpoint-input confirmation">
+            <p className="checkpoint-fallback-note">No options available. Please approve or reject:</p>
+            <div className="checkpoint-buttons">
+              <button
+                className="checkpoint-btn approve"
+                onClick={() => handleSubmit(checkpoint, { confirmed: true })}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Submitting...' : 'Approve'}
+              </button>
+              <button
+                className="checkpoint-btn reject"
+                onClick={() => handleSubmit(checkpoint, { confirmed: false })}
+                disabled={isSubmitting}
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        );
+      }
 
       return (
         <div className="checkpoint-input choice">
@@ -353,6 +389,98 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
             {expandedCheckpoint === checkpoint.id && (
               <div className="checkpoint-details">
+                {/* Render images from sections (including from columns in two-column layouts) */}
+                {(() => {
+                  // Collect all sections including from columns
+                  let allSections = checkpoint.ui_spec?.sections || [];
+                  if (checkpoint.ui_spec?.columns) {
+                    for (const col of checkpoint.ui_spec.columns) {
+                      if (col.sections) {
+                        allSections = [...allSections, ...col.sections];
+                      }
+                    }
+                  }
+                  const imageSections = allSections.filter(s => s.type === 'image' || s.base64 || s.src);
+
+                  if (imageSections.length === 0) return null;
+
+                  return (
+                    <div className="checkpoint-images">
+                      {imageSections.map((imgSection, idx) => {
+                        const imgSrc = imgSection.base64
+                          ? (imgSection.base64.startsWith('data:') ? imgSection.base64 : `data:image/png;base64,${imgSection.base64}`)
+                          : imgSection.src;
+                        return imgSrc ? (
+                          <div key={idx} className="checkpoint-image">
+                            <img
+                              src={imgSrc}
+                              alt={imgSection.alt || imgSection.caption || `Image ${idx + 1}`}
+                              style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain' }}
+                            />
+                            {imgSection.caption && (
+                              <div className="image-caption">{imgSection.caption}</div>
+                            )}
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Render data tables from sections */}
+                {(() => {
+                  // Collect all sections including from columns
+                  let allSections = checkpoint.ui_spec?.sections || [];
+                  if (checkpoint.ui_spec?.columns) {
+                    for (const col of checkpoint.ui_spec.columns) {
+                      if (col.sections) {
+                        allSections = [...allSections, ...col.sections];
+                      }
+                    }
+                  }
+                  const dataTables = allSections.filter(s => s.type === 'data_table');
+
+                  if (dataTables.length === 0) return null;
+
+                  return (
+                    <div className="checkpoint-data-tables">
+                      {dataTables.map((tableSection, idx) => {
+                        const columns = tableSection.columns || [];
+                        const data = tableSection.data || [];
+
+                        if (columns.length === 0 || data.length === 0) return null;
+
+                        return (
+                          <div key={idx} className="checkpoint-data-table">
+                            {tableSection.title && (
+                              <div className="data-table-title">{tableSection.title}</div>
+                            )}
+                            <table>
+                              <thead>
+                                <tr>
+                                  {columns.map((col, colIdx) => (
+                                    <th key={colIdx}>{col.label || col.key || col}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.map((row, rowIdx) => (
+                                  <tr key={rowIdx} className={tableSection.striped && rowIdx % 2 === 1 ? 'striped' : ''}>
+                                    {columns.map((col, colIdx) => {
+                                      const key = col.key || col;
+                                      return <td key={colIdx}>{row[key] ?? ''}</td>;
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
                 <div className="checkpoint-output">
                   <div className="output-label">Phase Output:</div>
                   <div className="output-content">
@@ -363,6 +491,13 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
                 {checkpoint.ui_spec?.prompt && (
                   <div className="checkpoint-prompt">
                     {checkpoint.ui_spec.prompt}
+                  </div>
+                )}
+
+                {/* Render title from ui_spec if present */}
+                {checkpoint.ui_spec?.title && (
+                  <div className="checkpoint-title-text">
+                    {checkpoint.ui_spec.title}
                   </div>
                 )}
 

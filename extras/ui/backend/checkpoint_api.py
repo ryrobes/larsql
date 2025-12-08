@@ -9,6 +9,7 @@ Provides REST API for:
 """
 import json
 import os
+import re
 import sys
 from flask import Blueprint, jsonify, request
 
@@ -27,6 +28,123 @@ except ImportError as e:
     CheckpointStatus = None
 
 checkpoint_bp = Blueprint('checkpoints', __name__)
+
+# Get IMAGE_DIR from environment or default
+_DEFAULT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
+WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
+IMAGE_DIR = os.path.abspath(os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images")))
+
+
+def resolve_image_paths_to_urls(ui_spec, session_id):
+    """
+    Recursively resolve file paths to API URLs in a UI spec.
+
+    Transforms:
+    - Absolute paths like /path/to/images/session_id/phase/image_0.png
+    - Relative paths like phase/image_0.png
+
+    To API URLs like /api/images/session_id/phase/image_0.png
+    """
+    if not ui_spec or not isinstance(ui_spec, dict):
+        return ui_spec
+
+    # Deep copy to avoid modifying original
+    spec = json.loads(json.dumps(ui_spec))
+
+    def resolve_path(path):
+        """Convert a file path to an API URL."""
+        if not path or not isinstance(path, str):
+            return path
+
+        # Skip if already a URL
+        if path.startswith('/api/') or path.startswith('http://') or path.startswith('https://'):
+            return path
+
+        # Skip base64 data URLs
+        if path.startswith('data:'):
+            return path
+
+        # If it's an absolute path, extract the relative part after session_id
+        if os.path.isabs(path):
+            # Look for session_id in the path
+            # Pattern: .../images/{session_id}/...
+            match = re.search(rf'{re.escape(session_id)}[/\\](.+)$', path)
+            if match:
+                rel_path = match.group(1).replace('\\', '/')
+                return f'/api/images/{session_id}/{rel_path}'
+            # If session_id not found, try to use the last two path components
+            parts = path.replace('\\', '/').split('/')
+            if len(parts) >= 2:
+                rel_path = '/'.join(parts[-2:])
+                return f'/api/images/{session_id}/{rel_path}'
+
+        # Relative path - just prepend the API prefix
+        return f'/api/images/{session_id}/{path}'
+
+    def process_section(section):
+        """Process a single section, resolving image paths."""
+        if not isinstance(section, dict):
+            return section
+
+        section_type = section.get('type')
+
+        # Handle image sections
+        if section_type == 'image':
+            if 'src' in section:
+                section['src'] = resolve_path(section['src'])
+            if 'url' in section:
+                section['url'] = resolve_path(section['url'])
+
+        # Handle card_grid sections with images in items
+        if section_type == 'card_grid' and 'items' in section:
+            for item in section.get('items', []):
+                if isinstance(item, dict) and 'image' in item:
+                    item['image'] = resolve_path(item['image'])
+
+        # Handle comparison sections with images
+        if section_type == 'comparison' and 'items' in section:
+            for item in section.get('items', []):
+                if isinstance(item, dict) and 'image' in item:
+                    item['image'] = resolve_path(item['image'])
+
+        # Handle nested sections (accordion, tabs)
+        if section_type == 'accordion' and 'items' in section:
+            for item in section.get('items', []):
+                if isinstance(item, dict) and 'content' in item:
+                    if isinstance(item['content'], dict):
+                        item['content'] = process_section(item['content'])
+                    elif isinstance(item['content'], list):
+                        item['content'] = [process_section(s) for s in item['content']]
+
+        if section_type == 'tabs' and 'tabs' in section:
+            for tab in section.get('tabs', []):
+                if isinstance(tab, dict) and 'content' in tab:
+                    if isinstance(tab['content'], dict):
+                        tab['content'] = process_section(tab['content'])
+                    elif isinstance(tab['content'], list):
+                        tab['content'] = [process_section(s) for s in tab['content']]
+
+        return section
+
+    # Process main sections
+    if 'sections' in spec:
+        spec['sections'] = [process_section(s) for s in spec.get('sections', [])]
+
+    # Process layout columns
+    if 'columns' in spec:
+        for col in spec.get('columns', []):
+            if isinstance(col, dict) and 'sections' in col:
+                col['sections'] = [process_section(s) for s in col.get('sections', [])]
+
+    # Handle legacy image field (for simple UI specs)
+    if 'image' in spec:
+        spec['image'] = resolve_path(spec['image'])
+
+    # Handle images array at top level
+    if 'images' in spec and isinstance(spec['images'], list):
+        spec['images'] = [resolve_path(img) if isinstance(img, str) else img for img in spec['images']]
+
+    return spec
 
 
 @checkpoint_bp.route('/api/checkpoints', methods=['GET'])
@@ -51,6 +169,30 @@ def list_checkpoints():
 
         checkpoints = []
         for cp in pending:
+            # DEBUG: Log what the raw UI spec looks like
+            print(f"[CHECKPOINT DEBUG] Raw ui_spec for {cp.id}:")
+            print(f"  Layout: {cp.ui_spec.get('layout') if cp.ui_spec else 'None'}")
+            print(f"  Title: {cp.ui_spec.get('title') if cp.ui_spec else 'None'}")
+            if cp.ui_spec and 'sections' in cp.ui_spec:
+                for i, sec in enumerate(cp.ui_spec.get('sections', [])):
+                    sec_type = sec.get('type')
+                    has_base64 = 'base64' in sec
+                    has_src = 'src' in sec
+                    has_cards = 'cards' in sec
+                    has_options = 'options' in sec
+                    print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
+                    if has_base64:
+                        print(f"    base64 length: {len(sec.get('base64', ''))}")
+                    if has_src:
+                        print(f"    src: {sec.get('src')}")
+                    if has_cards:
+                        print(f"    cards count: {len(sec.get('cards', []))}")
+                    if has_options:
+                        print(f"    options count: {len(sec.get('options', []))}")
+
+            # Resolve image paths to URLs in the UI spec
+            resolved_ui_spec = resolve_image_paths_to_urls(cp.ui_spec, cp.session_id)
+
             checkpoints.append({
                 "id": cp.id,
                 "session_id": cp.session_id,
@@ -60,7 +202,7 @@ def list_checkpoints():
                 "status": cp.status.value,
                 "created_at": cp.created_at.isoformat() if cp.created_at else None,
                 "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
-                "ui_spec": cp.ui_spec,
+                "ui_spec": resolved_ui_spec,
                 "phase_output_preview": cp.phase_output[:500] if cp.phase_output else None,
                 "num_soundings": len(cp.sounding_outputs) if cp.sounding_outputs else None
             })
@@ -92,6 +234,9 @@ def get_checkpoint(checkpoint_id):
         if not cp:
             return jsonify({"error": f"Checkpoint {checkpoint_id} not found"}), 404
 
+        # Resolve image paths to URLs in the UI spec
+        resolved_ui_spec = resolve_image_paths_to_urls(cp.ui_spec, cp.session_id)
+
         return jsonify({
             "id": cp.id,
             "session_id": cp.session_id,
@@ -102,7 +247,7 @@ def get_checkpoint(checkpoint_id):
             "created_at": cp.created_at.isoformat() if cp.created_at else None,
             "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
             "responded_at": cp.responded_at.isoformat() if cp.responded_at else None,
-            "ui_spec": cp.ui_spec,
+            "ui_spec": resolved_ui_spec,
             "phase_output": cp.phase_output,
             "sounding_outputs": cp.sounding_outputs,
             "sounding_metadata": cp.sounding_metadata,

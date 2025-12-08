@@ -1,0 +1,137 @@
+.comparison-section {
+  margin-bottom: 16px;
+}
+
+.comparison-container {
+  display: flex;
+  gap: 16px;
+}
+
+.layout-rows .comparison-container {
+  flex-direction: column;
+}
+
+.comparison-item {
+  flex: 1;
+  min-width: 0;
+  border: 2px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.comparison-item.selectable {
+  cursor: pointer;
+}
+
+.comparison-item.selectable:hover {
+  border-color: #a78bfa;
+}
+
+.comparison-item.selected {
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.05);
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #242424;
+  border-bottom: 1px solid #333;
+}
+
+.selection-indicator {
+  font-size: 1rem;
+  color: #666;
+}
+
+.comparison-item.selected .selection-indicator {
+  color: #a78bfa;
+}
+
+.comparison-label {
+  font-weight: 600;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+}
+
+.comparison-content {
+  padding: 12px;
+  background: #1a1a1a;
+  max-height: 400px;
+  overflow: auto;
+}
+
+/* Text content */
+.comparison-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #ccc;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Markdown content */
+.comparison-markdown {
+  color: #ccc;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.comparison-markdown p {
+  margin: 0 0 12px 0;
+}
+
+.comparison-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.comparison-markdown code {
+  background: #242424;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85em;
+}
+
+/* Image content */
+.comparison-image {
+  display: flex;
+  justify-content: center;
+}
+
+.comparison-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* Scrollbar styling */
+.comparison-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.comparison-content::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.comparison-content::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+.comparison-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .comparison-container {
+    flex-direction: column;
+  }
+}

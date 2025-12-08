@@ -4557,6 +4557,120 @@ Refinement directive: {reforge_config.honing_prompt}
 
                             self._update_graph() # Update after follow up
                             response_content = content
+
+                            # CRITICAL FIX: Check if follow-up contains tool calls
+                            # This enables multi-step tool chains (e.g., create_chart -> ask_human_custom)
+                            # Without this, tool calls in follow-up responses are ignored
+                            if not use_native:
+                                followup_tool_calls, followup_parse_error = self._parse_prompt_tool_calls(content)
+
+                                if followup_parse_error:
+                                    console.print(f"{indent}  [bold red]⚠️  Follow-up JSON Parse Error:[/bold red] {followup_parse_error}")
+                                elif followup_tool_calls:
+                                    console.print(f"{indent}  [dim cyan]Follow-up contains {len(followup_tool_calls)} tool call(s) - executing...[/dim cyan]")
+
+                                    # Execute the follow-up tool calls
+                                    for tc in followup_tool_calls:
+                                        func_name = tc["function"]["name"]
+                                        tool_trace_fu = turn_trace.create_child("tool", f"followup_{func_name}")
+
+                                        args_str = tc["function"]["arguments"]
+                                        try:
+                                            args = json.loads(args_str)
+                                        except:
+                                            args = {}
+
+                                        # Log tool call
+                                        call_trace_fu = tool_trace_fu.create_child("msg", "tool_call")
+                                        self.echo.add_history(
+                                            {"role": "tool_call", "content": f"Calling {func_name} (follow-up)", "tool_name": func_name, "arguments": args},
+                                            trace_id=call_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_call",
+                                            metadata={"tool_name": func_name, "arguments": args, "is_followup": True}
+                                        )
+
+                                        # Update phase progress
+                                        update_phase_progress(
+                                            self.session_id, self.config.cascade_id, phase.name, self.depth,
+                                            tool_name=func_name
+                                        )
+
+                                        # Find and execute tool
+                                        tool_func = tool_map.get(func_name)
+                                        result = "Tool not found."
+
+                                        # Check for route_to
+                                        if func_name == "route_to" and "target" in args:
+                                            chosen_next_phase = args["target"]
+                                            console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered (follow-up):[/bold magenta] {chosen_next_phase}")
+
+                                        if tool_func:
+                                            set_current_trace(tool_trace_fu)
+                                            try:
+                                                self.hooks.on_tool_call(func_name, phase.name, self.session_id, args)
+                                                result = tool_func(**args)
+                                                self.hooks.on_tool_result(func_name, phase.name, self.session_id, result)
+                                            except Exception as e:
+                                                result = f"Error: {str(e)}"
+
+                                        console.print(f"{indent}    [green]✔ {func_name} (follow-up)[/green] -> {str(result)[:100]}...")
+
+                                        # Track tool output
+                                        tool_outputs.append({
+                                            "tool": func_name,
+                                            "result": str(result)
+                                        })
+
+                                        # Add tool result to context
+                                        tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
+                                        self.context_messages.append(tool_msg_fu)
+
+                                        # Log to echo
+                                        result_trace_fu = tool_trace_fu.create_child("msg", "tool_result")
+                                        self.echo.add_history(tool_msg_fu, trace_id=result_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_result",
+                                                            metadata={"tool_name": func_name, "result": str(result)[:500], "is_followup": True})
+
+                                        # Handle image injection from follow-up tools
+                                        parsed_result = result
+                                        if isinstance(result, str):
+                                            try:
+                                                parsed_result = json.loads(result)
+                                            except:
+                                                pass
+
+                                        if isinstance(parsed_result, dict) and "images" in parsed_result:
+                                            images = parsed_result.get("images", [])
+                                            content_block = [{"type": "text", "text": "Result Images from follow-up tool:"}]
+
+                                            from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
+                                            next_idx = get_next_image_index(self.session_id, phase.name, self.current_phase_sounding_index)
+
+                                            for img_i, img_path in enumerate(images):
+                                                encoded_img = encode_image_base64(img_path)
+                                                if not encoded_img.startswith("[Error"):
+                                                    content_block.append({
+                                                        "type": "image_url",
+                                                        "image_url": {"url": encoded_img}
+                                                    })
+
+                                                    save_path = get_image_save_path(
+                                                        self.session_id, phase.name, next_idx + img_i,
+                                                        extension=img_path.split('.')[-1] if '.' in img_path else 'png',
+                                                        sounding_index=self.current_phase_sounding_index
+                                                    )
+                                                    try:
+                                                        decode_and_save_image(encoded_img, save_path)
+                                                        console.print(f"{indent}    [dim]💾 Saved follow-up image: {save_path}[/dim]")
+                                                    except Exception as e:
+                                                        console.print(f"{indent}    [dim yellow]⚠️  Failed to save follow-up image: {e}[/dim yellow]")
+
+                                            if len(content_block) > 1:
+                                                image_injection_msg = {"role": "user", "content": content_block}
+                                                self.context_messages.append(image_injection_msg)
+                                                img_trace_fu = tool_trace_fu.create_child("msg", "image_injection")
+                                                self.echo.add_history(image_injection_msg, trace_id=img_trace_fu.id, parent_id=tool_trace_fu.id, node_type="injection",
+                                                                    metadata={"sounding_index": self.current_phase_sounding_index, "phase_name": phase.name, "is_followup": True})
+
+                                        self._update_graph()
                         else:
                             # Log that follow-up had no content (don't add to history - would cause API error)
                             log_message(self.session_id, "system", "Follow-up response had empty content (not added to history)",

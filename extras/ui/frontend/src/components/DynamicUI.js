@@ -1,8 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './DynamicUI.css';
+
+// Import new section components
+import ImageSection from './sections/ImageSection';
+import DataTableSection from './sections/DataTableSection';
+import CodeSection from './sections/CodeSection';
+import CardGridSection from './sections/CardGridSection';
+import ComparisonSection from './sections/ComparisonSection';
+import AccordionSection from './sections/AccordionSection';
+import TabsSection from './sections/TabsSection';
+
+// Import layout components
+import TwoColumnLayout from './layouts/TwoColumnLayout';
+import GridLayout from './layouts/GridLayout';
+import SidebarLayout from './layouts/SidebarLayout';
 
 /**
  * DynamicUI - Renders UI specifications from backend checkpoints
@@ -16,6 +30,23 @@ import './DynamicUI.css';
  * - text: Free text input
  * - slider: Range slider
  * - form: Multiple fields
+ *
+ * NEW Generative UI section types:
+ * - image: Display images with lightbox
+ * - data_table: Display tabular data
+ * - code: Syntax highlighted code with diff support
+ * - card_grid: Rich option cards
+ * - comparison: Side-by-side comparison
+ * - accordion: Collapsible panels
+ * - tabs: Tabbed content
+ *
+ * NEW Layout types:
+ * - vertical: Stack sections (default)
+ * - two-column: Two column layout
+ * - three-column: Three column layout
+ * - grid: CSS grid layout
+ * - sidebar-left: Sidebar on left
+ * - sidebar-right: Sidebar on right
  */
 function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
   const [values, setValues] = useState({});
@@ -24,31 +55,53 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
   // Initialize values from spec defaults
   useEffect(() => {
     const initialValues = {};
-    (spec?.sections || []).forEach((section, idx) => {
-      const key = section.label || section.prompt || `section_${idx}`;
-      if (section.default !== undefined) {
-        initialValues[key] = section.default;
-      }
-    });
+    const collectDefaults = (sections) => {
+      (sections || []).forEach((section, idx) => {
+        const key = section.input_name || section.label || section.prompt || `section_${idx}`;
+        if (section.default !== undefined) {
+          initialValues[key] = section.default;
+        }
+        // Handle nested sections in tabs
+        if (section.tabs) {
+          section.tabs.forEach(tab => collectDefaults(tab.sections));
+        }
+        // Handle nested sections in groups
+        if (section.sections) {
+          collectDefaults(section.sections);
+        }
+      });
+    };
+
+    // Collect from main sections
+    collectDefaults(spec?.sections);
+
+    // Collect from column sections
+    (spec?.columns || []).forEach(col => collectDefaults(col.sections));
+
     setValues(initialValues);
   }, [spec]);
 
-  const handleChange = (key, value) => {
+  const handleChange = useCallback((key, value) => {
     setValues(prev => ({ ...prev, [key]: value }));
     setErrors(prev => ({ ...prev, [key]: null }));
-  };
+  }, []);
 
   const handleSubmit = (e) => {
     e?.preventDefault();
 
     // Validate required fields
     const newErrors = {};
-    (spec?.sections || []).forEach((section, idx) => {
-      const key = section.label || section.prompt || `section_${idx}`;
-      if (section.required && !values[key]) {
-        newErrors[key] = 'Required';
-      }
-    });
+    const validateSections = (sections) => {
+      (sections || []).forEach((section, idx) => {
+        const key = section.input_name || section.label || section.prompt || `section_${idx}`;
+        if (section.required && !values[key]) {
+          newErrors[key] = 'Required';
+        }
+      });
+    };
+
+    validateSections(spec?.sections);
+    (spec?.columns || []).forEach(col => validateSections(col.sections));
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -58,27 +111,131 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
     onSubmit(values);
   };
 
+  // Evaluate show_if condition
+  const evaluateCondition = useCallback((condition) => {
+    if (!condition) return true;
+
+    const fieldValue = values[condition.field];
+
+    if (condition.equals !== undefined) {
+      return fieldValue === condition.equals;
+    }
+    if (condition.not_equals !== undefined) {
+      return fieldValue !== condition.not_equals;
+    }
+    if (condition.contains !== undefined && Array.isArray(fieldValue)) {
+      return fieldValue.includes(condition.contains);
+    }
+    if (condition.is_empty !== undefined) {
+      const isEmpty = !fieldValue || (Array.isArray(fieldValue) && fieldValue.length === 0);
+      return condition.is_empty ? isEmpty : !isEmpty;
+    }
+    if (condition.is_not_empty !== undefined) {
+      const isEmpty = !fieldValue || (Array.isArray(fieldValue) && fieldValue.length === 0);
+      return condition.is_not_empty ? !isEmpty : isEmpty;
+    }
+
+    return true;
+  }, [values]);
+
+  // Render a section with proper key and value binding
+  const renderSection = useCallback((section, keyPrefix) => {
+    // Check show_if condition
+    if (section.show_if && !evaluateCondition(section.show_if)) {
+      return null;
+    }
+
+    const key = section.input_name || section.label || section.prompt || keyPrefix;
+
+    return (
+      <UISection
+        key={keyPrefix}
+        spec={section}
+        value={values[key]}
+        error={errors[key]}
+        onChange={(v) => handleChange(key, v)}
+        phaseOutput={phaseOutput}
+        values={values}
+        onValueChange={handleChange}
+        renderSection={renderSection}
+      />
+    );
+  }, [values, errors, phaseOutput, handleChange, evaluateCondition]);
+
   const layout = spec?.layout || 'vertical';
+
+  // Render multi-column layouts
+  const renderLayout = () => {
+    switch (layout) {
+      case 'two-column':
+        return (
+          <TwoColumnLayout
+            spec={spec}
+            renderSection={renderSection}
+          />
+        );
+
+      case 'three-column':
+      case 'grid':
+        return (
+          <GridLayout
+            spec={spec}
+            renderSection={renderSection}
+          />
+        );
+
+      case 'sidebar-left':
+        return (
+          <SidebarLayout
+            spec={spec}
+            renderSection={renderSection}
+            position="left"
+          />
+        );
+
+      case 'sidebar-right':
+        return (
+          <SidebarLayout
+            spec={spec}
+            renderSection={renderSection}
+            position="right"
+          />
+        );
+
+      default: // vertical, horizontal
+        return (
+          <div className="dynamic-ui-sections">
+            {(spec?.sections || []).map((section, idx) =>
+              renderSection(section, `section_${idx}`)
+            )}
+          </div>
+        );
+    }
+  };
 
   return (
     <form
       onSubmit={handleSubmit}
       className={`dynamic-ui layout-${layout}`}
     >
-      <div className="dynamic-ui-sections">
-        {(spec?.sections || []).map((section, idx) => (
-          <UISection
-            key={idx}
-            spec={section}
-            value={values[section.label || section.prompt || `section_${idx}`]}
-            error={errors[section.label || section.prompt || `section_${idx}`]}
-            onChange={(v) => handleChange(section.label || section.prompt || `section_${idx}`, v)}
-            phaseOutput={phaseOutput}
-          />
-        ))}
-      </div>
+      {spec?.title && (
+        <h3 className="dynamic-ui-title">{spec.title}</h3>
+      )}
+      {spec?.subtitle && (
+        <p className="dynamic-ui-subtitle">{spec.subtitle}</p>
+      )}
+
+      {renderLayout()}
 
       <div className="dynamic-ui-actions">
+        {spec?.show_cancel && (
+          <button
+            type="button"
+            className="dynamic-ui-cancel"
+          >
+            {spec.cancel_label || 'Cancel'}
+          </button>
+        )}
         <button
           type="submit"
           disabled={isLoading}
@@ -94,8 +251,9 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
 /**
  * Renders a single UI section based on its type
  */
-function UISection({ spec, value, error, onChange, phaseOutput }) {
+function UISection({ spec, value, error, onChange, phaseOutput, values, onValueChange, renderSection }) {
   switch (spec.type) {
+    // Existing section types
     case 'preview':
       return <PreviewSection spec={spec} phaseOutput={phaseOutput} />;
     case 'confirmation':
@@ -113,7 +271,24 @@ function UISection({ spec, value, error, onChange, phaseOutput }) {
     case 'form':
       return <FormSection spec={spec} value={value} error={error} onChange={onChange} />;
     case 'group':
-      return <GroupSection spec={spec} value={value} error={error} onChange={onChange} phaseOutput={phaseOutput} />;
+      return <GroupSection spec={spec} value={value} error={error} onChange={onChange} phaseOutput={phaseOutput} renderSection={renderSection} />;
+
+    // NEW: Rich content section types
+    case 'image':
+      return <ImageSection spec={spec} />;
+    case 'data_table':
+      return <DataTableSection spec={spec} value={value} onChange={onChange} />;
+    case 'code':
+      return <CodeSection spec={spec} />;
+    case 'card_grid':
+      return <CardGridSection spec={spec} value={value} onChange={onChange} />;
+    case 'comparison':
+      return <ComparisonSection spec={spec} value={value} onChange={onChange} />;
+    case 'accordion':
+      return <AccordionSection spec={spec} />;
+    case 'tabs':
+      return <TabsSection spec={spec} renderSection={renderSection} />;
+
     default:
       return <div className="ui-section unknown">Unknown section type: {spec.type}</div>;
   }
@@ -609,7 +784,7 @@ function FormField({ field, value, onChange }) {
 /**
  * Group Section - Nested sections with optional collapsibility
  */
-function GroupSection({ spec, value, error, onChange, phaseOutput }) {
+function GroupSection({ spec, value, error, onChange, phaseOutput, renderSection }) {
   const [collapsed, setCollapsed] = useState(spec.default_collapsed);
 
   return (
@@ -622,16 +797,18 @@ function GroupSection({ spec, value, error, onChange, phaseOutput }) {
       </div>
       {!collapsed && (
         <div className="group-content">
-          {(spec.sections || []).map((section, idx) => (
-            <UISection
-              key={idx}
-              spec={section}
-              value={value}
-              error={error}
-              onChange={onChange}
-              phaseOutput={phaseOutput}
-            />
-          ))}
+          {(spec.sections || []).map((section, idx) =>
+            renderSection ? renderSection(section, `group_${idx}`) : (
+              <UISection
+                key={idx}
+                spec={section}
+                value={value}
+                error={error}
+                onChange={onChange}
+                phaseOutput={phaseOutput}
+              />
+            )
+          )}
         </div>
       )}
     </div>

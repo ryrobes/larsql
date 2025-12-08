@@ -2901,6 +2901,8 @@ def run_cascade():
 
         def run_in_background():
             try:
+                # Enable checkpoint system for HITL tools
+                os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
                 hooks = EventPublishingHooks()
                 execute_cascade(cascade_path, inputs, session_id, hooks=hooks)
             except Exception as e:
