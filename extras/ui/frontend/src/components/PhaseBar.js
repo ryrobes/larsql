@@ -14,18 +14,10 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
 
   const barWidth = Math.max(scaledPercent, 10); // Minimum 10% for visibility
 
-  // Calculate "weight" score based on complexity
-  const weight = calculateWeight(phase);
-
-  // Determine bar color based on status (for instances) or weight (for definitions)
+  // Determine bar color based on status (for instances) or default (for definitions)
   let barClass = 'phase-bar-fill';
   if (status) {
     barClass += ` status-${status}`;
-  } else {
-    // Color by weight for definitions
-    if (weight > 20) barClass += ' weight-heavy';
-    else if (weight > 10) barClass += ' weight-medium';
-    else barClass += ' weight-light';
   }
 
   const formatCost = (cost) => {
@@ -216,24 +208,37 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
 
             return uniqueAttempts.map((attempt) => {
               const isWinner = attempt.is_winner;
+              // Sounding is running if phase is running and no winner has been determined yet
+              const isRunning = status === 'running' && (isWinner === null || isWinner === undefined);
               const widthPercent = maxCost > 0 ? ((attempt.cost || 0) / maxCost) * 100 : 10;
-              const barWidth = Math.max(widthPercent, 5); // Minimum 5% for visibility
+              const barWidth = Math.max(widthPercent, isRunning ? 30 : 5); // Running bars get minimum 30% for visibility
+
+              // Determine class: running > winner > loser
+              let barClass = 'individual-sounding-bar';
+              if (isRunning) {
+                barClass += ' running';
+              } else if (isWinner) {
+                barClass += ' winner';
+              } else {
+                barClass += ' loser';
+              }
 
               return (
                 <div key={attempt.index} className="individual-sounding-row">
                   <span className="sounding-index-label">
-                    <span className="source-badge" style={{background: '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
+                    <span className="source-badge" style={{background: isRunning ? '#D9A553' : '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
                       S{attempt.index}
                     </span>
                     {isWinner && <span className="winner-icon" title="Winner">🏆</span>}
+                    {isRunning && <span className="running-icon" title="Running">⏳</span>}
                   </span>
                   <div className="individual-sounding-track">
                     <div
-                      className={`individual-sounding-bar ${isWinner ? 'winner' : 'loser'}`}
+                      className={barClass}
                       style={{ width: `${barWidth}%` }}
-                      title={`Sounding ${attempt.index}: ${formatCost(attempt.cost)}`}
+                      title={`Sounding ${attempt.index}: ${isRunning ? 'Running...' : formatCost(attempt.cost)}`}
                     >
-                      <span className="sounding-cost-label">{formatCost(attempt.cost)}</span>
+                      <span className="sounding-cost-label">{isRunning ? '...' : formatCost(attempt.cost)}</span>
                     </div>
                   </div>
                 </div>
@@ -244,7 +249,7 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
       )}
 
       <div className="phase-badges">
-        <ComplexityBadges phase={phase} weight={weight} />
+        <ComplexityBadges phase={phase} />
 
         {/* Tool calls indicator */}
         {phase.tool_calls && phase.tool_calls.length > 0 && (
@@ -290,7 +295,7 @@ function StatusIndicator({ status }) {
   );
 }
 
-function ComplexityBadges({ phase, weight }) {
+function ComplexityBadges({ phase }) {
   const badges = [];
 
   // Soundings (with winner indication for instances)
@@ -367,45 +372,7 @@ function ComplexityBadges({ phase, weight }) {
     );
   }
 
-  // Weight indicator
-  const weightLabel = weight > 20 ? 'Heavy' : weight > 10 ? 'Medium' : 'Light';
-  badges.push(
-    <span key="weight" className="complexity-badge weight">
-      {weightLabel}
-    </span>
-  );
-
   return <>{badges}</>;
-}
-
-function calculateWeight(phase) {
-  let weight = 1; // Base weight
-
-  // Soundings multiply work
-  if (phase.soundings_factor) {
-    weight += phase.soundings_factor * 3;
-  }
-
-  // Reforge adds refinement iterations
-  if (phase.reforge_steps) {
-    weight += phase.reforge_steps * 5;
-  }
-
-  // Wards add validation overhead
-  if (phase.ward_count) {
-    weight += phase.ward_count * 2;
-  }
-
-  // Max turns / loops
-  if (phase.max_turns && phase.max_turns > 1) {
-    weight += phase.max_turns;
-  }
-
-  if (phase.has_loop_until) {
-    weight += 5; // Unbounded loops are heavy
-  }
-
-  return weight;
 }
 
 export default PhaseBar;

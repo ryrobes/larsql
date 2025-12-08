@@ -8,6 +8,7 @@ import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
+import ModelCostBar, { ModelTags } from './ModelCostBar';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
@@ -279,64 +280,74 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
             </div>
           )}
-          <h3 className="session-id">
-            {instance.session_id}
-            {stateBadge}
-            {instance.status === 'failed' && (
-              <span className="failed-badge">
-                <Icon icon="mdi:alert-circle" width="14" />
-                Failed ({instance.error_count})
-              </span>
-            )}
-          </h3>
-          <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
 
-          {/* Prominent Soundings Explorer Button - Right below timestamp */}
-          {instance.has_soundings && (
-            <button
-              className="soundings-explorer-button-prominent"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSoundingsExplorerSession(instance.session_id);
-              }}
-              title="Explore all soundings across all phases in this cascade"
-            >
-              <Icon icon="mdi:sign-direction" width="18" />
-              <span>Explore Soundings</span>
-              <span className="soundings-count">
-                {(() => {
-                  const soundingsCount = instance.phases?.filter(p => p.sounding_total > 1).length || 0;
-                  return `${soundingsCount} phase${soundingsCount !== 1 ? 's' : ''}`;
-                })()}
-              </span>
-            </button>
+          {/* Header row: title/timestamp on left, action buttons on right */}
+          <div className="instance-header-row">
+            <div className="instance-header-left">
+              <h3 className="session-id">
+                {instance.session_id}
+                {stateBadge}
+                {instance.status === 'failed' && (
+                  <span className="failed-badge">
+                    <Icon icon="mdi:alert-circle" width="14" />
+                    Failed ({instance.error_count})
+                  </span>
+                )}
+              </h3>
+              <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+            </div>
+
+            {/* Right side buttons */}
+            <div className="instance-header-actions">
+              {/* Soundings Explorer Button */}
+              {instance.has_soundings && (
+                <button
+                  className="soundings-explorer-button-compact"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSoundingsExplorerSession(instance.session_id);
+                  }}
+                  title="Explore all soundings across all phases in this cascade"
+                >
+                  <Icon icon="mdi:sign-direction" width="16" />
+                  <span className="soundings-label">Soundings</span>
+                  <span className="soundings-count">
+                    {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
+                  </span>
+                </button>
+              )}
+
+              {/* Re-run button */}
+              <button
+                className="rerun-button-small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRunCascade && onRunCascade({
+                    ...cascadeData,
+                    prefilled_inputs: instance.input_data || {}
+                  });
+                }}
+                title="Re-run with these inputs"
+              >
+                <Icon icon="mdi:replay" width="14" />
+              </button>
+            </div>
+          </div>
+
+          {/* Model tags row - only for single model */}
+          {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
+            <div className="instance-actions-row">
+              <ModelTags modelsUsed={instance.models_used} />
+            </div>
           )}
 
-          <div className="instance-actions-row">
-            {instance.models_used?.length > 0 && (
-              <div className="models-used">
-                {instance.models_used.map((model, idx) => (
-                  <span key={idx} className="model-tag">
-                    <Icon icon="mdi:robot" width="12" />
-                    {model.split('/').pop()}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              className="rerun-button-small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRunCascade && onRunCascade({
-                  ...cascadeData,
-                  prefilled_inputs: instance.input_data || {}
-                });
-              }}
-              title="Re-run with these inputs"
-            >
-              <Icon icon="mdi:replay" width="14" />
-            </button>
-          </div>
+          {/* Multi-model cost breakdown - full width like input box */}
+          {instance.model_costs?.length > 1 && (
+            <ModelCostBar
+              modelCosts={instance.model_costs}
+              totalCost={instance.total_cost}
+            />
+          )}
 
           {instance.input_data && Object.keys(instance.input_data).length > 0 && (
             <div className="input-params">

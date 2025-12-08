@@ -81,6 +81,138 @@ if 'WINDLASS_CHDB_SHARED_SESSION' not in os.environ:
     os.environ['WINDLASS_CHDB_SHARED_SESSION'] = 'true'
 
 
+# Orphan cascade detection threshold (seconds since last activity)
+ORPHAN_THRESHOLD_SECONDS = int(os.getenv('WINDLASS_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
+
+
+def detect_and_mark_orphaned_cascades():
+    """
+    Detect cascades that started but never completed (orphaned due to server restart).
+
+    Finds sessions with cascade_start but no terminal event (cascade_complete,
+    cascade_failed, cascade_error, cascade_killed) and marks them as killed
+    by writing a cascade_killed record to parquet.
+    """
+    parquet_files = glob.glob(f"{DATA_DIR}/*.parquet")
+    if not parquet_files:
+        return 0  # No data to check
+
+    try:
+        conn = duckdb.connect(':memory:')
+
+        # Create view over all parquet files
+        conn.execute(f"""
+            CREATE VIEW logs AS
+            SELECT * FROM read_parquet('{DATA_DIR}/*.parquet', union_by_name=true)
+        """)
+
+        # Find orphaned sessions:
+        # - Have cascade_start but no terminal event
+        # - Last activity is older than threshold
+        orphan_query = """
+        WITH started_sessions AS (
+            SELECT DISTINCT session_id, cascade_id
+            FROM logs
+            WHERE node_type = 'cascade_start'
+        ),
+        terminal_sessions AS (
+            SELECT DISTINCT session_id
+            FROM logs
+            WHERE node_type IN ('cascade_complete', 'cascade_completed', 'cascade_failed', 'cascade_error', 'cascade_killed')
+        ),
+        session_last_activity AS (
+            SELECT session_id, MAX(timestamp) as last_activity
+            FROM logs
+            GROUP BY session_id
+        )
+        SELECT
+            s.session_id,
+            s.cascade_id,
+            la.last_activity
+        FROM started_sessions s
+        LEFT JOIN terminal_sessions t ON s.session_id = t.session_id
+        JOIN session_last_activity la ON s.session_id = la.session_id
+        WHERE t.session_id IS NULL
+          AND la.last_activity < (CURRENT_TIMESTAMP - INTERVAL '{threshold}' SECOND)
+        """.format(threshold=ORPHAN_THRESHOLD_SECONDS)
+
+        orphaned = conn.execute(orphan_query).fetchall()
+        conn.close()
+
+        if not orphaned:
+            return 0
+
+        # Create cascade_killed records for orphaned sessions
+        killed_records = []
+        current_time = datetime.now()
+
+        for session_id, cascade_id, last_activity in orphaned:
+            killed_records.append({
+                'timestamp': int(current_time.timestamp() * 1_000_000_000),  # nanoseconds
+                'timestamp_iso': current_time.isoformat(),
+                'session_id': session_id,
+                'trace_id': None,
+                'parent_id': None,
+                'parent_session_id': None,
+                'parent_message_id': None,
+                'node_type': 'cascade_killed',
+                'role': 'system',
+                'depth': 0,
+                'sounding_index': None,
+                'is_winner': None,
+                'reforge_step': None,
+                'attempt_number': None,
+                'turn_number': None,
+                'mutation_applied': None,
+                'mutation_type': None,
+                'mutation_template': None,
+                'cascade_id': cascade_id,
+                'cascade_file': None,
+                'cascade_json': None,
+                'phase_name': None,
+                'phase_json': None,
+                'model': None,
+                'request_id': None,
+                'provider': None,
+                'duration_ms': None,
+                'tokens_in': None,
+                'tokens_out': None,
+                'total_tokens': None,
+                'cost': None,
+                'content_json': json.dumps(f"Cascade killed - server restart detected. Last activity: {last_activity}"),
+                'full_request_json': None,
+                'full_response_json': None,
+                'tool_calls_json': None,
+                'images_json': None,
+                'has_images': False,
+                'has_base64': False,
+                'audio_json': None,
+                'mermaid_content': None,
+                'metadata_json': json.dumps({
+                    'killed_reason': 'server_restart',
+                    'last_activity': str(last_activity),
+                    'detected_at': current_time.isoformat()
+                })
+            })
+
+        # Write to a parquet file
+        if killed_records:
+            df = pd.DataFrame(killed_records)
+            killed_file = os.path.join(DATA_DIR, f"killed_cascades_{int(current_time.timestamp())}.parquet")
+            df.to_parquet(killed_file, engine='pyarrow', index=False)
+            print(f"⚠️  Marked {len(killed_records)} orphaned cascade(s) as killed")
+            for session_id, cascade_id, last_activity in orphaned:
+                print(f"   - {session_id} (cascade: {cascade_id}, last activity: {last_activity})")
+
+        return len(killed_records)
+
+    except Exception as e:
+        print(f"⚠️  Error detecting orphaned cascades: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+
 class LoggingConnectionWrapper:
     """Wrapper around DuckDB connection that logs all queries."""
     def __init__(self, conn):
@@ -279,6 +411,22 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
     # Get models used
     models_used = list(set(r.get('model') for r in rows if r.get('model')))
 
+    # Get model costs (aggregate cost by model)
+    model_cost_map = {}
+    for r in rows:
+        model = r.get('model')
+        cost = safe_cost(r)
+        if model and cost > 0:
+            if model not in model_cost_map:
+                model_cost_map[model] = 0.0
+            model_cost_map[model] += cost
+    # Sort by cost descending
+    model_costs = sorted(
+        [{'model': m, 'cost': c} for m, c in model_cost_map.items()],
+        key=lambda x: x['cost'],
+        reverse=True
+    )
+
     # Build phases map with comprehensive tracking
     phases_map = {}
     phase_costs = {}
@@ -357,11 +505,18 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                 except:
                     if isinstance(content, str) and content:
                         phases_map[phase_name]['output_snippet'] = content[:200]
-        elif node_type == 'error' or (node_type and 'error' in node_type.lower()):
+        elif node_type == 'phase_error':
+            # Only true phase errors (not sounding errors) mark the phase as error
             phases_map[phase_name]['status'] = 'error'
             content = row.get('content_json')
             if content:
                 phases_map[phase_name]['error_message'] = str(content)[:200]
+        elif node_type == 'sounding_error':
+            # Track that this phase has failed soundings, but don't mark phase as error
+            # Phase completed, some soundings just failed
+            if 'failed_soundings' not in phases_map[phase_name]:
+                phases_map[phase_name]['failed_soundings'] = 0
+            phases_map[phase_name]['failed_soundings'] += 1
 
         # Track total phase cost
         phase_costs[phase_name] += cost
@@ -503,6 +658,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
         if role in ('structure', 'system'):
             continue
         if node_type in ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
+                         'cascade_failed', 'cascade_killed',
                          'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update'):
             continue
 
@@ -529,17 +685,22 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                     final_output = content
                     break
 
-    # Check for errors
+    # Check for cascade-level errors (not sounding/phase errors which are expected)
+    # Only truly fatal errors that prevent cascade completion should mark it as failed
     cascade_status = "running" if info.status == "running" else "success"
     error_count = 0
     error_list = []
     for row in rows:
-        if row.get('node_type') == 'error' or row.get('node_type') == 'cascade_error':
+        node_type = row.get('node_type', '')
+        # Only cascade_failed, cascade_error, cascade_killed indicate true cascade failure
+        # sounding_error, error from individual phases, etc. are expected and shouldn't fail cascade
+        if node_type in ('cascade_failed', 'cascade_error', 'cascade_killed'):
             error_count += 1
+            error_type = "Killed (Server Restart)" if node_type == 'cascade_killed' else "Cascade Error"
             error_list.append({
                 "phase": row.get('phase_name', 'unknown'),
                 "message": str(row.get('content_json', ''))[:200],
-                "error_type": "Error"
+                "error_type": error_type
             })
     if error_count > 0:
         cascade_status = "failed"
@@ -582,6 +743,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
         'duration_seconds': duration,
         'total_cost': total_cost,
         'models_used': models_used,
+        'model_costs': model_costs,
         'input_data': input_data,
         'final_output': final_output,
         'phases': list(phases_map.values()),
@@ -988,6 +1150,7 @@ def get_cascade_instances(cascade_id):
                       AND content_json != ''
                       AND role NOT IN ('structure', 'system')
                       AND node_type NOT IN ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
+                                           'cascade_failed', 'cascade_killed',
                                            'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
                 )
                 SELECT session_id, content_json, node_type, role
@@ -1018,25 +1181,33 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch outputs query: {e}")
 
-        # Batch 3: Get errors for all sessions
+        # Batch 3: Get cascade-level errors for all sessions
+        # Only cascade_failed, cascade_error, cascade_killed indicate true failure
+        # sounding_error, phase errors are expected and don't mark cascade as failed
         errors_by_session = {}
         if session_ids:
             try:
                 errors_query = """
-                SELECT session_id, phase_name, content_json
+                SELECT session_id, phase_name, content_json, node_type
                 FROM logs
                 WHERE session_id IN ({})
-                  AND node_type = 'error'
+                  AND node_type IN ('cascade_failed', 'cascade_error', 'cascade_killed')
                 ORDER BY session_id, timestamp
                 """.format(','.join('?' * len(session_ids)))
                 error_results = conn.execute(errors_query, session_ids).fetchall()
-                for sid, err_phase, err_content in error_results:
+                for sid, err_phase, err_content, err_type in error_results:
                     if sid not in errors_by_session:
                         errors_by_session[sid] = []
+                    if err_type == 'cascade_killed':
+                        error_type_label = "Killed (Server Restart)"
+                    elif err_type == 'cascade_error':
+                        error_type_label = "Cascade Error"
+                    else:
+                        error_type_label = "Cascade Failed"
                     errors_by_session[sid].append({
                         "phase": err_phase or "unknown",
                         "message": str(err_content)[:200] if err_content else "Unknown error",
-                        "error_type": "Error"
+                        "error_type": error_type_label
                     })
             except Exception as e:
                 print(f"[ERROR] Batch errors query: {e}")
@@ -1109,6 +1280,33 @@ def get_cascade_instances(cascade_id):
                     })
             except Exception as e:
                 print(f"[ERROR] Batch token timeseries query: {e}")
+
+        # Batch 6: Get model costs for all sessions (for multi-model cost breakdown)
+        model_costs_by_session = {}
+        if has_model and session_ids:
+            try:
+                model_costs_query = """
+                SELECT
+                    session_id,
+                    model,
+                    SUM(cost) as total_cost
+                FROM logs
+                WHERE session_id IN ({})
+                  AND model IS NOT NULL AND model != ''
+                  AND cost IS NOT NULL AND cost > 0
+                GROUP BY session_id, model
+                ORDER BY session_id, total_cost DESC
+                """.format(','.join('?' * len(session_ids)))
+                model_cost_results = conn.execute(model_costs_query, session_ids).fetchall()
+                for sid, model, cost in model_cost_results:
+                    if sid not in model_costs_by_session:
+                        model_costs_by_session[sid] = []
+                    model_costs_by_session[sid].append({
+                        'model': model,
+                        'cost': float(cost) if cost else 0.0
+                    })
+            except Exception as e:
+                print(f"[ERROR] Batch model costs query: {e}")
 
         instances = []
         for session_row in session_results:
@@ -1438,6 +1636,7 @@ def get_cascade_instances(cascade_id):
                 'duration_seconds': float(duration) if duration else 0.0,
                 'total_cost': float(total_cost) if total_cost else 0.0,
                 'models_used': models_used,
+                'model_costs': model_costs_by_session.get(session_id, []),
                 'input_data': input_data,
                 'final_output': final_output,
                 'phases': list(phases_map.values()),
@@ -1628,34 +1827,71 @@ def get_soundings_tree(session_id):
 
     Shows all soundings across all phases, evaluator reasoning,
     and the winner path through the cascade execution.
+
+    Data sources (priority):
+    1. LiveStore - for running/completing sessions (real-time is_winner updates)
+    2. Parquet - for completed sessions (historical)
     """
     try:
-        # Query unified logs for soundings data (including reforge refinements)
-        # Need to get both 'sounding_attempt' rows (metadata) and 'agent' rows (cost, content)
-        query = f"""
-        SELECT
-            phase_name,
-            sounding_index,
-            reforge_step,
-            is_winner,
-            content_json,
-            cost,
-            tool_calls_json,
-            turn_number,
-            metadata_json,
-            timestamp,
-            node_type,
-            role,
-            model
-        FROM read_parquet('{DATA_DIR}/*.parquet')
-        WHERE session_id = '{session_id}'
-          AND sounding_index IS NOT NULL
-          AND node_type IN ('sounding_attempt', 'agent')
-        ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
-        """
+        # Check if session is in LiveStore first (for real-time is_winner data)
+        store = get_live_store()
+        df = None
 
-        with get_db_connection() as conn:
-            df = conn.execute(query).fetchdf()
+        if store.is_tracked(session_id) or store.has_data(session_id):
+            # Query LiveStore's in-memory DuckDB for soundings data
+            live_query = """
+            SELECT
+                phase_name,
+                sounding_index,
+                reforge_step,
+                is_winner,
+                content_json,
+                cost,
+                tool_calls_json,
+                turn_number,
+                metadata_json,
+                timestamp,
+                node_type,
+                role,
+                model
+            FROM live_logs
+            WHERE session_id = ?
+              AND sounding_index IS NOT NULL
+              AND node_type IN ('sounding_attempt', 'sounding_error', 'agent', 'phase_start', 'phase_complete', 'turn_start', 'tool_call', 'tool_result')
+            ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
+            """
+            df = store.query_df(live_query, [session_id])
+            if not df.empty:
+                print(f"[API] Serving soundings-tree for {session_id} from LiveStore ({len(df)} rows)")
+
+        # Fall back to Parquet if no LiveStore data
+        if df is None or df.empty:
+            # Query unified logs for soundings data (including reforge refinements)
+            # Need to get both 'sounding_attempt' rows (metadata), 'sounding_error' rows, and 'agent' rows (cost, content)
+            query = f"""
+            SELECT
+                phase_name,
+                sounding_index,
+                reforge_step,
+                is_winner,
+                content_json,
+                cost,
+                tool_calls_json,
+                turn_number,
+                metadata_json,
+                timestamp,
+                node_type,
+                role,
+                model
+            FROM read_parquet('{DATA_DIR}/*.parquet')
+            WHERE session_id = '{session_id}'
+              AND sounding_index IS NOT NULL
+              AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
+            ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
+            """
+
+            with get_db_connection() as conn:
+                df = conn.execute(query).fetchdf()
 
         if df.empty:
             return jsonify({"phases": [], "winner_path": []})
@@ -1824,6 +2060,24 @@ def get_soundings_tree(session_id):
             if pd.notna(is_winner_val) and bool(is_winner_val):
                 sounding['is_winner'] = True
 
+            # Detect failed soundings from node_type='sounding_error'
+            node_type = row.get('node_type')
+            if node_type == 'sounding_error':
+                sounding['failed'] = True
+                # Extract error message from content_json
+                try:
+                    error_content = row.get('content_json')
+                    if pd.notna(error_content):
+                        if isinstance(error_content, str):
+                            try:
+                                sounding['error'] = json.loads(error_content)
+                            except:
+                                sounding['error'] = error_content
+                        else:
+                            sounding['error'] = str(error_content)
+                except:
+                    pass
+
             # Set model if we haven't already (take first non-null value)
             if pd.notna(row['model']) and not sounding['model']:
                 sounding['model'] = row['model']
@@ -1897,21 +2151,40 @@ def get_soundings_tree(session_id):
                 })
 
         # Query for eval reasoning (evaluator agent messages, including reforge)
-        eval_query = f"""
-        SELECT
-            phase_name,
-            reforge_step,
-            content_json,
-            role
-        FROM read_parquet('{DATA_DIR}/*.parquet')
-        WHERE session_id = '{session_id}'
-          AND (node_type = 'evaluator' OR role = 'assistant')
-          AND phase_name IS NOT NULL
-        ORDER BY timestamp
-        """
+        # Check LiveStore first for real-time data
+        eval_df = None
+        if store.is_tracked(session_id) or store.has_data(session_id):
+            live_eval_query = """
+            SELECT
+                phase_name,
+                reforge_step,
+                content_json,
+                role
+            FROM live_logs
+            WHERE session_id = ?
+              AND (node_type = 'evaluator' OR role = 'assistant')
+              AND phase_name IS NOT NULL
+            ORDER BY timestamp
+            """
+            eval_df = store.query_df(live_eval_query, [session_id])
 
-        with get_db_connection() as conn:
-            eval_df = conn.execute(eval_query).fetchdf()
+        # Fall back to Parquet if no LiveStore data
+        if eval_df is None or eval_df.empty:
+            eval_query = f"""
+            SELECT
+                phase_name,
+                reforge_step,
+                content_json,
+                role
+            FROM read_parquet('{DATA_DIR}/*.parquet')
+            WHERE session_id = '{session_id}'
+              AND (node_type = 'evaluator' OR role = 'assistant')
+              AND phase_name IS NOT NULL
+            ORDER BY timestamp
+            """
+
+            with get_db_connection() as conn:
+                eval_df = conn.execute(eval_query).fetchdf()
 
         # Extract evaluator reasoning - look for assistant messages with eval-like content
         for _, row in eval_df.iterrows():
@@ -2003,18 +2276,40 @@ def get_soundings_tree(session_id):
             phase['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
 
             # Attach images to soundings
-            # Check main session images
+            import re
+
+            # METHOD 1: Check for phase-level sounding images (filename pattern)
+            # Pattern: images/{session_id}/{phase_name}/sounding_{s}_image_{index}.{ext}
             phase_dir = os.path.join(IMAGE_DIR, session_id, phase_name)
             if os.path.exists(phase_dir):
                 for img_file in sorted(os.listdir(phase_dir)):
                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                        # Main session image (no specific sounding)
-                        pass
+                        # Check if this is a sounding-specific image (has sounding_N_ prefix)
+                        sounding_file_match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', img_file)
+                        if sounding_file_match:
+                            sounding_idx = int(sounding_file_match.group(1))
+                            # Find corresponding sounding in our list
+                            for sounding in soundings_list:
+                                if sounding['index'] == sounding_idx:
+                                    if 'images' not in sounding:
+                                        sounding['images'] = []
+                                    # Avoid duplicates
+                                    img_url = f'/api/images/{session_id}/{phase_name}/{img_file}'
+                                    if not any(img['url'] == img_url for img in sounding['images']):
+                                        sounding['images'].append({
+                                            'filename': img_file,
+                                            'url': img_url
+                                        })
+                                    break
+                        else:
+                            # Non-sounding image - could be main output, add to all soundings or skip
+                            # For now, skip non-sounding-specific images in soundings view
+                            pass
 
-            # Check sounding-specific images
+            # METHOD 2: Check cascade-level sounding images (directory pattern)
+            # Pattern: images/{session_id}_sounding_{index}/{phase_name}/
             parent_dir = os.path.dirname(os.path.join(IMAGE_DIR, session_id))
             if os.path.exists(parent_dir):
-                import re
                 for entry in os.listdir(parent_dir):
                     if entry.startswith(f"{session_id}_sounding_"):
                         sounding_match = re.search(r'_sounding_(\d+)$', entry)
@@ -2029,10 +2324,14 @@ def get_soundings_tree(session_id):
                                             sounding['images'] = []
                                         for img_file in sorted(os.listdir(sounding_img_dir)):
                                             if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                                                sounding['images'].append({
-                                                    'filename': img_file,
-                                                    'url': f'/api/images/{entry}/{phase_name}/{img_file}'
-                                                })
+                                                # Avoid duplicates
+                                                img_url = f'/api/images/{entry}/{phase_name}/{img_file}'
+                                                if not any(img['url'] == img_url for img in sounding['images']):
+                                                    sounding['images'].append({
+                                                        'filename': img_file,
+                                                        'url': img_url
+                                                    })
+                                        break
 
             # Convert reforge dicts to lists and attach images
             reforge_steps_list = []
@@ -2277,6 +2576,38 @@ def get_mermaid_graph(session_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pareto/<session_id>', methods=['GET'])
+def get_pareto_frontier(session_id):
+    """Get Pareto frontier data for visualization.
+
+    Returns cost vs quality scatter plot data for multi-model soundings,
+    including frontier points, dominated points, and winner selection.
+
+    The data is read from graphs/pareto_{session_id}.json which is written
+    by WindlassRunner when pareto_frontier is enabled in soundings config.
+    """
+    try:
+        # Look for Pareto data file
+        pareto_path = os.path.join(GRAPH_DIR, f"pareto_{session_id}.json")
+
+        if not os.path.exists(pareto_path):
+            return jsonify({'error': 'No Pareto data for this session', 'has_pareto': False}), 404
+
+        with open(pareto_path) as f:
+            pareto_data = json.load(f)
+
+        # Add has_pareto flag and sanitize for JSON
+        pareto_data['has_pareto'] = True
+        pareto_data = sanitize_for_json(pareto_data)
+
+        return jsonify(pareto_data)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'has_pareto': False}), 500
 
 
 @app.route('/api/events/stream')
@@ -3245,6 +3576,13 @@ if __name__ == '__main__':
     # Debug: Check data availability
     parquet_files = glob.glob(f"{DATA_DIR}/*.parquet")
     print(f"📊 Found {len(parquet_files)} Parquet files in {DATA_DIR}")
+
+    # Detect and mark orphaned cascades (killed due to server restart)
+    if parquet_files:
+        orphan_count = detect_and_mark_orphaned_cascades()
+        if orphan_count == 0:
+            print("✅ No orphaned cascades detected")
+        print()
 
     if parquet_files:
         conn = get_db_connection()

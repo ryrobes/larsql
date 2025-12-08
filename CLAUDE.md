@@ -1290,6 +1290,290 @@ Compute non-dominated solutions and select winner based on policy.
 - `examples/multi_model_cost_aware.json` - Phase 2: Cost-aware evaluation
 - `examples/multi_model_pareto.json` - Phase 3: Pareto frontier analysis
 
+### 2.15. Pre-Evaluation Validator for Soundings
+
+Filter soundings before they reach the evaluator. Useful for code execution (only evaluate code that runs) or format validation.
+
+**Configuration:**
+```json
+{
+  "soundings": {
+    "factor": 5,
+    "evaluator_instructions": "Pick the best solution",
+    "validator": "code_execution_validator"
+  }
+}
+```
+
+**How It Works:**
+1. All soundings execute normally
+2. Validator runs on each sounding result
+3. Only valid soundings go to evaluator
+4. Saves evaluator LLM calls on broken outputs
+5. If ALL fail validation, falls back to evaluating all (with validation info visible)
+
+**Use Cases:**
+
+**1. Code Execution Validation:**
+```json
+{
+  "name": "solve_problem",
+  "instructions": "Solve this coding problem and run your solution",
+  "tackle": ["run_code"],
+  "soundings": {
+    "factor": 3,
+    "evaluator_instructions": "Pick the best working solution",
+    "validator": "code_execution_validator"
+  }
+}
+```
+Only solutions that execute without errors get evaluated.
+
+**2. Format Validation:**
+```json
+{
+  "soundings": {
+    "factor": 5,
+    "validator": "json_format_validator",
+    "evaluator_instructions": "Pick the most complete JSON response"
+  }
+}
+```
+Only properly formatted outputs get evaluated.
+
+**3. Combined with Multi-Model:**
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "models": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash-lite"],
+    "validator": "code_execution_validator",
+    "pareto_frontier": {"enabled": true, "policy": "balanced"}
+  }
+}
+```
+Pre-filter across multiple models, then compute Pareto frontier on valid results.
+
+**Validator Protocol:**
+Validators must return `{"valid": true/false, "reason": "..."}`. Can be:
+- Python function registered with `register_tackle()`
+- Cascade tool in `tackle/` directory
+
+**Metadata Logging:**
+Each sounding's validation result is logged:
+```json
+{
+  "sounding_index": 0,
+  "validation": {
+    "valid": false,
+    "reason": "Code execution error: NameError..."
+  }
+}
+```
+
+**Benefits:**
+- Saves evaluator LLM calls on obviously broken outputs
+- Cleaner evaluation (evaluator only sees working solutions)
+- Works with all sounding features (multi-model, cost-aware, Pareto)
+
+**Example Cascade:**
+- `examples/soundings_with_validator.json` - Code generation with execution validation
+
+### 2.16. Context Injection System - Selective Context Management
+
+The Context Injection System allows phases to **explicitly declare their context dependencies** rather than relying solely on the snowball architecture where all context accumulates.
+
+**The Core Insight**: Data is already persisted (echo.history, images on disk). The snowball carries data in-memory that's already saved. With selective context, phases pull from persistence instead of accumulating everything.
+
+#### Mental Model
+
+| Model | Behavior | Use Case |
+|-------|----------|----------|
+| **Snowball** (default) | All prior context flows through | Chat, iterative refinement, debugging |
+| **Selective** | Only specified phases visible | Clean tasks, token efficiency, targeted analysis |
+| **Snowball + Inject** | Snowball plus reach-back to old phases | Add old artifacts to flowing context |
+
+```
+Snowball:     A → [A] → B → [A,B] → C → [A,B,C] → D
+Selective:    A runs → B pulls from A → C pulls from nothing → D pulls from A,C
+Inject:       A → [A] → B → [A,B] → C → [A,B + injected X] → D
+```
+
+#### Configuration
+
+**Selective Context (only sees specified phases):**
+```json
+{
+  "name": "final_analysis",
+  "instructions": "Analyze the chart...",
+  "context": {
+    "from": ["generate_chart", "validate_chart"],
+    "include_input": true
+  }
+}
+```
+
+**Detailed Configuration:**
+```json
+{
+  "name": "final_analysis",
+  "context": {
+    "from": [
+      "generate_chart",
+      {"phase": "validate_chart", "include": ["output"]},
+      {"phase": "research", "include": ["messages"], "messages_filter": "last_turn"}
+    ],
+    "include_input": true
+  }
+}
+```
+
+**Snowball + Inject (adds old context to snowball):**
+```json
+{
+  "name": "compare",
+  "instructions": "Compare v1 and v2 side by side.",
+  "inject_from": [
+    {"phase": "generate_v1", "include": ["images"]}
+  ]
+}
+```
+
+#### Context Source Options
+
+```python
+class ContextSourceConfig:
+    phase: str                              # Source phase name (or keyword: "first", "previous")
+    include: ["images", "output", "messages", "state"]  # What to include (default: images, output)
+    images_filter: "all" | "last" | "last_n"           # Image filtering
+    images_count: int = 1                              # For last_n mode
+    messages_filter: "all" | "assistant_only" | "last_turn"  # Message filtering
+    as_role: "user" | "system" = "user"               # Role for injected messages
+```
+
+#### Phase Reference Keywords (Sugar)
+
+Instead of hardcoding phase names, use keywords that resolve at runtime:
+
+| Keyword | Resolves To | Use Case |
+|---------|-------------|----------|
+| `"first"` | First phase that executed (`lineage[0]`) | Original problem statement |
+| `"previous"` / `"prev"` | Most recently completed phase (`lineage[-1]`) | What just happened |
+
+**Examples:**
+```json
+// Hardcoded phase names (works but fragile)
+{"context": {"from": ["gather_requirements", "review"]}}
+
+// With sugar (cleaner, survives renames)
+{"context": {"from": ["first", "previous"]}}
+
+// Mix sugar with explicit names
+{"inject_from": ["first"]}  // Add original to snowball
+```
+
+**Resolution Logic** (in `_resolve_phase_reference()`):
+- If `lineage` is empty (e.g., first phase), keywords resolve to `None` and are skipped
+- Case-insensitive: `"First"`, `"FIRST"`, `"first"` all work
+- Non-keywords pass through as literal phase names
+
+**Implementation**: `runner.py:_resolve_phase_reference()` resolves keywords to actual phase names before context building.
+
+#### What Gets Injected
+
+| Include | Source | Injected As |
+|---------|--------|-------------|
+| `images` | `images/{session}/{phase}/` | Multimodal user message with base64 images |
+| `output` | `echo.lineage[phase].output` | User message with final assistant response |
+| `messages` | `echo.history` filtered by phase | Full message sequence with original roles |
+| `state` | `echo.state` keys set during phase | Structured JSON in user message |
+
+#### Example Use Cases
+
+**1. Chart Analysis Pipeline (Token Efficiency):**
+```json
+{
+  "phases": [
+    {"name": "generate_chart", "instructions": "Create a chart..."},
+    {"name": "validate_chart", "context": {"from": ["generate_chart"]}},
+    {"name": "process_data", "context": {"from": []}},
+    {"name": "final_report", "context": {
+      "from": [
+        {"phase": "generate_chart", "include": ["images"]},
+        {"phase": "validate_chart", "include": ["output"]}
+      ]
+    }}
+  ]
+}
+```
+Phases 3-4 don't carry ~10K tokens of base64 image data.
+
+**2. Research with Conversation Replay:**
+```json
+{
+  "name": "synthesize",
+  "instructions": "Create final report with access to full reasoning.",
+  "context": {
+    "from": [
+      {"phase": "initial_research", "include": ["messages"]},
+      {"phase": "fact_check", "include": ["messages"]}
+    ]
+  }
+}
+```
+The synthesize phase sees full conversation history from both prior phases.
+
+**3. Iterative Refinement with Reach-Back:**
+```json
+{
+  "name": "compare",
+  "instructions": "Compare v1 and v2 side by side.",
+  "inject_from": [{"phase": "generate_v1", "include": ["images"]}]
+}
+```
+The compare phase snowballs normally (sees critique and v2) but ALSO injects the v1 image.
+
+**4. Clean Slate with Input Only:**
+```json
+{
+  "name": "fresh_perspective",
+  "instructions": "Approach the problem from scratch.",
+  "context": {"from": [], "include_input": true}
+}
+```
+Phase sees ONLY the original cascade input - no prior phase context.
+
+#### Migration Guide
+
+**Existing Cascades:** No changes required. Absence of `context` field = snowball (unchanged behavior).
+
+**Converting to Selective:**
+```json
+// Before (snowball)
+{"name": "phase_c", "instructions": "Analyze..."}
+
+// After (selective)
+{"name": "phase_c", "instructions": "Analyze...",
+ "context": {"from": ["generate_chart"]}}
+```
+
+#### Logging & Observability
+
+All context injection events are logged with metadata:
+- `node_type: "context_injection"` - For selective context messages
+- `node_type: "inject_from"` - For injected messages in hybrid mode
+- `metadata.selective_context: true` or `metadata.inject_from: true`
+
+Query injection events:
+```bash
+windlass sql "SELECT * FROM all_data WHERE node_type = 'context_injection'"
+```
+
+**Example Cascades:**
+- `examples/context_selective_demo.json` - Selective context demonstration
+- `examples/context_messages_demo.json` - Message injection with full conversation replay
+- `examples/context_inject_demo.json` - Snowball + inject hybrid mode
+
 ### 3. Execution Flow (Runner)
 The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).
 

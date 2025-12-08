@@ -3,12 +3,19 @@ API endpoint for message flow visualization.
 Fetches all messages for a session with full_request_json to show what was actually sent to LLM.
 """
 import json
+import time
 from flask import Blueprint, jsonify, request
 import duckdb
 import glob
 import os
 
 message_flow_bp = Blueprint('message_flow', __name__)
+
+# Import live store for running session detection
+try:
+    from live_store import get_live_store
+except ImportError:
+    get_live_store = None
 
 def get_data_dir():
     """Get DATA_DIR from environment or default."""
@@ -56,7 +63,8 @@ def get_message_flow(session_id):
             tokens_out,
             cost,
             model,
-            is_winner
+            is_winner,
+            metadata_json
         FROM logs
         WHERE session_id = ?
         ORDER BY timestamp
@@ -69,13 +77,16 @@ def get_message_flow(session_id):
 
         # Build structured response
         messages = []
-        soundings = {}  # sounding_index -> {messages: [], winner: bool}
+        soundings_by_phase = {}  # phase_name -> {sounding_index -> {messages: [], is_winner: bool}}
         reforge_steps = {}  # reforge_step -> {messages: []}
+
+        # Track evaluators by phase for later attachment to soundings blocks
+        evaluators_by_phase = {}  # phase_name -> evaluator message
 
         for row in result:
             (timestamp, role, node_type, sounding_index, reforge_step, turn_number,
              phase_name, content_json, full_request_json, tokens_in, tokens_out,
-             cost, model, is_winner) = row
+             cost, model, is_winner, metadata_json) = row
 
             # Parse JSONs
             content = None
@@ -92,6 +103,13 @@ def get_message_flow(session_id):
                 except:
                     full_request = None
 
+            metadata = None
+            if metadata_json:
+                try:
+                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                except:
+                    metadata = None
+
             msg = {
                 'timestamp': timestamp,
                 'role': role,
@@ -106,22 +124,45 @@ def get_message_flow(session_id):
                 'tokens_out': int(tokens_out) if tokens_out else 0,
                 'cost': float(cost) if cost else 0,
                 'model': model,
-                'is_winner': bool(is_winner) if is_winner is not None else None
+                'is_winner': bool(is_winner) if is_winner is not None else None,
+                'metadata': metadata
             }
+
+            # Track evaluator messages by phase (for phase-level soundings)
+            if node_type == 'evaluator' and phase_name:
+                phase_key = phase_name or '_unknown_'
+                evaluators_by_phase[phase_key] = {
+                    'timestamp': timestamp,
+                    'content': content,
+                    'model': model,
+                    'cost': float(cost) if cost else 0,
+                    'tokens_in': int(tokens_in) if tokens_in else 0,
+                    'tokens_out': int(tokens_out) if tokens_out else 0,
+                    'winner_index': metadata.get('winner_index') if metadata else None,
+                    'total_soundings': metadata.get('total_soundings') if metadata else None,
+                    'evaluation': metadata.get('evaluation') if metadata else content
+                }
 
             # Categorize message for parallel branch visualization
             # Use int() to normalize sounding_index (DuckDB may return float for nullable int)
             if sounding_index is not None:
                 sounding_key = int(sounding_index)
-                if sounding_key not in soundings:
-                    soundings[sounding_key] = {
+                phase_key = phase_name or '_unknown_'
+
+                if phase_key not in soundings_by_phase:
+                    soundings_by_phase[phase_key] = {}
+
+                if sounding_key not in soundings_by_phase[phase_key]:
+                    soundings_by_phase[phase_key][sounding_key] = {
                         'index': sounding_key,
+                        'phase_name': phase_key,
                         'messages': [],
-                        'is_winner': False
+                        'is_winner': False,
+                        'first_timestamp': timestamp  # Track when this sounding started
                     }
-                soundings[sounding_key]['messages'].append(msg)
+                soundings_by_phase[phase_key][sounding_key]['messages'].append(msg)
                 if is_winner:
-                    soundings[sounding_key]['is_winner'] = True
+                    soundings_by_phase[phase_key][sounding_key]['is_winner'] = True
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
@@ -134,19 +175,48 @@ def get_message_flow(session_id):
 
             messages.append(msg)
 
-        # Convert to lists
-        soundings_list = [soundings[k] for k in sorted(soundings.keys())]
+        # Convert soundings_by_phase to structured list with phase info
+        # Each phase gets a soundings block with all its parallel attempts
+        soundings_blocks = []
+        for phase_key in soundings_by_phase:
+            phase_soundings = soundings_by_phase[phase_key]
+            sorted_soundings = [phase_soundings[k] for k in sorted(phase_soundings.keys())]
+
+            # Find first timestamp across all soundings in this phase (for ordering)
+            timestamps = [s['first_timestamp'] for s in sorted_soundings if s.get('first_timestamp')]
+            first_ts = min(timestamps) if timestamps else 0
+
+            # Get evaluator for this phase if present
+            evaluator = evaluators_by_phase.get(phase_key)
+
+            soundings_blocks.append({
+                'phase_name': phase_key,
+                'soundings': sorted_soundings,
+                'first_timestamp': first_ts,
+                'winner_index': next((s['index'] for s in sorted_soundings if s['is_winner']), None),
+                'evaluator': evaluator  # Include evaluation step data
+            })
+
+        # Sort soundings blocks by first_timestamp to maintain chronological order
+        soundings_blocks.sort(key=lambda x: x['first_timestamp'])
+
+        # Convert reforge steps to list
         reforge_list = [reforge_steps[k] for k in sorted(reforge_steps.keys())]
 
-        # Identify winner sounding/reforge indexes
-        winner_sounding_indexes = set(s['index'] for s in soundings_list if s['is_winner'])
+        # Identify winner sounding phases and indexes
+        winner_sounding_keys = set()  # (phase_name, sounding_index) tuples
+        for block in soundings_blocks:
+            for s in block['soundings']:
+                if s['is_winner']:
+                    winner_sounding_keys.add((s['phase_name'], s['index']))
+
         winner_reforge_steps = set(r['step'] for r in reforge_list if any(m['is_winner'] for m in r['messages']))
 
         # Build canonical main flow (chronological order, winner's path only)
         # Filter to only conversational messages (not structure/logging events)
-        # Include: user messages, agent responses, tool calls/results, AND follow-ups
-        conversational_roles = {'user', 'assistant', 'tool'}
-        conversational_node_types = {'user', 'agent', 'tool_result', 'tool_call', 'follow_up'}
+        # Include: user messages, agent responses, tool calls/results, follow-ups, AND system prompts
+        conversational_roles = {'user', 'assistant', 'tool', 'system'}
+        conversational_node_types = {'user', 'agent', 'tool_result', 'tool_call', 'follow_up', 'system'}
 
         main_flow = []
         for msg in messages:
@@ -160,10 +230,13 @@ def get_message_flow(session_id):
             # 1. Not in any sounding/reforge (pre/post branching messages)
             # 2. OR it's in a winner sounding (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
+            # Normalize phase_name to match how we store it in soundings_by_phase
+            msg_phase_key = msg['phase_name'] or '_unknown_'
+
             if msg['sounding_index'] is None and msg['reforge_step'] is None:
                 # Pre/post branching messages - always in canonical flow
                 main_flow.append(msg)
-            elif msg['sounding_index'] in winner_sounding_indexes:
+            elif msg['sounding_index'] is not None and (msg_phase_key, msg['sounding_index']) in winner_sounding_keys:
                 # All messages from winner sounding branch
                 main_flow.append(msg)
             elif msg['reforge_step'] in winner_reforge_steps:
@@ -197,10 +270,16 @@ def get_message_flow(session_id):
 
         conn.close()
 
+        # Flatten soundings for backward compatibility (total count)
+        all_soundings_flat = []
+        for block in soundings_blocks:
+            all_soundings_flat.extend(block['soundings'])
+
         return jsonify({
             'session_id': session_id,
             'total_messages': len(messages),
-            'soundings': soundings_list,
+            'soundings': all_soundings_flat,  # Backward compatible flat list
+            'soundings_by_phase': soundings_blocks,  # New: organized by phase with timestamps
             'reforge_steps': reforge_list,
             'main_flow': main_flow,
             'all_messages': messages,
@@ -219,4 +298,50 @@ def get_message_flow(session_id):
         return jsonify({
             'error': str(e),
             'traceback': traceback.format_exc()
+        }), 500
+
+
+@message_flow_bp.route('/api/running-sessions', methods=['GET'])
+def get_running_sessions():
+    """
+    Get list of currently running cascade sessions.
+    Returns session IDs with their cascade_id and age for quick selection.
+    """
+    try:
+        if get_live_store is None:
+            return jsonify({
+                'sessions': [],
+                'error': 'LiveStore not available'
+            })
+
+        store = get_live_store()
+        sessions_info = []
+        current_time = time.time()
+
+        # Get all tracked sessions (running + completing)
+        for session_id, info in store._sessions.items():
+            sessions_info.append({
+                'session_id': session_id,
+                'cascade_id': info.cascade_id,
+                'cascade_file': info.cascade_file,
+                'status': info.status,
+                'age_seconds': round(current_time - info.start_time, 1),
+                'start_time': info.start_time,
+            })
+
+        # Sort by start_time descending (newest first)
+        sessions_info.sort(key=lambda x: x['start_time'], reverse=True)
+
+        return jsonify({
+            'sessions': sessions_info,
+            'total': len(sessions_info),
+            'active_count': sum(1 for s in sessions_info if s['status'] == 'running'),
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'sessions': []
         }), 500

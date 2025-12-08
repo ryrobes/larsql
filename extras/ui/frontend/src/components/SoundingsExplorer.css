@@ -124,6 +124,31 @@
   color: #4ec9b0;
 }
 
+.phase-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pareto-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #34d399;
+  padding: 4px 10px;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pareto-indicator svg {
+  flex-shrink: 0;
+}
+
 .phase-meta {
   font-size: 13px;
   color: #8b92a0;
@@ -569,6 +594,67 @@
   padding: 60px 20px;
   color: #8b92a0;
   font-size: 15px;
+}
+
+/* ===================================
+   PARETO FRONTIER SECTION (INLINE)
+   =================================== */
+
+/* Inline Pareto section inside phase */
+.pareto-inline-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.06), rgba(52, 211, 153, 0.02));
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 8px;
+}
+
+.pareto-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #34d399;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: -6px -6px 0 -6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.pareto-inline-header:hover {
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.pareto-inline-header svg {
+  flex-shrink: 0;
+}
+
+.pareto-inline-header > span:first-of-type {
+  flex: 1;
+}
+
+.pareto-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: #4ec9b0;
+  padding: 3px 8px;
+  background: rgba(78, 201, 176, 0.15);
+  border-radius: 4px;
+  border: 1px solid rgba(78, 201, 176, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pareto-chevron {
+  color: #8b92a0;
+  transition: transform 0.2s;
+  margin-left: 4px;
+}
+
+.pareto-inline-header:hover .pareto-chevron {
+  color: #34d399;
 }
 
 /* ===================================

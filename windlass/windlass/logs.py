@@ -61,6 +61,30 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
         metadata=metadata
     )
 
+    # Emit SSE event for sounding errors so LiveStore gets real-time updates
+    if node_type == "sounding_error" and sounding_index is not None:
+        try:
+            from .events import get_event_bus, Event
+            from datetime import datetime
+            bus = get_event_bus()
+            bus.publish(Event(
+                type="sounding_error",
+                session_id=session_id,
+                timestamp=datetime.now().isoformat(),
+                data={
+                    "trace_id": trace_id,
+                    "parent_id": parent_id,
+                    "phase_name": phase_name,
+                    "cascade_id": cascade_id,
+                    "sounding_index": sounding_index,
+                    "reforge_step": reforge_step,
+                    "error": content,
+                    "model": model,
+                }
+            ))
+        except Exception:
+            pass  # Don't fail if event emission has issues
+
 
 def query_logs(where_clause: str = None):
     """

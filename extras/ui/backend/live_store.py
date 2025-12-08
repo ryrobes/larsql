@@ -571,6 +571,90 @@ def process_event(event: Dict[str, Any]) -> bool:
         )
         return success
 
+    elif event_type == 'sounding_attempt':
+        # Sounding attempt with is_winner data - emitted after evaluation completes
+        # This is the key event for showing winner highlighting in real-time
+        sounding_index = data.get('sounding_index')
+        is_winner = data.get('is_winner')
+        phase_name = data.get('phase_name')
+        reforge_step = data.get('reforge_step')
+        trace_id = data.get('trace_id')
+
+        # First, try to UPDATE existing rows for this sounding to set is_winner
+        # This handles the case where we already have data from earlier events
+        if sounding_index is not None and phase_name and is_winner is not None:
+            try:
+                # Update all rows for this session/phase/sounding_index to set is_winner
+                with store.lock:
+                    store.conn.execute("""
+                        UPDATE live_logs
+                        SET is_winner = ?
+                        WHERE session_id = ?
+                          AND phase_name = ?
+                          AND sounding_index = ?
+                    """, [is_winner, session_id, phase_name, sounding_index])
+                    print(f"[LiveStore] Updated is_winner={is_winner} for session={session_id}, phase={phase_name}, sounding={sounding_index}")
+            except Exception as e:
+                print(f"[LiveStore] Failed to update is_winner: {e}")
+
+        # Also insert the sounding_attempt row itself
+        store.insert({
+            'timestamp': ts,
+            'session_id': session_id,
+            'trace_id': trace_id,
+            'parent_id': data.get('parent_id'),
+            'node_type': 'sounding_attempt',
+            'phase_name': phase_name,
+            'cascade_id': data.get('cascade_id'),
+            'sounding_index': sounding_index,
+            'is_winner': is_winner,
+            'reforge_step': reforge_step,
+            'content_json': json.dumps(data.get('content')) if data.get('content') else None,
+            'model': data.get('model'),
+        })
+        return True
+
+    elif event_type == 'sounding_error':
+        # Sounding error - a specific sounding attempt failed
+        sounding_index = data.get('sounding_index')
+        phase_name = data.get('phase_name')
+        error_msg = data.get('error')
+
+        store.insert({
+            'timestamp': ts,
+            'session_id': session_id,
+            'trace_id': data.get('trace_id'),
+            'parent_id': data.get('parent_id'),
+            'node_type': 'sounding_error',
+            'phase_name': phase_name,
+            'cascade_id': data.get('cascade_id'),
+            'sounding_index': sounding_index,
+            'reforge_step': data.get('reforge_step'),
+            'content_json': json.dumps(error_msg) if error_msg else None,
+            'model': data.get('model'),
+            'metadata_json': json.dumps({'error': error_msg, 'failed': True}) if error_msg else None,
+        })
+        print(f"[LiveStore] Stored sounding_error for phase={phase_name}, sounding={sounding_index}")
+        return True
+
+    elif event_type == 'evaluator':
+        # Evaluator entry with evaluation reasoning for soundings/reforge
+        store.insert({
+            'timestamp': ts,
+            'session_id': session_id,
+            'trace_id': data.get('trace_id'),
+            'parent_id': data.get('parent_id'),
+            'node_type': 'evaluator',
+            'role': 'assistant',
+            'phase_name': data.get('phase_name'),
+            'cascade_id': data.get('cascade_id'),
+            'reforge_step': data.get('reforge_step'),
+            'content_json': json.dumps(data.get('content')) if data.get('content') else None,
+            'model': data.get('model'),
+        })
+        print(f"[LiveStore] Stored evaluator entry for phase={data.get('phase_name')}")
+        return True
+
     elif event_type == 'cascade_complete':
         store.insert({
             'timestamp': ts,

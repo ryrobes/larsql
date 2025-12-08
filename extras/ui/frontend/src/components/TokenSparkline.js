@@ -36,20 +36,20 @@ function TokenSparkline({ data, width = 60, height = 30 }) {
 
   return (
     <svg width={width} height={height} style={{ display: 'block' }}>
-      {/* Tokens In - Blue line */}
+      {/* Tokens In - Glacial Ice */}
       <path
         d={tokensInPath}
         fill="none"
-        stroke="#3b82f6"
+        stroke="#2DD4BF"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
       />
-      {/* Tokens Out - Orange line */}
+      {/* Tokens Out - Compass Brass */}
       <path
         d={tokensOutPath}
         fill="none"
-        stroke="#f59e0b"
+        stroke="#D9A553"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"

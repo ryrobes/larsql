@@ -12,7 +12,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
   const [error, setError] = useState(null);
   const [layout, setLayout] = useState({ boxes: [], w: 0, h: 0, fill: 0 });
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('tile'); // 'tile' or 'grid'
+  const [viewMode, setViewMode] = useState('grid'); // 'tile' or 'grid'
 
   // Convert wildcard pattern to regex
   const wildcardToRegex = (pattern) => {

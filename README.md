@@ -559,6 +559,122 @@ After soundings pick a winner, **progressively polish it** through depth-first r
 }
 ```
 
+### Multi-Model Soundings
+
+Run soundings across different LLM providers to find the best cost/quality tradeoff.
+
+**Simple Round-Robin:**
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "evaluator_instructions": "Pick the best response",
+    "models": [
+      "anthropic/claude-sonnet-4.5",
+      "x-ai/grok-4.1-fast",
+      "google/gemini-2.5-flash-lite"
+    ]
+  }
+}
+```
+
+**Per-Model Factors (control distribution):**
+```json
+{
+  "soundings": {
+    "factor": 7,
+    "models": {
+      "anthropic/claude-sonnet-4.5": {"factor": 2},
+      "x-ai/grok-4.1-fast": {"factor": 2},
+      "google/gemini-2.5-flash-lite": {"factor": 3}
+    }
+  }
+}
+```
+
+**Cost-Aware Evaluation:**
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "models": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash-lite"],
+    "cost_aware_evaluation": {
+      "enabled": true,
+      "quality_weight": 0.7,
+      "cost_weight": 0.3
+    }
+  }
+}
+```
+
+**Pareto Frontier Analysis:**
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "models": {
+      "anthropic/claude-sonnet-4.5": {"factor": 2},
+      "google/gemini-2.5-flash-lite": {"factor": 4}
+    },
+    "pareto_frontier": {
+      "enabled": true,
+      "policy": "balanced"
+    }
+  }
+}
+```
+
+**Pareto Policies:**
+- `prefer_cheap`: Select lowest cost from frontier
+- `prefer_quality`: Select highest quality from frontier
+- `balanced`: Maximize quality/cost ratio
+
+**What Pareto frontier does:**
+1. All soundings execute across models
+2. Quality scores obtained from evaluator
+3. Non-dominated solutions computed (Pareto frontier)
+4. Winner selected based on policy
+5. Frontier data logged for visualization
+
+### Pre-Evaluation Validator for Soundings
+
+Filter soundings **before** they reach the evaluator. Saves evaluator LLM calls on broken outputs.
+
+```json
+{
+  "soundings": {
+    "factor": 5,
+    "evaluator_instructions": "Pick the best working solution",
+    "validator": "code_execution_validator"
+  }
+}
+```
+
+**How it works:**
+1. All soundings execute normally
+2. Validator runs on each sounding result
+3. Only valid soundings go to evaluator
+4. Broken outputs filtered automatically
+
+**Use cases:**
+- **Code execution**: Only evaluate code that runs without errors
+- **Format validation**: Only evaluate properly formatted JSON/XML
+- **Content validation**: Only evaluate outputs meeting minimum requirements
+
+**Combined with multi-model:**
+```json
+{
+  "soundings": {
+    "factor": 6,
+    "models": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash-lite"],
+    "validator": "code_execution_validator",
+    "pareto_frontier": {"enabled": true, "policy": "balanced"}
+  }
+}
+```
+
+Pre-filter across multiple models, then compute Pareto frontier on valid results only.
+
 ### Mutation Modes (Prompt Variation Strategies)
 
 Soundings support three mutation modes for generating prompt variations:
@@ -724,6 +840,249 @@ return json.dumps({
 ```
 
 Result: Production-quality charts refined through visual feedback loops.
+
+### Context Injection (Selective & Hybrid Modes)
+
+**Take control of what each phase sees.** Instead of accumulating everything (snowball), explicitly declare context dependencies.
+
+**The Problem with Snowball:**
+```
+Phase A → Phase B → Phase C → Phase D
+                    ↓
+                  Phase D sees EVERYTHING
+                  (A + B + C = token explosion)
+```
+
+**With Context Injection:**
+```
+Phase A → Phase B → Phase C → Phase D
+                              ↓
+                            Phase D sees only what it needs
+                            (just A + C, skip B)
+```
+
+**Three Modes:**
+
+| Mode | When to Use | Token Impact |
+|------|-------------|--------------|
+| **Snowball** (default) | Sequential workflows where each step builds on the last | Full accumulation |
+| **Selective** | Fresh-start phases that only need specific prior context | Dramatic reduction |
+| **Snowball + Inject** | Recent context + cherry-picked old artifacts | Moderate reduction |
+
+**Shorthand Keywords:**
+
+| Keyword | Resolves To | Example Use Case |
+|---------|-------------|------------------|
+| `"first"` | First executed phase | Original problem statement, initial requirements |
+| `"previous"` / `"prev"` | Most recently completed phase | What just happened before this phase |
+
+```json
+{
+  "context": {
+    "from": ["first", "previous"]
+  }
+}
+```
+
+This is equivalent to explicitly naming those phases, but cleaner and more maintainable.
+
+#### Selective Mode: Fresh Start with Specific Context
+
+Use `context.from` to explicitly list which phases this phase can see:
+
+```json
+{
+  "name": "final_report",
+  "instructions": "Create final report from research and recommendations",
+  "context": {
+    "from": ["research", "recommendations"],
+    "include_input": true
+  }
+}
+```
+
+**What happens:**
+- Phase sees ONLY `research` and `recommendations` outputs
+- Completely ignores `draft`, `review`, `revisions` phases
+- Original input optionally included
+
+**Real-world example - Code Review Pipeline:**
+```json
+{
+  "phases": [
+    {"name": "analyze_code", "instructions": "Analyze the codebase structure..."},
+    {"name": "find_issues", "instructions": "Find bugs and security issues..."},
+    {"name": "suggest_fixes", "instructions": "Suggest fixes for each issue..."},
+    {
+      "name": "executive_summary",
+      "instructions": "Write executive summary for non-technical stakeholders",
+      "context": {
+        "from": ["find_issues"],
+        "include_input": false
+      }
+    }
+  ]
+}
+```
+
+The executive summary phase only sees the issues list - not the raw code analysis or detailed fix suggestions. Clean, focused context.
+
+#### Inject Mode: Snowball + Cherry-Picked Additions
+
+Use `inject_from` to add specific old context ON TOP of normal snowball:
+
+```json
+{
+  "name": "compare_versions",
+  "instructions": "Compare the original design with the final revision",
+  "inject_from": [
+    {"phase": "original_design", "include": ["output"]}
+  ]
+}
+```
+
+**What happens:**
+- Normal snowball context (recent phases) included
+- PLUS the original design output prepended
+- Perfect for "compare before/after" patterns
+
+**Real-world example - Design Iteration:**
+```json
+{
+  "phases": [
+    {"name": "original_design", "instructions": "Create initial logo design..."},
+    {"name": "feedback", "instructions": "Provide design feedback..."},
+    {"name": "revision", "instructions": "Revise based on feedback..."},
+    {
+      "name": "compare",
+      "instructions": "Compare original vs revised design. Which is better?",
+      "inject_from": [
+        {"phase": "original_design", "include": ["output"]}
+      ]
+    }
+  ]
+}
+```
+
+By the `compare` phase, snowball only has `feedback` + `revision`. But we NEED the original to compare! `inject_from` brings it back.
+
+**With sugar (cleaner):**
+```json
+{
+  "name": "compare",
+  "instructions": "Compare original vs revised design",
+  "inject_from": ["first"]
+}
+```
+
+`"first"` resolves to `"original_design"` at runtime. Works even if you rename phases later!
+
+#### Fine-Grained Control
+
+**Include specific artifacts:**
+```json
+{
+  "context": {
+    "from": [
+      {"phase": "research", "include": ["output"]},
+      {"phase": "data_collection", "include": ["messages"]},
+      {"phase": "visualization", "include": ["images"]}
+    ]
+  }
+}
+```
+
+**Artifact types:**
+- `output` - Final assistant response from that phase
+- `messages` - Full conversation history (all turns, tool calls, reasoning)
+- `images` - Any images generated during that phase
+- `state` - State variables set during that phase
+
+**Message filtering:**
+```json
+{
+  "from": [
+    {"phase": "research", "include": ["messages"], "messages_filter": "assistant_only"}
+  ]
+}
+```
+
+Filters: `all` (default), `assistant_only`, `last_turn`
+
+**Image filtering:**
+```json
+{
+  "from": [
+    {"phase": "chart_gen", "include": ["images"], "images_filter": "last", "images_count": 1}
+  ]
+}
+```
+
+Filters: `all` (default), `last`, `last_n`
+
+#### Practical Example: Report Pipeline with Sugar
+
+```json
+{
+  "phases": [
+    {"name": "gather_requirements", "instructions": "Gather user requirements..."},
+    {"name": "research", "instructions": "Research solutions..."},
+    {"name": "draft", "instructions": "Draft detailed technical spec..."},
+    {"name": "review", "instructions": "Review and suggest improvements..."},
+    {
+      "name": "executive_summary",
+      "instructions": "Write executive summary for stakeholders",
+      "context": {
+        "from": ["first", "previous"],
+        "include_input": false
+      }
+    }
+  ]
+}
+```
+
+The `executive_summary` phase sees:
+- **`"first"`** → `gather_requirements` (the original ask)
+- **`"previous"`** → `review` (the final feedback)
+
+It skips `research` and `draft` entirely - no 50KB technical spec bloating the context!
+
+#### Comparison: When to Use What
+
+| Pattern | Use Case | Configuration |
+|---------|----------|---------------|
+| **Default snowball** | Linear workflows | No context config |
+| **Selective (skip middle)** | Fresh analysis of specific phases | `context: {from: [...]}` |
+| **Inject (add old context)** | Before/after comparisons | `inject_from: [...]` |
+| **Messages replay** | Analyze reasoning, not just output | `include: ["messages"]` |
+| **Images only** | Visual-focused phases | `include: ["images"]` |
+| **Sugar keywords** | Cleaner configs, robust to renames | `"first"`, `"previous"` |
+
+#### Migration from Snowball
+
+**Before (snowball, no control):**
+```json
+{
+  "name": "phase_d",
+  "instructions": "Summarize findings"
+}
+```
+Phase D sees everything (A + B + C).
+
+**After (selective, explicit):**
+```json
+{
+  "name": "phase_d",
+  "instructions": "Summarize findings",
+  "context": {
+    "from": ["phase_a", "phase_c"],
+    "include_input": false
+  }
+}
+```
+Phase D sees only A + C. Explicit, predictable, efficient.
+
+**Key insight:** Snowball is great for exploration. Selective is great for production. Mix them in the same cascade as needed.
 
 ### Context Management (TTL & Retention)
 
@@ -1664,9 +2023,16 @@ The `examples/` directory contains reference implementations:
 - `soundings_rewrite_flow.json`: Soundings with LLM prompt rewriting (mutation_mode: rewrite)
 - `soundings_augment_flow.json`: Soundings with prepended patterns (mutation_mode: augment)
 - `soundings_approach_flow.json`: Soundings with thinking strategies (mutation_mode: approach)
+- `soundings_with_validator.json`: Pre-evaluation validation for soundings
 - `cascade_soundings_test.json`: Cascade-level ToT
 - `reforge_dashboard_metrics.json`: Iterative refinement with mutations
 - `reforge_image_chart.json`: Visual feedback loops
+
+**Multi-Model:**
+- `multi_model_simple.json`: Round-robin across multiple models
+- `multi_model_per_model_factors.json`: Per-model factor configuration
+- `multi_model_cost_aware.json`: Cost-aware evaluation with quality/cost weighting
+- `multi_model_pareto.json`: Pareto frontier analysis for optimal cost/quality tradeoff
 
 **Composition:**
 - `context_demo_parent.json` + `context_demo_child.json`: State inheritance
@@ -1682,6 +2048,12 @@ The `examples/` directory contains reference implementations:
 **Multi-Modal:**
 - `image_flow.json`: Vision protocol demonstration
 - `reforge_feedback_chart.json`: Manual image injection with feedback
+
+**Context Injection:**
+- `context_selective_demo.json`: Selective context - phases choose what they see
+- `context_inject_demo.json`: Inject mode - snowball + cherry-picked old context
+- `context_messages_demo.json`: Message replay - full conversation history injection
+- `context_sugar_demo.json`: Sugar keywords (`"first"`, `"previous"`) for cleaner configs
 
 **Meta:**
 - `reforge_meta_optimizer.json`: Cascade that optimizes other cascades

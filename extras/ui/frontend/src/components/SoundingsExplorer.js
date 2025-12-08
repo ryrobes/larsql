@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
+import VideoSpinner from './VideoSpinner';
+import ParetoChart from './ParetoChart';
 import './SoundingsExplorer.css';
 
 /**
@@ -15,13 +17,36 @@ function SoundingsExplorer({ sessionId, onClose }) {
   const [expandedAttempt, setExpandedAttempt] = useState(null); // {phaseIdx, soundingIdx}
   const [reforgeExpanded, setReforgeExpanded] = useState({}); // {phaseIdx: boolean}
   const [expandedRefinement, setExpandedRefinement] = useState(null); // {phaseIdx, stepIdx, refIdx}
+  const [paretoData, setParetoData] = useState(null); // Pareto frontier data for multi-model soundings
+  const [paretoExpanded, setParetoExpanded] = useState(true); // Pareto section expanded by default
 
   useEffect(() => {
     fetchSoundingsData();
+    fetchParetoData();
   }, [sessionId]);
 
-  const fetchSoundingsData = async () => {
+  // Poll for updates while the modal is open
+  // This ensures is_winner highlighting appears in real-time without manual refresh
+  useEffect(() => {
+    // Check if any phase has a winner - if not, keep polling
+    const hasAnyWinner = data?.phases?.some(phase =>
+      phase.soundings?.some(s => s.is_winner)
+    );
+
+    // Poll while no winner is determined yet (cascade still running)
+    // Once winners are determined, reduce polling frequency
+    const pollInterval = hasAnyWinner ? 10000 : 2000;
+
+    const interval = setInterval(() => {
+      fetchSoundingsData(true); // silent fetch (don't show loading)
+    }, pollInterval);
+
+    return () => clearInterval(interval);
+  }, [sessionId, data]);
+
+  const fetchSoundingsData = async (silent = false) => {
     try {
+      if (!silent) setLoading(true);
       // TODO: Add backend endpoint /api/soundings-tree/<session_id>
       // Returns: { phases: [{name, soundings: [{index, cost, turns, is_winner, messages, eval}]}], winner_path: [...] }
       const response = await fetch(`http://localhost:5001/api/soundings-tree/${sessionId}`);
@@ -31,6 +56,22 @@ function SoundingsExplorer({ sessionId, onClose }) {
     } catch (err) {
       console.error('Failed to load soundings data:', err);
       setLoading(false);
+    }
+  };
+
+  const fetchParetoData = async () => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/pareto/${sessionId}`);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.has_pareto) {
+          setParetoData(result);
+        }
+      }
+      // Silently fail if no Pareto data - it's optional
+    } catch (err) {
+      // Pareto data is optional, don't show error
+      console.debug('No Pareto data for session:', sessionId);
     }
   };
 
@@ -88,7 +129,9 @@ function SoundingsExplorer({ sessionId, onClose }) {
     return (
       <div className="soundings-explorer-modal">
         <div className="explorer-content">
-          <div className="loading-message">Loading soundings data...</div>
+          <div className="loading-message">
+            <VideoSpinner message="Loading soundings data..." size={80} opacity={0.6} />
+          </div>
         </div>
       </div>
     );
@@ -144,14 +187,49 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
             const maxCost = Math.max(...phase.soundings.map(s => s.cost || 0), 0.001);
 
+            // Check if this phase has Pareto data
+            const phaseHasPareto = paretoData &&
+                                   paretoData.has_pareto &&
+                                   paretoData.phase_name === phase.name;
+
             return (
               <div key={phaseIdx} className="phase-section">
                 <div className="phase-header">
                   <h3>Phase {phaseIdx + 1}: {phase.name}</h3>
-                  <span className="phase-meta">
-                    {phase.soundings.length} soundings
-                  </span>
+                  <div className="phase-header-right">
+                    {phaseHasPareto && (
+                      <span className="pareto-indicator" title="Multi-model Pareto analysis available">
+                        <Icon icon="mdi:chart-scatter-plot" width="14" />
+                        Pareto
+                      </span>
+                    )}
+                    <span className="phase-meta">
+                      {phase.soundings.length} soundings
+                    </span>
+                  </div>
                 </div>
+
+                {/* Pareto Frontier Chart - shown inline for phases with multi-model analysis */}
+                {phaseHasPareto && (
+                  <div className="pareto-inline-section">
+                    <div
+                      className="pareto-inline-header"
+                      onClick={() => setParetoExpanded(!paretoExpanded)}
+                    >
+                      <Icon icon="mdi:chart-scatter-plot" width="16" />
+                      <span>Cost vs Quality Frontier</span>
+                      <span className="pareto-badge">Multi-Model</span>
+                      <Icon
+                        icon={paretoExpanded ? "mdi:chevron-up" : "mdi:chevron-down"}
+                        width="18"
+                        className="pareto-chevron"
+                      />
+                    </div>
+                    {paretoExpanded && (
+                      <ParetoChart paretoData={paretoData} />
+                    )}
+                  </div>
+                )}
 
                 {/* Sounding Attempts - Horizontal Layout */}
                 <div className="soundings-grid">

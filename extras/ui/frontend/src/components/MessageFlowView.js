@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './MessageFlowView.css';
 
@@ -11,21 +11,99 @@ function MessageFlowView({ onBack }) {
   const [error, setError] = useState(null);
   const [expandedMessages, setExpandedMessages] = useState(new Set());
   const [highlightedMessage, setHighlightedMessage] = useState(null);
+  const [runningSessions, setRunningSessions] = useState([]);
+  const [showSessionDropdown, setShowSessionDropdown] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const dropdownRef = useRef(null);
+  const currentSessionIdRef = useRef(null);
 
-  const fetchMessages = async () => {
-    if (!sessionId.trim()) return;
+  const fetchMessages = useCallback(async (targetSessionId = null, silent = false) => {
+    const sid = targetSessionId || currentSessionIdRef.current || sessionId;
+    if (!sid.trim()) return;
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/message-flow/${sessionId}`);
+      const response = await axios.get(`${API_BASE_URL}/api/message-flow/${sid}`);
       setData(response.data);
+      currentSessionIdRef.current = sid;
+      if (targetSessionId && targetSessionId !== sessionId) {
+        setSessionId(targetSessionId);
+      }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
+      if (!silent) {
+        setError(err.response?.data?.error || err.message);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
+  }, [sessionId]);
+
+  const fetchRunningSessions = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/running-sessions`);
+      setRunningSessions(response.data.sessions || []);
+    } catch (err) {
+      console.error('Failed to fetch running sessions:', err);
+    }
+  }, []);
+
+  // Fetch running sessions on mount and every 5 seconds
+  useEffect(() => {
+    fetchRunningSessions();
+    const interval = setInterval(fetchRunningSessions, 5000);
+    return () => clearInterval(interval);
+  }, [fetchRunningSessions]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowSessionDropdown(false);
+      }
+    };
+
+    if (showSessionDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showSessionDropdown]);
+
+  // Check if current session is running
+  const isCurrentSessionRunning = useCallback(() => {
+    if (!data?.session_id) return false;
+    return runningSessions.some(s =>
+      s.session_id === data.session_id && s.status === 'running'
+    );
+  }, [data?.session_id, runningSessions]);
+
+  // Auto-refresh when viewing a running session
+  useEffect(() => {
+    if (!autoRefresh || !data?.session_id || !isCurrentSessionRunning()) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      fetchMessages(null, true); // silent refresh
+    }, 2000); // refresh every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, data?.session_id, isCurrentSessionRunning, fetchMessages]);
+
+  const handleSessionSelect = (session) => {
+    setShowSessionDropdown(false);
+    fetchMessages(session.session_id);
+  };
+
+  const formatAge = (seconds) => {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
   };
 
   const toggleMessage = (index) => {
@@ -133,6 +211,7 @@ function MessageFlowView({ onBack }) {
           {fromReforge && <span className="source-badge" style={{background: '#c586c0', color: '#1e1e1e', padding: '2px 6px', borderRadius: '3px', fontSize: '11px'}}>R{msg.reforge_step}</span>}
           <span className="message-role">{msg.role}</span>
           <span className="message-node-type">{msg.node_type}</span>
+          {msg.model && <span className="message-model" title={msg.model}>{msg.model.split('/').pop()}</span>}
           {msg.turn_number !== null && <span className="turn">Turn {msg.turn_number}</span>}
           {msg.tokens_in > 0 && <span className="tokens">{msg.tokens_in.toLocaleString()} tokens in</span>}
           {msg.cost > 0 && <span className="cost-badge">${msg.cost.toFixed(4)}</span>}
@@ -241,14 +320,52 @@ function MessageFlowView({ onBack }) {
             ← Back
           </button>
         )}
+
+        {/* Running Sessions Dropdown */}
+        <div className="running-sessions-wrapper" ref={dropdownRef}>
+          <button
+            className={`running-sessions-button ${runningSessions.length > 0 ? 'has-sessions' : ''}`}
+            onClick={() => setShowSessionDropdown(!showSessionDropdown)}
+            title={runningSessions.length > 0 ? `${runningSessions.length} active session(s)` : 'No active sessions'}
+          >
+            <span className="pulse-dot" style={{ display: runningSessions.some(s => s.status === 'running') ? 'inline-block' : 'none' }}></span>
+            {runningSessions.length > 0 ? `${runningSessions.length} Active` : 'No Active'}
+            <span className="dropdown-arrow">{showSessionDropdown ? '▲' : '▼'}</span>
+          </button>
+
+          {showSessionDropdown && (
+            <div className="running-sessions-dropdown">
+              {runningSessions.length === 0 ? (
+                <div className="no-sessions">No active sessions</div>
+              ) : (
+                runningSessions.map((session) => (
+                  <button
+                    key={session.session_id}
+                    className={`session-item ${session.status === 'running' ? 'running' : 'completing'}`}
+                    onClick={() => handleSessionSelect(session)}
+                  >
+                    <div className="session-item-header">
+                      <span className={`status-indicator ${session.status}`}></span>
+                      <span className="session-cascade">{session.cascade_id || 'unknown'}</span>
+                      <span className="session-age">{formatAge(session.age_seconds)}</span>
+                    </div>
+                    <div className="session-id-preview">{session.session_id}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         <input
           type="text"
           value={sessionId}
           onChange={(e) => setSessionId(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && fetchMessages()}
           placeholder="Enter session ID (e.g., ui_run_426c918654f4)"
           className="session-input"
         />
-        <button onClick={fetchMessages} disabled={loading} className="fetch-button">
+        <button onClick={() => fetchMessages()} disabled={loading} className="fetch-button">
           {loading ? 'Loading...' : 'Fetch Messages'}
         </button>
       </div>
@@ -262,7 +379,22 @@ function MessageFlowView({ onBack }) {
       {data && (
         <div className="message-flow">
           <div className="flow-header">
-            <h2>Session: {data.session_id}</h2>
+            <div className="flow-header-top">
+              <h2>Session: {data.session_id}</h2>
+              {isCurrentSessionRunning() && (
+                <div className="live-indicator">
+                  <span className="live-dot"></span>
+                  <span className="live-text">LIVE</span>
+                  <button
+                    className={`auto-refresh-toggle ${autoRefresh ? 'active' : ''}`}
+                    onClick={() => setAutoRefresh(!autoRefresh)}
+                    title={autoRefresh ? 'Auto-refresh ON (click to pause)' : 'Auto-refresh OFF (click to resume)'}
+                  >
+                    {autoRefresh ? '⏸' : '▶'}
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="stats">
               <span>Total Messages: {data.total_messages}</span>
               <span>Soundings: {data.soundings.length}</span>
@@ -284,34 +416,6 @@ function MessageFlowView({ onBack }) {
             )}
           </div>
 
-          {/* Soundings - Show as parallel branches */}
-          {data.soundings.length > 0 && (
-            <div className="soundings-section">
-              <h3>🔱 Soundings ({data.soundings.length} parallel attempts)</h3>
-              <div className="soundings-grid">
-                {data.soundings.map((sounding) => (
-                  <div
-                    key={sounding.index}
-                    className={`sounding-branch ${sounding.is_winner ? 'winner-branch' : ''}`}
-                  >
-                    <div className="sounding-header">
-                      <h4>
-                        Sounding {sounding.index}
-                        {sounding.is_winner && ' 🏆'}
-                      </h4>
-                      <span className="sounding-msg-count">{sounding.messages.length} messages</span>
-                    </div>
-                    <div className="sounding-messages">
-                      {sounding.messages.map((msg, i) =>
-                        renderMessage(msg, `sounding-${sounding.index}-${i}`, `S${sounding.index}-${i}`)
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Reforge Steps */}
           {data.reforge_steps.length > 0 && (
             <div className="reforge-section">
@@ -329,17 +433,167 @@ function MessageFlowView({ onBack }) {
             </div>
           )}
 
-          {/* Main Flow */}
+          {/* Main Flow with Inline Soundings */}
           {data.main_flow.length > 0 && (
             <div className="main-flow-section">
               <h3>📜 Canonical Timeline ({data.main_flow.length} messages)</h3>
               <p style={{color: '#858585', fontSize: '13px', marginTop: '-10px', marginBottom: '15px'}}>
-                This is the actual history the LLM sees: pre-soundings setup → winner branch → post-soundings continuation
+                This is the actual history the LLM sees. Soundings blocks show all parallel attempts before the winner continues.
               </p>
+              {/* Debug info - remove after fixing */}
+              {console.log('[MessageFlow Debug]', {
+                soundings_by_phase: data.soundings_by_phase,
+                soundings: data.soundings,
+                main_flow_count: data.main_flow?.length,
+                main_flow_with_sounding: data.main_flow?.filter(m => m.sounding_index !== null && m.sounding_index !== undefined).length
+              })}
+
+              {/* Fallback: Show old-style soundings section if soundings_by_phase is empty but soundings exists */}
+              {(!data.soundings_by_phase || data.soundings_by_phase.length === 0) && data.soundings && data.soundings.length > 0 && (
+                <div className="inline-soundings-block" style={{marginBottom: '1.5rem'}}>
+                  <div className="inline-soundings-header">
+                    <span className="soundings-icon">🔱</span>
+                    <span className="soundings-phase-name">Soundings</span>
+                    <span className="soundings-count">{data.soundings.length} parallel attempts</span>
+                  </div>
+                  <div className="soundings-grid">
+                    {data.soundings.map((sounding) => (
+                      <div
+                        key={`fallback-${sounding.index}`}
+                        className={`sounding-branch ${sounding.is_winner ? 'winner-branch' : ''}`}
+                      >
+                        <div className="sounding-header">
+                          <h4>
+                            S{sounding.index}
+                            {sounding.is_winner && ' 🏆'}
+                          </h4>
+                          <span className="sounding-msg-count">{sounding.messages?.length || 0} msgs</span>
+                        </div>
+                        <div className="sounding-messages">
+                          {sounding.messages?.map((sMsg, si) =>
+                            renderMessage(sMsg, `fallback-sounding-${sounding.index}-${si}`, `S${sounding.index}.${si}`)
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="main-messages">
-                {data.main_flow.map((msg, i) =>
-                  renderMessage(msg, `main-${i}`, `M${i}`)
-                )}
+                {(() => {
+                  // Build a map of phase_name -> soundings block for quick lookup
+                  const soundingsBlockMap = {};
+                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
+                    data.soundings_by_phase.forEach(block => {
+                      soundingsBlockMap[block.phase_name] = block;
+                    });
+                    console.log('[MessageFlow] soundingsBlockMap:', soundingsBlockMap);
+                  }
+
+                  // Track which phases we've already shown soundings for
+                  const shownSoundingsPhases = new Set();
+                  const elements = [];
+
+                  // Helper to render a soundings block
+                  const renderSoundingsBlock = (block, phaseName) => (
+                    <div key={`soundings-block-${phaseName}`} className="inline-soundings-block">
+                      <div className="inline-soundings-header">
+                        <span className="soundings-icon">🔱</span>
+                        <span className="soundings-phase-name">{phaseName}</span>
+                        <span className="soundings-count">{block.soundings.length} parallel attempts</span>
+                        {block.winner_index !== null && (
+                          <span className="soundings-winner">Winner: S{block.winner_index}</span>
+                        )}
+                      </div>
+                      <div className="soundings-grid">
+                        {block.soundings.map((sounding) => (
+                          <div
+                            key={`${phaseName}-${sounding.index}`}
+                            className={`sounding-branch ${sounding.is_winner ? 'winner-branch' : ''}`}
+                          >
+                            <div className="sounding-header">
+                              <h4>
+                                S{sounding.index}
+                                {sounding.is_winner && ' 🏆'}
+                              </h4>
+                              <span className="sounding-msg-count">{sounding.messages.length} msgs</span>
+                            </div>
+                            <div className="sounding-messages">
+                              {sounding.messages.map((sMsg, si) =>
+                                renderMessage(sMsg, `sounding-${phaseName}-${sounding.index}-${si}`, `S${sounding.index}.${si}`)
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Evaluator Section */}
+                      {block.evaluator && (
+                        <div className="evaluator-section">
+                          <div className="evaluator-header">
+                            <span className="evaluator-icon">⚖️</span>
+                            <span className="evaluator-label">Evaluation</span>
+                            {block.evaluator.cost > 0 && (
+                              <span className="evaluator-cost">${block.evaluator.cost.toFixed(4)}</span>
+                            )}
+                            {block.evaluator.model && (
+                              <span className="evaluator-model">{block.evaluator.model}</span>
+                            )}
+                          </div>
+                          <div className="evaluator-content">
+                            {typeof block.evaluator.content === 'string'
+                              ? block.evaluator.content
+                              : block.evaluator.evaluation || JSON.stringify(block.evaluator.content)}
+                          </div>
+                          {block.winner_index !== null && (
+                            <div className="evaluator-result">
+                              <span className="winner-badge">🏆 Selected: Sounding {block.winner_index}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+
+                  data.main_flow.forEach((msg, i) => {
+                    // Check if this message is from a phase with soundings AND we haven't shown that block yet
+                    // Normalize phase_name to match backend's '_unknown_' fallback
+                    const phaseName = msg.phase_name || '_unknown_';
+                    const hasSoundings = soundingsBlockMap[phaseName];
+                    const blockNotShown = !shownSoundingsPhases.has(phaseName);
+
+                    // If this is a sounding message and we haven't shown the block, show it now
+                    if (hasSoundings && blockNotShown && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                      shownSoundingsPhases.add(phaseName);
+                      elements.push(renderSoundingsBlock(soundingsBlockMap[phaseName], phaseName));
+                    }
+
+                    // Skip rendering individual messages that are part of a sounding block
+                    // (they're already shown inside the soundings block)
+                    if (hasSoundings && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                      return; // Skip - already displayed in soundings block
+                    }
+
+                    // Render the main flow message (non-sounding messages only)
+                    elements.push(renderMessage(msg, `main-${i}`, `M${i}`));
+                  });
+
+                  // Fallback: Show any soundings blocks that weren't shown inline
+                  // (e.g., if winner messages didn't get into main_flow for some reason)
+                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
+                    data.soundings_by_phase.forEach(block => {
+                      const phaseName = block.phase_name;
+                      if (!shownSoundingsPhases.has(phaseName)) {
+                        console.log('[MessageFlow] Fallback showing block for phase:', phaseName);
+                        elements.push(renderSoundingsBlock(block, phaseName));
+                        shownSoundingsPhases.add(phaseName);
+                      }
+                    });
+                  }
+
+                  return elements;
+                })()}
               </div>
             </div>
           )}

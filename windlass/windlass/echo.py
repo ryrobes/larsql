@@ -149,6 +149,55 @@ class Echo:
                 mutation_type=mutation_type,
                 mutation_template=mutation_template,
             )
+
+            # Emit SSE events for sounding-related entries so LiveStore can receive real-time data
+            # This is critical for real-time UI updates during cascade execution
+            if node_type == "sounding_attempt" and sounding_index is not None:
+                try:
+                    from .events import get_event_bus, Event
+                    from datetime import datetime
+                    bus = get_event_bus()
+                    bus.publish(Event(
+                        type="sounding_attempt",
+                        session_id=self.session_id,
+                        timestamp=datetime.now().isoformat(),
+                        data={
+                            "trace_id": trace_id,
+                            "parent_id": parent_id,
+                            "phase_name": phase_name,
+                            "cascade_id": cascade_id,
+                            "sounding_index": sounding_index,
+                            "is_winner": is_winner,
+                            "reforge_step": reforge_step,
+                            "content": str(content)[:500] if content else None,
+                            "model": model,
+                        }
+                    ))
+                except Exception:
+                    pass  # Don't fail if event emission has issues
+
+            # Also emit evaluator entries for real-time eval reasoning display
+            if node_type == "evaluator":
+                try:
+                    from .events import get_event_bus, Event
+                    from datetime import datetime
+                    bus = get_event_bus()
+                    bus.publish(Event(
+                        type="evaluator",
+                        session_id=self.session_id,
+                        timestamp=datetime.now().isoformat(),
+                        data={
+                            "trace_id": trace_id,
+                            "parent_id": parent_id,
+                            "phase_name": phase_name,
+                            "cascade_id": cascade_id,
+                            "reforge_step": reforge_step,
+                            "content": str(content)[:1000] if content else None,
+                            "model": model,
+                        }
+                    ))
+                except Exception:
+                    pass  # Don't fail if event emission has issues
         except Exception as e:
             # Don't fail if logging has issues
             pass  # Silently ignore to avoid spam

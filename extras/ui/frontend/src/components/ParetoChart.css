@@ -1,0 +1,282 @@
+/* ===================================
+   PARETO CHART COMPONENT
+   Cost vs Quality visualization for multi-model soundings
+   =================================== */
+
+.pareto-chart-container {
+  background: rgba(26, 29, 36, 0.6);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+/* Header */
+.pareto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.2);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pareto-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.pareto-title svg {
+  flex-shrink: 0;
+}
+
+.pareto-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pareto-stats .stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #8b92a0;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.pareto-stats .stat svg {
+  color: #4ec9b0;
+}
+
+.pareto-stats .winner-stat {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.pareto-stats .winner-stat svg {
+  color: #fbbf24;
+}
+
+/* Chart Wrapper */
+.pareto-chart-wrapper {
+  background: #1a1d24;
+  border-radius: 8px;
+  padding: 12px 8px 8px 0;
+}
+
+/* Recharts overrides */
+.pareto-chart-wrapper .recharts-cartesian-grid-horizontal line,
+.pareto-chart-wrapper .recharts-cartesian-grid-vertical line {
+  stroke: #2d3139;
+  stroke-opacity: 0.5;
+}
+
+.pareto-chart-wrapper .recharts-legend-wrapper {
+  padding-top: 12px !important;
+}
+
+.pareto-chart-wrapper .recharts-default-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Custom Tooltip */
+.pareto-tooltip {
+  background: #252931;
+  border: 1px solid #3a3f4b;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 160px;
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3a3f4b;
+}
+
+.tooltip-model {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+}
+
+.tooltip-trophy {
+  color: #fbbf24;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #d4d7dd;
+  margin-bottom: 4px;
+}
+
+.tooltip-row svg {
+  color: #8b92a0;
+  flex-shrink: 0;
+}
+
+.tooltip-badge {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.tooltip-badge.frontier {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.tooltip-badge.dominated {
+  background: rgba(139, 146, 160, 0.15);
+  color: #8b92a0;
+  border: 1px solid rgba(139, 146, 160, 0.3);
+}
+
+/* Model Legend */
+.model-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(52, 211, 153, 0.15);
+  flex-wrap: wrap;
+}
+
+.legend-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b92a0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border: 1px solid #2d3139;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-model {
+  font-size: 11px;
+  color: #d4d7dd;
+  font-family: 'Courier New', monospace;
+}
+
+/* Winner Info */
+.winner-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #d4d7dd;
+}
+
+.winner-info svg {
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.winner-info strong {
+  color: #fbbf24;
+  font-family: 'Courier New', monospace;
+}
+
+/* Empty State */
+.pareto-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #8b92a0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed #3a3f4b;
+  border-radius: 8px;
+}
+
+.pareto-empty svg {
+  opacity: 0.5;
+}
+
+/* Loading State */
+.pareto-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 30px 20px;
+  color: #8b92a0;
+  font-size: 13px;
+}
+
+.pareto-loading svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .pareto-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pareto-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .model-legend {
+    justify-content: flex-start;
+  }
+
+  .pareto-chart-wrapper {
+    padding: 8px 4px 4px 0;
+  }
+}

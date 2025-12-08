@@ -91,6 +91,10 @@ class SoundingsConfig(BaseModel):
     mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
     mutations: Optional[List[str]] = None  # Custom mutations/templates, or use built-in if None
 
+    # Pre-evaluation validator - filters soundings before evaluator sees them
+    # Useful for code execution (only evaluate code that runs) or format validation
+    validator: Optional[str] = None  # Name of validator tool/cascade to pre-filter soundings
+
     # Multi-model soundings (Phase 1: Simple Model Pool)
     models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
     model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across soundings
@@ -188,6 +192,74 @@ class OutputExtractionConfig(BaseModel):
     required: bool = False  # Fail if pattern not found
     format: Literal["text", "json", "code"] = "text"  # Parse extracted content
 
+
+class ContextSourceConfig(BaseModel):
+    """
+    Configuration for pulling context from a specific phase.
+
+    Used in selective context mode to specify exactly what to include
+    from a previous phase's execution.
+
+    Usage:
+    {
+        "phase": "generate_chart",
+        "include": ["images", "output"],
+        "images_filter": "last",
+        "as_role": "user"
+    }
+    """
+    phase: str  # Source phase name
+    include: List[Literal["images", "output", "messages", "state"]] = Field(
+        default_factory=lambda: ["images", "output"]
+    )
+
+    # Image filtering options
+    images_filter: Literal["all", "last", "last_n"] = "all"
+    images_count: int = 1  # For last_n mode
+
+    # Message filtering options
+    messages_filter: Literal["all", "assistant_only", "last_turn"] = "all"
+
+    # Injection format
+    as_role: Literal["user", "system"] = "user"  # Role for injected messages
+
+    # Conditional injection (Phase 4)
+    condition: Optional[str] = None  # Jinja2 condition for conditional injection
+
+
+class ContextConfig(BaseModel):
+    """
+    Selective context configuration for a phase.
+
+    When present on a phase, enables selective context mode where only
+    specified phases are visible, rather than the default snowball
+    where all prior context accumulates.
+
+    Usage:
+    {
+        "context": {
+            "from": ["phase_a", "phase_b"],
+            "include_input": true
+        }
+    }
+
+    Or with detailed configuration:
+    {
+        "context": {
+            "from": [
+                "phase_a",
+                {"phase": "phase_b", "include": ["output"]}
+            ],
+            "include_input": true
+        }
+    }
+    """
+    from_: List[Union[str, ContextSourceConfig]] = Field(
+        default_factory=list,
+        alias="from"
+    )
+    include_input: bool = True  # Include original cascade input
+
 class PhaseConfig(BaseModel):
     name: str
     instructions: str
@@ -206,6 +278,10 @@ class PhaseConfig(BaseModel):
     context_retention: Literal["full", "output_only"] = "full"  # How much of this phase's context to keep in lineage
     context_ttl: Optional[Dict[str, Optional[int]]] = None  # Time-to-live (in turns) for different message categories: tool_results, images, assistant
     output_extraction: Optional[OutputExtractionConfig] = None  # Extract structured content from output
+
+    # Context Injection System - Selective context management
+    context: Optional[ContextConfig] = None  # If present, enables selective mode (only specified phases visible)
+    inject_from: Optional[List[Union[str, ContextSourceConfig]]] = None  # Additive injection to snowball context
 
 class CascadeConfig(BaseModel):
     cascade_id: str

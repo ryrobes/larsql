@@ -15,7 +15,7 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig
 from .echo import get_echo, Echo
 from .config import get_config
 from .tackle import get_tackle
@@ -236,6 +236,345 @@ class WindlassRunner:
             meta.setdefault("reforge_step", self.current_reforge_step)
 
         return meta
+
+    # ========== CONTEXT INJECTION SYSTEM ==========
+    # These methods implement selective context management, allowing phases to
+    # explicitly declare their context dependencies rather than relying solely
+    # on the snowball architecture where all context accumulates.
+
+    def _resolve_phase_reference(self, ref: str) -> Optional[str]:
+        """
+        Resolve special phase reference keywords to actual phase names.
+
+        Supported keywords:
+            - "first": The first phase that executed (often contains original problem)
+            - "previous" or "prev": The most recently completed phase
+
+        Args:
+            ref: Phase name or special keyword
+
+        Returns:
+            Resolved phase name, or None if keyword can't be resolved (e.g., "first" in first phase)
+        """
+        ref_lower = ref.lower()
+
+        if ref_lower == "first":
+            if self.echo.lineage:
+                resolved = self.echo.lineage[0].get("phase")
+                console.print(f"    [dim]Resolved 'first' → '{resolved}'[/dim]")
+                return resolved
+            else:
+                console.print(f"    [dim yellow]Cannot resolve 'first': no phases have completed yet[/dim yellow]")
+                return None
+
+        elif ref_lower in ("previous", "prev"):
+            if self.echo.lineage:
+                resolved = self.echo.lineage[-1].get("phase")
+                console.print(f"    [dim]Resolved 'previous' → '{resolved}'[/dim]")
+                return resolved
+            else:
+                console.print(f"    [dim yellow]Cannot resolve 'previous': no phases have completed yet[/dim yellow]")
+                return None
+
+        # Not a special keyword - return as literal phase name
+        return ref
+
+    def _normalize_source_config(self, source: Union[str, ContextSourceConfig]) -> Optional[ContextSourceConfig]:
+        """
+        Normalize a context source specification to ContextSourceConfig.
+        Resolves special keywords like "first", "previous" to actual phase names.
+
+        Args:
+            source: Either a phase name string (or keyword) or a ContextSourceConfig object
+
+        Returns:
+            ContextSourceConfig with defaults applied, or None if reference couldn't be resolved
+        """
+        if isinstance(source, str):
+            resolved_phase = self._resolve_phase_reference(source)
+            if resolved_phase is None:
+                return None
+            return ContextSourceConfig(phase=resolved_phase)
+        else:
+            # ContextSourceConfig object - may need to resolve the phase name
+            resolved_phase = self._resolve_phase_reference(source.phase)
+            if resolved_phase is None:
+                return None
+            if resolved_phase != source.phase:
+                # Create new config with resolved phase name
+                return ContextSourceConfig(
+                    phase=resolved_phase,
+                    include=source.include,
+                    images_filter=source.images_filter,
+                    images_count=source.images_count,
+                    messages_filter=source.messages_filter,
+                    as_role=source.as_role,
+                    condition=source.condition
+                )
+            return source
+
+    def _load_phase_images(self, phase_name: str, config: ContextSourceConfig) -> List[str]:
+        """
+        Load images from disk for a specific phase.
+
+        Args:
+            phase_name: Name of the phase to load images from
+            config: Source configuration with filtering options
+
+        Returns:
+            List of base64-encoded image data URLs
+        """
+        import glob
+        import base64
+
+        image_dir = os.path.join(get_config().image_dir, self.session_id, phase_name)
+
+        if not os.path.exists(image_dir):
+            console.print(f"  [dim]No images found for phase '{phase_name}' (directory doesn't exist)[/dim]")
+            return []
+
+        # Find all image files
+        image_patterns = ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp']
+        image_files = []
+        for pattern in image_patterns:
+            image_files.extend(glob.glob(os.path.join(image_dir, pattern)))
+
+        # Sort by modification time (oldest first)
+        image_files.sort(key=os.path.getmtime)
+
+        if not image_files:
+            console.print(f"  [dim]No images found for phase '{phase_name}'[/dim]")
+            return []
+
+        # Apply filtering
+        if config.images_filter == "last":
+            image_files = image_files[-1:] if image_files else []
+        elif config.images_filter == "last_n":
+            image_files = image_files[-config.images_count:] if image_files else []
+        # "all" keeps all files
+
+        # Encode images to base64 data URLs
+        encoded_images = []
+        for img_path in image_files:
+            try:
+                ext = os.path.splitext(img_path)[1].lower()
+                mime_type = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.gif': 'image/gif',
+                    '.webp': 'image/webp'
+                }.get(ext, 'image/png')
+
+                with open(img_path, 'rb') as f:
+                    img_data = base64.b64encode(f.read()).decode('utf-8')
+                    encoded_images.append(f"data:{mime_type};base64,{img_data}")
+            except Exception as e:
+                console.print(f"  [yellow]Warning: Failed to load image {img_path}: {e}[/yellow]")
+
+        console.print(f"  [dim]Loaded {len(encoded_images)} image(s) from phase '{phase_name}'[/dim]")
+        return encoded_images
+
+    def _get_phase_output(self, phase_name: str) -> Optional[str]:
+        """
+        Get the output from a specific phase via echo.lineage.
+
+        Args:
+            phase_name: Name of the phase to get output from
+
+        Returns:
+            The phase output as a string, or None if not found
+        """
+        for entry in self.echo.lineage:
+            if entry.get('phase') == phase_name:
+                output = entry.get('output')
+                if output is not None:
+                    return str(output)
+        return None
+
+    def _get_phase_messages(self, phase_name: str, config: ContextSourceConfig) -> List[Dict]:
+        """
+        Get messages from a specific phase via echo.history.
+
+        Args:
+            phase_name: Name of the phase to get messages from
+            config: Source configuration with filtering options
+
+        Returns:
+            List of message dicts with role/content
+        """
+        messages = []
+        in_phase = False
+        last_turn_messages = []
+
+        for entry in self.echo.history:
+            # Check if this entry belongs to the target phase
+            entry_phase = entry.get('metadata', {}).get('phase_name')
+            if entry_phase == phase_name:
+                in_phase = True
+                role = entry.get('role')
+                content = entry.get('content')
+
+                if not content or role in ['cascade_soundings', 'cascade_sounding_attempt', 'evaluator']:
+                    continue
+
+                # Apply message filtering
+                if config.messages_filter == "assistant_only":
+                    if role == 'assistant':
+                        messages.append({"role": role, "content": content})
+                elif config.messages_filter == "last_turn":
+                    # Collect all, then take last turn
+                    if role in ['user', 'assistant', 'tool']:
+                        last_turn_messages.append({"role": role, "content": content})
+                else:  # "all"
+                    if role in ['user', 'assistant', 'tool', 'system']:
+                        messages.append({"role": role, "content": content})
+            elif in_phase:
+                # We've left the phase, stop collecting
+                break
+
+        # For last_turn filter, find the last user->assistant exchange
+        if config.messages_filter == "last_turn" and last_turn_messages:
+            # Find last assistant message and include it plus preceding context
+            for i in range(len(last_turn_messages) - 1, -1, -1):
+                if last_turn_messages[i]['role'] == 'assistant':
+                    # Include from last user message to this assistant message
+                    start = i
+                    for j in range(i - 1, -1, -1):
+                        if last_turn_messages[j]['role'] == 'user':
+                            start = j
+                            break
+                    messages = last_turn_messages[start:i+1]
+                    break
+
+        return messages
+
+    def _build_injection_messages(self, config: ContextSourceConfig, trace: 'TraceNode') -> List[Dict]:
+        """
+        Build injection messages for a single source configuration.
+
+        Args:
+            config: Source configuration specifying what to include
+            trace: Current trace node for logging
+
+        Returns:
+            List of message dicts to inject into context
+        """
+        messages = []
+        phase_name = config.phase
+
+        # Check if the phase has executed
+        executed_phases = [entry['phase'] for entry in self.echo.lineage]
+        if phase_name not in executed_phases:
+            console.print(f"  [dim]Skipping injection from '{phase_name}' (not executed)[/dim]")
+            return messages
+
+        # Include images
+        if "images" in config.include:
+            images = self._load_phase_images(phase_name, config)
+            if images:
+                # Build multimodal message with images
+                content = [{"type": "text", "text": f"[Images from {phase_name}]:"}]
+                for img_url in images:
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url}
+                    })
+                messages.append({
+                    "role": config.as_role,
+                    "content": content
+                })
+
+        # Include output
+        if "output" in config.include:
+            output = self._get_phase_output(phase_name)
+            if output:
+                messages.append({
+                    "role": config.as_role,
+                    "content": f"[Output from {phase_name}]:\n{output}"
+                })
+
+        # Include messages (full conversation replay)
+        if "messages" in config.include:
+            phase_messages = self._get_phase_messages(phase_name, config)
+            if phase_messages:
+                # Add header message
+                messages.append({
+                    "role": config.as_role,
+                    "content": f"[Conversation from {phase_name}]:"
+                })
+                # Add the actual messages with their original roles
+                messages.extend(phase_messages)
+
+        # Include state (Phase 4 feature - basic implementation)
+        if "state" in config.include:
+            # For now, include the full state as JSON
+            # Future: filter to only keys set during that phase
+            if self.echo.state:
+                messages.append({
+                    "role": config.as_role,
+                    "content": f"[State from {phase_name}]:\n{json.dumps(self.echo.state, indent=2)}"
+                })
+
+        return messages
+
+    def _build_phase_context(self, phase: PhaseConfig, input_data: dict, trace: 'TraceNode') -> Optional[List[Dict]]:
+        """
+        Build the context messages for a phase based on its context configuration.
+
+        This is the main entry point for the context injection system.
+
+        Args:
+            phase: Phase configuration
+            input_data: Original cascade input
+            trace: Current trace node
+
+        Returns:
+            List of context messages if selective mode, None for snowball mode
+        """
+        # Case 1: Selective mode (context field present)
+        if phase.context:
+            console.print(f"  [bold cyan]📦 Building selective context...[/bold cyan]")
+            messages = []
+
+            # Optionally include original input
+            if phase.context.include_input and input_data:
+                messages.append({
+                    "role": "user",
+                    "content": f"[Original Input]:\n{json.dumps(input_data, indent=2)}"
+                })
+
+            # Pull from each specified source (in order!)
+            for source in phase.context.from_:
+                source_config = self._normalize_source_config(source)
+                if source_config is None:
+                    # Reference couldn't be resolved (e.g., "first" in first phase)
+                    continue
+                injection_messages = self._build_injection_messages(source_config, trace)
+                messages.extend(injection_messages)
+
+            console.print(f"  [dim]Selective context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
+            return messages
+
+        # Case 2: Snowball + inject (inject_from field present)
+        elif phase.inject_from:
+            console.print(f"  [bold cyan]💉 Injecting additional context into snowball...[/bold cyan]")
+            injections = []
+
+            for source in phase.inject_from:
+                source_config = self._normalize_source_config(source)
+                if source_config is None:
+                    # Reference couldn't be resolved (e.g., "previous" in first phase)
+                    continue
+                injection_messages = self._build_injection_messages(source_config, trace)
+                injections.extend(injection_messages)
+
+            console.print(f"  [dim]Injected {len(injections)} message(s) into snowball[/dim]")
+            # Return injections - these will be prepended to snowball
+            return injections  # Caller handles prepending to snowball
+
+        # Case 3: Pure snowball (default)
+        return None
 
     def _update_graph(self):
         """Updates the mermaid graph in real-time."""
@@ -473,14 +812,16 @@ To use: Output JSON in this format:
                 console.print(f"{indent}    [red]✗ Cascade Sounding {i+1} failed: {e}[/red]")
                 log_message(self.session_id, "cascade_sounding_error", str(e),
                            trace_id=sounding_trace.id, parent_id=soundings_trace.id,
-                           node_type="error", depth=self.depth,
-                           sounding_index=i, is_winner=False)
+                           node_type="sounding_error", depth=self.depth,
+                           sounding_index=i, is_winner=False,
+                           metadata={"phase_name": "_orchestration", "error": str(e), "cascade_sounding": True})
                 sounding_results.append({
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "echo": None,
                     "trace_id": sounding_trace.id,
-                    "full_result": {}
+                    "full_result": {},
+                    "failed": True  # Mark as failed for evaluator
                 })
 
         # Now evaluate all soundings
@@ -1323,6 +1664,106 @@ If no tools are needed, return an empty array: []
             "validator": validator_name
         }
 
+    def _run_sounding_validator(self, validator_name: str, content: str, sounding_index: int, trace: TraceNode) -> dict:
+        """
+        Run a validator on a sounding result to determine if it should be evaluated.
+
+        This is a simplified version of _run_ward for pre-evaluation filtering.
+        Validators that return {"valid": false} will exclude the sounding from evaluation.
+
+        Returns dict with:
+        - valid: bool
+        - reason: str
+        """
+        indent = "  " * self.depth
+
+        # Create validator trace
+        validator_trace = trace.create_child("sounding_validator", f"{validator_name}_{sounding_index}")
+
+        # Try to get validator as Python function first
+        validator_tool = get_tackle(validator_name)
+        validator_result = None
+
+        # If not found as function, check if it's a cascade tool
+        if not validator_tool:
+            from .tackle_manifest import get_tackle_manifest
+            manifest = get_tackle_manifest()
+
+            if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
+                # It's a cascade validator
+                cascade_path = manifest[validator_name]["path"]
+                validator_input = {"content": content}
+
+                # Generate unique validator session ID
+                validator_session_id = f"{self.session_id}_sounding_validator_{sounding_index}"
+
+                try:
+                    # Run the validator cascade
+                    validator_result_echo = run_cascade(
+                        cascade_path,
+                        validator_input,
+                        validator_session_id,
+                        self.overrides,
+                        self.depth + 1,
+                        parent_trace=validator_trace,
+                        hooks=self.hooks,
+                        parent_session_id=self.session_id,
+                        sounding_index=sounding_index
+                    )
+
+                    # Extract result from lineage
+                    if validator_result_echo.get("lineage"):
+                        last_output = validator_result_echo["lineage"][-1].get("output", "")
+                        try:
+                            validator_result = json.loads(last_output)
+                        except:
+                            import re
+                            json_match = re.search(r'\{[^}]*"valid"[^}]*\}', last_output, re.DOTALL)
+                            if json_match:
+                                try:
+                                    validator_result = json.loads(json_match.group(0))
+                                except:
+                                    validator_result = {"valid": False, "reason": "Could not parse validator response"}
+                            else:
+                                validator_result = {"valid": False, "reason": last_output}
+                    else:
+                        validator_result = {"valid": False, "reason": "No output from validator"}
+
+                except Exception as e:
+                    validator_result = {"valid": False, "reason": f"Validator execution error: {str(e)}"}
+            else:
+                # Validator not found - skip validation (don't block)
+                console.print(f"{indent}    [yellow]Warning: Sounding validator '{validator_name}' not found - skipping validation[/yellow]")
+                validator_result = {"valid": True, "reason": "Validator not found - skipping"}
+
+        # Handle function validators
+        if validator_tool and callable(validator_tool):
+            try:
+                set_current_trace(validator_trace)
+                result = validator_tool(content=content)
+
+                if isinstance(result, str):
+                    try:
+                        validator_result = json.loads(result)
+                    except:
+                        validator_result = {"valid": False, "reason": result}
+                else:
+                    validator_result = result
+
+            except Exception as e:
+                validator_result = {"valid": False, "reason": f"Validator error: {str(e)}"}
+
+        # Parse result
+        is_valid = validator_result.get("valid", False)
+        reason = validator_result.get("reason", "No reason provided")
+
+        return {
+            "valid": is_valid,
+            "reason": reason,
+            "validator": validator_name,
+            "sounding_index": sounding_index
+        }
+
     def _assign_models(self, soundings_config) -> List[str]:
         """
         Assign models to sounding attempts based on configuration.
@@ -1667,14 +2108,14 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
         sounding_results: List[Dict],
         evaluator_instructions: str,
         evaluator_trace
-    ) -> List[float]:
+    ) -> tuple:
         """
         Get quality scores for each sounding from the evaluator.
 
         Uses LLM to assign numeric quality scores to each sounding.
 
         Returns:
-            List of quality scores (0-100 scale)
+            Tuple of (List of quality scores (0-100 scale), evaluator response content)
         """
         indent = "  " * self.depth
 
@@ -1687,12 +2128,19 @@ Consider clarity, completeness, accuracy, and usefulness.
 """
         for i, sounding in enumerate(sounding_results):
             score_prompt += f"## Attempt {i+1}\n"
+            # Include model info if available for multi-model comparison
+            if sounding.get("model"):
+                score_prompt += f"Model: {sounding['model']}\n"
             score_prompt += f"Result: {sounding['result']}\n\n"
 
         score_prompt += """
+For each attempt, provide:
+1. A brief assessment of its quality
+2. A numeric score from 0-100
+
 Respond with scores in this exact format:
-Attempt 1: [score]
-Attempt 2: [score]
+Attempt 1: [score] - [brief reason]
+Attempt 2: [score] - [brief reason]
 ...etc
 
 Use only numbers 0-100 for scores."""
@@ -1700,7 +2148,7 @@ Use only numbers 0-100 for scores."""
         # Create scoring agent
         scoring_agent = Agent(
             model=self.model,
-            system_prompt="You are an expert evaluator. Rate each response objectively on a 0-100 scale.",
+            system_prompt="You are an expert evaluator. Rate each response objectively on a 0-100 scale. Provide brief reasoning for each score.",
             tools=[],
             base_url=self.base_url,
             api_key=self.api_key
@@ -1710,7 +2158,7 @@ Use only numbers 0-100 for scores."""
         score_response = scoring_agent.run(score_prompt, context_messages=[])
         score_content = score_response.get("content", "")
 
-        console.print(f"{indent}  [dim]Quality scores: {score_content[:100]}...[/dim]")
+        console.print(f"{indent}  [dim]Quality scores: {score_content[:200]}...[/dim]")
 
         # Parse scores from response
         import re
@@ -1723,7 +2171,7 @@ Use only numbers 0-100 for scores."""
         for i in range(len(sounding_results)):
             scores.append(score_map.get(i + 1, 50.0))  # Default to 50 if not found
 
-        return scores
+        return scores, score_content
 
     def _log_pareto_frontier(
         self,
@@ -1946,10 +2394,15 @@ Use only numbers 0-100 for scores."""
                 # Capture the context that was generated during this sounding
                 sounding_context = self.context_messages[len(context_snapshot):]  # New messages added
 
+                # Extract images from this sounding's context for evaluator
+                from .utils import extract_images_from_messages
+                sounding_images = extract_images_from_messages(sounding_context)
+
                 sounding_results.append({
                     "index": i,
                     "result": result,
                     "context": sounding_context,
+                    "images": sounding_images,  # List of (base64_data, description) tuples
                     "trace_id": sounding_trace.id,
                     "final_state": self.echo.state.copy(),
                     "mutation_applied": mutation_applied,
@@ -1963,17 +2416,21 @@ Use only numbers 0-100 for scores."""
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
                 log_message(self.session_id, "sounding_error", str(e),
-                           trace_id=sounding_trace.id, parent_id=soundings_trace.id, node_type="error", depth=self.depth)
+                           trace_id=sounding_trace.id, parent_id=soundings_trace.id, node_type="sounding_error", depth=self.depth,
+                           sounding_index=i, metadata={"phase_name": phase.name, "error": str(e), "model": sounding_model})
                 sounding_results.append({
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
+                    "images": [],  # No images for failed soundings
                     "trace_id": sounding_trace.id,
                     "final_state": {},
                     "mutation_applied": mutation_applied,
                     "mutation_type": mutation_type,
                     "mutation_template": mutation_template,
-                    "model": sounding_model  # Track which model was used (Phase 1: Multi-Model)
+                    "model": sounding_model,  # Track which model was used (Phase 1: Multi-Model)
+                    "failed": True,  # Mark as failed for evaluator
+                    "error": str(e)  # Store error message
                 })
 
             finally:
@@ -1991,13 +2448,49 @@ Use only numbers 0-100 for scores."""
         self.echo.history = echo_history_snapshot.copy()
         self.echo.lineage = echo_lineage_snapshot.copy()
 
-        # Now evaluate all soundings
+        # Pre-evaluation validation (if configured)
+        # Filters out soundings that fail validation before sending to evaluator
+        valid_sounding_results = sounding_results
+        if phase.soundings.validator:
+            validator_name = phase.soundings.validator
+            console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_name}'...[/bold cyan]")
+
+            validation_results = []
+            for sr in sounding_results:
+                result_content = str(sr.get("result", ""))
+                validation = self._run_sounding_validator(
+                    validator_name,
+                    result_content,
+                    sr["index"],
+                    soundings_trace
+                )
+                sr["validation"] = validation
+                validation_results.append(validation)
+
+                if validation["valid"]:
+                    console.print(f"{indent}  [green]✓ Sounding {sr['index']+1}: VALID[/green] - {validation['reason'][:60]}...")
+                else:
+                    console.print(f"{indent}  [red]✗ Sounding {sr['index']+1}: INVALID[/red] - {validation['reason'][:60]}...")
+
+            # Filter to only valid soundings
+            valid_sounding_results = [sr for sr in sounding_results if sr.get("validation", {}).get("valid", True)]
+
+            # Handle edge case: all soundings failed validation
+            if not valid_sounding_results:
+                console.print(f"{indent}[bold red]⚠️  All {len(sounding_results)} soundings failed validation![/bold red]")
+                console.print(f"{indent}[yellow]Falling back to evaluating all soundings (validation results will be shown to evaluator)[/yellow]")
+                # Fall back to all results, but evaluator will see validation info
+                valid_sounding_results = sounding_results
+            else:
+                console.print(f"{indent}[bold green]✓ {len(valid_sounding_results)}/{len(sounding_results)} soundings passed validation[/bold green]")
+
+        # Now evaluate soundings (only valid ones, unless all failed)
         # Update phase progress for evaluation stage
         update_phase_progress(
             self.session_id, self.config.cascade_id, phase.name, self.depth,
             sounding_stage="evaluating"
         )
-        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(sounding_results)} soundings...[/bold yellow]")
+        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
 
         # Create evaluator trace
         evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
@@ -2018,29 +2511,29 @@ Use only numbers 0-100 for scores."""
 
             # Get costs
             console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
-            sounding_costs = self._get_sounding_costs(sounding_results)
-            for i, sr in enumerate(sounding_results):
+            sounding_costs = self._get_sounding_costs(valid_sounding_results)
+            for i, sr in enumerate(valid_sounding_results):
                 sr["cost"] = sounding_costs[i]
             console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
             # Get quality scores
             console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
-            quality_scores = self._get_quality_scores_from_evaluator(
-                sounding_results,
+            quality_scores, evaluator_reasoning = self._get_quality_scores_from_evaluator(
+                valid_sounding_results,
                 phase.soundings.evaluator_instructions,
                 evaluator_trace
             )
-            for i, sr in enumerate(sounding_results):
+            for i, sr in enumerate(valid_sounding_results):
                 sr["quality_score"] = quality_scores[i]
             console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
 
             # Compute Pareto frontier
             frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
-                sounding_results, quality_scores, sounding_costs
+                valid_sounding_results, quality_scores, sounding_costs
             )
 
             # Store Pareto data in sounding results
-            for i, sr in enumerate(sounding_results):
+            for i, sr in enumerate(valid_sounding_results):
                 sr["is_pareto_optimal"] = i in frontier_indices
                 sr["dominated_by"] = dominated_map.get(i)
                 sr["pareto_rank"] = pareto_ranks.get(i, 2)
@@ -2048,27 +2541,50 @@ Use only numbers 0-100 for scores."""
             # Display frontier
             console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
             for idx in frontier_indices:
-                model = sounding_results[idx].get("model", "unknown")
+                model = valid_sounding_results[idx].get("model", "unknown")
                 quality = quality_scores[idx]
                 cost = sounding_costs[idx]
-                console.print(f"{indent}    • Sounding {idx+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+                console.print(f"{indent}    • Sounding {valid_sounding_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
 
             # Select winner from frontier
             winner_index = self._select_from_pareto_frontier(
-                sounding_results,
+                valid_sounding_results,
                 frontier_indices,
                 quality_scores,
                 sounding_costs,
                 phase.soundings.pareto_frontier.policy
             )
-            eval_content = f"Pareto frontier analysis: {len(frontier_indices)} non-dominated solutions. Winner selected by '{phase.soundings.pareto_frontier.policy}' policy."
+
+            # Build comprehensive eval_content with quality reasoning + Pareto selection
+            winner_model = valid_sounding_results[winner_index].get("model", "unknown")
+            winner_quality = quality_scores[winner_index]
+            winner_cost = sounding_costs[winner_index]
+
+            eval_content = f"""## Quality Assessment
+
+{evaluator_reasoning}
+
+## Pareto Frontier Analysis
+
+- **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_sounding_results)} total
+- **Selection policy:** `{phase.soundings.pareto_frontier.policy}`
+- **Winner:** Attempt {winner_index + 1} ({winner_model}) - Quality: {winner_quality:.1f}, Cost: ${winner_cost:.6f}
+
+### Frontier Members:
+"""
+            for idx in frontier_indices:
+                model = valid_sounding_results[idx].get("model", "unknown")
+                quality = quality_scores[idx]
+                cost = sounding_costs[idx]
+                is_winner = "**WINNER**" if idx == winner_index else ""
+                eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
 
             # Log Pareto data for visualization
             if phase.soundings.pareto_frontier.show_frontier:
                 self._log_pareto_frontier(
                     self.session_id,
                     phase.name,
-                    sounding_results,
+                    valid_sounding_results,
                     frontier_indices,
                     dominated_map,
                     quality_scores,
@@ -2079,34 +2595,64 @@ Use only numbers 0-100 for scores."""
         # Phase 2: Cost-Aware Evaluation
         elif use_cost_aware:
             console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
-            sounding_costs = self._get_sounding_costs(sounding_results)
+            sounding_costs = self._get_sounding_costs(valid_sounding_results)
             normalized_costs = self._normalize_costs(
                 sounding_costs,
                 phase.soundings.cost_aware_evaluation.cost_normalization
             )
             # Store costs in sounding results for logging
-            for i, sr in enumerate(sounding_results):
+            for i, sr in enumerate(valid_sounding_results):
                 sr["cost"] = sounding_costs[i]
                 sr["normalized_cost"] = normalized_costs[i]
 
             # Build cost-aware evaluation prompt
             eval_prompt = self._build_cost_aware_eval_prompt(
-                sounding_results,
+                valid_sounding_results,
                 sounding_costs,
                 phase.soundings,
                 phase.soundings.evaluator_instructions
             )
             console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
+            # Check if any soundings have images for multi-modal evaluation
+            any_images = any(sounding.get('images') for sounding in valid_sounding_results)
+            eval_context_messages = []
+
+            if any_images:
+                # Build multi-modal context messages with images
+                # Images are shown with clear attempt labels for association
+                for i, sounding in enumerate(valid_sounding_results):
+                    sounding_images = sounding.get('images', [])
+                    if sounding_images:
+                        num_images = len(sounding_images)
+                        attempt_content = [{
+                            "type": "text",
+                            "text": f"═══ ATTEMPT {i+1} VISUAL OUTPUT ({num_images} image{'s' if num_images > 1 else ''}) ═══"
+                        }]
+                        for img_idx, (img_data, desc) in enumerate(sounding_images):
+                            attempt_content.append({
+                                "type": "image_url",
+                                "image_url": {"url": img_data}
+                            })
+                            attempt_content.append({
+                                "type": "text",
+                                "text": f"↑ Attempt {i+1}, Image {img_idx+1}/{num_images}"
+                            })
+                        eval_context_messages.append({
+                            "role": "user",
+                            "content": attempt_content
+                        })
+                console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
+
             # Create evaluator agent and run
             evaluator_agent = Agent(
                 model=self.model,
-                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one.",
+                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
                 tools=[],
                 base_url=self.base_url,
                 api_key=self.api_key
             )
-            eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
+            eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
             eval_content = eval_response.get("content", "")
             console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
 
@@ -2116,7 +2662,7 @@ Use only numbers 0-100 for scores."""
             match = re.search(r'\b([1-9]\d*)\b', eval_content)
             if match:
                 winner_index = int(match.group(1)) - 1
-                if winner_index >= len(sounding_results):
+                if winner_index >= len(valid_sounding_results):
                     winner_index = 0
 
         # Phase 1: Standard quality-only evaluation
@@ -2124,21 +2670,70 @@ Use only numbers 0-100 for scores."""
             eval_prompt = f"{phase.soundings.evaluator_instructions}\n\n"
             eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
-            for i, sounding in enumerate(sounding_results):
-                eval_prompt += f"## Attempt {i+1}\n"
-                eval_prompt += f"Result: {sounding['result']}\n\n"
+            # Check if any soundings have images
+            any_images = any(sounding.get('images') for sounding in valid_sounding_results)
 
-            eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(sounding_results))
+            if any_images:
+                # Multi-modal evaluation: build context with images
+                # Each attempt gets its own message with clear labeling: text result + images together
+                eval_context_messages = []
+
+                for i, sounding in enumerate(valid_sounding_results):
+                    sounding_images = sounding.get('images', [])
+                    num_images = len(sounding_images)
+
+                    # Build content block with clear attempt identification
+                    header = f"═══════════════════════════════════════\n"
+                    header += f"ATTEMPT {i+1} OF {len(valid_sounding_results)}\n"
+                    header += f"═══════════════════════════════════════\n\n"
+                    header += f"Text Result:\n{sounding['result']}"
+
+                    if num_images > 0:
+                        header += f"\n\n📸 Visual Output ({num_images} image{'s' if num_images > 1 else ''} follow):"
+
+                    attempt_content = [{"type": "text", "text": header}]
+
+                    # Add images immediately after the header (same message = clear association)
+                    for img_idx, (img_data, desc) in enumerate(sounding_images):
+                        attempt_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_data}
+                        })
+                        # Add image label after each image for clarity
+                        attempt_content.append({
+                            "type": "text",
+                            "text": f"↑ Attempt {i+1}, Image {img_idx+1}/{num_images}"
+                        })
+
+                    eval_context_messages.append({
+                        "role": "user",
+                        "content": attempt_content
+                    })
+
+                # Add final evaluation instruction
+                eval_prompt += f"\n\nI've shown you {len(valid_sounding_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
+                eval_prompt += f"Compare both the text quality AND visual output quality. "
+                eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_sounding_results)}) and a brief explanation."
+
+                console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
+            else:
+                # Text-only evaluation (original behavior)
+                eval_context_messages = []
+                for i, sounding in enumerate(valid_sounding_results):
+                    eval_prompt += f"## Attempt {i+1}\n"
+                    eval_prompt += f"Result: {sounding['result']}\n\n"
+
+                eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_sounding_results))
 
             # Create evaluator agent and run
             evaluator_agent = Agent(
                 model=self.model,
-                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one.",
+                system_prompt="You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well.",
                 tools=[],
                 base_url=self.base_url,
                 api_key=self.api_key
             )
-            eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
+            eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
             eval_content = eval_response.get("content", "")
             console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
 
@@ -2148,12 +2743,14 @@ Use only numbers 0-100 for scores."""
             match = re.search(r'\b([1-9]\d*)\b', eval_content)
             if match:
                 winner_index = int(match.group(1)) - 1
-                if winner_index >= len(sounding_results):
+                if winner_index >= len(valid_sounding_results):
                     winner_index = 0
 
-        winner = sounding_results[winner_index]
+        # Get winner from valid_sounding_results (winner_index is relative to this filtered list)
+        winner = valid_sounding_results[winner_index]
 
-        console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner_index + 1}[/bold green]")
+        # Display winner with original index for clarity
+        console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner['index'] + 1}[/bold green]")
 
         # Now apply ONLY the winner's context to the main snowball
         self.context_messages = context_snapshot + winner['context']
@@ -2162,9 +2759,12 @@ Use only numbers 0-100 for scores."""
         # Reset sounding index (no longer in sounding context)
         self.current_phase_sounding_index = None
 
+        # Track original winner index for metadata logging
+        original_winner_index = winner['index']
+
         # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
-            is_winner = sr["index"] == winner_index
+            is_winner = sr["index"] == original_winner_index
             sounding_metadata = {
                 "phase_name": phase.name,
                 "sounding_index": sr["index"],
@@ -2172,6 +2772,7 @@ Use only numbers 0-100 for scores."""
                 "factor": factor,
                 "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
                 "model": sr.get("model"),  # Log which model was used (Phase 1: Multi-Model Soundings)
+                "validation": sr.get("validation"),  # Log validation result if validator was used
             }
             # Add cost data if available (Phase 2: Cost-Aware Evaluation)
             if sr.get("cost") is not None:
@@ -2195,10 +2796,12 @@ Use only numbers 0-100 for scores."""
         # Add evaluator entry (auto-logs via unified_logs)
         evaluator_metadata = {
             "phase_name": phase.name,
-            "winner_index": winner_index,
+            "winner_index": original_winner_index,  # Use original index for consistency
             "winner_trace_id": winner['trace_id'],
             "evaluation": eval_content,
             "model": self.model,
+            "total_soundings": len(sounding_results),
+            "valid_soundings": len(valid_sounding_results),
         }
         # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
         if use_cost_aware:
@@ -2877,6 +3480,43 @@ Refinement directive: {reforge_config.honing_prompt}
             tools_schema.append(get_tool_schema(route_to_tool))
             tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
 
+        # ========== CONTEXT INJECTION SYSTEM ==========
+        # Check if this phase has selective context or inject_from configured
+        context_result = self._build_phase_context(phase, input_data, trace)
+
+        # Handle selective context mode
+        if phase.context:
+            # Selective mode: Replace snowball with selective context
+            console.print(f"{indent}  [bold cyan]📦 Using selective context mode[/bold cyan]")
+
+            # Clear existing context and use selective messages
+            self.context_messages = []
+
+            # Add the selective context messages
+            for msg in (context_result or []):
+                ctx_trace = trace.create_child("msg", "context_injection")
+                self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
+                                     metadata={"selective_context": True})
+                self.context_messages.append(msg)
+
+        # Handle inject_from mode (snowball + injections)
+        elif phase.inject_from and context_result:
+            # Inject mode: Prepend injections to existing snowball
+            console.print(f"{indent}  [bold cyan]💉 Prepending injections to snowball[/bold cyan]")
+
+            # Create injection messages and prepend to context
+            injection_messages = []
+            for msg in context_result:
+                inject_trace = trace.create_child("msg", "inject_from")
+                self.echo.add_history(msg, trace_id=inject_trace.id, parent_id=trace.id, node_type="inject_from",
+                                     metadata={"inject_from": True})
+                injection_messages.append(msg)
+
+            # Prepend to context_messages
+            self.context_messages = injection_messages + self.context_messages
+
+        # Else: Pure snowball mode (default, no changes needed)
+
         # Construct context from lineage
         # Since we are snowballing context_messages, we don't need to add input_data as a separate user message.
         # Input data is already available via:
@@ -3479,8 +4119,11 @@ Refinement directive: {reforge_config.honing_prompt}
                          self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input",
                                              metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
 
-                    # NOTE: Agent output is now logged via cost tracker with cost merged in
-                    # No need to log turn_output separately (was duplicate)
+                    # Add assistant response to Echo (needed for message injection in context.from)
+                    output_trace = turn_trace.create_child("msg", "assistant_output")
+                    self.echo.add_history({"role": "assistant", "content": content}, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="agent",
+                                         metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
+
                     self._update_graph()
 
                     response_content = content

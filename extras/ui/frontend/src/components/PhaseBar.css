@@ -76,19 +76,6 @@
   background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.6));
 }
 
-/* Weight-based colors (for cascade definitions) */
-.phase-bar-fill.weight-light {
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.2), rgba(45, 212, 191, 0.4));
-}
-
-.phase-bar-fill.weight-medium {
-  background: linear-gradient(90deg, rgba(217, 165, 83, 0.3), rgba(217, 165, 83, 0.6));
-}
-
-.phase-bar-fill.weight-heavy {
-  background: linear-gradient(90deg, rgba(207, 102, 121, 0.3), rgba(207, 102, 121, 0.6));
-}
-
 /* Status-based colors (for instances) */
 .phase-bar-fill.status-completed {
   background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.7));
@@ -398,12 +385,6 @@
   color: #2DD4BF;
 }
 
-.complexity-badge.weight {
-  background: rgba(154, 165, 177, 0.15);
-  border-color: #9AA5B1;
-  color: #9AA5B1;
-}
-
 .complexity-badge.tools {
   background: rgba(217, 165, 83, 0.15);
   border-color: #D9A553;
@@ -513,6 +494,28 @@
   background: linear-gradient(90deg, rgba(45, 212, 191, 0.15), rgba(45, 212, 191, 0.3));
   opacity: 0.6;
   filter: saturate(0.5);
+}
+
+.individual-sounding-bar.running {
+  background: linear-gradient(90deg, rgba(217, 165, 83, 0.3), rgba(217, 165, 83, 0.6));
+  animation: soundingPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(217, 165, 83, 0.4);
+}
+
+@keyframes soundingPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(217, 165, 83, 0.3);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 16px rgba(217, 165, 83, 0.6);
+  }
+}
+
+.running-icon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .individual-sounding-bar:hover {

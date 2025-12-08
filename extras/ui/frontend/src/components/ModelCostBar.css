@@ -1,0 +1,104 @@
+/* ModelCostBar - Compact multi-model cost visualization */
+
+.model-cost-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #0B1219;
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+}
+
+/* Stacked horizontal bar */
+.model-cost-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #0B1219;
+  border: 1px solid #2C3B4B;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.model-cost-segment {
+  height: 100%;
+  transition: all 0.3s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+/* Add subtle separator between segments */
+.model-cost-segment:not(:last-child) {
+  border-right: 1px solid rgba(11, 18, 25, 0.6);
+}
+
+/* Hover effect on segment */
+.model-cost-segment:hover {
+  filter: brightness(1.25);
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* Legend - one model per line */
+.model-cost-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-cost-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  padding: 2px 0;
+  cursor: default;
+}
+
+.model-cost-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.3);
+}
+
+.model-cost-name {
+  color: #9AA5B1;
+  font-weight: 500;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-cost-value {
+  color: #2DD4BF;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 0.65rem;
+}
+
+/* Hover state for legend items */
+.model-cost-legend-item:hover .model-cost-name {
+  color: #F0F4F8;
+}
+
+.model-cost-legend-item:hover .model-cost-dot {
+  transform: scale(1.4);
+  transition: transform 0.15s ease;
+}
+
+/* Responsive - tighter spacing on narrow screens */
+@media (max-width: 400px) {
+  .model-cost-legend {
+    gap: 2px 6px;
+  }
+
+  .model-cost-name {
+    max-width: 60px;
+  }
+}
