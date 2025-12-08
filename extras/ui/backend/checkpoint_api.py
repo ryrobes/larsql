@@ -6,11 +6,14 @@ Provides REST API for:
 - Getting checkpoint details
 - Responding to checkpoints
 - Cancelling checkpoints
+- Signaling audibles (real-time feedback injection)
 """
 import json
 import os
 import re
 import sys
+import threading
+from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 # Add parent directory to path to import windlass
@@ -34,6 +37,78 @@ except ImportError:
     clear_cached_checkpoint = None
 
 checkpoint_bp = Blueprint('checkpoints', __name__)
+
+# ========== AUDIBLE SIGNAL STORAGE ==========
+# Simple in-memory storage for audible signals
+# The runner polls this to check if an audible was requested
+# This is session-specific to support multiple concurrent cascades
+
+_audible_signals = {}  # session_id -> {"signaled": True/False, "timestamp": datetime}
+_audible_lock = threading.Lock()
+
+
+def signal_audible_for_session(session_id: str) -> bool:
+    """
+    Signal that an audible should be triggered for a session.
+
+    Args:
+        session_id: The session to signal
+
+    Returns:
+        True if signal was set, False if already signaled
+    """
+    with _audible_lock:
+        existing = _audible_signals.get(session_id, {})
+        if existing.get("signaled"):
+            return False  # Already signaled
+
+        _audible_signals[session_id] = {
+            "signaled": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        return True
+
+
+def check_audible_signal(session_id: str) -> bool:
+    """
+    Check if an audible signal is pending for a session.
+
+    Args:
+        session_id: The session to check
+
+    Returns:
+        True if a signal is pending
+    """
+    with _audible_lock:
+        signal = _audible_signals.get(session_id, {})
+        return signal.get("signaled", False)
+
+
+def clear_audible_signal(session_id: str):
+    """
+    Clear the audible signal for a session.
+
+    Args:
+        session_id: The session to clear
+    """
+    with _audible_lock:
+        if session_id in _audible_signals:
+            _audible_signals[session_id]["signaled"] = False
+
+
+def get_audible_status(session_id: str) -> dict:
+    """
+    Get the audible signal status for a session.
+
+    Args:
+        session_id: The session to check
+
+    Returns:
+        Status dict with signaled, timestamp, etc.
+    """
+    with _audible_lock:
+        return _audible_signals.get(session_id, {"signaled": False})
+
 
 # Get IMAGE_DIR from environment or default
 _DEFAULT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
@@ -424,5 +499,96 @@ def cancel_checkpoint(checkpoint_id):
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ========== AUDIBLE API ENDPOINTS ==========
+
+@checkpoint_bp.route('/api/audible/signal/<session_id>', methods=['POST'])
+def signal_audible(session_id):
+    """
+    Signal that the user wants to call an audible (inject feedback mid-phase).
+
+    The cascade runner will check this signal and create an AUDIBLE checkpoint
+    at the next safe point (after current tool/turn completes).
+
+    URL params:
+    - session_id: The session to signal
+
+    Returns:
+    - Success status and whether signal was newly set
+    """
+    try:
+        newly_set = signal_audible_for_session(session_id)
+
+        # Publish SSE event to notify the runner
+        try:
+            from windlass.events import get_event_bus, Event
+            bus = get_event_bus()
+            bus.publish(Event(
+                type="audible_signal",
+                session_id=session_id,
+                timestamp=datetime.now().isoformat(),
+                data={"newly_set": newly_set}
+            ))
+        except Exception as sse_err:
+            print(f"[AUDIBLE] Warning: Could not publish SSE event: {sse_err}")
+
+        return jsonify({
+            "status": "signaled",
+            "session_id": session_id,
+            "newly_set": newly_set,
+            "message": "Audible signal sent. Cascade will pause at next safe point." if newly_set else "Audible already signaled for this session."
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@checkpoint_bp.route('/api/audible/status/<session_id>', methods=['GET'])
+def audible_status(session_id):
+    """
+    Check the audible signal status for a session.
+
+    URL params:
+    - session_id: The session to check
+
+    Returns:
+    - Current audible signal status
+    """
+    try:
+        status = get_audible_status(session_id)
+        return jsonify({
+            "session_id": session_id,
+            "signaled": status.get("signaled", False),
+            "timestamp": status.get("timestamp")
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@checkpoint_bp.route('/api/audible/clear/<session_id>', methods=['POST'])
+def clear_audible(session_id):
+    """
+    Clear the audible signal for a session.
+
+    Typically called by the runner after it has processed the signal.
+
+    URL params:
+    - session_id: The session to clear
+
+    Returns:
+    - Success status
+    """
+    try:
+        clear_audible_signal(session_id)
+        return jsonify({
+            "status": "cleared",
+            "session_id": session_id,
+            "message": "Audible signal cleared"
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500

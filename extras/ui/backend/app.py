@@ -473,6 +473,7 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                 "max_turns": 1,
                 "turn_costs": [],
                 "tool_calls": [],
+                "audible_count": 0,
                 "message_count": 0,
                 "avg_cost": 0.0,
                 "avg_duration": 0.0
@@ -602,6 +603,10 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                                     tool_calls_map[phase_name].append(tool_name)
                 except:
                     pass
+
+        # Count audibles
+        if node_type == 'audible':
+            phases_map[phase_name]['audible_count'] += 1
 
         # Count messages
         if node_type in ('agent', 'tool_result', 'tool_call', 'user', 'system', 'turn_output', 'turn_start'):

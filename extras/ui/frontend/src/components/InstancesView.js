@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
+import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
 import SoundingsExplorer from './SoundingsExplorer';
 import MermaidPreview from './MermaidPreview';
@@ -63,6 +64,10 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [debugSessionId, setDebugSessionId] = useState(null);
   const [soundingsExplorerSession, setSoundingsExplorerSession] = useState(null);
   const [expandedParents, setExpandedParents] = useState(new Set());
+
+  // Audible state - track per session since multiple can be running
+  const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
+  const [audibleSending, setAudibleSending] = useState({});    // { sessionId: boolean }
 
   useEffect(() => {
     if (cascadeId) {
@@ -247,6 +252,48 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return `${children.length} sub-cascade${children.length > 1 ? 's' : ''}${statusText}`;
   };
 
+  // Handle audible button click for a specific session
+  const handleAudibleClick = async (e, sessionId) => {
+    e.stopPropagation();
+
+    // Don't signal if already signaled or sending
+    if (audibleSending[sessionId] || audibleSignaled[sessionId]) return;
+
+    setAudibleSending(prev => ({ ...prev, [sessionId]: true }));
+
+    try {
+      const response = await fetch(`http://localhost:5001/api/audible/signal/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+
+      if (data.status === 'signaled') {
+        setAudibleSignaled(prev => ({ ...prev, [sessionId]: true }));
+        // Don't auto-clear - will be cleared when session stops running
+      }
+    } catch (err) {
+      console.error('Failed to signal audible:', err);
+    } finally {
+      setAudibleSending(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
+  // Clear signaled state when session stops running
+  useEffect(() => {
+    setAudibleSignaled(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      for (const sessionId of Object.keys(updated)) {
+        if (updated[sessionId] && !runningSessions?.has(sessionId)) {
+          updated[sessionId] = false;
+          changed = true;
+        }
+      }
+      return changed ? updated : prev;
+    });
+  }, [runningSessions]);
+
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
     const isCompleted = instance.phases?.every(p => p.status === 'completed');
@@ -403,6 +450,15 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
         {/* Middle: Phase Bars with Status */}
         <div className="phase-bars-container">
+          {/* Cascade Bar - stacked overview of all phase costs */}
+          {instance.phases && instance.phases.length > 1 && (
+            <CascadeBar
+              phases={instance.phases}
+              totalCost={instance.total_cost}
+              isRunning={isSessionRunning || hasRunning}
+            />
+          )}
+
           {(() => {
             // Calculate max cost for relative bar widths
             const costs = (instance.phases || []).map(p => p.avg_cost || 0);
@@ -416,6 +472,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   phase={phase}
                   maxCost={normalizedMax}
                   status={phase.status}
+                  phaseIndex={idx}
                 />
                 {/* Image Gallery - under each phase bar, filtered to that phase */}
                 <ImageGallery
@@ -470,6 +527,19 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               </div>
             )}
           </div>
+
+          {/* Audible Button - only shown when instance is running */}
+          {(isSessionRunning || (hasRunning && !isFinalizing)) && (
+            <button
+              className={`audible-button-compact ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
+              onClick={(e) => handleAudibleClick(e, instance.session_id)}
+              disabled={audibleSending[instance.session_id] || audibleSignaled[instance.session_id]}
+              title={audibleSignaled[instance.session_id] ? 'Audible signaled - waiting for safe point' : 'Call audible - inject feedback mid-phase'}
+            >
+              <Icon icon="mdi:bullhorn" width="16" />
+              {audibleSending[instance.session_id] ? 'Signaling...' : audibleSignaled[instance.session_id] ? 'Signaled!' : 'Audible'}
+            </button>
+          )}
 
           <button
             className="debug-button"

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import { getSequentialColor } from './CascadeBar';
 import './PhaseBar.css';
 
-function PhaseBar({ phase, maxCost, status = null, onClick }) {
+function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null }) {
   const [hoveredSegment, setHoveredSegment] = useState(null);
   // Calculate bar width based on cost (relative to max)
   // Apply logarithmic scaling to prevent extreme ratios
@@ -35,10 +36,20 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
     return `${seconds.toFixed(1)}s`;
   };
 
+  // Get phase color for the legend indicator
+  const phaseColor = phaseIndex !== null ? getSequentialColor(phaseIndex) : null;
+
   return (
     <div className="phase-bar-container" onClick={onClick}>
       <div className="phase-bar-header">
         <div className="phase-title">
+          {phaseColor && (
+            <span
+              className="phase-color-indicator"
+              style={{ backgroundColor: phaseColor }}
+              title={`Phase ${phaseIndex + 1}`}
+            />
+          )}
           <span className="phase-name">{phase.name}</span>
           {phase.message_count > 0 && (
             <span className="message-count">({phase.message_count} messages)</span>
@@ -368,6 +379,16 @@ function ComplexityBadges({ phase }) {
       <span key="loop" className="complexity-badge loop">
         <Icon icon="mdi:repeat" width="14" />
         ∞
+      </span>
+    );
+  }
+
+  // Audibles - show count of audible injections
+  if (phase.audible_count > 0) {
+    badges.push(
+      <span key="audible" className="complexity-badge audible" title={`${phase.audible_count} audible${phase.audible_count > 1 ? 's' : ''} called`}>
+        <Icon icon="mdi:bullhorn" width="14" />
+        {phase.audible_count}
       </span>
     );
   }

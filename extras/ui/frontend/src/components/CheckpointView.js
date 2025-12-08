@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Icon } from '@iconify/react';
 import DynamicUI from './DynamicUI';
 import SoundingComparison from './SoundingComparison';
 import './CheckpointView.css';
@@ -175,6 +176,7 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
   }
 
   const isSoundingEval = checkpoint?.checkpoint_type === 'sounding_eval';
+  const isAudible = checkpoint?.checkpoint_type === 'audible';
   const uiSpec = checkpoint?.ui_spec || {};
   const requireReasoning = uiSpec.capture_reasoning || uiSpec.options?.require_reasoning;
   const requireConfidence = uiSpec.capture_confidence;
@@ -192,7 +194,13 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
           <span className="phase-name">{checkpoint?.phase_name}</span>
         </div>
         <div className="checkpoint-type-badge">
-          {isSoundingEval ? '⚖️ Compare Outputs' : '✋ Input Required'}
+          {isSoundingEval ? (
+            <><Icon icon="mdi:scale-balance" width="16" /> Compare Outputs</>
+          ) : isAudible ? (
+            <><Icon icon="mdi:bullhorn" width="16" /> Audible</>
+          ) : (
+            <><Icon icon="mdi:hand-back-left" width="16" /> Input Required</>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 /* Dark mode instances view */
 .instances-container {
-  min-height: 100vh;
+  min-height: 100%;
   background: #0B1219;
   color: #F0F4F8;
   padding: 2rem;
@@ -469,6 +469,53 @@
   background: rgba(78, 201, 176, 0.2);
   border-radius: 3px;
   font-size: 0.65rem;
+}
+
+/* Audible button - matches debug button size */
+.audible-button-compact {
+  background: rgba(167, 139, 250, 0.1);
+  border: 2px solid #a78bfa;
+  color: #a78bfa;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.audible-button-compact:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: #a78bfa;
+  transform: translateY(-1px);
+}
+
+.audible-button-compact:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.audible-button-compact.signaled {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: #fbbf24;
+  color: #fbbf24;
+  animation: audible-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes audible-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 6px rgba(251, 191, 36, 0);
+  }
 }
 
 /* Actions row with model tags and re-run button */

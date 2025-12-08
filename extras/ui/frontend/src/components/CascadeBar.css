@@ -1,0 +1,354 @@
+/* CascadeBar - Stacked cost visualization across all phases */
+/* A thick, distinctive bar showing cost distribution at a glance */
+
+.cascade-bar-container {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, rgba(22, 32, 42, 0.6) 0%, rgba(11, 18, 25, 0.8) 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.1);
+  transition: all 0.3s ease;
+}
+
+.cascade-bar-container:hover {
+  border-color: rgba(45, 212, 191, 0.25);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.cascade-bar-container.is-running {
+  border-color: rgba(251, 191, 36, 0.3);
+  animation: cascade-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cascade-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+  50% {
+    box-shadow: 0 0 20px 2px rgba(251, 191, 36, 0.15);
+  }
+}
+
+/* Main bar track */
+.cascade-bar-track {
+  position: relative;
+  height: 20px;
+  background: rgba(11, 18, 25, 0.6);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Segments container */
+.cascade-bar-segments {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+/* Individual segment */
+.cascade-segment {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* Subtle separator between segments */
+.cascade-segment:not(:last-child) {
+  border-right: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+/* First segment rounded left */
+.cascade-segment:first-child {
+  border-radius: 10px 0 0 10px;
+}
+
+/* Last segment rounded right */
+.cascade-segment:last-child {
+  border-radius: 0 10px 10px 0;
+}
+
+/* Only segment rounded both */
+.cascade-segment:only-child {
+  border-radius: 10px;
+}
+
+/* Inner glow effect */
+.segment-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(0, 0, 0, 0.1) 100%
+  );
+  pointer-events: none;
+}
+
+/* Hover state */
+.cascade-segment.hovered {
+  filter: brightness(1.2);
+  transform: scaleY(1.1);
+  z-index: 10;
+  box-shadow: 0 0 12px var(--phase-color);
+}
+
+.cascade-segment.hovered .segment-glow {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+}
+
+/* Running segment animation */
+.cascade-segment.running {
+  animation: segment-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes segment-shimmer {
+  0%, 100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.3);
+  }
+}
+
+.cascade-segment.running::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 100%
+  );
+  animation: shimmer-sweep 2s ease-in-out infinite;
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Segment cost label */
+.segment-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+  z-index: 1;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Tooltip */
+.cascade-bar-tooltip {
+  position: absolute;
+  background: rgba(22, 32, 42, 0.95);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  pointer-events: none;
+  z-index: 100;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: tooltip-fade-in 0.15s ease;
+}
+
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.tooltip-phase-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #F0F4F8;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.tooltip-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.tooltip-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+
+.tooltip-cost {
+  color: #34d399;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.tooltip-percent {
+  color: #9AA5B1;
+}
+
+/* Legend row */
+.cascade-bar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+}
+
+/* Legend item */
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+}
+
+.legend-item:hover,
+.legend-item.hovered {
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.legend-item.running {
+  animation: legend-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes legend-pulse {
+  0%, 100% {
+    background: transparent;
+  }
+  50% {
+    background: rgba(251, 191, 36, 0.15);
+  }
+}
+
+/* Legend color square */
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.legend-item.hovered .legend-color {
+  transform: scale(1.2);
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Legend name */
+.legend-name {
+  font-size: 0.75rem;
+  color: #9AA5B1;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.legend-item:hover .legend-name,
+.legend-item.hovered .legend-name {
+  color: #F0F4F8;
+}
+
+/* Legend status icon */
+.legend-status {
+  color: #9AA5B1;
+  flex-shrink: 0;
+}
+
+.legend-status.completed {
+  color: #34d399;
+}
+
+.legend-status.error {
+  color: #f87171;
+}
+
+/* Total on the right */
+.legend-total {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(45, 212, 191, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.total-label {
+  font-size: 0.7rem;
+  color: #9AA5B1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.total-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #2DD4BF;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cascade-bar-legend {
+    gap: 0.5rem;
+  }
+
+  .legend-item {
+    padding: 2px 6px;
+  }
+
+  .legend-name {
+    font-size: 0.7rem;
+  }
+
+  .legend-total {
+    width: 100%;
+    justify-content: center;
+    margin-top: 0.25rem;
+  }
+}
+
+/* Animation utility */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

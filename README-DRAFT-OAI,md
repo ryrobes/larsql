@@ -1,0 +1,318 @@
+Here’s a complete, opinionated README draft you can drop in and tweak. I’ve tried to keep it focused on the truly distinctive stuff and leave all the deeper details for docs/examples.
+
+---
+
+````markdown
+# Windlass ⚓
+
+Windlass is a small, opinionated framework for building **LLM pipelines that produce artifacts**  
+(dashboards, reports, charts, code, etc.) instead of chat transcripts.
+
+It grew out of building big data-analytics flows where “a couple of prompts and a tool call”
+turn into **hundreds of messages, retries, checks, and UI interrupts**.
+
+Windlass keeps all that complexity **inside the box**:
+
+- You define a pipeline as a few **phases** wired together.
+- Each phase is a self-contained reactor that can:
+  - fan out with **soundings** (parallel attempts),
+  - refine winners with **reforge**,
+  - run **validators** and **HITL checkpoints**,
+  - manage its own context and token budget.
+
+From the outside you still just see:
+
+```text
+discover_schema → write_query → analyze_results → create_chart → summarize
+````
+
+---
+
+## Why Windlass?
+
+If you’ve tried to build anything non-trivial with LLMs you’ve probably hit some of these:
+
+* Huge **flow charts** with retry loops, error branches, and validators on every edge.
+* “Just one more loop” turning into an unreadable **spaghetti graph**.
+* Agents that either **share too much history** (prompt bloat) or lose important context.
+* Lots of **manual orchestration glue** for logging, cost tracking, and UI interrupts.
+
+Most current “agent / orchestration” tools double down on this:
+they give you a visual builder and let you draw bigger graphs.
+
+Windlass takes the opposite approach:
+
+> **Put the spaghetti in the bowl.**
+> Each phase encapsulates its own loops, retries, validation, and soundings.
+> At the top level you just connect a few boxes.
+
+---
+
+## What Windlass gives you
+
+**1. Phases & cascades – hierarchical, not flat graphs**
+
+* A **cascade** is a pipeline of named **phases**.
+* Each phase can:
+
+  * call tools,
+  * run multiple LLM turns,
+  * fan out with soundings,
+  * loop internally for refinement.
+* Phases can be reused, nested, or called as tools from other cascades.
+
+**2. Soundings & Reforge – parallel exploration instead of retry hell**
+
+* Run **N attempts in parallel** (different prompts, models, or strategies).
+* Filter out broken outputs via **validators**.
+* Score remaining candidates and pick a **winner**.
+* Optionally run **reforge**: a short refinement loop that polishes the winning artifact.
+
+Crucial bit that’s easy to miss:
+
+> Running 3–4 soundings is usually **similar cost** to running
+> 3–4 validation/retry loops on a single attempt –
+> but it’s **faster**, **simpler**, and produces **better results**.
+
+Either way you’re going to “waste” some tokens on bad attempts.
+Windlass just makes that **explicit and parallel**:
+
+```text
+Traditional:
+  attempt → validate → retry → validate → retry → give up
+
+Windlass:
+  fan out 4 attempts in one go
+    ↓
+  auto-filter with validator
+    ↓
+  pick best
+    ↓
+  optional reforge to polish winner
+```
+
+Same order of magnitude tokens, but:
+
+* bad answers are filtered out automatically,
+* you avoid deep orchestration loops,
+* you get a clean “this was the winner” record for logging and training.
+
+**3. Wards – programmable validation**
+
+Validation is a first-class concept:
+
+* Define **wards** that run before or after a phase:
+
+  * **blocking** – stop if this fails,
+  * **retry** – let the phase try again,
+  * **advisory** – log + continue.
+* Use `loop_until` to automatically inject validation goals into the prompt
+  (for objective rules like schema, format, or length).
+* Use `loop_until_silent` for **subjective validators**:
+  the model doesn’t know it’s being judged, so it can’t game the rubric.
+
+**4. Context as a lens, not an accident**
+
+* Inside a phase, Windlass keeps its own **local history** as it loops and refines.
+* Between phases, **nothing is shared by default.**
+* You declare context like a query:
+
+```json
+"context": {
+  "from": ["discover_schema", "write_query"],
+  "artifacts": ["sql", "analysis"],
+  "include_messages": false
+}
+```
+
+Phases see **exactly** what you choose: previous artifacts, selected messages, or both.
+No more guessing “did I accidentally drag 300 messages into this prompt?”
+
+**5. Token budgets, tool caching, extraction**
+
+Production-minded features baked-in:
+
+* Global and per-phase **token budgets** with strategies:
+
+  * sliding window, pruning, summarizing, or “fail fast”.
+* **Tool caching** with TTL and custom keys, e.g. for expensive SQL/RAG calls.
+* **Output extraction** (scratchpad pattern) as config instead of custom parsing:
+
+  * “grab everything between `<sql>` tags and store it as `query`”.
+
+**6. Tools, RAG, and HITL**
+
+* Plain Python functions (or HTTP calls) registered as **tackles**.
+* Built-in utilities for SQL, charting, screenshots, web fetch, etc.
+* Easy to plug in your own RAG / vector search.
+* Phases can define **HITL checkpoints**:
+
+  * generate a UI,
+  * pause the cascade,
+  * wait for human input / approval,
+  * then continue with that input folded back into context.
+
+---
+
+## Optional “Mission Control” UI
+
+Windlass ships with a small, optional UI aimed at **observability**, not authoring.
+
+You still define cascades as JSON/Python.
+The UI is a **black box recorder** for runs:
+
+* **Phase timeline**
+  See each phase’s duration and token cost at a glance.
+* **Soundings made visible**
+  For phases that fan out, see all attempts, which one won, and how much each cost.
+* **Artifact gallery**
+  Browse charts, images, and summaries that each phase produced.
+* **Run controls**
+  Re-run in debug mode, or **freeze** a successful run into a snapshot test.
+
+Because it just consumes the Windlass event/log stream, you can ignore it, extend it,
+or build your own dashboards on the same data.
+
+---
+
+## Observability & analysis
+
+Even without the UI, every run is fully instrumented:
+
+* **DuckDB / Parquet logs** – one file per run:
+
+  * `session_id`, `phase_name`, `sounding_index`, `is_winner`,
+  * `reforge_step`, `cost_usd`, model name, and full content.
+* **CLI SQL helper**:
+
+```bash
+# How much does each phase cost?
+windlass sql "SELECT phase_name, SUM(cost_usd) AS cost FROM all_data GROUP BY phase_name ORDER BY cost DESC"
+
+# Compare sounding winners vs losers
+windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE sounding_index IS NOT NULL"
+```
+
+* **Mermaid graphs** showing cascades, soundings, and reforge steps.
+* **Event bus / SSE** for live monitoring or custom UIs.
+
+---
+
+## Core concepts in 60 seconds
+
+* **Cascade** – a JSON/Python definition of your workflow.
+* **Phase** – a self-contained box inside the cascade with its own:
+
+  * tools, prompts, loops, soundings, validators, and context rules.
+* **Soundings** – parallel attempts; think “Tree-of-Thought, but configurable”.
+* **Reforge** – a refinement loop that polishes the winning artifact.
+* **Ward** – a validator that can block, retry, or advise.
+* **Tackle** – a tool (Python function, HTTP call, etc.).
+* **Manifest / Quartermaster** – optional “auto tool selection” mode where
+  the system chooses which tools to use from a larger library.
+
+---
+
+## Quick example
+
+Simple two-phase cascade with soundings and a validator:
+
+```json
+{
+  "name": "sql_chart_flow",
+  "phases": [
+    {
+      "name": "write_query",
+      "soundings": {
+        "count": 4,
+        "mutation_mode": "approach",
+        "models": [
+          "openrouter/anthropic/claude-3.5-sonnet",
+          "openrouter/openai/gpt-4.1"
+        ]
+      },
+      "validators": [
+        {
+          "tackle": "validate_sql_against_schema",
+          "mode": "blocking"
+        }
+      ],
+      "handoffs": ["create_chart"]
+    },
+    {
+      "name": "create_chart",
+      "context": {
+        "from": ["write_query"],
+        "artifacts": ["sql"]
+      },
+      "tackles": ["run_sql", "generate_chart_image"],
+      "reforge": {
+        "steps": 2,
+        "mutation_mode": "rewrite"
+      }
+    }
+  ]
+}
+```
+
+Run it from Python:
+
+```python
+from windlass import run_cascade
+
+result = run_cascade(
+    "examples/sql_chart_flow.json",
+    input_data={
+        "question": "Is there a seasonal pattern in Bigfoot sightings by latitude?"
+    }
+)
+
+# Final artifacts, state, and full history
+print(result["lineage"])
+print(result["state"])
+```
+
+---
+
+## Getting started
+
+```bash
+pip install windlass
+```
+
+Minimal run:
+
+```bash
+# Run an example cascade
+windlass run examples/simple_flow.json --input '{"question": "Hello, Windlass?"}'
+```
+
+Then:
+
+* Browse `examples/` for more patterns:
+
+  * soundings + reforge,
+  * multi-model / Pareto cost-quality flows,
+  * context selection demos,
+  * wards & loop_until,
+  * image/chart refinement.
+* Start replacing built-in tackles with your own tools and data sources.
+
+---
+
+## When Windlass is a good fit
+
+Use Windlass when you want to:
+
+* Build pipelines that **create artifacts** (not just answer chat questions).
+* Keep **top-level graphs small**, but still have all the loops and retries you need.
+* **Parallelize exploration** (soundings) instead of writing custom retry logic.
+* Treat **validation, cost, and context** as first-class concerns.
+* Have **real observability** over what your LLM system is doing in production.
+
+If you just need a single agent that calls a couple of tools, Windlass is overkill.
+If you’re staring at a huge hand-rolled loop of prompts, validators, and tools,
+it’s probably exactly what you wanted before you knew you wanted it.
+
+```
+```

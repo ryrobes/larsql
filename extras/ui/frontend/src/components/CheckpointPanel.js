@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Icon } from '@iconify/react';
 import './CheckpointPanel.css';
 
 /**
@@ -817,8 +818,24 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
             {expandedCheckpoint === checkpoint.id && (
               <div className="checkpoint-details">
-                {/* For sounding_eval checkpoints, link to full comparison view */}
-                {checkpoint.checkpoint_type === 'sounding_eval' ? (
+                {/* For audible checkpoints, link to audible feedback view */}
+                {checkpoint.checkpoint_type === 'audible' ? (
+                  <div className="audible-link">
+                    <p className="audible-message">
+                      <Icon icon="mdi:bullhorn" width="16" style={{ marginRight: '6px' }} />
+                      Cascade is paused for feedback
+                    </p>
+                    <button
+                      className="open-audible-btn"
+                      onClick={() => {
+                        sessionStorage.setItem('checkpointReturnPath', window.location.hash);
+                        window.location.hash = `#/checkpoint/${checkpoint.id}`;
+                      }}
+                    >
+                      Provide Feedback →
+                    </button>
+                  </div>
+                ) : checkpoint.checkpoint_type === 'sounding_eval' ? (
                   <div className="sounding-eval-link">
                     <p className="sounding-eval-message">
                       {checkpoint.sounding_outputs?.length || checkpoint.ui_spec?.num_soundings || 'Multiple'} sounding attempts ready for comparison

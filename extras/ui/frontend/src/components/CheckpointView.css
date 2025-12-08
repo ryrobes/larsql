@@ -1,7 +1,7 @@
 /* CheckpointView - Full page checkpoint response view */
 
 .checkpoint-view {
-  min-height: 100vh;
+  min-height: 100%;
   background: #0a0a0a;
   padding: 24px;
   display: flex;

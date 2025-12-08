@@ -52,6 +52,50 @@ A sleek dark mode interface for exploring cascade definitions, analyzing executi
   - Models used
 - **Click back → return to cascades**
 
+### Human-in-the-Loop Features
+
+#### Audible System (Real-Time Cascade Steering)
+
+Call an "audible" to inject feedback mid-phase - like a quarterback changing the play at the line:
+
+- **Audible Button** - Appears on running instances in both list and detail views
+- **Signal → Pause → Respond** - Click button to signal, cascade pauses at next safe point
+- **Phase Bar Badges** - Shows audible count icon (bullhorn) when audibles have been used
+- **Purple Theme** - Audible UI uses purple (`#a78bfa`) for visual distinction
+
+**How it works:**
+1. Click "Audible" button on a running instance
+2. Button shows "Signaled!" state (yellow pulse animation)
+3. Cascade pauses at next safe point (after current tool/turn)
+4. Checkpoint UI spawns for feedback input
+5. Submit feedback → cascade continues with injected context
+
+#### Generative UI (Rich Checkpoints)
+
+Dynamic, context-aware interfaces for human input via `ask_human_custom` tool:
+
+| Section Type | Description | Use Case |
+|--------------|-------------|----------|
+| `preview` | Rich text/markdown | Context, explanations |
+| `text` | Text input field | Free-form responses |
+| `choice` | Radio buttons / cards | Single selection |
+| `image` | Image display with lightbox | Visual content review |
+| `data_table` | Interactive table | Data review, row selection |
+| `code` | Syntax-highlighted code | Code review |
+| `card_grid` | Rich option cards | Visual option selection |
+| `comparison` | Side-by-side view | A/B decisions with pros/cons |
+
+**Layouts:**
+- `vertical` - Stacked sections (default)
+- `two-column` - Side-by-side with sticky sidebar
+- `grid` - CSS Grid layout
+
+**Features:**
+- Auto-detects images from cascade context
+- Timeout warnings with countdown
+- Reasoning and confidence inputs
+- Responsive design for all screen sizes
+
 ---
 
 ## Quick Start
@@ -106,6 +150,29 @@ windlass windlass/examples/model_override_test.json --input '{"task": "test2"}'
 | `/api/session/:session_id` | GET | Detailed session data |
 | `/api/graphs/:session_id` | GET | Execution graph JSON |
 | `/api/events/stream` | GET | SSE for real-time updates |
+
+#### Checkpoint API (Human-in-the-Loop)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/checkpoints` | GET | List pending checkpoints (filter: `?session_id=...`) |
+| `/api/checkpoints/:id` | GET | Get checkpoint details with UI spec |
+| `/api/checkpoints/:id/respond` | POST | Submit response to checkpoint |
+| `/api/checkpoints/:id/cancel` | POST | Cancel a pending checkpoint |
+
+#### Audible API (Real-Time Steering)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/audible/signal/:session_id` | POST | Signal audible for session |
+| `/api/audible/status/:session_id` | GET | Check audible signal status |
+| `/api/audible/clear/:session_id` | POST | Clear audible signal |
+
+#### Image API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/images/:session_id/:path` | GET | Serve images from session directory |
 
 ### Response Formats
 
@@ -212,13 +279,35 @@ windlass windlass/examples/model_override_test.json --input '{"task": "test2"}'
 
 ```
 src/
-├── App.js                        # Main router
+├── App.js                        # Main router, SSE connection, global state
 ├── App.css                       # Dark theme base
 ├── components/
 │   ├── CascadesView.js          # Cascade definitions screen
 │   ├── CascadesView.css         # Cascades styling
-│   ├── InstancesView.js         # Cascade instances screen
-│   └── InstancesView.css        # Instances styling
+│   ├── InstancesView.js         # Cascade instances (with Audible button)
+│   ├── InstancesView.css        # Instances styling
+│   ├── DetailView.js            # Session detail with Audible button
+│   ├── DetailView.css           # Detail page styling
+│   ├── CheckpointView.js        # Full-page checkpoint response view
+│   ├── CheckpointView.css       # Checkpoint styling
+│   ├── CheckpointPanel.js       # Inline checkpoint panel
+│   ├── CheckpointPanel.css      # Panel styling
+│   ├── DynamicUI.js             # Generative UI renderer (interprets UI specs)
+│   ├── DynamicUI.css            # Dynamic UI styling
+│   ├── PhaseBar.js              # Phase block with badges (audible, soundings, etc.)
+│   ├── PhaseBar.css             # Phase block styling
+│   ├── sections/                # Generative UI section components
+│   │   ├── PreviewSection.js    # Markdown/text preview
+│   │   ├── TextSection.js       # Text input
+│   │   ├── ChoiceSection.js     # Radio/card selection
+│   │   ├── ImageSection.js      # Image display with lightbox
+│   │   ├── DataTableSection.js  # Interactive data tables
+│   │   ├── CodeSection.js       # Syntax-highlighted code
+│   │   └── ComparisonSection.js # Side-by-side comparison
+│   └── layouts/                 # Generative UI layout components
+│       ├── VerticalLayout.js    # Stacked sections
+│       ├── TwoColumnLayout.js   # Sidebar + main content
+│       └── GridLayout.js        # CSS Grid layout
 └── index.css                     # Global styles
 ```
 
@@ -430,10 +519,25 @@ Determined by `node_type` in echoes:
 - [x] Phase blocks with status colors
 - [x] Metrics display
 - [x] Routing between views
+- [x] Real-time updates via SSE
+- [x] Search/filter cascades
+- [x] Click instance → full execution detail
+- [x] Image viewer for phase outputs
+
+### Human-in-the-Loop (Done ✅)
+- [x] Checkpoint API (create, respond, cancel)
+- [x] Audible API (signal, status, clear)
+- [x] Audible button on running instances
+- [x] Audible badge on phase bars
+- [x] CheckpointView for full-page responses
+- [x] CheckpointPanel for inline responses
+- [x] Generative UI renderer (DynamicUI)
+- [x] Section components (preview, text, choice, image, etc.)
+- [x] Layout components (vertical, two-column, grid)
+- [x] Image path resolution for UI specs
+- [x] Timeout warnings with countdown
 
 ### Short-Term (Future)
-- [ ] Real-time updates via SSE
-- [ ] Search/filter cascades
 - [ ] Sort by metrics (cost, runs, duration)
 - [ ] Click phase block → detailed phase view
 - [ ] Export metrics to CSV
@@ -443,9 +547,7 @@ Determined by `node_type` in echoes:
 - [ ] Timeline view of executions
 - [ ] Cost trends over time
 - [ ] Model performance comparison
-- [ ] Soundings visualization
-- [ ] Click instance → full execution detail
-- [ ] Image viewer for phase outputs
+- [ ] Soundings visualization (compare attempts side-by-side)
 
 ---
 
@@ -454,17 +556,36 @@ Determined by `node_type` in echoes:
 ```
 extras/ui/
 ├── backend/
-│   └── app.py                    # Flask API server
+│   ├── app.py                    # Flask API server (main endpoints)
+│   ├── checkpoint_api.py         # Checkpoint & Audible API blueprint
+│   ├── message_flow_api.py       # Message flow visualization API
+│   ├── live_store.py             # In-memory DuckDB for real-time data
+│   └── execution_tree.py         # Execution tree builder
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.js               # Main router
+│   │   ├── App.js               # Main router, SSE, global state
 │   │   ├── App.css              # Dark theme base
 │   │   └── components/
-│   │       ├── CascadesView.js  # Cascade definitions screen
-│   │       ├── CascadesView.css # Cascades styling
-│   │       ├── InstancesView.js # Cascade instances screen
-│   │       └── InstancesView.css# Instances styling
+│   │       ├── CascadesView.js  # Cascade definitions grid
+│   │       ├── InstancesView.js # Cascade instances (+ Audible)
+│   │       ├── DetailView.js    # Session detail page
+│   │       ├── CheckpointView.js# Full-page checkpoint UI
+│   │       ├── CheckpointPanel.js# Inline checkpoint panel
+│   │       ├── DynamicUI.js     # Generative UI renderer
+│   │       ├── PhaseBar.js      # Phase blocks with badges
+│   │       ├── sections/        # UI section components
+│   │       │   ├── PreviewSection.js
+│   │       │   ├── TextSection.js
+│   │       │   ├── ChoiceSection.js
+│   │       │   ├── ImageSection.js
+│   │       │   ├── DataTableSection.js
+│   │       │   ├── CodeSection.js
+│   │       │   └── ComparisonSection.js
+│   │       └── layouts/         # UI layout components
+│   │           ├── VerticalLayout.js
+│   │           ├── TwoColumnLayout.js
+│   │           └── GridLayout.js
 │   ├── package.json
 │   └── public/
 │
@@ -595,11 +716,15 @@ You now have a sleek dark mode Windlass UI with:
 
 ✅ **Cascades screen** - Explore all cascade definitions
 ✅ **Instances screen** - View execution history
-✅ **Phase blocks** - Visual status indicators
+✅ **Phase blocks** - Visual status indicators with badges
 ✅ **Metrics focus** - Cost and performance prominent
 ✅ **Model tracking** - See which models used
 ✅ **Dark theme** - Pure black with bright pastels
 ✅ **Thick rows** - Easy to scan
 ✅ **Output snippets** - Quick preview in blocks
+✅ **Real-time SSE** - Live updates during execution
+✅ **Audible system** - Inject feedback mid-phase
+✅ **Generative UI** - Rich, dynamic checkpoint interfaces
+✅ **Image support** - View generated charts and screenshots
 
-Navigate between cascade definitions and their instances with a clean, metrics-driven interface! 🌊✨
+Navigate between cascade definitions and their instances with a clean, metrics-driven interface. Call audibles to steer running cascades and respond to rich checkpoint UIs! 🌊✨

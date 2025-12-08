@@ -43,6 +43,7 @@ class CheckpointType(str, Enum):
     MULTI_CHOICE = "multi_choice"    # Multiple choice selection (checkboxes)
     CONFIRMATION = "confirmation"    # Yes/no confirmation
     RATING = "rating"                # Star rating (1-5)
+    AUDIBLE = "audible"              # Real-time feedback injection mid-phase
 
 
 @dataclass

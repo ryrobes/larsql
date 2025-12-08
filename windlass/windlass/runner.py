@@ -15,7 +15,7 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig
 from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
 from .human_ui import UIGenerator, normalize_human_input_config, generate_simple_ui
@@ -156,6 +156,11 @@ class WindlassRunner:
         else:
             self.memory_system = None
 
+        # Audible system state
+        self._audible_signal = threading.Event()  # Set when UI signals an audible
+        self._audible_budget_used = {}  # phase_name -> count of audibles used
+        self._audible_lock = threading.Lock()
+
     def _save_to_memory(self, message: dict):
         """
         Save a message to the configured memory bank.
@@ -221,6 +226,372 @@ class WindlassRunner:
             meta.setdefault("reforge_step", self.current_reforge_step)
 
         return meta
+
+    # ========== AUDIBLE SYSTEM ==========
+    # These methods implement real-time feedback injection, allowing users to
+    # steer cascades mid-phase by injecting feedback as messages.
+
+    def signal_audible(self):
+        """
+        Signal that an audible should be triggered at the next safe point.
+        Called from external code (e.g., API endpoint) when user clicks the audible button.
+        """
+        self._audible_signal.set()
+
+    def clear_audible_signal(self):
+        """Clear the audible signal after it has been handled."""
+        self._audible_signal.clear()
+
+    def _check_audible_signal(self, phase: 'PhaseConfig') -> bool:
+        """
+        Check if an audible signal has been received and if we can process it.
+
+        Checks both:
+        1. Local threading.Event (same-process signal)
+        2. API endpoint (cross-process signal from UI)
+
+        Args:
+            phase: Current phase configuration
+
+        Returns:
+            True if an audible should be processed, False otherwise
+        """
+        # Check local signal first (same-process case)
+        local_signaled = self._audible_signal.is_set()
+
+        # Check API signal (cross-process case - UI backend)
+        api_signaled = False
+        try:
+            import urllib.request
+            import urllib.error
+            url = f"http://localhost:5001/api/audible/status/{self.session_id}"
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=1) as response:
+                data = json.loads(response.read().decode())
+                api_signaled = data.get("signaled", False)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            # API not available or timeout - that's fine, just use local signal
+            pass
+        except Exception:
+            # Any other error - just use local signal
+            pass
+
+        if not local_signaled and not api_signaled:
+            return False
+
+        # Check if audibles are enabled for this phase
+        audible_config = phase.audibles
+        if not audible_config or not audible_config.enabled:
+            console.print(f"  [dim yellow]Audible signal received but audibles not enabled for phase '{phase.name}'[/dim yellow]")
+            self.clear_audible_signal()
+            self._clear_api_audible_signal()
+            return False
+
+        # Check budget
+        with self._audible_lock:
+            used = self._audible_budget_used.get(phase.name, 0)
+            if used >= audible_config.budget:
+                console.print(f"  [dim yellow]Audible budget exhausted ({used}/{audible_config.budget})[/dim yellow]")
+                self.clear_audible_signal()
+                self._clear_api_audible_signal()
+                return False
+
+        return True
+
+    def _clear_api_audible_signal(self):
+        """Clear the audible signal via API (for cross-process communication)."""
+        try:
+            import urllib.request
+            import urllib.error
+            url = f"http://localhost:5001/api/audible/clear/{self.session_id}"
+            req = urllib.request.Request(url, method='POST')
+            req.add_header('Content-Type', 'application/json')
+            with urllib.request.urlopen(req, timeout=2) as response:
+                pass  # Just need to make the call
+        except Exception:
+            pass  # API not available - that's fine
+
+    def _handle_audible(self, phase: 'PhaseConfig', current_output: str, turn_number: int,
+                       trace: 'TraceNode') -> Optional[dict]:
+        """
+        Handle an audible signal by creating a checkpoint and waiting for feedback.
+
+        Args:
+            phase: Current phase configuration
+            current_output: The most recent output from the agent
+            turn_number: Current turn number
+            trace: Current trace node for logging
+
+        Returns:
+            Dict with feedback data if user submitted, None if cancelled/timed out
+        """
+        from .checkpoints import get_checkpoint_manager, CheckpointType, TraceContext
+
+        console.print(f"  [bold magenta]🏈 AUDIBLE - Pausing for feedback[/bold magenta]")
+
+        # Clear both local and API signals
+        self.clear_audible_signal()
+        self._clear_api_audible_signal()
+
+        # Increment budget usage
+        audible_config = phase.audibles
+        with self._audible_lock:
+            used = self._audible_budget_used.get(phase.name, 0)
+            self._audible_budget_used[phase.name] = used + 1
+            audibles_remaining = audible_config.budget - used - 1
+
+        # Get recent images from the phase
+        recent_images = self._get_recent_phase_images(phase.name)
+
+        # Build trace context for proper resume linkage
+        trace_context = TraceContext(
+            trace_id=trace.id,
+            parent_id=trace.parent_id,
+            cascade_trace_id=self.trace.id,
+            phase_trace_id=trace.id,
+            depth=self.depth,
+            node_type="audible",
+            name=f"audible_{turn_number}"
+        )
+
+        # Build UI spec for the audible modal
+        # Use DynamicUI-compatible section types: preview, text, choice, image
+        ui_spec = {
+            "type": "audible",
+            "title": "🏈 Call Audible",
+            "subtitle": f"Turn {turn_number + 1} of {phase.rules.max_turns or 1} | {audibles_remaining} audibles remaining",
+            "current_output": current_output,
+            "turn_number": turn_number,
+            "max_turns": phase.rules.max_turns or 1,
+            "turns_remaining": (phase.rules.max_turns or 1) - turn_number - 1,
+            "audibles_remaining": audibles_remaining,
+            "recent_images": recent_images,
+            "allow_retry": audible_config.allow_retry,
+            "submit_label": "Submit Feedback",
+            "sections": [
+                {
+                    "type": "preview",
+                    "label": "Current Output",
+                    "content": current_output[:2000] if current_output else "(no output yet)",
+                    "render": "markdown",
+                    "collapsible": True,
+                    "max_height": 200
+                },
+                {
+                    "type": "text",
+                    "label": "What should change?",
+                    "input_name": "feedback",
+                    "multiline": True,
+                    "rows": 4,
+                    "placeholder": "Describe what's wrong or needs adjustment...",
+                    "required": True
+                },
+                {
+                    "type": "choice",
+                    "label": "Action",
+                    "input_name": "mode",
+                    "options": [
+                        {"value": "continue", "label": "Continue", "description": "Keep current output, apply feedback in next turn"},
+                        {"value": "retry", "label": "Retry", "description": "Discard current output, redo this turn with feedback"}
+                    ] if audible_config.allow_retry else [
+                        {"value": "continue", "label": "Continue", "description": "Keep current output, apply feedback in next turn"}
+                    ],
+                    "default": "continue"
+                }
+            ]
+        }
+
+        # Add images if available (insert before the text input)
+        if recent_images:
+            for i, img_path in enumerate(recent_images[-3:]):  # Last 3 images
+                ui_spec["sections"].insert(1 + i, {
+                    "type": "image",
+                    "src": img_path,
+                    "caption": f"Recent image {i + 1}",
+                    "max_height": 200
+                })
+
+        # Create checkpoint
+        checkpoint_manager = get_checkpoint_manager()
+        checkpoint = checkpoint_manager.create_checkpoint(
+            session_id=self.session_id,
+            cascade_id=self.config.cascade_id,
+            phase_name=phase.name,
+            checkpoint_type=CheckpointType.AUDIBLE,
+            ui_spec=ui_spec,
+            echo_snapshot=self.echo.get_full_echo(),
+            phase_output=current_output,
+            cascade_config=self.config.model_dump() if hasattr(self.config, 'model_dump') else None,
+            trace_context=trace_context,
+            timeout_seconds=audible_config.timeout_seconds
+        )
+
+        # Notify hooks
+        self.hooks.on_checkpoint_suspended(
+            self.session_id,
+            checkpoint.id,
+            CheckpointType.AUDIBLE.value,
+            phase.name,
+            "Waiting for audible feedback"
+        )
+
+        # Wait for response (blocking)
+        response = checkpoint_manager.wait_for_response(
+            checkpoint.id,
+            timeout=audible_config.timeout_seconds
+        )
+
+        if response:
+            # Notify hooks
+            self.hooks.on_checkpoint_resumed(
+                self.session_id,
+                checkpoint.id,
+                phase.name,
+                response
+            )
+            return response
+        else:
+            console.print(f"  [dim yellow]Audible cancelled or timed out[/dim yellow]")
+            return None
+
+    def _get_recent_phase_images(self, phase_name: str, max_images: int = 5) -> List[str]:
+        """
+        Get recent image file paths from the current phase.
+
+        Args:
+            phase_name: Name of the phase
+            max_images: Maximum number of images to return
+
+        Returns:
+            List of image file paths (most recent last)
+        """
+        import glob
+
+        image_dir = os.path.join(get_config().image_dir, self.session_id, phase_name)
+
+        if not os.path.exists(image_dir):
+            return []
+
+        # Find all image files
+        image_patterns = ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp']
+        image_files = []
+        for pattern in image_patterns:
+            image_files.extend(glob.glob(os.path.join(image_dir, pattern)))
+
+        # Sort by modification time (oldest first)
+        image_files.sort(key=os.path.getmtime)
+
+        # Return the most recent ones
+        return image_files[-max_images:]
+
+    def _format_audible_message(self, feedback: dict) -> Union[str, List[dict]]:
+        """
+        Format audible feedback as a user message content.
+
+        Args:
+            feedback: Feedback dict from checkpoint response
+
+        Returns:
+            Message content (string or multimodal list)
+        """
+        text = feedback.get("feedback", "")
+        mode = feedback.get("mode", "continue")
+        annotations = feedback.get("annotations", [])
+        voice_transcript = feedback.get("voice_transcript")
+
+        content_parts = []
+
+        # Main feedback text
+        header = "[AUDIBLE - User Feedback]"
+        if text:
+            content_parts.append(f"{header}:\n{text}")
+        else:
+            content_parts.append(f"{header}:\n(no text provided)")
+
+        # Voice transcript (if any - future feature)
+        if voice_transcript:
+            content_parts.append(f"\n[Voice]: {voice_transcript}")
+
+        # Mode instruction
+        if mode == "retry":
+            content_parts.append("\nPlease redo your last response incorporating this feedback.")
+        else:
+            content_parts.append("\nPlease incorporate this feedback in your next response.")
+
+        # If there are annotations (images with drawings), return multimodal content
+        if annotations:
+            multimodal_content = [
+                {"type": "text", "text": "\n".join(content_parts)},
+                {"type": "text", "text": "\n[Annotated image showing requested changes]:"}
+            ]
+            for annotation in annotations:
+                # Annotations should be base64 data URLs
+                if annotation.startswith("data:"):
+                    multimodal_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": annotation}
+                    })
+            return multimodal_content
+
+        return "\n".join(content_parts)
+
+    def _inject_audible_feedback(self, feedback: dict, phase: 'PhaseConfig', trace: 'TraceNode'):
+        """
+        Inject audible feedback into the conversation as a user message.
+
+        Args:
+            feedback: Feedback dict from checkpoint response
+            phase: Current phase configuration
+            trace: Current trace node for logging
+        """
+        from .unified_logs import log_unified
+
+        # Format the feedback as a message
+        content = self._format_audible_message(feedback)
+        mode = feedback.get("mode", "continue")
+
+        # Create the message
+        audible_msg = {"role": "user", "content": content}
+
+        # Add to context messages
+        self.context_messages.append(audible_msg)
+
+        # Create trace for audible
+        audible_trace = trace.create_child("audible", f"audible_{feedback.get('mode', 'continue')}")
+
+        # Log to unified system
+        audible_metadata = {
+            "audible_mode": mode,
+            "has_annotations": bool(feedback.get("annotations")),
+            "has_voice": bool(feedback.get("voice_transcript")),
+            "turn_number": self.current_turn_number,
+            "feedback_length": len(feedback.get("feedback", "")),
+            "audibles_used": self._audible_budget_used.get(phase.name, 0),
+            "audibles_remaining": (phase.audibles.budget - self._audible_budget_used.get(phase.name, 0)) if phase.audibles else 0,
+            "phase_name": phase.name,
+            "cascade_id": self.config.cascade_id
+        }
+
+        log_unified(
+            session_id=self.session_id,
+            trace_id=audible_trace.id,
+            parent_id=trace.id,
+            node_type="audible",
+            role="user",
+            content=content if isinstance(content, str) else json.dumps(content),
+            metadata=audible_metadata
+        )
+
+        # Add to echo history
+        self.echo.add_history(
+            audible_msg,
+            trace_id=audible_trace.id,
+            parent_id=trace.id,
+            node_type="audible",
+            metadata=audible_metadata
+        )
+
+        console.print(f"  [bold green]✓ Audible feedback injected ({mode} mode)[/bold green]")
 
     # ========== CONTEXT INJECTION SYSTEM ==========
     # These methods implement selective context management, allowing phases to
@@ -4849,6 +5220,34 @@ Refinement directive: {reforge_config.honing_prompt}
 
                         # Auto-save any images from messages (catches manual injection, feedback loops, etc.)
                         self._save_images_from_messages(self.context_messages, phase.name)
+
+                    # ========== AUDIBLE CHECK ==========
+                    # Check if user has signaled an audible (feedback injection)
+                    # This happens at the end of each turn, after processing but before validation
+                    if self._check_audible_signal(phase):
+                        # Handle the audible - creates checkpoint and waits for feedback
+                        feedback = self._handle_audible(phase, response_content, i, turn_trace)
+
+                        if feedback:
+                            mode = feedback.get("mode", "continue")
+
+                            # Inject the feedback as a user message
+                            self._inject_audible_feedback(feedback, phase, turn_trace)
+
+                            # Handle retry mode - don't save this turn's output, redo it
+                            if mode == "retry":
+                                console.print(f"{indent}  [bold yellow]🔄 Retry mode - redoing turn {i + 1}[/bold yellow]")
+                                # Remove the last assistant message from context (the one we're retrying)
+                                # Find and remove the last assistant message
+                                for j in range(len(self.context_messages) - 1, -1, -1):
+                                    if self.context_messages[j].get("role") == "assistant":
+                                        self.context_messages.pop(j)
+                                        break
+                                # Don't increment turn counter - will redo this turn
+                                continue
+
+                            # Continue mode - feedback injected, next turn will see it
+                            # Don't break - let the turn loop continue naturally
 
                     # Build comprehensive validation content (agent response + tool outputs + follow-up)
                     # This ensures validators see the COMPLETE turn output, not just the agent's text

@@ -3,7 +3,7 @@
 .detail-view {
   background: #0A0F14;
   color: #F0F4F8;
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -258,4 +258,56 @@
 
 .left-pane::-webkit-scrollbar-thumb:hover {
   background: #2DD4BF;
+}
+
+/* Audible Button */
+.audible-button {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.audible-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.audible-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.audible-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.audible-button.signaled {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.audible-icon {
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  }
 }

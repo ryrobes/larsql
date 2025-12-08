@@ -325,6 +325,29 @@ class OutputExtractionConfig(BaseModel):
     format: Literal["text", "json", "code"] = "text"  # Parse extracted content
 
 
+class AudibleConfig(BaseModel):
+    """
+    Configuration for real-time feedback injection (Audible system).
+
+    Audibles allow users to steer cascades mid-phase by injecting feedback.
+    The feedback becomes a message in the conversation, and the remaining
+    turns see it and adjust naturally. Phase encapsulation handles cleanup.
+
+    Usage:
+    {
+        "audibles": {
+            "enabled": true,
+            "budget": 3,
+            "allow_retry": true
+        }
+    }
+    """
+    enabled: bool = True
+    budget: int = 3  # Max audibles per phase execution
+    allow_retry: bool = True  # Allow retry mode (redo current turn)
+    timeout_seconds: Optional[int] = 120  # Feedback collection timeout
+
+
 class ContextSourceConfig(BaseModel):
     """
     Configuration for pulling context from a specific phase.
@@ -430,6 +453,10 @@ class PhaseConfig(BaseModel):
     # Human-in-the-Loop (HITL) checkpoint configuration
     # Use human_input: true for simple confirmation, or provide HumanInputConfig for customization
     human_input: Optional[Union[bool, HumanInputConfig]] = None
+
+    # Audible configuration for real-time feedback injection
+    # Allows users to steer cascades mid-phase by injecting feedback
+    audibles: Optional[AudibleConfig] = None
 
 class CascadeConfig(BaseModel):
     cascade_id: str

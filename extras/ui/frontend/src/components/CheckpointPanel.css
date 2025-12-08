@@ -790,3 +790,35 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(167, 139, 250, 0.4);
 }
+
+/* ===========================================================================
+   AUDIBLE LINK
+   =========================================================================== */
+
+.audible-link {
+  padding: 16px;
+  text-align: center;
+}
+
+.audible-message {
+  color: #fbbf24;
+  font-size: 1.1em;
+  margin-bottom: 16px;
+}
+
+.open-audible-btn {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #1a1a1a;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.open-audible-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}

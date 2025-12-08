@@ -5,6 +5,11 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background: #0B1219;
   color: #F0F4F8;
@@ -17,8 +22,14 @@ code, pre, .monospace {
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 .app {
-  min-height: 100vh;
+  height: 100%;
+  overflow-y: auto;
   background: #0B1219;
 }
 

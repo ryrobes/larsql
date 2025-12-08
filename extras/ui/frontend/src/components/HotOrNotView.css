@@ -2,7 +2,7 @@
 /* Matches Windlass UI dark theme with glacial teal accents */
 
 .hotornot-view {
-  min-height: 100vh;
+  min-height: 100%;
   background: #0B1219;
   color: #F0F4F8;
   display: flex;

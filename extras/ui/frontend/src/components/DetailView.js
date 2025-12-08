@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import axios from 'axios';
 import VideoSpinner from './VideoSpinner';
 import LiveDebugLog from './LiveDebugLog';
 import InteractiveMermaid from './InteractiveMermaid';
 import MetricsCards from './MetricsCards';
 import ParametersCard from './ParametersCard';
 import PhaseBar from './PhaseBar';
+import CascadeBar from './CascadeBar';
 import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByPhase } from '../utils/debugUtils';
 import './DetailView.css';
+
+const API_BASE_URL = 'http://localhost:5001/api';
 
 function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizingSessions = new Set() }) {
   const [loading, setLoading] = useState(true);
@@ -19,8 +23,37 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
   const [showStructural, setShowStructural] = useState(false);
   const [lastEntryCount, setLastEntryCount] = useState(0); // Track entry count to detect changes
 
+  // Audible system state
+  const [audibleSignaled, setAudibleSignaled] = useState(false);
+  const [audibleSending, setAudibleSending] = useState(false);
+
   const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
   const fetchingRef = useRef(false); // Prevent concurrent fetches
+
+  // Handle audible button click
+  const handleAudibleClick = useCallback(async () => {
+    if (audibleSending || audibleSignaled) return;
+
+    setAudibleSending(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/audible/signal/${sessionId}`);
+      if (response.data.status === 'signaled') {
+        setAudibleSignaled(true);
+        // Clear the signaled state after a timeout (in case checkpoint never shows)
+        setTimeout(() => setAudibleSignaled(false), 30000);
+      }
+    } catch (err) {
+      console.error('Failed to signal audible:', err);
+    } finally {
+      setAudibleSending(false);
+    }
+  }, [sessionId, audibleSending, audibleSignaled]);
+
+  // Reset audible state when session changes
+  useEffect(() => {
+    setAudibleSignaled(false);
+    setAudibleSending(false);
+  }, [sessionId]);
 
   // Memoize grouped entries to prevent recalculation on every render
   const groupedEntries = useMemo(() => {
@@ -240,6 +273,19 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
           )}
         </div>
         <div className="header-right">
+          {/* Audible button - only shown when cascade is running */}
+          {isRunning && (
+            <button
+              className={`audible-button ${audibleSignaled ? 'signaled' : ''}`}
+              onClick={handleAudibleClick}
+              disabled={audibleSending || audibleSignaled}
+              title={audibleSignaled ? 'Audible signaled - waiting for safe point' : 'Call audible - inject feedback mid-phase'}
+            >
+              <Icon icon="mdi:bullhorn" width="16" className="audible-icon" />
+              {audibleSending ? 'Signaling...' : audibleSignaled ? 'Signaled!' : 'Audible'}
+            </button>
+          )}
+
           {/* View mode selector */}
           <select
             className="view-mode-select"
@@ -291,6 +337,16 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
                     <Icon icon="mdi:timeline" width="20" />
                     Phase Timeline
                   </h3>
+
+                  {/* Cascade Bar - cost distribution overview */}
+                  {instance.phases.length > 1 && (
+                    <CascadeBar
+                      phases={instance.phases}
+                      totalCost={instance.total_cost}
+                      isRunning={isRunning}
+                    />
+                  )}
+
                   <div className="phase-timeline">
                     {instance.phases.map((phase, idx) => (
                       <div
@@ -298,7 +354,7 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
                         className={`phase-timeline-item ${activePhase === phase.name ? 'active' : ''}`}
                         onClick={() => handlePhaseClick(phase.name)}
                       >
-                        <PhaseBar phase={phase} maxCost={maxCost} />
+                        <PhaseBar phase={phase} maxCost={maxCost} phaseIndex={idx} />
                       </div>
                     ))}
                   </div>
