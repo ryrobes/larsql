@@ -561,9 +561,14 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                     'index': int(sounding_idx),
                     'is_winner': False,
                     'cost': 0.0,
-                    'turn_costs': {}  # turn_num -> cost
+                    'turn_costs': {},  # turn_num -> cost
+                    'model': None
                 }
             sounding_data[phase_name][sounding_idx]['cost'] += cost
+            # Track model for this sounding (use first non-null model found)
+            row_model = row.get('model')
+            if row_model and not sounding_data[phase_name][sounding_idx]['model']:
+                sounding_data[phase_name][sounding_idx]['model'] = row_model
 
             # Track per-turn cost within sounding
             turn_key = turn_num if turn_num is not None else 0
@@ -631,7 +636,8 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
                     'index': data['index'],
                     'is_winner': data['is_winner'],
                     'cost': data['cost'],
-                    'turns': turns
+                    'turns': turns,
+                    'model': data.get('model')
                 })
             phase['sounding_attempts'] = sorted(attempts, key=lambda x: x['index'])
             phase['sounding_total'] = len(attempts)
@@ -1469,12 +1475,15 @@ def get_cascade_instances(cascade_id):
             # Get sounding data
             soundings_map = {}
             try:
-                soundings_query = """
+                # Include model in the query - use MAX since typically one model per sounding
+                model_select = "MAX(model) as sounding_model" if has_model else "NULL as sounding_model"
+                soundings_query = f"""
                 SELECT
                     phase_name,
                     sounding_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
-                    SUM(cost) as total_cost
+                    SUM(cost) as total_cost,
+                    {model_select}
                 FROM logs
                 WHERE session_id = ? AND sounding_index IS NOT NULL
                 GROUP BY phase_name, sounding_index
@@ -1482,7 +1491,7 @@ def get_cascade_instances(cascade_id):
                 """
                 sounding_results = conn.execute(soundings_query, [session_id]).fetchall()
 
-                for s_phase, s_idx, s_winner, s_cost in sounding_results:
+                for s_phase, s_idx, s_winner, s_cost, s_model in sounding_results:
                     if s_phase not in soundings_map:
                         soundings_map[s_phase] = {
                             'total': 0,
@@ -1506,7 +1515,8 @@ def get_cascade_instances(cascade_id):
                         'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
-                        'turns': turns
+                        'turns': turns,
+                        'model': s_model
                     })
             except Exception as e:
                 print(f"[ERROR] Soundings query: {e}")

@@ -647,7 +647,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return (
       <div className="instances-container">
         <div className="loading">
-          <VideoSpinner message="Loading instances..." size={400} opacity={0.6} />
+          <VideoSpinner message="Loading instances..." size={500} opacity={0.6} />
         </div>
       </div>
     );

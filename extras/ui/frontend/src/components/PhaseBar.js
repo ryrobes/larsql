@@ -217,6 +217,18 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
             // Find max cost for normalization
             const maxCost = Math.max(...uniqueAttempts.map(a => a.cost || 0), 0.001);
 
+            // Check if there's a mix of models (more than one unique model)
+            const uniqueModels = new Set(uniqueAttempts.map(a => a.model).filter(Boolean));
+            const hasMultipleModels = uniqueModels.size > 1;
+
+            // Helper to get short model name
+            const getShortModel = (model) => {
+              if (!model) return null;
+              // Extract just the model name after the provider prefix
+              const parts = model.split('/');
+              return parts[parts.length - 1];
+            };
+
             return uniqueAttempts.map((attempt) => {
               const isWinner = attempt.is_winner;
               // Sounding is running if phase is running and no winner has been determined yet
@@ -234,6 +246,8 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
                 barClass += ' loser';
               }
 
+              const shortModel = hasMultipleModels ? getShortModel(attempt.model) : null;
+
               return (
                 <div key={attempt.index} className="individual-sounding-row">
                   <span className="sounding-index-label">
@@ -247,10 +261,15 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
                     <div
                       className={barClass}
                       style={{ width: `${barWidth}%` }}
-                      title={`Sounding ${attempt.index}: ${isRunning ? 'Running...' : formatCost(attempt.cost)}`}
+                      title={`Sounding ${attempt.index}: ${isRunning ? 'Running...' : formatCost(attempt.cost)}${attempt.model ? ` (${attempt.model})` : ''}`}
                     >
                       <span className="sounding-cost-label">{isRunning ? '...' : formatCost(attempt.cost)}</span>
                     </div>
+                    {shortModel && (
+                      <span className="sounding-model-label" title={attempt.model}>
+                        {shortModel}
+                      </span>
+                    )}
                   </div>
                 </div>
               );

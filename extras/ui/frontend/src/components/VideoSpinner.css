@@ -6,6 +6,7 @@
   align-items: center;
   justify-content: center;
   gap: 1rem;
+  width: 100%; /* Ensure container takes full width for percentage-based sizing */
 }
 
 .video-spinner {
@@ -21,7 +22,10 @@
 
 .spinner-message {
   color: #9AA5B1;
-  font-size: 0.95rem;
+  font-family: 'Julius Sans One', sans-serif;
+  font-size: clamp(0.9rem, 2vw, 1.25rem);
+  font-weight: bold;
+  letter-spacing: 0.1em;
   text-align: center;
 }
 

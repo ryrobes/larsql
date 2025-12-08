@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import CascadesView from './components/CascadesView';
 import InstancesView from './components/InstancesView';
 import HotOrNotView from './components/HotOrNotView';
-import DetailView from './components/DetailView';
+import SplitDetailView from './components/SplitDetailView';
 import MessageFlowView from './components/MessageFlowView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
@@ -601,11 +601,13 @@ function App() {
       )}
 
       {currentView === 'detail' && (
-        <DetailView
+        <SplitDetailView
           sessionId={detailSessionId}
+          cascadeId={selectedCascadeId}
           onBack={handleBackToInstances}
           runningSessions={runningSessions}
           finalizingSessions={finalizingSessions}
+          sessionUpdates={sessionUpdates}
         />
       )}
 

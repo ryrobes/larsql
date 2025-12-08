@@ -10,7 +10,6 @@
 }
 
 .phase-bar-container:hover {
-  background: rgba(45, 212, 191, 0.05);
   cursor: pointer;
 }
 
@@ -263,7 +262,6 @@
 .sounding-segments .segment:hover {
   filter: brightness(1.6);
   z-index: 10;
-  cursor: help;
 }
 
 /* Tooltip for segment hover */
@@ -351,7 +349,6 @@
   left: 0;
   right: 0;
   bottom: 0;
-  cursor: help;
   z-index: 5;
 }
 
@@ -491,8 +488,10 @@
   height: 16px;
   background: #0B1219;
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .individual-sounding-bar {
@@ -541,7 +540,6 @@
 
 .individual-sounding-bar:hover {
   filter: brightness(1.4);
-  cursor: help;
 }
 
 .sounding-cost-label {
@@ -551,4 +549,25 @@
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
+}
+
+/* Model label - shown to the right of the bar when multi-model soundings */
+.sounding-model-label {
+  position: absolute;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #9AA5B1;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.individual-sounding-row:hover .sounding-model-label {
+  opacity: 1;
+  color: #F0F4F8;
 }

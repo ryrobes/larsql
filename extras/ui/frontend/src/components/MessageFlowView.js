@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { Icon } from '@iconify/react';
+import VideoSpinner from './VideoSpinner';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -399,50 +400,52 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange }) {
   };
 
   return (
-    <div className="message-flow-view">
-      <div className="controls">
-        {onBack && (
-          <button onClick={onBack} className="back-button" title="Back to Cascades">
-            <Icon icon="mdi:arrow-left" width="18" />
-          </button>
-        )}
-
-        {/* Recent Sessions Row */}
-        <div className="recent-sessions-row">
-          {recentSessions.length === 0 ? (
-            <span className="no-recent-sessions">No recent sessions</span>
-          ) : (
-            recentSessions.map((session) => {
-              const isSelected = currentSessionIdRef.current === session.session_id;
-              const isRunning = session.isActive || session.status === 'running';
-              return (
-                <button
-                  key={session.session_id}
-                  className={`session-button ${isSelected ? 'selected' : ''} ${isRunning ? 'running' : ''}`}
-                  onClick={() => handleSessionSelect(session)}
-                  title={`${session.cascade_id || 'unknown'}\n${session.session_id}`}
-                >
-                  {isRunning && <span className="session-pulse"></span>}
-                  <span className="session-button-cascade">{session.cascade_id || 'unknown'}</span>
-                  <span className="session-button-id">{session.session_id.slice(-8)}</span>
-                </button>
-              );
-            })
+    <div className={`message-flow-view ${hideControls ? 'embedded' : ''}`}>
+      {!hideControls && (
+        <div className="controls">
+          {onBack && (
+            <button onClick={onBack} className="back-button" title="Back to Cascades">
+              <Icon icon="mdi:arrow-left" width="18" />
+            </button>
           )}
-        </div>
 
-        <input
-          type="text"
-          value={sessionId}
-          onChange={(e) => setSessionId(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && fetchMessages()}
-          placeholder="Enter session ID (e.g., ui_run_426c918654f4)"
-          className="session-input"
-        />
-        <button onClick={() => fetchMessages()} disabled={loading} className="fetch-button">
-          {loading ? 'Loading...' : 'Fetch Messages'}
-        </button>
-      </div>
+          {/* Recent Sessions Row */}
+          <div className="recent-sessions-row">
+            {recentSessions.length === 0 ? (
+              <span className="no-recent-sessions">No recent sessions</span>
+            ) : (
+              recentSessions.map((session) => {
+                const isSelected = currentSessionIdRef.current === session.session_id;
+                const isRunning = session.isActive || session.status === 'running';
+                return (
+                  <button
+                    key={session.session_id}
+                    className={`session-button ${isSelected ? 'selected' : ''} ${isRunning ? 'running' : ''}`}
+                    onClick={() => handleSessionSelect(session)}
+                    title={`${session.cascade_id || 'unknown'}\n${session.session_id}`}
+                  >
+                    {isRunning && <span className="session-pulse"></span>}
+                    <span className="session-button-cascade">{session.cascade_id || 'unknown'}</span>
+                    <span className="session-button-id">{session.session_id.slice(-8)}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <input
+            type="text"
+            value={sessionId}
+            onChange={(e) => setSessionId(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && fetchMessages()}
+            placeholder="Enter session ID (e.g., ui_run_426c918654f4)"
+            className="session-input"
+          />
+          <button onClick={() => fetchMessages()} disabled={loading} className="fetch-button">
+            {loading ? 'Loading...' : 'Fetch Messages'}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="error">
@@ -453,9 +456,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange }) {
       {/* Waiting for data state - session is running but no logs written yet */}
       {waitingForData && !data && (
         <div className="waiting-for-data">
-          <div className="waiting-icon">
-            <Icon icon="mdi:timer-sand" width="48" />
-          </div>
+          <VideoSpinner size={100} opacity={0.8} />
           <h3>Waiting for data...</h3>
           <p>
             Session <code>{currentSessionIdRef.current || sessionId}</code> is running but hasn't written any logs yet.
@@ -463,9 +464,6 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange }) {
           <p className="waiting-hint">
             Auto-refreshing every 2 seconds. Data will appear once the cascade starts logging.
           </p>
-          <div className="waiting-spinner">
-            <Icon icon="mdi:loading" width="24" className="spin" />
-          </div>
         </div>
       )}
 

@@ -1,0 +1,386 @@
+/* InstanceCard - Standalone single instance display */
+
+.instance-card {
+  background: #0d1117;
+  border: 2px solid #2C3B4B;
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  overflow-y: auto;
+  transition: border-color 0.2s ease;
+}
+
+.instance-card:hover {
+  border-color: #3d4f5f;
+}
+
+/* Running state */
+.instance-card.running {
+  border-color: #D9A553;
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+/* Finalizing state */
+.instance-card.finalizing {
+  border-color: #2DD4BF;
+  animation: pulse-border-blue 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: #D9A553;
+    box-shadow: 0 0 0 0 rgba(217, 165, 83, 0.4);
+  }
+  50% {
+    border-color: #D9A553;
+    box-shadow: 0 0 0 4px rgba(217, 165, 83, 0);
+  }
+}
+
+@keyframes pulse-border-blue {
+  0%, 100% {
+    border-color: #2DD4BF;
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.4);
+  }
+  50% {
+    border-color: #2DD4BF;
+    box-shadow: 0 0 0 4px rgba(45, 212, 191, 0);
+  }
+}
+
+/* Wide chart layout */
+.instance-card.has-wide-chart .instance-card-content {
+  flex-direction: column;
+}
+
+/* Loading/Error states */
+.instance-card.loading-state,
+.instance-card.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 300px;
+  color: #9AA5B1;
+}
+
+.instance-card.error-state {
+  color: #CF6679;
+  flex-direction: row;
+}
+
+/* Header */
+.instance-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2C3B4B;
+}
+
+.instance-card-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.instance-card-header .session-id {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+  color: #F0F4F8;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.instance-card-header .timestamp {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Inline metrics in header */
+.instance-card-metrics-inline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.metric-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.metric-inline .metric-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #D9A553;
+}
+
+.metric-inline.cost .metric-value {
+  color: #2DD4BF;
+  font-size: 1.1rem;
+}
+
+.token-sparkline-inline {
+  opacity: 0.8;
+}
+
+/* Status badges */
+.running-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #D9A553;
+  background: rgba(217, 165, 83, 0.15);
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid #D9A553;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+.finalizing-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #2DD4BF;
+  background: rgba(45, 212, 191, 0.15);
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  animation: pulse-text-blue 1.5s ease-in-out infinite;
+}
+
+.failed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #CF6679;
+  background: rgba(207, 102, 121, 0.15);
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid #CF6679;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-text-blue {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Wide mermaid wrapper */
+.instance-card .mermaid-wrapper-top {
+  width: 100%;
+  min-height: 80px;
+  max-height: 300px;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
+
+.instance-card .mermaid-wrapper-top svg {
+  filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.5))
+          drop-shadow(0 0 8px rgba(6, 182, 212, 0.4));
+  transition: filter 0.3s ease;
+}
+
+/* Main content area */
+.instance-card-content {
+  display: flex;
+  flex-direction: column; /* Stack vertically by default for narrow containers */
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Left side: Info + Mermaid */
+.instance-card-info {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.model-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Input params */
+.instance-card .input-params {
+  padding: 0.5rem;
+  background: #0B1219;
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.instance-card .input-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.instance-card .input-field-display {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  line-height: 1.4;
+}
+
+.instance-card .input-key {
+  color: #2DD4BF;
+  font-weight: 600;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.instance-card .input-value {
+  color: #F0F4F8;
+  flex: 1;
+  word-break: break-word;
+}
+
+/* Mermaid wrapper */
+.instance-card .mermaid-wrapper {
+  width: 100%;
+  min-height: 80px;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.instance-card .mermaid-wrapper svg {
+  filter: drop-shadow(0 0 3px rgba(167, 139, 250, 0.4))
+          drop-shadow(0 0 6px rgba(6, 182, 212, 0.3));
+}
+
+/* Right side: Phases + Output */
+.instance-card-phases {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 200px; /* Ensure phases section has minimum height in stacked layout */
+  overflow-y: auto;
+}
+
+/* Final output */
+.instance-card .final-output {
+  margin-top: auto;
+  padding: 0.75rem;
+  background: #0B1219;
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  min-height: 50px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.instance-card .final-output-content {
+  font-size: 0.8rem;
+  color: #F0F4F8;
+  line-height: 1.5;
+}
+
+.instance-card .final-output-content p {
+  margin: 0 0 0.5rem 0;
+}
+
+.instance-card .final-output-content p:last-child {
+  margin-bottom: 0;
+}
+
+.instance-card .final-output-content code {
+  background: #16202A;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #D9A553;
+}
+
+.instance-card .final-output-content pre {
+  background: #16202A;
+  padding: 0.5rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.instance-card .final-output-content pre code {
+  background: none;
+  padding: 0;
+  color: #F0F4F8;
+}
+
+/* Live duration */
+.live-duration {
+  color: #fbbf24;
+  animation: pulse-duration 2s ease-in-out infinite;
+}
+
+@keyframes pulse-duration {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Compact mode */
+.instance-card.compact {
+  padding: 1rem;
+}
+
+.instance-card.compact .final-output {
+  max-height: 120px;
+}
+
+/* Header wrapping for narrow containers */
+.instance-card-header {
+  flex-wrap: wrap;
+}
+
+.instance-card-metrics-inline {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Responsive - for very narrow viewports */
+@media (max-width: 500px) {
+  .instance-card {
+    padding: 0.75rem;
+  }
+
+  .instance-card-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .instance-card-metrics-inline {
+    align-self: flex-start;
+  }
+}

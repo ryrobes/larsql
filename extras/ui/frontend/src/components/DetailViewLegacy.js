@@ -9,11 +9,11 @@ import ParametersCard from './ParametersCard';
 import PhaseBar from './PhaseBar';
 import CascadeBar from './CascadeBar';
 import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByPhase } from '../utils/debugUtils';
-import './DetailView.css';
+import './DetailViewLegacy.css';
 
 const API_BASE_URL = 'http://localhost:5001/api';
 
-function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizingSessions = new Set() }) {
+function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), finalizingSessions = new Set() }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -106,10 +106,15 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
           phaseMap[phaseName].soundingAttempts.set(idx, {
             index: idx,
             cost: 0,
-            is_winner: entry.is_winner
+            is_winner: entry.is_winner,
+            model: null
           });
         }
         phaseMap[phaseName].soundingAttempts.get(idx).cost += entry.cost || 0;
+        // Track model for this sounding (use first non-null model found)
+        if (entry.model && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
+          phaseMap[phaseName].soundingAttempts.get(idx).model = entry.model;
+        }
       }
     });
 
@@ -386,4 +391,4 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
   );
 }
 
-export default React.memo(DetailView);
+export default React.memo(DetailViewLegacy);

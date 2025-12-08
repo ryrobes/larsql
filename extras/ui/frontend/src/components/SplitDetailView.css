@@ -1,0 +1,210 @@
+/* SplitDetailView - Two-pane detail view with draggable splitter */
+
+.split-detail-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0B1219;
+  color: #F0F4F8;
+  overflow: hidden;
+}
+
+/* Header */
+.split-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(180deg, rgba(22, 32, 42, 0.95) 0%, rgba(11, 18, 25, 0.98) 100%);
+  border-bottom: 1px solid rgba(45, 212, 191, 0.15);
+  flex-shrink: 0;
+}
+
+.split-detail-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.split-detail-header .back-button {
+  background: transparent;
+  border: 1px solid #2C3B4B;
+  color: #9AA5B1;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.split-detail-header .back-button:hover {
+  background: rgba(45, 212, 191, 0.1);
+  border-color: #2DD4BF;
+  color: #2DD4BF;
+}
+
+.split-detail-header .session-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.split-detail-header .session-label {
+  font-size: 0.85rem;
+  color: #9AA5B1;
+}
+
+.split-detail-header .session-id-display {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #F0F4F8;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.split-detail-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.split-detail-header .view-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* Split Content Area */
+.split-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Panes */
+.split-pane {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-pane.left-pane {
+  padding: 1rem;
+  min-width: 280px;
+}
+
+.split-pane.right-pane {
+  min-width: 400px;
+  background: #0a0f14;
+}
+
+/* Splitter/Divider */
+.splitter {
+  width: 8px;
+  background: #16202A;
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splitter:hover,
+.splitter.dragging {
+  background: #2C3B4B;
+}
+
+.splitter.dragging {
+  background: rgba(45, 212, 191, 0.2);
+}
+
+.splitter-handle {
+  width: 4px;
+  height: 60px;
+  border-radius: 2px;
+  background: #2C3B4B;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.splitter:hover .splitter-handle,
+.splitter.dragging .splitter-handle {
+  background: #2DD4BF;
+}
+
+.splitter-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.splitter-dots span {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #9AA5B1;
+  transition: background 0.2s ease;
+}
+
+.splitter:hover .splitter-dots span,
+.splitter.dragging .splitter-dots span {
+  background: #0B1219;
+}
+
+/* Override MessageFlowView styles when embedded */
+.split-pane.right-pane .message-flow-view {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.split-pane.right-pane .message-flow-view .controls {
+  display: none;
+}
+
+.split-pane.right-pane .message-flow-view .message-flow {
+  padding-top: 0;
+}
+
+/* Make InstanceCard fill the pane */
+.split-pane.left-pane .instance-card {
+  flex: 1;
+  max-height: none;
+}
+
+/* Responsive */
+@media (max-width: 1000px) {
+  .split-content {
+    flex-direction: column;
+  }
+
+  .split-pane.left-pane,
+  .split-pane.right-pane {
+    width: 100% !important;
+    min-width: unset;
+  }
+
+  .split-pane.left-pane {
+    max-height: 40vh;
+    border-bottom: 1px solid #2C3B4B;
+  }
+
+  .split-pane.right-pane {
+    flex: 1;
+  }
+
+  .splitter {
+    display: none;
+  }
+}

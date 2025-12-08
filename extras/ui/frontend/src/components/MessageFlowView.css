@@ -1448,3 +1448,41 @@
     transform: rotate(360deg);
   }
 }
+
+/* Embedded mode - for use in SplitDetailView */
+.message-flow-view.embedded {
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.message-flow-view.embedded .message-flow {
+  padding: 1rem;
+}
+
+.message-flow-view.embedded .flow-header {
+  margin: 0 0 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(22, 32, 42, 0.6);
+}
+
+.message-flow-view.embedded .flow-header-top h2 {
+  font-size: 1rem;
+}
+
+.message-flow-view.embedded .stats {
+  font-size: 0.75rem;
+}
+
+.message-flow-view.embedded .cost-summary {
+  font-size: 0.75rem;
+}
+
+.message-flow-view.embedded .main-flow-section h3 {
+  font-size: 0.9rem;
+}
+
+.message-flow-view.embedded .main-flow-section > p {
+  font-size: 0.75rem;
+}

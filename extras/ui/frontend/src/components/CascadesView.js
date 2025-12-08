@@ -258,7 +258,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
     return (
       <div className="cascades-container">
         <div className="loading">
-          <VideoSpinner message="Loading cascades..." size={400} opacity={0.6} />
+          <VideoSpinner message="Loading cascades..." size={500} opacity={0.6} />
         </div>
       </div>
     );
@@ -387,8 +387,20 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
 
                 if (!layout.boxes || layout.boxes.length === 0) {
                   return (
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-                      No layout calculated yet (boxes: {layout.boxes ? layout.boxes.length : 'null'})
+                    <div style={{
+                      padding: '40px',
+                      textAlign: 'center',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '60vh'
+                    }}>
+                      <VideoSpinner
+                        message="Loading Cascade Tiles..."
+                        size={500}
+                        opacity={0.6}
+                      />
                     </div>
                   );
                 }
