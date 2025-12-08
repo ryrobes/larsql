@@ -1,5 +1,131 @@
 from typing import List, Dict, Any, Optional, Union, Literal
 from pydantic import BaseModel, Field
+from enum import Enum
+
+
+# ===== Human-in-the-Loop (HITL) Configuration =====
+
+class HumanInputType(str, Enum):
+    """Built-in UI types for human input at checkpoints."""
+    CONFIRMATION = "confirmation"  # Yes/No + optional comment
+    CHOICE = "choice"              # Radio buttons (single select)
+    MULTI_CHOICE = "multi_choice"  # Checkboxes (multi select)
+    RATING = "rating"              # Stars or slider
+    TEXT = "text"                  # Free text input
+    FORM = "form"                  # Multiple fields
+    REVIEW = "review"              # Content preview + approval
+    AUTO = "auto"                  # LLM generates appropriate UI
+    HTMX = "htmx"                  # LLM generates HTMX template
+
+
+class HumanInputOption(BaseModel):
+    """Single option for choice-type inputs."""
+    label: str
+    value: str
+    description: Optional[str] = None
+    requires_text: bool = False  # Show text input if selected
+    requires_comment: bool = False  # Require explanation
+
+
+class HumanInputConfig(BaseModel):
+    """
+    Configuration for human input at phase level.
+
+    Usage:
+    Simple: {"human_input": true}
+    Custom: {"human_input": {"type": "confirmation", "prompt": "Approve?"}}
+    """
+    # Basic configuration
+    type: HumanInputType = HumanInputType.CONFIRMATION
+    prompt: Optional[str] = None  # Override auto-generated prompt
+
+    # For choice types
+    options: Optional[List[HumanInputOption]] = None
+
+    # For rating type
+    max_rating: int = 5
+    rating_labels: Optional[List[str]] = None  # ["Poor", "Fair", "Good", "Great", "Excellent"]
+
+    # For form type
+    fields: Optional[List[Dict[str, Any]]] = None  # [{name, type, label, required, ...}]
+
+    # For auto/htmx types
+    hint: Optional[str] = None  # Context hint for UI generator
+    generator_prompt: Optional[str] = None  # Full prompt for HTMX generation
+
+    # Behavioral options
+    condition: Optional[str] = None  # Jinja2 condition - only ask if true
+    timeout_seconds: Optional[int] = None  # Auto-continue after timeout
+    on_timeout: Literal["abort", "continue", "default", "escalate"] = "abort"
+    default_value: Optional[Any] = None  # Value to use on timeout
+    escalate_to: Optional[str] = None  # Notification channel for escalation
+
+    # Metadata capture
+    capture_reasoning: bool = False  # Ask user to explain their choice
+    capture_confidence: bool = False  # Ask how confident they are
+
+
+class HumanEvalPresentation(str, Enum):
+    """How to display sounding attempts to human."""
+    SIDE_BY_SIDE = "side_by_side"  # Cards in a row/grid
+    TABBED = "tabbed"              # Tab per attempt
+    CAROUSEL = "carousel"          # Swipe through
+    DIFF = "diff"                  # Show differences highlighted
+    TOURNAMENT = "tournament"      # Pairwise comparison brackets
+
+
+class HumanEvalSelectionMode(str, Enum):
+    """How human indicates preference."""
+    PICK_ONE = "pick_one"      # Select single winner
+    RANK_ALL = "rank_all"      # Order all from best to worst
+    RATE_EACH = "rate_each"    # Give score to each, highest wins
+    TOURNAMENT = "tournament"  # Pairwise elimination
+
+
+class HumanSoundingEvalConfig(BaseModel):
+    """
+    Configuration for human evaluation of soundings.
+
+    Usage:
+    {
+        "soundings": {
+            "factor": 5,
+            "evaluator": "human",
+            "human_eval": {
+                "presentation": "side_by_side",
+                "selection_mode": "pick_one",
+                "require_reasoning": true
+            }
+        }
+    }
+    """
+    # Presentation
+    presentation: HumanEvalPresentation = HumanEvalPresentation.SIDE_BY_SIDE
+    selection_mode: HumanEvalSelectionMode = HumanEvalSelectionMode.PICK_ONE
+
+    # What to show
+    show_metadata: bool = True         # Cost, tokens, time, model
+    show_mutations: bool = True        # What prompt variation was used
+    show_index: bool = False           # Show attempt number (can bias)
+    preview_render: Literal["text", "markdown", "code", "auto"] = "auto"
+    max_preview_length: Optional[int] = None  # Truncate long outputs
+
+    # Selection options
+    allow_reject_all: bool = True      # Option to reject all and retry
+    allow_tie: bool = False            # Can select multiple as equal
+    require_reasoning: bool = False    # Must explain selection
+
+    # Timeout
+    timeout_seconds: Optional[int] = None
+    on_timeout: Literal["random", "first", "abort", "llm_fallback"] = "llm_fallback"
+    fallback_evaluator: Optional[str] = None  # LLM evaluator if timeout
+
+    # Training data
+    capture_for_training: bool = True  # Log as preference data
+    capture_rejected_reasons: bool = False  # Why not the others?
+
+
+# ===== Core Configuration Models =====
 
 class RuleConfig(BaseModel):
     max_turns: Optional[int] = None
@@ -85,7 +211,7 @@ class ParetoFrontier(BaseModel):
 
 class SoundingsConfig(BaseModel):
     factor: int = 1
-    evaluator_instructions: str
+    evaluator_instructions: Optional[str] = None  # Required unless evaluator="human"
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop
     mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)
     mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
@@ -104,6 +230,12 @@ class SoundingsConfig(BaseModel):
 
     # Pareto frontier analysis (Phase 3: Pareto Frontier Analysis)
     pareto_frontier: Optional[ParetoFrontier] = None  # Enable Pareto frontier computation and selection
+
+    # Human evaluation options (HITL)
+    evaluator: Optional[Literal["human", "hybrid"]] = None  # Use human or hybrid (LLM prefilter + human) evaluation
+    human_eval: Optional[HumanSoundingEvalConfig] = None  # Human eval configuration
+    llm_prefilter: Optional[int] = None  # For hybrid mode: LLM picks top N, human picks winner
+    llm_prefilter_instructions: Optional[str] = None  # Instructions for LLM prefilter
 
 class RagConfig(BaseModel):
     """
@@ -294,6 +426,10 @@ class PhaseConfig(BaseModel):
     # Phases without context config get clean slate (no prior context)
     # Use context.from: ["all"] for explicit snowball behavior
     context: Optional[ContextConfig] = None
+
+    # Human-in-the-Loop (HITL) checkpoint configuration
+    # Use human_input: true for simple confirmation, or provide HumanInputConfig for customization
+    human_input: Optional[Union[bool, HumanInputConfig]] = None
 
 class CascadeConfig(BaseModel):
     cascade_id: str

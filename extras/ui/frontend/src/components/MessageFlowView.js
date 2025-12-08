@@ -15,8 +15,16 @@ function MessageFlowView({ onBack }) {
   const [runningSessions, setRunningSessions] = useState([]);
   const [showSessionDropdown, setShowSessionDropdown] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [waitingForData, setWaitingForData] = useState(false); // True when session is running but no data yet
   const dropdownRef = useRef(null);
   const currentSessionIdRef = useRef(null);
+
+  // Check if a session ID is in the running sessions list
+  const isSessionRunning = useCallback((sid) => {
+    return runningSessions.some(s =>
+      s.session_id === sid && (s.status === 'running' || s.status === 'completing')
+    );
+  }, [runningSessions]);
 
   const fetchMessages = useCallback(async (targetSessionId = null, silent = false) => {
     const sid = targetSessionId || currentSessionIdRef.current || sessionId;
@@ -25,25 +33,40 @@ function MessageFlowView({ onBack }) {
     if (!silent) {
       setLoading(true);
       setError(null);
+      setWaitingForData(false);
     }
 
     try {
       const response = await axios.get(`${API_BASE_URL}/api/message-flow/${sid}`);
       setData(response.data);
+      setWaitingForData(false);
+      setError(null);
       currentSessionIdRef.current = sid;
       if (targetSessionId && targetSessionId !== sessionId) {
         setSessionId(targetSessionId);
       }
     } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.error || err.message);
+      const errorMsg = err.response?.data?.error || err.message;
+      const isNotFound = err.response?.status === 404 || errorMsg.includes('No data found');
+
+      // If session is running but no data yet, show "waiting" state instead of error
+      if (isNotFound && isSessionRunning(sid)) {
+        setWaitingForData(true);
+        setError(null);
+        currentSessionIdRef.current = sid;
+        if (targetSessionId && targetSessionId !== sessionId) {
+          setSessionId(targetSessionId);
+        }
+      } else if (!silent) {
+        setError(errorMsg);
+        setWaitingForData(false);
       }
     } finally {
       if (!silent) {
         setLoading(false);
       }
     }
-  }, [sessionId]);
+  }, [sessionId, isSessionRunning]);
 
   const fetchRunningSessions = useCallback(async () => {
     try {
@@ -75,17 +98,19 @@ function MessageFlowView({ onBack }) {
     }
   }, [showSessionDropdown]);
 
-  // Check if current session is running
+  // Check if current session is running (works even without data)
   const isCurrentSessionRunning = useCallback(() => {
-    if (!data?.session_id) return false;
-    return runningSessions.some(s =>
-      s.session_id === data.session_id && s.status === 'running'
-    );
-  }, [data?.session_id, runningSessions]);
+    const sid = data?.session_id || currentSessionIdRef.current;
+    if (!sid) return false;
+    return isSessionRunning(sid);
+  }, [data?.session_id, isSessionRunning]);
 
-  // Auto-refresh when viewing a running session
+  // Auto-refresh when viewing a running session OR waiting for data
   useEffect(() => {
-    if (!autoRefresh || !data?.session_id || !isCurrentSessionRunning()) {
+    const sid = data?.session_id || currentSessionIdRef.current;
+    const shouldRefresh = autoRefresh && sid && (isCurrentSessionRunning() || waitingForData);
+
+    if (!shouldRefresh) {
       return;
     }
 
@@ -94,7 +119,7 @@ function MessageFlowView({ onBack }) {
     }, 2000); // refresh every 2 seconds
 
     return () => clearInterval(interval);
-  }, [autoRefresh, data?.session_id, isCurrentSessionRunning, fetchMessages]);
+  }, [autoRefresh, data?.session_id, isCurrentSessionRunning, waitingForData, fetchMessages]);
 
   const handleSessionSelect = (session) => {
     setShowSessionDropdown(false);
@@ -145,6 +170,19 @@ function MessageFlowView({ onBack }) {
     );
   };
 
+  // Category colors for badges
+  const categoryColors = {
+    'llm_call': { bg: '#4ec9b0', color: '#1e1e1e', label: 'LLM' },
+    'conversation': { bg: '#60a5fa', color: '#1e1e1e', label: 'Conv' },
+    'evaluator': { bg: '#c586c0', color: '#1e1e1e', label: 'Eval' },
+    'quartermaster': { bg: '#dcdcaa', color: '#1e1e1e', label: 'QM' },
+    'ward': { bg: '#ce9178', color: '#1e1e1e', label: 'Ward' },
+    'lifecycle': { bg: '#6a9955', color: '#1e1e1e', label: 'Life' },
+    'metadata': { bg: '#808080', color: '#1e1e1e', label: 'Meta' },
+    'error': { bg: '#f87171', color: '#1e1e1e', label: 'Err' },
+    'other': { bg: '#666666', color: '#1e1e1e', label: '?' }
+  };
+
   const renderMessage = (msg, index, label) => {
     const globalIndex = findGlobalIndex(msg);
     const isExpanded = expandedMessages.has(index);
@@ -157,6 +195,9 @@ function MessageFlowView({ onBack }) {
     const isFollowUp = msg.node_type === 'follow_up';
     const isHighlighted = highlightedMessage === globalIndex;
     const isMostExpensive = data?.cost_summary?.most_expensive?.index === globalIndex;
+    const isInternal = msg.is_internal;
+    const category = msg.message_category || 'other';
+    const categoryStyle = categoryColors[category] || categoryColors['other'];
 
     // Count images in full_request and extract first thumbnail
     let imageCount = 0;
@@ -202,12 +243,28 @@ function MessageFlowView({ onBack }) {
       <div
         key={index}
         id={`message-${globalIndex}`}
-        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''}`}
+        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''}`}
         onClick={() => isExpandable && toggleMessage(index)}
         style={{ cursor: isExpandable ? 'pointer' : 'default' }}
       >
         <div className="message-header">
           <span className="message-label">{label}</span>
+          {/* Category badge */}
+          <span
+            className="category-badge"
+            style={{
+              background: categoryStyle.bg,
+              color: categoryStyle.color,
+              padding: '2px 6px',
+              borderRadius: '3px',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              opacity: isInternal ? 0.7 : 1
+            }}
+            title={`Category: ${category}${isInternal ? ' (internal - not sent to LLM)' : ''}`}
+          >
+            {categoryStyle.label}
+          </span>
           {fromSounding && <span className="source-badge" style={{background: '#4ec9b0', color: '#1e1e1e', padding: '2px 6px', borderRadius: '3px', fontSize: '11px'}}>S{msg.sounding_index}</span>}
           {fromReforge && <span className="source-badge" style={{background: '#c586c0', color: '#1e1e1e', padding: '2px 6px', borderRadius: '3px', fontSize: '11px'}}>R{msg.reforge_step}</span>}
           <span className="message-role">{msg.role}</span>
@@ -377,6 +434,25 @@ function MessageFlowView({ onBack }) {
         </div>
       )}
 
+      {/* Waiting for data state - session is running but no logs written yet */}
+      {waitingForData && !data && (
+        <div className="waiting-for-data">
+          <div className="waiting-icon">
+            <Icon icon="mdi:timer-sand" width="48" />
+          </div>
+          <h3>Waiting for data...</h3>
+          <p>
+            Session <code>{currentSessionIdRef.current || sessionId}</code> is running but hasn't written any logs yet.
+          </p>
+          <p className="waiting-hint">
+            Auto-refreshing every 2 seconds. Data will appear once the cascade starts logging.
+          </p>
+          <div className="waiting-spinner">
+            <Icon icon="mdi:loading" width="24" className="spin" />
+          </div>
+        </div>
+      )}
+
       {data && (
         <div className="message-flow">
           <div className="flow-header">
@@ -417,8 +493,8 @@ function MessageFlowView({ onBack }) {
             )}
           </div>
 
-          {/* Reforge Steps */}
-          {data.reforge_steps.length > 0 && (
+          {/* Legacy Reforge Steps - only show if not organized by phase */}
+          {data.reforge_steps.length > 0 && (!data.reforge_by_phase || data.reforge_by_phase.length === 0) && (
             <div className="reforge-section">
               <h3><Icon icon="mdi:hammer" width="18" style={{ marginRight: '8px', color: '#c586c0' }} />Reforge Steps</h3>
               {data.reforge_steps.map((reforge) => (
@@ -452,6 +528,14 @@ function MessageFlowView({ onBack }) {
                     });
                   }
 
+                  // Build a map of phase_name -> reforge block for quick lookup
+                  const reforgeBlockMap = {};
+                  if (data.reforge_by_phase && data.reforge_by_phase.length > 0) {
+                    data.reforge_by_phase.forEach(block => {
+                      reforgeBlockMap[block.phase_name] = block;
+                    });
+                  }
+
                   // Group messages by phase while maintaining order
                   const phaseGroups = [];
                   let currentPhase = null;
@@ -466,7 +550,8 @@ function MessageFlowView({ onBack }) {
                         phaseGroups.push({
                           phase_name: currentPhase,
                           messages: currentMessages,
-                          hasSoundings: !!soundingsBlockMap[currentPhase]
+                          hasSoundings: !!soundingsBlockMap[currentPhase],
+                          hasReforge: !!reforgeBlockMap[currentPhase]
                         });
                       }
                       // Start new phase group
@@ -482,7 +567,8 @@ function MessageFlowView({ onBack }) {
                     phaseGroups.push({
                       phase_name: currentPhase,
                       messages: currentMessages,
-                      hasSoundings: !!soundingsBlockMap[currentPhase]
+                      hasSoundings: !!soundingsBlockMap[currentPhase],
+                      hasReforge: !!reforgeBlockMap[currentPhase]
                     });
                   }
 
@@ -504,14 +590,41 @@ function MessageFlowView({ onBack }) {
                           phase_name: block.phase_name,
                           messages: [],
                           hasSoundings: true,
+                          hasReforge: !!reforgeBlockMap[block.phase_name],
                           soundingsOnly: true
                         });
                       }
                     });
                   }
 
-                  // Track which phases we've shown soundings for
+                  // Also check for reforge phases that might not have messages in main_flow
+                  if (data.reforge_by_phase && data.reforge_by_phase.length > 0) {
+                    data.reforge_by_phase.forEach(block => {
+                      const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+                      if (!existingGroup) {
+                        // Find the right position based on first_timestamp
+                        let insertIdx = phaseGroups.length;
+                        for (let i = 0; i < phaseGroups.length; i++) {
+                          const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
+                          if (block.first_timestamp < groupFirstTs) {
+                            insertIdx = i;
+                            break;
+                          }
+                        }
+                        phaseGroups.splice(insertIdx, 0, {
+                          phase_name: block.phase_name,
+                          messages: [],
+                          hasSoundings: !!soundingsBlockMap[block.phase_name],
+                          hasReforge: true,
+                          reforgeOnly: true
+                        });
+                      }
+                    });
+                  }
+
+                  // Track which phases we've shown soundings/reforge for
                   const shownSoundingsPhases = new Set();
+                  const shownReforgePhases = new Set();
 
                   // Helper to render a soundings block
                   const renderSoundingsBlock = (block, phaseName) => (
@@ -574,17 +687,57 @@ function MessageFlowView({ onBack }) {
                     </div>
                   );
 
+                  // Helper to render a reforge block
+                  const renderReforgeBlock = (block, phaseName) => (
+                    <div key={`reforge-block-${phaseName}`} className="inline-reforge-block">
+                      <div className="inline-reforge-header">
+                        <span className="reforge-icon"><Icon icon="mdi:hammer" width="16" /></span>
+                        <span className="reforge-phase-name">Reforge</span>
+                        <span className="reforge-count">{block.reforge_steps.length} refinement step{block.reforge_steps.length !== 1 ? 's' : ''}</span>
+                        {block.winner_step !== null && (
+                          <span className="reforge-winner">Winner: R{block.winner_step}</span>
+                        )}
+                      </div>
+                      <div className="reforge-grid">
+                        {block.reforge_steps.map((reforge) => (
+                          <div
+                            key={`${phaseName}-reforge-${reforge.step}`}
+                            className={`reforge-branch ${reforge.is_winner ? 'winner-branch' : ''}`}
+                          >
+                            <div className="reforge-header">
+                              <h4>
+                                R{reforge.step}
+                                {reforge.is_winner && <Icon icon="mdi:trophy" width="14" style={{ marginLeft: '4px', color: '#fbbf24' }} />}
+                              </h4>
+                              <span className="reforge-msg-count">{reforge.messages.length} msgs</span>
+                            </div>
+                            <div className="reforge-messages">
+                              {reforge.messages.map((rMsg, ri) =>
+                                renderMessage(rMsg, `reforge-${phaseName}-${reforge.step}-${ri}`, `R${reforge.step}.${ri}`)
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+
                   // Render phase groups
                   return phaseGroups.map((group, groupIdx) => {
                     const phaseName = group.phase_name;
                     const soundingsBlock = soundingsBlockMap[phaseName];
+                    const reforgeBlock = reforgeBlockMap[phaseName];
                     const shouldShowSoundings = soundingsBlock && !shownSoundingsPhases.has(phaseName);
+                    const shouldShowReforge = reforgeBlock && !shownReforgePhases.has(phaseName);
 
                     if (shouldShowSoundings) {
                       shownSoundingsPhases.add(phaseName);
                     }
+                    if (shouldShowReforge) {
+                      shownReforgePhases.add(phaseName);
+                    }
 
-                    // Calculate phase stats (include main_flow messages + soundings + evaluator)
+                    // Calculate phase stats (include main_flow messages + soundings + evaluator + reforge)
                     let phaseCost = group.messages.reduce((sum, { msg }) => sum + (msg.cost || 0), 0);
                     let phaseTokens = group.messages.reduce((sum, { msg }) => sum + (msg.tokens_in || 0), 0);
 
@@ -603,6 +756,16 @@ function MessageFlowView({ onBack }) {
                       }
                     }
 
+                    // Add reforge costs if this phase has them
+                    if (reforgeBlock) {
+                      reforgeBlock.reforge_steps.forEach(reforge => {
+                        reforge.messages.forEach(msg => {
+                          phaseCost += msg.cost || 0;
+                          phaseTokens += msg.tokens_in || 0;
+                        });
+                      });
+                    }
+
                     return (
                       <div key={`phase-group-${phaseName}-${groupIdx}`} className="phase-group">
                         <div className="phase-group-header">
@@ -614,16 +777,24 @@ function MessageFlowView({ onBack }) {
                             {phaseTokens > 0 && <span className="phase-tokens">{phaseTokens.toLocaleString()} tokens</span>}
                           </span>
                           {group.hasSoundings && <span className="phase-soundings-badge">🔱 Soundings</span>}
+                          {group.hasReforge && <span className="phase-reforge-badge"><Icon icon="mdi:hammer" width="14" style={{ marginRight: '4px' }} />Reforge</span>}
                         </div>
                         <div className="phase-group-content">
                           {/* Soundings block (if any) */}
                           {shouldShowSoundings && renderSoundingsBlock(soundingsBlock, phaseName)}
 
-                          {/* Regular messages (skip sounding messages as they're in the block) */}
+                          {/* Reforge block (if any) */}
+                          {shouldShowReforge && renderReforgeBlock(reforgeBlock, phaseName)}
+
+                          {/* Regular messages (skip sounding/reforge messages as they're in their blocks) */}
                           {group.messages
                             .filter(({ msg }) => {
                               // Skip messages that are part of a sounding (already shown in soundings block)
                               if (soundingsBlock && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                                return false;
+                              }
+                              // Skip messages that are part of a reforge (already shown in reforge block)
+                              if (reforgeBlock && msg.reforge_step !== null && msg.reforge_step !== undefined) {
                                 return false;
                               }
                               return true;

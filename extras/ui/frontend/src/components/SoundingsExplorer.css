@@ -1075,6 +1075,52 @@
   overflow-y: auto;
 }
 
+/* Original Prompt Section (collapsible) */
+.mutation-details.original-prompt {
+  background: rgba(139, 146, 160, 0.1);
+  border-color: rgba(139, 146, 160, 0.2);
+}
+
+.mutation-details.original-prompt .mutation-details-header {
+  color: #8b92a0;
+}
+
+.mutation-details-header.clickable {
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.mutation-details-header.clickable:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mutation-details-header .expand-icon {
+  margin-left: auto;
+}
+
+.original-prompt-content {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9ca3af;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.original-prompt-content p {
+  margin: 0 0 8px 0;
+}
+
+.original-prompt-content p:last-child {
+  margin-bottom: 0;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .soundings-grid {

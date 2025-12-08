@@ -6,12 +6,16 @@ import DetailView from './components/DetailView';
 import MessageFlowView from './components/MessageFlowView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
+import CheckpointPanel from './components/CheckpointPanel';
+import CheckpointBadge from './components/CheckpointBadge';
+import CheckpointView from './components/CheckpointView';
 import Toast from './components/Toast';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
+  const [activeCheckpointId, setActiveCheckpointId] = useState(null);  // Currently viewing checkpoint
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
@@ -26,6 +30,7 @@ function App() {
   const [sessionMetadata, setSessionMetadata] = useState({}); // session_id -> {parent_session_id, depth, cascade_id}
   const [sessionUpdates, setSessionUpdates] = useState({}); // Track last update time per session for mermaid refresh
   const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
+  const [pendingCheckpoints, setPendingCheckpoints] = useState([]); // HITL checkpoints waiting for human input
 
   const showToast = (message, type = 'success', duration = null) => {
     const id = Date.now();
@@ -43,7 +48,7 @@ function App() {
   const parseHash = useCallback(() => {
     const hash = window.location.hash.slice(1); // Remove leading #
     if (!hash || hash === '/') {
-      return { view: 'cascades', cascadeId: null, sessionId: null };
+      return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null };
     }
 
     const parts = hash.split('/').filter(p => p); // Split and remove empty parts
@@ -51,24 +56,30 @@ function App() {
     if (parts.length === 1) {
       if (parts[0] === 'message_flow') {
         // /#/message_flow → message flow view
-        return { view: 'messageflow', cascadeId: null, sessionId: null };
+        return { view: 'messageflow', cascadeId: null, sessionId: null, checkpointId: null };
       }
       // /#/cascade_id → instances view
-      return { view: 'instances', cascadeId: parts[0], sessionId: null };
+      return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null };
     } else if (parts.length === 2) {
+      if (parts[0] === 'checkpoint') {
+        // /#/checkpoint/checkpoint_id → checkpoint view
+        return { view: 'checkpoint', cascadeId: null, sessionId: null, checkpointId: parts[1] };
+      }
       // /#/cascade_id/session_id → detail view
-      return { view: 'detail', cascadeId: parts[0], sessionId: parts[1] };
+      return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null };
     }
 
-    return { view: 'cascades', cascadeId: null, sessionId: null };
+    return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null };
   }, []);
 
   // Update hash when navigation happens
-  const updateHash = useCallback((view, cascadeId = null, sessionId = null) => {
+  const updateHash = useCallback((view, cascadeId = null, sessionId = null, checkpointId = null) => {
     if (view === 'cascades') {
       window.location.hash = '';
     } else if (view === 'messageflow') {
       window.location.hash = '#/message_flow';
+    } else if (view === 'checkpoint' && checkpointId) {
+      window.location.hash = `#/checkpoint/${checkpointId}`;
     } else if (view === 'instances' && cascadeId) {
       window.location.hash = `#/${cascadeId}`;
     } else if (view === 'detail' && cascadeId && sessionId) {
@@ -232,6 +243,10 @@ function App() {
         }
         setDetailSessionId(route.sessionId);
         setCurrentView('detail');
+      } else if (route.view === 'checkpoint' && route.checkpointId) {
+        // /#/checkpoint/:id → checkpoint view
+        setActiveCheckpointId(route.checkpointId);
+        setCurrentView('checkpoint');
       }
     };
 
@@ -391,6 +406,55 @@ function App() {
             setRefreshTrigger(prev => prev + 1);
             break;
 
+          // HITL Checkpoint events
+          case 'checkpoint_waiting':
+            console.log('[SSE] Checkpoint waiting:', event.data);
+            const newCheckpoint = {
+              id: event.data.checkpoint_id,
+              session_id: event.session_id,
+              cascade_id: event.data.cascade_id,
+              phase_name: event.data.phase_name,
+              checkpoint_type: event.data.checkpoint_type,
+              ui_spec: event.data.ui_spec,
+              phase_output_preview: event.data.preview,
+              timeout_at: event.data.timeout_at,
+              num_soundings: event.data.num_soundings
+            };
+            setPendingCheckpoints(prev => {
+              // Avoid duplicates
+              if (prev.some(cp => cp.id === newCheckpoint.id)) {
+                return prev;
+              }
+              return [...prev, newCheckpoint];
+            });
+            showToast(`Human input required: ${event.data.phase_name}`, 'warning', 8000);
+            break;
+
+          case 'checkpoint_responded':
+            console.log('[SSE] Checkpoint responded:', event.data);
+            setPendingCheckpoints(prev =>
+              prev.filter(cp => cp.id !== event.data.checkpoint_id)
+            );
+            showToast('Checkpoint response submitted', 'success');
+            setRefreshTrigger(prev => prev + 1);
+            break;
+
+          case 'checkpoint_cancelled':
+            console.log('[SSE] Checkpoint cancelled:', event.data);
+            setPendingCheckpoints(prev =>
+              prev.filter(cp => cp.id !== event.data.checkpoint_id)
+            );
+            showToast('Checkpoint cancelled', 'info');
+            break;
+
+          case 'checkpoint_timeout':
+            console.log('[SSE] Checkpoint timeout:', event.data);
+            setPendingCheckpoints(prev =>
+              prev.filter(cp => cp.id !== event.data.checkpoint_id)
+            );
+            showToast(`Checkpoint timed out: ${event.data.action_taken}`, 'warning');
+            break;
+
           default:
             console.log('Unknown SSE event:', event.type);
         }
@@ -411,6 +475,83 @@ function App() {
       eventSource.close();
     };
   }, []);
+
+  // HITL Checkpoint handlers
+  const handleCheckpointRespond = async (checkpointId, response, reasoning) => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/checkpoints/${checkpointId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response, reasoning })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to submit response');
+      }
+
+      const result = await res.json();
+      console.log('Checkpoint response result:', result);
+
+      // Remove from local state (SSE event will also do this, but be responsive)
+      setPendingCheckpoints(prev =>
+        prev.filter(cp => cp.id !== checkpointId)
+      );
+
+      showToast('Response submitted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to submit checkpoint response:', error);
+      showToast(`Failed to submit response: ${error.message}`, 'error');
+      throw error;
+    }
+  };
+
+  const handleCheckpointCancel = async (checkpointId) => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/checkpoints/${checkpointId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Cancelled by user' })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to cancel checkpoint');
+      }
+
+      // Remove from local state
+      setPendingCheckpoints(prev =>
+        prev.filter(cp => cp.id !== checkpointId)
+      );
+
+      showToast('Checkpoint cancelled', 'info');
+    } catch (error) {
+      console.error('Failed to cancel checkpoint:', error);
+      showToast(`Failed to cancel: ${error.message}`, 'error');
+    }
+  };
+
+  // Handler for selecting a checkpoint from the badge
+  const handleSelectCheckpoint = (checkpoint) => {
+    setActiveCheckpointId(checkpoint.id);
+    setCurrentView('checkpoint');
+    updateHash('checkpoint', null, null, checkpoint.id);
+  };
+
+  // Handler for when CheckpointView completes
+  const handleCheckpointComplete = (result) => {
+    console.log('[HITL] Checkpoint completed:', result);
+    // Remove from pending checkpoints
+    setPendingCheckpoints(prev =>
+      prev.filter(cp => cp.id !== activeCheckpointId)
+    );
+    // Navigate back to previous view or cascades
+    setActiveCheckpointId(null);
+    setCurrentView('cascades');
+    updateHash('cascades');
+    showToast('Checkpoint response submitted', 'success');
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   return (
     <div className="app">
@@ -472,6 +613,13 @@ function App() {
         />
       )}
 
+      {currentView === 'checkpoint' && activeCheckpointId && (
+        <CheckpointView
+          checkpointId={activeCheckpointId}
+          onComplete={handleCheckpointComplete}
+        />
+      )}
+
 
       {/* Modals */}
       {showRunModal && selectedInstance && (
@@ -494,6 +642,21 @@ function App() {
             setSelectedInstance(null);
           }}
           onFreeze={handleFreezeSubmit}
+        />
+      )}
+
+      {/* HITL Checkpoint Panel (for inline responses) */}
+      <CheckpointPanel
+        checkpoints={pendingCheckpoints}
+        onRespond={handleCheckpointRespond}
+        onCancel={handleCheckpointCancel}
+      />
+
+      {/* HITL Checkpoint Badge (floating notification) */}
+      {currentView !== 'checkpoint' && (
+        <CheckpointBadge
+          checkpoints={pendingCheckpoints}
+          onSelectCheckpoint={handleSelectCheckpoint}
         />
       )}
 

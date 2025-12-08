@@ -67,7 +67,7 @@
       "tackle": [],
       "soundings": {
         "factor": 8,
-        "evaluator_instructions": "Evaluate data analysis attempts based on:\n\n1. **Accuracy** (35%): Does the analysis correctly interpret the query results?\n2. **Insight Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n3. **Specificity** (20%): Does it reference actual numbers, percentages, or concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear, well-structured, and directly addresses the user's question?\n\nSelect the attempt that:\n- Provides the MOST insightful interpretation of the data\n- Directly and clearly answers the user's original question\n- Supports claims with specific numbers/evidence from the results\n- Identifies interesting patterns beyond just the obvious\n- Avoids vague or generic statements\n- Demonstrates quantitative thinking (percentages, comparisons, trends)\n\nPrefer analyses that go beyond surface-level observations and provide actionable insights. An analysis that says \"Sales increased by 47% in Q3, primarily driven by the Northeast region (23% growth)\" is better than \"Sales went up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n- Are too vague or generic\n- Miss obvious patterns in the results\n- Don't directly answer the user's question",
+      "evaluator_instructions": "Evaluate data analysis attempts based on:\n\n1. **Accuracy** (35%): Does the analysis correctly interpret the query results?\n2. **Insight Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n3. **Specificity** (20%): Does it reference actual numbers, percentages, or concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear, well-structured, and directly addresses the user's question?\n\nSelect the attempt that:\n- Provides the MOST insightful interpretation of the data\n- Directly and clearly answers the user's original question\n- Supports claims with specific numbers/evidence from the results\n- Identifies interesting patterns beyond just the obvious\n- Avoids vague or generic statements\n- Demonstrates quantitative thinking (percentages, comparisons, trends)\n\nPrefer analyses that go beyond surface-level observations and provide actionable insights. An analysis that says \"Sales increased by 47% in Q3, primarily driven by the Northeast region (23% growth)\" is better than \"Sales went up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n- Are too vague or generic\n- Miss obvious patterns in the results\n- Don't directly answer the user's question.\n\n IMPORTANT: Include the SQL query and a small sample of the data in your response - enough context so a chart could be constructed from the data.",
         "models": [
           "anthropic/claude-sonnet-4.5",
           "x-ai/grok-4.1-fast",
@@ -89,6 +89,7 @@
         ]
       },
       "tackle": [
+        "sql_query",
         "create_vega_lite",
         "create_plotly"
       ],

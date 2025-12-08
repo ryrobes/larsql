@@ -176,6 +176,41 @@ class EventPublishingHooks(WindlassHooks):
         ))
         return {"action": HookAction.CONTINUE}
 
+    def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
+                                phase_name: str, message: str = None) -> dict:
+        """Called when cascade is suspended waiting for human input."""
+        self.bus.publish(Event(
+            type="checkpoint_suspended",
+            session_id=session_id,
+            timestamp=datetime.now().isoformat(),
+            data={
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_type": checkpoint_type,
+                "phase_name": phase_name,
+                "message": message,
+                "cascade_id": self._current_cascade_id,
+            }
+        ))
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, phase_name: str,
+                              response: Any = None, cascade_id: str = None) -> dict:
+        """Called when a checkpoint is resumed with human input."""
+        # Use provided cascade_id or fall back to tracked one
+        effective_cascade_id = cascade_id or self._current_cascade_id
+        self.bus.publish(Event(
+            type="checkpoint_resumed",
+            session_id=session_id,
+            timestamp=datetime.now().isoformat(),
+            data={
+                "checkpoint_id": checkpoint_id,
+                "phase_name": phase_name,
+                "response": str(response)[:500] if response else None,  # Truncate for safety
+                "cascade_id": effective_cascade_id,
+            }
+        ))
+        return {"action": HookAction.CONTINUE}
+
 
 class CompositeHooks(WindlassHooks):
     """
@@ -224,4 +259,18 @@ class CompositeHooks(WindlassHooks):
     def on_tool_result(self, tool_name: str, phase_name: str, session_id: str, result: Any) -> dict:
         for hook in self.hooks:
             hook.on_tool_result(tool_name, phase_name, session_id, result)
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
+                                phase_name: str, message: str = None) -> dict:
+        for hook in self.hooks:
+            if hasattr(hook, 'on_checkpoint_suspended'):
+                hook.on_checkpoint_suspended(session_id, checkpoint_id, checkpoint_type, phase_name, message)
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, phase_name: str,
+                              response: Any = None, cascade_id: str = None) -> dict:
+        for hook in self.hooks:
+            if hasattr(hook, 'on_checkpoint_resumed'):
+                hook.on_checkpoint_resumed(session_id, checkpoint_id, phase_name, response, cascade_id)
         return {"action": HookAction.CONTINUE}

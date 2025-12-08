@@ -27,8 +27,10 @@ from live_store import get_live_store, process_event as live_store_process
 app = Flask(__name__)
 CORS(app)
 from message_flow_api import message_flow_bp
+from checkpoint_api import checkpoint_bp
 
 app.register_blueprint(message_flow_bp)
+app.register_blueprint(checkpoint_bp)
 # Track open connections globally
 import threading
 _connection_lock = threading.Lock()
@@ -277,6 +279,13 @@ class LoggingConnectionWrapper:
         return getattr(self._conn, name)
 
 
+def invalidate_cache():
+    """Force invalidate the DuckDB cache so next query refreshes it."""
+    global _db_cache_mtime
+    _db_cache_mtime = 0  # Set to 0 so next _refresh_cache_if_needed() triggers refresh
+    print(f"[CACHE] Cache invalidated - will refresh on next query")
+
+
 def _refresh_cache_if_needed():
     """Refresh the file-based cache if it's stale."""
     global _db_cache_mtime
@@ -393,6 +402,14 @@ def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> d
     start_time = min(timestamps) if timestamps else None
     end_time = max(timestamps) if timestamps else None
     duration = (end_time - start_time) if start_time and end_time else 0
+
+    # Debug: Log suspicious durations (>1 hour suggests possible timestamp issues)
+    if duration > 3600:
+        print(f"[LiveStore] WARN: Large duration detected for session {session_id}")
+        print(f"[LiveStore]   start_time={start_time}, end_time={end_time}, duration={duration:.2f}s ({duration/60:.2f}m)")
+        print(f"[LiveStore]   row_count={len(rows)}, timestamp_count={len(timestamps)}")
+        if timestamps:
+            print(f"[LiveStore]   timestamps_sample={timestamps[:5]} ... {timestamps[-5:] if len(timestamps) > 5 else ''}")
 
     # Calculate total cost - handle NaN values
     def safe_cost(r):
@@ -2006,18 +2023,20 @@ def get_soundings_tree(session_id):
                     refinement['mutation_template'] = row['mutation_template']
 
                 # Extract prompt from full_request_json (take first non-null)
+                # Note: System message contains tool descriptions, USER message contains actual instructions
                 if pd.notna(row.get('full_request_json')) and not refinement['prompt']:
                     try:
                         full_request = json.loads(row['full_request_json'])
                         messages = full_request.get('messages', [])
-                        # Get the system prompt (first system message)
+                        # Get the first USER message (contains actual instructions)
+                        # System message typically contains tool descriptions, not the prompt
                         for msg in messages:
-                            if msg.get('role') == 'system':
+                            if msg.get('role') == 'user':
                                 content = msg.get('content', '')
                                 if isinstance(content, str):
                                     refinement['prompt'] = content
                                 elif isinstance(content, list):
-                                    # Handle multi-part content
+                                    # Handle multi-part content (extract text parts)
                                     text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
                                     refinement['prompt'] = '\n'.join(text_parts)
                                 break
@@ -2155,20 +2174,22 @@ def get_soundings_tree(session_id):
                 sounding['mutation_template'] = row['mutation_template']
 
             # Extract prompt from full_request_json (take first non-null)
+            # Note: System message contains tool descriptions, USER message contains actual instructions
             full_req = row.get('full_request_json')
             if pd.notna(full_req) and not sounding['prompt']:
                 print(f"[API] Found full_request_json for phase={phase_name}, sounding={sounding_idx}")
                 try:
                     full_request = json.loads(full_req)
                     messages = full_request.get('messages', [])
-                    # Get the system prompt (first system message)
+                    # Get the first USER message (contains actual instructions)
+                    # System message typically contains tool descriptions, not the prompt
                     for msg in messages:
-                        if msg.get('role') == 'system':
+                        if msg.get('role') == 'user':
                             content = msg.get('content', '')
                             if isinstance(content, str):
                                 sounding['prompt'] = content
                             elif isinstance(content, list):
-                                # Handle multi-part content
+                                # Handle multi-part content (extract text parts)
                                 text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
                                 sounding['prompt'] = '\n'.join(text_parts)
                             break

@@ -627,6 +627,16 @@ _unified_logger = UnifiedLogger()
 atexit.register(_unified_logger.flush)
 
 
+def get_unified_logger() -> UnifiedLogger:
+    """Get the global unified logger instance.
+
+    This is useful for:
+    - Forcing a flush after critical operations (e.g., checkpoint resume)
+    - Accessing logger statistics
+    """
+    return _unified_logger
+
+
 def log_unified(
     session_id: str,
     trace_id: str = None,

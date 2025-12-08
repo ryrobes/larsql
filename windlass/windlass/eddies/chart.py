@@ -259,6 +259,8 @@ def create_plotly(spec_json: str, width: int = 800, height: int = 600) -> str:
     Common trace types: bar, scatter, pie, heatmap, histogram, box, violin, sankey, treemap
     Scatter modes: lines, markers, lines+markers, text
 
+    There are a lot more rich things that Plotly can do!
+
     For full documentation: https://plotly.com/python/reference/
     """
     # Lazy imports

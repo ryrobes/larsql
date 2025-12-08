@@ -33,22 +33,45 @@ function MutationBadge({ mutationType, mutationApplied, compact = false }) {
 
 /**
  * PromptViewer - Expandable section showing the prompt sent to the LLM
+ *
+ * For mutation soundings, shows:
+ * - The rewritten/mutated prompt (mutation_applied) - what the agent actually received
+ * - The rewrite instruction (mutation_template) - how the rewrite was generated
+ * - The original prompt (prompt from full_request_json) - for reference
  */
 function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate }) {
   const [expanded, setExpanded] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
 
-  if (!prompt) return null;
+  // For rewrite mutations, the main prompt to show is mutation_applied
+  // For other mutations (augment/approach) or baseline, show the regular prompt
+  const isRewrite = mutationType === 'rewrite';
+  const mainPrompt = isRewrite && mutationApplied ? mutationApplied : prompt;
+
+  if (!mainPrompt && !mutationApplied) return null;
 
   // Truncate for preview
   const previewLength = 200;
-  const isLong = prompt.length > previewLength;
-  const previewText = isLong ? prompt.substring(0, previewLength) + '...' : prompt;
+  const isLong = mainPrompt && mainPrompt.length > previewLength;
+  const previewText = mainPrompt
+    ? (isLong ? mainPrompt.substring(0, previewLength) + '...' : mainPrompt)
+    : '';
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setExpanded(!expanded);
+  };
+
+  const handleOriginalToggle = (e) => {
+    e.stopPropagation();
+    setShowOriginal(!showOriginal);
+  };
 
   return (
-    <div className="prompt-viewer">
-      <div className="prompt-header" onClick={() => setExpanded(!expanded)}>
+    <div className="prompt-viewer" onClick={(e) => e.stopPropagation()}>
+      <div className="prompt-header" onClick={handleClick}>
         <Icon icon="mdi:message-text" width="16" />
-        <span>Prompt</span>
+        <span>{isRewrite ? 'Rewritten Prompt' : 'Prompt'}</span>
         {mutationType && (
           <MutationBadge mutationType={mutationType} mutationApplied={mutationApplied} />
         )}
@@ -57,10 +80,12 @@ function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate 
 
       {expanded ? (
         <div className="prompt-content-full">
-          <ReactMarkdown>{prompt}</ReactMarkdown>
+          {/* Main prompt content - for rewrite this is the rewritten version */}
+          <ReactMarkdown>{mainPrompt}</ReactMarkdown>
 
-          {mutationType === 'rewrite' && mutationTemplate && (
-            <div className="mutation-details">
+          {/* For rewrite mutations, show the rewrite instruction */}
+          {isRewrite && mutationTemplate && (
+            <div className="mutation-details rewrite-instruction">
               <div className="mutation-details-header">
                 <Icon icon="mdi:auto-fix" width="14" />
                 <span>Rewrite Instruction</span>
@@ -68,9 +93,32 @@ function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate 
               <pre className="mutation-template">{mutationTemplate}</pre>
             </div>
           )}
+
+          {/* For rewrite mutations, optionally show the original prompt */}
+          {isRewrite && prompt && prompt !== mutationApplied && (
+            <div className="mutation-details original-prompt">
+              <div
+                className="mutation-details-header clickable"
+                onClick={handleOriginalToggle}
+              >
+                <Icon icon="mdi:file-document-outline" width="14" />
+                <span>Original Prompt</span>
+                <Icon
+                  icon={showOriginal ? "mdi:chevron-up" : "mdi:chevron-down"}
+                  width="14"
+                  className="expand-icon"
+                />
+              </div>
+              {showOriginal && (
+                <div className="original-prompt-content">
+                  <ReactMarkdown>{prompt}</ReactMarkdown>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="prompt-preview" onClick={() => setExpanded(true)}>
+        <div className="prompt-preview" onClick={handleClick}>
           {previewText}
           {isLong && <span className="show-more">Click to expand</span>}
         </div>

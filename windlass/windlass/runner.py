@@ -15,8 +15,10 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig
 from .echo import get_echo, Echo
+from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
+from .human_ui import UIGenerator, normalize_human_input_config, generate_simple_ui
 from .config import get_config
 from .tackle import get_tackle
 from .logs import log_message
@@ -31,7 +33,7 @@ from .visualizer import generate_mermaid
 from .prompts import render_instruction
 from .state import update_session_state, update_phase_progress, clear_phase_progress
 from .eddies.system import spawn_cascade
-from .eddies.state_tools import set_current_session_id
+from .eddies.state_tools import set_current_session_id, set_current_phase_name
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
@@ -42,6 +44,7 @@ class HookAction:
     CONTINUE = "continue"
     PAUSE = "pause"
     INJECT = "inject"
+
 
 class WindlassHooks:
     """Base class for Windlass lifecycle hooks"""
@@ -76,6 +79,16 @@ class WindlassHooks:
 
     def on_tool_result(self, tool_name: str, phase_name: str, session_id: str, result: Any) -> dict:
         """Called when a tool returns a result"""
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
+                                phase_name: str, message: str = None) -> dict:
+        """Called when cascade is suspended waiting for human input"""
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, phase_name: str,
+                              response: Any = None) -> dict:
+        """Called when checkpoint is resumed with human input"""
         return {"action": HookAction.CONTINUE}
 
 class WindlassRunner:
@@ -604,6 +617,144 @@ class WindlassRunner:
         except Exception:
             pass # Don't crash execution for visualization
 
+    def _handle_human_input_checkpoint(
+        self,
+        phase: PhaseConfig,
+        phase_output: str,
+        trace: TraceNode,
+        input_data: dict = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Handle human-in-the-loop checkpoint if configured for this phase.
+
+        This method uses a BLOCKING approach - the cascade thread waits here
+        until the human responds (similar to waiting for an LLM API call).
+        No suspend/resume complexity needed.
+
+        If phase.human_input is configured, this method:
+        1. Generates the UI specification
+        2. Creates a checkpoint record
+        3. BLOCKS waiting for human response
+        4. Returns the response (or None if timed out/cancelled)
+
+        Args:
+            phase: The phase configuration
+            phase_output: The output from the phase
+            trace: The trace node for this phase
+            input_data: The input data for this cascade
+
+        Returns:
+            Human response dict, or None if timed out/cancelled
+        """
+        if not phase.human_input:
+            return None
+
+        # Normalize config (handles bool vs HumanInputConfig)
+        config = normalize_human_input_config(phase.human_input)
+        if config is None:
+            return None
+
+        input_data = input_data or {}
+        indent = "  " * self.depth
+        console.print(f"{indent}[bold yellow]⏸️  Human checkpoint: {phase.name}[/bold yellow]")
+
+        # Check condition if specified
+        if config.condition:
+            try:
+                # Simple condition evaluation with state context
+                condition_result = eval(config.condition, {
+                    "state": self.echo.state,
+                    "output": phase_output,
+                    "input": input_data
+                })
+                if not condition_result:
+                    console.print(f"{indent}  [dim]Checkpoint condition not met, skipping[/dim]")
+                    return None
+            except Exception as e:
+                console.print(f"{indent}  [yellow]⚠️  Condition evaluation error: {e}[/yellow]")
+                # On error, proceed with checkpoint
+
+        # Generate UI specification
+        ui_generator = UIGenerator()
+        context = {
+            "cascade_id": self.config.cascade_id,
+            "phase_name": phase.name,
+            "lineage": [entry.get("phase") for entry in self.echo.lineage],
+            "state": self.echo.state
+        }
+
+        ui_spec = ui_generator.generate(config, phase_output, context)
+
+        # Create checkpoint (no need for echo_snapshot or cascade_config - we're not suspending)
+        checkpoint_manager = get_checkpoint_manager()
+        checkpoint = checkpoint_manager.create_checkpoint(
+            session_id=self.session_id,
+            cascade_id=self.config.cascade_id,
+            phase_name=phase.name,
+            checkpoint_type=CheckpointType.PHASE_INPUT,
+            ui_spec=ui_spec,
+            echo_snapshot={},  # Not needed for blocking approach
+            phase_output=phase_output,
+            cascade_config=None,  # Not needed for blocking approach
+            trace_context=None,  # Not needed for blocking approach
+            timeout_seconds=config.timeout_seconds
+        )
+
+        console.print(f"{indent}  [cyan]Checkpoint created: {checkpoint.id}[/cyan]")
+        console.print(f"{indent}  [dim]UI type: {config.type.value}[/dim]")
+        if config.timeout_seconds:
+            console.print(f"{indent}  [dim]Timeout: {config.timeout_seconds}s[/dim]")
+
+        # Log checkpoint creation
+        self.echo.add_history(
+            {"role": "system", "content": f"Waiting for human input: {checkpoint.id}"},
+            trace_id=trace.id,
+            node_type="checkpoint_waiting",
+            metadata={
+                "phase": phase.name,
+                "checkpoint_id": checkpoint.id,
+                "checkpoint_type": "phase_input",
+                "ui_type": config.type.value,
+            }
+        )
+
+        # BLOCK waiting for human response
+        # The cascade thread just waits here, like waiting for an LLM API call
+        response = checkpoint_manager.wait_for_response(
+            checkpoint_id=checkpoint.id,
+            timeout=config.timeout_seconds,
+            poll_interval=0.5
+        )
+
+        if response is None:
+            # Timed out or cancelled
+            console.print(f"{indent}  [yellow]⚠️  No human response received[/yellow]")
+            self.echo.add_history(
+                {"role": "system", "content": f"Checkpoint timed out or cancelled: {checkpoint.id}"},
+                trace_id=trace.id,
+                node_type="checkpoint_timeout",
+                metadata={
+                    "phase": phase.name,
+                    "checkpoint_id": checkpoint.id,
+                }
+            )
+            return None
+
+        # Response received!
+        console.print(f"{indent}  [green]✓ Human response received[/green]")
+        self.echo.add_history(
+            {"role": "user", "content": f"Human response: {json.dumps(response)}"},
+            trace_id=trace.id,
+            node_type="checkpoint_response",
+            metadata={
+                "phase": phase.name,
+                "checkpoint_id": checkpoint.id,
+                "response": response,
+            }
+        )
+
+        return response
+
     def _generate_tool_description(self, func: Callable, name: str) -> str:
         """
         Generate a prompt-based description of a tool for the agent.
@@ -615,12 +766,10 @@ class WindlassRunner:
         sig = inspect.signature(func)
         hints = get_type_hints(func)
 
-        # Get docstring
-        doc = func.__doc__ or f"Tool: {name}"
-        doc_lines = [line.strip() for line in doc.strip().split('\n') if line.strip()]
-        description = doc_lines[0] if doc_lines else f"Tool: {name}"
+        # Get FULL docstring - cleandoc handles indentation from multi-line docstrings
+        description = inspect.cleandoc(func.__doc__) if func.__doc__ else f"Tool: {name}"
 
-        # Build parameter list
+        # Build parameter list with types (complements docstring's descriptions)
         params = []
         for param_name, param in sig.parameters.items():
             if param_name == "self":
@@ -634,11 +783,12 @@ class WindlassRunner:
 
         params_str = "\n".join(params) if params else "  (no parameters)"
 
-        # Format as markdown
+        # Format as markdown with full docstring
         tool_desc = f"""
 **{name}**
 {description}
-Parameters:
+
+Parameter Types:
 {params_str}
 
 To use: Output JSON in this format:
@@ -3233,6 +3383,9 @@ Refinement directive: {reforge_config.honing_prompt}
         rag_prompt = ""
         rag_tool_names: List[str] = []
 
+        # Set current phase name for tools like ask_human to use
+        set_current_phase_name(phase.name)
+
         def _cleanup_rag():
             if rag_context:
                 clear_current_rag_context()
@@ -4922,18 +5075,28 @@ Refinement directive: {reforge_config.honing_prompt}
                 return f"[EXTRACTION ERROR: {e}]"
 
         _cleanup_rag()
+
+        # Handle human-in-the-loop checkpoint if configured
+        # This BLOCKS waiting for human input (no exceptions, just waits)
+        phase_output_str = response_content if isinstance(response_content, str) else str(response_content)
+        human_response = self._handle_human_input_checkpoint(phase, phase_output_str, trace, input_data)
+
+        # If human input was received, it can be accessed via self.echo.state or passed to next phase
+        # For now, we just log it and continue - the response is in the history
+
         return chosen_next_phase if chosen_next_phase else response_content
 
 def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
                 depth: int = 0, parent_trace: TraceNode = None, hooks: WindlassHooks = None, parent_session_id: str = None,
                 sounding_index: int = None) -> dict:
     runner = WindlassRunner(config_path, session_id, overrides, depth, parent_trace, hooks, sounding_index=sounding_index, parent_session_id=parent_session_id)
+
     result = runner.run(input_data)
-    
+
     if depth == 0:
         # Only print tree at the end of the root
         graph_dir = get_config().graph_dir
         graph_path = generate_mermaid(runner.echo, os.path.join(graph_dir, f"{session_id}.mmd"))
         console.print(f"\n[bold cyan]📊 Execution Graph saved to:[/bold cyan] {graph_path}")
-        
+
     return result

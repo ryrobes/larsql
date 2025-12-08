@@ -46,17 +46,21 @@ python app.py &
 BACKEND_PID=$!
 cd ..
 
-# Give backend time to start
-sleep 2
-
-# Check if backend started
-if curl -s http://localhost:5001/api/cascade-definitions > /dev/null 2>&1; then
-    echo "✓ Backend running at http://localhost:5001"
-else
-    echo "✗ Backend failed to start"
-    kill $BACKEND_PID 2>/dev/null
-    exit 1
-fi
+# Give backend time to start (may take longer with large datasets)
+echo "   Waiting for backend to initialize..."
+for i in {1..15}; do
+    if curl -s http://localhost:5001/api/cascade-definitions > /dev/null 2>&1; then
+        echo "✓ Backend running at http://localhost:5001"
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo "✗ Backend failed to start after 15 seconds"
+        echo "   Check for errors with: cd backend && python app.py"
+        kill $BACKEND_PID 2>/dev/null
+        exit 1
+    fi
+    sleep 1
+done
 
 echo ""
 
@@ -79,7 +83,7 @@ echo "════════════════════════�
 echo "✅ Windlass UI Started"
 echo "════════════════════════════════════════════"
 echo ""
-echo "🌐 Open: http://localhost:3000"
+echo "🌐 Open: http://localhost:5550"
 echo ""
 echo "📊 Backend API: http://localhost:5001"
 echo "   Endpoints:"
@@ -87,6 +91,8 @@ echo "     GET /api/cascade-definitions"
 echo "     GET /api/cascade-instances/:id"
 echo "     GET /api/session/:session_id"
 echo "     GET /api/events/stream (SSE)"
+echo "     GET /api/checkpoints (HITL pending)"
+echo "     POST /api/checkpoints/:id/respond"
 echo ""
 echo "Press Ctrl+C to stop both servers"
 echo ""

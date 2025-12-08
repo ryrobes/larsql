@@ -2304,10 +2304,14 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - 🔧 tool usage
     - 🔄N retry count (N retries occurred)
     - 📝key1,key2 state keys set (via set_state)
+    - ⏸️ HITL checkpoint (paused waiting for human input)
+    - ▶️ Resumed (checkpoint resumed with human response)
 
     CSS Classes (applied via Mermaid classDef):
     - running: thick green border (4px), green fill - for currently executing phase
     - blocked: red border, red fill - for blocked phases
+    - checkpoint_paused: yellow border - for phases waiting for HITL input
+    - checkpoint_resumed: blue border - for checkpoints that have been resumed
 
     Sounding labels:
     - [baseline] = first attempt, no mutation
@@ -2458,6 +2462,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
     handoffs_by_phase: Dict[str, List[str]] = {}  # phase_name -> list of available handoff targets
     cascade_sounding_attempts = []
     cascade_soundings_result = None
+    checkpoint_entries: List[Dict] = []  # checkpoint_created entries
+    checkpoint_resume_entries: List[Dict] = []  # checkpoint_resume entries
 
     for entry in history:
         node_type = entry.get("node_type", "")
@@ -2526,6 +2532,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
         elif node_type == "cascade_soundings_result":
             cascade_soundings_result = entry
+
+        elif node_type == "checkpoint_created":
+            checkpoint_entries.append(entry)
+
+        elif node_type == "checkpoint_resume":
+            checkpoint_resume_entries.append(entry)
 
     # Map phase trace_id to phase data for ward lookup
     phase_trace_to_name = {}
@@ -2605,6 +2617,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
     lines.append("    classDef blocked fill:#2a1a1a,stroke:#ff4444,stroke-width:3px,color:#ff4444")
     lines.append("    classDef failed fill:#2a1a1a,stroke:#ff6b6b,stroke-width:2px,color:#ff6b6b")
     lines.append("    classDef sub_cascade fill:#1a1a2a,stroke:#a78bfa,stroke-width:3px,color:#a78bfa")
+    lines.append("    classDef checkpoint_paused fill:#2a2a1a,stroke:#fbbf24,stroke-width:3px,color:#fbbf24")
+    lines.append("    classDef checkpoint_resumed fill:#1a2a2a,stroke:#60a5fa,stroke-width:3px,color:#60a5fa")
     lines.append("")
 
     # Track which phase IDs need styling classes applied
@@ -3305,6 +3319,83 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 loop_status = "✓" if passed else "✗"
                 # Self-loop showing retry behavior
                 lines.append(f"    {pid} --> {pid} : ⟳ retry {retry_count}x {loop_status}")
+
+    # =========================================================================
+    # CHECKPOINT VISUALIZATION (Human-in-the-Loop)
+    # =========================================================================
+    # Show checkpoints and their resume connections
+    if checkpoint_entries or checkpoint_resume_entries:
+        lines.append("")
+        lines.append("    %% Checkpoint nodes (Human-in-the-Loop)")
+
+        # Map phase trace IDs to checkpoint info
+        checkpoints_by_phase: Dict[str, List[Dict]] = {}
+        for cp_entry in checkpoint_entries:
+            cp_meta = extract_metadata(cp_entry)
+            # Find the phase this checkpoint belongs to by parent_id
+            parent_id = cp_entry.get("parent_id")
+            phase_name = phase_trace_to_name.get(parent_id, "unknown")
+            if phase_name not in checkpoints_by_phase:
+                checkpoints_by_phase[phase_name] = []
+            checkpoints_by_phase[phase_name].append(cp_entry)
+
+        # Track checkpoint IDs for styling
+        checkpoint_node_ids = []
+        resume_node_ids = []
+
+        # Render checkpoint nodes for phases that have them
+        for phase_name, cp_list in checkpoints_by_phase.items():
+            pid = phase_name_to_pid.get(phase_name)
+            if not pid:
+                continue
+
+            for cp_idx, cp_entry in enumerate(cp_list):
+                cp_meta = extract_metadata(cp_entry)
+                checkpoint_id = cp_meta.get("checkpoint_id", f"cp_{cp_idx}")
+                checkpoint_type = cp_meta.get("checkpoint_type", "phase_input")
+                cp_node_id = f"{pid}_cp{cp_idx}"
+                checkpoint_node_ids.append(cp_node_id)
+
+                # Show checkpoint type indicator
+                if checkpoint_type == "sounding_eval":
+                    cp_label = "⏸️ HITL Sounding Eval"
+                else:
+                    cp_label = "⏸️ HITL Input"
+
+                lines.append(f'    state "{cp_label}" as {cp_node_id}')
+                lines.append(f"    {pid} --> {cp_node_id} : waiting")
+
+        # Render resume connections
+        for resume_entry in checkpoint_resume_entries:
+            r_meta = extract_metadata(resume_entry)
+            checkpoint_id = r_meta.get("checkpoint_id", "unknown")
+            original_phase_trace = r_meta.get("original_trace_id")
+
+            # Find which phase this connects back to
+            original_phase_name = phase_trace_to_name.get(original_phase_trace, None)
+            if original_phase_name:
+                original_pid = phase_name_to_pid.get(original_phase_name)
+                if original_pid:
+                    # Find the corresponding checkpoint node
+                    resume_node_id = f"{original_pid}_resume"
+                    resume_node_ids.append(resume_node_id)
+                    lines.append(f'    state "▶️ Resumed" as {resume_node_id}')
+
+                    # Find checkpoint node for this phase
+                    for cp_node_id in checkpoint_node_ids:
+                        if cp_node_id.startswith(f"{original_pid}_cp"):
+                            lines.append(f"    {cp_node_id} --> {resume_node_id} : human response")
+                            break
+
+        # Apply checkpoint styles
+        if checkpoint_node_ids:
+            lines.append("")
+            lines.append("    %% Apply checkpoint styles")
+            for cp_id in checkpoint_node_ids:
+                lines.append(f"    class {cp_id} checkpoint_paused")
+        if resume_node_ids:
+            for r_id in resume_node_ids:
+                lines.append(f"    class {r_id} checkpoint_resumed")
 
     # End state - only connect if last phase wasn't blocked
     if phase_ids:

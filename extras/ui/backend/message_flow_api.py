@@ -23,6 +23,105 @@ def get_data_dir():
     WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
     return os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data")))
 
+
+def _classify_message(node_type: str, role: str, full_request) -> tuple:
+    """
+    Classify a message into categories for UI display.
+
+    Returns:
+        (category: str, is_internal: bool)
+
+    Categories:
+        - 'llm_call': Actual LLM API call (has full_request_json with messages)
+        - 'conversation': User/assistant/tool messages in the conversation flow
+        - 'evaluator': Evaluator reasoning (soundings, reforge)
+        - 'quartermaster': Tool selection reasoning
+        - 'ward': Validation checks (pre/post wards)
+        - 'lifecycle': Cascade/phase/turn start/complete events
+        - 'metadata': Sounding attempts, cost updates, context injection, etc.
+        - 'error': Error messages
+
+    is_internal: True if this message is never sent to an LLM (just internal logging)
+    """
+    # Check if this is an actual LLM API call (has full_request with messages)
+    has_llm_request = (
+        full_request is not None and
+        isinstance(full_request, dict) and
+        full_request.get('messages')
+    )
+
+    # Lifecycle events (internal - cascade/phase/turn markers)
+    lifecycle_types = {
+        'cascade', 'cascade_start', 'cascade_complete', 'cascade_completed',
+        'phase', 'phase_start', 'phase_complete',
+        'turn', 'turn_start'
+    }
+
+    # Error types
+    error_types = {
+        'error', 'cascade_error', 'cascade_failed', 'cascade_killed',
+        'validation_error', 'json_parse_error'
+    }
+
+    # Metadata/logging types (internal)
+    metadata_types = {
+        'sounding_attempt', 'soundings_result', 'cost_update',
+        'context_injection', 'checkpoint', 'human_input_request'
+    }
+
+    # Ward/validation types
+    ward_types = {
+        'pre_ward', 'post_ward', 'ward_block', 'ward_advisory',
+        'sounding_validator'
+    }
+
+    # Evaluator types (these ARE LLM calls but logged separately)
+    evaluator_types = {
+        'evaluator', 'cascade_evaluator', 'reforge_evaluator'
+    }
+
+    # Quartermaster
+    quartermaster_types = {'quartermaster_result'}
+
+    # Classify
+    if node_type in lifecycle_types:
+        return ('lifecycle', True)
+
+    if node_type in error_types:
+        return ('error', True)
+
+    if node_type in metadata_types:
+        return ('metadata', True)
+
+    if node_type in ward_types:
+        # Wards might be LLM calls (cascade validators) or just function calls
+        return ('ward', not has_llm_request)
+
+    if node_type in evaluator_types:
+        # Evaluators are LLM calls but this entry is the result logging
+        return ('evaluator', True)
+
+    if node_type in quartermaster_types:
+        # Quartermaster is an LLM call but this entry is the result logging
+        return ('quartermaster', True)
+
+    # Actual LLM API call
+    if has_llm_request:
+        return ('llm_call', False)
+
+    # Conversational messages (user input, agent response, tool calls/results)
+    conversational_node_types = {
+        'user', 'agent', 'tool_result', 'tool_call', 'follow_up',
+        'system', 'turn_input'
+    }
+    conversational_roles = {'user', 'assistant', 'tool', 'system'}
+
+    if node_type in conversational_node_types or role in conversational_roles:
+        return ('conversation', False)
+
+    # Default: unknown/other (treat as internal)
+    return ('other', True)
+
 @message_flow_bp.route('/api/message-flow/<session_id>', methods=['GET'])
 def get_message_flow(session_id):
     """
@@ -78,7 +177,8 @@ def get_message_flow(session_id):
         # Build structured response
         messages = []
         soundings_by_phase = {}  # phase_name -> {sounding_index -> {messages: [], is_winner: bool}}
-        reforge_steps = {}  # reforge_step -> {messages: []}
+        reforge_steps = {}  # reforge_step -> {messages: []} (flat, for backward compat)
+        reforge_by_phase = {}  # phase_name -> {reforge_step -> {messages: [], is_winner: bool}}
 
         # Track evaluators by phase for later attachment to soundings blocks
         evaluators_by_phase = {}  # phase_name -> evaluator message
@@ -110,6 +210,10 @@ def get_message_flow(session_id):
                 except:
                     metadata = None
 
+            # Classify message category and whether it's "internal" (never sent to LLM)
+            # Categories help with visual styling in the debug UI
+            message_category, is_internal = _classify_message(node_type, role, full_request)
+
             msg = {
                 'timestamp': timestamp,
                 'role': role,
@@ -125,7 +229,9 @@ def get_message_flow(session_id):
                 'cost': float(cost) if cost else 0,
                 'model': model,
                 'is_winner': bool(is_winner) if is_winner is not None else None,
-                'metadata': metadata
+                'metadata': metadata,
+                'message_category': message_category,
+                'is_internal': is_internal
             }
 
             # Track evaluator messages by phase (for phase-level soundings)
@@ -166,12 +272,30 @@ def get_message_flow(session_id):
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
+                phase_key = phase_name or '_unknown_'
+
+                # Flat structure for backward compat
                 if reforge_key not in reforge_steps:
                     reforge_steps[reforge_key] = {
                         'step': reforge_key,
                         'messages': []
                     }
                 reforge_steps[reforge_key]['messages'].append(msg)
+
+                # Phase-organized structure (like soundings)
+                if phase_key not in reforge_by_phase:
+                    reforge_by_phase[phase_key] = {}
+                if reforge_key not in reforge_by_phase[phase_key]:
+                    reforge_by_phase[phase_key][reforge_key] = {
+                        'step': reforge_key,
+                        'phase_name': phase_key,
+                        'messages': [],
+                        'is_winner': False,
+                        'first_timestamp': timestamp
+                    }
+                reforge_by_phase[phase_key][reforge_key]['messages'].append(msg)
+                if is_winner:
+                    reforge_by_phase[phase_key][reforge_key]['is_winner'] = True
 
             messages.append(msg)
 
@@ -200,8 +324,28 @@ def get_message_flow(session_id):
         # Sort soundings blocks by first_timestamp to maintain chronological order
         soundings_blocks.sort(key=lambda x: x['first_timestamp'])
 
-        # Convert reforge steps to list
+        # Convert reforge steps to list (flat, for backward compat)
         reforge_list = [reforge_steps[k] for k in sorted(reforge_steps.keys())]
+
+        # Convert reforge_by_phase to structured list (like soundings_blocks)
+        reforge_blocks = []
+        for phase_key in reforge_by_phase:
+            phase_reforges = reforge_by_phase[phase_key]
+            sorted_reforges = [phase_reforges[k] for k in sorted(phase_reforges.keys())]
+
+            # Find first timestamp across all reforge steps in this phase
+            timestamps = [r['first_timestamp'] for r in sorted_reforges if r.get('first_timestamp')]
+            first_ts = min(timestamps) if timestamps else 0
+
+            reforge_blocks.append({
+                'phase_name': phase_key,
+                'reforge_steps': sorted_reforges,
+                'first_timestamp': first_ts,
+                'winner_step': next((r['step'] for r in sorted_reforges if r['is_winner']), None)
+            })
+
+        # Sort reforge blocks by first_timestamp to maintain chronological order
+        reforge_blocks.sort(key=lambda x: x['first_timestamp'])
 
         # Identify winner sounding phases and indexes
         winner_sounding_keys = set()  # (phase_name, sounding_index) tuples
@@ -212,34 +356,27 @@ def get_message_flow(session_id):
 
         winner_reforge_steps = set(r['step'] for r in reforge_list if any(m['is_winner'] for m in r['messages']))
 
-        # Build canonical main flow (chronological order, winner's path only)
-        # Filter to only conversational messages (not structure/logging events)
-        # Include: user messages, agent responses, tool calls/results, follow-ups, AND system prompts
-        conversational_roles = {'user', 'assistant', 'tool', 'system'}
-        conversational_node_types = {'user', 'agent', 'tool_result', 'tool_call', 'follow_up', 'system'}
-
+        # Build main flow with ALL messages (for debug view)
+        # We include everything but mark internal vs conversational via is_internal flag
+        # For soundings/reforge, we still filter to winner's path for main flow
+        # (non-winners are shown in the soundings blocks section)
         main_flow = []
         for msg in messages:
-            # Skip non-conversational messages (only keep user/assistant/tool with specific node_types)
-            if msg['role'] not in conversational_roles:
-                continue
-            if msg['node_type'] not in conversational_node_types:
-                continue
+            # Normalize phase_name to match how we store it in soundings_by_phase
+            msg_phase_key = msg['phase_name'] or '_unknown_'
 
             # Include message if:
             # 1. Not in any sounding/reforge (pre/post branching messages)
             # 2. OR it's in a winner sounding (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
-            # Normalize phase_name to match how we store it in soundings_by_phase
-            msg_phase_key = msg['phase_name'] or '_unknown_'
-
+            # Note: Non-winner soundings are shown separately in soundings_by_phase blocks
             if msg['sounding_index'] is None and msg['reforge_step'] is None:
-                # Pre/post branching messages - always in canonical flow
+                # Pre/post branching messages - always in main flow
                 main_flow.append(msg)
             elif msg['sounding_index'] is not None and (msg_phase_key, msg['sounding_index']) in winner_sounding_keys:
                 # All messages from winner sounding branch
                 main_flow.append(msg)
-            elif msg['reforge_step'] in winner_reforge_steps:
+            elif msg['reforge_step'] is not None and msg['reforge_step'] in winner_reforge_steps:
                 # All messages from winner reforge step
                 main_flow.append(msg)
 
@@ -280,7 +417,8 @@ def get_message_flow(session_id):
             'total_messages': len(messages),
             'soundings': all_soundings_flat,  # Backward compatible flat list
             'soundings_by_phase': soundings_blocks,  # New: organized by phase with timestamps
-            'reforge_steps': reforge_list,
+            'reforge_steps': reforge_list,  # Backward compatible flat list
+            'reforge_by_phase': reforge_blocks,  # New: organized by phase with timestamps
             'main_flow': main_flow,
             'all_messages': messages,
             'cost_summary': {

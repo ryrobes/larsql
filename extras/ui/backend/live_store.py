@@ -35,6 +35,7 @@ class SessionInfo:
     cascade_file: str
     start_time: float
     status: str = "running"  # running, completing, completed
+    checkpoint_id: str = None  # If waiting for input, the checkpoint ID
 
 
 class LiveSessionStore:
@@ -132,6 +133,24 @@ class LiveSessionStore:
 
             thread = threading.Thread(target=cleanup, daemon=True)
             thread.start()
+
+    def mark_checkpoint_waiting(self, session_id: str, checkpoint_id: str = None):
+        """Mark that a session is waiting for human input at a checkpoint.
+
+        The session stays "running" - this just records the checkpoint for UI display.
+        With the blocking HITL model, the cascade thread is blocked waiting for input.
+        """
+        with self.lock:
+            if session_id in self._sessions:
+                self._sessions[session_id].checkpoint_id = checkpoint_id
+                print(f"[LiveStore] Session waiting for input: {session_id} (checkpoint: {checkpoint_id})")
+
+    def clear_checkpoint(self, session_id: str):
+        """Clear the checkpoint waiting state when human input is received."""
+        with self.lock:
+            if session_id in self._sessions:
+                self._sessions[session_id].checkpoint_id = None
+                print(f"[LiveStore] Checkpoint cleared for session: {session_id}")
 
     def is_live(self, session_id: str) -> bool:
         """Check if session is actively executing (not just has data)."""
@@ -384,7 +403,7 @@ class LiveSessionStore:
                 print(f"[LiveStore] clear_session error: {e}")
 
     def get_active_sessions(self) -> Set[str]:
-        """Get set of currently active session IDs."""
+        """Get set of currently active session IDs (running)."""
         return {sid for sid, info in self._sessions.items() if info.status == "running"}
 
     def get_tracked_sessions(self) -> Set[str]:
@@ -402,18 +421,22 @@ class LiveSessionStore:
         """Get statistics about the live store."""
         with self.lock:
             total_rows = self.conn.execute("SELECT COUNT(*) FROM live_logs").fetchone()[0]
+            sessions_data = {}
+            for sid, info in self._sessions.items():
+                session_info = {
+                    "status": info.status,
+                    "cascade_id": info.cascade_id,
+                    "age_seconds": time.time() - info.start_time
+                }
+                if info.checkpoint_id:
+                    session_info["checkpoint_id"] = info.checkpoint_id
+                sessions_data[sid] = session_info
+
             return {
                 "active_sessions": len(self.get_active_sessions()),
                 "tracked_sessions": len(self._sessions),
                 "total_rows": total_rows,
-                "sessions": {
-                    sid: {
-                        "status": info.status,
-                        "cascade_id": info.cascade_id,
-                        "age_seconds": time.time() - info.start_time
-                    }
-                    for sid, info in self._sessions.items()
-                }
+                "sessions": sessions_data
             }
 
 
@@ -675,6 +698,52 @@ def process_event(event: Dict[str, Any]) -> bool:
         })
         # Mark session as completing, schedule cleanup
         store.end_session(session_id, grace_period=30.0)
+        return True
+
+    elif event_type == 'checkpoint_waiting':
+        # Checkpoint created and waiting for human input
+        # With blocking HITL, the cascade thread is blocked waiting for response
+        checkpoint_id = data.get('checkpoint_id')
+        store.insert({
+            'timestamp': ts,
+            'session_id': session_id,
+            'trace_id': data.get('trace_id'),
+            'node_type': 'checkpoint_waiting',
+            'cascade_id': data.get('cascade_id'),
+            'phase_name': data.get('phase_name'),
+            'metadata_json': json.dumps({
+                'checkpoint_id': checkpoint_id,
+                'checkpoint_type': data.get('checkpoint_type'),
+                'ui_spec': data.get('ui_spec'),
+                'preview': data.get('preview'),
+                'timeout_at': data.get('timeout_at'),
+                'num_soundings': data.get('num_soundings')
+            }) if checkpoint_id else None
+        })
+        # Mark that session is waiting for input (stays running)
+        store.mark_checkpoint_waiting(session_id, checkpoint_id)
+        print(f"[LiveStore] checkpoint_waiting: session={session_id}, checkpoint={checkpoint_id}")
+        return True
+
+    elif event_type == 'checkpoint_responded':
+        # Checkpoint response submitted - cascade will continue
+        checkpoint_id = data.get('checkpoint_id')
+        cascade_id = data.get('cascade_id')
+        store.insert({
+            'timestamp': ts,
+            'session_id': session_id,
+            'trace_id': data.get('trace_id'),
+            'node_type': 'checkpoint_responded',
+            'cascade_id': cascade_id,
+            'metadata_json': json.dumps({
+                'checkpoint_id': checkpoint_id,
+                'response': data.get('response'),
+                'winner_index': data.get('winner_index')
+            }) if checkpoint_id else None
+        })
+        # Clear the checkpoint waiting state
+        store.clear_checkpoint(session_id)
+        print(f"[LiveStore] checkpoint_responded: session={session_id}, checkpoint={checkpoint_id}")
         return True
 
     elif event_type == 'cascade_error':
