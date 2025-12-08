@@ -136,7 +136,15 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
     // Choice type
     if (type === 'choice') {
-      const rawOptions = uiSpec.options || [];
+      // Options can be at top level (old format) or inside sections (generative UI format)
+      let rawOptions = uiSpec.options || [];
+      if (rawOptions.length === 0 && uiSpec.sections) {
+        // Look for options in the choice section
+        const choiceSection = uiSpec.sections.find(s => s.type === 'choice');
+        if (choiceSection) {
+          rawOptions = choiceSection.options || [];
+        }
+      }
       // Try to extract actual option text from phase output
       const phaseOutput = checkpoint.phase_output_preview || checkpoint.phase_output || '';
       const options = extractOptionsFromOutput(phaseOutput, rawOptions);
@@ -178,7 +186,14 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
     // Rating type
     if (type === 'rating') {
-      const maxRating = uiSpec.max_rating || 5;
+      // max_rating can be at top level or inside sections (generative UI format)
+      let maxRating = uiSpec.max_rating || uiSpec.max || 5;
+      if (uiSpec.sections) {
+        const ratingSection = uiSpec.sections.find(s => s.type === 'rating');
+        if (ratingSection) {
+          maxRating = ratingSection.max || ratingSection.max_rating || 5;
+        }
+      }
       const selected = responses[checkpoint.id] || 0;
 
       return (
@@ -200,6 +215,60 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
             disabled={!selected || isSubmitting}
           >
             {isSubmitting ? 'Submitting...' : 'Submit Rating'}
+          </button>
+        </div>
+      );
+    }
+
+    // Multi-choice type (checkboxes)
+    if (type === 'multi_choice') {
+      // Options can be at top level or inside sections (generative UI format)
+      let rawOptions = uiSpec.options || [];
+      if (rawOptions.length === 0 && uiSpec.sections) {
+        const multiChoiceSection = uiSpec.sections.find(s => s.type === 'multi_choice');
+        if (multiChoiceSection) {
+          rawOptions = multiChoiceSection.options || [];
+        }
+      }
+      const phaseOutput = checkpoint.phase_output_preview || checkpoint.phase_output || '';
+      const options = extractOptionsFromOutput(phaseOutput, rawOptions);
+      const selected = responses[checkpoint.id] || [];
+
+      const handleToggle = (value) => {
+        const newSelected = selected.includes(value)
+          ? selected.filter(v => v !== value)
+          : [...selected, value];
+        handleResponseChange(checkpoint.id, newSelected);
+      };
+
+      return (
+        <div className="checkpoint-input multi-choice">
+          <div className="choice-options">
+            {options.map((opt, idx) => (
+              <label key={idx} className={`choice-option ${selected.includes(opt.value) ? 'selected' : ''}`}>
+                <input
+                  type="checkbox"
+                  value={opt.value}
+                  checked={selected.includes(opt.value)}
+                  onChange={() => handleToggle(opt.value)}
+                />
+                <div className="choice-content">
+                  <span className="choice-label">{opt.label}</span>
+                  {opt.displayDescription && (
+                    <span className={`choice-desc ${opt.extractedText ? 'extracted' : ''}`}>
+                      {opt.displayDescription}
+                    </span>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+          <button
+            className="checkpoint-btn approve"
+            onClick={() => handleSubmit(checkpoint, { values: selected })}
+            disabled={selected.length === 0 || isSubmitting}
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit Selection'}
           </button>
         </div>
       );

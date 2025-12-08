@@ -39,8 +39,10 @@ class CheckpointType(str, Enum):
     PHASE_INPUT = "phase_input"      # Phase-level HITL config
     SOUNDING_EVAL = "sounding_eval"  # Sounding evaluation
     FREE_TEXT = "free_text"          # Free-form text input (ask_human tool)
-    CHOICE = "choice"                # Multiple choice selection
+    CHOICE = "choice"                # Single choice selection (radio buttons)
+    MULTI_CHOICE = "multi_choice"    # Multiple choice selection (checkboxes)
     CONFIRMATION = "confirmation"    # Yes/no confirmation
+    RATING = "rating"                # Star rating (1-5)
 
 
 @dataclass

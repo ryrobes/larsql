@@ -6,6 +6,7 @@ import DebugModal from './DebugModal';
 import SoundingsExplorer from './SoundingsExplorer';
 import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
+import HumanInputDisplay from './HumanInputDisplay';
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
@@ -418,6 +419,13 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 />
                 {/* Image Gallery - under each phase bar, filtered to that phase */}
                 <ImageGallery
+                  sessionId={instance.session_id}
+                  phaseName={phase.name}
+                  isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
+                  sessionUpdate={sessionUpdates?.[instance.session_id]}
+                />
+                {/* Human Input Display - under each phase bar, filtered to that phase */}
+                <HumanInputDisplay
                   sessionId={instance.session_id}
                   phaseName={phase.name}
                   isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}

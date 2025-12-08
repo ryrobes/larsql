@@ -482,3 +482,595 @@ def normalize_human_input_config(config: Union[bool, HumanInputConfig, Dict[str,
         return config
 
     return None
+
+
+# =============================================================================
+# Generative UI for ask_human tool
+# =============================================================================
+
+QUESTION_CLASSIFICATION_PROMPT = """Analyze this question and determine the best UI input type for collecting the human's response.
+
+QUESTION: {question}
+
+CONTEXT (what the agent produced, if any):
+{context}
+
+Your task: Classify the question into ONE of these UI types:
+
+1. **confirmation** - Yes/No or Approve/Reject decisions
+   - Examples: "Should I proceed?", "Is this correct?", "Approve this?"
+   - Look for: questions expecting yes/no, approval/rejection, proceed/stop
+
+2. **choice** - Pick ONE option from a set
+   - Examples: "Which option: A, B, or C?", "Pick a format: JSON or XML"
+   - Look for: explicit options listed, "which", "pick one", "select"
+
+3. **multi_choice** - Select MULTIPLE options
+   - Examples: "Which topics interest you?", "Select all that apply"
+   - Look for: "which ones", "select all", "multiple", plural nouns
+
+4. **rating** - Quality/satisfaction ratings on a scale
+   - Examples: "Rate this 1-5", "How satisfied are you?", "Quality score?"
+   - Look for: numbers, scales, "rate", "score", "how good"
+
+5. **text** - Open-ended questions requiring free-form explanation
+   - Examples: "What do you think?", "Describe the issue", "Any feedback?"
+   - Look for: "what", "how", "describe", "explain", "thoughts"
+
+Also extract any options or labels if they're mentioned in the question.
+
+Return JSON (and ONLY JSON, no explanation):
+{{
+  "type": "confirmation|choice|multi_choice|rating|text",
+  "options": [
+    {{"label": "Option A", "value": "a", "description": "optional description"}},
+    ...
+  ],
+  "yes_label": "Yes",
+  "no_label": "No",
+  "max_rating": 5,
+  "rating_labels": ["Poor", "Fair", "Good", "Very Good", "Excellent"],
+  "reasoning": "brief explanation of classification"
+}}
+
+Notes:
+- "options" only needed for choice/multi_choice
+- "yes_label"/"no_label" only for confirmation (customize based on context)
+- "max_rating"/"rating_labels" only for rating
+- Always include "reasoning" explaining your classification
+"""
+
+
+def _classify_question(question: str, context: str = None, session_id: str = None, phase_name: str = None) -> Dict[str, Any]:
+    """
+    Use LLM to classify question type and extract UI parameters.
+
+    The classification LLM call is logged to unified_logs for cost tracking
+    and observability in the message flow.
+
+    Args:
+        question: The question being asked
+        context: Optional context (phase output, etc.)
+        session_id: Session ID for logging (auto-detected if not provided)
+        phase_name: Phase name for logging (auto-detected if not provided)
+
+    Returns:
+        Classification dict with type, options, labels, reasoning
+    """
+    from .agent import Agent
+    from .config import get_config
+    from .unified_logs import log_unified
+    from .eddies.state_tools import get_current_session_id, get_current_phase_name
+    from .tracing import get_current_trace
+    import os
+    import uuid
+    from datetime import datetime
+
+    config = get_config()
+    model = os.getenv("WINDLASS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
+
+    # Get session context for logging
+    if not session_id:
+        session_id = get_current_session_id()
+    if not phase_name:
+        phase_name = get_current_phase_name()
+    trace = get_current_trace()
+    trace_id = trace.id if trace else str(uuid.uuid4())
+
+    prompt = QUESTION_CLASSIFICATION_PROMPT.format(
+        question=question,
+        context=(context[:1000] + "..." if context and len(context) > 1000 else context) or "(no context provided)"
+    )
+
+    start_time = datetime.now()
+
+    try:
+        agent = Agent(
+            model=model,
+            system_prompt="You are a helpful assistant that classifies questions and returns JSON.",
+            base_url=config.provider_base_url,
+            api_key=config.provider_api_key
+        )
+        response = agent.run(input_message=prompt)
+
+        duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
+        # Log the classification call to unified_logs for cost tracking
+        if session_id:
+            log_unified(
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_id=trace.id if trace else None,
+                node_type="ui_classification",
+                role="assistant",
+                cascade_id=trace.name if trace else "ask_human",
+                phase_name=phase_name or "ask_human",
+                model=model,
+                content=response.get("content", ""),
+                request_id=response.get("id"),
+                duration_ms=duration_ms,
+                tokens_in=response.get("tokens_in", 0),
+                tokens_out=response.get("tokens_out", 0),
+                cost=response.get("cost"),
+                full_request={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful assistant that classifies questions and returns JSON."},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                full_response=response.get("full_response"),
+                metadata={
+                    "question": question[:200],
+                    "classifier_type": "question_ui_type",
+                    "context_length": len(context) if context else 0
+                }
+            )
+
+        # Extract JSON from response (agent.run returns dict with 'content' key)
+        content = response.get("content", "").strip()
+        if content.startswith("```"):
+            # Remove markdown code blocks
+            lines = content.split("\n")
+            # Find the closing ```
+            end_idx = len(lines) - 1
+            for i, line in enumerate(lines[1:], 1):
+                if line.strip().startswith("```"):
+                    end_idx = i
+                    break
+            content = "\n".join(lines[1:end_idx])
+
+        classification = json.loads(content)
+
+        # Validate type
+        valid_types = {"confirmation", "choice", "multi_choice", "rating", "text"}
+        if classification.get("type") not in valid_types:
+            classification["type"] = "text"
+
+        return classification
+
+    except Exception as e:
+        duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
+        # Log the failed classification attempt
+        if session_id:
+            log_unified(
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_id=trace.id if trace else None,
+                node_type="ui_classification",
+                role="system",
+                cascade_id=trace.name if trace else "ask_human",
+                phase_name=phase_name or "ask_human",
+                model=model,
+                content=f"Classification failed: {e}",
+                duration_ms=duration_ms,
+                metadata={
+                    "question": question[:200],
+                    "classifier_type": "question_ui_type",
+                    "error": str(e),
+                    "fallback": "text"
+                }
+            )
+
+        print(f"[Windlass] Question classification failed: {e}")
+        # Fallback to text input
+        return {
+            "type": "text",
+            "reasoning": f"Classification failed: {e}"
+        }
+
+
+def _extract_options_from_text(text: str) -> List[Dict[str, str]]:
+    """
+    Extract options from text using multiple patterns.
+
+    Looks for patterns like:
+    - "A, B, or C"
+    - "Option 1, Option 2, Option 3"
+    - "Pick: X / Y / Z"
+    - "High, Medium, or Low?"
+    - "Option A: Description\nOption B: Description"
+
+    Args:
+        text: The text to extract options from
+
+    Returns:
+        List of option dicts with label and value
+    """
+    import re
+
+    options = []
+
+    # Pattern 1: "Option A: Description" or "Option 1: Description" style (one per line)
+    option_lines = re.findall(r'Option\s+([A-Za-z0-9]+)[:\s]+(.+?)(?:\n|$)', text, re.IGNORECASE)
+    if option_lines:
+        for opt_id, description in option_lines:
+            label = f"Option {opt_id}"
+            clean_desc = description.strip().rstrip('.')
+            options.append({
+                "label": label,
+                "value": f"option_{opt_id.lower()}",
+                "description": clean_desc if clean_desc else None
+            })
+        if options:
+            return options
+
+    # Pattern 2: After colon "Which: A, B, or C?"
+    match = re.search(r':\s*([^?]+?)(?:\?|$)', text)
+
+    # Pattern 3: Comma-separated with "or" at end "Pick A, B, or C"
+    if not match:
+        match = re.search(r'(?:pick|choose|select|which)\s+(.+?)(?:\?|$)', text, re.IGNORECASE)
+
+    # Pattern 4: Just look for "X, Y, or Z" anywhere
+    if not match:
+        match = re.search(r'([A-Za-z][A-Za-z0-9 ]*(?:\s*,\s*[A-Za-z][A-Za-z0-9 ]*)+\s*(?:,\s*)?(?:or|and)\s+[A-Za-z][A-Za-z0-9 ]*)', text)
+
+    if match:
+        options_text = match.group(1).strip()
+        # Split by comma, "or", "and", "/"
+        parts = re.split(r'\s*(?:,\s*(?:or\s+)?|(?:\s+or\s+)|\s+and\s+|/)\s*', options_text)
+        parts = [p.strip() for p in parts if p.strip()]
+
+        if len(parts) >= 2:
+            for part in parts:
+                # Clean up the option text
+                clean = part.strip().rstrip('.').rstrip(',').rstrip('?')
+                if clean and len(clean) < 100:  # Sanity check on option length
+                    options.append({
+                        "label": clean,
+                        "value": clean.lower().replace(" ", "_")
+                    })
+
+    return options
+
+
+def _extract_options_from_question(question: str, context: str = None) -> List[Dict[str, str]]:
+    """
+    Extract options from question and/or context text.
+
+    Looks for patterns in both the question and the context since
+    agents often put options in the context field.
+
+    Args:
+        question: The question text
+        context: Optional context that may contain options
+
+    Returns:
+        List of option dicts with label and value
+    """
+    # First try extracting from the question
+    options = _extract_options_from_text(question)
+
+    # If no options in question, try the context
+    if not options and context:
+        options = _extract_options_from_text(context)
+
+    return options
+
+
+def _build_ui_for_classification(
+    classification: Dict[str, Any],
+    question: str,
+    context: str = None
+) -> Dict[str, Any]:
+    """
+    Build ui_spec based on classification results.
+
+    Args:
+        classification: Result from _classify_question()
+        question: Original question text
+        context: Phase output or other context
+
+    Returns:
+        Complete ui_spec for DynamicUI
+    """
+    ui_type = classification.get("type", "text")
+    sections = []
+
+    # Always show context/phase output if available and substantial
+    if context and len(context.strip()) > 0:
+        sections.append({
+            "type": "preview",
+            "content": context,
+            "render": "auto",
+            "collapsible": len(context) > 500,
+            "default_collapsed": len(context) > 1000,
+            "max_height": 300
+        })
+
+    # Add appropriate input section based on classification
+    if ui_type == "confirmation":
+        sections.append({
+            "type": "confirmation",
+            "prompt": question,
+            "yes_label": classification.get("yes_label", "Yes"),
+            "no_label": classification.get("no_label", "No")
+        })
+
+    elif ui_type == "choice":
+        options = classification.get("options", [])
+        if not options:
+            # Fallback to text if no options extracted
+            ui_type = "text"  # Update type for _meta
+            sections.append({
+                "type": "text",
+                "label": question,
+                "placeholder": "Enter your choice...",
+                "multiline": False,
+                "required": True
+            })
+        else:
+            sections.append({
+                "type": "choice",
+                "prompt": question,
+                "options": options,
+                "required": True
+            })
+
+    elif ui_type == "multi_choice":
+        options = classification.get("options", [])
+        if not options:
+            # Fallback to text if no options extracted
+            ui_type = "text"  # Update type for _meta
+            sections.append({
+                "type": "text",
+                "label": question,
+                "placeholder": "Enter your selections...",
+                "multiline": True,
+                "required": True
+            })
+        else:
+            sections.append({
+                "type": "multi_choice",
+                "prompt": question,
+                "options": options
+            })
+
+    elif ui_type == "rating":
+        max_rating = classification.get("max_rating", 5)
+        labels = classification.get("rating_labels")
+        sections.append({
+            "type": "rating",
+            "prompt": question,
+            "max": max_rating,
+            "labels": labels,
+            "show_value": True
+        })
+
+    else:  # text (default)
+        sections.append({
+            "type": "text",
+            "label": question,
+            "placeholder": "Enter your response...",
+            "multiline": True,
+            "rows": 4,
+            "required": True
+        })
+
+    # Track if we fell back from choice/multi_choice to text
+    original_type = classification.get("type", "text")
+    fell_back = original_type in ("choice", "multi_choice") and ui_type == "text"
+
+    return {
+        "layout": "vertical",
+        "title": "Human Input Required",
+        "submit_label": "Submit",
+        "sections": sections,
+        "_meta": {
+            "type": ui_type,
+            "original_type": original_type if fell_back else None,
+            "fallback_reason": "no_options_extracted" if fell_back else None,
+            "generated": True,
+            "classification_reasoning": classification.get("reasoning"),
+            "question": question
+        }
+    }
+
+
+def _generate_from_hint(question: str, context: str, ui_hint: str) -> Dict[str, Any]:
+    """
+    Generate UI based on explicit hint, skipping LLM classification.
+
+    Args:
+        question: The question text
+        context: Phase output or other context
+        ui_hint: Explicit UI type hint
+
+    Returns:
+        UI specification dict
+    """
+    # Map hint to classification
+    classification = {"type": ui_hint, "reasoning": "explicit ui_hint provided"}
+
+    # For choice/multi_choice, try to extract options from question OR context
+    if ui_hint in ("choice", "multi_choice"):
+        options = _extract_options_from_question(question, context)
+        if options:
+            classification["options"] = options
+        else:
+            print(f"[Windlass] Warning: ui_hint='{ui_hint}' but no options found in question or context")
+            print(f"[Windlass]   Question: {question[:100]}")
+            print(f"[Windlass]   Context: {(context[:100] + '...') if context else '(none)'}")
+
+    return _build_ui_for_classification(classification, question, context)
+
+
+def generate_ask_human_ui(
+    question: str,
+    context: str = None,
+    ui_hint: str = None,
+    phase_name: str = None,
+    cascade_id: str = None,
+    session_id: str = None
+) -> Dict[str, Any]:
+    """
+    Generate appropriate UI for an ask_human call.
+
+    Uses LLM to analyze the question and determine the best UI type,
+    or uses an explicit hint if provided.
+
+    This is the main entry point for generative UI in the ask_human tool.
+
+    Args:
+        question: The question being asked
+        context: Phase output or other context to display
+        ui_hint: Optional explicit hint ("confirmation", "choice", "rating", "text")
+        phase_name: Current phase name for metadata
+        cascade_id: Current cascade ID for metadata
+        session_id: Session ID for cost tracking (auto-detected if not provided)
+
+    Returns:
+        UI specification dict for DynamicUI rendering
+
+    Examples:
+        >>> generate_ask_human_ui("Should I proceed?")
+        # Returns confirmation UI with Yes/No buttons
+
+        >>> generate_ask_human_ui("Pick: A, B, or C")
+        # Returns choice UI with radio buttons
+
+        >>> generate_ask_human_ui("Rate this 1-5")
+        # Returns rating UI with stars
+
+        >>> generate_ask_human_ui("What do you think?")
+        # Returns text input UI
+    """
+    from .unified_logs import log_unified
+    from .eddies.state_tools import get_current_session_id, get_current_phase_name
+    from .tracing import get_current_trace
+    import uuid
+
+    # Get session context for logging
+    if not session_id:
+        session_id = get_current_session_id()
+    if not phase_name:
+        phase_name = get_current_phase_name()
+    trace = get_current_trace()
+    trace_id = str(uuid.uuid4())
+
+    # Fast path: if ui_hint is provided, use it directly (skip LLM)
+    if ui_hint:
+        ui_spec = _generate_from_hint(question, context, ui_hint)
+
+        # Log that we used the hint path (for debugging)
+        if session_id:
+            options_count = len(ui_spec.get("sections", [{}])[0].get("options", []) if ui_spec.get("sections") else [])
+            # Find the actual options count from sections
+            for section in ui_spec.get("sections", []):
+                if section.get("type") in ("choice", "multi_choice"):
+                    options_count = len(section.get("options", []))
+                    break
+
+            log_unified(
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_id=trace.id if trace else None,
+                node_type="ui_generation",
+                role="system",
+                cascade_id=cascade_id or (trace.name if trace else "ask_human"),
+                phase_name=phase_name or "ask_human",
+                content=f"Generated {ui_hint} UI from hint (skipped classifier). Options extracted: {options_count}",
+                metadata={
+                    "question": question[:200],
+                    "ui_hint": ui_hint,
+                    "skipped_classifier": True,
+                    "options_extracted": options_count,
+                    "context_length": len(context) if context else 0,
+                    "ui_type": ui_spec.get("_meta", {}).get("type")
+                }
+            )
+    else:
+        # Use LLM to classify the question type and extract options
+        # Pass session_id and phase_name for cost tracking
+        classification = _classify_question(question, context, session_id=session_id, phase_name=phase_name)
+        ui_spec = _build_ui_for_classification(classification, question, context)
+
+    # Add metadata
+    ui_spec["_meta"]["phase_name"] = phase_name
+    ui_spec["_meta"]["cascade_id"] = cascade_id
+
+    return ui_spec
+
+
+def extract_response_value(response: dict, ui_spec: dict) -> str:
+    """
+    Extract the actual response value based on UI type.
+
+    Different UI types return data in different formats:
+    - confirmation: {"prompt": {"confirmed": true/false}}
+    - choice: {"prompt": "selected_value"}
+    - multi_choice: {"prompt": ["a", "b"]}
+    - rating: {"prompt": 4}
+    - text: {"label": "user's text"}
+
+    Args:
+        response: Raw response dict from DynamicUI
+        ui_spec: The UI specification that was used
+
+    Returns:
+        Normalized string representation of the response
+    """
+    ui_type = ui_spec.get("_meta", {}).get("type", "text")
+
+    if ui_type == "confirmation":
+        # Find the confirmation value
+        for key, val in response.items():
+            if isinstance(val, dict) and "confirmed" in val:
+                return "yes" if val["confirmed"] else "no"
+            if isinstance(val, bool):
+                return "yes" if val else "no"
+        # Check direct confirmed key
+        if "confirmed" in response:
+            return "yes" if response["confirmed"] else "no"
+        # Fallback
+        return str(response)
+
+    elif ui_type == "choice":
+        # Return selected option value
+        for val in response.values():
+            if val and isinstance(val, str):
+                return val
+        return str(response)
+
+    elif ui_type == "multi_choice":
+        # Return comma-separated list of selected values
+        for val in response.values():
+            if isinstance(val, list):
+                return ", ".join(str(v) for v in val)
+        return str(response)
+
+    elif ui_type == "rating":
+        # Return numeric rating as string
+        for val in response.values():
+            if isinstance(val, (int, float)):
+                return str(int(val))
+        return str(response)
+
+    else:  # text
+        # Return first non-empty text value
+        for val in response.values():
+            if val and isinstance(val, str):
+                return val
+        return str(response)

@@ -12,16 +12,66 @@ All implemented in the declarative, "just add a field" Windlass style.
 
 ---
 
+## Implementation Status (Updated)
+
+### ✅ What's Built
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `CheckpointManager` | ✅ Done | Blocking model (not suspend/resume) |
+| `wait_for_response()` | ✅ Done | Polling with timeout support |
+| `ask_human` tool | ✅ Done | Programmatic HITL from any phase |
+| `CheckpointPanel` | ✅ Done | Notification UI in React |
+| `CheckpointView` | ✅ Done | Full-page checkpoint response |
+| `DynamicUI` | ✅ Done | All section types implemented |
+| `SoundingComparison` | ✅ Done | Side-by-side sounding comparison |
+| SSE Events | ✅ Done | Real-time checkpoint notifications |
+| State storage | ✅ Done | `state.{phase_name}` pattern |
+
+### 🔄 Key Design Decisions (Deviations from Original Plan)
+
+1. **Blocking Model (not Suspend/Resume)**
+   - Original plan: Serialize Echo state, suspend cascade, resume later
+   - Actual: Thread blocks on `wait_for_response()`, no serialization needed
+   - Why: Much simpler, works like a slow API call, no reconstruction logic
+
+2. **Explicit State Storage (not Message Appending)**
+   - Original plan: Inject human response as a message in conversation history
+   - Actual: Store in `state.{phase_name}`, access via `{{ state.phase_name }}`
+   - Why: More explicit, controllable, works with selective context system
+
+3. **`ask_human` Tool (programmatic HITL)**
+   - Original plan: Only phase-level `human_input` config
+   - Actual: Also support `ask_human` tool for agent-initiated HITL
+   - Why: Enables dynamic human interaction based on agent reasoning
+
+### 📋 Remaining Work
+
+See **Part 7: Implementation Phases** for detailed checklist.
+
+---
+
 ## Part 1: Human Checkpoints (Phase-Level Input)
 
 ### 1.1 Concept
 
-Any phase can pause for human input. The system:
-1. Runs the phase normally
+Any phase can pause for human input. The system uses a **blocking model**:
+
+1. Runs the phase normally (or tool calls `ask_human`)
 2. Generates an appropriate UI based on output/context
-3. Suspends the cascade
-4. Notifies the user
-5. Resumes when human responds
+3. **Blocks the cascade thread** (waits in `wait_for_response()`)
+4. Notifies the user via SSE event
+5. Unblocks when human responds via UI
+
+**Why blocking instead of suspend/resume?**
+- Simpler: No state serialization, no cascade reconstruction
+- Thread stays alive: All context remains in memory
+- Works like an LLM API call: Just a longer wait
+
+**Response Storage:**
+- Human response stored in `state.{phase_name}` automatically
+- Downstream phases access via Jinja2: `{{ state.phase_name }}`
+- Explicit and controllable (no hidden message appending)
 
 ### 1.2 Configuration Schema
 
@@ -383,7 +433,7 @@ User compares outputs from different models, sees cost/tokens, picks best.
 ### 3.2 Database Schema
 
 ```sql
--- Checkpoint storage for suspension/resume
+-- Checkpoint storage for blocking HITL
 CREATE TABLE checkpoints (
     id String,
     session_id String,
@@ -402,7 +452,7 @@ CREATE TABLE checkpoints (
     -- UI specification (generated or configured)
     ui_spec String,  -- JSON
 
-    -- Context for resume
+    -- Context (echo_snapshot not needed for blocking model, kept for debugging)
     echo_snapshot String,  -- JSON - full Echo state
     phase_output String,  -- What the phase produced
 
@@ -479,7 +529,13 @@ class Checkpoint:
 
 
 class CheckpointManager:
-    """Manages cascade suspension and resume for human input."""
+    """
+    Manages human-in-the-loop checkpoints with a blocking model.
+
+    The cascade thread blocks on wait_for_response() until the human
+    responds via the UI. This is simpler than suspend/resume since
+    no state serialization or cascade reconstruction is needed.
+    """
 
     def __init__(self):
         self.db = get_db_adapter()
@@ -834,14 +890,18 @@ class WindlassRunner:
                 timeout_seconds=human_config.timeout_seconds
             )
 
-            # Wait for response (or timeout)
-            response = await self._wait_for_human_response(
+            # Block waiting for response (or timeout)
+            # This is simpler than suspend/resume - the thread just waits
+            response = self.checkpoint_manager.wait_for_response(
                 checkpoint.id,
-                human_config
+                timeout=human_config.timeout_seconds,
+                poll_interval=0.5
             )
 
-            # Inject response into context
-            self._inject_human_response(response, human_config)
+            # Store response in state.{phase_name} for downstream phases
+            # This enables explicit access via Jinja2: {{ state.phase_name }}
+            if response:
+                self.echo.update_state(phase.name, response.get('value') or response)
 
         return phase_result
 
@@ -2772,28 +2832,34 @@ windlass training validate -o validation_report.json
 
 ## Part 7: Implementation Phases
 
-### Phase 1: Foundation (Week 1-2)
-- [ ] Add `human_input` field to `PhaseConfig` in `cascade.py`
-- [ ] Create `checkpoints.py` with `CheckpointManager`
-- [ ] Add checkpoint table to database schema
-- [ ] Implement basic suspension/resume in `runner.py`
-- [ ] Add SSE events for checkpoint lifecycle
-- [ ] Basic text input UI in React
+### Phase 1: Foundation (Week 1-2) ✅ COMPLETED
+- [x] Add `human_input` field to `PhaseConfig` in `cascade.py`
+- [x] Create `checkpoints.py` with `CheckpointManager`
+- [x] Add checkpoint table to database schema
+- [x] Implement blocking model in `runner.py` (simpler than suspend/resume)
+  - Cascade thread blocks on `wait_for_response()` until human responds
+  - No state serialization needed - thread stays alive
+- [x] Add SSE events for checkpoint lifecycle
+- [x] Basic text input UI in React (`CheckpointPanel`, `CheckpointView`)
+- [x] `ask_human` tool for programmatic HITL (stores response in `state.{phase_name}`)
+- [x] Explicit template access: `{{ state.phase_name }}` in downstream phases
 
-### Phase 2: Typed UIs (Week 3-4)
-- [ ] Implement all built-in UI types (confirmation, choice, rating, etc.)
-- [ ] Create `DynamicUI` React component
-- [ ] Add notification badge to header
-- [ ] Implement `CheckpointView` page
-- [ ] Add timeout handling
+### Phase 2: Typed UIs (Week 3-4) 🔄 PARTIAL
+- [x] Create `DynamicUI` React component (supports: preview, confirmation, choice, multi_choice, rating, text, slider, form, group)
+- [x] Add notification panel (`CheckpointPanel`)
+- [x] Implement `CheckpointView` page
+- [x] Add timeout handling in `wait_for_response()`
+- [ ] Wire up all built-in UI types to phase-level `human_input` config
+- [ ] Add LLM-based UI auto-generation for `type: "auto"`
 
-### Phase 3: Sounding Evaluation (Week 5-6)
-- [ ] Add `evaluator: "human"` support to `SoundingsConfig`
-- [ ] Add `HumanSoundingEvalConfig` model
-- [ ] Implement `generate_sounding_comparison_ui()` in UI generator
-- [ ] Create `SoundingComparison` React component
-- [ ] Side-by-side, tabbed, and carousel views
-- [ ] Tournament bracket view
+### Phase 3: Sounding Evaluation (Week 5-6) 🔄 PARTIAL
+- [x] Create `SoundingComparison` React component (side-by-side view)
+- [x] Add `checkpoint_type: "sounding_eval"` support in CheckpointManager
+- [ ] Add `evaluator: "human"` support to `SoundingsConfig` in cascade.py
+- [ ] Wire `SoundingsConfig.evaluator = "human"` to checkpoint creation in runner.py
+- [ ] Add `HumanSoundingEvalConfig` model for presentation options
+- [ ] Tabbed and carousel presentation views
+- [ ] Tournament bracket view for pairwise comparison
 
 ### Phase 4: Auto-Generation (Week 7-8)
 - [ ] Implement `_auto_generate()` in `UIGenerator`
@@ -2855,11 +2921,13 @@ windlass training validate -o validation_report.json
     },
     {
       "name": "revise",
-      "instructions": "Revise the report based on feedback: {{ state.human_feedback }}"
+      "instructions": "Revise the report based on feedback: {{ state.approve }}",
+      "context": {"from": ["approve"], "include": ["state"]}
     },
     {
       "name": "archive",
-      "instructions": "Archive the rejected report with reason: {{ state.rejection_reason }}"
+      "instructions": "Archive the rejected report with reason: {{ state.approve }}",
+      "context": {"from": ["approve"], "include": ["state"]}
     }
   ]
 }

@@ -3663,6 +3663,113 @@ def debug_schema():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
+# ==============================================================================
+# Session Human Inputs API
+# ==============================================================================
+
+@app.route('/api/session/<session_id>/human-inputs', methods=['GET'])
+def get_session_human_inputs(session_id):
+    """
+    Get all human input interactions (ask_human calls and responses) for a session.
+    Returns the question asked and the human's response, grouped by phase.
+    """
+    try:
+        conn = get_db_connection()
+
+        # Query for ask_human tool calls and their results
+        query = """
+        SELECT
+            timestamp,
+            phase_name,
+            node_type,
+            content_json::VARCHAR as content,
+            metadata_json::VARCHAR as metadata
+        FROM logs
+        WHERE session_id = ?
+          AND (
+            (node_type = 'tool_call' AND metadata_json::VARCHAR LIKE '%ask_human%')
+            OR (node_type = 'tool_result' AND metadata_json::VARCHAR LIKE '%ask_human%')
+          )
+        ORDER BY phase_name, timestamp
+        """
+
+        result = conn.execute(query, [session_id]).fetchall()
+        conn.close()
+
+        # Group by phase, pairing tool_calls with their results
+        human_inputs_by_phase = {}
+
+        for row in result:
+            timestamp, phase_name, node_type, content, metadata_str = row
+
+            # Parse metadata
+            metadata = {}
+            if metadata_str:
+                try:
+                    metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+                except:
+                    pass
+
+            # Skip if not ask_human
+            tool_name = metadata.get('tool_name', '')
+            if tool_name != 'ask_human':
+                continue
+
+            phase_key = phase_name or '_unknown_'
+            if phase_key not in human_inputs_by_phase:
+                human_inputs_by_phase[phase_key] = {
+                    'phase_name': phase_key,
+                    'interactions': []
+                }
+
+            if node_type == 'tool_call':
+                # Extract question from arguments
+                arguments = metadata.get('arguments', {})
+                question = arguments.get('question', '')
+                context = arguments.get('context', '')
+                ui_hint = arguments.get('ui_hint')
+
+                human_inputs_by_phase[phase_key]['interactions'].append({
+                    'type': 'question',
+                    'timestamp': timestamp,
+                    'question': question,
+                    'context': context,
+                    'ui_hint': ui_hint
+                })
+
+            elif node_type == 'tool_result':
+                # Extract response
+                response = metadata.get('result', '')
+
+                # Try to match with the last question in this phase
+                interactions = human_inputs_by_phase[phase_key]['interactions']
+                if interactions and interactions[-1]['type'] == 'question':
+                    # Merge response into the question entry
+                    interactions[-1]['response'] = response
+                    interactions[-1]['type'] = 'complete'
+                else:
+                    # Orphan response (shouldn't happen normally)
+                    interactions.append({
+                        'type': 'response_only',
+                        'timestamp': timestamp,
+                        'response': response
+                    })
+
+        # Convert to list sorted by first interaction timestamp
+        human_inputs_list = list(human_inputs_by_phase.values())
+
+        return jsonify({
+            'session_id': session_id,
+            'human_inputs': human_inputs_list,
+            'total_interactions': sum(len(p['interactions']) for p in human_inputs_list)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 def log_connection_stats():
     """Periodically log connection statistics."""
     import time
