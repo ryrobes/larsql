@@ -173,22 +173,40 @@ def list_checkpoints():
             print(f"[CHECKPOINT DEBUG] Raw ui_spec for {cp.id}:")
             print(f"  Layout: {cp.ui_spec.get('layout') if cp.ui_spec else 'None'}")
             print(f"  Title: {cp.ui_spec.get('title') if cp.ui_spec else 'None'}")
-            if cp.ui_spec and 'sections' in cp.ui_spec:
-                for i, sec in enumerate(cp.ui_spec.get('sections', [])):
-                    sec_type = sec.get('type')
-                    has_base64 = 'base64' in sec
-                    has_src = 'src' in sec
-                    has_cards = 'cards' in sec
-                    has_options = 'options' in sec
-                    print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
-                    if has_base64:
-                        print(f"    base64 length: {len(sec.get('base64', ''))}")
-                    if has_src:
-                        print(f"    src: {sec.get('src')}")
-                    if has_cards:
-                        print(f"    cards count: {len(sec.get('cards', []))}")
-                    if has_options:
-                        print(f"    options count: {len(sec.get('options', []))}")
+            if cp.ui_spec:
+                # Log sections in top-level (vertical layout)
+                if 'sections' in cp.ui_spec:
+                    for i, sec in enumerate(cp.ui_spec.get('sections', [])):
+                        sec_type = sec.get('type')
+                        has_base64 = 'base64' in sec
+                        has_src = 'src' in sec
+                        has_cards = 'cards' in sec
+                        has_options = 'options' in sec
+                        print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
+                        if has_base64:
+                            print(f"    base64 length: {len(sec.get('base64', ''))}")
+                        if has_src:
+                            print(f"    src: {sec.get('src')}")
+                        if has_cards:
+                            print(f"    cards count: {len(sec.get('cards', []))}")
+                        if has_options:
+                            print(f"    options count: {len(sec.get('options', []))}")
+
+                # Log sections in columns (two-column layout)
+                if 'columns' in cp.ui_spec:
+                    for col_idx, col in enumerate(cp.ui_spec.get('columns', [])):
+                        print(f"  Column {col_idx}: width={col.get('width')}, sticky={col.get('sticky')}")
+                        for i, sec in enumerate(col.get('sections', [])):
+                            sec_type = sec.get('type')
+                            has_base64 = 'base64' in sec
+                            has_src = 'src' in sec
+                            has_cards = 'cards' in sec
+                            has_options = 'options' in sec
+                            print(f"    Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
+                            if has_base64:
+                                print(f"      base64 length: {len(sec.get('base64', ''))}")
+                            if has_src:
+                                print(f"      src: {sec.get('src')}")
 
             # Resolve image paths to URLs in the UI spec
             resolved_ui_spec = resolve_image_paths_to_urls(cp.ui_spec, cp.session_id)

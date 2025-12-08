@@ -33,23 +33,28 @@ This document outlines the implementation plan for a **truly generative UI syste
 - [x] Fallback to confirmation when no options
 - [x] Card grid option extraction
 - [x] Title, prompt display
-- [x] Wider/taller panel (600px x 85vh)
+- [x] Wider/taller panel (700px x 90vh)
+- [x] **Unified section renderer** (renders sections in original order)
+- [x] **Two-column layout with CSS grid** (side-by-side columns)
+- [x] **Preview section rendering** (text, markdown, code with syntax highlighting)
+- [x] Card grid section rendering with selection
 
 **Infrastructure:**
 - [x] Blocking checkpoint system
 - [x] Checkpoint API with image path→base64 resolution
 - [x] SSE events for real-time updates
+- [x] Test cascade for composite UI (`test_composite_ui.json`)
 
 ### Not Yet Implemented (Next Steps)
 
-**Phase 1: Proper Layout Rendering**
-- [ ] Unified section renderer (render in original order)
-- [ ] Two-column layout with CSS grid (side-by-side)
-- [ ] Preview section rendering (markdown/code)
+**Phase 1: Proper Layout Rendering** ✅ COMPLETED
+- [x] Unified section renderer (render in original order)
+- [x] Two-column layout with CSS grid (side-by-side)
+- [x] Preview section rendering (markdown/code)
 
 **Phase 2: Rich Input Components**
-- [ ] Card grid with images (visual selection)
-- [ ] Conditional show_if logic
+- [x] Card grid with images (visual selection) - basic support done
+- [ ] Conditional show_if logic (partial - needs full implementation)
 - [ ] Comparison sections
 
 **Phase 3: Advanced**

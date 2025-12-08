@@ -1,0 +1,15 @@
+{
+  "cascade_id": "test_composite_ui",
+  "description": "Test composite generative UI with two-column layout (image + data table + confirmation)",
+  "inputs_schema": {},
+  "phases": [
+    {
+      "name": "show_composite",
+      "instructions": "First, create a bar chart showing quarterly sales data using create_plotly. Make it dark mode with a black background - and give it some artistic flair! Use this data as a template:\n\n```json\n{\"tool\": \"create_chart\", \"arguments\": {\"chart_type\": \"bar\", \"title\": \"Quarterly Sales by Region\", \"data\": {\"labels\": [\"North\", \"South\", \"East\", \"West\"], \"values\": [125000, 98500, 142000, 87200]}, \"xlabel\": \"Region\", \"ylabel\": \"Revenue ($)\"}}\n```\n\nThen, after the chart is created, call ask_human_custom to demonstrate a two-column composite UI. The auto_detect feature will automatically include the chart you just created. Use this call:\n\n```json\n{\n  \"tool\": \"ask_human_custom\",\n  \"arguments\": {\n    \"question\": \"Does this sales analysis look accurate?\",\n    \"context\": \"I analyzed the Q4 2024 sales data and generated this chart. The data shows strong growth in the North and East regions, with a slight decline in the West region. Overall revenue increased by 12% compared to Q3.\",\n    \"data\": {\n      \"Regional Performance\": [\n        {\"Region\": \"North\", \"Revenue\": \"$125,000\", \"Growth\": \"+15%\", \"Target Met\": \"Yes\"},\n        {\"Region\": \"South\", \"Revenue\": \"$98,500\", \"Growth\": \"+8%\", \"Target Met\": \"Yes\"},\n        {\"Region\": \"East\", \"Revenue\": \"$142,000\", \"Growth\": \"+22%\", \"Target Met\": \"Yes\"},\n        {\"Region\": \"West\", \"Revenue\": \"$87,200\", \"Growth\": \"-3%\", \"Target Met\": \"No\"}\n      ]\n    },\n    \"ui_hint\": \"confirmation\",\n    \"layout_hint\": \"two-column\"\n  }\n}\n```",
+      "tackle": ["create_plotly", "ask_human_custom"],
+      "rules": {
+        "max_turns": 3
+      }
+    }
+  ]
+}
