@@ -80,7 +80,10 @@ class LiveSessionStore:
             has_images BOOLEAN,
             has_base64 BOOLEAN,
             metadata_json VARCHAR,
-            mermaid_content VARCHAR
+            mermaid_content VARCHAR,
+            mutation_applied VARCHAR,
+            mutation_type VARCHAR,
+            mutation_template VARCHAR
         )
     """
 
@@ -560,6 +563,8 @@ def process_event(event: Dict[str, Any]) -> bool:
     elif event_type == 'cost_update':
         # UPDATE existing row or INSERT a cost record
         cost_val = data.get('cost')
+        model_val = data.get('model')
+        print(f"[LiveStore] cost_update received: cost=${cost_val}, model={model_val}, session={session_id}")
         success = store.update_cost(
             trace_id=data.get('trace_id'),
             cost=data.get('cost'),
@@ -572,7 +577,7 @@ def process_event(event: Dict[str, Any]) -> bool:
             sounding_index=data.get('sounding_index'),
             cascade_id=data.get('cascade_id'),
             turn_number=data.get('turn_number'),
-            model=data.get('model'),  # Include model for real-time model_costs tracking
+            model=model_val,  # Include model for real-time model_costs tracking
         )
         return success
 

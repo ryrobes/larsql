@@ -889,6 +889,192 @@
   background: #4a4f5b;
 }
 
+/* ===================================
+   MUTATION BADGE
+   =================================== */
+
+.mutation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.mutation-badge .mutation-label {
+  font-size: 10px;
+}
+
+/* ===================================
+   PROMPT VIEWER
+   =================================== */
+
+.prompt-viewer {
+  margin-bottom: 16px;
+  border-left: 3px solid #a78bfa;
+  background: rgba(167, 139, 250, 0.05);
+  border-radius: 0 6px 6px 0;
+  overflow: hidden;
+}
+
+.prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #c4b5fd;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.prompt-header:hover {
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.prompt-header svg {
+  flex-shrink: 0;
+}
+
+.prompt-header .expand-icon {
+  margin-left: auto;
+  color: #8b92a0;
+}
+
+.prompt-header:hover .expand-icon {
+  color: #c4b5fd;
+}
+
+.prompt-preview {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.prompt-preview:hover {
+  background: rgba(167, 139, 250, 0.08);
+}
+
+.prompt-preview .show-more {
+  display: inline-block;
+  margin-left: 6px;
+  color: #a78bfa;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.prompt-content-full {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d4d7dd;
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #a78bfa rgba(139, 92, 246, 0.1);
+}
+
+.prompt-content-full::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prompt-content-full::-webkit-scrollbar-track {
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 3px;
+}
+
+.prompt-content-full::-webkit-scrollbar-thumb {
+  background: #a78bfa;
+  border-radius: 3px;
+}
+
+.prompt-content-full::-webkit-scrollbar-thumb:hover {
+  background: #b79cfd;
+}
+
+/* Markdown content styling */
+.prompt-content-full p {
+  margin: 0 0 12px 0;
+}
+
+.prompt-content-full p:last-child {
+  margin-bottom: 0;
+}
+
+.prompt-content-full code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+}
+
+.prompt-content-full pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.prompt-content-full pre code {
+  background: none;
+  padding: 0;
+}
+
+.prompt-content-full ul,
+.prompt-content-full ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.prompt-content-full li {
+  margin: 4px 0;
+}
+
+/* Mutation Details (for rewrite mode) */
+.mutation-details {
+  margin-top: 14px;
+  padding: 12px;
+  background: rgba(197, 134, 192, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(197, 134, 192, 0.2);
+}
+
+.mutation-details-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c586c0;
+  margin-bottom: 8px;
+}
+
+.mutation-template {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #d4b5d3;
+  white-space: pre-wrap;
+  font-family: 'Courier New', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 10px;
+  border-radius: 4px;
+  margin: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .soundings-grid {

@@ -1841,68 +1841,87 @@ def get_soundings_tree(session_id):
     2. Parquet - for completed sessions (historical)
     """
     try:
-        # Check if session is in LiveStore first (for real-time is_winner data)
+        # Check if session is in LiveStore (for real-time is_winner data)
         store = get_live_store()
-        df = None
 
+        # Query Parquet for soundings data (includes mutation/prompt data not available in SSE)
+        query = f"""
+        SELECT
+            phase_name,
+            sounding_index,
+            reforge_step,
+            is_winner,
+            content_json,
+            cost,
+            tool_calls_json,
+            turn_number,
+            metadata_json,
+            timestamp,
+            node_type,
+            role,
+            model,
+            mutation_applied,
+            mutation_type,
+            mutation_template,
+            full_request_json
+        FROM read_parquet('{DATA_DIR}/*.parquet')
+        WHERE session_id = '{session_id}'
+          AND sounding_index IS NOT NULL
+          AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
+        ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
+        """
+
+        with get_db_connection() as conn:
+            df = conn.execute(query).fetchdf()
+
+        # For live sessions, get real-time is_winner updates from LiveStore
         if store.is_tracked(session_id) or store.has_data(session_id):
-            # Query LiveStore's in-memory DuckDB for soundings data
             live_query = """
             SELECT
                 phase_name,
                 sounding_index,
                 reforge_step,
-                is_winner,
-                content_json,
-                cost,
-                tool_calls_json,
-                turn_number,
-                metadata_json,
-                timestamp,
-                node_type,
-                role,
-                model
+                is_winner
             FROM live_logs
             WHERE session_id = ?
               AND sounding_index IS NOT NULL
-              AND node_type IN ('sounding_attempt', 'sounding_error', 'agent', 'phase_start', 'phase_complete', 'turn_start', 'tool_call', 'tool_result')
-            ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
+              AND is_winner IS NOT NULL
             """
-            df = store.query_df(live_query, [session_id])
-            if not df.empty:
-                print(f"[API] Serving soundings-tree for {session_id} from LiveStore ({len(df)} rows)")
+            live_df = store.query_df(live_query, [session_id])
+            if not live_df.empty:
+                # Create a mapping of (phase, sounding, reforge) -> is_winner from live data
+                live_winners = {}
+                for _, row in live_df.iterrows():
+                    key = (row['phase_name'], row['sounding_index'], row['reforge_step'] if pd.notna(row['reforge_step']) else None)
+                    if pd.notna(row['is_winner']) and row['is_winner']:
+                        live_winners[key] = True
 
-        # Fall back to Parquet if no LiveStore data
-        if df is None or df.empty:
-            # Query unified logs for soundings data (including reforge refinements)
-            # Need to get both 'sounding_attempt' rows (metadata), 'sounding_error' rows, and 'agent' rows (cost, content)
-            query = f"""
-            SELECT
-                phase_name,
-                sounding_index,
-                reforge_step,
-                is_winner,
-                content_json,
-                cost,
-                tool_calls_json,
-                turn_number,
-                metadata_json,
-                timestamp,
-                node_type,
-                role,
-                model
-            FROM read_parquet('{DATA_DIR}/*.parquet')
-            WHERE session_id = '{session_id}'
-              AND sounding_index IS NOT NULL
-              AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
-            ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
-            """
-
-            with get_db_connection() as conn:
-                df = conn.execute(query).fetchdf()
+                # Update is_winner in the main dataframe
+                if live_winners and not df.empty:
+                    def update_winner(row):
+                        key = (row['phase_name'], row['sounding_index'], row['reforge_step'] if pd.notna(row['reforge_step']) else None)
+                        if key in live_winners:
+                            return True
+                        return row['is_winner']
+                    df['is_winner'] = df.apply(update_winner, axis=1)
+                    print(f"[API] Enhanced {session_id} with LiveStore is_winner data ({len(live_winners)} winners)")
 
         if df.empty:
             return jsonify({"phases": [], "winner_path": []})
+
+        # Debug: log available columns and sample data
+        print(f"[API] soundings-tree columns: {list(df.columns)}")
+        print(f"[API] Total rows from Parquet: {len(df)}")
+        if 'mutation_type' in df.columns:
+            mutation_types = df['mutation_type'].dropna().unique().tolist()
+            print(f"[API] mutation_type values in df: {mutation_types}")
+            # Show sample row with mutation
+            sample = df[df['mutation_type'].notna()].head(1)
+            if not sample.empty:
+                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['sounding_index']}, phase={sample.iloc[0]['phase_name']}, mutation={sample.iloc[0]['mutation_type']}")
+        if 'full_request_json' in df.columns:
+            has_full_request = df['full_request_json'].notna().sum()
+            print(f"[API] full_request_json non-null count: {has_full_request}/{len(df)}")
 
         # Group by phase
         phases_dict = {}
@@ -1960,7 +1979,11 @@ def get_soundings_tree(session_id):
                         'model': None,
                         'start_time': None,
                         'end_time': None,
-                        'duration': 0
+                        'duration': 0,
+                        'mutation_applied': None,
+                        'mutation_type': None,
+                        'mutation_template': None,
+                        'prompt': None
                     }
 
                 refinement = phases_dict[phase_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
@@ -1973,6 +1996,33 @@ def get_soundings_tree(session_id):
                 # Set model
                 if pd.notna(row['model']) and not refinement['model']:
                     refinement['model'] = row['model']
+
+                # Extract mutation data (take first non-null values)
+                if pd.notna(row.get('mutation_type')) and not refinement['mutation_type']:
+                    refinement['mutation_type'] = row['mutation_type']
+                if pd.notna(row.get('mutation_applied')) and not refinement['mutation_applied']:
+                    refinement['mutation_applied'] = row['mutation_applied']
+                if pd.notna(row.get('mutation_template')) and not refinement['mutation_template']:
+                    refinement['mutation_template'] = row['mutation_template']
+
+                # Extract prompt from full_request_json (take first non-null)
+                if pd.notna(row.get('full_request_json')) and not refinement['prompt']:
+                    try:
+                        full_request = json.loads(row['full_request_json'])
+                        messages = full_request.get('messages', [])
+                        # Get the system prompt (first system message)
+                        for msg in messages:
+                            if msg.get('role') == 'system':
+                                content = msg.get('content', '')
+                                if isinstance(content, str):
+                                    refinement['prompt'] = content
+                                elif isinstance(content, list):
+                                    # Handle multi-part content
+                                    text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
+                                    refinement['prompt'] = '\n'.join(text_parts)
+                                break
+                    except:
+                        pass
 
                 # Track timestamps
                 if pd.notna(row['timestamp']):
@@ -2058,7 +2108,11 @@ def get_soundings_tree(session_id):
                     'model': None,
                     'start_time': None,
                     'end_time': None,
-                    'duration': 0
+                    'duration': 0,
+                    'mutation_applied': None,
+                    'mutation_type': None,
+                    'mutation_template': None,
+                    'prompt': None
                 }
 
             sounding = phases_dict[phase_name]['soundings'][sounding_idx]
@@ -2089,6 +2143,37 @@ def get_soundings_tree(session_id):
             # Set model if we haven't already (take first non-null value)
             if pd.notna(row['model']) and not sounding['model']:
                 sounding['model'] = row['model']
+
+            # Extract mutation data (take first non-null values)
+            mutation_type_val = row.get('mutation_type')
+            if pd.notna(mutation_type_val) and not sounding['mutation_type']:
+                sounding['mutation_type'] = mutation_type_val
+                print(f"[API] Found mutation_type={mutation_type_val} for phase={phase_name}, sounding={sounding_idx}")
+            if pd.notna(row.get('mutation_applied')) and not sounding['mutation_applied']:
+                sounding['mutation_applied'] = row['mutation_applied']
+            if pd.notna(row.get('mutation_template')) and not sounding['mutation_template']:
+                sounding['mutation_template'] = row['mutation_template']
+
+            # Extract prompt from full_request_json (take first non-null)
+            full_req = row.get('full_request_json')
+            if pd.notna(full_req) and not sounding['prompt']:
+                print(f"[API] Found full_request_json for phase={phase_name}, sounding={sounding_idx}")
+                try:
+                    full_request = json.loads(full_req)
+                    messages = full_request.get('messages', [])
+                    # Get the system prompt (first system message)
+                    for msg in messages:
+                        if msg.get('role') == 'system':
+                            content = msg.get('content', '')
+                            if isinstance(content, str):
+                                sounding['prompt'] = content
+                            elif isinstance(content, list):
+                                # Handle multi-part content
+                                text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
+                                sounding['prompt'] = '\n'.join(text_parts)
+                            break
+                except:
+                    pass
 
             # Track timestamps for duration calculation
             if pd.notna(row['timestamp']):

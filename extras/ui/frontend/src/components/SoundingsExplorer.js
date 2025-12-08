@@ -6,6 +6,80 @@ import ParetoChart from './ParetoChart';
 import './SoundingsExplorer.css';
 
 /**
+ * MutationBadge - Shows which mutation strategy was used for a sounding/refinement
+ */
+function MutationBadge({ mutationType, mutationApplied, compact = false }) {
+  if (!mutationType) return null;
+
+  const config = {
+    'rewrite': { icon: 'mdi:auto-fix', color: '#c586c0', label: 'Rewritten', shortLabel: 'RW' },
+    'augment': { icon: 'mdi:text-box-plus', color: '#4ec9b0', label: 'Augmented', shortLabel: 'AUG' },
+    'approach': { icon: 'mdi:head-cog', color: '#dcdcaa', label: 'Approach', shortLabel: 'APR' },
+  };
+
+  const cfg = config[mutationType] || { icon: 'mdi:help', color: '#888', label: mutationType, shortLabel: '?' };
+
+  return (
+    <span
+      className="mutation-badge"
+      title={mutationApplied ? `${cfg.label}: ${mutationApplied.substring(0, 200)}...` : cfg.label}
+      style={{ background: cfg.color, color: '#1e1e1e' }}
+    >
+      <Icon icon={cfg.icon} width="12" />
+      {!compact && <span className="mutation-label">{cfg.label}</span>}
+    </span>
+  );
+}
+
+/**
+ * PromptViewer - Expandable section showing the prompt sent to the LLM
+ */
+function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!prompt) return null;
+
+  // Truncate for preview
+  const previewLength = 200;
+  const isLong = prompt.length > previewLength;
+  const previewText = isLong ? prompt.substring(0, previewLength) + '...' : prompt;
+
+  return (
+    <div className="prompt-viewer">
+      <div className="prompt-header" onClick={() => setExpanded(!expanded)}>
+        <Icon icon="mdi:message-text" width="16" />
+        <span>Prompt</span>
+        {mutationType && (
+          <MutationBadge mutationType={mutationType} mutationApplied={mutationApplied} />
+        )}
+        <Icon icon={expanded ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" className="expand-icon" />
+      </div>
+
+      {expanded ? (
+        <div className="prompt-content-full">
+          <ReactMarkdown>{prompt}</ReactMarkdown>
+
+          {mutationType === 'rewrite' && mutationTemplate && (
+            <div className="mutation-details">
+              <div className="mutation-details-header">
+                <Icon icon="mdi:auto-fix" width="14" />
+                <span>Rewrite Instruction</span>
+              </div>
+              <pre className="mutation-template">{mutationTemplate}</pre>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="prompt-preview" onClick={() => setExpanded(true)}>
+          {previewText}
+          {isLong && <span className="show-more">Click to expand</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * SoundingsExplorer Modal
  *
  * Full-screen visualization of all soundings across all phases in a cascade execution.
@@ -253,6 +327,13 @@ function SoundingsExplorer({ sessionId, onClose }) {
                             {isWinner && <Icon icon="mdi:trophy" width="16" className="trophy-icon" />}
                           </span>
                           <div className="header-right">
+                            {sounding.mutation_type && (
+                              <MutationBadge
+                                mutationType={sounding.mutation_type}
+                                mutationApplied={sounding.mutation_applied}
+                                compact={true}
+                              />
+                            )}
                             {sounding.model && (
                               <span className="model-badge" title={sounding.model}>
                                 {sounding.model.split('/').pop().substring(0, 15)}
@@ -333,7 +414,17 @@ function SoundingsExplorer({ sessionId, onClose }) {
                         {/* Expanded Detail */}
                         {isExpanded && (
                           <div className="expanded-detail">
-                            {/* Images Section - FIRST */}
+                            {/* Prompt Section - FIRST */}
+                            {sounding.prompt && (
+                              <PromptViewer
+                                prompt={sounding.prompt}
+                                mutationType={sounding.mutation_type}
+                                mutationApplied={sounding.mutation_applied}
+                                mutationTemplate={sounding.mutation_template}
+                              />
+                            )}
+
+                            {/* Images Section */}
                             {sounding.images && sounding.images.length > 0 && (
                               <div className="detail-section">
                                 <h4>Images ({sounding.images.length})</h4>
@@ -451,6 +542,13 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                           {isWinner && <Icon icon="mdi:trophy" width="14" className="trophy-icon" />}
                                         </span>
                                         <div className="header-right">
+                                          {refinement.mutation_type && (
+                                            <MutationBadge
+                                              mutationType={refinement.mutation_type}
+                                              mutationApplied={refinement.mutation_applied}
+                                              compact={true}
+                                            />
+                                          )}
                                           {refinement.model && (
                                             <span className="model-badge" title={refinement.model}>
                                               {refinement.model.split('/').pop().substring(0, 12)}
@@ -525,6 +623,16 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                       {/* Expanded Detail */}
                                       {isExpanded && (
                                         <div className="expanded-detail">
+                                          {/* Prompt Section - FIRST */}
+                                          {refinement.prompt && (
+                                            <PromptViewer
+                                              prompt={refinement.prompt}
+                                              mutationType={refinement.mutation_type}
+                                              mutationApplied={refinement.mutation_applied}
+                                              mutationTemplate={refinement.mutation_template}
+                                            />
+                                          )}
+
                                           {/* Images Section */}
                                           {refinement.images && refinement.images.length > 0 && (
                                             <div className="detail-section">
