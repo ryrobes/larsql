@@ -1,6 +1,6 @@
 {
   "cascade_id": "token_budget_demo",
-  "description": "Demonstrates token budget enforcement with context_ttl + sliding_window strategy",
+  "description": "Demonstrates token budget enforcement with sliding_window strategy",
   "inputs_schema": {
     "topic": "Topic to research and analyze"
   },
@@ -15,9 +15,6 @@
       "name": "research",
       "instructions": "Research {{ input.topic }} extensively. Use multiple searches to gather comprehensive information.",
       "tackle": ["sql_search"],
-      "context_ttl": {
-        "tool_results": 1
-      },
       "rules": {
         "max_turns": 5
       },
@@ -27,12 +24,14 @@
       "name": "analyze",
       "instructions": "Based on the research gathered, provide a detailed analysis of {{ input.topic }}. The context has been automatically pruned by token budget enforcement to stay within limits.",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "handoffs": ["summarize"]
     },
     {
       "name": "summarize",
       "instructions": "Summarize the key findings from the analysis in a concise format.",
-      "tackle": []
+      "tackle": [],
+      "context": {"from": ["all"]}
     }
   ]
 }

@@ -20,6 +20,9 @@
       "name": "develop_story",
       "instructions": "Continue the story from this opening: {{ outputs.draft_opening }}. Write 2-3 more paragraphs to develop the narrative.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "rules": {"max_turns": 2}
     }
   ]

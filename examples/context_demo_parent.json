@@ -11,6 +11,7 @@
       "name": "call_child",
       "instructions": "Calling child cascade with context inheritance.",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "soundings": {
         "factor": 3,
         "mutate": false,
@@ -29,6 +30,7 @@
       "name": "verify",
       "instructions": "Current State: {{ state }}. The child should have added 'child_status' to the state. Verify it.",
       "tackle": [],
+      "context": {"from": ["all"]},
       "rules": {"max_turns": 1}
     }
   ]

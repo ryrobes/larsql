@@ -19,16 +19,38 @@
   font-weight: 600;
   color: #2dd4bf !important;
   cursor: pointer;
+  overflow: visible !important;
 }
 
 .cascade-id-wrapper {
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 0;
+}
+
+.cascade-id-row {
+  display: flex;
   align-items: center;
   gap: 8px;
+  line-height: 1.3;
 }
 
 .cascade-id-text {
   flex: 1;
+}
+
+.cascade-file-path {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 400;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  line-height: 1.2;
 }
 
 .no-runs-badge {
@@ -59,6 +81,9 @@
 }
 
 .cost-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   font-family: 'Courier New', monospace;
   font-weight: 600;
   color: #d9a553 !important;
@@ -103,28 +128,11 @@
   color: #2dd4bf;
 }
 
-/* Actions cell */
-.actions-cell {
-  padding: 0 !important;
-}
-
-.view-btn {
-  background: transparent;
-  border: 1px solid #2dd4bf;
-  color: #2dd4bf;
-  padding: 6px 12px;
-  border-radius: 6px;
+/* Last run cell */
+.last-run-cell {
+  color: #94a3b8 !important;
   font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
   white-space: nowrap;
-}
-
-.view-btn:hover {
-  background: rgba(45, 212, 191, 0.1);
-  border-color: #2dd4bf;
-  transform: translateX(2px);
 }
 
 /* Custom styling for AG Grid cells (v33+ Theming API) */

@@ -12,6 +12,9 @@
       "name": "assessment",
       "instructions": "Assess the candidate based on their answers.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "rules": {"max_turns": 1},
       "handoffs": []
     }

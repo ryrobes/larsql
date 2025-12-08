@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Icon } from '@iconify/react';
 import './RunCascadeModal.css';
 
 function FreezeTestModal({ instance, onClose, onFreeze }) {
@@ -40,8 +41,8 @@ function FreezeTestModal({ instance, onClose, onFreeze }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>🧊 Freeze as Test Snapshot</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h2><Icon icon="mdi:snowflake" width="20" style={{ marginRight: '8px', color: '#60a5fa' }} />Freeze as Test Snapshot</h2>
+          <button className="modal-close" onClick={onClose}><Icon icon="mdi:close" width="20" /></button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -98,7 +99,7 @@ function FreezeTestModal({ instance, onClose, onFreeze }) {
 
             {error && (
               <div className="form-error">
-                <span className="error-icon">✗</span>
+                <span className="error-icon"><Icon icon="mdi:close-circle" width="16" /></span>
                 {error}
               </div>
             )}
@@ -118,7 +119,7 @@ function FreezeTestModal({ instance, onClose, onFreeze }) {
               className="button-primary"
               disabled={loading}
             >
-              {loading ? 'Freezing...' : '🧊 Freeze Test'}
+              {loading ? 'Freezing...' : <><Icon icon="mdi:snowflake" width="16" style={{ marginRight: '6px' }} />Freeze Test</>}
             </button>
           </div>
         </form>

@@ -20,6 +20,7 @@
       "name": "test_solution",
       "instructions": "Review the chosen solution and write test cases for it. Use the 'run_code' tool to verify it works correctly.\n\nOnce the code executes successfully with output, you're done. Don't continue explaining - the validator will check for success.",
       "tackle": ["run_code"],
+      "context": {"from": ["previous"]},
       "rules": {
         "max_turns": 1,
         "max_attempts": 5,

@@ -27,6 +27,7 @@
     "name": "summarize",
     "instructions": "Summarize the complete chart refinement process:\n\n## Initial Chart Analysis\n{{ state.validated_output }}\n\n## Refinement Journey\nDescribe how the analysis evolved through reforge iterations.\n\n## Final Recommendations\nList the top 5 most critical improvements identified.\n\nNote: All chart images have been saved to the images directory for review.",
     "tackle": [],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1},
     "handoffs": ["say_summary_summarize"]
   },
@@ -34,6 +35,7 @@
     "name": "say_summary_summarize",
     "instructions": "Use the `say` tool to speak to the user and give a VERY short summary of the findings.",
     "tackle": ["say"],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1}
   }
 ]

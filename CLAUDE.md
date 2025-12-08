@@ -1379,41 +1379,103 @@ Each sounding's validation result is logged:
 **Example Cascade:**
 - `examples/soundings_with_validator.json` - Code generation with execution validation
 
-### 2.16. Context Injection System - Selective Context Management
+### 2.16. Context System - Selective by Default
 
-The Context Injection System allows phases to **explicitly declare their context dependencies** rather than relying solely on the snowball architecture where all context accumulates.
+**Windlass uses a two-level context model:** selective between phases, automatic snowball within phases.
 
-**The Core Insight**: Data is already persisted (echo.history, images on disk). The snowball carries data in-memory that's already saved. With selective context, phases pull from persistence instead of accumulating everything.
+**The Philosophy**: Phases are encapsulation boundaries. Within a phase, context flows naturally. Between phases, context is explicitly configured.
 
-#### Mental Model
-
-| Model | Behavior | Use Case |
-|-------|----------|----------|
-| **Snowball** (default) | All prior context flows through | Chat, iterative refinement, debugging |
-| **Selective** | Only specified phases visible | Clean tasks, token efficiency, targeted analysis |
-| **Snowball + Inject** | Snowball plus reach-back to old phases | Add old artifacts to flowing context |
+#### Two-Level Context Model
 
 ```
-Snowball:     A → [A] → B → [A,B] → C → [A,B,C] → D
-Selective:    A runs → B pulls from A → C pulls from nothing → D pulls from A,C
-Inject:       A → [A] → B → [A,B] → C → [A,B + injected X] → D
+Cascade
+├── Phase A (clean slate - no context config)
+│   ├── Turn 0 ─────────────────┐
+│   ├── Turn 1 (sees turn 0) ───┤ ← Automatic snowball WITHIN phase
+│   └── Turn 2 (sees 0-1) ──────┘
+│
+├── Phase B (context: {from: ["previous"]})  ← EXPLICIT declaration BETWEEN phases
+│   ├── Turn 0 (sees Phase A output) ─┐
+│   └── Turn 1 (sees turn 0) ─────────┘ ← Automatic snowball continues
+│
+└── Phase C (context: {from: ["all"]})
+    └── ... sees everything from A and B
+```
+
+| Boundary | Context Behavior | Configuration |
+|----------|------------------|---------------|
+| **Between phases** | Selective by default | `context: {from: [...]}` - explicit declaration |
+| **Within a phase** | Automatic snowball | None needed - always accumulates |
+
+**Why this design?**
+
+1. **Phases encapsulate complexity**: All the messy iteration, tool calls, and refinement happen INSIDE a phase. Only the output matters to other phases.
+
+2. **Iterations need context**: When you set `max_turns: 5`, turn 3 MUST see turns 1-2 to refine. This happens automatically.
+
+3. **Phases need control**: You don't want Phase D accidentally drowning in 50K tokens from verbose debugging in Phase B. Explicit context declarations prevent this.
+
+**What accumulates within a phase (automatic):**
+- All turn outputs (user inputs, assistant responses)
+- All tool calls and results
+- All image injections
+- All retry messages (when `loop_until` fails)
+- All validation feedback
+
+**What crosses phase boundaries (only when declared):**
+- Final phase output (`include: ["output"]`)
+- Full message history (`include: ["messages"]`)
+- Generated images (`include: ["images"]`)
+- State variables (`include: ["state"]`)
+
+#### Inter-Phase Context Patterns
+
+| Pattern | Configuration | What Phase Sees |
+|---------|---------------|-----------------|
+| **Clean slate** (default) | No `context` field | Nothing from prior phases |
+| **Previous only** | `context: {from: ["previous"]}` | Most recently completed phase |
+| **All phases** | `context: {from: ["all"]}` | Everything (explicit snowball) |
+| **Specific phases** | `context: {from: ["phase_a", "phase_c"]}` | Only named phases |
+
+```
+No config:    A runs → B runs fresh → C runs fresh → D runs fresh
+Previous:     A runs → B sees A → C sees B → D sees C
+All:          A runs → B sees A → C sees A,B → D sees A,B,C
 ```
 
 #### Configuration
 
-**Selective Context (only sees specified phases):**
+**Phase with no context config = clean slate:**
 ```json
 {
-  "name": "final_analysis",
-  "instructions": "Analyze the chart...",
+  "name": "fresh_analysis",
+  "instructions": "Analyze this data independently"
+}
+```
+
+**Phase that needs previous phase:**
+```json
+{
+  "name": "build_on_previous",
+  "instructions": "Continue from where we left off",
   "context": {
-    "from": ["generate_chart", "validate_chart"],
-    "include_input": true
+    "from": ["previous"]
   }
 }
 ```
 
-**Detailed Configuration:**
+**Phase that needs all prior context (explicit snowball):**
+```json
+{
+  "name": "final_summary",
+  "instructions": "Summarize everything we've done",
+  "context": {
+    "from": ["all"]
+  }
+}
+```
+
+**Detailed Configuration with artifact filtering:**
 ```json
 {
   "name": "final_analysis",
@@ -1428,14 +1490,14 @@ Inject:       A → [A] → B → [A,B] → C → [A,B + injected X] → D
 }
 ```
 
-**Snowball + Inject (adds old context to snowball):**
+**Use exclude to skip phases from "all":**
 ```json
 {
-  "name": "compare",
-  "instructions": "Compare v1 and v2 side by side.",
-  "inject_from": [
-    {"phase": "generate_v1", "include": ["images"]}
-  ]
+  "name": "summary",
+  "context": {
+    "from": ["all"],
+    "exclude": ["verbose_debug", "intermediate_step"]
+  }
 }
 ```
 
@@ -1457,6 +1519,7 @@ Instead of hardcoding phase names, use keywords that resolve at runtime:
 
 | Keyword | Resolves To | Use Case |
 |---------|-------------|----------|
+| `"all"` | All completed phases | Final summaries, explicit snowball |
 | `"first"` | First phase that executed (`lineage[0]`) | Original problem statement |
 | `"previous"` / `"prev"` | Most recently completed phase (`lineage[-1]`) | What just happened |
 
@@ -1468,12 +1531,14 @@ Instead of hardcoding phase names, use keywords that resolve at runtime:
 // With sugar (cleaner, survives renames)
 {"context": {"from": ["first", "previous"]}}
 
-// Mix sugar with explicit names
-{"inject_from": ["first"]}  // Add original to snowball
+// All phases with exclusions
+{"context": {"from": ["all"], "exclude": ["debug_phase"]}}
 ```
 
 **Resolution Logic** (in `_resolve_phase_reference()`):
-- If `lineage` is empty (e.g., first phase), keywords resolve to `None` and are skipped
+- `"all"` returns list of all completed phase names from lineage
+- `"first"` returns first phase name, or None if lineage empty
+- `"previous"` returns last phase name, or None if lineage empty
 - Case-insensitive: `"First"`, `"FIRST"`, `"first"` all work
 - Non-keywords pass through as literal phase names
 
@@ -1523,15 +1588,20 @@ Phases 3-4 don't carry ~10K tokens of base64 image data.
 ```
 The synthesize phase sees full conversation history from both prior phases.
 
-**3. Iterative Refinement with Reach-Back:**
+**3. Compare Versions (all phases with selection):**
 ```json
 {
   "name": "compare",
   "instructions": "Compare v1 and v2 side by side.",
-  "inject_from": [{"phase": "generate_v1", "include": ["images"]}]
+  "context": {
+    "from": [
+      {"phase": "generate_v1", "include": ["images"]},
+      {"phase": "generate_v2", "include": ["images"]}
+    ]
+  }
 }
 ```
-The compare phase snowballs normally (sees critique and v2) but ALSO injects the v1 image.
+The compare phase sees images from both versions - nothing else.
 
 **4. Clean Slate with Input Only:**
 ```json
@@ -1545,24 +1615,28 @@ Phase sees ONLY the original cascade input - no prior phase context.
 
 #### Migration Guide
 
-**Existing Cascades:** No changes required. Absence of `context` field = snowball (unchanged behavior).
+**Existing Cascades (Legacy Snowball):**
+Old cascades without context configs now get clean slate per phase. Add explicit context to restore prior behavior:
 
-**Converting to Selective:**
 ```json
-// Before (snowball)
+// Before (implicit snowball - NO LONGER WORKS)
 {"name": "phase_c", "instructions": "Analyze..."}
 
-// After (selective)
+// After (explicit snowball)
 {"name": "phase_c", "instructions": "Analyze...",
- "context": {"from": ["generate_chart"]}}
+ "context": {"from": ["all"]}}
+
+// Or chain from previous (most common pattern)
+{"name": "phase_c", "instructions": "Analyze...",
+ "context": {"from": ["previous"]}}
 ```
 
 #### Logging & Observability
 
 All context injection events are logged with metadata:
-- `node_type: "context_injection"` - For selective context messages
-- `node_type: "inject_from"` - For injected messages in hybrid mode
-- `metadata.selective_context: true` or `metadata.inject_from: true`
+- `node_type: "context_injection"` - For context messages
+- `metadata.selective_context: true`
+- `metadata.context_from: [...]` - Which phases were requested
 
 Query injection events:
 ```bash
@@ -1572,7 +1646,7 @@ windlass sql "SELECT * FROM all_data WHERE node_type = 'context_injection'"
 **Example Cascades:**
 - `examples/context_selective_demo.json` - Selective context demonstration
 - `examples/context_messages_demo.json` - Message injection with full conversation replay
-- `examples/context_inject_demo.json` - Snowball + inject hybrid mode
+- `examples/context_sugar_demo.json` - Context keywords (first, previous, all)
 
 ### 3. Execution Flow (Runner)
 The core execution engine is in `windlass/runner.py` (`WindlassRunner` class).

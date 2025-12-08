@@ -229,8 +229,8 @@ function PhaseBar({ phase, maxCost, status = null, onClick }) {
                     <span className="source-badge" style={{background: isRunning ? '#D9A553' : '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
                       S{attempt.index}
                     </span>
-                    {isWinner && <span className="winner-icon" title="Winner">🏆</span>}
-                    {isRunning && <span className="running-icon" title="Running">⏳</span>}
+                    {isWinner && <span className="winner-icon" title="Winner"><Icon icon="mdi:trophy" width="14" style={{ color: '#fbbf24' }} /></span>}
+                    {isRunning && <span className="running-icon" title="Running"><Icon icon="mdi:progress-clock" width="14" style={{ color: '#fbbf24' }} /></span>}
                   </span>
                   <div className="individual-sounding-track">
                     <div
@@ -304,7 +304,7 @@ function ComplexityBadges({ phase }) {
     const winnerNum = phase.sounding_winner !== null ? phase.sounding_winner + 1 : '?';
     let badgeText = `${phase.sounding_total}→${winnerNum}`;
     if (phase.max_turns_actual > 1) {
-      badgeText += ` ⚖${phase.max_turns_actual}`;
+      badgeText += ` x${phase.max_turns_actual}`;
     }
     badges.push(
       <span key="soundings" className="complexity-badge soundings">

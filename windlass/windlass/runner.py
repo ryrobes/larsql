@@ -143,34 +143,6 @@ class WindlassRunner:
         else:
             self.memory_system = None
 
-    def _tag_message_with_ttl(self, message: dict, category: str, phase: 'PhaseConfig') -> dict:
-        """Tag a message with TTL metadata if context_ttl is configured."""
-        if not phase.context_ttl or category not in phase.context_ttl:
-            return message
-
-        ttl = phase.context_ttl.get(category)
-        if ttl is None:  # None means keep forever
-            return message
-
-        # Tag with expiry metadata
-        if "metadata" not in message:
-            message["metadata"] = {}
-
-        message["metadata"]["ttl"] = ttl
-        message["metadata"]["category"] = category
-        message["metadata"]["created_at_turn"] = self.current_turn_number or 0
-        message["metadata"]["expires_at_turn"] = (self.current_turn_number or 0) + ttl
-
-        return message
-
-    def _prune_expired_context(self, current_turn: int):
-        """Remove messages that have expired based on their TTL."""
-        self.context_messages = [
-            msg for msg in self.context_messages
-            if not msg.get("metadata", {}).get("expires_at_turn")
-            or msg["metadata"]["expires_at_turn"] > current_turn
-        ]
-
     def _save_to_memory(self, message: dict):
         """
         Save a message to the configured memory bank.
@@ -242,11 +214,12 @@ class WindlassRunner:
     # explicitly declare their context dependencies rather than relying solely
     # on the snowball architecture where all context accumulates.
 
-    def _resolve_phase_reference(self, ref: str) -> Optional[str]:
+    def _resolve_phase_reference(self, ref: str) -> Union[str, List[str], None]:
         """
         Resolve special phase reference keywords to actual phase names.
 
         Supported keywords:
+            - "all": All completed phases (explicit snowball)
             - "first": The first phase that executed (often contains original problem)
             - "previous" or "prev": The most recently completed phase
 
@@ -254,11 +227,23 @@ class WindlassRunner:
             ref: Phase name or special keyword
 
         Returns:
-            Resolved phase name, or None if keyword can't be resolved (e.g., "first" in first phase)
+            - For "all": List of all completed phase names
+            - For "first"/"previous": Single phase name string
+            - For literal names: The name unchanged
+            - None if keyword can't be resolved (e.g., "first" in first phase)
         """
         ref_lower = ref.lower()
 
-        if ref_lower == "first":
+        if ref_lower == "all":
+            if self.echo.lineage:
+                phases = [entry.get("phase") for entry in self.echo.lineage]
+                console.print(f"    [dim]Resolved 'all' → {phases}[/dim]")
+                return phases
+            else:
+                console.print(f"    [dim yellow]Cannot resolve 'all': no phases have completed yet[/dim yellow]")
+                return []  # Return empty list, not None (allows loop to work)
+
+        elif ref_lower == "first":
             if self.echo.lineage:
                 resolved = self.echo.lineage[0].get("phase")
                 console.print(f"    [dim]Resolved 'first' → '{resolved}'[/dim]")
@@ -518,11 +503,12 @@ class WindlassRunner:
 
         return messages
 
-    def _build_phase_context(self, phase: PhaseConfig, input_data: dict, trace: 'TraceNode') -> Optional[List[Dict]]:
+    def _build_phase_context(self, phase: PhaseConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
         """
         Build the context messages for a phase based on its context configuration.
 
-        This is the main entry point for the context injection system.
+        SELECTIVE-BY-DEFAULT: Phases without a context config get NO prior context (clean slate).
+        Use context.from: ["all"] for explicit snowball behavior.
 
         Args:
             phase: Phase configuration
@@ -530,51 +516,86 @@ class WindlassRunner:
             trace: Current trace node
 
         Returns:
-            List of context messages if selective mode, None for snowball mode
+            List of context messages (empty list for clean slate)
         """
-        # Case 1: Selective mode (context field present)
-        if phase.context:
-            console.print(f"  [bold cyan]📦 Building selective context...[/bold cyan]")
-            messages = []
+        # No context config = clean slate (selective-by-default)
+        if not phase.context:
+            console.print(f"  [dim]No context config → clean slate[/dim]")
+            return []
 
-            # Optionally include original input
-            if phase.context.include_input and input_data:
-                messages.append({
-                    "role": "user",
-                    "content": f"[Original Input]:\n{json.dumps(input_data, indent=2)}"
-                })
+        console.print(f"  [bold cyan]📦 Building context from config...[/bold cyan]")
+        messages = []
 
-            # Pull from each specified source (in order!)
-            for source in phase.context.from_:
-                source_config = self._normalize_source_config(source)
-                if source_config is None:
-                    # Reference couldn't be resolved (e.g., "first" in first phase)
+        # Optionally include original input
+        if phase.context.include_input and input_data:
+            messages.append({
+                "role": "user",
+                "content": f"[Original Input]:\n{json.dumps(input_data, indent=2)}"
+            })
+
+        # Get the exclude list for filtering
+        exclude_set = set(phase.context.exclude)
+
+        # Pull from each specified source (in order!)
+        for source in phase.context.from_:
+            # Handle string sources (may be keywords like "all", "first", "previous")
+            if isinstance(source, str):
+                resolved = self._resolve_phase_reference(source)
+
+                if resolved is None:
+                    # Keyword couldn't be resolved (e.g., "first" in first phase)
                     continue
-                injection_messages = self._build_injection_messages(source_config, trace)
-                messages.extend(injection_messages)
 
-            console.print(f"  [dim]Selective context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
-            return messages
-
-        # Case 2: Snowball + inject (inject_from field present)
-        elif phase.inject_from:
-            console.print(f"  [bold cyan]💉 Injecting additional context into snowball...[/bold cyan]")
-            injections = []
-
-            for source in phase.inject_from:
-                source_config = self._normalize_source_config(source)
-                if source_config is None:
-                    # Reference couldn't be resolved (e.g., "previous" in first phase)
+                if isinstance(resolved, list):
+                    # "all" returns a list of phase names
+                    for phase_name in resolved:
+                        if phase_name in exclude_set:
+                            console.print(f"    [dim]Excluding '{phase_name}'[/dim]")
+                            continue
+                        source_config = ContextSourceConfig(phase=phase_name)
+                        injection_messages = self._build_injection_messages(source_config, trace)
+                        messages.extend(injection_messages)
+                else:
+                    # Single phase name
+                    if resolved in exclude_set:
+                        console.print(f"    [dim]Excluding '{resolved}'[/dim]")
+                        continue
+                    source_config = ContextSourceConfig(phase=resolved)
+                    injection_messages = self._build_injection_messages(source_config, trace)
+                    messages.extend(injection_messages)
+            else:
+                # ContextSourceConfig object - resolve phase name if needed
+                resolved = self._resolve_phase_reference(source.phase)
+                if resolved is None:
                     continue
-                injection_messages = self._build_injection_messages(source_config, trace)
-                injections.extend(injection_messages)
+                if isinstance(resolved, list):
+                    # "all" in a ContextSourceConfig - apply the same config to all phases
+                    for phase_name in resolved:
+                        if phase_name in exclude_set:
+                            console.print(f"    [dim]Excluding '{phase_name}'[/dim]")
+                            continue
+                        source_config = ContextSourceConfig(
+                            phase=phase_name,
+                            include=source.include,
+                            images_filter=source.images_filter,
+                            images_count=source.images_count,
+                            messages_filter=source.messages_filter,
+                            as_role=source.as_role,
+                            condition=source.condition
+                        )
+                        injection_messages = self._build_injection_messages(source_config, trace)
+                        messages.extend(injection_messages)
+                else:
+                    if resolved in exclude_set:
+                        console.print(f"    [dim]Excluding '{resolved}'[/dim]")
+                        continue
+                    source_config = self._normalize_source_config(source)
+                    if source_config:
+                        injection_messages = self._build_injection_messages(source_config, trace)
+                        messages.extend(injection_messages)
 
-            console.print(f"  [dim]Injected {len(injections)} message(s) into snowball[/dim]")
-            # Return injections - these will be prepended to snowball
-            return injections  # Caller handles prepending to snowball
-
-        # Case 3: Pure snowball (default)
-        return None
+        console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
+        return messages
 
     def _update_graph(self):
         """Updates the mermaid graph in real-time."""
@@ -1213,27 +1234,7 @@ Refinement directive: {reforge_config.honing_prompt}
             }, trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
                metadata=phase_meta)
 
-            # Snapshot context length before phase (for context_retention pruning)
-            context_snapshot_length = len(self.context_messages)
-
             output_or_next_phase = self.execute_phase(phase, input_data, phase_trace, initial_injection=hook_result)
-
-            # Handle context_retention: prune phase history if output_only
-            if phase.context_retention == "output_only":
-                # Remove all messages added during this phase except the final assistant message
-                phase_messages = self.context_messages[context_snapshot_length:]
-
-                # Find the last assistant message from this phase
-                final_assistant_msg = None
-                for msg in reversed(phase_messages):
-                    if msg.get("role") == "assistant":
-                        final_assistant_msg = msg
-                        break
-
-                # Replace phase's messages with just the final assistant message
-                self.context_messages = self.context_messages[:context_snapshot_length]
-                if final_assistant_msg:
-                    self.context_messages.append(final_assistant_msg)
 
             # Log phase completion for UI visibility
             log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
@@ -3480,42 +3481,19 @@ Refinement directive: {reforge_config.honing_prompt}
             tools_schema.append(get_tool_schema(route_to_tool))
             tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
 
-        # ========== CONTEXT INJECTION SYSTEM ==========
-        # Check if this phase has selective context or inject_from configured
+        # ========== CONTEXT SYSTEM (SELECTIVE-BY-DEFAULT) ==========
+        # Build context fresh for each phase from config
+        # No config = clean slate (empty context)
+        # Use context.from: ["all"] for explicit snowball behavior
         context_result = self._build_phase_context(phase, input_data, trace)
 
-        # Handle selective context mode
-        if phase.context:
-            # Selective mode: Replace snowball with selective context
-            console.print(f"{indent}  [bold cyan]📦 Using selective context mode[/bold cyan]")
-
-            # Clear existing context and use selective messages
-            self.context_messages = []
-
-            # Add the selective context messages
-            for msg in (context_result or []):
-                ctx_trace = trace.create_child("msg", "context_injection")
-                self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
-                                     metadata={"selective_context": True})
-                self.context_messages.append(msg)
-
-        # Handle inject_from mode (snowball + injections)
-        elif phase.inject_from and context_result:
-            # Inject mode: Prepend injections to existing snowball
-            console.print(f"{indent}  [bold cyan]💉 Prepending injections to snowball[/bold cyan]")
-
-            # Create injection messages and prepend to context
-            injection_messages = []
-            for msg in context_result:
-                inject_trace = trace.create_child("msg", "inject_from")
-                self.echo.add_history(msg, trace_id=inject_trace.id, parent_id=trace.id, node_type="inject_from",
-                                     metadata={"inject_from": True})
-                injection_messages.append(msg)
-
-            # Prepend to context_messages
-            self.context_messages = injection_messages + self.context_messages
-
-        # Else: Pure snowball mode (default, no changes needed)
+        # Always use the built context (selective-by-default)
+        self.context_messages = []
+        for msg in context_result:
+            ctx_trace = trace.create_child("msg", "context_injection")
+            self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
+                                 metadata={"context_from": phase.context.from_ if phase.context else []})
+            self.context_messages.append(msg)
 
         # Construct context from lineage
         # Since we are snowballing context_messages, we don't need to add input_data as a separate user message.
@@ -3804,10 +3782,6 @@ Refinement directive: {reforge_config.honing_prompt}
             for i in range(max_turns):
                 # Track turn number
                 self.current_turn_number = i if max_turns > 1 else None
-
-                # Prune expired context based on TTL (context timebomb!)
-                if phase.context_ttl and i > 0:  # Don't prune on first turn
-                    self._prune_expired_context(i)
 
                 # Update phase progress for visualization
                 update_phase_progress(
@@ -4109,8 +4083,6 @@ Refinement directive: {reforge_config.honing_prompt}
                     # For prompt-based tools, the tool call JSON is already in content
                     if tool_calls and use_native:
                         assistant_msg["tool_calls"] = tool_calls
-                    # Tag with TTL if configured
-                    assistant_msg = self._tag_message_with_ttl(assistant_msg, "assistant", phase)
                     self.context_messages.append(assistant_msg)
 
                     # Add to Echo (global history)
@@ -4343,8 +4315,6 @@ Refinement directive: {reforge_config.honing_prompt}
                                 tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
                             else:
                                 tool_msg = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
-                            # Tag with TTL if configured
-                            tool_msg = self._tag_message_with_ttl(tool_msg, "tool_results", phase)
                             self.context_messages.append(tool_msg)
 
                             # DEBUG: Verify tool result was added
@@ -4355,11 +4325,9 @@ Refinement directive: {reforge_config.honing_prompt}
                             result_trace = tool_trace.create_child("msg", "tool_result")
                             self.echo.add_history(tool_msg, trace_id=result_trace.id, parent_id=tool_trace.id, node_type="tool_result",
                                                  metadata={"tool_name": func_name, "result": str(result)[:500]})
-                        
+
                             # Inject Image Message if present
                             if image_injection_message:
-                                # Tag with TTL if configured
-                                image_injection_message = self._tag_message_with_ttl(image_injection_message, "images", phase)
                                 self.context_messages.append(image_injection_message)
                                 img_trace = tool_trace.create_child("msg", "image_injection")
                                 self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection",

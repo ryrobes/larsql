@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Icon } from '@iconify/react';
 
 const API_BASE_URL = 'http://localhost:5001/api';
 
@@ -79,13 +80,13 @@ function RunCascadeModal({ isOpen, cascade, onClose, onCascadeStarted }) {
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{cascade.prefilled_inputs ? 'Re-run Cascade' : 'Run Cascade'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}><Icon icon="mdi:close" width="20" /></button>
         </div>
 
         <div className="modal-body">
           {error && (
             <div className="form-error">
-              <span className="error-icon">✗</span>
+              <span className="error-icon"><Icon icon="mdi:close-circle" width="16" /></span>
               {error}
             </div>
           )}

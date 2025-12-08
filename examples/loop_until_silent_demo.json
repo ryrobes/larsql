@@ -19,6 +19,7 @@
     {
       "name": "subjective_validation",
       "instructions": "Now write a creative, engaging summary of what you just explained. Make it interesting and readable for a general audience.",
+      "context": {"from": ["previous"]},
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,

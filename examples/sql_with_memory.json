@@ -14,7 +14,8 @@
     {
       "name": "generate_query",
       "instructions": "Based on the question: {{ input.question }}\n\nAnd any relevant examples from memory, generate an appropriate SQL query.\n\nIf you found similar queries in memory, explain how they informed your approach.",
-      "tackle": []
+      "tackle": [],
+      "context": {"from": ["previous"]}
     }
   ]
 }

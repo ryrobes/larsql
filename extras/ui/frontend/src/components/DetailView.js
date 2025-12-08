@@ -247,9 +247,9 @@ function DetailView({ sessionId, onBack, runningSessions = new Set(), finalizing
             onChange={e => setViewMode(e.target.value)}
             title="Filter message types"
           >
-            <option value="conversation">💬 Conversation</option>
-            <option value="all">📋 All Entries</option>
-            <option value="structural">⚙️ Structural</option>
+            <option value="conversation">Conversation</option>
+            <option value="all">All Entries</option>
+            <option value="structural">Structural</option>
           </select>
         </div>
       </div>

@@ -11,6 +11,7 @@
       "name": "analyze_phase",
       "instructions": "@examples/prompts/sentiment.j2",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "rules": {"max_turns": 1},
       "handoffs": []
     }

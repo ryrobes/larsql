@@ -30,18 +30,21 @@
     "name": "strategize",
     "instructions": "Based on the analysis, develop a strategic approach to address {{ input.business_challenge }}.\n\nInclude:\n1. Strategic goals (3-5 key objectives)\n2. Approach and methodology\n3. Success criteria\n4. Initial resource estimates\n\nRefinement context (if reforging):\n{{ input._refinement_context | default('') }}",
     "tackle": [],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1},
     "handoffs": ["risk_assessment"]
   }, {
     "name": "risk_assessment",
     "instructions": "Identify and analyze risks for the proposed strategy.\n\nProvide:\n1. Top 5 risks (with likelihood and impact)\n2. Mitigation strategies\n3. Contingency plans\n4. Early warning indicators\n\nRefinement context:\n{{ input._refinement_context | default('') }}",
     "tackle": [],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1},
     "handoffs": ["finalize_plan"]
   }, {
     "name": "finalize_plan",
     "instructions": "Synthesize the complete strategic plan.\n\nProvide an executive summary including:\n1. Vision statement\n2. Strategic goals\n3. Execution approach\n4. Risk overview\n5. Success metrics\n6. Timeline and milestones\n\nRefinement context:\n{{ input._refinement_context | default('') }}\n\nStore the final plan using set_state.",
     "tackle": ["set_state"],
+    "context": {"from": ["all"]},
     "rules": {"max_turns": 1}
   }]
 }

@@ -11,6 +11,9 @@
       "name": "call_child",
       "instructions": "Now we are delegating to a sub-routine.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "sub_cascades": [
         {"ref": "nested_child.json"}
       ],
@@ -20,6 +23,9 @@
       "name": "parent_finish",
       "instructions": "Thank the sub-routine and sign off.",
       "tackle": [],
+      "context": {
+        "from": ["all"]
+      },
       "handoffs": []
     }
   ]

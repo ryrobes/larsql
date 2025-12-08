@@ -204,7 +204,7 @@ class LiveSessionStore:
                     request_id: str = None,
                     session_id: str = None, phase_name: str = None,
                     sounding_index: int = None, cascade_id: str = None,
-                    turn_number: int = None):
+                    turn_number: int = None, model: str = None):
         """Update cost for existing entry or INSERT a cost record.
 
         First tries to UPDATE existing rows by trace_id.
@@ -233,6 +233,9 @@ class LiveSessionStore:
             if request_id is not None:
                 updates.append("request_id = ?")
                 values.append(request_id)
+            if model is not None:
+                updates.append("model = ?")
+                values.append(model)
 
             if not updates:
                 return False
@@ -275,6 +278,7 @@ class LiveSessionStore:
                         'tokens_out': tokens_out or 0,
                         'total_tokens': (tokens_in or 0) + (tokens_out or 0),
                         'request_id': request_id,
+                        'model': model,  # Include model for real-time model_costs tracking
                     })
 
                     return True
@@ -568,6 +572,7 @@ def process_event(event: Dict[str, Any]) -> bool:
             sounding_index=data.get('sounding_index'),
             cascade_id=data.get('cascade_id'),
             turn_number=data.get('turn_number'),
+            model=data.get('model'),  # Include model for real-time model_costs tracking
         )
         return success
 

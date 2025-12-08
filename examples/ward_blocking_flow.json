@@ -26,7 +26,10 @@
     "handoffs": ["publish"]
   }, {
     "name": "publish",
-    "instructions": "Content passed all safety and quality wards! ✅\n\nConfirm it's ready for publication.",
+    "instructions": "Content passed all safety and quality wards!\n\nConfirm it's ready for publication.",
+    "context": {
+      "from": ["previous"]
+    },
     "tackle": ["set_state"]
   }]
 }

@@ -101,9 +101,9 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
               onChange={e => setViewMode(e.target.value)}
               title="Filter message types"
             >
-              <option value="conversation">💬 Conversation ({conversationalCount})</option>
-              <option value="all">📋 All Entries ({entries.length})</option>
-              <option value="structural">⚙️ Structural ({structuralCount})</option>
+              <option value="conversation">Conversation ({conversationalCount})</option>
+              <option value="all">All Entries ({entries.length})</option>
+              <option value="structural">Structural ({structuralCount})</option>
             </select>
 
             {/* Structural toggle (only show in 'all' mode) */}

@@ -30,6 +30,7 @@
     "name": "finalize",
     "instructions": "The metrics have been refined through {{ phase_count | default(3) }} reforge steps! Provide a brief summary highlighting:\n- Top 3 metrics selected\n- Key visualization recommendations\n- Why this dashboard will be effective\n\nStore final metrics using set_state.",
     "tackle": ["set_state"],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1}
   }]
 }

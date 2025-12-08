@@ -18,6 +18,7 @@
       "instructions": "Based on the initial analysis, dive deeper into the most important aspects. Use appropriate tools to enhance your analysis.",
       "tackle": "manifest",
       "manifest_context": "full",
+      "context": {"from": ["previous"]},
       "rules": {"max_turns": 3},
       "handoffs": ["synthesize"]
     },
@@ -25,6 +26,7 @@
       "name": "synthesize",
       "instructions": "Synthesize all findings into a coherent summary with key insights and conclusions.",
       "tackle": [],
+      "context": {"from": ["all"]},
       "rules": {"max_turns": 2}
     }
   ]

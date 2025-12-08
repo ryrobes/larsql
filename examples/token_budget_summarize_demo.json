@@ -27,7 +27,8 @@
     {
       "name": "synthesize",
       "instructions": "Synthesize all research findings into a comprehensive report. Note that old tool results have been compressed into concise summaries to fit within token budget.",
-      "tackle": []
+      "tackle": [],
+      "context": {"from": ["previous"]}
     }
   ]
 }

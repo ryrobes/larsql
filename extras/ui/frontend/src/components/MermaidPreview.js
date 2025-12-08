@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import mermaid from 'mermaid';
+import { Icon } from '@iconify/react';
 import './MermaidPreview.css';
 
 // Initialize mermaid with cyberpunk/vaporwave theme
@@ -436,7 +437,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
                 setShowModal(false);
               }}
             >
-              ✕
+              <Icon icon="mdi:close" width="24" />
             </button>
             <div className="mermaid-modal-content">
               <MermaidPreview sessionId={sessionId} size="large" showMetadata={false} />

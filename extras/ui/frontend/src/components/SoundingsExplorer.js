@@ -327,7 +327,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
                         {/* Status Label */}
                         <div className="status-label">
-                          {isWinner ? '✓ Winner' : hasFailed ? '✗ Failed' : 'Not selected'}
+                          {isWinner ? <><Icon icon="mdi:check" width="14" /> Winner</> : hasFailed ? <><Icon icon="mdi:close" width="14" /> Failed</> : 'Not selected'}
                         </div>
 
                         {/* Expanded Detail */}
@@ -519,7 +519,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
                                       {/* Status Label */}
                                       <div className="status-label">
-                                        {isWinner ? '✓ Selected' : hasFailed ? '✗ Failed' : 'Not selected'}
+                                        {isWinner ? <><Icon icon="mdi:check" width="14" /> Selected</> : hasFailed ? <><Icon icon="mdi:close" width="14" /> Failed</> : 'Not selected'}
                                       </div>
 
                                       {/* Expanded Detail */}

@@ -25,6 +25,9 @@
   }, {
     "name": "write",
     "instructions": "Based on your outline, write the full article about {{ input.article_topic }}.\n\nMake it engaging and well-structured. Include the word 'important' naturally in the content.",
+    "context": {
+      "from": ["previous"]
+    },
     "wards": {
       "post": [{
         "validator": "content_safety",
@@ -41,12 +44,15 @@
     "rules": {
       "max_turns": 1,
       "max_attempts": 3,
-      "retry_instructions": "🛡️  Ward Validation:\n\n{{ validation_error }}\n\nPlease revise. Attempt {{ attempt }}/{{ max_attempts }}"
+      "retry_instructions": "Ward Validation:\n\n{{ validation_error }}\n\nPlease revise. Attempt {{ attempt }}/{{ max_attempts }}"
     },
     "handoffs": ["finalize"]
   }, {
     "name": "finalize",
-    "instructions": "Article passed all critical wards! 🎉\n\n✅ Safety: PASSED (blocking)\n✅ Keyword: PASSED (retry)\nℹ️  Grammar: Checked (advisory)\n\nProvide a brief summary of the final article.",
+    "instructions": "Article passed all critical wards!\n\nSafety: PASSED (blocking)\nKeyword: PASSED (retry)\nGrammar: Checked (advisory)\n\nProvide a brief summary of the final article.",
+    "context": {
+      "from": ["all"]
+    },
     "tackle": ["set_state"]
   }]
 }

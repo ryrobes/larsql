@@ -43,6 +43,7 @@
   }, {
     "name": "validate_semantics",
     "instructions": "The JSON structure is valid! Now verify the response makes sense:\n\nResponse code: {{ state.validated_output.code }}\nStatus: {{ state.validated_output.status }}\nMessage: {{ state.validated_output.message }}\n\nProvide brief confirmation that the API response is semantically correct (e.g., success status matches 2xx code).",
-    "tackle": ["set_state"]
+    "tackle": ["set_state"],
+    "context": {"from": ["previous"]}
   }]
 }

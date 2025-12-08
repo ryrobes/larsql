@@ -1,16 +1,12 @@
 {
   "cascade_id": "context_management_combo",
-  "description": "Demonstrates both context_retention (phase boundaries) + context_ttl (within-phase decay)",
+  "description": "Demonstrates selective context management across phases",
   "inputs_schema": {
     "topic": "What to search for"
   },
   "phases": [
     {
       "name": "research_with_ttl",
-      "context_ttl": {
-        "tool_results": 1
-      },
-      "context_retention": "output_only",
       "instructions": "Research {{ input.topic }} using sql_search.\n\nYou have 3 turns:\n- Turn 1: Search for tables\n- Turn 2: Analyze results (RAG explodes after this)\n- Turn 3: Make final decision with clean context\n\nState your final table choice clearly.",
       "tackle": ["sql_search"],
       "rules": {
@@ -22,12 +18,14 @@
       "name": "build_query",
       "instructions": "Based on what the previous phase found (you should only see the final decision, not the RAG dump), write a SQL query.\n\nWhat exactly do you see from the previous phase? Be specific about the context you have access to.",
       "tackle": ["sql_query"],
+      "context": {"from": ["previous"]},
       "handoffs": ["analyze"]
     },
     {
       "name": "analyze",
       "instructions": "Analyze the query results and provide insights. Confirm you have access to:\n1. Phase 1's final decision (NOT the RAG dump)\n2. Phase 2's query and results\n\nDescribe your full context visibility.",
-      "tackle": []
+      "tackle": [],
+      "context": {"from": ["all"]}
     }
   ]
 }

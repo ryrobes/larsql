@@ -61,6 +61,12 @@
   color: #2DD4BF;
 }
 
+.cascade-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .cascade-title {
   font-size: 1.25rem;
   font-weight: 700;
@@ -69,6 +75,13 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.cascade-file-path {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 400;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
 .header-center {
@@ -165,7 +178,7 @@
   border-radius: 12px;
   padding: 1.5rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 2rem;
   transition: all 0.2s ease;
   min-height: 120px;
@@ -174,8 +187,6 @@
 .instance-row:hover {
   border-color: #2DD4BF;
   background: rgba(45, 212, 191, 0.05);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.15);
 }
 
 /* Ghost instance indicator (no SQL data yet) */
@@ -698,6 +709,7 @@
   flex-direction: column;
   gap: 0.75rem;
   align-items: flex-end;
+  align-self: flex-start;
 }
 
 .metric {

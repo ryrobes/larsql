@@ -26,6 +26,7 @@
     "name": "finalize",
     "instructions": "Summarize the chart refinement process:\n- Original chart observations\n- Key improvements identified through reforge\n- Final recommendations\n\nThe images from the refinement process have been saved to the images directory and can be reviewed later.",
     "tackle": [],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1}
   }]
 }

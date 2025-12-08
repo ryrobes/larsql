@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { Icon } from '@iconify/react';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
@@ -217,13 +218,13 @@ function MessageFlowView({ onBack }) {
           {msg.cost > 0 && <span className="cost-badge">${msg.cost.toFixed(4)}</span>}
           {imageCount > 0 && (
             <span className="image-badge" title={`Total base64 size: ${(totalBase64Size / 1024).toFixed(1)}kb (~${Math.round(totalBase64Size / 4)} tokens)`}>
-              🖼️ {imageCount} image{imageCount > 1 ? 's' : ''}
+              <Icon icon="mdi:image" width="14" style={{ marginRight: '4px' }} />{imageCount} image{imageCount > 1 ? 's' : ''}
             </span>
           )}
-          {msg.is_winner && <span className="winner-badge">🏆 Winner</span>}
-          {isMostExpensive && <span className="most-expensive-badge">💰 Most Expensive</span>}
-          {hasFullRequest && <span className="full-request-badge">📨 {messageCount} msgs sent to LLM</span>}
-          {isExpandable && <span className="expand-hint">{isExpanded ? '▼ Click to collapse' : '▶ Click to expand'}</span>}
+          {msg.is_winner && <span className="winner-badge"><Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />Winner</span>}
+          {isMostExpensive && <span className="most-expensive-badge"><Icon icon="mdi:currency-usd" width="14" style={{ marginRight: '4px' }} />Most Expensive</span>}
+          {hasFullRequest && <span className="full-request-badge"><Icon icon="mdi:email-arrow-right" width="14" style={{ marginRight: '4px' }} />{messageCount} msgs sent to LLM</span>}
+          {isExpandable && <span className="expand-hint"><Icon icon={isExpanded ? "mdi:chevron-down" : "mdi:chevron-right"} width="14" style={{ marginRight: '4px' }} />{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>}
           {firstImageUrl && (
             <img
               src={firstImageUrl}
@@ -290,9 +291,9 @@ function MessageFlowView({ onBack }) {
                   <div key={i} className={`llm-message ${llmMsg.role}`}>
                     <div className="llm-message-header">
                       <span className="llm-role">[{i}] {llmMsg.role}</span>
-                      {msgImageCount > 0 && <span className="msg-image-badge">🖼️ {msgImageCount}</span>}
-                      {llmMsg.tool_calls && <span className="has-tools">🔧 Has tools</span>}
-                      {llmMsg.tool_call_id && <span className="has-tool-id">🔗 Tool ID</span>}
+                      {msgImageCount > 0 && <span className="msg-image-badge"><Icon icon="mdi:image" width="14" style={{ marginRight: '2px' }} />{msgImageCount}</span>}
+                      {llmMsg.tool_calls && <span className="has-tools"><Icon icon="mdi:wrench" width="14" style={{ marginRight: '4px' }} />Has tools</span>}
+                      {llmMsg.tool_call_id && <span className="has-tool-id"><Icon icon="mdi:link" width="14" style={{ marginRight: '4px' }} />Tool ID</span>}
                     </div>
                     <div className="llm-message-content">
                       {textContent}
@@ -317,7 +318,7 @@ function MessageFlowView({ onBack }) {
       <div className="controls">
         {onBack && (
           <button onClick={onBack} className="back-button">
-            ← Back
+            <Icon icon="mdi:arrow-left" width="16" style={{ marginRight: '4px' }} />Back
           </button>
         )}
 
@@ -330,7 +331,7 @@ function MessageFlowView({ onBack }) {
           >
             <span className="pulse-dot" style={{ display: runningSessions.some(s => s.status === 'running') ? 'inline-block' : 'none' }}></span>
             {runningSessions.length > 0 ? `${runningSessions.length} Active` : 'No Active'}
-            <span className="dropdown-arrow">{showSessionDropdown ? '▲' : '▼'}</span>
+            <span className="dropdown-arrow"><Icon icon={showSessionDropdown ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" /></span>
           </button>
 
           {showSessionDropdown && (
@@ -390,7 +391,7 @@ function MessageFlowView({ onBack }) {
                     onClick={() => setAutoRefresh(!autoRefresh)}
                     title={autoRefresh ? 'Auto-refresh ON (click to pause)' : 'Auto-refresh OFF (click to resume)'}
                   >
-                    {autoRefresh ? '⏸' : '▶'}
+                    <Icon icon={autoRefresh ? "mdi:pause" : "mdi:play"} width="14" />
                   </button>
                 </div>
               )}
@@ -408,7 +409,7 @@ function MessageFlowView({ onBack }) {
                 <span className="cost-detail">{data.cost_summary.messages_with_cost}/{data.total_messages} msgs tracked</span>
                 {data.cost_summary.most_expensive && (
                   <button onClick={scrollToMostExpensive} className="most-expensive-button" title="Jump to most expensive message">
-                    💰 Most Expensive: ${data.cost_summary.most_expensive.cost.toFixed(4)}
+                    <Icon icon="mdi:currency-usd" width="14" style={{ marginRight: '4px' }} />Most Expensive: ${data.cost_summary.most_expensive.cost.toFixed(4)}
                     {data.cost_summary.most_expensive.tokens_in > 0 && ` (${data.cost_summary.most_expensive.tokens_in.toLocaleString()} tokens)`}
                   </button>
                 )}
@@ -419,7 +420,7 @@ function MessageFlowView({ onBack }) {
           {/* Reforge Steps */}
           {data.reforge_steps.length > 0 && (
             <div className="reforge-section">
-              <h3>🔨 Reforge Steps</h3>
+              <h3><Icon icon="mdi:hammer" width="18" style={{ marginRight: '8px', color: '#c586c0' }} />Reforge Steps</h3>
               {data.reforge_steps.map((reforge) => (
                 <div key={reforge.step} className="reforge-step">
                   <h4>Reforge Step {reforge.step}</h4>
@@ -433,52 +434,13 @@ function MessageFlowView({ onBack }) {
             </div>
           )}
 
-          {/* Main Flow with Inline Soundings */}
+          {/* Main Flow with Inline Soundings - Grouped by Phase */}
           {data.main_flow.length > 0 && (
             <div className="main-flow-section">
-              <h3>📜 Canonical Timeline ({data.main_flow.length} messages)</h3>
+              <h3><Icon icon="mdi:format-list-bulleted-type" width="18" style={{ marginRight: '8px', color: '#60a5fa' }} />Canonical Timeline ({data.main_flow.length} messages)</h3>
               <p style={{color: '#858585', fontSize: '13px', marginTop: '-10px', marginBottom: '15px'}}>
-                This is the actual history the LLM sees. Soundings blocks show all parallel attempts before the winner continues.
+                This is the actual history the LLM sees. Messages are grouped by phase. Soundings blocks show all parallel attempts before the winner continues.
               </p>
-              {/* Debug info - remove after fixing */}
-              {console.log('[MessageFlow Debug]', {
-                soundings_by_phase: data.soundings_by_phase,
-                soundings: data.soundings,
-                main_flow_count: data.main_flow?.length,
-                main_flow_with_sounding: data.main_flow?.filter(m => m.sounding_index !== null && m.sounding_index !== undefined).length
-              })}
-
-              {/* Fallback: Show old-style soundings section if soundings_by_phase is empty but soundings exists */}
-              {(!data.soundings_by_phase || data.soundings_by_phase.length === 0) && data.soundings && data.soundings.length > 0 && (
-                <div className="inline-soundings-block" style={{marginBottom: '1.5rem'}}>
-                  <div className="inline-soundings-header">
-                    <span className="soundings-icon">🔱</span>
-                    <span className="soundings-phase-name">Soundings</span>
-                    <span className="soundings-count">{data.soundings.length} parallel attempts</span>
-                  </div>
-                  <div className="soundings-grid">
-                    {data.soundings.map((sounding) => (
-                      <div
-                        key={`fallback-${sounding.index}`}
-                        className={`sounding-branch ${sounding.is_winner ? 'winner-branch' : ''}`}
-                      >
-                        <div className="sounding-header">
-                          <h4>
-                            S{sounding.index}
-                            {sounding.is_winner && ' 🏆'}
-                          </h4>
-                          <span className="sounding-msg-count">{sounding.messages?.length || 0} msgs</span>
-                        </div>
-                        <div className="sounding-messages">
-                          {sounding.messages?.map((sMsg, si) =>
-                            renderMessage(sMsg, `fallback-sounding-${sounding.index}-${si}`, `S${sounding.index}.${si}`)
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="main-messages">
                 {(() => {
@@ -488,19 +450,75 @@ function MessageFlowView({ onBack }) {
                     data.soundings_by_phase.forEach(block => {
                       soundingsBlockMap[block.phase_name] = block;
                     });
-                    console.log('[MessageFlow] soundingsBlockMap:', soundingsBlockMap);
                   }
 
-                  // Track which phases we've already shown soundings for
+                  // Group messages by phase while maintaining order
+                  const phaseGroups = [];
+                  let currentPhase = null;
+                  let currentMessages = [];
+
+                  data.main_flow.forEach((msg, i) => {
+                    const phaseName = msg.phase_name || '_unknown_';
+
+                    if (phaseName !== currentPhase) {
+                      // Save the previous phase group
+                      if (currentPhase !== null && currentMessages.length > 0) {
+                        phaseGroups.push({
+                          phase_name: currentPhase,
+                          messages: currentMessages,
+                          hasSoundings: !!soundingsBlockMap[currentPhase]
+                        });
+                      }
+                      // Start new phase group
+                      currentPhase = phaseName;
+                      currentMessages = [];
+                    }
+
+                    currentMessages.push({ msg, index: i });
+                  });
+
+                  // Don't forget the last phase group
+                  if (currentPhase !== null && currentMessages.length > 0) {
+                    phaseGroups.push({
+                      phase_name: currentPhase,
+                      messages: currentMessages,
+                      hasSoundings: !!soundingsBlockMap[currentPhase]
+                    });
+                  }
+
+                  // Also check for soundings that might not have messages in main_flow
+                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
+                    data.soundings_by_phase.forEach(block => {
+                      const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+                      if (!existingGroup) {
+                        // Find the right position based on first_timestamp
+                        let insertIdx = phaseGroups.length;
+                        for (let i = 0; i < phaseGroups.length; i++) {
+                          const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
+                          if (block.first_timestamp < groupFirstTs) {
+                            insertIdx = i;
+                            break;
+                          }
+                        }
+                        phaseGroups.splice(insertIdx, 0, {
+                          phase_name: block.phase_name,
+                          messages: [],
+                          hasSoundings: true,
+                          soundingsOnly: true
+                        });
+                      }
+                    });
+                  }
+
+                  // Track which phases we've shown soundings for
                   const shownSoundingsPhases = new Set();
-                  const elements = [];
 
                   // Helper to render a soundings block
                   const renderSoundingsBlock = (block, phaseName) => (
                     <div key={`soundings-block-${phaseName}`} className="inline-soundings-block">
                       <div className="inline-soundings-header">
                         <span className="soundings-icon">🔱</span>
-                        <span className="soundings-phase-name">{phaseName}</span>
+                        <span className="soundings-phase-name">Soundings</span>
                         <span className="soundings-count">{block.soundings.length} parallel attempts</span>
                         {block.winner_index !== null && (
                           <span className="soundings-winner">Winner: S{block.winner_index}</span>
@@ -515,7 +533,7 @@ function MessageFlowView({ onBack }) {
                             <div className="sounding-header">
                               <h4>
                                 S{sounding.index}
-                                {sounding.is_winner && ' 🏆'}
+                                {sounding.is_winner && <Icon icon="mdi:trophy" width="14" style={{ marginLeft: '4px', color: '#fbbf24' }} />}
                               </h4>
                               <span className="sounding-msg-count">{sounding.messages.length} msgs</span>
                             </div>
@@ -532,7 +550,7 @@ function MessageFlowView({ onBack }) {
                       {block.evaluator && (
                         <div className="evaluator-section">
                           <div className="evaluator-header">
-                            <span className="evaluator-icon">⚖️</span>
+                            <span className="evaluator-icon"><Icon icon="mdi:scale-balance" width="16" /></span>
                             <span className="evaluator-label">Evaluation</span>
                             {block.evaluator.cost > 0 && (
                               <span className="evaluator-cost">${block.evaluator.cost.toFixed(4)}</span>
@@ -548,7 +566,7 @@ function MessageFlowView({ onBack }) {
                           </div>
                           {block.winner_index !== null && (
                             <div className="evaluator-result">
-                              <span className="winner-badge">🏆 Selected: Sounding {block.winner_index}</span>
+                              <span className="winner-badge"><Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />Selected: Sounding {block.winner_index}</span>
                             </div>
                           )}
                         </div>
@@ -556,43 +574,67 @@ function MessageFlowView({ onBack }) {
                     </div>
                   );
 
-                  data.main_flow.forEach((msg, i) => {
-                    // Check if this message is from a phase with soundings AND we haven't shown that block yet
-                    // Normalize phase_name to match backend's '_unknown_' fallback
-                    const phaseName = msg.phase_name || '_unknown_';
-                    const hasSoundings = soundingsBlockMap[phaseName];
-                    const blockNotShown = !shownSoundingsPhases.has(phaseName);
+                  // Render phase groups
+                  return phaseGroups.map((group, groupIdx) => {
+                    const phaseName = group.phase_name;
+                    const soundingsBlock = soundingsBlockMap[phaseName];
+                    const shouldShowSoundings = soundingsBlock && !shownSoundingsPhases.has(phaseName);
 
-                    // If this is a sounding message and we haven't shown the block, show it now
-                    if (hasSoundings && blockNotShown && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                    if (shouldShowSoundings) {
                       shownSoundingsPhases.add(phaseName);
-                      elements.push(renderSoundingsBlock(soundingsBlockMap[phaseName], phaseName));
                     }
 
-                    // Skip rendering individual messages that are part of a sounding block
-                    // (they're already shown inside the soundings block)
-                    if (hasSoundings && msg.sounding_index !== null && msg.sounding_index !== undefined) {
-                      return; // Skip - already displayed in soundings block
-                    }
+                    // Calculate phase stats (include main_flow messages + soundings + evaluator)
+                    let phaseCost = group.messages.reduce((sum, { msg }) => sum + (msg.cost || 0), 0);
+                    let phaseTokens = group.messages.reduce((sum, { msg }) => sum + (msg.tokens_in || 0), 0);
 
-                    // Render the main flow message (non-sounding messages only)
-                    elements.push(renderMessage(msg, `main-${i}`, `M${i}`));
-                  });
-
-                  // Fallback: Show any soundings blocks that weren't shown inline
-                  // (e.g., if winner messages didn't get into main_flow for some reason)
-                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
-                    data.soundings_by_phase.forEach(block => {
-                      const phaseName = block.phase_name;
-                      if (!shownSoundingsPhases.has(phaseName)) {
-                        console.log('[MessageFlow] Fallback showing block for phase:', phaseName);
-                        elements.push(renderSoundingsBlock(block, phaseName));
-                        shownSoundingsPhases.add(phaseName);
+                    // Add soundings costs if this phase has them
+                    if (soundingsBlock) {
+                      soundingsBlock.soundings.forEach(sounding => {
+                        sounding.messages.forEach(msg => {
+                          phaseCost += msg.cost || 0;
+                          phaseTokens += msg.tokens_in || 0;
+                        });
+                      });
+                      // Add evaluator cost
+                      if (soundingsBlock.evaluator) {
+                        phaseCost += soundingsBlock.evaluator.cost || 0;
+                        phaseTokens += soundingsBlock.evaluator.tokens_in || 0;
                       }
-                    });
-                  }
+                    }
 
-                  return elements;
+                    return (
+                      <div key={`phase-group-${phaseName}-${groupIdx}`} className="phase-group">
+                        <div className="phase-group-header">
+                          <span className="phase-group-icon"><Icon icon="mdi:map-marker" width="16" /></span>
+                          <span className="phase-group-name">{phaseName}</span>
+                          <span className="phase-group-stats">
+                            {group.messages.length} msg{group.messages.length !== 1 ? 's' : ''}
+                            {phaseCost > 0 && <span className="phase-cost">${phaseCost.toFixed(4)}</span>}
+                            {phaseTokens > 0 && <span className="phase-tokens">{phaseTokens.toLocaleString()} tokens</span>}
+                          </span>
+                          {group.hasSoundings && <span className="phase-soundings-badge">🔱 Soundings</span>}
+                        </div>
+                        <div className="phase-group-content">
+                          {/* Soundings block (if any) */}
+                          {shouldShowSoundings && renderSoundingsBlock(soundingsBlock, phaseName)}
+
+                          {/* Regular messages (skip sounding messages as they're in the block) */}
+                          {group.messages
+                            .filter(({ msg }) => {
+                              // Skip messages that are part of a sounding (already shown in soundings block)
+                              if (soundingsBlock && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                                return false;
+                              }
+                              return true;
+                            })
+                            .map(({ msg, index }) =>
+                              renderMessage(msg, `main-${index}`, `M${index}`)
+                            )}
+                        </div>
+                      </div>
+                    );
+                  });
                 })()}
               </div>
             </div>

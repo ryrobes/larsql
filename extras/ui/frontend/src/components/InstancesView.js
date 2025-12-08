@@ -259,10 +259,10 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
     if (isFinalizing) {
       stateClass = 'finalizing';
-      stateBadge = <span className="finalizing-badge">🔄 Processing...</span>;
+      stateBadge = <span className="finalizing-badge"><Icon icon="mdi:sync" width="14" className="spinning" style={{ marginRight: '4px' }} />Processing...</span>;
     } else if (hasRunning || isSessionRunning) {
       stateClass = 'running';
-      stateBadge = <span className="running-badge">⚡ Running</span>;
+      stateBadge = <span className="running-badge"><Icon icon="mdi:lightning-bolt" width="14" style={{ marginRight: '4px' }} />Running</span>;
     }
 
     return (
@@ -510,7 +510,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           <img src={windlassErrorImg} alt="" className="error-background-img" />
           <h2>Error Loading Instances</h2>
           <p>{error}</p>
-          <button onClick={onBack} className="back-button">← Back to Cascades</button>
+          <button onClick={onBack} className="back-button"><Icon icon="mdi:arrow-left" width="16" style={{ marginRight: '4px' }} />Back to Cascades</button>
         </div>
       </div>
     );
@@ -530,7 +530,12 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             style={{ cursor: 'pointer' }}
             title="Back to cascades"
           />
-          <span className="cascade-title">{cascadeId}</span>
+          <div className="cascade-title-block">
+            <span className="cascade-title">{cascadeId}</span>
+            {cascadeData?.cascade_file && (
+              <span className="cascade-file-path">{cascadeData.cascade_file}</span>
+            )}
+          </div>
         </div>
         <div className="header-center">
           <span className="header-stat">{instances.length} <span className="stat-dim">{instances.length === 1 ? 'instance' : 'instances'}</span></span>

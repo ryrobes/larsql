@@ -229,17 +229,30 @@ class ContextSourceConfig(BaseModel):
 
 class ContextConfig(BaseModel):
     """
-    Selective context configuration for a phase.
+    Context configuration for a phase (selective-by-default).
 
-    When present on a phase, enables selective context mode where only
-    specified phases are visible, rather than the default snowball
-    where all prior context accumulates.
+    Phases without a context config receive NO prior context (clean slate).
+    Use context.from to explicitly declare what context this phase needs.
+
+    Keywords:
+        - "all": All prior phases (explicit snowball)
+        - "first": First executed phase
+        - "previous" / "prev": Most recently completed phase
 
     Usage:
     {
         "context": {
-            "from": ["phase_a", "phase_b"],
+            "from": ["all"],  // Explicit snowball
             "include_input": true
+        }
+    }
+
+    Or selective:
+    {
+        "context": {
+            "from": ["first", "previous"],  // Only specific phases
+            "exclude": ["verbose_phase"],   // Skip these from "all"
+            "include_input": false
         }
     }
 
@@ -248,9 +261,8 @@ class ContextConfig(BaseModel):
         "context": {
             "from": [
                 "phase_a",
-                {"phase": "phase_b", "include": ["output"]}
-            ],
-            "include_input": true
+                {"phase": "phase_b", "include": ["messages"]}
+            ]
         }
     }
     """
@@ -258,6 +270,7 @@ class ContextConfig(BaseModel):
         default_factory=list,
         alias="from"
     )
+    exclude: List[str] = Field(default_factory=list)  # Phases to exclude (useful with "all")
     include_input: bool = True  # Include original cascade input
 
 class PhaseConfig(BaseModel):
@@ -275,13 +288,12 @@ class PhaseConfig(BaseModel):
     output_schema: Optional[Dict[str, Any]] = None
     wards: Optional[WardsConfig] = None
     rag: Optional[RagConfig] = None
-    context_retention: Literal["full", "output_only"] = "full"  # How much of this phase's context to keep in lineage
-    context_ttl: Optional[Dict[str, Optional[int]]] = None  # Time-to-live (in turns) for different message categories: tool_results, images, assistant
     output_extraction: Optional[OutputExtractionConfig] = None  # Extract structured content from output
 
-    # Context Injection System - Selective context management
-    context: Optional[ContextConfig] = None  # If present, enables selective mode (only specified phases visible)
-    inject_from: Optional[List[Union[str, ContextSourceConfig]]] = None  # Additive injection to snowball context
+    # Context System - Selective by default
+    # Phases without context config get clean slate (no prior context)
+    # Use context.from: ["all"] for explicit snowball behavior
+    context: Optional[ContextConfig] = None
 
 class CascadeConfig(BaseModel):
     cascade_id: str

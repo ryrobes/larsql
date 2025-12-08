@@ -315,6 +315,7 @@ class UnifiedLogger:
                 "cascade_id": row.get("cascade_id"),
                 "sounding_index": row.get("sounding_index"),
                 "turn_number": row.get("turn_number"),
+                "model": row.get("model"),  # Include model for real-time model_costs tracking
             }
 
             bus.publish(Event(

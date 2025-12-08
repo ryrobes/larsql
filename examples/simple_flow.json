@@ -11,6 +11,9 @@
       "name": "summarize",
       "instructions": "Summarize the ingested data concisely.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "rules": {"max_turns": 1},
       "handoffs": []
     }

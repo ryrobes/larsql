@@ -26,7 +26,10 @@
     "handoffs": ["done"]
   }, {
     "name": "done",
-    "instructions": "All post-wards passed! ✅\n\nSummarize what you did.",
+    "instructions": "All post-wards passed!\n\nSummarize what you did.",
+    "context": {
+      "from": ["previous"]
+    },
     "tackle": ["set_state"]
   }]
 }

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Icon } from '@iconify/react';
 import './Toast.css';
 
 function Toast({ message, type = 'success', onClose, duration = 5000 }) {
@@ -13,10 +14,10 @@ function Toast({ message, type = 'success', onClose, duration = 5000 }) {
   }, [duration, onClose]);
 
   const icons = {
-    success: '✓',
-    error: '✗',
-    info: 'ℹ',
-    warning: '⚠'
+    success: <Icon icon="mdi:check" width="18" />,
+    error: <Icon icon="mdi:close" width="18" />,
+    info: <Icon icon="mdi:information" width="18" />,
+    warning: <Icon icon="mdi:alert" width="18" />
   };
 
   return (
@@ -25,7 +26,7 @@ function Toast({ message, type = 'success', onClose, duration = 5000 }) {
       <div className="toast-content">
         <div className="toast-message">{message}</div>
       </div>
-      <button className="toast-close" onClick={onClose}>×</button>
+      <button className="toast-close" onClick={onClose}><Icon icon="mdi:close" width="16" /></button>
     </div>
   );
 }

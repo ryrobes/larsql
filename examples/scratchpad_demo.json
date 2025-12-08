@@ -15,19 +15,20 @@
         "required": true,
         "format": "text"
       },
-      "context_retention": "output_only",
       "handoffs": ["solve"]
     },
     {
       "name": "solve",
       "instructions": "Based on this reasoning:\n\n{{ state.reasoning }}\n\nGenerate a clean, polished solution to the problem. No scratchpad needed - just the final answer.",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "handoffs": ["verify"]
     },
     {
       "name": "verify",
-      "instructions": "Verify the solution is correct and complete. What do you see from the previous phases? Confirm you have:\n1. Access to the reasoning (scratchpad content)\n2. Access to the clean solution\n3. No messy thinking from phase 1 (thanks to context_retention)\n\nProvide your verification.",
-      "tackle": []
+      "instructions": "Verify the solution is correct and complete. What do you see from the previous phases? Confirm you have:\n1. Access to the reasoning (scratchpad content via state)\n2. Access to the clean solution\n\nProvide your verification.",
+      "tackle": [],
+      "context": {"from": ["all"]}
     }
   ]
 }

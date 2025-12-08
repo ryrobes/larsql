@@ -133,7 +133,7 @@ def detect_and_mark_orphaned_cascades():
         LEFT JOIN terminal_sessions t ON s.session_id = t.session_id
         JOIN session_last_activity la ON s.session_id = la.session_id
         WHERE t.session_id IS NULL
-          AND la.last_activity < (CURRENT_TIMESTAMP - INTERVAL '{threshold}' SECOND)
+          AND la.last_activity < (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) - {threshold})
         """.format(threshold=ORPHAN_THRESHOLD_SECONDS)
 
         orphaned = conn.execute(orphan_query).fetchall()
@@ -923,15 +923,15 @@ def get_cascade_definitions():
                       AND (parent_session_id IS NULL OR parent_session_id = '')
                     GROUP BY cascade_id, session_id
                 )
-                SELECT cascade_id, session_id
+                SELECT cascade_id, session_id, latest_time
                 FROM ranked_sessions
                 WHERE rn = 1
                 """
                 latest_results = conn.execute(latest_session_query).fetchall()
 
-                # Map cascade_id -> latest_session_id
-                for cascade_id, session_id in latest_results:
-                    latest_sessions_by_cascade[cascade_id] = session_id
+                # Map cascade_id -> (latest_session_id, latest_time)
+                for cascade_id, session_id, latest_time in latest_results:
+                    latest_sessions_by_cascade[cascade_id] = (session_id, latest_time)
             except Exception as e:
                 print(f"[ERROR] Batch latest sessions query failed: {e}")
 
@@ -957,8 +957,16 @@ def get_cascade_definitions():
 
                     # Get latest session from batch query
                     if cascade_id in latest_sessions_by_cascade:
-                        latest_session_id = latest_sessions_by_cascade[cascade_id]
+                        latest_session_id, latest_time = latest_sessions_by_cascade[cascade_id]
                         all_cascades[cascade_id]['latest_session_id'] = latest_session_id
+                        # Convert timestamp to ISO format for frontend
+                        if latest_time:
+                            try:
+                                all_cascades[cascade_id]['latest_run'] = datetime.fromtimestamp(latest_time).isoformat()
+                            except:
+                                all_cascades[cascade_id]['latest_run'] = None
+                        else:
+                            all_cascades[cascade_id]['latest_run'] = None
 
                         # Check for mermaid and graph files
                         mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")

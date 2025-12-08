@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from '@iconify/react';
 
 function LogsPanel({ logs }) {
   if (!logs || logs.length === 0) {
@@ -60,8 +61,8 @@ function LogsPanel({ logs }) {
               </span>
             )}
             {log.is_winner && (
-              <span style={{ color: '#4caf50', marginLeft: '0.5rem' }}>
-                ⭐ WINNER
+              <span style={{ color: '#4caf50', marginLeft: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <Icon icon="mdi:star" width="14" /> WINNER
               </span>
             )}
           </span>

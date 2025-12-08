@@ -18,6 +18,9 @@
       "name": "review",
       "instructions": "Review the work completed in the previous phase. Provide a brief summary of what was accomplished.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "rules": {"max_turns": 1}
     }
   ]

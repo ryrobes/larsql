@@ -1,6 +1,6 @@
 {
   "cascade_id": "context_inject_demo",
-  "description": "Tests inject_from - snowball mode with additional context injected from earlier phases",
+  "description": "Demonstrates selective context - each phase explicitly declares what prior context it needs",
   "phases": [
     {
       "name": "original_design",
@@ -10,19 +10,25 @@
     {
       "name": "feedback",
       "instructions": "Review the design and provide constructive feedback. Include the codeword FEEDBACK-F1 in your response. Then route to revision.",
+      "context": {
+        "from": ["previous"]
+      },
       "handoffs": ["revision"]
     },
     {
       "name": "revision",
       "instructions": "Based on the feedback, create a revised version of the logo. Include the codeword REVISION-R1 in your response. Then route to compare.",
+      "context": {
+        "from": ["previous"]
+      },
       "handoffs": ["compare"]
     },
     {
       "name": "compare",
-      "instructions": "You are in the compare phase. You should see:\n1. The snowball context (feedback + revision from recent phases)\n2. PLUS the original design from phase 1 (injected)\n\nCompare the original design (ORIGINAL-V1) with the revised version (REVISION-R1).\n\nIMPORTANT: You should see BOTH codewords ORIGINAL-V1 and REVISION-R1. If you only see one, the inject_from is not working correctly.",
-      "inject_from": [
-        {"phase": "original_design", "include": ["output"]}
-      ],
+      "instructions": "You are in the compare phase. You should see ALL prior context (all phases).\n\nCompare the original design (ORIGINAL-V1) with the revised version (REVISION-R1).\n\nIMPORTANT: You should see ALL codewords: ORIGINAL-V1, FEEDBACK-F1, and REVISION-R1.",
+      "context": {
+        "from": ["all"]
+      },
       "handoffs": []
     }
   ]

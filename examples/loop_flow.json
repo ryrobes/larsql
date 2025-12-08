@@ -11,6 +11,9 @@
       "name": "refine_joke",
       "instructions": "Take the concepts from the previous turn and write the best possible joke. Then critique it. Then rewrite it to be funnier.",
       "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
       "rules": {"max_turns": 3},
       "handoffs": []
     }

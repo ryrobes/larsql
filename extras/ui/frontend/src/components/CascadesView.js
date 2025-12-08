@@ -44,16 +44,18 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
 
-  // Recalculate layout when search query changes
+  // Recalculate layout when search query changes or view mode switches to tile
   useEffect(() => {
-    if (cascades.length > 0) {
+    if (cascades.length > 0 && viewMode === 'tile') {
       calculateLayout(filteredCascades);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, cascades]);
+  }, [searchQuery, cascades, viewMode]);
 
-  // Recalculate layout on window resize
+  // Recalculate layout on window resize (only in tile view)
   useEffect(() => {
+    if (viewMode !== 'tile') return;
+
     const handleResize = () => {
       if (filteredCascades.length > 0) {
         console.log('[RESIZE] Recalculating layout for new viewport width');
@@ -64,7 +66,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredCascades]);
+  }, [filteredCascades, viewMode]);
 
   // Fallback polling ONLY when SSE is disconnected (SSE events trigger refreshTrigger for real-time updates)
   useEffect(() => {
@@ -108,7 +110,10 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
       // Ensure data is an array
       if (Array.isArray(data)) {
         setCascades(data);
-        calculateLayout(data);
+        // Only calculate layout for tile view (mermaid rendering is expensive)
+        if (viewMode === 'tile') {
+          calculateLayout(data);
+        }
       } else {
         console.error('API returned non-array:', data);
         setCascades([]);
@@ -329,7 +334,11 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
           )}
           {onMessageFlow && (
             <button className="messageflow-btn" onClick={onMessageFlow} title="Message Flow - Debug message branching">
-              📨 Message Flow
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Message Flow
             </button>
           )}
           <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />

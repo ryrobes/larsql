@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
+import { Icon } from '@iconify/react';
 import './CascadeGridView.css';
 
 // Register AG Grid modules
@@ -69,13 +70,76 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     return `${mins}m ${secs}s`;
   };
 
+  // Format relative time (e.g., "2 days ago", "12 mins ago")
+  const formatRelativeTime = (isoDate) => {
+    if (!isoDate) return '—';
+
+    const now = new Date();
+    const then = new Date(isoDate);
+    const diffMs = now - then;
+
+    if (diffMs < 0) return 'just now';
+
+    const seconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const weeks = Math.floor(days / 7);
+    const months = Math.floor(days / 30);
+
+    // Round to most significant unit only
+    if (months > 0) {
+      return `${months} mo ago`;
+    } else if (weeks > 0) {
+      return `${weeks}w ago`;
+    } else if (days > 0) {
+      const remainingHours = hours % 24;
+      if (remainingHours > 0 && days < 7) {
+        return `${days}d ${remainingHours}h ago`;
+      }
+      return `${days}d ago`;
+    } else if (hours > 0) {
+      const remainingMins = minutes % 60;
+      if (remainingMins > 0 && hours < 12) {
+        return `${hours}h ${remainingMins}m ago`;
+      }
+      return `${hours}h ago`;
+    } else if (minutes > 0) {
+      return `${minutes}m ago`;
+    } else {
+      return 'just now';
+    }
+  };
+
+  // Helper to get relative path (strips common prefixes)
+  const getRelativePath = (fullPath) => {
+    if (!fullPath) return null;
+    // Try to find common directory markers and show path from there
+    const markers = ['/examples/', '/cascades/', '/tackle/', '/windlass/'];
+    for (const marker of markers) {
+      const idx = fullPath.lastIndexOf(marker);
+      if (idx !== -1) {
+        return fullPath.substring(idx + 1); // +1 to skip the leading slash
+      }
+    }
+    // Fallback: just show the filename
+    return fullPath.split('/').pop();
+  };
+
   // Custom cell renderers (React components)
   const CascadeIdRenderer = (props) => {
     const hasRuns = props.data.metrics?.run_count > 0;
+    const cascadeFile = props.data.cascade_file;
+    const relativePath = getRelativePath(cascadeFile);
     return (
       <div className="cascade-id-wrapper">
-        <span className="cascade-id-text">{props.value}</span>
-        {!hasRuns && <span className="no-runs-badge">No Runs</span>}
+        <div className="cascade-id-row">
+          <span className="cascade-id-text">{props.value}</span>
+          {!hasRuns && <span className="no-runs-badge">No Runs</span>}
+        </div>
+        {relativePath && (
+          <span className="cascade-file-path" title={cascadeFile}>{relativePath}</span>
+        )}
       </div>
     );
   };
@@ -90,33 +154,20 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
         <span className="phase-count">{props.value}</span>
         {soundingsCount > 0 && (
           <span className="phase-badge soundings" title="Soundings">
-            🧠 {soundingsCount}
+            <Icon icon="mdi:brain" width="14" style={{ marginRight: '4px' }} />{soundingsCount}
           </span>
         )}
         {reforgesCount > 0 && (
           <span className="phase-badge reforges" title="Reforges">
-            🔨 {reforgesCount}
+            <Icon icon="mdi:hammer" width="14" style={{ marginRight: '4px' }} />{reforgesCount}
           </span>
         )}
         {wardsCount > 0 && (
           <span className="phase-badge wards" title="Wards">
-            🛡️ {wardsCount}
+            <Icon icon="mdi:shield" width="14" style={{ marginRight: '4px' }} />{wardsCount}
           </span>
         )}
       </div>
-    );
-  };
-
-  const ActionButtonRenderer = (props) => {
-    const handleClick = (e) => {
-      e.stopPropagation();
-      onSelectCascade(props.data.cascade_id, props.data);
-    };
-
-    return (
-      <button className="view-btn" onClick={handleClick}>
-        View Details →
-      </button>
     );
   };
 
@@ -177,20 +228,26 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     {
       field: 'metrics.avg_duration_seconds',
       headerName: 'Avg Duration',
-      width: 130,
+      width: 110,
       cellClass: 'center-cell',
       valueFormatter: (params) => formatDuration(params.value)
     },
     {
-      field: 'actions',
-      headerName: '',
+      field: 'latest_run',
+      headerName: 'Last Run',
       width: 120,
-      sortable: false,
-      filter: false,
-      cellClass: 'actions-cell',
-      cellRenderer: ActionButtonRenderer
+      cellClass: 'center-cell last-run-cell',
+      valueFormatter: (params) => formatRelativeTime(params.value),
+      comparator: (valueA, valueB, nodeA, nodeB, isDescending) => {
+        // Sort by actual date, null values always at bottom regardless of sort direction
+        if (!valueA && !valueB) return 0;
+        if (!valueA) return isDescending ? 1 : -1;
+        if (!valueB) return isDescending ? -1 : 1;
+        return new Date(valueA) - new Date(valueB);
+      },
+      sort: 'desc'
     }
-  ], [onSelectCascade]);
+  ], []);
 
   // Default column settings
   const defaultColDef = useMemo(() => ({
@@ -206,19 +263,8 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     params.api.sizeColumnsToFit();
   };
 
-  // Handle cell clicks (for action buttons and row clicks)
+  // Handle cell clicks - clicking anywhere on the row opens it
   const onCellClicked = (event) => {
-    // Check if clicked element is the view button
-    if (event.event.target.classList.contains('view-btn')) {
-      const cascadeId = event.event.target.getAttribute('data-cascade-id');
-      const cascade = cascades.find(c => c.cascade_id === cascadeId);
-      if (cascade) {
-        onSelectCascade(cascade.cascade_id, cascade);
-      }
-      return;
-    }
-
-    // Otherwise, clicking anywhere on the row opens it
     if (event.data) {
       onSelectCascade(event.data.cascade_id, event.data);
     }
@@ -255,7 +301,7 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
           defaultColDef={defaultColDef}
           onGridReady={onGridReady}
           onCellClicked={onCellClicked}
-          rowHeight={60}
+          rowHeight={70}
           headerHeight={50}
           animateRows={true}
           getRowStyle={getRowStyle}

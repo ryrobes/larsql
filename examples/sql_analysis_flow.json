@@ -15,12 +15,18 @@
       "name": "write_query",
       "instructions": "Based on the schema information from the previous phase, write a SQL query to answer: {{ input.question }}\n\nUse the sql_query tool to execute your query.\n\nIMPORTANT Query Syntax:\n- CSV folders: SELECT * FROM connection_name.table_name\n- PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table\n- Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = 'California'\n\nThe schema info from the previous phase shows you:\n- Exact column names\n- Data types\n- Sample values (use these to understand the data format)\n- Value distributions (shows you what values exist in categorical columns)\n\nWrite a clear, efficient query based on this information.",
       "tackle": ["sql_query"],
+      "context": {
+        "from": ["previous"]
+      },
       "handoffs": ["analyze_results"]
     },
     {
       "name": "analyze_results",
       "instructions": "Analyze the query results from the previous phase and provide a clear answer to: {{ input.question }}\n\nSummarize:\n- Key findings from the data\n- Any interesting patterns or insights\n- Direct answer to the user's question\n\nBe specific and reference actual numbers from the results.",
-      "tackle": []
+      "tackle": [],
+      "context": {
+        "from": ["all"]
+      }
     }
   ]
 }

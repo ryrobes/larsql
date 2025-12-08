@@ -40,7 +40,7 @@ const renderAudioFromEntry = (entry, sessionId) => {
           Your browser does not support the audio element.
         </audio>
         <div style={{ fontSize: '0.85em', color: '#888', marginTop: '4px' }}>
-          🔊 {relPath}
+          <Icon icon="mdi:volume-high" width="14" style={{ marginRight: '4px' }} />{relPath}
         </div>
       </div>
     );
@@ -189,7 +189,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
       <div className="evaluation-content">
         <div className="evaluation-header">
           <Icon icon="mdi:scale-balance" width="20" />
-          <span className="evaluation-title">⚖️ Soundings Evaluator Decision</span>
+          <span className="evaluation-title"><Icon icon="mdi:scale-balance" width="16" style={{ marginRight: '4px' }} />Soundings Evaluator Decision</span>
         </div>
         <div className="evaluation-reasoning">
           {String(content)}
@@ -208,7 +208,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
         <div className="soundings-result-content">
           <div className="soundings-result-header">
             <Icon icon="mdi:trophy" width="20" />
-            <span className="result-title">🏆 Winner Selected</span>
+            <span className="result-title"><Icon icon="mdi:trophy" width="16" style={{ marginRight: '4px' }} />Winner Selected</span>
           </div>
           {winnerIndex !== undefined && (
             <div className="winner-info">
@@ -305,7 +305,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
             <span className="validator-name">{validatorName}</span>
             {isValid !== undefined && (
               <span className={`validation-status ${isValid ? 'passed' : 'failed'}`}>
-                {isValid ? '✓ PASSED' : '✗ FAILED'}
+                {isValid ? <><Icon icon="mdi:check" width="14" /> PASSED</> : <><Icon icon="mdi:close" width="14" /> FAILED</>}
               </span>
             )}
           </div>

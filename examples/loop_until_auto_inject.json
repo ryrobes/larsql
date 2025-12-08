@@ -19,6 +19,7 @@
     {
       "name": "custom_validation_goal",
       "instructions": "Now provide a summary of what you did in the previous phase.",
+      "context": {"from": ["previous"]},
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,

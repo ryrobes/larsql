@@ -841,40 +841,109 @@ return json.dumps({
 
 Result: Production-quality charts refined through visual feedback loops.
 
-### Context Injection (Selective & Hybrid Modes)
+### Context System (Selective by Default)
 
-**Take control of what each phase sees.** Instead of accumulating everything (snowball), explicitly declare context dependencies.
+**Windlass uses a two-level context model:** selective between phases, snowball within phases.
 
-**The Problem with Snowball:**
+#### The Two-Level Mental Model
+
 ```
-Phase A → Phase B → Phase C → Phase D
-                    ↓
-                  Phase D sees EVERYTHING
-                  (A + B + C = token explosion)
+Cascade
+├── Phase A (clean slate - no context config)
+│   ├── Turn 0 ─────────────────┐
+│   ├── Turn 1 (sees turn 0) ───┤ ← Automatic snowball WITHIN phase
+│   └── Turn 2 (sees 0-1) ──────┘
+│
+├── Phase B (context: {from: ["previous"]})  ← EXPLICIT declaration BETWEEN phases
+│   ├── Turn 0 (sees Phase A output) ─┐
+│   └── Turn 1 (sees turn 0) ─────────┘ ← Automatic snowball continues
+│
+└── Phase C (context: {from: ["all"]})
+    └── ... sees everything from A and B
 ```
 
-**With Context Injection:**
+**The key insight: Phases are encapsulation boundaries.**
+
+| Boundary | Context Behavior | Configuration |
+|----------|------------------|---------------|
+| **Between phases** | Selective by default | `context: {from: [...]}` - explicit declaration |
+| **Within a phase** | Automatic snowball | None needed - always accumulates |
+
+**Why this design?**
+
+1. **Phases encapsulate complexity**: All the messy iteration, tool calls, and refinement happen INSIDE a phase. Only the output matters to other phases.
+
+2. **Iterations need context**: When you set `max_turns: 5`, turn 3 MUST see turns 1-2 to refine. This happens automatically.
+
+3. **Phases need control**: You don't want Phase D accidentally drowning in 50K tokens from verbose debugging in Phase B. Explicit context declarations prevent this.
+
+**What accumulates within a phase:**
+- All turn outputs (user inputs, assistant responses)
+- All tool calls and results
+- All image injections
+- All retry messages (when `loop_until` fails)
+- All validation feedback
+
+**What crosses phase boundaries (only when declared):**
+- Final phase output (`include: ["output"]`)
+- Full message history (`include: ["messages"]`)
+- Generated images (`include: ["images"]`)
+- State variables (`include: ["state"]`)
+
+**The Philosophy:**
 ```
 Phase A → Phase B → Phase C → Phase D
                               ↓
-                            Phase D sees only what it needs
-                            (just A + C, skip B)
+                            Phase D sees ONLY what it declares
+                            (explicit is better than implicit)
 ```
 
-**Three Modes:**
+**Why selective-by-default for inter-phase?**
+- **Predictable**: You know exactly what each phase sees
+- **Efficient**: No accidental token bloat from accumulated context
+- **Debuggable**: Context issues are obvious in the cascade definition
+- **Explicit**: The cascade JSON tells the full story
 
-| Mode | When to Use | Token Impact |
-|------|-------------|--------------|
-| **Snowball** (default) | Sequential workflows where each step builds on the last | Full accumulation |
-| **Selective** | Fresh-start phases that only need specific prior context | Dramatic reduction |
-| **Snowball + Inject** | Recent context + cherry-picked old artifacts | Moderate reduction |
+#### Basic Usage
 
-**Shorthand Keywords:**
+**Phase with no context config = clean slate:**
+```json
+{
+  "name": "fresh_analysis",
+  "instructions": "Analyze this data independently"
+}
+```
+This phase sees NOTHING from prior phases.
+
+**Phase that needs previous phase:**
+```json
+{
+  "name": "build_on_previous",
+  "instructions": "Continue from where we left off",
+  "context": {
+    "from": ["previous"]
+  }
+}
+```
+
+**Phase that needs all prior context (explicit snowball):**
+```json
+{
+  "name": "final_summary",
+  "instructions": "Summarize everything we've done",
+  "context": {
+    "from": ["all"]
+  }
+}
+```
+
+#### Context Keywords
 
 | Keyword | Resolves To | Example Use Case |
 |---------|-------------|------------------|
-| `"first"` | First executed phase | Original problem statement, initial requirements |
-| `"previous"` / `"prev"` | Most recently completed phase | What just happened before this phase |
+| `"all"` | All completed phases | Final summaries, explicit snowball |
+| `"first"` | First executed phase | Original problem statement |
+| `"previous"` / `"prev"` | Most recently completed phase | Linear continuation |
 
 ```json
 {
@@ -884,98 +953,18 @@ Phase A → Phase B → Phase C → Phase D
 }
 ```
 
-This is equivalent to explicitly naming those phases, but cleaner and more maintainable.
+#### Exclude Filter
 
-#### Selective Mode: Fresh Start with Specific Context
-
-Use `context.from` to explicitly list which phases this phase can see:
+Use `exclude` with `"all"` to skip specific phases:
 
 ```json
 {
-  "name": "final_report",
-  "instructions": "Create final report from research and recommendations",
   "context": {
-    "from": ["research", "recommendations"],
-    "include_input": true
+    "from": ["all"],
+    "exclude": ["verbose_research", "debug_phase"]
   }
 }
 ```
-
-**What happens:**
-- Phase sees ONLY `research` and `recommendations` outputs
-- Completely ignores `draft`, `review`, `revisions` phases
-- Original input optionally included
-
-**Real-world example - Code Review Pipeline:**
-```json
-{
-  "phases": [
-    {"name": "analyze_code", "instructions": "Analyze the codebase structure..."},
-    {"name": "find_issues", "instructions": "Find bugs and security issues..."},
-    {"name": "suggest_fixes", "instructions": "Suggest fixes for each issue..."},
-    {
-      "name": "executive_summary",
-      "instructions": "Write executive summary for non-technical stakeholders",
-      "context": {
-        "from": ["find_issues"],
-        "include_input": false
-      }
-    }
-  ]
-}
-```
-
-The executive summary phase only sees the issues list - not the raw code analysis or detailed fix suggestions. Clean, focused context.
-
-#### Inject Mode: Snowball + Cherry-Picked Additions
-
-Use `inject_from` to add specific old context ON TOP of normal snowball:
-
-```json
-{
-  "name": "compare_versions",
-  "instructions": "Compare the original design with the final revision",
-  "inject_from": [
-    {"phase": "original_design", "include": ["output"]}
-  ]
-}
-```
-
-**What happens:**
-- Normal snowball context (recent phases) included
-- PLUS the original design output prepended
-- Perfect for "compare before/after" patterns
-
-**Real-world example - Design Iteration:**
-```json
-{
-  "phases": [
-    {"name": "original_design", "instructions": "Create initial logo design..."},
-    {"name": "feedback", "instructions": "Provide design feedback..."},
-    {"name": "revision", "instructions": "Revise based on feedback..."},
-    {
-      "name": "compare",
-      "instructions": "Compare original vs revised design. Which is better?",
-      "inject_from": [
-        {"phase": "original_design", "include": ["output"]}
-      ]
-    }
-  ]
-}
-```
-
-By the `compare` phase, snowball only has `feedback` + `revision`. But we NEED the original to compare! `inject_from` brings it back.
-
-**With sugar (cleaner):**
-```json
-{
-  "name": "compare",
-  "instructions": "Compare original vs revised design",
-  "inject_from": ["first"]
-}
-```
-
-`"first"` resolves to `"original_design"` at runtime. Works even if you rename phases later!
 
 #### Fine-Grained Control
 
@@ -994,7 +983,7 @@ By the `compare` phase, snowball only has `feedback` + `revision`. But we NEED t
 
 **Artifact types:**
 - `output` - Final assistant response from that phase
-- `messages` - Full conversation history (all turns, tool calls, reasoning)
+- `messages` - Full conversation history (all turns, tool calls)
 - `images` - Any images generated during that phase
 - `state` - State variables set during that phase
 
@@ -1020,20 +1009,57 @@ Filters: `all` (default), `assistant_only`, `last_turn`
 
 Filters: `all` (default), `last`, `last_n`
 
-#### Practical Example: Report Pipeline with Sugar
+#### Practical Example: Story Writing Pipeline
 
 ```json
 {
   "phases": [
-    {"name": "gather_requirements", "instructions": "Gather user requirements..."},
-    {"name": "research", "instructions": "Research solutions..."},
-    {"name": "draft", "instructions": "Draft detailed technical spec..."},
-    {"name": "review", "instructions": "Review and suggest improvements..."},
+    {
+      "name": "opening",
+      "instructions": "Write an engaging opening paragraph..."
+    },
+    {
+      "name": "rising_action",
+      "instructions": "Build tension with 2-3 paragraphs...",
+      "context": {"from": ["previous"]}
+    },
+    {
+      "name": "climax",
+      "instructions": "Write the climactic moment...",
+      "context": {"from": ["all"]}
+    },
+    {
+      "name": "resolution",
+      "instructions": "Conclude the story...",
+      "context": {"from": ["all"]}
+    }
+  ]
+}
+```
+
+Each phase explicitly declares its context needs. No guessing.
+
+#### Practical Example: Code Review Pipeline
+
+```json
+{
+  "phases": [
+    {"name": "analyze_code", "instructions": "Analyze the codebase structure..."},
+    {
+      "name": "find_issues",
+      "instructions": "Find bugs and security issues...",
+      "context": {"from": ["previous"]}
+    },
+    {
+      "name": "suggest_fixes",
+      "instructions": "Suggest fixes for each issue...",
+      "context": {"from": ["previous"]}
+    },
     {
       "name": "executive_summary",
-      "instructions": "Write executive summary for stakeholders",
+      "instructions": "Write executive summary for non-technical stakeholders",
       "context": {
-        "from": ["first", "previous"],
+        "from": ["find_issues"],
         "include_input": false
       }
     }
@@ -1041,136 +1067,43 @@ Filters: `all` (default), `last`, `last_n`
 }
 ```
 
-The `executive_summary` phase sees:
-- **`"first"`** → `gather_requirements` (the original ask)
-- **`"previous"`** → `review` (the final feedback)
+The executive summary phase only sees the issues list - not the raw code analysis or detailed fix suggestions. Clean, focused context.
 
-It skips `research` and `draft` entirely - no 50KB technical spec bloating the context!
-
-#### Comparison: When to Use What
+#### Comparison with Phase Name and Keywords
 
 | Pattern | Use Case | Configuration |
 |---------|----------|---------------|
-| **Default snowball** | Linear workflows | No context config |
-| **Selective (skip middle)** | Fresh analysis of specific phases | `context: {from: [...]}` |
-| **Inject (add old context)** | Before/after comparisons | `inject_from: [...]` |
-| **Messages replay** | Analyze reasoning, not just output | `include: ["messages"]` |
-| **Images only** | Visual-focused phases | `include: ["images"]` |
-| **Sugar keywords** | Cleaner configs, robust to renames | `"first"`, `"previous"` |
+| **Clean slate** | Independent analysis | No context config |
+| **Previous only** | Linear workflows | `context: {from: ["previous"]}` |
+| **All phases** | Summaries, final reviews | `context: {from: ["all"]}` |
+| **All minus some** | Skip verbose phases | `context: {from: ["all"], exclude: [...]}` |
+| **First + previous** | Original ask + latest work | `context: {from: ["first", "previous"]}` |
+| **Specific phases** | Cherry-picked context | `context: {from: ["phase_a", "phase_c"]}` |
 
-#### Migration from Snowball
+#### Migration from Legacy Snowball
 
-**Before (snowball, no control):**
+If you have old cascades that relied on implicit snowball, add explicit context:
+
+**Before (implicit snowball):**
 ```json
 {
   "name": "phase_d",
   "instructions": "Summarize findings"
 }
 ```
-Phase D sees everything (A + B + C).
 
-**After (selective, explicit):**
+**After (explicit context):**
 ```json
 {
   "name": "phase_d",
   "instructions": "Summarize findings",
   "context": {
-    "from": ["phase_a", "phase_c"],
-    "include_input": false
+    "from": ["all"]
   }
 }
 ```
-Phase D sees only A + C. Explicit, predictable, efficient.
 
-**Key insight:** Snowball is great for exploration. Selective is great for production. Mix them in the same cascade as needed.
-
-### Context Management (TTL & Retention)
-
-Control what context persists and for how long - critical for preventing token bloat in multi-turn RAG workflows.
-
-#### Context TTL (Time-to-Live)
-
-Set expiration times for different message categories **within a phase**:
-
-```json
-{
-  "name": "research_with_rag",
-  "tackle": ["sql_search"],
-  "context_ttl": {
-    "tool_results": 1,
-    "images": 2,
-    "assistant": null
-  },
-  "rules": {"max_turns": 5}
-}
-```
-
-**How it works:**
-- Turn 1: Agent calls `sql_search` → Gets 10KB RAG dump
-- Turn 2: Agent analyzes results (RAG still visible)
-- Turn 3: **💥 RAG dump expires!** Agent only sees its own analysis
-- Turn 4-5: Agent refines with clean context
-
-**Categories:**
-- `tool_results` - RAG dumps, SQL results, API responses
-- `images` - Screenshots, charts, visual data
-- `assistant` - Agent's own messages
-
-**TTL values:**
-- `1` = Expires after 1 turn
-- `2` = Expires after 2 turns
-- `null` = Keep forever (or omit)
-
-#### Context Retention
-
-Control what crosses **phase boundaries**:
-
-```json
-{
-  "name": "discover_schema",
-  "context_retention": "output_only",
-  "tackle": ["sql_search"]
-}
-```
-
-**Options:**
-- `"full"` (default): Everything carries forward (tool calls, RAG dumps, all turns)
-- `"output_only"`: Only the final assistant message crosses to next phase
-
-**Before (no retention control):**
-```
-Phase 1: RAG search → 10KB dump stays forever
-Phase 2: Sees 10KB dump + does its work
-Phase 3: Sees 10KB dump + Phase 2 work + does its work
-```
-
-**After (output_only):**
-```
-Phase 1: RAG search → Only "Use sales_data table" crosses
-Phase 2: Sees clean decision (100 bytes)
-Phase 3: Sees Phase 1 + 2 summaries (not the bloat)
-```
-
-#### The Power Combo
-
-Use both together for maximum efficiency:
-
-```json
-{
-  "name": "refine_query",
-  "context_ttl": {"tool_results": 1},
-  "context_retention": "output_only",
-  "tackle": ["sql_search"],
-  "rules": {"max_turns": 5}
-}
-```
-
-**Result:**
-- Within phase: RAG explodes after 1 turn (TTL)
-- Phase boundary: Only final query crosses (retention)
-- Next phase: Sees polished output, not 50KB of RAG + intermediate reasoning
-
-**Token savings: 60-70% in multi-turn RAG workflows**
+**Key insight:** Explicit context = predictable behavior = fewer surprises in production
 
 ### Manifest (Dynamic Tool Selection)
 
@@ -1764,11 +1697,11 @@ Windlass includes three production-grade patterns from "the big boys" that preve
 - ✅ No more "context too long" crashes
 - ✅ Transparent token tracking (warnings at 80%)
 - ✅ Automatic pruning before every agent call
-- ✅ Works with `context_ttl` and `context_retention`
+- ✅ Works with selective context system
 
 **Example:** `examples/token_budget_demo.json`
 
-**Layered approach (recommended):**
+**Example:**
 ```json
 {
   "token_budget": {
@@ -1777,8 +1710,11 @@ Windlass includes three production-grade patterns from "the big boys" that preve
   },
   "phases": [{
     "name": "research",
-    "context_ttl": {"tool_results": 1},
-    "context_retention": "output_only"
+    "tackle": ["sql_search"],
+    "handoffs": ["analyze"]
+  }, {
+    "name": "analyze",
+    "context": {"from": ["previous"]}
   }]
 }
 ```
@@ -1853,10 +1789,11 @@ Total: 10K tokens, 1 RAG query
       "required": true,
       "format": "text"
     },
-    "context_retention": "output_only"
+    "handoffs": ["solve"]
   }, {
     "name": "solve",
-    "instructions": "Reasoning: {{ state.reasoning }}\n\nGenerate clean solution."
+    "instructions": "Reasoning: {{ state.reasoning }}\n\nGenerate clean solution.",
+    "context": {"from": ["previous"]}
   }]
 }
 ```
@@ -1914,12 +1851,15 @@ Total: 10K tokens, 1 RAG query
     }
   },
   "phases": [{
+    "name": "research",
     "output_extraction": {
       "pattern": "<ideas>(.*?)</ideas>",
       "store_as": "research_angles"
     },
-    "context_ttl": {"tool_results": 1},
-    "context_retention": "output_only"
+    "handoffs": ["develop"]
+  }, {
+    "name": "develop",
+    "context": {"from": ["previous"]}
   }]
 }
 ```
@@ -1928,6 +1868,7 @@ Total: 10K tokens, 1 RAG query
 - Token budget prevents explosion
 - Tool caching avoids redundant work
 - Extraction provides clean handoffs
+- Selective context keeps things focused
 - Everything composes beautifully!
 
 ---

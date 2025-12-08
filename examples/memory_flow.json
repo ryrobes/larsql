@@ -11,6 +11,7 @@
       "name": "phase2",
       "instructions": "What is the user's name? Answer only with the name.",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "rules": {"max_turns": 1}
     }
   ]

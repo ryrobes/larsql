@@ -19,12 +19,14 @@
     "name": "solve",
     "instructions": "Based on your analysis, provide a complete solution to: {{ input.problem }}\n\nBe thorough and creative. Different approaches are encouraged!",
     "tackle": [],
+    "context": {"from": ["previous"]},
     "rules": {"max_turns": 1},
     "handoffs": ["validate"]
   }, {
     "name": "validate",
     "instructions": "Review your solution and validate it works correctly.\n\nProvide:\n1. A summary of your approach\n2. Why this solution works\n3. Any potential edge cases or limitations\n\nStore your final validated solution using set_state.",
     "tackle": ["set_state"],
+    "context": {"from": ["all"]},
     "rules": {"max_turns": 1}
   }]
 }

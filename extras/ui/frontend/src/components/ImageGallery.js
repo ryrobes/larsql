@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from '@iconify/react';
 import './ImageGallery.css';
 
 /**
@@ -182,7 +183,7 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
                             loading="lazy"
                           />
                           {isReforgeWinner && (
-                            <div className="winner-overlay" title="Winning reforge attempt">🏆</div>
+                            <div className="winner-overlay" title="Winning reforge attempt"><Icon icon="mdi:trophy" width="16" /></div>
                           )}
                         </div>
                       );
@@ -199,7 +200,7 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
       {selectedImage && createPortal(
         <div className="image-modal-overlay" onClick={handleCloseModal}>
           <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="image-modal-close" onClick={handleCloseModal}>×</button>
+            <button className="image-modal-close" onClick={handleCloseModal}><Icon icon="mdi:close" width="20" /></button>
             <img
               src={`http://localhost:5001${selectedImage.url}`}
               alt={selectedImage.filename}

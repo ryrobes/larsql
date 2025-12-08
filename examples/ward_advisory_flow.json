@@ -23,6 +23,9 @@
   }, {
     "name": "review",
     "instructions": "Draft complete (wards were advisory, so we continued even with issues).\n\nReview what you wrote and note any improvements that could be made based on the ward feedback.",
+    "context": {
+      "from": ["previous"]
+    },
     "tackle": ["set_state"]
   }]
 }

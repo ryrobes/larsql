@@ -31,13 +31,13 @@
         "store_as": "research_angles",
         "required": true
       },
-      "context_retention": "output_only",
       "handoffs": ["research"]
     },
     {
       "name": "research",
       "instructions": "Research angles:\n{{ state.research_angles }}\n\nExecute searches for {{ input.research_topic }}. Search multiple times to see caching in action.",
       "tackle": ["sql_search"],
+      "context": {"from": ["previous"]},
       "rules": {
         "max_turns": 4
       },
@@ -47,6 +47,7 @@
       "name": "analyze",
       "instructions": "Analyze the research findings. Note:\n- Token budget has kept context manageable (no explosion)\n- Tool caching avoided redundant searches (faster execution)\n- You have clean context from phase 1 (scratchpad extracted)\n\nProvide your analysis.",
       "tackle": [],
+      "context": {"from": ["previous"]},
       "output_extraction": {
         "pattern": "<analysis>(.*?)</analysis>",
         "store_as": "final_analysis"
@@ -56,7 +57,8 @@
     {
       "name": "summarize",
       "instructions": "Wrap in <analysis> tags:\n<analysis>\n[Your final analysis]\n</analysis>",
-      "tackle": []
+      "tackle": [],
+      "context": {"from": ["all"]}
     }
   ]
 }
