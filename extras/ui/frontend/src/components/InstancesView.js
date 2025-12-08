@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
@@ -11,6 +11,7 @@ import HumanInputDisplay from './HumanInputDisplay';
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
+import RunPercentile from './RunPercentile';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
@@ -68,6 +69,9 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   // Audible state - track per session since multiple can be running
   const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
   const [audibleSending, setAudibleSending] = useState({});    // { sessionId: boolean }
+
+  // Track which sessions have wide mermaid charts (for adaptive positioning)
+  const [wideCharts, setWideCharts] = useState({});  // { sessionId: boolean }
 
   useEffect(() => {
     if (cascadeId) {
@@ -294,12 +298,24 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     });
   }, [runningSessions]);
 
+  // Handle mermaid layout detection - track which charts are wide
+  const handleLayoutDetected = useCallback((sessionId, { isWide }) => {
+    setWideCharts(prev => {
+      // Only update if the value changed to prevent unnecessary rerenders
+      if (prev[sessionId] === isWide) return prev;
+      return { ...prev, [sessionId]: isWide };
+    });
+  }, []);
+
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
     const isCompleted = instance.phases?.every(p => p.status === 'completed');
     const hasRunning = instance.phases?.some(p => p.status === 'running');
     const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
     const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
+
+    // Check if this instance has a wide mermaid chart
+    const isWideChart = !isChild && wideCharts[instance.session_id];
 
     // Determine visual state
     let stateClass = '';
@@ -316,21 +332,19 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return (
       <div
         key={instance.session_id}
-        className={`instance-row ${stateClass} ${isChild ? 'child-row' : ''}`}
+        className={`instance-row ${stateClass} ${isChild ? 'child-row' : ''} ${isWideChart ? 'has-wide-chart' : ''}`}
         onClick={() => onSelectInstance && onSelectInstance(instance.session_id)}
         style={{ cursor: onSelectInstance ? 'pointer' : 'default' }}
       >
-        {/* Left: Instance Info */}
-        <div className="instance-info">
-          {isChild && (
-            <div className="child-connector">
-              <span className="connector-line">└─</span>
-              <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
-            </div>
-          )}
-
-          {/* Header row: title/timestamp on left, action buttons on right */}
-          <div className="instance-header-row">
+        {/* For wide charts: Show header at very top of the box */}
+        {isWideChart && (
+          <div className="instance-header-top">
+            {isChild && (
+              <div className="child-connector">
+                <span className="connector-line">└─</span>
+                <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
+              </div>
+            )}
             <div className="instance-header-left">
               <h3 className="session-id">
                 {instance.session_id}
@@ -344,43 +358,56 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               </h3>
               <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
             </div>
-
-            {/* Right side buttons */}
-            <div className="instance-header-actions">
-              {/* Soundings Explorer Button */}
-              {instance.has_soundings && (
-                <button
-                  className="soundings-explorer-button-compact"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSoundingsExplorerSession(instance.session_id);
-                  }}
-                  title="Explore all soundings across all phases in this cascade"
-                >
-                  <Icon icon="mdi:sign-direction" width="16" />
-                  <span className="soundings-label">Soundings</span>
-                  <span className="soundings-count">
-                    {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
-                  </span>
-                </button>
-              )}
-
-              {/* Re-run button */}
-              <button
-                className="rerun-button-small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRunCascade && onRunCascade({
-                    ...cascadeData,
-                    prefilled_inputs: instance.input_data || {}
-                  });
-                }}
-                title="Re-run with these inputs"
-              >
-                <Icon icon="mdi:replay" width="14" />
-              </button>
-            </div>
           </div>
+        )}
+
+        {/* Wide Mermaid Chart - rendered after header when chart is wide */}
+        {isWideChart && (
+          <div
+            className="mermaid-wrapper-top"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MermaidPreview
+              key={`mermaid-top-${instance.session_id}`}
+              sessionId={instance.session_id}
+              size="small"
+              showMetadata={false}
+              lastUpdate={sessionUpdates?.[instance.session_id]}
+              onLayoutDetected={(layout) => handleLayoutDetected(instance.session_id, layout)}
+            />
+          </div>
+        )}
+
+        {/* Main content row */}
+        <div className="instance-row-content">
+          {/* Left: Instance Info */}
+          <div className="instance-info">
+            {/* For non-wide: show child connector here */}
+            {!isWideChart && isChild && (
+              <div className="child-connector">
+                <span className="connector-line">└─</span>
+                <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
+              </div>
+            )}
+
+            {/* Header row - only for non-wide charts (wide charts show header at top) */}
+            {!isWideChart && (
+              <div className="instance-header-row">
+                <div className="instance-header-left">
+                  <h3 className="session-id">
+                    {instance.session_id}
+                    {stateBadge}
+                    {instance.status === 'failed' && (
+                      <span className="failed-badge">
+                        <Icon icon="mdi:alert-circle" width="14" />
+                        Failed ({instance.error_count})
+                      </span>
+                    )}
+                  </h3>
+                  <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+                </div>
+              </div>
+            )}
 
           {/* Model tags row - only for single model */}
           {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
@@ -413,8 +440,8 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             </div>
           )}
 
-          {/* Mermaid Graph Preview - under inputs on left side */}
-          {!isChild && (
+          {/* Mermaid Graph Preview - under inputs on left side (only when NOT wide) */}
+          {!isChild && !isWideChart && (
             <div
               className="mermaid-wrapper"
               onClick={(e) => e.stopPropagation()}
@@ -425,6 +452,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 size="small"
                 showMetadata={false}
                 lastUpdate={sessionUpdates?.[instance.session_id]}
+                onLayoutDetected={(layout) => handleLayoutDetected(instance.session_id, layout)}
               />
             </div>
           )}
@@ -445,6 +473,14 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               />
               <span className="children-summary">{getChildrenSummary(instance.children)}</span>
             </div>
+          )}
+
+          {/* Run Percentile - shows how this run compares to others */}
+          {!isChild && instances.length >= 2 && (
+            <RunPercentile
+              instance={instance}
+              allInstances={instances}
+            />
           )}
         </div>
 
@@ -528,6 +564,41 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             )}
           </div>
 
+          {/* Action buttons - grouped together in metrics panel */}
+          {/* Soundings Explorer Button */}
+          {instance.has_soundings && (
+            <button
+              className="soundings-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSoundingsExplorerSession(instance.session_id);
+              }}
+              title="Explore all soundings across all phases in this cascade"
+            >
+              <Icon icon="mdi:sign-direction" width="16" />
+              Soundings
+              <span className="soundings-count">
+                {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
+              </span>
+            </button>
+          )}
+
+          {/* Re-run button */}
+          <button
+            className="rerun-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRunCascade && onRunCascade({
+                ...cascadeData,
+                prefilled_inputs: instance.input_data || {}
+              });
+            }}
+            title="Re-run with these inputs"
+          >
+            <Icon icon="mdi:replay" width="16" />
+            Re-run
+          </button>
+
           {/* Audible Button - only shown when instance is running */}
           {(isSessionRunning || (hasRunning && !isFinalizing)) && (
             <button
@@ -567,6 +638,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             </button>
           )}
         </div>
+        </div> {/* Close instance-row-content */}
       </div>
     );
   };

@@ -35,7 +35,7 @@ const queueRender = async (renderFn) => {
   return renderQueue;
 };
 
-function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUpdate = null }) {
+function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUpdate = null, onLayoutDetected = null }) {
   const containerRef = useRef(null);
   const prevSessionIdRef = useRef(null);
   const [graphData, setGraphData] = useState(null);
@@ -242,9 +242,24 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
             }
           }
 
+          // Notify parent of layout dimensions (for adaptive positioning)
+          // Only flag as "wide" if width is more than 2.5x the height (truly wide horizontal flowcharts)
+          // aspectRatio < 0.4 means width is 2.5x+ the height
+          const aspectRatio = contentHeight / contentWidth;
+          const isWide = aspectRatio < 0.4;
+          if (onLayoutDetected && size === 'small') {
+            onLayoutDetected({
+              isWide,
+              aspectRatio,
+              width: contentWidth,
+              height: contentHeight
+            });
+          }
+
           // For small size: expand container to fit the full diagram
           if (size === 'small') {
-            const wrapper = containerRef.current.closest('.mermaid-wrapper');
+            // Find wrapper - could be .mermaid-wrapper (left panel) or .mermaid-wrapper-top (wide at top)
+            const wrapper = containerRef.current.closest('.mermaid-wrapper, .mermaid-wrapper-top');
             const containerWidth = wrapper?.offsetWidth || 400;
 
             // Calculate exact height needed to show full diagram at this width
@@ -275,7 +290,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         setError('Failed to render graph');
       }
     });
-  }, [graphData, sessionId, size]);
+  }, [graphData, sessionId, size, onLayoutDetected]);
 
   const mutateMermaidColors = (mermaidContent) => {
     // Replace default mermaid colors with cyberpunk/vaporwave theme

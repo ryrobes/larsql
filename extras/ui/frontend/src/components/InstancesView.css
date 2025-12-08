@@ -173,20 +173,19 @@
 
 /* Instance Row - Similar to cascade row but with status-colored phases */
 .instance-row {
-  background: #16202A;
+  background: #0d1117;
   border: 2px solid #2C3B4B;
   border-radius: 12px;
   padding: 1.5rem;
   display: flex;
   align-items: flex-start;
   gap: 2rem;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease;
   min-height: 120px;
 }
 
 .instance-row:hover {
   border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.05);
 }
 
 /* Ghost instance indicator (no SQL data yet) */
@@ -240,6 +239,76 @@
     border-color: #2DD4BF;
     box-shadow: 0 0 0 4px rgba(45, 212, 191, 0);
   }
+}
+
+/* Wide chart layout - when mermaid chart is wide, show at top */
+.instance-row.has-wide-chart {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Main content row - holds the original horizontal layout */
+.instance-row-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 2rem;
+  width: 100%;
+}
+
+/* Wide mermaid wrapper - full width at top */
+.mermaid-wrapper-top {
+  width: 100%;
+  min-height: 80px;
+  /* Wide charts get more vertical room since they have full width */
+  max-height: 400px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+/* Neon glow effect on the wide SVG */
+.mermaid-wrapper-top svg {
+  filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.5))
+          drop-shadow(0 0 8px rgba(6, 182, 212, 0.4));
+  transition: filter 0.3s ease;
+}
+
+.mermaid-wrapper-top:hover svg {
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.7))
+          drop-shadow(0 0 12px rgba(6, 182, 212, 0.5))
+          drop-shadow(0 0 24px rgba(45, 212, 191, 0.3));
+}
+
+/* Header at top for wide chart instances */
+.instance-header-top {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  /* Minimal spacing - chart provides visual separation with its glow */
+}
+
+.instance-header-top .instance-header-left {
+  flex: 1;
+}
+
+.instance-header-top .session-id {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #F0F4F8;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.instance-header-top .timestamp {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0.25rem 0 0 0;
 }
 
 .initializing-badge {
@@ -630,16 +699,10 @@
   min-height: 100px;
   background: transparent;
   border: none;
-  border-top: 1px solid rgba(45, 212, 191, 0.15);
   border-radius: 0;
   overflow: visible;
   flex-shrink: 0;
-  padding-top: 0.75rem;
   transition: all 0.3s ease;
-}
-
-.mermaid-wrapper:hover {
-  border-top-color: rgba(45, 212, 191, 0.3);
 }
 
 /* Neon glow effect on the SVG */
@@ -889,6 +952,60 @@
   justify-content: center;
 }
 
+/* Soundings button in metrics panel */
+.soundings-button {
+  background: rgba(167, 139, 250, 0.1);
+  border: 2px solid #a78bfa;
+  color: #a78bfa;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.soundings-button:hover {
+  background: rgba(167, 139, 250, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(167, 139, 250, 0.3);
+}
+
+.soundings-button .soundings-count {
+  background: rgba(167, 139, 250, 0.3);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+/* Re-run button in metrics panel */
+.rerun-button {
+  background: rgba(96, 165, 250, 0.1);
+  border: 2px solid #60a5fa;
+  color: #60a5fa;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rerun-button:hover {
+  background: rgba(96, 165, 250, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
+}
+
 /* Debug button */
 .debug-button {
   background: rgba(217, 165, 83, 0.1);
@@ -940,6 +1057,11 @@
 /* Responsive */
 @media (max-width: 1200px) {
   .instance-row {
+    flex-wrap: wrap;
+  }
+
+  /* The horizontal layout is now in instance-row-content */
+  .instance-row-content {
     flex-wrap: wrap;
   }
 

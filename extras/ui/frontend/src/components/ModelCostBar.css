@@ -51,7 +51,7 @@
 .model-cost-legend-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 0.68rem;
   line-height: 1.2;
   padding: 2px 0;
@@ -69,9 +69,7 @@
 .model-cost-name {
   color: #9AA5B1;
   font-weight: 500;
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1;
   white-space: nowrap;
 }
 
@@ -80,6 +78,8 @@
   font-weight: 600;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.65rem;
+  margin-left: auto;
+  text-align: right;
 }
 
 /* Hover state for legend items */
@@ -98,7 +98,7 @@
     gap: 2px 6px;
   }
 
-  .model-cost-name {
-    max-width: 60px;
+  .model-cost-legend-item {
+    font-size: 0.62rem;
   }
 }
