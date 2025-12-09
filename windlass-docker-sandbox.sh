@@ -2,9 +2,9 @@
 
 # Set variables (customize these)
 IMAGE_NAME="ubuntu-ssh"
-CONTAINER_NAME="ubuntu-container"
+CONTAINER_NAME="windlass-sandbox"
 HOST_PORT=2222
-ROOT_PASSWORD="your_secure_password"  # CHANGE THIS!
+ROOT_PASSWORD="morebeer"
 
 # Packages to install automatically (add more as needed, space-separated)
 APT_PACKAGES="python3 python3-pip nodejs ruby golang-go git curl clojure"  # Example: langs and tools
