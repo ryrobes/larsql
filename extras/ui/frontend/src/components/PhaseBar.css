@@ -231,3 +231,15 @@
   opacity: 1;
   color: #F0F4F8;
 }
+
+/* Dark text for model labels overlapping bright winner bars */
+.sounding-model-label.on-winner-bar {
+  color: #0a0a0a;
+  text-shadow: 0 0 2px rgba(45, 212, 191, 0.5);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.individual-sounding-row:hover .sounding-model-label.on-winner-bar {
+  color: #0a0a0a;
+}

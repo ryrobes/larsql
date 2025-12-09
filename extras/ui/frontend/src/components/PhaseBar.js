@@ -100,6 +100,13 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
 
               const shortModel = hasMultipleModels ? getShortModel(attempt.model) : null;
 
+              // Determine if the bar extends far enough to overlap the model label
+              // Label is positioned at right: 4px with max-width ~120px
+              // Track width varies, but text typically starts around 65-75% from left
+              // Use 70% threshold to avoid false positives on shorter bars
+              const barOverlapsText = soundingBarWidth > 70;
+              const needsDarkText = isWinner && barOverlapsText;
+
               return (
                 <div key={attempt.index} className="individual-sounding-row">
                   <span className="sounding-index-label">
@@ -118,7 +125,10 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
                       <span className="sounding-cost-label">{isRunning ? '...' : formatCost(attempt.cost)}</span>
                     </div>
                     {shortModel && (
-                      <span className="sounding-model-label" title={attempt.model}>
+                      <span
+                        className={`sounding-model-label ${needsDarkText ? 'on-winner-bar' : ''}`}
+                        title={attempt.model}
+                      >
                         {shortModel}
                       </span>
                     )}

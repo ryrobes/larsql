@@ -107,6 +107,7 @@ class WindlassRunner:
         self.sounding_index = sounding_index  # Track which sounding attempt this is (for cascade-level soundings)
         self.current_phase_sounding_index = None  # Track sounding index within current phase
         self.current_reforge_step = None  # Track which reforge step we're in
+        self.current_winning_sounding_index = None  # Track which initial sounding won (for reforge)
         self.current_retry_attempt = None  # Track retry/validation attempt index
         self.current_turn_number = None  # Track turn number within phase (for max_turns)
         self.current_mutation_applied = None  # Track mutation applied to current sounding
@@ -208,10 +209,37 @@ class WindlassRunner:
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to save message to memory '{self.memory_name}': {e}")
 
-    def _get_metadata(self, extra: dict = None) -> dict:
+    def _get_metadata(self, extra: dict = None, semantic_actor: str = None, semantic_purpose: str = None) -> dict:
         """
-        Helper to build metadata dict with sounding_index automatically included.
+        Helper to build metadata dict with sounding_index and semantic fields automatically included.
         Use this in all echo.add_history() calls to ensure consistent tagging.
+
+        Semantic Actors (WHO is speaking):
+            - main_agent: Primary LLM doing phase work
+            - sounding_agent: Main agent in a sounding attempt
+            - reforge_agent: Main agent in a reforge iteration
+            - evaluator: LLM judging soundings/reforge quality
+            - quartermaster: LLM selecting tools
+            - validator: LLM/function checking output (wards, loop_until)
+            - mutator: LLM rewriting prompts for mutation
+            - human: Human-in-the-loop input
+            - framework: System-generated metadata/lifecycle
+
+        Semantic Purposes (WHAT is this message for):
+            - instructions: Phase system prompt
+            - task_input: The actual work request
+            - context_injection: Prior phase context being injected
+            - tool_request: Agent calling a tool
+            - tool_response: Tool returning result
+            - continuation: Turn follow-up prompt
+            - refinement: Reforge honing prompt
+            - validation_input: What's being validated
+            - validation_output: Pass/fail verdict
+            - evaluation_input: Sounding attempts being compared
+            - evaluation_output: Winner selection decision
+            - winner_selection: Selected winning output marked
+            - lifecycle: Start/complete markers
+            - error: Error messages
         """
         meta = extra.copy() if extra else {}
 
@@ -225,7 +253,41 @@ class WindlassRunner:
         if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
             meta.setdefault("reforge_step", self.current_reforge_step)
 
+        # Auto-inject winning_sounding_index if we're in reforge
+        if hasattr(self, 'current_winning_sounding_index') and self.current_winning_sounding_index is not None:
+            meta.setdefault("winning_sounding_index", self.current_winning_sounding_index)
+
+        # Add semantic classification if provided
+        if semantic_actor:
+            meta["semantic_actor"] = semantic_actor
+        if semantic_purpose:
+            meta["semantic_purpose"] = semantic_purpose
+
+        # Auto-derive semantic_actor from context if not explicitly set
+        if "semantic_actor" not in meta:
+            if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
+                meta["semantic_actor"] = "reforge_agent"
+            elif self.current_phase_sounding_index is not None or self.sounding_index is not None:
+                meta["semantic_actor"] = "sounding_agent"
+
         return meta
+
+    def _message_has_images(self, msg: dict) -> bool:
+        """
+        Check if a message contains images (base64 or image_url format).
+        Used for logging metadata about context injection.
+        """
+        content = msg.get("content")
+        if isinstance(content, list):
+            # Multi-modal content - check for image_url type
+            return any(
+                isinstance(item, dict) and item.get("type") == "image_url"
+                for item in content
+            )
+        elif isinstance(content, str):
+            # Check for embedded base64 data URLs
+            return "data:image/" in content
+        return False
 
     # ========== AUDIBLE SYSTEM ==========
     # These methods implement real-time feedback injection, allowing users to
@@ -583,6 +645,8 @@ class WindlassRunner:
         )
 
         # Add to echo history
+        audible_metadata["semantic_actor"] = "framework"
+        audible_metadata["semantic_purpose"] = "context_injection"
         self.echo.add_history(
             audible_msg,
             trace_id=audible_trace.id,
@@ -1086,6 +1150,8 @@ class WindlassRunner:
                 "checkpoint_id": checkpoint.id,
                 "checkpoint_type": "phase_input",
                 "ui_type": config.type.value,
+                "semantic_actor": "framework",
+                "semantic_purpose": "lifecycle",
             }
         )
 
@@ -1107,6 +1173,8 @@ class WindlassRunner:
                 metadata={
                     "phase": phase.name,
                     "checkpoint_id": checkpoint.id,
+                    "semantic_actor": "framework",
+                    "semantic_purpose": "lifecycle",
                 }
             )
             return None
@@ -1121,6 +1189,8 @@ class WindlassRunner:
                 "phase": phase.name,
                 "checkpoint_id": checkpoint.id,
                 "response": response,
+                "semantic_actor": "human",
+                "semantic_purpose": "task_input",
             }
         )
 
@@ -1269,12 +1339,15 @@ To use: Output JSON in this format:
     def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
         """
         Execute cascade with soundings (Tree of Thought at cascade level).
-        Spawns N complete cascade executions, evaluates them, and returns only the winner.
+        Spawns N complete cascade executions in parallel, evaluates them, and returns only the winner.
         """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         indent = "  " * self.depth
         factor = self.config.soundings.factor
+        max_parallel = self.config.soundings.max_parallel or 3
+        max_workers = min(factor, max_parallel)
 
-        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Soundings (Parallel Full Executions)...[/bold blue]")
+        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Soundings (Parallel: {max_workers} workers)...[/bold blue]")
 
         # Create soundings trace node
         soundings_trace = self.trace.create_child("cascade_soundings", f"{self.config.cascade_id}_soundings")
@@ -1288,23 +1361,28 @@ To use: Output JSON in this format:
            metadata={
                "cascade_id": self.config.cascade_id,
                "phase_name": "_orchestration",  # Ensure UI can query this
-               "factor": factor
+               "factor": factor,
+               "max_parallel": max_workers,
+               "semantic_actor": "framework",
+               "semantic_purpose": "lifecycle"
            })
 
-        # Store all sounding results
-        sounding_results = []
-
-        # Execute each sounding as a complete separate cascade run
+        # Pre-create traces for all soundings (must be done sequentially for proper hierarchy)
+        sounding_traces = []
         for i in range(factor):
-            console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor}[/cyan]")
+            trace = soundings_trace.create_child("cascade_sounding_attempt", f"attempt_{i+1}")
+            sounding_traces.append(trace)
 
-            # Create trace for this sounding
-            sounding_trace = soundings_trace.create_child("cascade_sounding_attempt", f"attempt_{i+1}")
-
-            # Create a fresh Echo for this sounding attempt
-            sounding_session_id = f"{self.session_id}_sounding_{i}"
+        # Define the worker function for parallel execution
+        def run_single_cascade_sounding(i: int) -> dict:
+            """Execute a single cascade sounding. Returns result dict."""
             from .echo import Echo
+
+            sounding_trace = sounding_traces[i]
+            sounding_session_id = f"{self.session_id}_sounding_{i}"
             sounding_echo = Echo(sounding_session_id, parent_session_id=self.session_id)
+
+            console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
 
             try:
                 # Create a new runner for this sounding with sounding_index set
@@ -1325,46 +1403,67 @@ To use: Output JSON in this format:
                 # Extract final result from echo
                 final_output = result.get("final_output", str(result))
 
-                sounding_results.append({
+                console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
+
+                return {
                     "index": i,
                     "result": final_output,
                     "echo": sounding_echo,
                     "trace_id": sounding_trace.id,
-                    "full_result": result
-                })
-
-                console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
-
-                # Add to echo history for visualization - store sub-session reference (auto-logs via unified_logs)
-                self.echo.add_history({
-                    "role": "cascade_sounding_attempt",
-                    "content": str(final_output)[:150] if final_output else "Completed",
-                    "node_type": "cascade_sounding_attempt"
-                }, trace_id=sounding_trace.id, parent_id=soundings_trace.id, node_type="cascade_sounding_attempt",
-                   metadata={
-                       "cascade_id": self.config.cascade_id,
-                       "phase_name": "_orchestration",  # Ensure UI can query this
-                       "sounding_index": i,
-                       "sub_session_id": sounding_session_id,
-                       "is_winner": False,  # Updated later when winner is selected
-                       "result_preview": str(final_output)[:200]
-                   })
+                    "full_result": result,
+                    "session_id": sounding_session_id
+                }
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Cascade Sounding {i+1} failed: {e}[/red]")
-                log_message(self.session_id, "cascade_sounding_error", str(e),
-                           trace_id=sounding_trace.id, parent_id=soundings_trace.id,
-                           node_type="sounding_error", depth=self.depth,
-                           sounding_index=i, is_winner=False,
-                           metadata={"phase_name": "_orchestration", "error": str(e), "cascade_sounding": True})
-                sounding_results.append({
+                return {
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "echo": None,
                     "trace_id": sounding_trace.id,
                     "full_result": {},
-                    "failed": True  # Mark as failed for evaluator
-                })
+                    "session_id": sounding_session_id,
+                    "failed": True,
+                    "error": str(e)
+                }
+
+        # Execute soundings in parallel
+        sounding_results = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(run_single_cascade_sounding, i): i for i in range(factor)}
+
+            for future in as_completed(futures):
+                result = future.result()
+                sounding_results.append(result)
+
+        # Sort results by index to maintain consistent ordering
+        sounding_results.sort(key=lambda x: x['index'])
+
+        # Log results to echo history (must be done sequentially after parallel execution)
+        for sr in sounding_results:
+            i = sr['index']
+            if sr.get('failed'):
+                log_message(self.session_id, "cascade_sounding_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=soundings_trace.id,
+                           node_type="sounding_error", depth=self.depth,
+                           sounding_index=i, is_winner=False,
+                           metadata={"phase_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True})
+            else:
+                self.echo.add_history({
+                    "role": "cascade_sounding_attempt",
+                    "content": str(sr['result'])[:150] if sr['result'] else "Completed",
+                    "node_type": "cascade_sounding_attempt"
+                }, trace_id=sr['trace_id'], parent_id=soundings_trace.id, node_type="cascade_sounding_attempt",
+                   metadata={
+                       "cascade_id": self.config.cascade_id,
+                       "phase_name": "_orchestration",
+                       "sounding_index": i,
+                       "sub_session_id": sr['session_id'],
+                       "is_winner": False,  # Updated later when winner is selected
+                       "result_preview": str(sr['result'])[:200],
+                       "semantic_actor": "sounding_agent",
+                       "semantic_purpose": "generation"
+                   })
 
         # Now evaluate all soundings
         console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(sounding_results)} cascade executions...[/bold yellow]")
@@ -1403,12 +1502,12 @@ To use: Output JSON in this format:
             "content": eval_content if eval_content else "Evaluating...",  # Full content, no truncation
             "node_type": "cascade_evaluator"
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
-           metadata={
+           metadata=self._get_metadata({
                "cascade_id": self.config.cascade_id,
                "phase_name": "_orchestration",  # Ensure UI can query this
                "factor": factor,
                "model": self.model
-           })
+           }, semantic_actor="evaluator", semantic_purpose="evaluation_output"))
 
         # Extract winner index from evaluation
         winner_index = 0
@@ -1447,7 +1546,9 @@ To use: Output JSON in this format:
                        "cascade_id": self.config.cascade_id,
                        "phase_name": phase_name,
                        "source_sounding": winner_index,
-                       "output_preview": str(output_content)[:200] if output_content else ""
+                       "output_preview": str(output_content)[:200] if output_content else "",
+                       "semantic_actor": "framework",
+                       "semantic_purpose": "lifecycle"
                    })
 
         # Add soundings result to history (auto-logs via unified_logs)
@@ -1465,19 +1566,27 @@ To use: Output JSON in this format:
                "evaluation": eval_content,  # Full content, no truncation
                "winner_trace_id": winner['trace_id'],
                "sounding_index": winner_index,
-               "is_winner": True
+               "is_winner": True,
+               "semantic_actor": "framework",
+               "semantic_purpose": "lifecycle"
            })
 
         self._update_graph()
 
         # Check if reforge is configured for cascade soundings
         if self.config.soundings.reforge:
+            # Track which sounding won so reforge messages can reference it
+            self.current_winning_sounding_index = winner_index
+
             winner = self._reforge_cascade_winner(
                 winner=winner,
                 input_data=input_data,
                 trace=soundings_trace,
                 reforge_step=0  # Initial soundings = step 0
             )
+
+            # Reset after reforge completes
+            self.current_winning_sounding_index = None
 
         return winner['full_result']
 
@@ -1494,6 +1603,9 @@ To use: Output JSON in this format:
         original_cascade_description = self.config.description or self.config.cascade_id
 
         for step in range(1, reforge_config.steps + 1):
+            # Set current reforge step for metadata tagging
+            self.current_reforge_step = step
+
             console.print(f"{indent}[bold cyan]🔨 CASCADE Reforge Step {step}/{reforge_config.steps}[/bold cyan]")
 
             # Create reforge trace
@@ -1520,18 +1632,31 @@ Refinement directive: {reforge_config.honing_prompt}
                        trace_id=reforge_trace.id, parent_id=trace.id,
                        node_type="cascade_reforge", depth=self.depth, reforge_step=step)
 
-            # Run mini-soundings for this reforge step (complete cascade executions)
-            reforge_results = []
-            for i in range(reforge_config.factor_per_step):
-                console.print(f"{indent}    [cyan]🔨 Cascade Refinement {i+1}/{reforge_config.factor_per_step}[/cyan]")
+            # Run mini-soundings for this reforge step (complete cascade executions) - IN PARALLEL
+            from concurrent.futures import ThreadPoolExecutor, as_completed
 
-                # Create trace for this refinement attempt
-                refinement_trace = reforge_trace.create_child("cascade_refinement_attempt", f"attempt_{i+1}")
+            factor_per_step = reforge_config.factor_per_step
+            max_parallel = self.config.soundings.max_parallel or 3
+            max_workers = min(factor_per_step, max_parallel)
 
-                # Create fresh Echo for this refinement
-                refinement_session_id = f"{self.session_id}_reforge{step}_{i}"
+            console.print(f"{indent}    [cyan]Running {factor_per_step} cascade refinements (Parallel: {max_workers} workers)[/cyan]")
+
+            # Pre-create traces for all refinement attempts (must be sequential for proper hierarchy)
+            refinement_traces = []
+            for i in range(factor_per_step):
+                trace = reforge_trace.create_child("cascade_refinement_attempt", f"attempt_{i+1}")
+                refinement_traces.append(trace)
+
+            # Define worker function for parallel refinement execution
+            def run_single_refinement(i: int) -> dict:
+                """Execute a single cascade refinement. Returns result dict."""
                 from .echo import Echo
+
+                refinement_trace = refinement_traces[i]
+                refinement_session_id = f"{self.session_id}_reforge{step}_{i}"
                 refinement_echo = Echo(refinement_session_id, parent_session_id=self.session_id)
+
+                console.print(f"{indent}      [cyan]🔨 Cascade Refinement {i+1}/{factor_per_step} starting...[/cyan]")
 
                 try:
                     # Create a new runner for this refinement
@@ -1555,28 +1680,46 @@ Refinement directive: {reforge_config.honing_prompt}
                     # Extract final result
                     final_output = result.get("final_output", str(result))
 
-                    reforge_results.append({
+                    console.print(f"{indent}      [green]✓ Cascade Refinement {i+1} complete[/green]")
+
+                    return {
                         "index": i,
                         "result": final_output,
                         "echo": refinement_echo,
                         "trace_id": refinement_trace.id,
                         "full_result": result
-                    })
-
-                    console.print(f"{indent}      [green]✓ Cascade Refinement {i+1} complete[/green]")
+                    }
 
                 except Exception as e:
                     console.print(f"{indent}      [red]✗ Cascade Refinement {i+1} failed: {e}[/red]")
-                    log_message(self.session_id, "cascade_refinement_error", str(e),
-                               trace_id=refinement_trace.id, parent_id=reforge_trace.id,
-                               node_type="error", depth=self.depth, reforge_step=step)
-                    reforge_results.append({
+                    return {
                         "index": i,
                         "result": f"[ERROR: {str(e)}]",
                         "echo": None,
                         "trace_id": refinement_trace.id,
-                        "full_result": {}
-                    })
+                        "full_result": {},
+                        "failed": True,
+                        "error": str(e)
+                    }
+
+            # Execute refinements in parallel
+            reforge_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(run_single_refinement, i): i for i in range(factor_per_step)}
+
+                for future in as_completed(futures):
+                    result = future.result()
+                    reforge_results.append(result)
+
+            # Sort results by index to maintain consistent ordering
+            reforge_results.sort(key=lambda x: x['index'])
+
+            # Log errors sequentially after parallel completion
+            for rr in reforge_results:
+                if rr.get('failed'):
+                    log_message(self.session_id, "cascade_refinement_error", rr.get('error', 'Unknown error'),
+                               trace_id=rr['trace_id'], parent_id=reforge_trace.id,
+                               node_type="error", depth=self.depth, reforge_step=step)
 
             # Evaluate refinements
             console.print(f"{indent}    [bold yellow]⚖️  Evaluating cascade refinements...[/bold yellow]")
@@ -1658,6 +1801,10 @@ Refinement directive: {reforge_config.honing_prompt}
             current_output = refined_winner['result']
             winner = refined_winner
 
+        # Reset sounding index and reforge step after cascade reforge completes
+        self.current_phase_sounding_index = None
+        self.current_reforge_step = None
+
         # Merge final winner's echo into main echo
         if winner['echo']:
             self.echo.state.update(winner['echo'].state)
@@ -1712,7 +1859,8 @@ Refinement directive: {reforge_config.honing_prompt}
             "content": f"Cascade: {self.config.cascade_id}",
             "node_type": "cascade"
         }, trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade",
-           metadata={"cascade_id": self.config.cascade_id, "depth": self.depth})
+           metadata={"cascade_id": self.config.cascade_id, "depth": self.depth,
+                     "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
         self._update_graph()
 
         current_phase_name = self.config.phases[0].name
@@ -1748,6 +1896,8 @@ Refinement directive: {reforge_config.honing_prompt}
                 "has_sub_cascades": len(phase.sub_cascades) > 0 if phase.sub_cascades else False,
                 "handoffs": [h.target if hasattr(h, 'target') else h for h in phase.handoffs] if phase.handoffs else []
             }
+            phase_meta["semantic_actor"] = "framework"
+            phase_meta["semantic_purpose"] = "lifecycle"
             self.echo.add_history({
                 "role": "structure",
                 "content": f"Phase: {phase.name}",
@@ -1911,13 +2061,13 @@ If no tools are needed, return an empty array: []
             "content": f"Selected tools: {', '.join(valid_tackle) if valid_tackle else 'none'}",
             "node_type": "quartermaster_result"
         }, trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster_result",
-           metadata={
+           metadata=self._get_metadata({
                "phase_name": phase.name,
                "selected_tackle": valid_tackle,
                "reasoning": response_content,  # Full content, no truncation
                "manifest_context": phase.manifest_context,
                "model": qm_model
-           })
+           }, semantic_actor="quartermaster", semantic_purpose="tool_selection"))
 
         console.print(f"{indent}    [dim]Reasoning: {response_content[:150]}...[/dim]")
 
@@ -2165,13 +2315,13 @@ If no tools are needed, return an empty array: []
             "content": f"{ward_type.title()} Ward: {validator_name}",
             "node_type": f"{ward_type}_ward"
         }, trace_id=ward_trace.id, parent_id=trace.id, node_type=f"{ward_type}_ward",
-           metadata={
+           metadata=self._get_metadata({
                "ward_type": ward_type,
                "validator": validator_name,
                "mode": mode,
                "valid": is_valid,
                "reason": reason[:100] if reason else ""
-           })
+           }, semantic_actor="validator", semantic_purpose="validation_output"))
 
         # Display result
         if is_valid:
@@ -2775,7 +2925,9 @@ Use only numbers 0-100 for scores."""
         soundings_meta = {
             "phase_name": phase.name,
             "factor": factor,
-            "has_reforge": phase.soundings.reforge is not None
+            "has_reforge": phase.soundings.reforge is not None,
+            "semantic_actor": "framework",
+            "semantic_purpose": "lifecycle"
         }
         self.echo.add_history({
             "role": "structure",
@@ -3479,12 +3631,49 @@ Use only numbers 0-100 for scores."""
                 sounding_metadata["dominated_by"] = sr.get("dominated_by")
                 sounding_metadata["pareto_rank"] = sr.get("pareto_rank")
 
+            # Add semantic classification
+            sounding_metadata["semantic_actor"] = "sounding_agent"
+            sounding_metadata["semantic_purpose"] = "generation"
+
             self.echo.add_history({
                 "role": "sounding_attempt",
                 "content": str(sr["result"])[:200] if sr["result"] else "",
                 "node_type": "sounding_attempt"
             }, trace_id=sr["trace_id"], parent_id=soundings_trace.id, node_type="sounding_attempt",
                metadata=sounding_metadata)
+
+        # Build evaluator input summary for observability
+        # This captures exactly what the evaluator received for debugging
+        evaluator_system_prompt = "You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well."
+
+        # Build per-attempt summary
+        attempt_summaries = []
+        total_images_evaluated = 0
+        for i, sounding in enumerate(valid_sounding_results):
+            sounding_images = sounding.get('images', [])
+            num_images = len(sounding_images)
+            total_images_evaluated += num_images
+            attempt_summaries.append({
+                "attempt_number": i + 1,
+                "original_sounding_index": sounding.get('index', i),
+                "has_images": num_images > 0,
+                "image_count": num_images,
+                "result_length": len(str(sounding.get('result', ''))) if sounding.get('result') else 0,
+                "model": sounding.get('model'),
+                "mutation_applied": sounding.get('mutation_applied'),
+                "validation": sounding.get('validation'),
+                "cost": sounding.get('cost'),
+            })
+
+        evaluator_input_summary = {
+            "is_multimodal": total_images_evaluated > 0,
+            "total_attempts_shown": len(valid_sounding_results),
+            "total_soundings_run": len(sounding_results),
+            "filtered_count": len(sounding_results) - len(valid_sounding_results),
+            "total_images": total_images_evaluated,
+            "attempts": attempt_summaries,
+            "evaluation_mode": "cost_aware" if use_cost_aware else ("pareto" if use_pareto else "quality_only"),
+        }
 
         # Add evaluator entry (auto-logs via unified_logs)
         evaluator_metadata = {
@@ -3495,6 +3684,10 @@ Use only numbers 0-100 for scores."""
             "model": self.model,
             "total_soundings": len(sounding_results),
             "valid_soundings": len(valid_sounding_results),
+            # NEW: Full evaluator input observability
+            "evaluator_prompt": eval_prompt,  # The full text prompt sent to evaluator
+            "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
+            "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
         }
         # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
         if use_cost_aware:
@@ -3516,6 +3709,10 @@ Use only numbers 0-100 for scores."""
                 evaluator_metadata["sounding_costs"] = sounding_costs
                 evaluator_metadata["winner_cost"] = winner.get("cost")
 
+        # Add semantic classification to evaluator metadata
+        evaluator_metadata["semantic_actor"] = "evaluator"
+        evaluator_metadata["semantic_purpose"] = "evaluation_output"
+
         self.echo.add_history({
             "role": "evaluator",
             "content": eval_content,  # Full content, no truncation
@@ -3530,12 +3727,16 @@ Use only numbers 0-100 for scores."""
             "winner_index": winner_index + 1,
             "evaluation": eval_content
         }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
-           metadata={"phase_name": phase.name, "winner_index": winner_index, "factor": factor})
+           metadata={"phase_name": phase.name, "winner_index": winner_index, "factor": factor,
+                     "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
         self._update_graph()
 
         # Check if reforge is configured
         if phase.soundings.reforge:
+            # Track which sounding won so reforge messages can reference it
+            self.current_winning_sounding_index = original_winner_index
+
             winner = self._reforge_winner(
                 winner=winner,
                 phase=phase,
@@ -3544,6 +3745,9 @@ Use only numbers 0-100 for scores."""
                 context_snapshot=context_snapshot,
                 reforge_step=0  # Initial soundings = step 0
             )
+
+            # Reset after reforge completes
+            self.current_winning_sounding_index = None
 
         return winner['result']
 
@@ -3707,7 +3911,9 @@ Refinement directive: {reforge_config.honing_prompt}
                    "reforge_step": step,
                    "total_steps": reforge_config.steps,
                    "factor_per_step": reforge_config.factor_per_step,
-                   "has_mutation": reforge_config.mutate
+                   "has_mutation": reforge_config.mutate,
+                   "semantic_actor": "framework",
+                   "semantic_purpose": "lifecycle"
                })
 
             # Create temporary phase config for refinement
@@ -3729,25 +3935,40 @@ Refinement directive: {reforge_config.honing_prompt}
             for i in range(reforge_config.factor_per_step):
                 console.print(f"{indent}    [cyan]🔨 Refinement {i+1}/{reforge_config.factor_per_step}[/cyan]")
 
+                # Set current sounding index for this refinement attempt
+                # This ensures all messages logged during reforge have sounding_index
+                self.current_phase_sounding_index = i
+
                 # Create trace for this refinement attempt
                 refinement_trace = reforge_trace.create_child("refinement_attempt", f"attempt_{i+1}")
 
-                # Reset context to snapshot + refinement context with images
-                self.context_messages = context_snapshot.copy() + refinement_context_messages
+                # Reset state to snapshot (context will be passed via pre_built_context)
                 self.echo.state = echo_state_snapshot.copy()
                 self.echo.history = echo_history_snapshot.copy()
                 self.echo.lineage = echo_lineage_snapshot.copy()
 
+                # Build full reforge context with images from previous winner
+                full_reforge_context = context_snapshot.copy() + refinement_context_messages
+
                 try:
-                    result = self._execute_phase_internal(refine_phase, input_data, refinement_trace)
+                    # Pass context with images via pre_built_context to avoid it being cleared
+                    result = self._execute_phase_internal(
+                        refine_phase, input_data, refinement_trace,
+                        pre_built_context=full_reforge_context
+                    )
 
                     # Capture refined context
                     refinement_context = self.context_messages[len(context_snapshot):]
+
+                    # Extract images from this reforge attempt for evaluator (like soundings)
+                    from .utils import extract_images_from_messages
+                    reforge_images = extract_images_from_messages(refinement_context)
 
                     reforge_results.append({
                         "index": i,
                         "result": result,
                         "context": refinement_context,
+                        "images": reforge_images,  # List of (base64_data, description) tuples for evaluator
                         "trace_id": refinement_trace.id,
                         "final_state": self.echo.state.copy()
                     })
@@ -3764,7 +3985,9 @@ Refinement directive: {reforge_config.honing_prompt}
                            "phase_name": phase.name,
                            "reforge_step": step,
                            "attempt_index": i,
-                           "is_winner": False  # Updated later
+                           "is_winner": False,  # Updated later
+                           "semantic_actor": "reforge_agent",
+                           "semantic_purpose": "generation"
                        })
 
                 except Exception as e:
@@ -3797,7 +4020,9 @@ Refinement directive: {reforge_config.honing_prompt}
                        "phase_name": phase.name,
                        "reforge_step": step,
                        "attempt_index": i,
-                       "is_winner": False
+                       "is_winner": False,
+                       "semantic_actor": "reforge_agent",
+                       "semantic_purpose": "generation"
                    })
 
             # Evaluate refinements
@@ -3811,21 +4036,70 @@ Refinement directive: {reforge_config.honing_prompt}
             eval_prompt = f"{eval_instructions}\n\n"
             eval_prompt += "Please evaluate the following refinements and select the best one.\n\n"
 
-            for i, refinement in enumerate(reforge_results):
-                eval_prompt += f"## Refinement {i+1}\n"
-                eval_prompt += f"Result: {refinement['result']}\n\n"
+            # Check if any refinements have images (multi-modal evaluation like soundings)
+            any_images = any(refinement.get('images') for refinement in reforge_results)
 
-            eval_prompt += f"\nRespond with ONLY the number of the best refinement (1-{len(reforge_results)}) and a brief explanation."
+            if any_images:
+                # Multi-modal evaluation: build context with images
+                # Each refinement gets its own message with clear labeling: text result + images together
+                eval_context_messages = []
+
+                for i, refinement in enumerate(reforge_results):
+                    refinement_images = refinement.get('images', [])
+                    num_images = len(refinement_images)
+
+                    # Build content block with clear refinement identification
+                    header = f"═══════════════════════════════════════\n"
+                    header += f"REFINEMENT {i+1} OF {len(reforge_results)}\n"
+                    header += f"═══════════════════════════════════════\n\n"
+                    header += f"Text Result:\n{refinement['result']}"
+
+                    if num_images > 0:
+                        header += f"\n\n📸 Visual Output ({num_images} image{'s' if num_images > 1 else ''} follow):"
+
+                    refinement_content = [{"type": "text", "text": header}]
+
+                    # Add images immediately after the header (same message = clear association)
+                    for img_idx, (img_data, desc) in enumerate(refinement_images):
+                        refinement_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_data}
+                        })
+                        # Add image label after each image for clarity
+                        refinement_content.append({
+                            "type": "text",
+                            "text": f"↑ Refinement {i+1}, Image {img_idx+1}/{num_images}"
+                        })
+
+                    eval_context_messages.append({
+                        "role": "user",
+                        "content": refinement_content
+                    })
+
+                # Add final evaluation instruction for multi-modal
+                eval_prompt += f"\n\nI've shown you {len(reforge_results)} refinements above. Each refinement is clearly labeled with 'REFINEMENT N' followed by its text result and any images it produced. "
+                eval_prompt += f"Compare both the text quality AND visual output quality. "
+                eval_prompt += f"Respond with ONLY the number of the best refinement (1-{len(reforge_results)}) and a brief explanation."
+
+                console.print(f"{indent}    [cyan]📸 Multi-modal reforge evaluation: {sum(len(r.get('images', [])) for r in reforge_results)} total images[/cyan]")
+            else:
+                # Text-only evaluation (original behavior)
+                eval_context_messages = []
+                for i, refinement in enumerate(reforge_results):
+                    eval_prompt += f"## Refinement {i+1}\n"
+                    eval_prompt += f"Result: {refinement['result']}\n\n"
+
+                eval_prompt += f"\nRespond with ONLY the number of the best refinement (1-{len(reforge_results)}) and a brief explanation."
 
             evaluator_agent = Agent(
                 model=self.model,
-                system_prompt="You are an expert evaluator. Your job is to select the best refined version.",
+                system_prompt="You are an expert evaluator. Your job is to select the best refined version. If refinements include images, consider the visual quality and correctness as well.",
                 tools=[],
                 base_url=self.base_url,
                 api_key=self.api_key
             )
 
-            eval_response = evaluator_agent.run(eval_prompt, context_messages=[])
+            eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
             eval_content = eval_response.get("content", "")
 
             console.print(f"{indent}    [bold magenta]Evaluator:[/bold magenta] {eval_content[:150]}...")
@@ -3834,16 +4108,40 @@ Refinement directive: {reforge_config.honing_prompt}
                        trace_id=evaluator_trace.id, parent_id=reforge_trace.id,
                        node_type="evaluation", depth=self.depth, reforge_step=step)
 
+            # Build evaluator input summary for observability (like soundings)
+            total_images_evaluated = sum(len(r.get('images', [])) for r in reforge_results)
+            refinement_summaries = []
+            for i, refinement in enumerate(reforge_results):
+                refinement_images = refinement.get('images', [])
+                refinement_summaries.append({
+                    "index": i,
+                    "result_preview": str(refinement.get('result', ''))[:200] + "..." if len(str(refinement.get('result', ''))) > 200 else str(refinement.get('result', '')),
+                    "image_count": len(refinement_images),
+                    "has_images": len(refinement_images) > 0,
+                })
+
+            evaluator_input_summary = {
+                "is_multimodal": total_images_evaluated > 0,
+                "total_refinements": len(reforge_results),
+                "total_images": total_images_evaluated,
+                "refinements": refinement_summaries,
+                "reforge_step": step,
+                "total_steps": reforge_config.steps,
+            }
+
             # Add evaluator to echo history for visualization
             self.echo.add_history({
                 "role": "reforge_evaluator",
                 "content": eval_content if eval_content else "Evaluating...",  # Full content, no truncation
                 "node_type": "reforge_evaluator"
             }, trace_id=evaluator_trace.id, parent_id=reforge_trace.id, node_type="reforge_evaluator",
-               metadata={
+               metadata=self._get_metadata({
                    "phase_name": phase.name,
-                   "reforge_step": step
-               })
+                   "reforge_step": step,
+                   "evaluator_prompt": eval_prompt,
+                   "evaluator_system_prompt": "You are an expert evaluator. Your job is to select the best refined version. If refinements include images, consider the visual quality and correctness as well.",
+                   "evaluator_input_summary": evaluator_input_summary,
+               }, semantic_actor="evaluator", semantic_purpose="evaluation_output"))
 
             # Extract winner
             import re
@@ -3873,7 +4171,9 @@ Refinement directive: {reforge_config.honing_prompt}
                    "phase_name": phase.name,
                    "reforge_step": step,
                    "winner_index": winner_index,
-                   "total_steps": reforge_config.steps
+                   "total_steps": reforge_config.steps,
+                   "semantic_actor": "framework",
+                   "semantic_purpose": "lifecycle"
                })
 
             # Check threshold ward if configured
@@ -3904,6 +4204,10 @@ Refinement directive: {reforge_config.honing_prompt}
             current_output = refined_winner['result']
             winner = refined_winner
 
+        # Reset sounding index and reforge step after reforge completes
+        self.current_phase_sounding_index = None
+        self.current_reforge_step = None
+
         # Apply final winner's context
         self.context_messages = context_snapshot + winner['context']
         self.echo.state = winner['final_state']
@@ -3919,7 +4223,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return self._execute_phase_internal(phase, input_data, trace, initial_injection)
 
-    def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None) -> Any:
+    def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:
         indent = "  " * self.depth
         rag_context = None
         rag_prompt = ""
@@ -4180,15 +4484,31 @@ Refinement directive: {reforge_config.honing_prompt}
         # Build context fresh for each phase from config
         # No config = clean slate (empty context)
         # Use context.from: ["all"] for explicit snowball behavior
-        context_result = self._build_phase_context(phase, input_data, trace)
+        #
+        # EXCEPTION: pre_built_context is used for reforge iterations
+        # where we need to pass images and previous output context
+        if pre_built_context is not None:
+            # Use pre-built context (from reforge with images)
+            # Log these messages for observability
+            self.context_messages = []
+            for msg in pre_built_context:
+                ctx_trace = trace.create_child("msg", "reforge_context_injection")
+                self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
+                                     metadata=self._get_metadata({"context_source": "reforge_pre_built", "has_images": self._message_has_images(msg)},
+                                                                 semantic_actor="framework", semantic_purpose="context_injection"))
+                self.context_messages.append(msg)
+            context_result = pre_built_context
+        else:
+            context_result = self._build_phase_context(phase, input_data, trace)
 
-        # Always use the built context (selective-by-default)
-        self.context_messages = []
-        for msg in context_result:
-            ctx_trace = trace.create_child("msg", "context_injection")
-            self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
-                                 metadata={"context_from": phase.context.from_ if phase.context else []})
-            self.context_messages.append(msg)
+            # Always use the built context (selective-by-default)
+            self.context_messages = []
+            for msg in context_result:
+                ctx_trace = trace.create_child("msg", "context_injection")
+                self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
+                                     metadata=self._get_metadata({"context_from": phase.context.from_ if phase.context else []},
+                                                                 semantic_actor="framework", semantic_purpose="context_injection"))
+                self.context_messages.append(msg)
 
         # Construct context from lineage
         # Since we are snowballing context_messages, we don't need to add input_data as a separate user message.
@@ -4253,28 +4573,32 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Add system message with tool definitions (Quartermaster may have selected different tools)
                 sys_trace = trace.create_child("msg", "tool_definitions")
                 sys_msg = {"role": "system", "content": f"## Tools for this phase\n\n{tools_prompt}"}
-                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
+                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system",
+                                     metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="instructions"))
                 self.context_messages.append(sys_msg)
 
             # User message with the task
             task_content = f"## New Task\n\n{rendered_instructions}{rag_prompt}"
             user_trace = trace.create_child("msg", "phase_task")
             user_msg = {"role": "user", "content": task_content}
-            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user")
+            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",
+                                 metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="task_input"))
             self.context_messages.append(user_msg)
         else:
             # First phase: system message with tools + user message with task
             if not use_native and tool_descriptions:
                 sys_trace = trace.create_child("msg", "tool_definitions")
                 sys_msg = {"role": "system", "content": f"## Available Tools\n\n{tools_prompt}"}
-                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system")
+                self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system",
+                                     metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="instructions"))
                 self.context_messages.append(sys_msg)
 
             # User message with the actual task
             task_content = rendered_instructions + rag_prompt
             user_trace = trace.create_child("msg", "phase_task")
             user_msg = {"role": "user", "content": task_content}
-            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user")
+            self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",
+                                 metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="task_input"))
             self.context_messages.append(user_msg)
 
         # For debugging, log input data to echo (but NOT to context_messages)
@@ -4283,7 +4607,8 @@ Refinement directive: {reforge_config.honing_prompt}
             self.echo.add_history(
                 {"role": "user", "content": f"## Input Data:\n{json.dumps(input_data)}"},
                 trace_id=input_trace.id, parent_id=trace.id, node_type="user",
-                metadata={"debug_only": True, "not_sent_to_llm": True}
+                metadata=self._get_metadata({"debug_only": True, "not_sent_to_llm": True},
+                                            semantic_actor="framework", semantic_purpose="task_input")
             )
 
         # Handle Phase Start Injection
@@ -4292,10 +4617,11 @@ Refinement directive: {reforge_config.honing_prompt}
             inject_content = initial_injection.get("content")
             console.print(f"{indent}[bold red]⚡ Injection Triggered:[/bold red] {inject_content}")
             injected_messages.append({"role": "user", "content": f"URGENT USER INJECTION: {inject_content}"})
-            
+
             inject_trace = trace.create_child("msg", "injection")
             inject_msg = {"role": "user", "content": inject_content}
-            self.echo.add_history(inject_msg, trace_id=inject_trace.id, parent_id=trace.id, node_type="injection")
+            self.echo.add_history(inject_msg, trace_id=inject_trace.id, parent_id=trace.id, node_type="injection",
+                                 metadata=self._get_metadata(semantic_actor="human", semantic_purpose="task_input"))
             self.context_messages.append(inject_msg)
 
         self._update_graph()
@@ -4469,7 +4795,9 @@ Refinement directive: {reforge_config.honing_prompt}
                                           "phase_name": phase.name,
                                           "attempt": attempt + 1,
                                           "max_attempts": max_attempts,
-                                          "loop_until": phase.rules.loop_until if phase.rules.loop_until else None
+                                          "loop_until": phase.rules.loop_until if phase.rules.loop_until else None,
+                                          "semantic_actor": "framework",
+                                          "semantic_purpose": "validation_output"
                                       })
                 self._update_graph()
 
@@ -4504,7 +4832,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     "content": f"Turn {i+1}",
                     "node_type": "turn"
                 }, trace_id=turn_trace.id, parent_id=trace.id, node_type="turn",
-                   metadata={"phase_name": phase.name, "turn_number": i+1, "max_turns": max_turns})
+                   metadata={"phase_name": phase.name, "turn_number": i+1, "max_turns": max_turns,
+                             "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
                 if max_turns > 1:
                     console.print(f"{indent}  [dim]Turn {i+1}/{max_turns}[/dim]")
@@ -4784,12 +5113,14 @@ Refinement directive: {reforge_config.honing_prompt}
                     input_trace = turn_trace.create_child("msg", "user_input")
                     if current_input:
                          self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input",
-                                             metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
+                                             metadata=self._get_metadata({"phase_name": phase.name, "turn": i},
+                                                                         semantic_actor="framework", semantic_purpose="task_input"))
 
                     # Add assistant response to Echo (needed for message injection in context.from)
                     output_trace = turn_trace.create_child("msg", "assistant_output")
                     self.echo.add_history({"role": "assistant", "content": content}, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="agent",
-                                         metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
+                                         metadata=self._get_metadata({"phase_name": phase.name, "turn": i},
+                                                                     semantic_purpose="generation"))
 
                     self._update_graph()
 
@@ -4821,7 +5152,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                 "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
                             }
                             self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error",
-                                                metadata=self._get_metadata({"phase_name": phase.name, "turn": i}))
+                                                metadata=self._get_metadata({"phase_name": phase.name, "turn": i},
+                                                                            semantic_actor="framework", semantic_purpose="validation_output"))
 
                             # CRITICAL: Set validation_passed = False to trigger attempt retry
                             # JSON errors should retry the entire attempt, not just skip to next turn
@@ -4856,7 +5188,8 @@ Refinement directive: {reforge_config.honing_prompt}
                             self.echo.add_history(
                                 {"role": "tool_call", "content": f"Calling {func_name}", "tool_name": func_name, "arguments": args},
                                 trace_id=call_trace.id, parent_id=tool_trace.id, node_type="tool_call",
-                                metadata={"tool_name": func_name, "arguments": args}
+                                metadata=self._get_metadata({"tool_name": func_name, "arguments": args},
+                                                           semantic_purpose="tool_request")
                             )
 
                             # Update phase progress with current tool
@@ -5019,14 +5352,16 @@ Refinement directive: {reforge_config.honing_prompt}
                             # Add to Echo (auto-logs via unified_logs)
                             result_trace = tool_trace.create_child("msg", "tool_result")
                             self.echo.add_history(tool_msg, trace_id=result_trace.id, parent_id=tool_trace.id, node_type="tool_result",
-                                                 metadata={"tool_name": func_name, "result": str(result)[:500]})
+                                                 metadata=self._get_metadata({"tool_name": func_name, "result": str(result)[:500]},
+                                                                             semantic_actor="framework", semantic_purpose="tool_response"))
 
                             # Inject Image Message if present
                             if image_injection_message:
                                 self.context_messages.append(image_injection_message)
                                 img_trace = tool_trace.create_child("msg", "image_injection")
                                 self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection",
-                                                     metadata={"sounding_index": self.current_phase_sounding_index, "phase_name": phase.name})
+                                                     metadata=self._get_metadata({"phase_name": phase.name},
+                                                                                 semantic_actor="framework", semantic_purpose="context_injection"))
 
                             self._update_graph() # Update after tool
 
@@ -5094,7 +5429,9 @@ Refinement directive: {reforge_config.honing_prompt}
                                 content=content,
                                 full_request=full_request,  # ADD: Include complete request with images
                                 full_response=full_response,  # ADD: Include complete response
-                                metadata={"is_follow_up": True, "turn_number": self.current_turn_number}
+                                sounding_index=self.current_phase_sounding_index or self.sounding_index,  # FIX: Tag with sounding
+                                reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
+                                metadata=self._get_metadata({"is_follow_up": True, "turn_number": self.current_turn_number})
                             )
 
                             self._update_graph() # Update after follow up
@@ -5127,7 +5464,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                         self.echo.add_history(
                                             {"role": "tool_call", "content": f"Calling {func_name} (follow-up)", "tool_name": func_name, "arguments": args},
                                             trace_id=call_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_call",
-                                            metadata={"tool_name": func_name, "arguments": args, "is_followup": True}
+                                            metadata=self._get_metadata({"tool_name": func_name, "arguments": args, "is_followup": True},
+                                                                        semantic_purpose="tool_request")
                                         )
 
                                         # Update phase progress
@@ -5169,7 +5507,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                         # Log to echo
                                         result_trace_fu = tool_trace_fu.create_child("msg", "tool_result")
                                         self.echo.add_history(tool_msg_fu, trace_id=result_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_result",
-                                                            metadata={"tool_name": func_name, "result": str(result)[:500], "is_followup": True})
+                                                            metadata=self._get_metadata({"tool_name": func_name, "result": str(result)[:500], "is_followup": True},
+                                                                                        semantic_actor="framework", semantic_purpose="tool_response"))
 
                                         # Handle image injection from follow-up tools
                                         parsed_result = result
@@ -5210,7 +5549,8 @@ Refinement directive: {reforge_config.honing_prompt}
                                                 self.context_messages.append(image_injection_msg)
                                                 img_trace_fu = tool_trace_fu.create_child("msg", "image_injection")
                                                 self.echo.add_history(image_injection_msg, trace_id=img_trace_fu.id, parent_id=tool_trace_fu.id, node_type="injection",
-                                                                    metadata={"sounding_index": self.current_phase_sounding_index, "phase_name": phase.name, "is_followup": True})
+                                                                    metadata=self._get_metadata({"phase_name": phase.name, "is_followup": True},
+                                                                                                semantic_actor="framework", semantic_purpose="context_injection"))
 
                                         self._update_graph()
                         else:
@@ -5316,6 +5656,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         error_content += f"\nHTTP Status: {error_metadata['http_status']}"
                         error_content += f"\nProvider Response: {error_metadata.get('http_response', 'N/A')[:200]}"
 
+                    error_metadata["semantic_actor"] = "framework"
+                    error_metadata["semantic_purpose"] = "validation_output"
                     self.echo.add_history(
                         {"role": "system", "content": error_content},
                         trace_id=turn_trace.id,
@@ -5386,7 +5728,9 @@ Refinement directive: {reforge_config.honing_prompt}
                        metadata={
                            "phase_name": phase.name,
                            "valid": True,
-                           "attempt": attempt + 1
+                           "attempt": attempt + 1,
+                           "semantic_actor": "framework",
+                           "semantic_purpose": "validation_output"
                        })
 
                     # Store the validated JSON in state
@@ -5425,7 +5769,9 @@ Refinement directive: {reforge_config.honing_prompt}
                            "valid": False,
                            "reason": error_msg,
                            "attempt": attempt + 1,
-                           "max_attempts": max_attempts
+                           "max_attempts": max_attempts,
+                           "semantic_actor": "framework",
+                           "semantic_purpose": "validation_output"
                        })
 
                     validation_passed = False
@@ -5466,7 +5812,9 @@ Refinement directive: {reforge_config.honing_prompt}
                        "phase_name": phase.name,
                        "validator": validator_name,
                        "attempt": attempt + 1,
-                       "content_preview": response_content[:200] if response_content else "(empty)"
+                       "content_preview": response_content[:200] if response_content else "(empty)",
+                       "semantic_actor": "framework",
+                       "semantic_purpose": "lifecycle"
                    })
 
                 # Initialize validator_result to None (ensures it's in scope for logging later)
@@ -5622,7 +5970,9 @@ Refinement directive: {reforge_config.honing_prompt}
                        "valid": is_valid,
                        "reason": reason,
                        "attempt": attempt + 1,
-                       "max_attempts": max_attempts
+                       "max_attempts": max_attempts,
+                       "semantic_actor": "validator",
+                       "semantic_purpose": "validation_output"
                    })
 
                 if is_valid:

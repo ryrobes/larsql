@@ -10,6 +10,7 @@ The schema is designed to work with both chDB (embedded) and ClickHouse server.
 UNIFIED_LOGS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS unified_logs (
     -- Core identification
+    message_id String,  -- UUID for each message (enables deduplication, direct links)
     timestamp Float64,
     timestamp_iso String,
     session_id String,
@@ -23,10 +24,17 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     role Nullable(String),
     depth Int32,
 
+    -- Semantic classification (human-readable roles for debugging)
+    -- semantic_actor: WHO is speaking (main_agent, evaluator, validator, etc.)
+    -- semantic_purpose: WHAT is this message for (instructions, tool_response, evaluation_output, etc.)
+    semantic_actor Nullable(String),
+    semantic_purpose Nullable(String),
+
     -- Execution context - special indexes for soundings/reforge
     sounding_index Nullable(Int32),
     is_winner Nullable(Bool),
     reforge_step Nullable(Int32),
+    winning_sounding_index Nullable(Int32),  -- For reforge: which initial sounding won and is being refined
     attempt_number Nullable(Int32),
     turn_number Nullable(Int32),
     mutation_applied Nullable(String),  -- The actual mutation text (augment prefix OR rewritten prompt)

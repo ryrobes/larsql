@@ -14,7 +14,7 @@ const MODEL_COLORS = [
   '#22d3ee', // Cyan
 ];
 
-function ModelCostBar({ modelCosts, totalCost }) {
+function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0 }) {
   // Don't render if there's only one model or no costs
   if (!modelCosts || modelCosts.length <= 1) {
     return null;
@@ -37,6 +37,10 @@ function ModelCostBar({ modelCosts, totalCost }) {
     return `$${cost.toFixed(2)}`;
   };
 
+  // Calculate efficiency percentage
+  const efficiencyPercent = totalCost > 0 ? Math.round((usedCost / totalCost) * 100) : 100;
+  const hasExploration = explorationCost > 0;
+
   return (
     <div className="model-cost-bar-container">
       {/* Stacked bar visualization */}
@@ -54,7 +58,7 @@ function ModelCostBar({ modelCosts, totalCost }) {
         ))}
       </div>
 
-      {/* Legend - compact inline format */}
+      {/* Legend items */}
       <div className="model-cost-legend">
         {modelsWithPercentage.map((mc, idx) => (
           <div key={idx} className="model-cost-legend-item">
@@ -67,6 +71,23 @@ function ModelCostBar({ modelCosts, totalCost }) {
           </div>
         ))}
       </div>
+
+      {/* Efficiency summary - only show when there's exploration cost */}
+      {hasExploration && (
+        <div className="model-cost-efficiency-summary">
+          <span className="efficiency-total">
+            {formatCost(totalCost)}
+          </span>
+          <span className="efficiency-divider">│</span>
+          <span className="efficiency-stat kept">
+            {formatCost(usedCost)} kept ({efficiencyPercent}%)
+          </span>
+          <span className="efficiency-divider">│</span>
+          <span className="efficiency-stat explored">
+            {formatCost(explorationCost)} explored
+          </span>
+        </div>
+      )}
     </div>
   );
 }

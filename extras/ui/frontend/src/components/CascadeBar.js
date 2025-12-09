@@ -188,7 +188,7 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
                 <Icon icon="mdi:check" width="12" className="legend-status completed" />
               )}
               {isError && (
-                <Icon icon="mdi:alert" width="12" className="legend-status error" />
+                <Icon icon="mdi:alert-circle" width="12" height="12" className="legend-status error" />
               )}
             </div>
           );

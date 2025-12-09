@@ -92,13 +92,53 @@
   transition: transform 0.15s ease;
 }
 
+/* Efficiency summary row - bottom of the component */
+.model-cost-efficiency-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.65rem;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  white-space: nowrap;
+  padding-top: 6px;
+  margin-top: 4px;
+  border-top: 1px solid #2C3B4B;
+}
+
+.efficiency-total {
+  font-weight: 700;
+  color: #F0F4F8;
+}
+
+.efficiency-stat {
+  font-weight: 600;
+}
+
+.efficiency-stat.kept {
+  color: #4ADE80; /* Aurora Green - positive */
+}
+
+.efficiency-stat.explored {
+  color: #9AA5B1; /* Muted - it's not bad, just informational */
+}
+
+.efficiency-divider {
+  color: #3D4F5F;
+  font-weight: 300;
+}
+
 /* Responsive - tighter spacing on narrow screens */
 @media (max-width: 400px) {
   .model-cost-legend {
-    gap: 2px 6px;
+    gap: 2px;
   }
 
   .model-cost-legend-item {
     font-size: 0.62rem;
+  }
+
+  .model-cost-efficiency-summary {
+    font-size: 0.6rem;
+    flex-wrap: wrap;
   }
 }

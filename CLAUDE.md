@@ -195,7 +195,7 @@ Cascades are defined in JSON files located in `examples/`. The schema is validat
 - `sub_cascades`: Blocking sub-cascade invocations with `context_in`/`context_out` merging
 - `async_cascades`: Fire-and-forget background cascades with `trigger: "on_start"` or `"on_end"`
 - `rules`: Contains `max_turns`, `max_attempts`, `turn_prompt` (custom prompt for turn 1+ iterations with Jinja2 support), `loop_until` (validator name to keep looping until it passes), `loop_until_prompt` (optional custom validation goal prompt), `loop_until_silent` (skip auto-injection for impartial validation), and `retry_instructions` (injected on retry)
-- `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `evaluator_instructions`, `mutate`, `mutation_mode`, optional `reforge` for iterative refinement)
+- `soundings`: Phase-level Tree of Thought configuration for parallel attempts with evaluation (`factor`, `max_parallel`, `evaluator_instructions`, `mutate`, `mutation_mode`, optional `reforge` for iterative refinement)
 - `output_schema`: JSON schema for validating phase output with automatic retry on failure
 - `wards`: Pre/post validation with three modes (blocking, retry, advisory)
 
@@ -995,6 +995,7 @@ Reforge extends Soundings (Tree of Thought) with iterative refinement: after sou
 {
   "soundings": {
     "factor": 3,
+    "max_parallel": 3,
     "evaluator_instructions": "Pick the best initial approach",
     "reforge": {
       "steps": 2,
@@ -1007,6 +1008,16 @@ Reforge extends Soundings (Tree of Thought) with iterative refinement: after sou
   }
 }
 ```
+
+**Soundings Parameters:**
+- `factor`: Number of parallel sounding attempts (default: 1)
+- `max_parallel`: Maximum concurrent executions (default: 3) - controls thread pool size for cascade-level soundings and reforge
+- `evaluator_instructions`: Instructions for the evaluator LLM to select winner
+- `mutate`: Apply built-in mutation strategies (default: false)
+- `mutation_mode`: How to mutate prompts: `"rewrite"` (default), `"augment"`, or `"approach"`
+- `models`: Multi-model configuration for A/B testing across providers
+- `validator`: Pre-evaluation validator to filter broken outputs
+- `reforge`: Iterative refinement configuration (see below)
 
 **Reforge Parameters:**
 - `steps`: Number of refinement iterations (each step refines the previous winner)
@@ -1028,27 +1039,30 @@ Reforge extends Soundings (Tree of Thought) with iterative refinement: after sou
 
 **Execution Flow:**
 ```
-🔱 Soundings (Breadth)
-  ├─ Attempt 1
-  ├─ Attempt 2
-  └─ Attempt 3
+🔱 Soundings (Breadth) - runs in parallel (up to max_parallel workers)
+  ├─ Attempt 1 ─┐
+  ├─ Attempt 2 ─┼─ concurrent
+  └─ Attempt 3 ─┘
      ↓
-  ⚖️  Evaluate → Winner
+  ⚖️  Evaluate → Winner (waits for all to complete)
      ↓
-🔨 Reforge Step 1 (Depth)
-  ├─ Refine 1 (winner + honing + mutation_1)
-  └─ Refine 2 (winner + honing + mutation_2)
+🔨 Reforge Step 1 (Depth) - also runs in parallel
+  ├─ Refine 1 (winner + honing + mutation_1) ─┐
+  └─ Refine 2 (winner + honing + mutation_2) ─┘ concurrent
      ↓
   ⚖️  Evaluate → New Winner
      ↓
 🔨 Reforge Step 2
-  ├─ Refine 1 (prev winner + honing + mutation_3)
-  └─ Refine 2 (prev winner + honing + mutation_4)
+  ├─ Refine 1 (prev winner + honing + mutation_3) ─┐
+  └─ Refine 2 (prev winner + honing + mutation_4) ─┘ concurrent
      ↓
   ⚖️  Evaluate → Final Winner
      ↓
 ✅ Final polished output
 ```
+
+**Parallel Execution:**
+Cascade-level soundings and reforge refinements execute concurrently using `ThreadPoolExecutor` with `max_parallel` workers (default: 3). This significantly reduces wall-clock time for large sounding factors. Traces are pre-created sequentially for proper hierarchy, then executions run in parallel, and results are sorted by index before evaluation.
 
 **Dream Mode:**
 All intermediate sounding and reforge attempts are fully logged with `sounding_index`, `reforge_step`, and `is_winner` metadata but only the final winner's output continues in the main cascade flow.

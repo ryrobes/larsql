@@ -183,6 +183,9 @@
 /* Cost timeline chart in right pane */
 .split-pane.right-pane .cost-timeline-chart {
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Make InstanceCard fill the pane */

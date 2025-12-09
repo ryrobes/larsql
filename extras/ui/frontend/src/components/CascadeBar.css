@@ -10,6 +10,10 @@
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   /* Prevent layout shift during updates */
   contain: layout style;
+  /* Clip any content that might bleed in from other components */
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
 }
 
 .cascade-bar-container:hover {
@@ -227,6 +231,10 @@
   gap: 0.75rem;
   margin-top: 0.6rem;
   padding-top: 0.5rem;
+  /* Prevent any content from bleeding in */
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 /* Legend item */
@@ -239,6 +247,9 @@
   cursor: pointer;
   transition: all 0.2s ease;
   background: transparent;
+  /* Prevent items from growing unexpectedly */
+  flex-shrink: 0;
+  max-height: 28px;
 }
 
 .legend-item:hover,
@@ -263,8 +274,13 @@
 .legend-color {
   width: 12px;
   height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  max-width: 12px;
+  max-height: 12px;
   border-radius: 3px;
   flex-shrink: 0;
+  flex-grow: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
@@ -290,6 +306,10 @@
 .legend-status {
   color: #9AA5B1;
   flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  max-width: 12px;
+  max-height: 12px;
 }
 
 .legend-status.completed {

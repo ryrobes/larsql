@@ -42,6 +42,7 @@ class MegaTableSchema:
         """Return all field names and their types for documentation."""
         return {
             # Core identification
+            "message_id": "str (UUID for each message - enables deduplication, direct links)",
             "timestamp": "float (Unix timestamp in local timezone)",
             "timestamp_iso": "str (ISO 8601 format for human readability)",
             "session_id": "str (Cascade session ID)",
@@ -55,10 +56,15 @@ class MegaTableSchema:
             "role": "str (user, assistant, tool, system)",
             "depth": "int (Nesting depth for sub-cascades)",
 
+            # Semantic classification (human-readable roles for debugging)
+            "semantic_actor": "str (WHO is speaking: main_agent, evaluator, validator, quartermaster, human, framework)",
+            "semantic_purpose": "str (WHAT is this for: instructions, task_input, tool_request, tool_response, evaluation_output, etc.)",
+
             # Execution context - special indexes
             "sounding_index": "int (Which sounding attempt, 0-indexed, null if N/A)",
             "is_winner": "bool (True if winning sounding, null if N/A)",
-            "reforge_step": "int (Reforge iteration, 0=initial, null if N/A)",
+            "reforge_step": "int (Reforge iteration, 1-indexed, null if N/A)",
+            "winning_sounding_index": "int (For reforge: which initial sounding won and is being refined)",
             "attempt_number": "int (Retry/validation attempt, null if N/A)",
             "turn_number": "int (Turn within phase, null if N/A)",
             "mutation_applied": "str (What mutation/variation was applied to this sounding)",
@@ -342,10 +348,15 @@ class UnifiedLogger:
         role: str = None,
         depth: int = 0,
 
+        # Semantic classification (human-readable roles for debugging)
+        semantic_actor: str = None,   # WHO: main_agent, evaluator, validator, quartermaster, human, framework
+        semantic_purpose: str = None, # WHAT: instructions, task_input, tool_request, tool_response, etc.
+
         # Execution context - special indexes
         sounding_index: int = None,
         is_winner: bool = None,
         reforge_step: int = None,
+        winning_sounding_index: int = None,  # For reforge: which initial sounding won
         attempt_number: int = None,
         turn_number: int = None,
         mutation_applied: str = None,
@@ -398,6 +409,7 @@ class UnifiedLogger:
         """
 
         # Generate defaults
+        message_id = str(uuid.uuid4())  # Unique ID for this message
         trace_id = trace_id or str(uuid.uuid4())
         timestamp = time.time()
 
@@ -434,6 +446,7 @@ class UnifiedLogger:
         # Build mega-table row
         row = {
             # Core identification
+            "message_id": message_id,
             "timestamp": timestamp,
             "timestamp_iso": timestamp_iso,
             "session_id": session_id,
@@ -447,10 +460,15 @@ class UnifiedLogger:
             "role": role,
             "depth": depth,
 
+            # Semantic classification
+            "semantic_actor": semantic_actor,
+            "semantic_purpose": semantic_purpose,
+
             # Execution context
             "sounding_index": sounding_index,
             "is_winner": is_winner,
             "reforge_step": reforge_step,
+            "winning_sounding_index": winning_sounding_index,
             "attempt_number": attempt_number,
             "turn_number": turn_number,
             "mutation_applied": mutation_applied,
@@ -574,13 +592,76 @@ class UnifiedLogger:
             self.buffer = []
 
     def _write_parquet(self, df: pd.DataFrame):
-        """Write DataFrame to Parquet file."""
+        """Write DataFrame to Parquet file with enforced schema."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
         # Generate unique filename (timestamp + uuid + count for ordering)
         filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
         filepath = os.path.join(self.log_dir, filename)
 
+        # Define explicit pyarrow schema to prevent type inference issues
+        # When all values in a column are NULL, pyarrow defaults to int32
+        # We need to force string types for string columns
+        schema = pa.schema([
+            ('message_id', pa.string()),
+            ('timestamp', pa.float64()),
+            ('timestamp_iso', pa.string()),
+            ('session_id', pa.string()),
+            ('trace_id', pa.string()),
+            ('parent_id', pa.string()),
+            ('parent_session_id', pa.string()),
+            ('parent_message_id', pa.string()),
+            ('node_type', pa.string()),
+            ('role', pa.string()),
+            ('depth', pa.int32()),
+            ('semantic_actor', pa.string()),
+            ('semantic_purpose', pa.string()),
+            ('sounding_index', pa.int32()),
+            ('is_winner', pa.bool_()),
+            ('reforge_step', pa.int32()),
+            ('winning_sounding_index', pa.int32()),
+            ('attempt_number', pa.int32()),
+            ('turn_number', pa.int32()),
+            ('mutation_applied', pa.string()),
+            ('mutation_type', pa.string()),
+            ('mutation_template', pa.string()),
+            ('cascade_id', pa.string()),
+            ('cascade_file', pa.string()),
+            ('cascade_json', pa.string()),
+            ('phase_name', pa.string()),
+            ('phase_json', pa.string()),
+            ('model', pa.string()),
+            ('request_id', pa.string()),
+            ('provider', pa.string()),
+            ('duration_ms', pa.float64()),
+            ('tokens_in', pa.int32()),
+            ('tokens_out', pa.int32()),
+            ('total_tokens', pa.int32()),
+            ('cost', pa.float64()),
+            ('content_json', pa.string()),
+            ('full_request_json', pa.string()),
+            ('full_response_json', pa.string()),
+            ('tool_calls_json', pa.string()),
+            ('images_json', pa.string()),
+            ('has_images', pa.bool_()),
+            ('has_base64', pa.bool_()),
+            ('audio_json', pa.string()),
+            ('has_audio', pa.bool_()),
+            ('mermaid_content', pa.string()),
+            ('metadata_json', pa.string()),
+        ])
+
+        # Convert DataFrame to pyarrow Table with explicit schema
+        # Only include columns that exist in the DataFrame
+        existing_schema = pa.schema([
+            field for field in schema
+            if field.name in df.columns
+        ])
+        table = pa.Table.from_pandas(df, schema=existing_schema, preserve_index=False)
+
         # Write to Parquet
-        df.to_parquet(filepath, engine='pyarrow', index=False)
+        pq.write_table(table, filepath)
 
         print(f"[Unified Log] Flushed {len(df)} messages to {filename}")
 
@@ -646,9 +727,12 @@ def log_unified(
     node_type: str = "message",
     role: str = None,
     depth: int = 0,
+    semantic_actor: str = None,   # WHO: main_agent, evaluator, validator, quartermaster, human, framework
+    semantic_purpose: str = None, # WHAT: instructions, task_input, tool_request, tool_response, etc.
     sounding_index: int = None,
     is_winner: bool = None,
     reforge_step: int = None,
+    winning_sounding_index: int = None,  # For reforge: which initial sounding won
     attempt_number: int = None,
     turn_number: int = None,
     mutation_applied: str = None,
@@ -696,9 +780,12 @@ def log_unified(
         node_type=node_type,
         role=role,
         depth=depth,
+        semantic_actor=semantic_actor,
+        semantic_purpose=semantic_purpose,
         sounding_index=sounding_index,
         is_winner=is_winner,
         reforge_step=reforge_step,
+        winning_sounding_index=winning_sounding_index,
         attempt_number=attempt_number,
         turn_number=turn_number,
         mutation_applied=mutation_applied,

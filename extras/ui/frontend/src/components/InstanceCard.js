@@ -280,11 +280,48 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       const modelsSet = new Set();
       const modelCostsMap = new Map();
+
+      // First pass: find winning sounding indices per phase
+      // is_winner is only set to true on specific entries, so we need to find which indices won
+      const winningSoundingsByPhase = new Map(); // phase_name -> Set of winning sounding indices
+      entries.forEach(e => {
+        if (e.is_winner === true && e.sounding_index !== null && e.sounding_index !== undefined) {
+          const phase = e.phase_name || 'unknown';
+          if (!winningSoundingsByPhase.has(phase)) {
+            winningSoundingsByPhase.set(phase, new Set());
+          }
+          winningSoundingsByPhase.get(phase).add(e.sounding_index);
+        }
+      });
+
+      // Second pass: calculate costs
+      let usedCost = 0;
+      let explorationCost = 0;
+
       entries.forEach(e => {
         if (e.model) {
           modelsSet.add(e.model);
           const currentCost = modelCostsMap.get(e.model) || 0;
           modelCostsMap.set(e.model, currentCost + safeNum(e.cost));
+        }
+
+        // Track used vs exploration costs for soundings
+        const entryCost = safeNum(e.cost);
+        if (entryCost > 0) {
+          const hasSounding = e.sounding_index !== null && e.sounding_index !== undefined;
+          if (hasSounding) {
+            const phase = e.phase_name || 'unknown';
+            const winningIndices = winningSoundingsByPhase.get(phase);
+            const isFromWinningSounding = winningIndices && winningIndices.has(e.sounding_index);
+            if (isFromWinningSounding) {
+              usedCost += entryCost;
+            } else {
+              explorationCost += entryCost;
+            }
+          } else {
+            // Non-sounding entry - always used
+            usedCost += entryCost;
+          }
         }
       });
 
@@ -349,6 +386,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         total_tokens_out: totalTokensOut,
         models_used: Array.from(modelsSet),
         model_costs: modelCosts,
+        used_cost: usedCost,
+        exploration_cost: explorationCost,
         input_data: inputData,
         final_output: finalOutput,
         phases: phases,
@@ -530,6 +569,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             <ModelCostBar
               modelCosts={instance.model_costs}
               totalCost={instance.total_cost}
+              usedCost={instance.used_cost}
+              explorationCost={instance.exploration_cost}
             />
           )}
 

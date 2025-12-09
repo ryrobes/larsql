@@ -103,6 +103,10 @@ class Echo:
             mutation_type = meta.get("mutation_type")  # 'augment', 'rewrite', or None
             mutation_template = meta.get("mutation_template")  # For rewrite: the instruction used
 
+            # Semantic classification (human-readable roles for debugging)
+            semantic_actor = meta.get("semantic_actor")    # WHO: main_agent, evaluator, validator, etc.
+            semantic_purpose = meta.get("semantic_purpose") # WHAT: instructions, tool_response, etc.
+
             # Generate mermaid diagram content (includes the newly added entry)
             # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
             # The mermaid chart is monotonically growing, so previous state is always a valid subset
@@ -132,6 +136,8 @@ class Echo:
                 parent_id=parent_id,
                 node_type=node_type,
                 role=role,
+                semantic_actor=semantic_actor,    # WHO: main_agent, evaluator, validator, etc.
+                semantic_purpose=semantic_purpose, # WHAT: instructions, tool_response, etc.
                 content=content,  # Full content (NOT stringified!)
                 tool_calls=tool_calls,
                 metadata=meta,

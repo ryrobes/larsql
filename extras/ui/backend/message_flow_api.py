@@ -246,7 +246,9 @@ def get_message_flow(session_id):
                     # Update message's phase_name so it groups correctly in frontend
                     if not phase_name and evaluator_phase:
                         msg['phase_name'] = evaluator_phase
-                    evaluators_by_phase[evaluator_phase] = {
+
+                    # Build comprehensive evaluator data including input observability
+                    evaluator_data = {
                         'timestamp': timestamp,
                         'content': content,
                         'model': model,
@@ -255,8 +257,26 @@ def get_message_flow(session_id):
                         'tokens_out': int(tokens_out) if tokens_out else 0,
                         'winner_index': metadata.get('winner_index') if metadata else None,
                         'total_soundings': metadata.get('total_soundings') if metadata else None,
-                        'evaluation': metadata.get('evaluation') if metadata else content
+                        'valid_soundings': metadata.get('valid_soundings') if metadata else None,
+                        'evaluation': metadata.get('evaluation') if metadata else content,
+                        # NEW: Full evaluator input observability
+                        'evaluator_prompt': metadata.get('evaluator_prompt') if metadata else None,
+                        'evaluator_system_prompt': metadata.get('evaluator_system_prompt') if metadata else None,
+                        'evaluator_input_summary': metadata.get('evaluator_input_summary') if metadata else None,
+                        # Cost-aware evaluation info
+                        'cost_aware': metadata.get('cost_aware') if metadata else False,
+                        'quality_weight': metadata.get('quality_weight') if metadata else None,
+                        'cost_weight': metadata.get('cost_weight') if metadata else None,
+                        'sounding_costs': metadata.get('sounding_costs') if metadata else None,
+                        'winner_cost': metadata.get('winner_cost') if metadata else None,
+                        # Pareto frontier info
+                        'pareto_enabled': metadata.get('pareto_enabled') if metadata else False,
+                        'pareto_policy': metadata.get('pareto_policy') if metadata else None,
+                        'frontier_size': metadata.get('frontier_size') if metadata else None,
+                        'quality_scores': metadata.get('quality_scores') if metadata else None,
+                        'winner_quality': metadata.get('winner_quality') if metadata else None,
                     }
+                    evaluators_by_phase[evaluator_phase] = evaluator_data
 
             # Categorize message for parallel branch visualization
             # Use int() to normalize sounding_index (DuckDB may return float for nullable int)

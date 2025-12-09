@@ -211,6 +211,7 @@ class ParetoFrontier(BaseModel):
 
 class SoundingsConfig(BaseModel):
     factor: int = 1
+    max_parallel: int = 3  # Max concurrent sounding executions (default: 3, set to 1 for sequential)
     evaluator_instructions: Optional[str] = None  # Required unless evaluator="human"
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop
     mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)

@@ -3263,7 +3263,9 @@ def hotornot_evaluations():
 # ==============================================================================
 
 # Cache for reforge enrichment data to avoid repeated database queries
+# Format: {session_id: {'data': [...], 'timestamp': time.time()}}
 _reforge_cache = {}
+_REFORGE_CACHE_TTL = 300  # 5 minutes
 
 @app.route('/api/session/<session_id>/images', methods=['GET'])
 def get_session_images(session_id):
@@ -3362,108 +3364,164 @@ def get_session_images(session_id):
 
         # Enrich images with reforge step information from database (with caching)
         if images:
-            # Check if we have cached reforge data for this session
-            if session_id not in _reforge_cache:
+            import time as _time
+            cache_entry = _reforge_cache.get(session_id)
+            cache_valid = cache_entry and (_time.time() - cache_entry.get('timestamp', 0) < _REFORGE_CACHE_TTL)
+
+            if not cache_valid:
                 try:
                     import json
                     import pandas as pd
+                    import chdb
 
-                    # Query for reforge_attempt messages to get attempt_index
-                    # Use direct SQL to avoid connection pooling issues
+                    # Query for reforge_step entries (mark START of each reforge step)
+                    # and reforge_winner entries (mark END and identify winner)
                     try:
-                        import chdb
-                        attempt_df = chdb.query(
-                            f"SELECT * FROM file('/home/ryanr/repos/windlass/data/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_attempt' ORDER BY timestamp",
+                        step_df = chdb.query(
+                            f"SELECT timestamp, reforge_step, metadata_json FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_step' ORDER BY timestamp",
                             'DataFrame'
                         )
                     except Exception as query_err:
-                        print(f"Warning: Database query for reforge attempts failed: {query_err}")
-                        attempt_df = pd.DataFrame()
+                        print(f"Warning: Database query for reforge steps failed: {query_err}")
+                        step_df = pd.DataFrame()
 
-                    reforge_ranges = []
-                    if not attempt_df.empty:
-                        # Get reforge winner information
-                        try:
-                            winner_df = chdb.query(
-                                f"SELECT * FROM file('/home/ryanr/repos/windlass/data/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_winner' ORDER BY timestamp",
-                                'DataFrame'
-                            )
-                        except Exception as query_err:
-                            print(f"Warning: Database query for reforge winners failed: {query_err}")
-                            winner_df = pd.DataFrame()
-                        reforge_winners = {}
+                    try:
+                        winner_df = chdb.query(
+                            f"SELECT timestamp, reforge_step, metadata_json FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_winner' ORDER BY timestamp",
+                            'DataFrame'
+                        )
+                    except Exception as query_err:
+                        print(f"Warning: Database query for reforge winners failed: {query_err}")
+                        winner_df = pd.DataFrame()
+
+                    reforge_windows = []
+                    reforge_winners = {}
+                    final_winner_step = None
+
+                    # Extract winner info for each step
+                    if not winner_df.empty:
+                        for _, row in winner_df.iterrows():
+                            step = int(row['reforge_step']) if pd.notna(row['reforge_step']) else None
+                            if step is not None:
+                                metadata = row.get('metadata_json')
+                                if metadata:
+                                    try:
+                                        meta_dict = json.loads(metadata)
+                                        winner_index = meta_dict.get('winner_index')
+                                        if winner_index is not None:
+                                            reforge_winners[step] = winner_index
+                                    except:
+                                        pass
+                        # The last reforge step with a winner is the final winner
+                        if reforge_winners:
+                            final_winner_step = max(reforge_winners.keys())
+
+                    # Build time windows for each reforge step
+                    # Window = (step_start_time, next_step_start_time or winner_time)
+                    if not step_df.empty:
+                        step_list = []
+                        for _, row in step_df.iterrows():
+                            step = int(row['reforge_step']) if pd.notna(row['reforge_step']) else None
+                            ts = float(row['timestamp']) if pd.notna(row['timestamp']) else None
+                            if step is not None and ts is not None:
+                                step_list.append({'step': step, 'start': ts})
+
+                        # Get end times from winner entries
+                        step_end_times = {}
                         if not winner_df.empty:
                             for _, row in winner_df.iterrows():
-                                step = int(row['reforge_step']) if row['reforge_step'] is not None else None
-                                if step is not None:
-                                    # Parse metadata_json to get winner_index
-                                    metadata = row.get('metadata_json')
-                                    if metadata:
-                                        try:
-                                            meta_dict = json.loads(metadata)
-                                            winner_index = meta_dict.get('winner_index')
-                                            if winner_index is not None:
-                                                reforge_winners[step] = winner_index
-                                        except:
-                                            pass
+                                step = int(row['reforge_step']) if pd.notna(row['reforge_step']) else None
+                                ts = float(row['timestamp']) if pd.notna(row['timestamp']) else None
+                                if step is not None and ts is not None:
+                                    step_end_times[step] = ts
 
-                        # Build timestamp ranges for each (reforge_step, attempt_index) pair
-                        for _, row in attempt_df.iterrows():
-                            step = int(row['reforge_step']) if row['reforge_step'] is not None else None
-                            timestamp = row['timestamp']
-                            metadata = row.get('metadata_json')
-                            attempt_index = None
+                        # Build windows
+                        for i, s in enumerate(step_list):
+                            step = s['step']
+                            start = s['start']
+                            # End time: either the winner timestamp for this step, or next step start, or +infinity
+                            end = step_end_times.get(step)
+                            if end is None:
+                                # Use next step's start time if available
+                                if i + 1 < len(step_list):
+                                    end = step_list[i + 1]['start']
+                                else:
+                                    end = float('inf')
 
-                            if metadata:
-                                try:
-                                    meta_dict = json.loads(metadata)
-                                    attempt_index = meta_dict.get('attempt_index')
-                                except:
-                                    pass
+                            reforge_windows.append({
+                                'step': step,
+                                'start': start,
+                                'end': end,
+                                'winner_index': reforge_winners.get(step),
+                                'is_final_step': step == final_winner_step
+                            })
 
-                            if step is not None and timestamp is not None and attempt_index is not None:
-                                reforge_ranges.append({
-                                    'step': step,
-                                    'attempt_index': attempt_index,
-                                    'timestamp': float(timestamp),
-                                    'winner_index': reforge_winners.get(step)
-                                })
+                        print(f"[REFORGE CACHE] Built {len(reforge_windows)} windows for session {session_id}: {[(w['step'], w['start'], w['end']) for w in reforge_windows]}")
 
-                    # Cache the reforge ranges for this session
-                    _reforge_cache[session_id] = reforge_ranges
-                    print(f"[REFORGE CACHE] Built cache for session {session_id}: {len(reforge_ranges)} ranges")
+                    # Cache the reforge windows
+                    _reforge_cache[session_id] = {
+                        'data': reforge_windows,
+                        'timestamp': _time.time()
+                    }
 
                 except Exception as e:
                     print(f"Warning: Could not build reforge cache: {e}")
                     import traceback
                     traceback.print_exc()
-                    _reforge_cache[session_id] = []
+                    _reforge_cache[session_id] = {'data': [], 'timestamp': _time.time()}
             else:
-                print(f"[REFORGE CACHE] Using cached data for session {session_id}: {len(_reforge_cache[session_id])} ranges")
+                print(f"[REFORGE CACHE] Using cached data for session {session_id}")
 
-            # Use cached reforge ranges to enrich images
-            reforge_ranges = _reforge_cache.get(session_id, [])
-            if reforge_ranges:
-                # Match images to reforge attempts by timestamp
-                # Images can be created slightly before or after the log entry, so use wider tolerance
+            # Use cached reforge windows to enrich images
+            reforge_windows = _reforge_cache.get(session_id, {}).get('data', [])
+            if reforge_windows:
+                # Sort windows by start time
+                reforge_windows.sort(key=lambda w: w['start'])
+
+                # Match images without sounding_index to reforge windows
                 for img in images:
+                    # Skip images that already have sounding_index (they're sounding images)
+                    if img.get('sounding_index') is not None:
+                        continue
+
                     img_time = img['mtime']
-                    # Find the reforge range this image falls into (within 60 seconds tolerance)
-                    # Use the closest match if multiple candidates
-                    best_match = None
-                    best_diff = float('inf')
 
-                    for r in reforge_ranges:
-                        diff = abs(img_time - r['timestamp'])
-                        if diff < 60.0 and diff < best_diff:
-                            best_match = r
-                            best_diff = diff
+                    # Find which window this image falls into
+                    for window in reforge_windows:
+                        # Image should be created AFTER window start (with small tolerance for timing)
+                        # and BEFORE window end
+                        if (img_time >= window['start'] - 30) and (img_time < window['end'] + 30):
+                            img['reforge_step'] = window['step']
+                            img['reforge_winner_index'] = window['winner_index']
+                            # Image is the winner if it's from the final step
+                            img['reforge_is_winner'] = window['is_final_step']
+                            break
 
-                    if best_match:
-                        img['reforge_step'] = best_match['step']
-                        img['reforge_attempt_index'] = best_match['attempt_index']
-                        img['reforge_winner_index'] = best_match['winner_index']
-                        img['reforge_is_winner'] = best_match['attempt_index'] == best_match['winner_index']
+            # Also enrich sounding images with winner information
+            # Query for sounding_attempt entries with is_winner=True
+            try:
+                import chdb
+                sounding_winner_df = chdb.query(
+                    f"SELECT DISTINCT phase_name, sounding_index FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'sounding_attempt' AND is_winner = true",
+                    'DataFrame'
+                )
+                if not sounding_winner_df.empty:
+                    # Build a set of (phase_name, sounding_index) pairs that are winners
+                    sounding_winners = set()
+                    for _, row in sounding_winner_df.iterrows():
+                        phase = row.get('phase_name')
+                        idx = row.get('sounding_index')
+                        if phase and idx is not None:
+                            sounding_winners.add((phase, int(idx)))
+
+                    # Mark winning sounding images
+                    for img in images:
+                        if img.get('sounding_index') is not None:
+                            key = (img.get('phase_name'), img.get('sounding_index'))
+                            if key in sounding_winners:
+                                img['sounding_is_winner'] = True
+            except Exception as e:
+                print(f"Warning: Could not query sounding winners: {e}")
 
         # Sort by phase, then sounding index, then reforge step, then modification time
         images.sort(key=lambda x: (
@@ -3473,9 +3531,17 @@ def get_session_images(session_id):
             x['mtime']
         ))
 
+        # Find sounding winner index for "refined from" label
+        sounding_winner_idx = None
+        for img in images:
+            if img.get('sounding_is_winner'):
+                sounding_winner_idx = img.get('sounding_index')
+                break
+
         return jsonify({
             'session_id': session_id,
-            'images': images
+            'images': images,
+            'sounding_winner_index': sounding_winner_idx
         })
 
     except Exception as e:

@@ -8,6 +8,422 @@ import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
+/**
+ * Extract all images from a message, tracking direction (input vs output)
+ * Returns: { inputs: [{url, size, index}], outputs: [{url, size, index}], total: number }
+ */
+function extractImagesFromMessage(msg) {
+  const images = {
+    inputs: [],   // Images sent TO the LLM (in full_request)
+    outputs: [],  // Images FROM the LLM or tools (in content/response)
+    total: 0
+  };
+
+  let inputIndex = 0;
+  let outputIndex = 0;
+
+  // 1. Extract INPUT images from full_request.messages (what was sent to LLM)
+  if (msg.full_request?.messages) {
+    msg.full_request.messages.forEach((m, msgIdx) => {
+      if (Array.isArray(m.content)) {
+        m.content.forEach((part, partIdx) => {
+          if (part.type === 'image_url') {
+            const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
+            if (url) {
+              const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
+              images.inputs.push({
+                url,
+                sizeKb,
+                index: inputIndex++,
+                sourceMsg: msgIdx,
+                role: m.role || 'unknown'
+              });
+            }
+          }
+        });
+      } else if (typeof m.content === 'string' && m.content.includes('data:image')) {
+        // Embedded base64 in string content
+        const matches = m.content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
+        matches.forEach(match => {
+          const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
+          images.inputs.push({
+            url: match,
+            sizeKb,
+            index: inputIndex++,
+            sourceMsg: msgIdx,
+            role: m.role || 'unknown'
+          });
+        });
+      }
+    });
+  }
+
+  // 2. Extract OUTPUT images from content (tool results, assistant responses)
+  const content = msg.content;
+  if (content) {
+    // Content might be a string with embedded images
+    if (typeof content === 'string' && content.includes('data:image')) {
+      const matches = content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
+      matches.forEach(match => {
+        const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
+        images.outputs.push({
+          url: match,
+          sizeKb,
+          index: outputIndex++,
+          source: 'content'
+        });
+      });
+    }
+    // Content might be an object with images array (tool result protocol)
+    if (typeof content === 'object') {
+      // Check for images array
+      if (Array.isArray(content.images)) {
+        content.images.forEach(imgPath => {
+          // These are typically file paths, not base64
+          images.outputs.push({
+            url: imgPath,
+            sizeKb: 0,
+            index: outputIndex++,
+            source: 'tool_result',
+            isPath: true
+          });
+        });
+      }
+      // Check for nested content string with images
+      if (typeof content.content === 'string' && content.content.includes('data:image')) {
+        const matches = content.content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
+        matches.forEach(match => {
+          const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
+          images.outputs.push({
+            url: match,
+            sizeKb,
+            index: outputIndex++,
+            source: 'content'
+          });
+        });
+      }
+    }
+    // Content might be an array (multimodal response)
+    if (Array.isArray(content)) {
+      content.forEach((part, idx) => {
+        if (part.type === 'image_url') {
+          const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
+          if (url) {
+            const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
+            images.outputs.push({
+              url,
+              sizeKb,
+              index: outputIndex++,
+              source: 'response'
+            });
+          }
+        }
+      });
+    }
+  }
+
+  images.total = images.inputs.length + images.outputs.length;
+  return images;
+}
+
+/**
+ * MessageImages - Inline gallery showing all images in a message with direction
+ */
+function MessageImages({ images, onImageClick, compact = false }) {
+  if (images.total === 0) return null;
+
+  const renderImage = (img, direction) => (
+    <div
+      key={`${direction}-${img.index}`}
+      className={`msg-image-item ${compact ? 'compact' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (img.url.startsWith('data:image') || img.url.startsWith('http')) {
+          onImageClick({ url: img.url, direction, index: img.index });
+        }
+      }}
+    >
+      {img.url.startsWith('data:image') ? (
+        <img src={img.url} alt={`${direction} ${img.index + 1}`} className="msg-image-thumb" />
+      ) : img.url.startsWith('http') ? (
+        <img src={img.url} alt={`${direction} ${img.index + 1}`} className="msg-image-thumb" />
+      ) : (
+        <div className="msg-image-path" title={img.url}>
+          <Icon icon="mdi:file-image" width="24" />
+          <span>{img.url.split('/').pop()}</span>
+        </div>
+      )}
+      <div className={`msg-image-badge ${direction}`}>
+        <Icon icon={direction === 'in' ? 'mdi:arrow-right' : 'mdi:arrow-left'} width="10" />
+        {direction.toUpperCase()}
+      </div>
+      {img.sizeKb > 0 && <span className="msg-image-size">{img.sizeKb}kb</span>}
+    </div>
+  );
+
+  if (compact) {
+    // Compact mode: just show first image with count
+    const firstImg = images.inputs[0] || images.outputs[0];
+    if (!firstImg) return null;
+    return (
+      <div className="msg-images-compact">
+        {renderImage(firstImg, images.inputs[0] ? 'in' : 'out')}
+        {images.total > 1 && <span className="msg-images-more">+{images.total - 1}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="msg-images-gallery">
+      {images.inputs.length > 0 && (
+        <div className="msg-images-group">
+          <div className="msg-images-group-header">
+            <Icon icon="mdi:arrow-right-bold" width="14" />
+            <span>Input ({images.inputs.length})</span>
+          </div>
+          <div className="msg-images-row">
+            {images.inputs.map(img => renderImage(img, 'in'))}
+          </div>
+        </div>
+      )}
+      {images.outputs.length > 0 && (
+        <div className="msg-images-group">
+          <div className="msg-images-group-header">
+            <Icon icon="mdi:arrow-left-bold" width="14" />
+            <span>Output ({images.outputs.length})</span>
+          </div>
+          <div className="msg-images-row">
+            {images.outputs.map(img => renderImage(img, 'out'))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * EvaluatorSection - Shows detailed evaluator input observability
+ * Displays what exactly the evaluator LLM received to make its determination
+ */
+function EvaluatorSection({ evaluator, winnerIndex }) {
+  const [showInput, setShowInput] = useState(false);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
+
+  const inputSummary = evaluator.evaluator_input_summary;
+  const evalMode = inputSummary?.evaluation_mode || 'quality_only';
+
+  // Format evaluation mode for display
+  const evalModeLabel = {
+    'quality_only': 'Quality Only',
+    'cost_aware': 'Cost-Aware',
+    'pareto': 'Pareto Frontier'
+  }[evalMode] || evalMode;
+
+  return (
+    <div className="evaluator-section">
+      {/* Header with basic info */}
+      <div className="evaluator-header">
+        <span className="evaluator-icon"><Icon icon="mdi:scale-balance" width="16" /></span>
+        <span className="evaluator-label">Evaluation</span>
+        {inputSummary && (
+          <span className={`eval-mode-badge eval-mode-${evalMode}`}>{evalModeLabel}</span>
+        )}
+        {inputSummary?.is_multimodal && (
+          <span className="eval-multimodal-badge">
+            <Icon icon="mdi:image-multiple" width="14" style={{ marginRight: '4px' }} />
+            {inputSummary.total_images} images
+          </span>
+        )}
+        {evaluator.cost > 0 && (
+          <span className="evaluator-cost">${evaluator.cost.toFixed(4)}</span>
+        )}
+        {evaluator.model && (
+          <span className="evaluator-model">{evaluator.model}</span>
+        )}
+      </div>
+
+      {/* Evaluator output */}
+      <div className="evaluator-content">
+        {typeof evaluator.content === 'string'
+          ? evaluator.content
+          : evaluator.evaluation || JSON.stringify(evaluator.content)}
+      </div>
+
+      {/* Winner result */}
+      {winnerIndex !== null && (
+        <div className="evaluator-result">
+          <span className="winner-badge">
+            <Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />
+            Selected: Sounding {winnerIndex}
+          </span>
+        </div>
+      )}
+
+      {/* Toggle for evaluator input details */}
+      {(inputSummary || evaluator.evaluator_prompt) && (
+        <button
+          className="eval-input-toggle"
+          onClick={() => setShowInput(!showInput)}
+        >
+          <Icon icon={showInput ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
+          {showInput ? 'Hide' : 'Show'} Evaluator Input Details
+        </button>
+      )}
+
+      {/* Expanded evaluator input observability */}
+      {showInput && (
+        <div className="eval-input-details">
+          {/* Summary stats */}
+          {inputSummary && (
+            <div className="eval-input-stats">
+              <div className="eval-stat">
+                <span className="eval-stat-label">Attempts Shown</span>
+                <span className="eval-stat-value">{inputSummary.total_attempts_shown}</span>
+              </div>
+              <div className="eval-stat">
+                <span className="eval-stat-label">Total Run</span>
+                <span className="eval-stat-value">{inputSummary.total_soundings_run}</span>
+              </div>
+              {inputSummary.filtered_count > 0 && (
+                <div className="eval-stat eval-stat-warning">
+                  <span className="eval-stat-label">Filtered Out</span>
+                  <span className="eval-stat-value">{inputSummary.filtered_count}</span>
+                </div>
+              )}
+              {inputSummary.is_multimodal && (
+                <div className="eval-stat eval-stat-images">
+                  <span className="eval-stat-label">Total Images</span>
+                  <span className="eval-stat-value">{inputSummary.total_images}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Cost-aware info */}
+          {evaluator.cost_aware && (
+            <div className="eval-cost-aware-info">
+              <h5><Icon icon="mdi:currency-usd" width="14" /> Cost-Aware Evaluation</h5>
+              <div className="eval-weights">
+                <span>Quality Weight: {(evaluator.quality_weight * 100).toFixed(0)}%</span>
+                <span>Cost Weight: {(evaluator.cost_weight * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+          )}
+
+          {/* Pareto info */}
+          {evaluator.pareto_enabled && (
+            <div className="eval-pareto-info">
+              <h5><Icon icon="mdi:chart-scatter-plot" width="14" /> Pareto Frontier</h5>
+              <div className="eval-pareto-details">
+                <span>Policy: {evaluator.pareto_policy}</span>
+                <span>Frontier Size: {evaluator.frontier_size}</span>
+                {evaluator.winner_quality && <span>Winner Quality: {evaluator.winner_quality.toFixed(1)}</span>}
+                {evaluator.winner_cost && <span>Winner Cost: ${evaluator.winner_cost.toFixed(6)}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Per-attempt breakdown */}
+          {inputSummary?.attempts && inputSummary.attempts.length > 0 && (
+            <div className="eval-attempts-breakdown">
+              <h5><Icon icon="mdi:format-list-numbered" width="14" /> Per-Attempt Breakdown</h5>
+              <table className="eval-attempts-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Original S#</th>
+                    <th>Model</th>
+                    <th>Images</th>
+                    <th>Text Len</th>
+                    {evaluator.sounding_costs && <th>Cost</th>}
+                    {evaluator.quality_scores && <th>Quality</th>}
+                    <th>Mutation</th>
+                    <th>Valid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inputSummary.attempts.map((attempt, idx) => (
+                    <tr key={idx} className={attempt.original_sounding_index === winnerIndex ? 'winner-row' : ''}>
+                      <td>{attempt.attempt_number}</td>
+                      <td>S{attempt.original_sounding_index}</td>
+                      <td className="model-cell">{attempt.model ? attempt.model.split('/').pop() : '-'}</td>
+                      <td>
+                        {attempt.has_images ? (
+                          <span className="has-images">
+                            <Icon icon="mdi:image" width="12" /> {attempt.image_count}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td>{attempt.result_length.toLocaleString()}</td>
+                      {evaluator.sounding_costs && (
+                        <td>${evaluator.sounding_costs[idx]?.toFixed(6) || '-'}</td>
+                      )}
+                      {evaluator.quality_scores && (
+                        <td>{evaluator.quality_scores[idx]?.toFixed(1) || '-'}</td>
+                      )}
+                      <td className="mutation-cell">
+                        {attempt.mutation_applied ? (
+                          <span className="has-mutation" title={attempt.mutation_applied}>
+                            <Icon icon="mdi:dna" width="12" /> Yes
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td>
+                        {attempt.validation ? (
+                          attempt.validation.valid ? (
+                            <Icon icon="mdi:check-circle" width="14" style={{ color: '#34d399' }} />
+                          ) : (
+                            <span title={attempt.validation.reason}>
+                              <Icon icon="mdi:close-circle" width="14" style={{ color: '#f87171' }} />
+                            </span>
+                          )
+                        ) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* System prompt (collapsible) */}
+          {evaluator.evaluator_system_prompt && (
+            <div className="eval-prompt-section">
+              <button
+                className="eval-prompt-toggle"
+                onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+              >
+                <Icon icon={showSystemPrompt ? "mdi:chevron-up" : "mdi:chevron-down"} width="14" />
+                System Prompt
+              </button>
+              {showSystemPrompt && (
+                <pre className="eval-prompt-content">{evaluator.evaluator_system_prompt}</pre>
+              )}
+            </div>
+          )}
+
+          {/* Full evaluation prompt (collapsible) */}
+          {evaluator.evaluator_prompt && (
+            <div className="eval-prompt-section">
+              <button
+                className="eval-prompt-toggle"
+                onClick={() => setShowFullPrompt(!showFullPrompt)}
+              >
+                <Icon icon={showFullPrompt ? "mdi:chevron-up" : "mdi:chevron-down"} width="14" />
+                Full Evaluation Prompt ({evaluator.evaluator_prompt.length.toLocaleString()} chars)
+              </button>
+              {showFullPrompt && (
+                <pre className="eval-prompt-content eval-prompt-full">{evaluator.evaluator_prompt}</pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
@@ -232,7 +648,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     const globalIndex = findGlobalIndex(msg);
     const isExpanded = expandedMessages.has(index);
     const hasFullRequest = msg.full_request && msg.full_request.messages;
-    const hasContent = msg.content && msg.content.length > 200;
+    const hasContent = msg.content && (typeof msg.content === 'string' ? msg.content.length > 200 : true);
     const isExpandable = hasFullRequest || hasContent;
     const messageCount = hasFullRequest ? msg.full_request.messages.length : 0;
     const fromSounding = msg.sounding_index !== null;
@@ -244,51 +660,21 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     const category = msg.message_category || 'other';
     const categoryStyle = categoryColors[category] || categoryColors['other'];
 
-    // Count images in full_request and extract first thumbnail
-    let imageCount = 0;
-    let totalBase64Size = 0;
-    let firstImageUrl = null;  // For thumbnail preview
-    if (hasFullRequest) {
-      msg.full_request.messages.forEach(m => {
-        if (Array.isArray(m.content)) {
-          m.content.forEach(part => {
-            if (part.type === 'image_url') {
-              imageCount++;
-              const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
-              if (url.startsWith('data:image')) {
-                // Estimate base64 size (remove data URL prefix)
-                const base64Data = url.split(',')[1] || '';
-                totalBase64Size += base64Data.length;
+    // Extract all images with direction tracking
+    const msgImages = extractImagesFromMessage(msg);
+    const hasImages = msgImages.total > 0;
+    const totalBase64Size = [...msgImages.inputs, ...msgImages.outputs]
+      .reduce((sum, img) => sum + (img.sizeKb || 0), 0);
 
-                // Capture first image for thumbnail
-                if (!firstImageUrl) {
-                  firstImageUrl = url;
-                }
-              }
-            }
-          });
-        } else if (typeof m.content === 'string' && m.content.includes('data:image')) {
-          // Count embedded base64 in string content
-          const matches = m.content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
-          imageCount += matches.length;
-          matches.forEach(match => {
-            const base64Data = match.split(',')[1] || '';
-            totalBase64Size += base64Data.length;
-
-            // Capture first image for thumbnail
-            if (!firstImageUrl) {
-              firstImageUrl = match;
-            }
-          });
-        }
-      });
-    }
+    // Get first image for thumbnail
+    const firstImage = msgImages.inputs[0] || msgImages.outputs[0];
+    const firstImageUrl = firstImage?.url;
 
     return (
       <div
         key={index}
         id={`message-${globalIndex}`}
-        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''}`}
+        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''}`}
         onClick={() => isExpandable && toggleMessage(index)}
         style={{ cursor: isExpandable ? 'pointer' : 'default' }}
       >
@@ -318,16 +704,27 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
           {msg.turn_number !== null && <span className="turn">Turn {msg.turn_number}</span>}
           {msg.tokens_in > 0 && <span className="tokens">{msg.tokens_in.toLocaleString()} tokens in</span>}
           {msg.cost > 0 && <span className="cost-badge">${msg.cost.toFixed(4)}</span>}
-          {imageCount > 0 && (
-            <span className="image-badge" title={`Total base64 size: ${(totalBase64Size / 1024).toFixed(1)}kb (~${Math.round(totalBase64Size / 4)} tokens)`}>
-              <Icon icon="mdi:image" width="14" style={{ marginRight: '4px' }} />{imageCount} image{imageCount > 1 ? 's' : ''}
+          {/* Image badges with direction */}
+          {msgImages.inputs.length > 0 && (
+            <span className="image-badge image-in" title={`${msgImages.inputs.length} image(s) sent TO the LLM`}>
+              <Icon icon="mdi:arrow-right" width="12" />
+              <Icon icon="mdi:image" width="14" />
+              {msgImages.inputs.length}
+            </span>
+          )}
+          {msgImages.outputs.length > 0 && (
+            <span className="image-badge image-out" title={`${msgImages.outputs.length} image(s) FROM tool/response`}>
+              <Icon icon="mdi:arrow-left" width="12" />
+              <Icon icon="mdi:image" width="14" />
+              {msgImages.outputs.length}
             </span>
           )}
           {msg.is_winner && <span className="winner-badge"><Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />Winner</span>}
           {isMostExpensive && <span className="most-expensive-badge"><Icon icon="mdi:currency-usd" width="14" style={{ marginRight: '4px' }} />Most Expensive</span>}
           {hasFullRequest && <span className="full-request-badge"><Icon icon="mdi:email-arrow-right" width="14" style={{ marginRight: '4px' }} />{messageCount} msgs sent to LLM</span>}
           {isExpandable && <span className="expand-hint"><Icon icon={isExpanded ? "mdi:chevron-down" : "mdi:chevron-right"} width="14" style={{ marginRight: '4px' }} />{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>}
-          {firstImageUrl && (
+          {/* Compact image preview in header */}
+          {firstImageUrl && firstImageUrl.startsWith('data:image') && (
             <img
               src={firstImageUrl}
               alt="Message thumbnail"
@@ -349,6 +746,15 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
           </div>
         )}
 
+        {/* Inline image gallery when NOT expanded (quick preview) */}
+        {!isExpanded && hasImages && (
+          <MessageImages
+            images={msgImages}
+            onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
+            compact={true}
+          />
+        )}
+
         {isExpanded && msg.content && (
           <div className="message-content-full" onClick={(e) => e.stopPropagation()}>
             <h4>Full Response Content:</h4>
@@ -360,36 +766,47 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
           </div>
         )}
 
+        {/* Full image gallery when expanded */}
+        {isExpanded && hasImages && (
+          <div className="message-images-expanded" onClick={(e) => e.stopPropagation()}>
+            <h4>
+              <Icon icon="mdi:image-multiple" width="18" style={{ marginRight: '8px' }} />
+              Images ({msgImages.total})
+              {totalBase64Size > 0 && <span className="images-size-note">~{totalBase64Size}kb total</span>}
+            </h4>
+            <MessageImages
+              images={msgImages}
+              onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
+              compact={false}
+            />
+          </div>
+        )}
+
         {isExpanded && hasFullRequest && (
           <div className="full-request" onClick={(e) => e.stopPropagation()}>
             <h4>Actual Messages Sent to LLM ({messageCount} total):</h4>
             <div className="llm-messages">
               {msg.full_request.messages.map((llmMsg, i) => {
-                // Detect if this message contains images
-                let msgImageCount = 0;
+                // Extract images from this specific LLM message
+                const llmMsgImages = [];
                 let textContent = '';
 
                 if (Array.isArray(llmMsg.content)) {
                   // Multi-modal content (array of parts)
-                  llmMsg.content.forEach(part => {
+                  llmMsg.content.forEach((part, partIdx) => {
                     if (part.type === 'text') {
                       textContent += part.text || '';
                     } else if (part.type === 'image_url') {
-                      msgImageCount++;
                       const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
-                      const sizeKb = url.startsWith('data:image') ? Math.round(url.split(',')[1]?.length / 1024) || 0 : 0;
-                      textContent += `\n[IMAGE ${msgImageCount}: ~${sizeKb}kb base64]\n`;
+                      const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
+                      llmMsgImages.push({ url, sizeKb, index: partIdx });
+                      textContent += `\n[📷 IMAGE ${llmMsgImages.length}]\n`;
                     }
                   });
                 } else if (typeof llmMsg.content === 'string') {
-                  // String content (might have embedded images)
                   textContent = llmMsg.content;
-                  if (textContent.includes('data:image')) {
-                    const matches = textContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
-                    msgImageCount = matches.length;
-                  }
+                  // Don't extract embedded images in text for inline rendering (too complex)
                 } else {
-                  // Other (JSON, etc.)
                   textContent = JSON.stringify(llmMsg.content, null, 2);
                 }
 
@@ -397,13 +814,43 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                   <div key={i} className={`llm-message ${llmMsg.role}`}>
                     <div className="llm-message-header">
                       <span className="llm-role">[{i}] {llmMsg.role}</span>
-                      {msgImageCount > 0 && <span className="msg-image-badge"><Icon icon="mdi:image" width="14" style={{ marginRight: '2px' }} />{msgImageCount}</span>}
+                      {llmMsgImages.length > 0 && (
+                        <span className="msg-image-badge">
+                          <Icon icon="mdi:image" width="14" style={{ marginRight: '2px' }} />
+                          {llmMsgImages.length}
+                        </span>
+                      )}
                       {llmMsg.tool_calls && <span className="has-tools"><Icon icon="mdi:wrench" width="14" style={{ marginRight: '4px' }} />Has tools</span>}
                       {llmMsg.tool_call_id && <span className="has-tool-id"><Icon icon="mdi:link" width="14" style={{ marginRight: '4px' }} />Tool ID</span>}
                     </div>
                     <div className="llm-message-content">
                       {textContent}
                     </div>
+                    {/* Render actual images inline */}
+                    {llmMsgImages.length > 0 && (
+                      <div className="llm-message-images">
+                        {llmMsgImages.map((img, imgIdx) => (
+                          <div key={imgIdx} className="llm-inline-image">
+                            {img.url.startsWith('data:image') ? (
+                              <img
+                                src={img.url}
+                                alt={`LLM msg ${i} image ${imgIdx + 1}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedImage({ url: img.url, phase: msg.phase_name, index: globalIndex, direction: 'in' });
+                                }}
+                              />
+                            ) : (
+                              <span className="llm-image-url">{img.url}</span>
+                            )}
+                            <span className="llm-image-label">
+                              <Icon icon="mdi:arrow-right" width="10" /> IN #{imgIdx + 1}
+                              {img.sizeKb > 0 && <span className="llm-image-size">{img.sizeKb}kb</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -695,28 +1142,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
                       {/* Evaluator Section */}
                       {block.evaluator && (
-                        <div className="evaluator-section">
-                          <div className="evaluator-header">
-                            <span className="evaluator-icon"><Icon icon="mdi:scale-balance" width="16" /></span>
-                            <span className="evaluator-label">Evaluation</span>
-                            {block.evaluator.cost > 0 && (
-                              <span className="evaluator-cost">${block.evaluator.cost.toFixed(4)}</span>
-                            )}
-                            {block.evaluator.model && (
-                              <span className="evaluator-model">{block.evaluator.model}</span>
-                            )}
-                          </div>
-                          <div className="evaluator-content">
-                            {typeof block.evaluator.content === 'string'
-                              ? block.evaluator.content
-                              : block.evaluator.evaluation || JSON.stringify(block.evaluator.content)}
-                          </div>
-                          {block.winner_index !== null && (
-                            <div className="evaluator-result">
-                              <span className="winner-badge"><Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />Selected: Sounding {block.winner_index}</span>
-                            </div>
-                          )}
-                        </div>
+                        <EvaluatorSection evaluator={block.evaluator} winnerIndex={block.winner_index} />
                       )}
                     </div>
                   );
@@ -832,14 +1258,14 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                           {/* Reforge block (if any) */}
                           {shouldShowReforge && renderReforgeBlock(reforgeBlock, phaseName)}
 
-                          {/* Regular messages (skip sounding/reforge messages as they're in their blocks) */}
+                          {/* Regular messages (skip sounding/reforge messages as they're shown in their blocks) */}
                           {group.messages
                             .filter(({ msg }) => {
-                              // Skip messages that are part of a sounding (already shown in soundings block)
+                              // Skip messages that are part of a sounding (shown in soundings block)
                               if (soundingsBlock && msg.sounding_index !== null && msg.sounding_index !== undefined) {
                                 return false;
                               }
-                              // Skip messages that are part of a reforge (already shown in reforge block)
+                              // Skip messages that are part of a reforge (shown in reforge block)
                               if (reforgeBlock && msg.reforge_step !== null && msg.reforge_step !== undefined) {
                                 return false;
                               }
