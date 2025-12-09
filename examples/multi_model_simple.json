@@ -17,7 +17,7 @@
           "x-ai/grok-4.1-fast",
           "anthropic/claude-sonnet-4.5",
           "amazon/nova-2-lite-v1:free",
-          "openai/gpt-5.1-codex-mini",
+          
           "moonshotai/kimi-linear-48b-a3b-instruct",
           "google/gemini-2.5-flash-lite",
           "qwen/qwen-plus-2025-07-28"

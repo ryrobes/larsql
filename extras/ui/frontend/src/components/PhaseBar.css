@@ -1,6 +1,6 @@
-/* Phase bar - Horizontal bar chart style */
+/* Phase bar - Simplified horizontal bar chart style */
 .phase-bar-container {
-  padding: 0.5rem 0;
+  padding: 0.4rem 0;
   border-bottom: 1px solid #16202A;
   transition: all 0.2s ease;
 }
@@ -13,12 +13,12 @@
   cursor: pointer;
 }
 
-/* Header: Name + Metrics */
+/* Header: Name + Cost */
 .phase-bar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
 }
 
 .phase-title {
@@ -29,63 +29,43 @@
 
 /* Color indicator square that matches cascade bar legend */
 .phase-color-indicator {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.phase-bar-container:hover .phase-color-indicator {
-  transform: scale(1.15);
-  box-shadow: 0 0 8px currentColor, 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .phase-name {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: #F0F4F8;
-}
-
-.message-count {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: #9AA5B1;
-  font-style: italic;
 }
 
 .phase-metrics {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .phase-cost {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #2DD4BF;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
-.phase-duration {
-  font-size: 0.75rem;
-  color: #9AA5B1;
-}
-
 /* Bar track and fill */
 .phase-bar-track {
-  height: 24px;
+  height: 18px;
   background: #0B1219;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
-  position: relative;
 }
 
 .phase-bar-fill {
   height: 100%;
-  border-radius: 6px;
-  position: relative;
+  border-radius: 4px;
   transition: width 0.3s ease;
   background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.6));
 }
@@ -116,333 +96,6 @@
   50% {
     opacity: 0.7;
   }
-}
-
-/* Segments for soundings (shows factor visually for definitions) */
-.bar-segments {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent calc(100% / var(--segments) - 1px),
-    rgba(255, 255, 255, 0.2) calc(100% / var(--segments) - 1px),
-    rgba(255, 255, 255, 0.2) calc(100% / var(--segments))
-  );
-}
-
-/* Sounding segments (for instances with winner data) */
-.sounding-segments {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  gap: 0;
-}
-
-.sounding-segments .segment {
-  position: relative;
-  transition: all 0.3s ease;
-  border-right: 2px solid #0B1219;
-}
-
-.sounding-segments .segment:last-child {
-  border-right: none;
-}
-
-.sounding-segments .segment.loser {
-  opacity: 0.35;
-  filter: brightness(0.5) saturate(0.7);
-}
-
-.sounding-segments .segment.winner {
-  opacity: 1;
-  filter: brightness(1.4) saturate(1.2);
-  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.4);
-  position: relative;
-}
-
-.sounding-segments .segment.winner::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent);
-  pointer-events: none;
-}
-
-/* Winner checkmark removed - brightness is enough */
-
-/* Turn count indicator on segment */
-.turn-count {
-  position: absolute;
-  top: 2px;
-  left: 3px;
-  font-size: 8px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(0, 0, 0, 0.6);
-  padding: 1px 3px;
-  border-radius: 3px;
-  line-height: 1;
-  z-index: 10;
-}
-
-/* Cost display in segment (only if wide enough) */
-.segment-cost {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 10px;
-  font-weight: 700;
-  color: #2DD4BF;
-  background: rgba(11, 18, 25, 0.9);
-  padding: 3px 6px;
-  border-radius: 4px;
-  line-height: 1;
-  z-index: 20;
-  white-space: nowrap;
-  border: 1px solid rgba(45, 212, 191, 0.4);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-}
-
-/* Turn indicators for non-sounding phases */
-.turn-indicators {
-  position: absolute;
-  bottom: 2px;
-  left: 4px;
-  display: flex;
-  gap: 2px;
-  z-index: 10;
-}
-
-.turn-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(45, 212, 191, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-/* Tool call indicators */
-.tool-indicators {
-  position: absolute;
-  bottom: 2px;
-  right: 4px;
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  z-index: 10;
-}
-
-.tool-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(217, 165, 83, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.tool-overflow {
-  font-size: 7px;
-  color: rgba(217, 165, 83, 0.9);
-  font-weight: 700;
-  margin-left: 1px;
-}
-
-/* Segment hover effect */
-.sounding-segments .segment:hover {
-  filter: brightness(1.6);
-  z-index: 10;
-}
-
-/* Tooltip for segment hover */
-.segment-tooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
-  background: #16202A;
-  border: 2px solid #D9A553;
-  border-radius: 8px;
-  padding: 0.75rem;
-  min-width: 200px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
-  z-index: 100;
-  pointer-events: none;
-  animation: tooltipFadeIn 0.2s ease-out;
-}
-
-@keyframes tooltipFadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.segment-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #D9A553;
-}
-
-.tooltip-header {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #D9A553;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #2C3B4B;
-}
-
-.tooltip-total {
-  font-size: 0.8rem;
-  color: #2DD4BF;
-  margin-bottom: 0.5rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
-}
-
-.tooltip-turns {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.tooltip-turn {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
-  color: #F0F4F8;
-}
-
-.tooltip-turn span:first-child {
-  color: #9AA5B1;
-}
-
-.tooltip-turn span:last-child {
-  color: #2DD4BF;
-  font-weight: 600;
-}
-
-/* Turn costs overlay (for non-sounding phases) */
-.turn-costs-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
-}
-
-/* Badges */
-.phase-badges {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.3rem;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-
-.complexity-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  border: 1px solid;
-}
-
-.complexity-badge.soundings {
-  background: rgba(217, 165, 83, 0.15);
-  border-color: #D9A553;
-  color: #D9A553;
-}
-
-.complexity-badge.reforge {
-  background: rgba(207, 102, 121, 0.15);
-  border-color: #CF6679;
-  color: #CF6679;
-}
-
-.complexity-badge.wards {
-  background: rgba(45, 212, 191, 0.15);
-  border-color: #2DD4BF;
-  color: #2DD4BF;
-}
-
-.complexity-badge.loop {
-  background: rgba(45, 212, 191, 0.15);
-  border-color: #2DD4BF;
-  color: #2DD4BF;
-}
-
-.complexity-badge.tools {
-  background: rgba(217, 165, 83, 0.15);
-  border-color: #D9A553;
-  color: #D9A553;
-}
-
-.complexity-badge.audible {
-  background: rgba(167, 139, 250, 0.15);
-  border-color: #a78bfa;
-  color: #a78bfa;
-}
-
-/* Snippet (instructions or output) */
-.phase-snippet {
-  font-size: 0.7rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-left: 0.4rem;
-  line-height: 1.3;
-}
-
-.phase-snippet.instructions {
-  color: #9AA5B1;
-  font-style: italic;
-}
-
-.phase-snippet.output {
-  color: #9AA5B1;
-}
-
-.phase-snippet.error {
-  color: #CF6679;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.3rem;
-  font-weight: 600;
-  background: rgba(207, 102, 121, 0.08);
-  border: 1px solid rgba(207, 102, 121, 0.3);
-  border-radius: 4px;
-  padding: 0.3rem 0.5rem;
-  margin-left: 0;
-  white-space: normal;
-  line-height: 1.4;
 }
 
 /* Spinning icon for running status */
@@ -478,7 +131,8 @@
   justify-content: flex-start;
 }
 
-.winner-icon {
+.winner-icon,
+.running-icon {
   font-size: 12px;
   line-height: 1;
 }
@@ -531,11 +185,6 @@
     opacity: 0.7;
     box-shadow: 0 0 16px rgba(217, 165, 83, 0.6);
   }
-}
-
-.running-icon {
-  font-size: 12px;
-  line-height: 1;
 }
 
 .individual-sounding-bar:hover {

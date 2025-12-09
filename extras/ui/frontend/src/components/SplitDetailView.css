@@ -102,6 +102,15 @@
 .split-pane.right-pane {
   min-width: 400px;
   background: #0a0f14;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Message flow wrapper - scrollable area below sticky chart */
+.split-pane.right-pane .message-flow-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Splitter/Divider */
@@ -164,17 +173,22 @@
 }
 
 /* Override MessageFlowView styles when embedded */
-.split-pane.right-pane .message-flow-view {
+.split-pane.right-pane .message-flow-wrapper .message-flow-view {
   height: 100%;
   overflow-y: auto;
 }
 
-.split-pane.right-pane .message-flow-view .controls {
+.split-pane.right-pane .message-flow-wrapper .message-flow-view .controls {
   display: none;
 }
 
-.split-pane.right-pane .message-flow-view .message-flow {
+.split-pane.right-pane .message-flow-wrapper .message-flow-view .message-flow {
   padding-top: 0;
+}
+
+/* Cost timeline chart in right pane */
+.split-pane.right-pane .cost-timeline-chart {
+  flex-shrink: 0;
 }
 
 /* Make InstanceCard fill the pane */

@@ -1,0 +1,174 @@
+/* CostTimelineChart - Dual-axis timeline showing cost and time */
+
+.cost-timeline-chart {
+  background: #0B1219;
+  border-bottom: 1px solid #16202A;
+  padding: 0.5rem 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cost-timeline-chart.empty {
+  padding: 0.5rem 0.75rem;
+}
+
+.cost-timeline-chart.running {
+  border-color: rgba(217, 165, 83, 0.3);
+}
+
+/* Header */
+.cost-timeline-chart .chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.cost-timeline-chart .chart-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #9AA5B1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cost-timeline-chart .no-data {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.cost-timeline-chart .chart-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cost-timeline-chart .stat {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.cost-timeline-chart .stat-label {
+  color: #64748b;
+}
+
+.cost-timeline-chart .stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+}
+
+.cost-timeline-chart .stat.cost .stat-value {
+  color: #2DD4BF;
+}
+
+.cost-timeline-chart .stat.tokens .stat-value {
+  color: #a78bfa;
+}
+
+.cost-timeline-chart .stat.time .stat-value {
+  color: #60a5fa;
+}
+
+.cost-timeline-chart .running-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #D9A553;
+  font-weight: 600;
+}
+
+.cost-timeline-chart .running-indicator .pulse {
+  width: 6px;
+  height: 6px;
+  background: #D9A553;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Chart Container */
+.cost-timeline-chart .chart-container {
+  width: 100%;
+  height: 100px;
+}
+
+/* Legend */
+.cost-timeline-chart .chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.cost-timeline-chart .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.cost-timeline-chart .legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.cost-timeline-chart .legend-line {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* Custom Tooltip */
+.cost-chart-tooltip {
+  background: rgba(11, 18, 25, 0.95);
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.cost-chart-tooltip .tooltip-header {
+  font-weight: 600;
+  color: #F0F4F8;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #2C3B4B;
+}
+
+.cost-chart-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+}
+
+.cost-chart-tooltip .tooltip-row span:first-child {
+  color: #64748b;
+}
+
+.cost-chart-tooltip .tooltip-row span:last-child {
+  color: #F0F4F8;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.cost-chart-tooltip .tooltip-row.highlight span:last-child {
+  color: #2DD4BF;
+  font-weight: 600;
+}
+
+.cost-chart-tooltip .model-name {
+  font-size: 0.65rem;
+  color: #a78bfa !important;
+}

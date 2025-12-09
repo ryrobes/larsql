@@ -1,8 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import axios from 'axios';
 import { Icon } from '@iconify/react';
 import InstanceCard from './InstanceCard';
 import MessageFlowView from './MessageFlowView';
+import CostTimelineChart from './CostTimelineChart';
 import './SplitDetailView.css';
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
 function SplitDetailView({
   sessionId,
@@ -14,9 +18,40 @@ function SplitDetailView({
 }) {
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
+  const [chartMessages, setChartMessages] = useState([]);
   const containerRef = useRef(null);
   const dragStartX = useRef(0);
   const dragStartSplit = useRef(40);
+
+  // Check if session is currently running
+  const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
+
+  // Fetch message data for the cost chart
+  const fetchChartData = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/message-flow/${sessionId}`);
+      if (response.data && response.data.all_messages) {
+        setChartMessages(response.data.all_messages);
+      }
+    } catch (err) {
+      // Silently ignore errors - chart just won't show data
+      console.debug('Chart data fetch failed:', err.message);
+    }
+  }, [sessionId]);
+
+  // Fetch on mount and when session changes
+  useEffect(() => {
+    fetchChartData();
+  }, [fetchChartData]);
+
+  // Auto-refresh when running
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(fetchChartData, 2000); // Refresh every 2 seconds
+    return () => clearInterval(interval);
+  }, [isRunning, fetchChartData]);
 
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -90,6 +125,7 @@ function SplitDetailView({
             runningSessions={runningSessions}
             finalizingSessions={finalizingSessions}
             sessionUpdates={sessionUpdates}
+            hideOutput={true}
           />
         </div>
 
@@ -107,17 +143,23 @@ function SplitDetailView({
           </div>
         </div>
 
-        {/* Right Pane - MessageFlowView */}
+        {/* Right Pane - Cost Chart + MessageFlowView */}
         <div
           className="split-pane right-pane"
           style={{ width: `${100 - splitPosition}%` }}
         >
-          <MessageFlowView
-            initialSessionId={sessionId}
-            hideControls={true}
-            onBack={null}
-            onSessionChange={() => {}}
+          <CostTimelineChart
+            messages={chartMessages}
+            isRunning={isRunning}
           />
+          <div className="message-flow-wrapper">
+            <MessageFlowView
+              initialSessionId={sessionId}
+              hideControls={true}
+              onBack={null}
+              onSessionChange={() => {}}
+            />
+          </div>
         </div>
       </div>
     </div>

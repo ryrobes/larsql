@@ -52,7 +52,7 @@ function LiveDuration({ startTime, isRunning, staticDuration }) {
   );
 }
 
-function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, compact = false }) {
+function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, compact = false, hideOutput = false }) {
   const [instance, setInstance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -102,8 +102,10 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           };
         }
         phaseMap[phaseName].entries.push(entry);
-        if (entry.cost) {
-          phaseMap[phaseName].totalCost += entry.cost;
+        // Safely add cost, handling NaN and undefined
+        const entryCost = typeof entry.cost === 'number' && !isNaN(entry.cost) ? entry.cost : 0;
+        if (entryCost > 0) {
+          phaseMap[phaseName].totalCost += entryCost;
         }
         if (entry.node_type === 'tool_call') {
           try {
@@ -122,15 +124,26 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             phaseMap[phaseName].soundingAttempts.set(idx, {
               index: idx,
               cost: 0,
-              is_winner: entry.is_winner,
+              is_winner: false,
               model: null
             });
           }
-          phaseMap[phaseName].soundingAttempts.get(idx).cost += entry.cost || 0;
+          phaseMap[phaseName].soundingAttempts.get(idx).cost += entryCost;
+          // Track winner status - if ANY entry has is_winner: true, mark as winner
+          if (entry.is_winner === true) {
+            phaseMap[phaseName].soundingAttempts.get(idx).is_winner = true;
+          }
           // Track model for this sounding (use first non-null model found)
           if (entry.model && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
             phaseMap[phaseName].soundingAttempts.get(idx).model = entry.model;
           }
+        }
+        // Track max turns
+        if (entry.turn_number !== null && entry.turn_number !== undefined) {
+          if (!phaseMap[phaseName].maxTurnSeen) {
+            phaseMap[phaseName].maxTurnSeen = 0;
+          }
+          phaseMap[phaseName].maxTurnSeen = Math.max(phaseMap[phaseName].maxTurnSeen, entry.turn_number + 1);
         }
       });
 
@@ -148,23 +161,34 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           }
         }
 
+        // Find the winning sounding index
+        const soundingAttempts = Array.from(phase.soundingAttempts.values());
+        const winnerAttempt = soundingAttempts.find(a => a.is_winner === true);
+        const soundingWinner = winnerAttempt ? winnerAttempt.index : null;
+
         return {
           name: phase.name,
           status: hasError ? 'error' : (phase.entries.length > 0 ? 'completed' : 'pending'),
           avg_cost: phase.totalCost,
           avg_duration: 0,
           message_count: phase.entries.length,
-          sounding_attempts: Array.from(phase.soundingAttempts.values()),
+          sounding_attempts: soundingAttempts,
           sounding_total: phase.soundingAttempts.size,
+          sounding_winner: soundingWinner,
+          max_turns_actual: phase.maxTurnSeen || 1,
+          max_turns: phase.maxTurnSeen || 1,
           tool_calls: Array.from(phase.toolCalls),
           ward_count: phase.wardCount,
           output_snippet: outputSnippet
         };
       });
 
-      const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0);
-      const totalTokensIn = entries.reduce((sum, e) => sum + (e.tokens_in || 0), 0);
-      const totalTokensOut = entries.reduce((sum, e) => sum + (e.tokens_out || 0), 0);
+      // Helper to safely get numeric value
+      const safeNum = (val) => (typeof val === 'number' && !isNaN(val)) ? val : 0;
+
+      const totalCost = entries.reduce((sum, e) => sum + safeNum(e.cost), 0);
+      const totalTokensIn = entries.reduce((sum, e) => sum + safeNum(e.tokens_in), 0);
+      const totalTokensOut = entries.reduce((sum, e) => sum + safeNum(e.tokens_out), 0);
 
       const modelsSet = new Set();
       const modelCostsMap = new Map();
@@ -172,7 +196,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         if (e.model) {
           modelsSet.add(e.model);
           const currentCost = modelCostsMap.get(e.model) || 0;
-          modelCostsMap.set(e.model, currentCost + (e.cost || 0));
+          modelCostsMap.set(e.model, currentCost + safeNum(e.cost));
         }
       });
 
@@ -445,7 +469,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           })()}
 
           {/* Final Output */}
-          {instance.final_output && (
+          {!hideOutput && instance.final_output && (
             <div className="final-output">
               <div className="final-output-content">
                 <ReactMarkdown>{instance.final_output}</ReactMarkdown>
