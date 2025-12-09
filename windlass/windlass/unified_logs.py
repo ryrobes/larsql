@@ -20,6 +20,7 @@ import json
 import time
 import uuid
 import atexit
+import hashlib
 import threading
 import requests
 from typing import Any, Dict, List, Optional
@@ -27,6 +28,102 @@ from datetime import datetime, timezone
 import pandas as pd
 from .config import get_config
 from .db_adapter import get_db_adapter
+
+
+# ============================================================================
+# Content Identity Functions
+# ============================================================================
+# These enable tracking which messages were in context when a message was sent.
+# Use cases: Gantt charts of context lifespan, cost attribution, context graphs.
+
+def compute_content_hash(role: str, content: Any) -> str:
+    """
+    Compute deterministic hash for message identity based on role + content.
+
+    Same content = same hash, regardless of when/where it was logged.
+    This enables tracking message identity across context injections.
+
+    Args:
+        role: Message role (user, assistant, system, tool)
+        content: Message content (string, dict, list, or None)
+
+    Returns:
+        16-character hex hash (truncated SHA256)
+    """
+    role_str = role or ""
+
+    # Normalize content to string
+    if content is None:
+        content_str = ""
+    elif isinstance(content, str):
+        content_str = content
+    elif isinstance(content, (dict, list)):
+        # Sort keys for deterministic hashing
+        content_str = json.dumps(content, sort_keys=True, ensure_ascii=False)
+    else:
+        content_str = str(content)
+
+    # Combine role and content
+    raw = f"{role_str}:{content_str}"
+
+    # SHA256 truncated to 16 chars for readability
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
+
+
+def extract_context_hashes(full_request: Optional[Dict]) -> List[str]:
+    """
+    Extract content hashes from all messages in a full LLM request.
+
+    This captures which messages were in the context when this request was made.
+
+    Args:
+        full_request: The complete LLM request dict with 'messages' array
+
+    Returns:
+        List of content hashes for each message in the request
+    """
+    if not full_request:
+        return []
+
+    messages = full_request.get("messages", [])
+    if not messages:
+        return []
+
+    hashes = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            role = msg.get("role", "")
+            content = msg.get("content")
+            hashes.append(compute_content_hash(role, content))
+
+    return hashes
+
+
+def estimate_tokens(content: Any) -> int:
+    """
+    Estimate token count for content using chars/4 approximation.
+
+    This is a rough estimate useful for cost attribution before
+    actual token counts are available from the provider.
+
+    Args:
+        content: Message content (string, dict, list, or None)
+
+    Returns:
+        Estimated token count (minimum 1)
+    """
+    if content is None:
+        return 0
+
+    if isinstance(content, str):
+        char_count = len(content)
+    elif isinstance(content, (dict, list)):
+        char_count = len(json.dumps(content, ensure_ascii=False))
+    else:
+        char_count = len(str(content))
+
+    # ~4 chars per token is a common approximation
+    return max(1, char_count // 4) if char_count > 0 else 0
 
 
 class MegaTableSchema:
@@ -105,6 +202,11 @@ class MegaTableSchema:
 
             # Mermaid diagram state
             "mermaid_content": "str (Mermaid diagram at time of message)",
+
+            # Content identity and context tracking
+            "content_hash": "str (16-char SHA256 hash of role+content for stable identity)",
+            "context_hashes": "list (Array of content_hashes in LLM context when this message was sent)",
+            "estimated_tokens": "int (Estimated token count for cost attribution: chars/4)",
 
             # Metadata
             "metadata_json": "str (JSON: Additional context)"
@@ -433,6 +535,14 @@ class UnifiedLogger:
         audio_paths = audio or []
         has_audio = len(audio_paths) > 0
 
+        # Compute content identity fields
+        # content_hash: deterministic ID for this message based on role+content
+        # context_hashes: which messages were in context when this was created
+        # estimated_tokens: rough token count for cost attribution
+        content_hash = compute_content_hash(role, content)
+        context_hashes = extract_context_hashes(full_request)
+        estimated_tokens_val = estimate_tokens(content)
+
         # Serialize JSON fields (with fallback for non-serializable objects)
         def safe_json(obj):
             """Serialize to JSON with fallback for edge cases."""
@@ -511,6 +621,11 @@ class UnifiedLogger:
 
             # Mermaid diagram state
             "mermaid_content": mermaid_content,
+
+            # Content identity and context tracking
+            "content_hash": content_hash,
+            "context_hashes": context_hashes,  # Array of strings
+            "estimated_tokens": estimated_tokens_val,
 
             # Metadata
             "metadata_json": safe_json(metadata)
@@ -649,6 +764,9 @@ class UnifiedLogger:
             ('audio_json', pa.string()),
             ('has_audio', pa.bool_()),
             ('mermaid_content', pa.string()),
+            ('content_hash', pa.string()),
+            ('context_hashes', pa.list_(pa.string())),
+            ('estimated_tokens', pa.int32()),
             ('metadata_json', pa.string()),
         ])
 

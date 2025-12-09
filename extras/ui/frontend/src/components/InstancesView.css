@@ -1,6 +1,9 @@
 /* Dark mode instances view */
 .instances-container {
   min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: #0B1219;
   color: #F0F4F8;
   padding: 2rem;
@@ -117,6 +120,45 @@
   gap: 1rem;
 }
 
+/* View Mode Toggle */
+.view-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: rgba(22, 32, 42, 0.6);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.15);
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #9AA5B1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-mode-btn:hover {
+  background: rgba(45, 212, 191, 0.1);
+  color: #2DD4BF;
+}
+
+.view-mode-btn.active {
+  background: rgba(45, 212, 191, 0.2);
+  color: #2DD4BF;
+  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
+}
+
+.view-mode-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .run-button {
   background: rgba(45, 212, 191, 0.1);
   border: 1px solid #2DD4BF;
@@ -169,6 +211,9 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Instance Row - Similar to cascade row but with status-colored phases */
@@ -1115,10 +1160,34 @@
   border-radius: 12px;
   padding: 0.75rem 1rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-direction: row;
+  gap: 0.75rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   contain: layout style;
+}
+
+/* Stacked buttons on far left */
+.buttons-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.buttons-stacked .btn-compact {
+  padding: 0.4rem;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+}
+
+/* Main content area takes remaining space */
+.instance-main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .instance-row-compact:hover {
@@ -1148,6 +1217,7 @@
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  position: relative;
 }
 
 .header-left-compact {
@@ -1186,6 +1256,27 @@
   font-size: 0.7rem;
   color: #64748b;
   white-space: nowrap;
+}
+
+/* Sparkline positioned to align with cascade bar's right edge */
+.sparkline-header-positioned {
+  position: absolute;
+  right: 256px;  /* 220px meta-section + 16px gap + 20px extra offset */
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Duration positioned with left edge aligned to cascade bar right edge + 5px */
+.metric-duration-positioned {
+  position: absolute;
+  right: 231px;  /* 220px meta-section + 16px gap - 5px */
+  top: 50%;
+  transform: translateY(-50%) translateX(100%);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #D9A553;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
 }
 
 .header-right-compact {
@@ -1339,6 +1430,20 @@
   overflow-y: auto;
 }
 
+.input-params-under-cascade.no-inputs {
+  justify-content: center;
+  overflow: hidden;
+  max-height: none;
+  min-height: 0;
+  padding: 0.3rem 0.6rem;
+}
+
+.no-inputs-text {
+  color: #4b5563;
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
 .input-field-compact {
   display: flex;
   gap: 0.4rem;
@@ -1360,9 +1465,8 @@
 
 /* Right column: RunPercentile + children toggle (~25%) */
 .meta-section-compact {
-  flex: 1.25 1 0;
-  min-width: 140px;
-  max-width: 220px;
+  flex: 0 0 220px;
+  width: 220px;
   display: flex;
   flex-direction: column;
   justify-content: center;

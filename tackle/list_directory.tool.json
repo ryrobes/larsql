@@ -1,0 +1,13 @@
+{
+  "tool_id": "list_directory",
+  "description": "List files and directories with details. Shows file sizes, permissions, and modification times.",
+  "inputs_schema": {
+    "path": "Directory path to list (default: current directory)",
+    "show_hidden": "Set to 'true' to include hidden files starting with ."
+  },
+  "type": "shell",
+  "command": "ls -la{{ 'h' if show_hidden == 'true' else '' }} {{ path | default('.') }}",
+  "timeout": 10,
+  "sandbox": false,
+  "output_transform": "lines"
+}

@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
 import SoundingsExplorer from './SoundingsExplorer';
+import InstanceGridView from './InstanceGridView';
 // MermaidPreview, ImageGallery, HumanInputDisplay removed - now only shown in SplitDetailView
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
@@ -64,6 +65,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [debugSessionId, setDebugSessionId] = useState(null);
   const [soundingsExplorerSession, setSoundingsExplorerSession] = useState(null);
   const [expandedParents, setExpandedParents] = useState(new Set());
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'grid'
 
   // Audible state - track per session since multiple can be running
   const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
@@ -322,163 +324,170 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         onClick={() => onSelectInstance && onSelectInstance(instance.session_id)}
         style={{ cursor: onSelectInstance ? 'pointer' : 'default' }}
       >
-        {/* Row 1: Header with session info, metrics, and buttons all inline */}
-        <div className="instance-header-compact">
-          {/* Left: Session ID, badge, timestamp */}
-          <div className="header-left-compact">
-            {isChild && (
-              <span className="child-indicator">└─ [{instance.cascade_id || 'Child'}]</span>
-            )}
-            <h3 className="session-id-compact">
-              {instance.session_id}
-              {stateBadge}
-              {instance.status === 'failed' && (
-                <span className="failed-badge">
-                  <Icon icon="mdi:alert-circle" width="14" />
-                  Failed ({instance.error_count})
-                </span>
-              )}
-            </h3>
-            <span className="timestamp-compact">{formatTimestamp(instance.start_time)}</span>
-          </div>
+        {/* Stacked buttons on far left */}
+        <div className="buttons-stacked">
+          {instance.has_soundings && (
+            <button
+              className="btn-compact soundings"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSoundingsExplorerSession(instance.session_id);
+              }}
+              title="Explore soundings"
+            >
+              <Icon icon="mdi:sign-direction" width="14" />
+            </button>
+          )}
+          <button
+            className="btn-compact rerun"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRunCascade && onRunCascade({
+                ...cascadeData,
+                prefilled_inputs: instance.input_data || {}
+              });
+            }}
+            title="Re-run with these inputs"
+          >
+            <Icon icon="mdi:replay" width="14" />
+          </button>
+          {(isSessionRunning || (hasRunning && !isFinalizing)) && (
+            <button
+              className={`btn-compact audible ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
+              onClick={(e) => handleAudibleClick(e, instance.session_id)}
+              disabled={audibleSending[instance.session_id] || audibleSignaled[instance.session_id]}
+              title={audibleSignaled[instance.session_id] ? 'Audible signaled' : 'Call audible'}
+            >
+              <Icon icon="mdi:bullhorn" width="14" />
+            </button>
+          )}
+          {isCompleted && onFreezeInstance && !isChild && (
+            <button
+              className="btn-compact freeze"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFreezeInstance(instance);
+              }}
+              title="Freeze as test snapshot"
+            >
+              <Icon icon="mdi:snowflake" width="14" />
+            </button>
+          )}
+        </div>
 
-          {/* Right: Buttons + Sparkline first, then Metrics on far right */}
-          <div className="header-right-compact">
-            {/* Inline action buttons - moved to left */}
-            <div className="buttons-inline">
-              {instance.has_soundings && (
-                <button
-                  className="btn-compact soundings"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSoundingsExplorerSession(instance.session_id);
-                  }}
-                  title="Explore soundings"
-                >
-                  <Icon icon="mdi:sign-direction" width="14" />
-                  <span className="soundings-count">
-                    {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
+        {/* Main content area */}
+        <div className="instance-main-content">
+          {/* Row 1: Header with session info and metrics */}
+          <div className="instance-header-compact">
+            {/* Left: Session ID, badge, timestamp */}
+            <div className="header-left-compact">
+              {isChild && (
+                <span className="child-indicator">└─ [{instance.cascade_id || 'Child'}]</span>
+              )}
+              <h3 className="session-id-compact">
+                {instance.session_id}
+                {stateBadge}
+                {instance.status === 'failed' && (
+                  <span className="failed-badge">
+                    <Icon icon="mdi:alert-circle" width="14" />
+                    Failed ({instance.error_count})
                   </span>
-                </button>
-              )}
-              <button
-                className="btn-compact rerun"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRunCascade && onRunCascade({
-                    ...cascadeData,
-                    prefilled_inputs: instance.input_data || {}
-                  });
-                }}
-                title="Re-run with these inputs"
-              >
-                <Icon icon="mdi:replay" width="14" />
-              </button>
-              {(isSessionRunning || (hasRunning && !isFinalizing)) && (
-                <button
-                  className={`btn-compact audible ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
-                  onClick={(e) => handleAudibleClick(e, instance.session_id)}
-                  disabled={audibleSending[instance.session_id] || audibleSignaled[instance.session_id]}
-                  title={audibleSignaled[instance.session_id] ? 'Audible signaled' : 'Call audible'}
-                >
-                  <Icon icon="mdi:bullhorn" width="14" />
-                </button>
-              )}
-              {isCompleted && onFreezeInstance && !isChild && (
-                <button
-                  className="btn-compact freeze"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFreezeInstance(instance);
-                  }}
-                  title="Freeze as test snapshot"
-                >
-                  <Icon icon="mdi:snowflake" width="14" />
-                </button>
-              )}
+                )}
+              </h3>
+              <span className="timestamp-compact">{formatTimestamp(instance.start_time)}</span>
             </div>
 
-            {/* Sparkline */}
+            {/* Sparkline positioned to align with cascade bar */}
             {instance.token_timeseries && instance.token_timeseries.length > 0 && (
-              <TokenSparkline data={instance.token_timeseries} width={60} height={18} />
+              <div className="sparkline-header-positioned">
+                <TokenSparkline data={instance.token_timeseries} width={60} height={18} />
+              </div>
             )}
 
-            {/* Time and Cost - far right, larger */}
-            <span className="metric-duration-large">
+            {/* Duration positioned to align left edge with cascade bar right edge */}
+            <span className="metric-duration-positioned">
               <LiveDuration
                 startTime={instance.start_time}
                 isRunning={isSessionRunning || isFinalizing}
                 staticDuration={instance.duration_seconds}
               />
             </span>
-            <span className="metric-cost-large">
-              {formatCost(instance.total_cost)}
-            </span>
-          </div>
-        </div>
 
-        {/* Row 2: 3 columns - Models | CascadeBar+Inputs | RunPercentile */}
-        <div className="instance-content-compact">
-          {/* Left section: Models (~20%) */}
-          <div className="models-section-compact">
-            {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
-              <ModelTags modelsUsed={instance.models_used} />
-            )}
-            {instance.model_costs?.length > 1 && (
-              <ModelCostBar
-                modelCosts={instance.model_costs}
-                totalCost={instance.total_cost}
-              />
-            )}
+            {/* Right: Cost on far right */}
+            <div className="header-right-compact">
+              <span className="metric-cost-large">
+                {formatCost(instance.total_cost)}
+              </span>
+            </div>
           </div>
 
-          {/* Middle section: CascadeBar with inputs underneath (~55%) */}
-          <div className="cascade-section-compact">
-            {instance.phases && instance.phases.length > 1 && (
-              <CascadeBar
-                phases={instance.phases}
-                totalCost={instance.total_cost}
-                isRunning={isSessionRunning || hasRunning}
-              />
-            )}
-            {/* Input params below cascade bar */}
-            {instance.input_data && Object.keys(instance.input_data).length > 0 && (
-              <div className="input-params-under-cascade">
-                {Object.entries(instance.input_data).map(([key, value]) => (
-                  <div key={key} className="input-field-compact">
-                    <span className="input-key">{key}:</span>
-                    <span className="input-value">
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Right section: RunPercentile + Children toggle (~25%) */}
-          <div className="meta-section-compact">
-            {!isChild && instances.length >= 2 && (
-              <RunPercentile
-                instance={instance}
-                allInstances={instances}
-              />
-            )}
-            {!isChild && instance.children && instance.children.length > 0 && (
-              <div
-                className="children-toggle-compact"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpanded(instance.session_id);
-                }}
-              >
-                <Icon
-                  icon={expandedParents.has(instance.session_id) ? "mdi:chevron-down" : "mdi:chevron-right"}
-                  width="16"
+          {/* Row 2: 3 columns - Models | CascadeBar+Inputs+Sparkline | RunPercentile */}
+          <div className="instance-content-compact">
+            {/* Left section: Models (~20%) */}
+            <div className="models-section-compact">
+              {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
+                <ModelTags modelsUsed={instance.models_used} />
+              )}
+              {instance.model_costs?.length > 1 && (
+                <ModelCostBar
+                  modelCosts={instance.model_costs}
+                  totalCost={instance.total_cost}
                 />
-                <span>{instance.children.length} sub</span>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Middle section: CascadeBar with inputs (~55%) */}
+            <div className="cascade-section-compact">
+              {instance.phases && instance.phases.length > 1 && (
+                <CascadeBar
+                  phases={instance.phases}
+                  totalCost={instance.total_cost}
+                  isRunning={isSessionRunning || hasRunning}
+                />
+              )}
+              {/* Input params below cascade bar */}
+              {instance.input_data && Object.keys(instance.input_data).length > 0 ? (
+                <div className="input-params-under-cascade">
+                  {Object.entries(instance.input_data).map(([key, value]) => (
+                    <div key={key} className="input-field-compact">
+                      <span className="input-key">{key}:</span>
+                      <span className="input-value">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="input-params-under-cascade no-inputs">
+                  <span className="no-inputs-text">no inputs</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right section: RunPercentile + Children toggle (~25%) */}
+            <div className="meta-section-compact">
+              {!isChild && instances.length >= 2 && (
+                <RunPercentile
+                  instance={instance}
+                  allInstances={instances}
+                />
+              )}
+              {!isChild && instance.children && instance.children.length > 0 && (
+                <div
+                  className="children-toggle-compact"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleExpanded(instance.session_id);
+                  }}
+                >
+                  <Icon
+                    icon={expandedParents.has(instance.session_id) ? "mdi:chevron-down" : "mdi:chevron-right"}
+                    width="16"
+                  />
+                  <span>{instance.children.length} sub</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -535,6 +544,32 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           <span className="header-stat cost">{formatCost(totalCost)}</span>
         </div>
         <div className="header-right">
+          {/* View mode toggle */}
+          <div className="view-mode-toggle">
+            <button
+              className={`view-mode-btn ${viewMode === 'card' ? 'active' : ''}`}
+              onClick={() => setViewMode('card')}
+              title="Card View"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+              </svg>
+            </button>
+            <button
+              className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Grid View"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+          </div>
           {cascadeData && onRunCascade && (
             <button
               className="run-button"
@@ -549,35 +584,49 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         </div>
       </header>
 
-      <div className="instances-list">
-        {instances.map((instance) => {
-          const isExpanded = expandedParents.has(instance.session_id);
-          const hasChildren = instance.children && instance.children.length > 0;
+      {viewMode === 'card' ? (
+        <>
+          <div className="instances-list">
+            {instances.map((instance) => {
+              const isExpanded = expandedParents.has(instance.session_id);
+              const hasChildren = instance.children && instance.children.length > 0;
 
-          // if (hasChildren) {
-          //   console.log('[RENDER] Parent:', instance.session_id, 'has', instance.children.length, 'children, expanded:', isExpanded);
-          // }
+              return (
+                <React.Fragment key={instance.session_id}>
+                  {/* Render parent instance */}
+                  {renderInstanceRow(instance, false)}
 
-          return (
-            <React.Fragment key={instance.session_id}>
-              {/* Render parent instance */}
-              {renderInstanceRow(instance, false)}
+                  {/* Render child instances (only if expanded) */}
+                  {hasChildren && isExpanded && (
+                    instance.children.map(child => renderInstanceRow(child, true))
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
 
-              {/* Render child instances (only if expanded) */}
-              {hasChildren && isExpanded && (
-                instance.children.map(child => renderInstanceRow(child, true))
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-
-      {instances.length === 0 && (
-        <div className="empty-state">
-          <p>No instances found for this cascade</p>
-          <p className="empty-hint">This cascade hasn't been run yet</p>
-        </div>
+          {instances.length === 0 && (
+            <div className="empty-state">
+              <p>No instances found for this cascade</p>
+              <p className="empty-hint">This cascade hasn't been run yet</p>
+            </div>
+          )}
+        </>
+      ) : (
+        <InstanceGridView
+          instances={instances}
+          onSelectInstance={onSelectInstance}
+          onFreezeInstance={onFreezeInstance}
+          onRunCascade={onRunCascade}
+          cascadeData={cascadeData}
+          runningSessions={runningSessions}
+          finalizingSessions={finalizingSessions}
+          onSoundingsExplorer={(sessionId) => setSoundingsExplorerSession(sessionId)}
+          onAudibleClick={handleAudibleClick}
+          audibleSignaled={audibleSignaled}
+          audibleSending={audibleSending}
+          allInstances={instances}
+        />
       )}
 
       {/* Debug Modal */}

@@ -78,6 +78,15 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     -- Mermaid diagram state
     mermaid_content Nullable(String),
 
+    -- Content identity and context tracking
+    -- content_hash: Deterministic hash of role+content for stable identity across logs
+    -- context_hashes: Array of content_hashes that were in the LLM context when this message was created
+    -- estimated_tokens: Estimated token count for this message (chars/4 approximation)
+    -- These enable: Gantt charts of context lifespan, cost attribution per message, context graph visualization
+    content_hash Nullable(String),
+    context_hashes Array(String) DEFAULT [],
+    estimated_tokens Nullable(Int32),
+
     -- Metadata
     metadata_json Nullable(String)
 )

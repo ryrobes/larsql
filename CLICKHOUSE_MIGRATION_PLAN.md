@@ -166,6 +166,8 @@ This document outlines a comprehensive plan to migrate Windlass from its current
 | **Native vector search** | ClickHouse's `cosineDistance()` + ANN indexes replace Python computation |
 | **Buffered inserts retained** | Batch INSERT for performance (but to ClickHouse, not Parquet) |
 | **Real-time queries** | No file-based caching needed; ClickHouse is fast enough |
+| **In-place UPDATE for costs** | Denormalized table with `ALTER TABLE UPDATE` for cost/winner data - simpler queries than append-only or joins |
+| **Batch mutations** | Cost updates batched every 5-10s for efficiency; ClickHouse handles well for this pattern |
 
 ---
 
@@ -191,6 +193,10 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     node_type LowCardinality(String),  -- 'message', 'tool_call', 'phase_start', etc.
     role LowCardinality(String),        -- 'user', 'assistant', 'tool', 'system'
     depth UInt8 DEFAULT 0,
+
+    -- Semantic Classification (human-readable for debugging)
+    semantic_actor Nullable(LowCardinality(String)),   -- WHO: main_agent, evaluator, validator, quartermaster, human, framework
+    semantic_purpose Nullable(LowCardinality(String)), -- WHAT: instructions, task_input, tool_request, tool_response, evaluation_output
 
     -- Execution Context (Soundings/Reforge)
     sounding_index Nullable(Int32),
@@ -225,22 +231,33 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     -- Content (stored as JSON strings for flexibility)
     content String DEFAULT '',
     content_json Nullable(String),
-    full_request_json Nullable(String),
-    full_response_json Nullable(String),
-    tool_calls_json Nullable(String),
 
-    -- Images & Audio
-    images_json Nullable(String),
+    -- Full request/response for reconstruction (BASE64 STRIPPED - see below)
+    full_request_json Nullable(String) CODEC(ZSTD(3)),   -- Sanitized: base64 replaced with path refs
+    full_response_json Nullable(String) CODEC(ZSTD(3)), -- Sanitized: base64 replaced with path refs
+
+    -- Frequently queried JSON - use native JSON type (ClickHouse 24.1+)
+    tool_calls_json JSON,           -- Native JSON for efficient path queries: tool_calls_json[0].tool
+
+    -- Binary Artifact References (actual data in filesystem or binary_artifacts table)
+    images_json Nullable(String),   -- JSON array of file paths: ["images/sess/phase/img_0.png", ...]
+    artifact_ids Array(UUID) DEFAULT [],  -- Optional: references to binary_artifacts table
     has_images Bool DEFAULT false,
-    has_base64 Bool DEFAULT false,
-    audio_json Nullable(String),
+    has_base64_stripped Bool DEFAULT false,  -- True if original had base64 that was stripped
+    audio_json Nullable(String),    -- JSON array of audio file paths
     has_audio Bool DEFAULT false,
 
     -- Metadata
     mermaid_content Nullable(String),
     metadata_json Nullable(String),
 
-    -- NEW: Vector Embeddings for RAG/Semantic Search
+    -- Content Identity & Context Tracking
+    -- Enables: Gantt charts of context lifespan, cost attribution per message, context graphs
+    content_hash Nullable(String),           -- Deterministic hash of role+content for stable identity
+    context_hashes Array(String) DEFAULT [], -- Hashes of messages in LLM context when this was created
+    estimated_tokens Nullable(Int32),        -- Estimated token count (chars/4 approximation)
+
+    -- Vector Embeddings for RAG/Semantic Search (optional - populated on demand)
     content_embedding Array(Float32) DEFAULT [],
     request_embedding Array(Float32) DEFAULT [],
     embedding_model Nullable(LowCardinality(String)),
@@ -272,40 +289,50 @@ SETTINGS index_granularity = 8192;
 
 ```sql
 CREATE TABLE IF NOT EXISTS checkpoints (
-    id UUID DEFAULT generateUUIDv4(),
+    -- Core Identification
+    id String,                              -- Checkpoint UUID
     session_id String,
     cascade_id String,
     phase_name String,
-    status Enum8('pending' = 0, 'responded' = 1, 'timeout' = 2, 'cancelled' = 3),
+
+    -- Status Tracking
+    status Enum8('pending' = 1, 'responded' = 2, 'timeout' = 3, 'cancelled' = 4),
     created_at DateTime64(3) DEFAULT now64(3),
-    updated_at DateTime64(3) DEFAULT now64(3),
+    responded_at Nullable(DateTime64(3)),   -- When human responded
+    timeout_at Nullable(DateTime64(3)),     -- Deadline for response
 
-    checkpoint_type Enum8('phase_input' = 0, 'sounding_eval' = 1, 'human_feedback' = 2),
+    -- Type Classification
+    checkpoint_type Enum8('phase_input' = 1, 'sounding_eval' = 2),
 
-    -- UI Specification
-    ui_spec String DEFAULT '{}',
+    -- UI Specification (generated or configured)
+    ui_spec String DEFAULT '{}',            -- JSON: Generative UI spec
 
-    -- State Snapshots
-    echo_snapshot String DEFAULT '{}',
-    phase_output Nullable(String),
-    trace_context Nullable(String),
+    -- Context for Resume
+    echo_snapshot String DEFAULT '{}',      -- JSON: Full Echo state for resume
+    phase_output Nullable(String),          -- Preview text of what phase produced
+    trace_context Nullable(String),         -- JSON: {trace_id, parent_id, cascade_trace_id, phase_trace_id, depth}
 
-    -- Sounding-specific
-    sounding_outputs Nullable(String),
+    -- Sounding Evaluation Data
+    sounding_outputs Nullable(String),      -- JSON array of all sounding attempts
+    sounding_metadata Nullable(String),     -- JSON: costs, models, mutations per attempt
 
-    -- Response Data
-    response Nullable(String),
-    winner_index Nullable(Int32),
-    rankings Nullable(String),
-    ratings Nullable(String),
+    -- Human Response
+    response Nullable(String),              -- JSON: Human's response data
+    response_reasoning Nullable(String),    -- Human's explanation of choice
+    response_confidence Nullable(Float32),  -- How confident (0-1)
+
+    -- Training Data Fields (for preference learning)
+    winner_index Nullable(Int32),           -- Which sounding won
+    rankings Nullable(String),              -- JSON array for rank_all mode
+    ratings Nullable(String),               -- JSON object for rate_each mode
 
     -- Indexes
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_status status TYPE set(10) GRANULARITY 1,
     INDEX idx_created created_at TYPE minmax GRANULARITY 1
 )
-ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY (id, session_id)
+ENGINE = MergeTree()
+ORDER BY (created_at, session_id)
 PARTITION BY toYYYYMM(created_at);
 ```
 
@@ -420,40 +447,61 @@ ORDER BY cascade_id;
 
 #### 2.1.7 training_preferences (DPO/RLHF Data)
 
+**Note:** This table already exists in `schema.py`. The schema below matches the existing implementation.
+
 ```sql
 CREATE TABLE IF NOT EXISTS training_preferences (
-    id UUID DEFAULT generateUUIDv4(),
+    -- Identity
+    id String,
     created_at DateTime64(3) DEFAULT now64(3),
+
+    -- Source Tracking (for deduplication and provenance)
     session_id String,
     cascade_id String,
     phase_name String,
-    checkpoint_id Nullable(String),
+    checkpoint_id String,
 
-    -- Prompts
-    prompt_text String,
-    system_prompt Nullable(String),
+    -- Prompt Context (reconstructed for training)
+    prompt_text String,              -- Full rendered prompt
+    prompt_messages String,          -- JSON array if multi-turn
+    system_prompt String,            -- System instructions
 
     -- Preference Type
-    preference_type Enum8('pairwise' = 0, 'ranking' = 1, 'rating' = 2),
+    preference_type Enum8('pairwise' = 1, 'ranking' = 2, 'rating' = 3),
 
-    -- Pairwise Data
+    -- Pairwise Preferences (most common, used by DPO)
     chosen_response String,
     rejected_response String,
-    chosen_cost Nullable(Float64),
-    rejected_cost Nullable(Float64),
     chosen_model Nullable(String),
     rejected_model Nullable(String),
+    chosen_cost Nullable(Float64),
+    rejected_cost Nullable(Float64),
+    chosen_tokens Nullable(Int32),
+    rejected_tokens Nullable(Int32),
+    margin Float32 DEFAULT 1.0,      -- Strength of preference (for weighted training)
 
-    -- Ranking Data
-    ranked_responses Nullable(String),  -- JSON array
+    -- Ranking Preferences (full ordering)
+    all_responses Nullable(String),  -- JSON array of all responses
+    ranking_order Nullable(String),  -- JSON array [best_idx, ..., worst_idx]
+    num_responses Nullable(Int32),
 
-    -- Rating Data
-    rating Nullable(Float32),
-    rating_response Nullable(String),
+    -- Rating Preferences (scored)
+    ratings_json Nullable(String),   -- JSON {response_idx: rating}
+    rating_scale_max Nullable(Int32), -- e.g., 5 for 1-5 scale
 
-    -- Source
-    source Enum8('human' = 0, 'evaluator' = 1, 'sounding' = 2, 'reforge' = 3),
-    evaluator_model Nullable(String),
+    -- Human Signal (gold!)
+    human_reasoning Nullable(String), -- Why they chose this
+    human_confidence Nullable(Float32), -- How confident (0-1)
+
+    -- Mutation/Model Metadata (for analysis)
+    chosen_mutation Nullable(String),  -- What prompt mutation was used
+    rejected_mutation Nullable(String),
+    model_comparison Bool DEFAULT false, -- Was this cross-model comparison?
+
+    -- Quality Flags
+    reasoning_quality Nullable(Float32), -- Auto-scored reasoning quality
+    is_tie Bool DEFAULT false,           -- Human said "equal"
+    is_rejection Bool DEFAULT false,     -- Human rejected all
 
     -- Indexes
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
@@ -461,7 +509,7 @@ CREATE TABLE IF NOT EXISTS training_preferences (
     INDEX idx_pref_type preference_type TYPE set(10) GRANULARITY 1
 )
 ENGINE = MergeTree()
-ORDER BY (created_at, session_id)
+ORDER BY (created_at, session_id, preference_type)
 PARTITION BY toYYYYMM(created_at);
 ```
 
@@ -528,6 +576,377 @@ AS SELECT
 FROM unified_logs
 WHERE phase_name IS NOT NULL
 GROUP BY cascade_id, phase_name;
+```
+
+### 2.3 UPDATE Patterns (Mutations)
+
+ClickHouse supports `ALTER TABLE UPDATE` for in-place mutations. We use this for two key patterns:
+
+#### 2.3.1 Cost Tracking (Delayed Data)
+
+LLM providers (OpenRouter) have a 3-5 second delay before cost data is available. Rather than:
+- **Append-only** (requires `FINAL` or `argMax()` on every query)
+- **Separate table** (requires JOIN on 90% of queries)
+
+We use **in-place UPDATE**:
+
+```
+Timeline:
+T+0s    INSERT INTO unified_logs (..., cost=NULL, tokens_in=NULL, ...)
+T+3-5s  Cost available from OpenRouter API
+T+5-10s ALTER TABLE UPDATE cost=X, tokens_in=Y, ... WHERE trace_id='...'
+```
+
+**Why this works well in ClickHouse:**
+
+| Factor | Our Pattern | Problematic Pattern |
+|--------|-------------|---------------------|
+| Updates per row | 1 (one-time cost fill) | Many (frequent changes) |
+| Timing | 3-10s after insert | Random/long after |
+| Fields updated | Always same 4 fields | Random fields |
+| Batch potential | Yes (every 5-10s) | No |
+| Data part locality | Same part (recent) | Scattered across parts |
+
+#### 2.3.2 Winner Flagging (Sounding Evaluation)
+
+When a sounding wins, UPDATE all messages in that thread:
+
+```sql
+-- Mark winner: all rows in winning sounding
+ALTER TABLE unified_logs
+UPDATE is_winner = true
+WHERE session_id = 'sess_123'
+  AND phase_name = 'generate'
+  AND sounding_index = 2
+SETTINGS mutations_sync = 1;
+
+-- Mark losers: all other soundings in same phase
+ALTER TABLE unified_logs
+UPDATE is_winner = false
+WHERE session_id = 'sess_123'
+  AND phase_name = 'generate'
+  AND sounding_index IS NOT NULL
+  AND sounding_index != 2
+SETTINGS mutations_sync = 1;
+```
+
+**Benefits over append-only:**
+- Query `WHERE is_winner = true` directly - no reconstruction
+- All messages in winning thread marked (not just a single "winner" row)
+- Simple data model: one row per message, complete state
+
+#### 2.3.3 Mutation Performance Guidelines
+
+```python
+# ✅ GOOD: Batch updates (efficient)
+db.batch_update_costs('unified_logs', [
+    {'trace_id': 't1', 'cost': 0.001, ...},
+    {'trace_id': 't2', 'cost': 0.002, ...},
+    {'trace_id': 't3', 'cost': 0.003, ...},
+])  # Single mutation operation
+
+# ❌ BAD: Individual updates (inefficient)
+for update in updates:
+    db.update_row('unified_logs', update, f"trace_id = '{update['trace_id']}'")
+# N separate mutation operations
+```
+
+**Key practices:**
+1. **Batch updates** - Group updates every 5-10 seconds
+2. **Use mutations_sync=1** for critical paths (ensures completion before return)
+3. **Update recent data** - ClickHouse handles recent data parts more efficiently
+4. **Fixed field set** - Always updating same columns is more efficient than random fields
+
+#### 2.3.4 Fields Subject to UPDATE
+
+| Field | UPDATE Pattern | When |
+|-------|----------------|------|
+| `cost` | Batch (5-10s) | After OpenRouter API returns |
+| `tokens_in` | Batch (5-10s) | With cost |
+| `tokens_out` | Batch (5-10s) | With cost |
+| `total_tokens` | Batch (5-10s) | With cost |
+| `provider` | Batch (5-10s) | With cost |
+| `is_winner` | On evaluation | After sounding evaluation completes |
+
+All other fields are INSERT-only (immutable after creation).
+
+### 2.4 Binary Artifact Handling (Images, Audio)
+
+Multi-modal messages can embed **megabytes of base64** per row. This destroys query performance and bloats storage.
+
+#### 2.4.1 The Problem
+
+```json
+// Current full_request_json - can be 5MB+ per row!
+{
+  "messages": [{
+    "role": "user",
+    "content": [{
+      "type": "image_url",
+      "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA... (2MB)"}
+    }]
+  }]
+}
+```
+
+| Issue | Impact |
+|-------|--------|
+| Storage bloat | Base64 is 33% larger than binary |
+| Query speed | Loading multi-MB rows kills performance |
+| Compression | Base64 compresses poorly (10-20% vs 60-80% for real images) |
+| Memory | Scanning tables with embedded images OOMs |
+
+#### 2.4.2 Solution: Strip & Reference
+
+We already save images to `images/{session_id}/{phase}/`. **Sanitize JSON before logging:**
+
+```python
+def sanitize_request_for_logging(full_request: Dict, images_paths: List[str]) -> Dict:
+    """
+    Replace base64 content with path references before logging to ClickHouse.
+
+    Args:
+        full_request: The complete LLM request with embedded base64
+        images_paths: Paths where images were already saved to disk
+
+    Returns:
+        Sanitized request with base64 replaced by path references
+    """
+    sanitized = copy.deepcopy(full_request)
+    image_idx = 0
+
+    for msg in sanitized.get('messages', []):
+        content = msg.get('content')
+        if isinstance(content, list):
+            for item in content:
+                if item.get('type') == 'image_url':
+                    url = item.get('image_url', {}).get('url', '')
+                    if url.startswith('data:'):
+                        # Replace base64 with file path reference
+                        if image_idx < len(images_paths):
+                            item['image_url']['url'] = f"file://{images_paths[image_idx]}"
+                            item['image_url']['_base64_stripped'] = True
+                            image_idx += 1
+                        else:
+                            item['image_url']['url'] = '[BASE64_STRIPPED:path_unavailable]'
+
+    return sanitized
+
+
+# In log_unified():
+def log_unified(self, full_request: Dict = None, images: List[str] = None, **kwargs):
+    # Sanitize before logging
+    if full_request and images:
+        full_request = sanitize_request_for_logging(full_request, images)
+
+    row = {
+        'full_request_json': json.dumps(full_request) if full_request else None,
+        'images_json': json.dumps(images) if images else None,
+        'has_images': bool(images),
+        'has_base64_stripped': True,  # Flag that reconstruction needs file read
+        **kwargs
+    }
+    ...
+```
+
+**Result:**
+- `full_request_json`: ~10KB (was 5MB)
+- `images_json`: `["images/sess_123/generate/img_0.png", "images/sess_123/generate/img_1.png"]`
+- Actual binary: Filesystem (already saved by runner)
+
+#### 2.4.3 Reconstruction (When Needed)
+
+For full message reconstruction (e.g., replay, export):
+
+```python
+def reconstruct_full_request(row: Dict) -> Dict:
+    """Reconstruct full request with base64 re-embedded if needed."""
+    full_request = json.loads(row['full_request_json'])
+
+    if not row.get('has_base64_stripped'):
+        return full_request  # No reconstruction needed
+
+    images_paths = json.loads(row.get('images_json', '[]'))
+    image_idx = 0
+
+    for msg in full_request.get('messages', []):
+        content = msg.get('content')
+        if isinstance(content, list):
+            for item in content:
+                if item.get('type') == 'image_url':
+                    url = item.get('image_url', {}).get('url', '')
+                    if url.startswith('file://'):
+                        # Re-embed base64 from file
+                        file_path = url[7:]  # Strip 'file://'
+                        if os.path.exists(file_path):
+                            with open(file_path, 'rb') as f:
+                                data = base64.b64encode(f.read()).decode()
+                            mime = mimetypes.guess_type(file_path)[0] or 'image/png'
+                            item['image_url']['url'] = f"data:{mime};base64,{data}"
+
+    return full_request
+```
+
+#### 2.4.4 Optional: Dedicated Binary Artifacts Table
+
+For more structured binary management (deduplication, metadata, S3 integration):
+
+```sql
+CREATE TABLE IF NOT EXISTS binary_artifacts (
+    artifact_id UUID DEFAULT generateUUIDv4(),
+
+    -- Links
+    trace_id String,                -- Link to unified_logs row
+    session_id String,
+    phase_name Nullable(String),
+
+    -- Type
+    artifact_type Enum8('image' = 1, 'audio' = 2, 'document' = 3, 'other' = 4),
+    mime_type LowCardinality(String),
+
+    -- Storage (one of these populated)
+    file_path String,               -- Local or S3 path
+    storage_backend Enum8('local' = 1, 's3' = 2, 'inline' = 3) DEFAULT 'local',
+
+    -- Metadata
+    size_bytes UInt32,
+    width Nullable(UInt16),         -- For images
+    height Nullable(UInt16),        -- For images
+    duration_ms Nullable(UInt32),   -- For audio/video
+    checksum String,                -- SHA256 for deduplication
+
+    -- Timestamps
+    created_at DateTime64(3) DEFAULT now64(3),
+
+    -- Indexes
+    INDEX idx_trace trace_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_checksum checksum TYPE bloom_filter GRANULARITY 1  -- For dedup queries
+)
+ENGINE = MergeTree()
+ORDER BY (session_id, trace_id, artifact_id)
+PARTITION BY toYYYYMM(created_at);
+```
+
+**Deduplication query:**
+```sql
+-- Find if this image already exists (by content hash)
+SELECT artifact_id, file_path
+FROM binary_artifacts
+WHERE checksum = 'abc123...'
+LIMIT 1;
+
+-- If exists, reuse path instead of saving again
+```
+
+**Benefits of dedicated table:**
+- Deduplicate identical images across sessions
+- Track image metadata (dimensions, size) for analytics
+- Easy migration to S3 (just update storage_backend)
+- Query images independently of messages
+
+#### 2.4.5 Storage Comparison
+
+| Approach | Storage per Image | Query Speed | Complexity |
+|----------|------------------|-------------|------------|
+| Inline base64 | ~1.33x original | ❌ Terrible | Low |
+| Strip + filesystem | ~0.01x (path only) | ✅ Fast | Medium |
+| binary_artifacts table | ~0.01x + metadata | ✅ Fast | Higher |
+| S3 + references | ~0.01x (URL only) | ✅ Fast | Higher |
+
+**Recommendation:** Start with **Strip + filesystem** (already have the infra). Add `binary_artifacts` table later if deduplication or S3 becomes important.
+
+### 2.5 JSON Column Strategy
+
+ClickHouse offers multiple approaches for JSON data. Use the right one for each field.
+
+#### 2.5.1 Native JSON Type (ClickHouse 24.1+)
+
+**Best for:** Frequently queried, variable structure, path-based access
+
+```sql
+-- Schema
+tool_calls_json JSON,
+metadata_json JSON,
+
+-- Queries are clean and fast
+SELECT tool_calls_json[0].tool AS tool_name,
+       tool_calls_json[0].arguments.query AS query_arg
+FROM unified_logs
+WHERE tool_calls_json[0].tool = 'rag_search';
+```
+
+**Use for:**
+- `tool_calls_json` - Query tool names, arguments, patterns
+- `metadata_json` - Flexible key-value queries
+
+#### 2.5.2 String + JSONExtract Functions
+
+**Best for:** Rarely queried, reconstruction blobs, large documents
+
+```sql
+-- Schema
+cascade_json Nullable(String),
+phase_json Nullable(String),
+full_request_json Nullable(String) CODEC(ZSTD(3)),
+
+-- Query when needed (rare)
+SELECT JSONExtractString(cascade_json, 'cascade_id') AS cid
+FROM unified_logs
+WHERE session_id = 'sess_123';
+```
+
+**Use for:**
+- `cascade_json` - Full config for reconstruction
+- `phase_json` - Full config for reconstruction
+- `full_request_json` - Complete API request (sanitized)
+- `full_response_json` - Complete API response (sanitized)
+
+#### 2.5.3 Array Types
+
+**Best for:** Simple arrays of primitives
+
+```sql
+-- Schema
+context_hashes Array(String) DEFAULT [],
+artifact_ids Array(UUID) DEFAULT [],
+
+-- Queries
+SELECT * FROM unified_logs
+WHERE has(context_hashes, 'abc123def456');
+```
+
+**Use for:**
+- `context_hashes` - Array of content hashes
+- `artifact_ids` - Array of binary artifact references
+- `images_json` could become `images Array(String)` if always simple paths
+
+#### 2.5.4 Decision Matrix
+
+| Field | Type | Rationale |
+|-------|------|-----------|
+| `tool_calls_json` | **JSON** | Frequent queries on tool names, arguments |
+| `metadata_json` | **JSON** | Flexible queries on arbitrary keys |
+| `content_json` | String | Rarely queried directly, just stored |
+| `cascade_json` | String + ZSTD | Large, reconstruction only |
+| `phase_json` | String + ZSTD | Large, reconstruction only |
+| `full_request_json` | String + ZSTD | Large, sanitized, reconstruction |
+| `full_response_json` | String + ZSTD | Large, sanitized, reconstruction |
+| `images_json` | String (or Array) | Simple path list |
+| `context_hashes` | Array(String) | Set membership queries |
+| `sounding_outputs` | String | Large array, reconstruction |
+
+#### 2.5.5 Migration Note
+
+If migrating from String to JSON type:
+```sql
+-- Add new JSON column
+ALTER TABLE unified_logs ADD COLUMN tool_calls_new JSON;
+
+-- Migrate data
+ALTER TABLE unified_logs UPDATE tool_calls_new = tool_calls_json WHERE 1;
+
+-- Swap columns (or update application code to use new column)
 ```
 
 ---
@@ -698,6 +1117,105 @@ class ClickHouseAdapter:
         """
         return self.query(sql, {'vec': query_vector, 'limit': limit})
 
+    # =========================================================================
+    # UPDATE Operations (for cost tracking, winner flagging, etc.)
+    # =========================================================================
+    # ClickHouse supports ALTER TABLE UPDATE for in-place mutations.
+    # This is efficient for our use case: one update per row, shortly after insert.
+
+    def update_row(self, table: str, updates: Dict[str, Any],
+                   where: str, sync: bool = True):
+        """
+        Update rows matching condition.
+
+        Args:
+            table: Table name
+            updates: Dict of {column: value} to update
+            where: WHERE clause (without WHERE keyword)
+            sync: If True, wait for mutation to complete
+        """
+        set_parts = []
+        params = {}
+        for i, (col, val) in enumerate(updates.items()):
+            param_name = f"v{i}"
+            set_parts.append(f"{col} = %({param_name})s")
+            params[param_name] = val
+
+        set_clause = ', '.join(set_parts)
+        settings = "SETTINGS mutations_sync = 1" if sync else ""
+
+        self.client.execute(f"""
+            ALTER TABLE {table}
+            UPDATE {set_clause}
+            WHERE {where}
+            {settings}
+        """, params)
+
+    def batch_update_costs(self, table: str, updates: List[Dict]):
+        """
+        Batch update cost data for multiple rows by trace_id.
+
+        More efficient than individual updates - ClickHouse processes
+        as single mutation operation.
+
+        Args:
+            updates: List of dicts with keys: trace_id, cost, tokens_in, tokens_out, provider
+        """
+        if not updates:
+            return
+
+        trace_ids = [u['trace_id'] for u in updates]
+
+        # Build CASE expressions for each field
+        cost_cases = ', '.join(
+            f"('{u['trace_id']}', {u.get('cost', 0)})" for u in updates
+        )
+        tokens_in_cases = ', '.join(
+            f"('{u['trace_id']}', {u.get('tokens_in', 0)})" for u in updates
+        )
+        tokens_out_cases = ', '.join(
+            f"('{u['trace_id']}', {u.get('tokens_out', 0)})" for u in updates
+        )
+        provider_cases = ', '.join(
+            f"('{u['trace_id']}', '{u.get('provider', '')}')" for u in updates
+        )
+
+        trace_id_list = ', '.join(f"'{t}'" for t in trace_ids)
+
+        self.client.execute(f"""
+            ALTER TABLE {table}
+            UPDATE
+                cost = mapValues(map({cost_cases}))[indexOf(mapKeys(map({cost_cases})), trace_id)],
+                tokens_in = mapValues(map({tokens_in_cases}))[indexOf(mapKeys(map({tokens_in_cases})), trace_id)],
+                tokens_out = mapValues(map({tokens_out_cases}))[indexOf(mapKeys(map({tokens_out_cases})), trace_id)],
+                total_tokens = tokens_in + tokens_out,
+                provider = mapValues(map({provider_cases}))[indexOf(mapKeys(map({provider_cases})), trace_id)]
+            WHERE trace_id IN ({trace_id_list})
+            SETTINGS mutations_sync = 1
+        """)
+
+    def mark_sounding_winner(self, table: str, session_id: str,
+                             phase_name: str, winning_index: int):
+        """
+        Mark all rows in a sounding as winner/loser.
+
+        Updates is_winner for all rows matching the session/phase/sounding.
+        """
+        # Mark winner
+        self.update_row(table, {'is_winner': True},
+                       f"session_id = '{session_id}' AND phase_name = '{phase_name}' AND sounding_index = {winning_index}")
+
+        # Mark losers (all other sounding indexes in same phase)
+        self.client.execute(f"""
+            ALTER TABLE {table}
+            UPDATE is_winner = false
+            WHERE session_id = '{session_id}'
+              AND phase_name = '{phase_name}'
+              AND sounding_index IS NOT NULL
+              AND sounding_index != {winning_index}
+            SETTINGS mutations_sync = 1
+        """)
+
 
 def get_db() -> ClickHouseAdapter:
     """Get singleton database adapter."""
@@ -718,30 +1236,61 @@ def get_db() -> ClickHouseAdapter:
 1. Remove all Parquet writing code
 2. Remove `_write_parquet()` method
 3. Change buffer flush to ClickHouse INSERT
-4. Simplify cost tracking (can use ReplacingMergeTree)
-5. Remove PyArrow dependency for logging
+4. **Use ALTER TABLE UPDATE for cost tracking** (not append-only)
+5. Batch cost updates for efficiency (every 5-10 seconds)
+6. Remove PyArrow dependency for logging
+
+**Why UPDATE instead of append-only?**
+- Append-only requires `FINAL` or `argMax()` on every query
+- Separate cost table requires JOIN on 90% of queries
+- UPDATE is clean: one row per message, simple queries
+- ClickHouse handles our update pattern well (one update per row, 3-5s after insert, batchable)
 
 ```python
 # NEW: unified_logs.py core changes
 
 class UnifiedLogger:
     def __init__(self):
+        # Main buffer: messages ready to INSERT
         self.buffer = []
         self.buffer_lock = threading.Lock()
         self.buffer_limit = 100
         self.flush_interval = 5.0  # Faster - no file I/O
 
-        # Start background flush worker
+        # Pending cost buffer: trace_ids waiting for cost data
+        self.pending_costs = []  # List of {trace_id, request_id, inserted_at}
+        self.pending_lock = threading.Lock()
+        self.cost_update_buffer = []  # Batch of cost updates to apply
+        self.cost_batch_interval = 5.0  # Batch updates every 5 seconds
+
+        # Start background workers
         self._flush_worker = threading.Thread(target=self._flush_loop, daemon=True)
         self._flush_worker.start()
 
-        # Cost worker remains similar
-        self.pending_cost_buffer = []
-        self._cost_worker = threading.Thread(target=self._cost_fetch_worker, daemon=True)
+        self._cost_worker = threading.Thread(target=self._cost_update_worker, daemon=True)
         self._cost_worker.start()
 
+    def log_unified(self, **kwargs):
+        """Log a message to unified_logs."""
+        row = self._build_row(**kwargs)
+
+        # INSERT immediately (cost will be NULL initially for LLM responses)
+        with self.buffer_lock:
+            self.buffer.append(row)
+            if len(self.buffer) >= self.buffer_limit:
+                self._flush_internal()
+
+        # If this has a request_id (LLM call), queue for cost update
+        if kwargs.get('request_id') and kwargs.get('role') == 'assistant':
+            with self.pending_lock:
+                self.pending_costs.append({
+                    'trace_id': row['trace_id'],
+                    'request_id': kwargs['request_id'],
+                    'queued_at': time.time()
+                })
+
     def _flush_internal(self):
-        """Flush buffer to ClickHouse (not Parquet)."""
+        """Flush buffer to ClickHouse."""
         if not self.buffer:
             return
 
@@ -753,21 +1302,77 @@ class UnifiedLogger:
         db.insert_rows('unified_logs', rows)
         print(f"[Unified Log] Flushed {len(rows)} messages to ClickHouse")
 
-    def update_cost(self, trace_id: str, cost_data: Dict):
-        """Update cost for existing row using ALTER UPDATE."""
-        db = get_db()
-        db.execute(f"""
-            ALTER TABLE unified_logs
-            UPDATE
-                cost = %(cost)s,
-                tokens_in = %(tokens_in)s,
-                tokens_out = %(tokens_out)s,
-                provider = %(provider)s
-            WHERE trace_id = %(trace_id)s
-        """, {
-            'trace_id': trace_id,
-            **cost_data
-        })
+    def _cost_update_worker(self):
+        """
+        Background worker that:
+        1. Fetches costs for pending requests (after OpenRouter's ~3-5s delay)
+        2. Batches cost updates
+        3. Applies batch UPDATE to ClickHouse
+        """
+        while True:
+            time.sleep(self.cost_batch_interval)
+
+            # Get items ready for cost fetch (queued > 3 seconds ago)
+            ready = []
+            with self.pending_lock:
+                now = time.time()
+                still_pending = []
+                for item in self.pending_costs:
+                    if now - item['queued_at'] > 3.0:
+                        ready.append(item)
+                    else:
+                        still_pending.append(item)
+                self.pending_costs = still_pending
+
+            if not ready:
+                continue
+
+            # Fetch costs from OpenRouter
+            updates = []
+            for item in ready:
+                cost_data = self._fetch_cost(item['request_id'])
+                if cost_data:
+                    updates.append({
+                        'trace_id': item['trace_id'],
+                        **cost_data
+                    })
+
+            # Batch UPDATE to ClickHouse
+            if updates:
+                db = get_db()
+                db.batch_update_costs('unified_logs', updates)
+                print(f"[Unified Log] Updated costs for {len(updates)} messages")
+
+    def _fetch_cost(self, request_id: str) -> Optional[Dict]:
+        """Fetch cost data from OpenRouter API."""
+        try:
+            resp = requests.get(
+                f"https://openrouter.ai/api/v1/generation?id={request_id}",
+                headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}"},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                data = resp.json().get('data', {})
+                return {
+                    'cost': data.get('total_cost', 0),
+                    'tokens_in': data.get('tokens_prompt', 0),
+                    'tokens_out': data.get('tokens_completion', 0),
+                    'provider': data.get('provider_name', 'openrouter')
+                }
+        except Exception:
+            pass
+        return None
+
+
+def mark_sounding_winner(session_id: str, phase_name: str, winning_index: int):
+    """
+    Mark all messages in winning sounding with is_winner=True.
+
+    Called after evaluator selects winner. Updates ALL rows in that
+    sounding thread, not just a single "winner" row.
+    """
+    db = get_db()
+    db.mark_sounding_winner('unified_logs', session_id, phase_name, winning_index)
 ```
 
 #### `windlass/windlass/schema.py` - EXPAND
@@ -2008,31 +2613,33 @@ GROUP BY cascade_id, phase_name, model;
 
 ### 11.5 Advanced ClickHouse Features for Windlass
 
-#### ASOF JOIN for Temporal Reconstruction
+#### Simple Queries (Thanks to UPDATE Pattern)
 
-ClickHouse's ASOF JOIN joins on "nearest timestamp" - perfect for cost updates that arrive 3-5 seconds late:
+Because we use `ALTER TABLE UPDATE` for cost data (see Section 2.3), queries are straightforward:
 
 ```sql
--- Reconstruct complete message with delayed cost data
+-- No ASOF JOIN needed, no FINAL, no reconstruction
+-- Cost is updated in-place on the original row
 SELECT
-    l.session_id,
-    l.phase_name,
-    l.content,
-    l.timestamp AS message_time,
-    c.cost,
-    c.tokens_in,
-    c.tokens_out,
-    c.update_timestamp AS cost_received_at
-FROM unified_logs l
-ASOF LEFT JOIN (
-    SELECT trace_id, cost, tokens_in, tokens_out, timestamp AS update_timestamp
-    FROM unified_logs
-    WHERE node_type = 'cost_update'
-) c ON l.trace_id = c.trace_id AND l.timestamp <= c.update_timestamp
-WHERE l.role = 'assistant';
+    session_id,
+    phase_name,
+    content,
+    timestamp,
+    cost,          -- Updated 5-10s after insert
+    tokens_in,
+    tokens_out,
+    is_winner      -- Updated after sounding evaluation
+FROM unified_logs
+WHERE session_id = 'sess_123'
+ORDER BY timestamp;
 ```
 
-**What this enables:** No more complex Python logic to correlate delayed cost data with original messages.
+**What this enables:**
+- Simple queries without reconstruction logic
+- One row per message with complete state
+- Direct filtering on `is_winner`, `cost`, etc.
+
+**Note:** ASOF JOIN is still useful for advanced temporal queries (e.g., "what was the cumulative cost at each point in time?") but not needed for basic data access.
 
 #### LIVE VIEW for Push-Based UI Updates
 
@@ -2238,10 +2845,14 @@ Every cascade execution:
 This migration plan transforms Windlass from a mixed Parquet/chDB/DuckDB architecture to a **pure ClickHouse backend** with:
 
 1. **Direct ClickHouse writes** - No Parquet intermediary
-2. **Native vector search** - `cosineDistance()` + ANN indexes
-3. **Real-time queries** - No caching layer needed
-4. **Simplified codebase** - One database adapter, one query syntax
-5. **Horizontal scaling** - ClickHouse distributed queries
+2. **In-place UPDATE for late-arriving data** - Cost and winner flags updated via `ALTER TABLE UPDATE`, keeping one row per message with simple queries (no FINAL, no joins)
+3. **Native vector search** - `cosineDistance()` + ANN indexes
+4. **Real-time queries** - No caching layer needed
+5. **Simplified codebase** - One database adapter, one query syntax
+6. **Horizontal scaling** - ClickHouse distributed queries
+7. **Complete schema** - All 52+ fields from current implementation preserved
+
+**Key Design Decision:** Denormalized table with batched UPDATEs for cost/winner data. This is cleaner than append-only (which requires reconstruction) or separate tables (which require JOINs). ClickHouse handles our update pattern well: one update per row, 3-10s after insert, batchable.
 
 **Estimated effort:** 4-5 weeks for complete migration
 **Risk level:** Medium (requires careful data migration)

@@ -1,5 +1,11 @@
 """
 Tackle Manifest - Unified discovery for both Python functions and Cascade tools.
+
+Discovers:
+- Python functions registered in tackle registry
+- Cascade files with inputs_schema (usable as tools)
+- Declarative tools (.tool.json files)
+- Memory banks (conversational memory with RAG search)
 """
 import os
 import glob
@@ -11,6 +17,7 @@ from .utils import get_tool_schema
 from .config import get_config
 
 _tackle_manifest_cache: Dict[str, Any] = None
+_declarative_tools_registered: bool = False
 
 def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
     """
@@ -18,25 +25,48 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
 
     Discovers:
     - Python functions registered in tackle registry
+    - Declarative tools (.tool.json files) - shell, http, python, composite
     - Cascade files with inputs_schema (usable as tools)
     - Memory banks (conversational memory with RAG search)
 
     Returns dict: {tool_name: {type, description, schema/inputs, path?}}
     """
-    global _tackle_manifest_cache
+    global _tackle_manifest_cache, _declarative_tools_registered
 
     if not refresh and _tackle_manifest_cache is not None:
         return _tackle_manifest_cache
 
+    # Ensure declarative tools are registered before scanning
+    if not _declarative_tools_registered:
+        try:
+            from .tool_definitions import discover_and_register_declarative_tools
+            discover_and_register_declarative_tools()
+            _declarative_tools_registered = True
+        except Exception as e:
+            # Don't fail if tool discovery has issues
+            pass
+
     manifest = {}
 
-    # 1. Scan Python function tools
+    # 1. Scan Python function tools (includes registered declarative tools)
     for name, func in get_registry().get_all_tackle().items():
         schema = get_tool_schema(func, name=name)
+
+        # Check if this is a declarative tool
+        tool_type = "function"
+        extra_info = {}
+
+        if hasattr(func, '_tool_definition'):
+            tool_def = func._tool_definition
+            tool_type = f"declarative:{tool_def.type}"
+            if hasattr(func, '_source_path'):
+                extra_info["path"] = func._source_path
+
         manifest[name] = {
-            "type": "function",
+            "type": tool_type,
             "description": func.__doc__ or "",
-            "schema": schema
+            "schema": schema,
+            **extra_info
         }
 
     # 2. Scan cascade directories for cascade tools
