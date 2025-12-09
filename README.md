@@ -1262,6 +1262,112 @@ take_screenshot(url="https://example.com")
 # Returns: {"content": "Screenshot saved", "images": ["/path/to/screenshot.png"]}
 ```
 
+## Declarative Tools (`.tool.json`)
+
+Define tools in JSON without writing Python code. Perfect for CLI wrappers, API integrations, and tool composition.
+
+### Four Tool Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `shell` | Execute shell commands (Jinja2 templated) | CLI wrappers, scripts |
+| `http` | Make HTTP requests | API integrations |
+| `python` | Reference Python function by import path | Existing code |
+| `composite` | Chain multiple tools together | Pipelines |
+
+### Shell Tool Example
+
+```json
+{
+  "tool_id": "search_files",
+  "description": "Search for text patterns in files using grep.",
+  "inputs_schema": {
+    "pattern": "Text or regex pattern to search for",
+    "path": "Directory to search in (default: current directory)"
+  },
+  "type": "shell",
+  "command": "grep -rn '{{ pattern }}' {{ path | default('.') }} | head -50",
+  "timeout": 30,
+  "sandbox": false
+}
+```
+
+### HTTP Tool Example
+
+```json
+{
+  "tool_id": "get_public_ip",
+  "description": "Get public IP address with geolocation info.",
+  "inputs_schema": {},
+  "type": "http",
+  "method": "GET",
+  "url": "https://ipapi.co/json/",
+  "timeout": 10,
+  "response_jq": "."
+}
+```
+
+### Composite Tool Example
+
+Chain multiple tools together with conditional execution:
+
+```json
+{
+  "tool_id": "find_and_count",
+  "description": "Find files matching a pattern and list directory.",
+  "inputs_schema": {
+    "pattern": "Text pattern to search for",
+    "directory": "Directory to search in"
+  },
+  "type": "composite",
+  "steps": [
+    {
+      "tool": "search_files",
+      "args": {
+        "pattern": "{{ input.pattern }}",
+        "path": "{{ input.directory }}"
+      }
+    },
+    {
+      "tool": "list_directory",
+      "args": {"path": "{{ input.directory }}"},
+      "condition": "{{ steps[0].success }}"
+    }
+  ]
+}
+```
+
+### Template Context
+
+All Jinja2 templates have access to:
+- `{{ input.* }}` - Tool input parameters
+- `{{ env.* }}` - Environment variables
+- `{{ steps[n].* }}` - Previous step results (composite tools)
+
+### Auto-Discovery
+
+Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. They're automatically:
+- Registered in the tackle registry
+- Included in the Manifest for Quartermaster selection
+- Available for use in any cascade
+
+### Using in Cascades
+
+```json
+{
+  "name": "explore_codebase",
+  "instructions": "Search for patterns in the codebase.",
+  "tackle": ["search_files", "list_directory"]
+}
+```
+
+**Benefits:**
+- ✅ No Python code required
+- ✅ Version-controlled tool definitions
+- ✅ Jinja2 templating for flexibility
+- ✅ Auto-discovered by Manifest system
+- ✅ Composable with conditional logic
+
 ## Observability
 
 ### DuckDB Logs
