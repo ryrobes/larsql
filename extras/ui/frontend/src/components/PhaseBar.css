@@ -2,7 +2,9 @@
 .phase-bar-container {
   padding: 0.4rem 0;
   border-bottom: 1px solid #16202A;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  /* Prevent layout shift - contain layout reflows within this container */
+  contain: layout style;
 }
 
 .phase-bar-container:last-child {
@@ -68,6 +70,8 @@
   border-radius: 4px;
   transition: width 0.3s ease;
   background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.6));
+  /* Hint browser to optimize for width changes */
+  will-change: width;
 }
 
 /* Status-based colors (for instances) */
@@ -115,12 +119,17 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Prevent layout shift during updates */
+  contain: layout style;
 }
 
 .individual-sounding-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Fixed height to prevent layout shift */
+  height: 20px;
+  min-height: 20px;
 }
 
 .sounding-index-label {
@@ -156,6 +165,8 @@
   display: flex;
   align-items: center;
   padding-left: 6px;
+  /* Hint browser to optimize for width changes */
+  will-change: width;
 }
 
 .individual-sounding-bar.winner {

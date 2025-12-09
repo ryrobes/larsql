@@ -12,32 +12,64 @@ import ModelCostBar, { ModelTags } from './ModelCostBar';
 import VideoSpinner from './VideoSpinner';
 import './InstanceCard.css';
 
+// Calculate minimum height for phase bars container to prevent layout shift
+// Heights based on actual CSS measurements
+const calculatePhaseBarsMinHeight = (phases) => {
+  if (!phases || phases.length === 0) return 80; // Minimum fallback
+
+  let totalHeight = 0;
+
+  // CascadeBar (only shown when > 1 phase): ~80px
+  if (phases.length > 1) {
+    totalHeight += 80;
+  }
+
+  // Each PhaseBar
+  phases.forEach(phase => {
+    // Base phase bar: padding (12px) + header (24px) + track (18px) + border (1px) = ~55px
+    totalHeight += 55;
+
+    // Sounding rows (when > 1 sounding)
+    const soundingCount = phase.sounding_attempts?.length || 0;
+    if (soundingCount > 1) {
+      // Margin: 8px top + 4px bottom = 12px
+      // Each row: 20px height + 4px gap (except last)
+      totalHeight += 12 + (soundingCount * 20) + ((soundingCount - 1) * 4);
+    }
+  });
+
+  return totalHeight;
+};
+
 // Live duration counter that updates every second for running instances
+// (Matches InstancesView's implementation for consistency)
 function LiveDuration({ startTime, isRunning, staticDuration }) {
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef(null);
 
+  // Sanity check: duration should be reasonable (< 7 days = 604800 seconds)
+  // This catches epoch timestamp issues that produce millions of minutes
+  const MAX_REASONABLE_DURATION = 604800;
+
   useEffect(() => {
     if (isRunning && startTime) {
+      // Calculate initial elapsed time
       const start = new Date(startTime).getTime();
 
-      // Validate the parsed timestamp - must be a reasonable date (after year 2020)
-      // This prevents "millions of minutes" when startTime is invalid/epoch
+      // Validate: start time must be reasonable (after year 2020)
       const minValidTime = new Date('2020-01-01').getTime();
       if (isNaN(start) || start < minValidTime) {
-        setElapsed(0);
+        // Invalid timestamp, fall back to static duration
+        const duration = staticDuration || 0;
+        setElapsed(duration >= 0 && duration < MAX_REASONABLE_DURATION ? duration : 0);
         return;
       }
 
       const updateElapsed = () => {
         const now = Date.now();
         const diff = (now - start) / 1000;
-        // Sanity check: duration shouldn't be negative or absurdly large (> 1 week)
-        if (diff >= 0 && diff < 604800) {
-          setElapsed(diff);
-        } else {
-          setElapsed(0);
-        }
+        // Sanity check - if unreasonable, show 0
+        setElapsed(diff >= 0 && diff < MAX_REASONABLE_DURATION ? diff : 0);
       };
 
       updateElapsed();
@@ -49,9 +81,9 @@ function LiveDuration({ startTime, isRunning, staticDuration }) {
         }
       };
     } else {
-      // Validate static duration too
+      // Not running, use static duration (with sanity check)
       const duration = staticDuration || 0;
-      setElapsed(duration >= 0 && duration < 604800 ? duration : 0);
+      setElapsed(duration >= 0 && duration < MAX_REASONABLE_DURATION ? duration : 0);
     }
   }, [isRunning, startTime, staticDuration]);
 
@@ -184,9 +216,15 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         }
       });
 
+      // Find the last phase with entries - if session is running, this is the active phase
+      const phaseNames = Object.keys(phaseMap);
+      const phasesWithEntries = phaseNames.filter(name => phaseMap[name].entries.length > 0);
+      const lastActivePhase = phasesWithEntries.length > 0 ? phasesWithEntries[phasesWithEntries.length - 1] : null;
+
       const phases = Object.values(phaseMap).map(phase => {
         const lastEntryInPhase = phase.entries[phase.entries.length - 1];
         const hasError = phase.entries.some(e => e.node_type === 'error');
+        const hasPhaseComplete = phase.entries.some(e => e.node_type === 'phase_complete');
 
         let outputSnippet = '';
         if (lastEntryInPhase?.content) {
@@ -203,9 +241,22 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         const winnerAttempt = soundingAttempts.find(a => a.is_winner === true);
         const soundingWinner = winnerAttempt ? winnerAttempt.index : null;
 
+        // Determine phase status:
+        // - 'error' if any error entries
+        // - 'running' if session is running AND this is the last active phase AND no phase_complete
+        // - 'completed' if has entries and either has phase_complete or session is done
+        // - 'pending' if no entries
+        let status = 'pending';
+        if (hasError) {
+          status = 'error';
+        } else if (phase.entries.length > 0) {
+          const isActivePhase = (isSessionRunning || isFinalizing) && phase.name === lastActivePhase && !hasPhaseComplete;
+          status = isActivePhase ? 'running' : 'completed';
+        }
+
         return {
           name: phase.name,
-          status: hasError ? 'error' : (phase.entries.length > 0 ? 'completed' : 'pending'),
+          status,
           avg_cost: phase.totalCost,
           avg_duration: 0,
           message_count: phase.entries.length,
@@ -258,11 +309,41 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       const hasRunningPhase = phases.some(p => p.status === 'running');
 
+      // Helper to parse timestamps that could be ISO strings, Unix seconds, or Unix milliseconds
+      const parseTimestamp = (ts) => {
+        if (!ts) return null;
+        // If it's a number or numeric string
+        if (typeof ts === 'number' || /^\d+$/.test(ts)) {
+          const num = typeof ts === 'number' ? ts : parseInt(ts, 10);
+          // If it looks like seconds (< year 3000 in seconds), convert to ms
+          // Unix seconds for year 3000 would be ~32503680000
+          if (num < 32503680000) {
+            return new Date(num * 1000);
+          }
+          return new Date(num);
+        }
+        // Otherwise treat as ISO string
+        return new Date(ts);
+      };
+
+      const startDate = parseTimestamp(firstEntry?.timestamp);
+      const endDate = parseTimestamp(lastEntry?.timestamp);
+
+      // Calculate duration in seconds
+      let durationSeconds = 0;
+      if (startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        durationSeconds = (endDate.getTime() - startDate.getTime()) / 1000;
+        // Sanity check: duration should be positive and reasonable
+        if (durationSeconds < 0 || durationSeconds > 604800) {
+          durationSeconds = 0;
+        }
+      }
+
       setInstance({
         session_id: sessionId,
         cascade_id: cascadeEntry?.cascade_id || 'unknown',
         status: (isSessionRunning || isFinalizing) ? 'running' : (hasRunningPhase ? 'running' : 'completed'),
-        start_time: firstEntry?.timestamp || null,
+        start_time: startDate ? startDate.toISOString() : null,
         total_cost: totalCost,
         total_tokens_in: totalTokensIn,
         total_tokens_out: totalTokensOut,
@@ -272,8 +353,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         final_output: finalOutput,
         phases: phases,
         token_timeseries: tokenTimeseries,
-        duration_seconds: entries.length > 0 ?
-          (new Date(lastEntry.timestamp) - new Date(firstEntry.timestamp)) / 1000 : 0,
+        duration_seconds: durationSeconds,
         error_count: entries.filter(e => e.node_type === 'error').length,
         has_soundings: phases.some(p => p.sounding_total > 1)
       });
@@ -485,60 +565,71 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
         {/* Right side: Phase bars + Output */}
         <div className="instance-card-phases">
-          {/* Cascade Bar */}
+          {/* Cascade Bar - Sticky at top, outside scroll */}
           {instance.phases && instance.phases.length > 1 && (
-            <CascadeBar
-              phases={instance.phases}
-              totalCost={instance.total_cost}
-              isRunning={isSessionRunning || hasRunning}
-            />
-          )}
-
-          {/* Phase bars with images */}
-          {(() => {
-            const costs = (instance.phases || []).map(p => p.avg_cost || 0);
-            const maxCost = Math.max(...costs, 0.01);
-            const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
-            const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
-
-            return (instance.phases || []).map((phase, idx) => (
-              <React.Fragment key={idx}>
-                <PhaseBar
-                  phase={phase}
-                  maxCost={normalizedMax}
-                  status={phase.status}
-                  phaseIndex={idx}
-                />
-                <ImageGallery
-                  sessionId={instance.session_id}
-                  phaseName={phase.name}
-                  isRunning={isSessionRunning || isFinalizing}
-                  sessionUpdate={sessionUpdates?.[instance.session_id]}
-                />
-                <AudioGallery
-                  sessionId={instance.session_id}
-                  phaseName={phase.name}
-                  isRunning={isSessionRunning || isFinalizing}
-                  sessionUpdate={sessionUpdates?.[instance.session_id]}
-                />
-                <HumanInputDisplay
-                  sessionId={instance.session_id}
-                  phaseName={phase.name}
-                  isRunning={isSessionRunning || isFinalizing}
-                  sessionUpdate={sessionUpdates?.[instance.session_id]}
-                />
-              </React.Fragment>
-            ));
-          })()}
-
-          {/* Final Output */}
-          {!hideOutput && instance.final_output && (
-            <div className="final-output">
-              <div className="final-output-content">
-                <ReactMarkdown>{instance.final_output}</ReactMarkdown>
-              </div>
+            <div className="cascade-bar-sticky">
+              <CascadeBar
+                phases={instance.phases}
+                totalCost={instance.total_cost}
+                isRunning={isSessionRunning || hasRunning}
+              />
             </div>
           )}
+
+          {/* Scrollable phase bars container */}
+          <div
+            className="phase-bars-scroll"
+            style={{
+              minHeight: calculatePhaseBarsMinHeight(instance.phases) -
+                (instance.phases?.length > 1 ? 80 : 0) // Subtract CascadeBar height if shown
+            }}
+          >
+            {/* Phase bars with images */}
+            {(() => {
+              const costs = (instance.phases || []).map(p => p.avg_cost || 0);
+              const maxCost = Math.max(...costs, 0.01);
+              const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
+              const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
+
+              return (instance.phases || []).map((phase, idx) => (
+                <React.Fragment key={idx}>
+                  <PhaseBar
+                    phase={phase}
+                    maxCost={normalizedMax}
+                    status={phase.status}
+                    phaseIndex={idx}
+                  />
+                  <ImageGallery
+                    sessionId={instance.session_id}
+                    phaseName={phase.name}
+                    isRunning={isSessionRunning || isFinalizing}
+                    sessionUpdate={sessionUpdates?.[instance.session_id]}
+                  />
+                  <AudioGallery
+                    sessionId={instance.session_id}
+                    phaseName={phase.name}
+                    isRunning={isSessionRunning || isFinalizing}
+                    sessionUpdate={sessionUpdates?.[instance.session_id]}
+                  />
+                  <HumanInputDisplay
+                    sessionId={instance.session_id}
+                    phaseName={phase.name}
+                    isRunning={isSessionRunning || isFinalizing}
+                    sessionUpdate={sessionUpdates?.[instance.session_id]}
+                  />
+                </React.Fragment>
+              ));
+            })()}
+
+            {/* Final Output */}
+            {!hideOutput && instance.final_output && (
+              <div className="final-output">
+                <div className="final-output-content">
+                  <ReactMarkdown>{instance.final_output}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

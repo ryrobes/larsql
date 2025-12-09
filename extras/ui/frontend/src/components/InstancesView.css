@@ -180,8 +180,10 @@
   display: flex;
   align-items: flex-start;
   gap: 2rem;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   min-height: 120px;
+  /* Prevent layout shift during dynamic updates */
+  contain: layout style;
 }
 
 .instance-row:hover {
@@ -726,6 +728,10 @@
   gap: 0;
   padding: 0.5rem 0;
   min-width: 400px;
+  /* Prevent layout shift during dynamic updates */
+  contain: layout style;
+  /* Prevent overflow during transitions - min-height set via JS */
+  overflow: hidden;
 }
 
 /* Final Output Display */

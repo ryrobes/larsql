@@ -4,6 +4,8 @@
   gap: 4px;
   margin: 4px 0 8px 0;
   padding-left: 8px;
+  /* Prevent layout shift during updates */
+  contain: layout style;
 }
 
 .human-input-item {

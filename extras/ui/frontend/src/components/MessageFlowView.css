@@ -897,6 +897,29 @@
   border-color: rgba(96, 165, 250, 0.35);
 }
 
+/* Phaseless messages - system status messages without a phase association */
+/* These appear inline in their chronological position without a phase container */
+.phaseless-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-left: 2px solid rgba(128, 128, 128, 0.3);
+  margin-left: 0.5rem;
+  padding-left: 1rem;
+}
+
+.phaseless-messages .message {
+  opacity: 0.75;
+  border-style: dashed;
+  border-color: rgba(128, 128, 128, 0.3);
+  background: rgba(30, 30, 30, 0.3);
+}
+
+.phaseless-messages .message:hover {
+  opacity: 1;
+}
+
 .phase-group:hover .phase-group-header {
   background: linear-gradient(135deg, rgba(96, 165, 250, 0.15) 0%, rgba(22, 32, 42, 0.9) 100%);
 }

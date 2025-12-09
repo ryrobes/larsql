@@ -2332,7 +2332,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - Mutation strategies shown on sounding attempts
 
     Visual language:
-    - ▶ running (currently executing phase) + green glow border
+    - ▶ running (currently executing phase) + gold glow border
     - ✓ completed, ○ pending, ⛔ blocked
     - 🔱 soundings (parallel attempts)
     - 🔨 reforge (iterative refinement)
@@ -2346,7 +2346,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - ▶️ Resumed (checkpoint resumed with human response)
 
     CSS Classes (applied via Mermaid classDef):
-    - running: thick green border (4px), green fill - for currently executing phase
+    - running: thick gold border (4px), gold fill - for currently executing phase
     - blocked: red border, red fill - for blocked phases
     - checkpoint_paused: yellow border - for phases waiting for HITL input
     - checkpoint_resumed: blue border - for checkpoints that have been resumed
@@ -2650,8 +2650,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
     # Add style definitions for running states (thick border, glow effect via stroke)
     # Mermaid state diagrams support classDef for styling
-    lines.append("    %% Style for running states - thick green border for visibility")
-    lines.append("    classDef running fill:#1a2a1a,stroke:#00ff00,stroke-width:4px,color:#00ff00")
+    lines.append("    %% Style for running states - thick gold border for visibility")
+    lines.append("    classDef running fill:#1f1a0f,stroke:#D9A553,stroke-width:4px,color:#D9A553")
     lines.append("    classDef blocked fill:#2a1a1a,stroke:#ff4444,stroke-width:3px,color:#ff4444")
     lines.append("    classDef failed fill:#2a1a1a,stroke:#ff6b6b,stroke-width:2px,color:#ff6b6b")
     lines.append("    classDef sub_cascade fill:#1a1a2a,stroke:#a78bfa,stroke-width:3px,color:#a78bfa")

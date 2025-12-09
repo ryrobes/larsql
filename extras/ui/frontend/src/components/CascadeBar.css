@@ -7,7 +7,9 @@
   background: linear-gradient(135deg, rgba(22, 32, 42, 0.6) 0%, rgba(11, 18, 25, 0.8) 100%);
   border-radius: 12px;
   border: 1px solid rgba(45, 212, 191, 0.1);
-  transition: all 0.3s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  /* Prevent layout shift during updates */
+  contain: layout style;
 }
 
 .cascade-bar-container:hover {
@@ -53,9 +55,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: width 0.3s ease, filter 0.3s ease, transform 0.3s ease;
   cursor: pointer;
   overflow: hidden;
+  /* Hint browser to optimize for width changes */
+  will-change: width;
 }
 
 /* Subtle separator between segments */

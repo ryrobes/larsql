@@ -771,6 +771,18 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                       shownReforgePhases.add(phaseName);
                     }
 
+                    // For "_unknown_" phase messages (system status messages without a phase),
+                    // render them inline without a phase wrapper container
+                    if (phaseName === '_unknown_') {
+                      return (
+                        <div key={`phaseless-${groupIdx}`} className="phaseless-messages">
+                          {group.messages.map(({ msg, index }) =>
+                            renderMessage(msg, `main-${index}`, `M${index}`)
+                          )}
+                        </div>
+                      );
+                    }
+
                     // Calculate phase stats (include main_flow messages + soundings + evaluator + reforge)
                     let phaseCost = group.messages.reduce((sum, { msg }) => sum + (msg.cost || 0), 0);
                     let phaseTokens = group.messages.reduce((sum, { msg }) => sum + (msg.tokens_in || 0), 0);

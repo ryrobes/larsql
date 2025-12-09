@@ -1,6 +1,8 @@
 .image-gallery {
   margin-top: 8px;
   margin-bottom: 8px;
+  /* Prevent layout shift during updates */
+  contain: layout style;
 }
 
 .phase-images-group {

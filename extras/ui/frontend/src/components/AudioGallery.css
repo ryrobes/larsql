@@ -9,6 +9,8 @@
   background: rgba(11, 18, 25, 0.5);
   border-radius: 6px;
   border: 1px solid rgba(96, 165, 250, 0.15);
+  /* Prevent layout shift during updates */
+  contain: layout style;
 }
 
 .audio-player-container {
