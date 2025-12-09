@@ -12,35 +12,6 @@ import ModelCostBar, { ModelTags } from './ModelCostBar';
 import VideoSpinner from './VideoSpinner';
 import './InstanceCard.css';
 
-// Calculate minimum height for phase bars container to prevent layout shift
-// Heights based on actual CSS measurements
-const calculatePhaseBarsMinHeight = (phases) => {
-  if (!phases || phases.length === 0) return 80; // Minimum fallback
-
-  let totalHeight = 0;
-
-  // CascadeBar (only shown when > 1 phase): ~80px
-  if (phases.length > 1) {
-    totalHeight += 80;
-  }
-
-  // Each PhaseBar
-  phases.forEach(phase => {
-    // Base phase bar: padding (12px) + header (24px) + track (18px) + border (1px) = ~55px
-    totalHeight += 55;
-
-    // Sounding rows (when > 1 sounding)
-    const soundingCount = phase.sounding_attempts?.length || 0;
-    if (soundingCount > 1) {
-      // Margin: 8px top + 4px bottom = 12px
-      // Each row: 20px height + 4px gap (except last)
-      totalHeight += 12 + (soundingCount * 20) + ((soundingCount - 1) * 4);
-    }
-  });
-
-  return totalHeight;
-};
-
 // Live duration counter that updates every second for running instances
 // (Matches InstancesView's implementation for consistency)
 function LiveDuration({ startTime, isRunning, staticDuration }) {
@@ -618,13 +589,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           )}
 
           {/* Scrollable phase bars container */}
-          <div
-            className="phase-bars-scroll"
-            style={{
-              minHeight: calculatePhaseBarsMinHeight(instance.phases) -
-                (instance.phases?.length > 1 ? 80 : 0) // Subtract CascadeBar height if shown
-            }}
-          >
+          <div className="phase-bars-scroll">
             {/* Phase bars with images */}
             {(() => {
               const costs = (instance.phases || []).map(p => p.avg_cost || 0);

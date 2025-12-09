@@ -44,11 +44,15 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
   const [showModal, setShowModal] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lastMtime, setLastMtime] = useState(null); // Track file modification time
+  const [lastRawContent, setLastRawContent] = useState(null); // Track raw content for comparison
   const maxRetries = 3;
   const retryDelayMs = 2000; // 2 seconds between retries
 
   useEffect(() => {
     if (!sessionId) return;
+
+    // AbortController to cancel in-flight requests when effect re-runs
+    const abortController = new AbortController();
 
     const fetchGraph = async (attempt = 0) => {
       try {
@@ -58,7 +62,9 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         }
         console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1}, lastUpdate=${lastUpdate})`);
 
-        const response = await fetch(`http://localhost:5001/api/mermaid/${sessionId}`);
+        const response = await fetch(`http://localhost:5001/api/mermaid/${sessionId}`, {
+          signal: abortController.signal
+        });
         const data = await response.json();
 
         if (data.error) {
@@ -83,10 +89,14 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         setError(null);
         setRetryCount(0);
 
-        // Check if content actually changed (by file mtime or content hash)
+        // Check if content actually changed (by file mtime or raw content comparison)
         const newMtime = data.file_mtime;
+        const rawContent = data.mermaid;
+
+        // Compare raw content against stored raw content (not mutated version)
+        // This handles cases where mtime has 1-second granularity and misses rapid updates
         const contentChanged = !lastMtime || newMtime !== lastMtime ||
-          !graphData || graphData.mermaid !== data.mermaid;
+          !graphData || lastRawContent !== rawContent;
 
         if (!contentChanged) {
           console.log(`[MermaidPreview] No changes detected for ${sessionId} (mtime=${newMtime})`);
@@ -99,6 +109,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         console.log(`[MermaidPreview] Loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars, source=${data.source}, mtime=${newMtime})`);
 
         setLastMtime(newMtime);
+        setLastRawContent(rawContent); // Store raw content for accurate comparison
         setGraphData({
           mermaid: mutatedMermaid,
           metadata: data.metadata,
@@ -106,14 +117,22 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         });
         setLoading(false);
       } catch (err) {
+        // Ignore abort errors (expected when effect re-runs)
+        if (err.name === 'AbortError') {
+          console.log(`[MermaidPreview] Fetch aborted for ${sessionId} (superseded by newer request)`);
+          return;
+        }
+
         console.error(`[MermaidPreview] Fetch error for ${sessionId}:`, err);
 
-        // Retry on network errors too
-        if (attempt < maxRetries) {
+        // Retry on network errors too (but not if aborted)
+        if (attempt < maxRetries && !abortController.signal.aborted) {
           console.log(`[MermaidPreview] Retrying in ${retryDelayMs}ms...`);
           setTimeout(() => {
-            setRetryCount(attempt + 1);
-            fetchGraph(attempt + 1);
+            if (!abortController.signal.aborted) {
+              setRetryCount(attempt + 1);
+              fetchGraph(attempt + 1);
+            }
           }, retryDelayMs);
           return;
         }
@@ -131,10 +150,16 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
       setError(null);
       setRetryCount(0);
       setLastMtime(null);
+      setLastRawContent(null);
       prevSessionIdRef.current = sessionId;
     }
 
     fetchGraph(0);
+
+    // Cleanup: abort in-flight fetch when effect re-runs or component unmounts
+    return () => {
+      abortController.abort();
+    };
   }, [sessionId, lastUpdate]); // Refetch when session gets updated via SSE
 
   useEffect(() => {

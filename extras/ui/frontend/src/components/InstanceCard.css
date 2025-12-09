@@ -288,13 +288,11 @@
   flex-direction: column;
   gap: 0;
   min-width: 0;
-  min-height: 0; /* Allow flex child to shrink */
+  min-height: 0; /* Critical: Allow flex child to shrink below content size */
   overflow: hidden;
   /* Extend to card edge for scrollbar positioning */
   margin-right: -1.25rem;
   padding-right: 0;
-  /* Prevent layout shift during dynamic updates */
-  contain: layout style;
 }
 
 /* Sticky cascade bar at top - outside scroll */
@@ -311,11 +309,10 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  min-height: 0; /* Critical: Allow flex child to shrink and enable scrolling */
   /* Content padding - scrollbar stays at edge */
   padding-right: 1rem;
-  padding-bottom: 9rem; /* Extra space at bottom to prevent clipping */
-  /* Prevent layout shift */
-  contain: layout style;
+  padding-bottom: 1rem; /* Normal padding, no hack needed */
 }
 
 /* Custom scrollbar styling - thinner and at edge */
