@@ -25,13 +25,13 @@
 }
 
 .brand-logo {
-  width: 58px;
-  height: 58px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   cursor: pointer;
   transition: all 0.2s ease;
   border-radius: 8px;
-  padding: 4px;
+  margin: -7px 0;
 }
 
 .brand-logo:hover {

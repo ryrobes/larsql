@@ -238,12 +238,12 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
       width: 120,
       cellClass: 'center-cell last-run-cell',
       valueFormatter: (params) => formatRelativeTime(params.value),
-      comparator: (valueA, valueB, nodeA, nodeB, isDescending) => {
-        // Sort by actual date, null values always at bottom regardless of sort direction
-        if (!valueA && !valueB) return 0;
-        if (!valueA) return isDescending ? 1 : -1;
-        if (!valueB) return isDescending ? -1 : 1;
-        return new Date(valueA) - new Date(valueB);
+      comparator: (valueA, valueB) => {
+        // Treat nulls (never run) as epoch time so they sort to bottom in descending order
+        // This makes "never run" cascades appear as OLD rather than NEW
+        const dateA = valueA ? new Date(valueA).getTime() : 0;
+        const dateB = valueB ? new Date(valueB).getTime() : 0;
+        return dateA - dateB;
       },
       sort: 'desc'
     }

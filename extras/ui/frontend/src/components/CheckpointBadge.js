@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Icon } from '@iconify/react';
 import './CheckpointBadge.css';
 
 /**
@@ -46,7 +47,7 @@ function CheckpointBadge({ checkpoints, onSelectCheckpoint }) {
         onClick={toggleExpanded}
         title={`${checkpoints.length} checkpoint${checkpoints.length > 1 ? 's' : ''} waiting`}
       >
-        <span className="badge-icon">✋</span>
+        <span className="badge-icon"><Icon icon="mdi:hand-back-left" width="16" /></span>
         <span className="badge-count">{checkpoints.length}</span>
         {timeRemaining !== null && timeRemaining <= 300 && (
           <span className="badge-timer">
@@ -89,10 +90,10 @@ function CheckpointItem({ checkpoint, onSelect }) {
   };
 
   const typeIcons = {
-    'phase_input': '✍️',
-    'sounding_eval': '⚖️',
-    'form': '📝',
-    'approval': '✓'
+    'phase_input': <Icon icon="mdi:pencil" width="14" />,
+    'sounding_eval': <Icon icon="mdi:scale-balance" width="14" />,
+    'form': <Icon icon="mdi:form-textbox" width="14" />,
+    'approval': <Icon icon="mdi:check" width="14" />
   };
 
   const timeRemaining = checkpoint.timeout_at
@@ -105,7 +106,7 @@ function CheckpointItem({ checkpoint, onSelect }) {
     <button className={`checkpoint-item ${isUrgent ? 'urgent' : ''}`} onClick={onSelect}>
       <div className="item-header">
         <span className="item-icon">
-          {typeIcons[checkpoint.checkpoint_type] || '✋'}
+          {typeIcons[checkpoint.checkpoint_type] || <Icon icon="mdi:hand-back-left" width="14" />}
         </span>
         <span className="item-type">
           {typeLabels[checkpoint.checkpoint_type] || checkpoint.checkpoint_type}

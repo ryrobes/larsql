@@ -183,6 +183,10 @@ def get_message_flow(session_id):
         # Track evaluators by phase for later attachment to soundings blocks
         evaluators_by_phase = {}  # phase_name -> evaluator message
 
+        # Track the most recent phase that had soundings - reforges inherit this
+        # (Reforge is always the refinement step after soundings complete)
+        last_sounding_phase = None
+
         for row in result:
             (timestamp, role, node_type, sounding_index, reforge_step, turn_number,
              phase_name, content_json, full_request_json, tokens_in, tokens_out,
@@ -235,25 +239,34 @@ def get_message_flow(session_id):
             }
 
             # Track evaluator messages by phase (for phase-level soundings)
-            if node_type == 'evaluator' and phase_name:
-                phase_key = phase_name or '_unknown_'
-                evaluators_by_phase[phase_key] = {
-                    'timestamp': timestamp,
-                    'content': content,
-                    'model': model,
-                    'cost': float(cost) if cost else 0,
-                    'tokens_in': int(tokens_in) if tokens_in else 0,
-                    'tokens_out': int(tokens_out) if tokens_out else 0,
-                    'winner_index': metadata.get('winner_index') if metadata else None,
-                    'total_soundings': metadata.get('total_soundings') if metadata else None,
-                    'evaluation': metadata.get('evaluation') if metadata else content
-                }
+            # Also track reforge_evaluator using inherited phase
+            if node_type in ('evaluator', 'reforge_evaluator'):
+                evaluator_phase = phase_name or last_sounding_phase
+                if evaluator_phase:
+                    # Update message's phase_name so it groups correctly in frontend
+                    if not phase_name and evaluator_phase:
+                        msg['phase_name'] = evaluator_phase
+                    evaluators_by_phase[evaluator_phase] = {
+                        'timestamp': timestamp,
+                        'content': content,
+                        'model': model,
+                        'cost': float(cost) if cost else 0,
+                        'tokens_in': int(tokens_in) if tokens_in else 0,
+                        'tokens_out': int(tokens_out) if tokens_out else 0,
+                        'winner_index': metadata.get('winner_index') if metadata else None,
+                        'total_soundings': metadata.get('total_soundings') if metadata else None,
+                        'evaluation': metadata.get('evaluation') if metadata else content
+                    }
 
             # Categorize message for parallel branch visualization
             # Use int() to normalize sounding_index (DuckDB may return float for nullable int)
             if sounding_index is not None:
                 sounding_key = int(sounding_index)
                 phase_key = phase_name or '_unknown_'
+
+                # Track the phase for soundings - reforges will inherit this
+                if phase_name:
+                    last_sounding_phase = phase_name
 
                 if phase_key not in soundings_by_phase:
                     soundings_by_phase[phase_key] = {}
@@ -272,7 +285,14 @@ def get_message_flow(session_id):
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
-                phase_key = phase_name or '_unknown_'
+                # Reforges inherit phase from their parent sounding when phase_name is NULL
+                # (Reforge is always the final refinement step after soundings complete)
+                inherited_phase = phase_name or last_sounding_phase
+                phase_key = inherited_phase or '_unknown_'
+
+                # Update message's phase_name so it groups correctly in frontend
+                if not phase_name and inherited_phase:
+                    msg['phase_name'] = inherited_phase
 
                 # Flat structure for backward compat
                 if reforge_key not in reforge_steps:

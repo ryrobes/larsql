@@ -26,25 +26,19 @@
   gap: 1rem;
 }
 
-.split-detail-header .back-button {
-  background: transparent;
-  border: 1px solid #2C3B4B;
-  color: #9AA5B1;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+.split-detail-header .brand-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+  border-radius: 8px;
+  margin: -7px 0;
 }
 
-.split-detail-header .back-button:hover {
+.split-detail-header .brand-logo:hover {
   background: rgba(45, 212, 191, 0.1);
-  border-color: #2DD4BF;
-  color: #2DD4BF;
+  transform: scale(1.05);
 }
 
 .split-detail-header .session-info {

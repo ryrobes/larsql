@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Icon } from '@iconify/react';
 import './SoundingComparison.css';
 
 /**
@@ -421,13 +422,13 @@ function AttemptCard({
           )}
           {attempt.metadata.tokens && (
             <span className="meta-item">
-              <span className="meta-icon">⚡</span>
+              <span className="meta-icon"><Icon icon="mdi:lightning-bolt" width="12" /></span>
               {attempt.metadata.tokens} tokens
             </span>
           )}
           {attempt.metadata.duration_ms && (
             <span className="meta-item">
-              <span className="meta-icon">⏱</span>
+              <span className="meta-icon"><Icon icon="mdi:timer-outline" width="12" /></span>
               {(attempt.metadata.duration_ms / 1000).toFixed(1)}s
             </span>
           )}
@@ -442,7 +443,7 @@ function AttemptCard({
       {/* Mutation Info */}
       {showMutation && attempt.mutation && (
         <div className="attempt-mutation">
-          <span className="mutation-icon">🔀</span>
+          <span className="mutation-icon"><Icon icon="mdi:shuffle-variant" width="14" /></span>
           <span className="mutation-text">{attempt.mutation}</span>
         </div>
       )}

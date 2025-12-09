@@ -25,9 +25,10 @@
 }
 
 .brand-logo {
-  width: 58px;
-  height: 58px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
+  margin: -7px 0;
 }
 
 .header-center {
@@ -105,27 +106,23 @@
 .hotornot-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: linear-gradient(135deg, rgba(244, 114, 182, 0.15), rgba(251, 146, 60, 0.15));
-  border: 1px solid rgba(244, 114, 182, 0.3);
+  padding: 2px;
+  background: transparent;
+  border: none;
   border-radius: 8px;
-  color: #f472b6;
-  font-size: 0.85rem;
-  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .hotornot-btn:hover {
-  background: linear-gradient(135deg, rgba(244, 114, 182, 0.25), rgba(251, 146, 60, 0.25));
-  border-color: rgba(244, 114, 182, 0.5);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(244, 114, 182, 0.2);
+  transform: translateY(-1px) scale(1.05);
+  filter: drop-shadow(0 4px 12px rgba(244, 114, 182, 0.3));
 }
 
-.hotornot-btn svg {
-  color: #fb923c;
+.hotornot-btn .hotornot-logo {
+  height: 38px;
+  width: auto;
+  object-fit: contain;
 }
 
 .messageflow-btn {

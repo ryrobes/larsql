@@ -344,8 +344,7 @@ function HotOrNotView({ onBack }) {
           />
 
           <div className="hotornot-title">
-            <Icon icon="mdi:fire" width={28} className="fire-icon" />
-            {/* <h1>Hot or Not</h1> */}
+            <img src="/hotornot-500.png" alt="Hot or Not" className="hotornot-logo" />
           </div>
         </div>
 

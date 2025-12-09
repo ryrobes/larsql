@@ -91,7 +91,7 @@ function AudibleModal({ isOpen, checkpoint, onClose, onSubmit }) {
         {/* Header */}
         <div className="audible-header">
           <div className="audible-title">
-            <span className="audible-icon">🏈</span>
+            <span className="audible-icon"><Icon icon="mdi:bullhorn" width="20" /></span>
             <h2>Call Audible</h2>
           </div>
           <div className="audible-meta">
@@ -174,7 +174,7 @@ function AudibleModal({ isOpen, checkpoint, onClose, onSubmit }) {
                   checked={mode === 'continue'}
                   onChange={() => setMode('continue')}
                 />
-                <span className="mode-icon">➡️</span>
+                <span className="mode-icon"><Icon icon="mdi:arrow-right" width="16" /></span>
                 <span className="mode-label">Continue</span>
                 <span className="mode-description">
                   Keep current output, apply feedback in next turn
@@ -190,7 +190,7 @@ function AudibleModal({ isOpen, checkpoint, onClose, onSubmit }) {
                     checked={mode === 'retry'}
                     onChange={() => setMode('retry')}
                   />
-                  <span className="mode-icon">🔄</span>
+                  <span className="mode-icon"><Icon icon="mdi:refresh" width="16" /></span>
                   <span className="mode-label">Retry</span>
                   <span className="mode-description">
                     Discard current output, redo this turn with feedback

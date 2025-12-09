@@ -5,6 +5,7 @@ import PhaseBar from './PhaseBar';
 import CascadeBar from './CascadeBar';
 import MermaidPreview from './MermaidPreview';
 import ImageGallery from './ImageGallery';
+import AudioGallery from './AudioGallery';
 import HumanInputDisplay from './HumanInputDisplay';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
@@ -19,9 +20,24 @@ function LiveDuration({ startTime, isRunning, staticDuration }) {
   useEffect(() => {
     if (isRunning && startTime) {
       const start = new Date(startTime).getTime();
+
+      // Validate the parsed timestamp - must be a reasonable date (after year 2020)
+      // This prevents "millions of minutes" when startTime is invalid/epoch
+      const minValidTime = new Date('2020-01-01').getTime();
+      if (isNaN(start) || start < minValidTime) {
+        setElapsed(0);
+        return;
+      }
+
       const updateElapsed = () => {
         const now = Date.now();
-        setElapsed((now - start) / 1000);
+        const diff = (now - start) / 1000;
+        // Sanity check: duration shouldn't be negative or absurdly large (> 1 week)
+        if (diff >= 0 && diff < 604800) {
+          setElapsed(diff);
+        } else {
+          setElapsed(0);
+        }
       };
 
       updateElapsed();
@@ -33,7 +49,9 @@ function LiveDuration({ startTime, isRunning, staticDuration }) {
         }
       };
     } else {
-      setElapsed(staticDuration || 0);
+      // Validate static duration too
+      const duration = staticDuration || 0;
+      setElapsed(duration >= 0 && duration < 604800 ? duration : 0);
     }
   }, [isRunning, startTime, staticDuration]);
 
@@ -57,6 +75,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [wideChart, setWideChart] = useState(false);
+  const [waitingForData, setWaitingForData] = useState(false); // Running but no data yet
 
   const isSessionRunning = runningSessions.has(sessionId);
   const isFinalizing = finalizingSessions.has(sessionId);
@@ -69,18 +88,36 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       const sessionData = await sessionResp.json();
 
       if (sessionData.error) {
-        setError(sessionData.error);
-        setLoading(false);
+        // If session is running, treat as "waiting for data" not error
+        if (isSessionRunning || isFinalizing) {
+          setWaitingForData(true);
+          setError(null);
+          setLoading(false);
+        } else {
+          setError(sessionData.error);
+          setLoading(false);
+        }
         return;
       }
 
       // Parse instance data from entries
       const entries = sessionData.entries || [];
       if (entries.length === 0) {
-        setError('No data found');
-        setLoading(false);
+        // If session is running, show waiting state instead of error
+        if (isSessionRunning || isFinalizing) {
+          setWaitingForData(true);
+          setError(null);
+          setLoading(false);
+        } else {
+          setError('No data found');
+          setLoading(false);
+        }
         return;
       }
+
+      // Clear waiting/error states on successful data load
+      setWaitingForData(false);
+      setError(null);
 
       const cascadeEntry = entries.find(e => e.node_type === 'cascade');
       const firstEntry = entries[0];
@@ -254,13 +291,13 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
     }
   }, [sessionId, fetchInstance]);
 
-  // Polling for running sessions
+  // Polling for running sessions or waiting for data
   useEffect(() => {
-    if (isSessionRunning || isFinalizing) {
+    if (isSessionRunning || isFinalizing || waitingForData) {
       const interval = setInterval(fetchInstance, 2000);
       return () => clearInterval(interval);
     }
-  }, [isSessionRunning, isFinalizing, fetchInstance]);
+  }, [isSessionRunning, isFinalizing, waitingForData, fetchInstance]);
 
   const handleLayoutDetected = useCallback(({ isWide }) => {
     setWideChart(isWide);
@@ -304,6 +341,26 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       <div className="instance-card error-state">
         <Icon icon="mdi:alert-circle" width="24" />
         <span>{error}</span>
+      </div>
+    );
+  }
+
+  // Waiting for data from running session
+  if (waitingForData) {
+    return (
+      <div className="instance-card loading-state">
+        <VideoSpinner
+          message="Waiting for data..."
+          size="80%"
+          opacity={0.6}
+          messageStyle={{
+            fontFamily: "'Julius Sans One', sans-serif",
+            fontSize: 'clamp(1rem, 4vw, 2rem)',
+            fontWeight: 'bold',
+            letterSpacing: '0.1em',
+            marginTop: '1.5rem'
+          }}
+        />
       </div>
     );
   }
@@ -453,6 +510,12 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
                   phaseIndex={idx}
                 />
                 <ImageGallery
+                  sessionId={instance.session_id}
+                  phaseName={phase.name}
+                  isRunning={isSessionRunning || isFinalizing}
+                  sessionUpdate={sessionUpdates?.[instance.session_id]}
+                />
+                <AudioGallery
                   sessionId={instance.session_id}
                   phaseName={phase.name}
                   isRunning={isSessionRunning || isFinalizing}

@@ -1207,8 +1207,8 @@
 }
 
 .message-thumbnail {
-  height: 60px;
-  max-width: 80px;
+  height: 100px;
+  max-width: 140px;
   object-fit: contain;
   border: 2px solid #2C3B4B;
   border-radius: 6px;
@@ -1223,7 +1223,73 @@
 .message-thumbnail:hover {
   border-color: #2DD4BF;
   box-shadow: 0 4px 12px rgba(45, 212, 191, 0.3);
-  transform: scale(1.05);
+  transform: scale(1.08);
+}
+
+/* Image Modal */
+.message-image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+}
+
+.message-image-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.message-image-modal-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  background: transparent;
+  border: none;
+  color: #9AA5B1;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.message-image-modal-close:hover {
+  color: #F0F4F8;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.message-image-modal-full {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.message-image-modal-info {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  color: #9AA5B1;
+  font-size: 0.85rem;
+}
+
+.message-image-modal-phase {
+  color: #2DD4BF;
+}
+
+.message-image-modal-msg {
+  color: #60a5fa;
 }
 
 /* Scrollbar styling */

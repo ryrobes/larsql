@@ -612,6 +612,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             </button>
           )}
 
+          {/* Debug button - commented out, redundant with SplitDetailView
           <button
             className="debug-button"
             onClick={(e) => {
@@ -623,6 +624,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             <Icon icon="mdi:bug" width="18" />
             Debug
           </button>
+          */}
 
           {isCompleted && onFreezeInstance && !isChild && (
             <button

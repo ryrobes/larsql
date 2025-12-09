@@ -100,6 +100,15 @@
   height: 100px;
 }
 
+.cost-timeline-chart .chart-container .recharts-bar-rectangle {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.cost-timeline-chart .chart-container .recharts-bar-rectangle:hover {
+  filter: brightness(1.1);
+}
+
 /* Legend */
 .cost-timeline-chart .chart-legend {
   display: flex;
@@ -127,6 +136,15 @@
   width: 12px;
   height: 2px;
   border-radius: 1px;
+}
+
+.cost-timeline-chart .legend-divider {
+  color: #2C3B4B;
+  margin: 0 0.25rem;
+}
+
+.cost-timeline-chart .legend-item.phase-legend {
+  font-size: 0.6rem;
 }
 
 /* Custom Tooltip */

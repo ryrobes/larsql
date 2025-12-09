@@ -19,9 +19,17 @@ function SplitDetailView({
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
   const [chartMessages, setChartMessages] = useState([]);
+  const [scrollToIndex, setScrollToIndex] = useState(null);
   const containerRef = useRef(null);
   const dragStartX = useRef(0);
   const dragStartSplit = useRef(40);
+
+  // Handle bar click from chart - scroll to message
+  const handleBarClick = useCallback((messageIndex) => {
+    setScrollToIndex(messageIndex);
+    // Reset after a short delay to allow re-clicking same bar
+    setTimeout(() => setScrollToIndex(null), 100);
+  }, []);
 
   // Check if session is currently running
   const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
@@ -97,9 +105,13 @@ function SplitDetailView({
       {/* Header */}
       <div className="split-detail-header">
         <div className="header-left">
-          <button className="back-button" onClick={onBack} title="Back to instances">
-            <Icon icon="mdi:arrow-left" width="20" />
-          </button>
+          <img
+            src="/windlass-transparent-square.png"
+            alt="Back to instances"
+            className="brand-logo"
+            onClick={onBack}
+            title="Back to instances"
+          />
           <div className="session-info">
             <span className="session-label">Session:</span>
             <span className="session-id-display">{sessionId}</span>
@@ -151,6 +163,7 @@ function SplitDetailView({
           <CostTimelineChart
             messages={chartMessages}
             isRunning={isRunning}
+            onBarClick={handleBarClick}
           />
           <div className="message-flow-wrapper">
             <MessageFlowView
@@ -158,6 +171,7 @@ function SplitDetailView({
               hideControls={true}
               onBack={null}
               onSessionChange={() => {}}
+              scrollToIndex={scrollToIndex}
             />
           </div>
         </div>

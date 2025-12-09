@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ComposedChart,
   Bar,
@@ -10,9 +10,33 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
+import { getSequentialColor } from './CascadeBar';
 import './CostTimelineChart.css';
 
-function CostTimelineChart({ messages = [], isRunning = false }) {
+function CostTimelineChart({ messages = [], isRunning = false, onBarClick = null }) {
+  const [hoveredBar, setHoveredBar] = useState(null);
+
+  // Build phase color map based on order of first appearance
+  const phaseColorMap = useMemo(() => {
+    if (!messages || messages.length === 0) return {};
+
+    const map = {};
+    let colorIndex = 0;
+
+    // Sort by timestamp to get correct order
+    const sorted = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+
+    sorted.forEach(msg => {
+      const phaseName = msg.phase_name || '_unknown_';
+      if (!(phaseName in map)) {
+        map[phaseName] = getSequentialColor(colorIndex);
+        colorIndex++;
+      }
+    });
+
+    return map;
+  }, [messages]);
+
   // Process messages into chart data
   const chartData = useMemo(() => {
     if (!messages || messages.length === 0) return [];
@@ -29,48 +53,54 @@ function CostTimelineChart({ messages = [], isRunning = false }) {
 
     // Calculate cumulative cost and time deltas
     let cumulativeCost = 0;
-    const firstTimestamp = sorted[0].timestamp;
+    let prevTimestamp = sorted[0].timestamp;
 
     return sorted.map((msg, index) => {
       cumulativeCost += msg.cost || 0;
-      const timeSinceStart = msg.timestamp - firstTimestamp;
+      // Calculate duration of this message (time since previous message)
+      const messageDuration = index === 0 ? 0 : msg.timestamp - prevTimestamp;
+      prevTimestamp = msg.timestamp;
 
-      // Determine color based on node_type/role
-      let barColor = '#2DD4BF'; // Default teal
-      if (msg.node_type === 'evaluator' || msg.message_category === 'evaluator') {
-        barColor = '#a78bfa'; // Purple for evaluators
-      } else if (msg.node_type === 'quartermaster' || msg.message_category === 'quartermaster') {
-        barColor = '#60a5fa'; // Blue for quartermaster
-      } else if (msg.sounding_index !== null && !msg.is_winner) {
-        barColor = '#64748b'; // Gray for non-winner soundings
-      } else if (msg.is_winner) {
-        barColor = '#34d399'; // Green for winners
-      }
+      // Get phase color from our map (matches CascadeBar colors)
+      const phaseName = msg.phase_name || '_unknown_';
+      let barColor = phaseColorMap[phaseName] || '#2DD4BF';
+
+      // Dim non-winner soundings slightly
+      const isDimmed = msg.sounding_index !== null && !msg.is_winner;
+
+      // Find the original index in all_messages for scrolling
+      const originalIndex = messages.findIndex(m =>
+        m.timestamp === msg.timestamp &&
+        m.phase_name === msg.phase_name &&
+        m.node_type === msg.node_type
+      );
 
       return {
         index,
+        originalIndex, // Index in all_messages for scrolling
         label: `${index + 1}`,
         cost: msg.cost || 0,
         cumulativeCost,
-        timeSeconds: timeSinceStart,
-        phase: msg.phase_name || '',
+        duration: messageDuration, // Time this message took (delta from previous)
+        phase: phaseName,
         role: msg.role,
         nodeType: msg.node_type,
         tokens: (msg.tokens_in || 0) + (msg.tokens_out || 0),
         model: msg.model,
         isWinner: msg.is_winner,
         soundingIndex: msg.sounding_index,
-        barColor
+        barColor,
+        isDimmed
       };
     });
-  }, [messages]);
+  }, [messages, phaseColorMap]);
 
   // Calculate totals for header
   const totals = useMemo(() => {
     const totalCost = chartData.reduce((sum, d) => sum + d.cost, 0);
     const totalTokens = chartData.reduce((sum, d) => sum + d.tokens, 0);
-    const totalTime = chartData.length > 0 ? chartData[chartData.length - 1].timeSeconds : 0;
-    return { totalCost, totalTokens, totalTime };
+    const totalDuration = chartData.reduce((sum, d) => sum + d.duration, 0);
+    return { totalCost, totalTokens, totalDuration };
   }, [chartData]);
 
   // Custom tooltip
@@ -97,8 +127,8 @@ function CostTimelineChart({ messages = [], isRunning = false }) {
             <span>{data.tokens.toLocaleString()}</span>
           </div>
           <div className="tooltip-row">
-            <span>Time:</span>
-            <span>{data.timeSeconds.toFixed(1)}s</span>
+            <span>Duration:</span>
+            <span>{data.duration.toFixed(1)}s</span>
           </div>
           {data.model && (
             <div className="tooltip-row">
@@ -157,7 +187,7 @@ function CostTimelineChart({ messages = [], isRunning = false }) {
           </span>
           <span className="stat time">
             <span className="stat-label">Duration:</span>
-            <span className="stat-value">{formatTime(totals.totalTime)}</span>
+            <span className="stat-value">{formatTime(totals.totalDuration)}</span>
           </span>
           {isRunning && (
             <span className="stat running-indicator">
@@ -206,18 +236,44 @@ function CostTimelineChart({ messages = [], isRunning = false }) {
               radius={[2, 2, 0, 0]}
               isAnimationActive={true}
               animationDuration={300}
+              onClick={(data, index) => {
+                if (onBarClick && data && data.originalIndex !== undefined) {
+                  onBarClick(data.originalIndex);
+                }
+              }}
+              onMouseEnter={(data, index) => setHoveredBar(index)}
+              onMouseLeave={() => setHoveredBar(null)}
+              style={{ cursor: onBarClick ? 'pointer' : 'default' }}
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.barColor} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.barColor}
+                  opacity={entry.isDimmed ? 0.4 : (hoveredBar === index ? 1 : 0.85)}
+                  stroke={hoveredBar === index ? '#fff' : 'none'}
+                  strokeWidth={hoveredBar === index ? 1 : 0}
+                />
               ))}
             </Bar>
             <Line
               yAxisId="time"
               type="monotone"
-              dataKey="timeSeconds"
+              dataKey="duration"
               stroke="#60a5fa"
               strokeWidth={2}
-              dot={false}
+              dot={{ r: 3, fill: '#60a5fa', stroke: '#0a0f14', strokeWidth: 1, cursor: 'pointer' }}
+              activeDot={{
+                r: 5,
+                fill: '#60a5fa',
+                stroke: '#fff',
+                strokeWidth: 2,
+                cursor: 'pointer',
+                onClick: (e, payload) => {
+                  if (onBarClick && payload && payload.payload && payload.payload.originalIndex !== undefined) {
+                    onBarClick(payload.payload.originalIndex);
+                  }
+                }
+              }}
               isAnimationActive={true}
               animationDuration={300}
             />
@@ -225,13 +281,21 @@ function CostTimelineChart({ messages = [], isRunning = false }) {
         </ResponsiveContainer>
       </div>
       <div className="chart-legend">
-        <span className="legend-item">
-          <span className="legend-dot" style={{ background: '#2DD4BF' }}></span>
-          Cost (left)
-        </span>
+        {Object.entries(phaseColorMap).slice(0, 6).map(([phase, color]) => (
+          <span key={phase} className="legend-item phase-legend">
+            <span className="legend-dot" style={{ background: color }}></span>
+            {phase === '_unknown_' ? 'Init' : phase.length > 12 ? phase.substring(0, 10) + '...' : phase}
+          </span>
+        ))}
+        {Object.keys(phaseColorMap).length > 6 && (
+          <span className="legend-item phase-legend">
+            +{Object.keys(phaseColorMap).length - 6} more
+          </span>
+        )}
+        <span className="legend-divider">|</span>
         <span className="legend-item">
           <span className="legend-line" style={{ background: '#60a5fa' }}></span>
-          Time (right)
+          Time
         </span>
       </div>
     </div>

@@ -59,13 +59,13 @@
 }
 
 .brand-logo {
-  width: 58px;
-  height: 58px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   cursor: pointer;
   transition: all 0.2s ease;
   border-radius: 8px;
-  padding: 4px;
+  margin: -7px 0;
 }
 
 .brand-logo:hover {
@@ -90,10 +90,11 @@
   margin: 0;
 }
 
-.fire-icon {
-  color: #fb923c;
-  animation: flicker 1.5s ease-in-out infinite;
-  filter: drop-shadow(0 0 8px rgba(251, 146, 60, 0.5));
+.hotornot-logo {
+  height: 36px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(251, 146, 60, 0.3));
 }
 
 @keyframes flicker {

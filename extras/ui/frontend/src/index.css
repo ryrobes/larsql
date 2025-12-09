@@ -4,6 +4,12 @@
   box-sizing: border-box;
 }
 
+/* Fix Iconify vertical alignment with text */
+svg.iconify,
+.iconify svg {
+  vertical-align: -0.2em;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',

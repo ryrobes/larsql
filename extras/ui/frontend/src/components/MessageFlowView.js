@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Icon } from '@iconify/react';
 import VideoSpinner from './VideoSpinner';
+import AudioGallery from './AudioGallery';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -17,7 +19,21 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   const [recentSessions, setRecentSessions] = useState([]); // Combined recent + running sessions for button row
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [waitingForData, setWaitingForData] = useState(false); // True when session is running but no data yet
+  const [selectedImage, setSelectedImage] = useState(null); // For image modal
   const currentSessionIdRef = useRef(initialSessionId || null);
+
+  // Scroll to message when scrollToIndex changes (triggered by chart click)
+  useEffect(() => {
+    if (scrollToIndex !== null && scrollToIndex !== undefined) {
+      const messageEl = document.getElementById(`message-${scrollToIndex}`);
+      if (messageEl) {
+        messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Temporarily highlight the message
+        setHighlightedMessage(scrollToIndex);
+        setTimeout(() => setHighlightedMessage(null), 2000);
+      }
+    }
+  }, [scrollToIndex]);
 
   // Check if a session ID is in the running sessions list
   const isSessionRunning = useCallback((sid) => {
@@ -316,7 +332,11 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
               src={firstImageUrl}
               alt="Message thumbnail"
               className="message-thumbnail"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedImage({ url: firstImageUrl, phase: msg.phase_name, index: globalIndex });
+              }}
+              title="Click to enlarge"
             />
           )}
         </div>
@@ -816,6 +836,13 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                             .map(({ msg, index }) =>
                               renderMessage(msg, `main-${index}`, `M${index}`)
                             )}
+
+                          {/* Audio files for this phase */}
+                          <AudioGallery
+                            sessionId={sessionId}
+                            phaseName={phaseName}
+                            isRunning={isSessionRunning(sessionId)}
+                          />
                         </div>
                       </div>
                     );
@@ -825,6 +852,29 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             </div>
           )}
         </div>
+      )}
+
+      {/* Image Modal - rendered via portal */}
+      {selectedImage && createPortal(
+        <div className="message-image-modal-overlay" onClick={() => setSelectedImage(null)}>
+          <div className="message-image-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="message-image-modal-close" onClick={() => setSelectedImage(null)}>
+              <Icon icon="mdi:close" width="24" />
+            </button>
+            <img
+              src={selectedImage.url}
+              alt="Full size"
+              className="message-image-modal-full"
+            />
+            <div className="message-image-modal-info">
+              {selectedImage.phase && (
+                <span className="message-image-modal-phase">Phase: {selectedImage.phase}</span>
+              )}
+              <span className="message-image-modal-msg">Message #{selectedImage.index + 1}</span>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
