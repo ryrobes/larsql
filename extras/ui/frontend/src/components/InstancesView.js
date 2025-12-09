@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
-import PhaseBar from './PhaseBar';
+// PhaseBar removed - now only shown in SplitDetailView
 import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
 import SoundingsExplorer from './SoundingsExplorer';
-import MermaidPreview from './MermaidPreview';
-import ImageGallery from './ImageGallery';
-import HumanInputDisplay from './HumanInputDisplay';
+// MermaidPreview, ImageGallery, HumanInputDisplay removed - now only shown in SplitDetailView
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
@@ -15,34 +13,6 @@ import RunPercentile from './RunPercentile';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
-// Calculate minimum height for phase bars container to prevent layout shift
-// Heights based on actual CSS measurements
-const calculatePhaseBarsMinHeight = (phases) => {
-  if (!phases || phases.length === 0) return 80; // Minimum fallback
-
-  let totalHeight = 0;
-
-  // CascadeBar (only shown when > 1 phase): ~80px
-  if (phases.length > 1) {
-    totalHeight += 80;
-  }
-
-  // Each PhaseBar
-  phases.forEach(phase => {
-    // Base phase bar: padding (12px) + header (24px) + track (18px) + border (1px) = ~55px
-    totalHeight += 55;
-
-    // Sounding rows (when > 1 sounding)
-    const soundingCount = phase.sounding_attempts?.length || 0;
-    if (soundingCount > 1) {
-      // Margin: 8px top + 4px bottom = 12px
-      // Each row: 20px height + 4px gap (except last)
-      totalHeight += 12 + (soundingCount * 20) + ((soundingCount - 1) * 4);
-    }
-  });
-
-  return totalHeight;
-};
 
 // Live duration counter that updates every second for running instances
 function LiveDuration({ startTime, isRunning, staticDuration }) {
@@ -99,8 +69,6 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
   const [audibleSending, setAudibleSending] = useState({});    // { sessionId: boolean }
 
-  // Track which sessions have wide mermaid charts (for adaptive positioning)
-  const [wideCharts, setWideCharts] = useState({});  // { sessionId: boolean }
 
   useEffect(() => {
     if (cascadeId) {
@@ -327,14 +295,6 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     });
   }, [runningSessions]);
 
-  // Handle mermaid layout detection - track which charts are wide
-  const handleLayoutDetected = useCallback((sessionId, { isWide }) => {
-    setWideCharts(prev => {
-      // Only update if the value changed to prevent unnecessary rerenders
-      if (prev[sessionId] === isWide) return prev;
-      return { ...prev, [sessionId]: isWide };
-    });
-  }, []);
 
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
@@ -342,9 +302,6 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     const hasRunning = instance.phases?.some(p => p.status === 'running');
     const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
     const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
-
-    // Check if this instance has a wide mermaid chart
-    const isWideChart = !isChild && wideCharts[instance.session_id];
 
     // Determine visual state
     let stateClass = '';
@@ -361,104 +318,134 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return (
       <div
         key={instance.session_id}
-        className={`instance-row ${stateClass} ${isChild ? 'child-row' : ''} ${isWideChart ? 'has-wide-chart' : ''}`}
+        className={`instance-row-compact ${stateClass} ${isChild ? 'child-row' : ''}`}
         onClick={() => onSelectInstance && onSelectInstance(instance.session_id)}
         style={{ cursor: onSelectInstance ? 'pointer' : 'default' }}
       >
-        {/* For wide charts: Show header at very top of the box */}
-        {isWideChart && (
-          <div className="instance-header-top">
+        {/* Row 1: Header with session info, metrics, and buttons all inline */}
+        <div className="instance-header-compact">
+          {/* Left: Session ID, badge, timestamp */}
+          <div className="header-left-compact">
             {isChild && (
-              <div className="child-connector">
-                <span className="connector-line">└─</span>
-                <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
-              </div>
+              <span className="child-indicator">└─ [{instance.cascade_id || 'Child'}]</span>
             )}
-            <div className="instance-header-left">
-              <h3 className="session-id">
-                {instance.session_id}
-                {stateBadge}
-                {instance.status === 'failed' && (
-                  <span className="failed-badge">
-                    <Icon icon="mdi:alert-circle" width="14" />
-                    Failed ({instance.error_count})
+            <h3 className="session-id-compact">
+              {instance.session_id}
+              {stateBadge}
+              {instance.status === 'failed' && (
+                <span className="failed-badge">
+                  <Icon icon="mdi:alert-circle" width="14" />
+                  Failed ({instance.error_count})
+                </span>
+              )}
+            </h3>
+            <span className="timestamp-compact">{formatTimestamp(instance.start_time)}</span>
+          </div>
+
+          {/* Right: Buttons + Sparkline first, then Metrics on far right */}
+          <div className="header-right-compact">
+            {/* Inline action buttons - moved to left */}
+            <div className="buttons-inline">
+              {instance.has_soundings && (
+                <button
+                  className="btn-compact soundings"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSoundingsExplorerSession(instance.session_id);
+                  }}
+                  title="Explore soundings"
+                >
+                  <Icon icon="mdi:sign-direction" width="14" />
+                  <span className="soundings-count">
+                    {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
                   </span>
-                )}
-              </h3>
-              <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
+                </button>
+              )}
+              <button
+                className="btn-compact rerun"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRunCascade && onRunCascade({
+                    ...cascadeData,
+                    prefilled_inputs: instance.input_data || {}
+                  });
+                }}
+                title="Re-run with these inputs"
+              >
+                <Icon icon="mdi:replay" width="14" />
+              </button>
+              {(isSessionRunning || (hasRunning && !isFinalizing)) && (
+                <button
+                  className={`btn-compact audible ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
+                  onClick={(e) => handleAudibleClick(e, instance.session_id)}
+                  disabled={audibleSending[instance.session_id] || audibleSignaled[instance.session_id]}
+                  title={audibleSignaled[instance.session_id] ? 'Audible signaled' : 'Call audible'}
+                >
+                  <Icon icon="mdi:bullhorn" width="14" />
+                </button>
+              )}
+              {isCompleted && onFreezeInstance && !isChild && (
+                <button
+                  className="btn-compact freeze"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFreezeInstance(instance);
+                  }}
+                  title="Freeze as test snapshot"
+                >
+                  <Icon icon="mdi:snowflake" width="14" />
+                </button>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Wide Mermaid Chart - rendered after header when chart is wide */}
-        {isWideChart && (
-          <div
-            className="mermaid-wrapper-top"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MermaidPreview
-              key={`mermaid-top-${instance.session_id}`}
-              sessionId={instance.session_id}
-              size="small"
-              showMetadata={false}
-              lastUpdate={sessionUpdates?.[instance.session_id]}
-              onLayoutDetected={(layout) => handleLayoutDetected(instance.session_id, layout)}
-            />
-          </div>
-        )}
-
-        {/* Main content row */}
-        <div className="instance-row-content">
-          {/* Left: Instance Info */}
-          <div className="instance-info">
-            {/* For non-wide: show child connector here */}
-            {!isWideChart && isChild && (
-              <div className="child-connector">
-                <span className="connector-line">└─</span>
-                <span className="child-label">[{instance.cascade_id || 'Child'}]</span>
-              </div>
+            {/* Sparkline */}
+            {instance.token_timeseries && instance.token_timeseries.length > 0 && (
+              <TokenSparkline data={instance.token_timeseries} width={60} height={18} />
             )}
 
-            {/* Header row - only for non-wide charts (wide charts show header at top) */}
-            {!isWideChart && (
-              <div className="instance-header-row">
-                <div className="instance-header-left">
-                  <h3 className="session-id">
-                    {instance.session_id}
-                    {stateBadge}
-                    {instance.status === 'failed' && (
-                      <span className="failed-badge">
-                        <Icon icon="mdi:alert-circle" width="14" />
-                        Failed ({instance.error_count})
-                      </span>
-                    )}
-                  </h3>
-                  <p className="timestamp">{formatTimestamp(instance.start_time)}</p>
-                </div>
-              </div>
-            )}
+            {/* Time and Cost - far right, larger */}
+            <span className="metric-duration-large">
+              <LiveDuration
+                startTime={instance.start_time}
+                isRunning={isSessionRunning || isFinalizing}
+                staticDuration={instance.duration_seconds}
+              />
+            </span>
+            <span className="metric-cost-large">
+              {formatCost(instance.total_cost)}
+            </span>
+          </div>
+        </div>
 
-          {/* Model tags row - only for single model */}
-          {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
-            <div className="instance-actions-row">
+        {/* Row 2: 3 columns - Models | CascadeBar+Inputs | RunPercentile */}
+        <div className="instance-content-compact">
+          {/* Left section: Models (~20%) */}
+          <div className="models-section-compact">
+            {instance.model_costs?.length <= 1 && instance.models_used?.length > 0 && (
               <ModelTags modelsUsed={instance.models_used} />
-            </div>
-          )}
+            )}
+            {instance.model_costs?.length > 1 && (
+              <ModelCostBar
+                modelCosts={instance.model_costs}
+                totalCost={instance.total_cost}
+              />
+            )}
+          </div>
 
-          {/* Multi-model cost breakdown - full width like input box */}
-          {instance.model_costs?.length > 1 && (
-            <ModelCostBar
-              modelCosts={instance.model_costs}
-              totalCost={instance.total_cost}
-            />
-          )}
-
-          {instance.input_data && Object.keys(instance.input_data).length > 0 && (
-            <div className="input-params">
-              {/* <span className="input-label">Inputs:</span> */}
-              <div className="input-fields">
+          {/* Middle section: CascadeBar with inputs underneath (~55%) */}
+          <div className="cascade-section-compact">
+            {instance.phases && instance.phases.length > 1 && (
+              <CascadeBar
+                phases={instance.phases}
+                totalCost={instance.total_cost}
+                isRunning={isSessionRunning || hasRunning}
+              />
+            )}
+            {/* Input params below cascade bar */}
+            {instance.input_data && Object.keys(instance.input_data).length > 0 && (
+              <div className="input-params-under-cascade">
                 {Object.entries(instance.input_data).map(([key, value]) => (
-                  <div key={key} className="input-field-display">
+                  <div key={key} className="input-field-compact">
                     <span className="input-key">{key}:</span>
                     <span className="input-value">
                       {typeof value === 'object' ? JSON.stringify(value) : String(value)}
@@ -466,213 +453,34 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Mermaid Graph Preview - under inputs on left side (only when NOT wide) */}
-          {!isChild && !isWideChart && (
-            <div
-              className="mermaid-wrapper"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MermaidPreview
-                key={`mermaid-${instance.session_id}`}
-                sessionId={instance.session_id}
-                size="small"
-                showMetadata={false}
-                lastUpdate={sessionUpdates?.[instance.session_id]}
-                onLayoutDetected={(layout) => handleLayoutDetected(instance.session_id, layout)}
-              />
-            </div>
-          )}
-
-          {/* Children collapse indicator (for parent rows only) - below mermaid */}
-          {!isChild && instance.children && instance.children.length > 0 && (
-            <div
-              className="children-toggle"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpanded(instance.session_id);
-              }}
-            >
-              <Icon
-                icon={expandedParents.has(instance.session_id) ? "mdi:chevron-down" : "mdi:chevron-right"}
-                width="20"
-                className="chevron-icon"
-              />
-              <span className="children-summary">{getChildrenSummary(instance.children)}</span>
-            </div>
-          )}
-
-          {/* Run Percentile - shows how this run compares to others */}
-          {!isChild && instances.length >= 2 && (
-            <RunPercentile
-              instance={instance}
-              allInstances={instances}
-            />
-          )}
-        </div>
-
-        {/* Middle: Phase Bars with Status */}
-        <div
-          className="phase-bars-container"
-          style={{ minHeight: calculatePhaseBarsMinHeight(instance.phases) }}
-        >
-          {/* Cascade Bar - stacked overview of all phase costs */}
-          {instance.phases && instance.phases.length > 1 && (
-            <CascadeBar
-              phases={instance.phases}
-              totalCost={instance.total_cost}
-              isRunning={isSessionRunning || hasRunning}
-            />
-          )}
-
-          {(() => {
-            // Calculate max cost for relative bar widths
-            const costs = (instance.phases || []).map(p => p.avg_cost || 0);
-            const maxCost = Math.max(...costs, 0.01);
-            const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
-            const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
-
-            return (instance.phases || []).map((phase, idx) => (
-              <React.Fragment key={idx}>
-                <PhaseBar
-                  phase={phase}
-                  maxCost={normalizedMax}
-                  status={phase.status}
-                  phaseIndex={idx}
-                />
-                {/* Image Gallery - under each phase bar, filtered to that phase */}
-                <ImageGallery
-                  sessionId={instance.session_id}
-                  phaseName={phase.name}
-                  isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
-                  sessionUpdate={sessionUpdates?.[instance.session_id]}
-                />
-                {/* Human Input Display - under each phase bar, filtered to that phase */}
-                <HumanInputDisplay
-                  sessionId={instance.session_id}
-                  phaseName={phase.name}
-                  isRunning={runningSessions?.has(instance.session_id) || finalizingSessions?.has(instance.session_id)}
-                  sessionUpdate={sessionUpdates?.[instance.session_id]}
-                />
-              </React.Fragment>
-            ));
-          })()}
-
-          {/* Final Output */}
-          {instance.final_output && (
-            <div className="final-output">
-              {/* <div className="final-output-label">Final Output:</div> */}
-              <div className="final-output-content">
-                <ReactMarkdown>{instance.final_output}</ReactMarkdown>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Instance Metrics */}
-        <div className="instance-metrics">
-          <div className="metric">
-            <span className="metric-value">
-              <LiveDuration
-                startTime={instance.start_time}
-                isRunning={isSessionRunning || isFinalizing}
-                staticDuration={instance.duration_seconds}
-              />
-            </span>
-            <span className="metric-label">duration</span>
-          </div>
-
-          <div className="metric metric-cost-small">
-            <span className="metric-value cost-highlight">
-              {formatCost(instance.total_cost)}
-            </span>
-            <span className="metric-label">cost</span>
-            {instance.token_timeseries && instance.token_timeseries.length > 0 && (
-              <div className="token-sparkline-container">
-                <TokenSparkline data={instance.token_timeseries} width={95} height={24} />
-              </div>
             )}
           </div>
 
-          {/* Action buttons - grouped together in metrics panel */}
-          {/* Soundings Explorer Button */}
-          {instance.has_soundings && (
-            <button
-              className="soundings-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSoundingsExplorerSession(instance.session_id);
-              }}
-              title="Explore all soundings across all phases in this cascade"
-            >
-              <Icon icon="mdi:sign-direction" width="16" />
-              Soundings
-              <span className="soundings-count">
-                {instance.phases?.filter(p => p.sounding_total > 1).length || 0}
-              </span>
-            </button>
-          )}
-
-          {/* Re-run button */}
-          <button
-            className="rerun-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRunCascade && onRunCascade({
-                ...cascadeData,
-                prefilled_inputs: instance.input_data || {}
-              });
-            }}
-            title="Re-run with these inputs"
-          >
-            <Icon icon="mdi:replay" width="16" />
-            Re-run
-          </button>
-
-          {/* Audible Button - only shown when instance is running */}
-          {(isSessionRunning || (hasRunning && !isFinalizing)) && (
-            <button
-              className={`audible-button-compact ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
-              onClick={(e) => handleAudibleClick(e, instance.session_id)}
-              disabled={audibleSending[instance.session_id] || audibleSignaled[instance.session_id]}
-              title={audibleSignaled[instance.session_id] ? 'Audible signaled - waiting for safe point' : 'Call audible - inject feedback mid-phase'}
-            >
-              <Icon icon="mdi:bullhorn" width="16" />
-              {audibleSending[instance.session_id] ? 'Signaling...' : audibleSignaled[instance.session_id] ? 'Signaled!' : 'Audible'}
-            </button>
-          )}
-
-          {/* Debug button - commented out, redundant with SplitDetailView
-          <button
-            className="debug-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDebugSessionId(instance.session_id);
-            }}
-            title="Debug: view all messages"
-          >
-            <Icon icon="mdi:bug" width="18" />
-            Debug
-          </button>
-          */}
-
-          {isCompleted && onFreezeInstance && !isChild && (
-            <button
-              className="freeze-button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onFreezeInstance(instance);
-              }}
-              title="Freeze as test snapshot"
-            >
-              <Icon icon="mdi:snowflake" width="18" />
-              Freeze
-            </button>
-          )}
+          {/* Right section: RunPercentile + Children toggle (~25%) */}
+          <div className="meta-section-compact">
+            {!isChild && instances.length >= 2 && (
+              <RunPercentile
+                instance={instance}
+                allInstances={instances}
+              />
+            )}
+            {!isChild && instance.children && instance.children.length > 0 && (
+              <div
+                className="children-toggle-compact"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpanded(instance.session_id);
+                }}
+              >
+                <Icon
+                  icon={expandedParents.has(instance.session_id) ? "mdi:chevron-down" : "mdi:chevron-right"}
+                  width="16"
+                />
+                <span>{instance.children.length} sub</span>
+              </div>
+            )}
+          </div>
         </div>
-        </div> {/* Close instance-row-content */}
       </div>
     );
   };
