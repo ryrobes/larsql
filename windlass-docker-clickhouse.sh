@@ -7,3 +7,8 @@ docker run -d \
   -v clickhouse-data:/var/lib/clickhouse \
   -v clickhouse-logs:/var/log/clickhouse-server \
   clickhouse/clickhouse-server:25.11
+
+
+# docker run -it --rm --network=container:windlass-clickhouse --entrypoint clickhouse-client clickhouse/clickhouse-server
+# # OR
+# docker exec -it some-clickhouse-server clickhouse-client

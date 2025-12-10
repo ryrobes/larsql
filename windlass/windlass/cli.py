@@ -32,7 +32,7 @@ def main():
 
     # Render command
     render_parser = subparsers.add_parser('render', help='Render an image in the current terminal')
-    render_parser.add_argument("image", help="Path to image file to render (e.g., extras/ui/frontend/public/windlass-spicy.png)")
+    render_parser.add_argument("image", help="Path to image file to render (e.g., dashboard/frontend/public/windlass-spicy.png)")
     render_parser.add_argument("--width", type=int, default=None, help="Max terminal columns to use (defaults to terminal width)")
     render_parser.add_argument(
         "--mode",
@@ -106,10 +106,10 @@ def main():
     data_parser = subparsers.add_parser('data', help='Data management commands')
     data_subparsers = data_parser.add_subparsers(dest='data_command', help='Data subcommands')
 
-    # data compact
+    # data compact (deprecated)
     compact_parser = data_subparsers.add_parser(
         'compact',
-        help='Compact multiple Parquet files into larger files (default 500MB max)'
+        help='DEPRECATED - ClickHouse handles compaction automatically'
     )
     compact_parser.add_argument(
         '--path',
@@ -138,8 +138,24 @@ def main():
         help='Also compact subdirectories (e.g., data/evals)'
     )
 
+    # Database management command group
+    db_parser = subparsers.add_parser('db', help='ClickHouse database management')
+    db_subparsers = db_parser.add_subparsers(dest='db_command', help='Database subcommands')
+
+    # db status
+    db_status_parser = db_subparsers.add_parser(
+        'status',
+        help='Show ClickHouse database status and statistics'
+    )
+
+    # db init (ensure schema exists)
+    db_init_parser = db_subparsers.add_parser(
+        'init',
+        help='Initialize ClickHouse schema (create tables if needed)'
+    )
+
     # SQL query command
-    sql_parser = subparsers.add_parser('sql', help='Query Parquet logs with SQL (auto-translates table names)')
+    sql_parser = subparsers.add_parser('sql', help='Query ClickHouse with SQL (supports magic table names)')
     sql_parser.add_argument('query', help='SQL query (use all_data, all_evals as table names)')
     sql_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
     sql_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
@@ -235,6 +251,14 @@ def main():
             cmd_data_compact(args)
         else:
             data_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'db':
+        if args.db_command == 'status':
+            cmd_db_status(args)
+        elif args.db_command == 'init':
+            cmd_db_init(args)
+        else:
+            db_parser.print_help()
             sys.exit(1)
     elif args.command == 'sql':
         cmd_sql(args)
@@ -604,9 +628,9 @@ def cmd_analyze(args):
 # ========== SQL QUERY COMMAND ==========
 
 def cmd_sql(args):
-    """Execute a SQL query with magic table name translation, or trigger schema discovery."""
+    """Execute a SQL query against ClickHouse with magic table name translation."""
     import re
-    from windlass.config import get_config
+    from windlass.config import get_config, get_clickhouse_url
     from windlass.db_adapter import get_db_adapter
     from rich.console import Console
     from rich.table import Table
@@ -620,25 +644,21 @@ def cmd_sql(args):
     config = get_config()
     db = get_db_adapter()
 
-    # Magic table name mappings (use config.data_dir which respects WINDLASS_ROOT)
+    # Magic table name mappings - now map to actual ClickHouse tables
     table_mappings = {
-        'all_data': f"file('{config.data_dir}/*.parquet', Parquet)",
-        'all_evals': f"file('{config.data_dir}/evals/*.parquet', Parquet)",
+        'all_data': 'unified_logs',
+        'all_evals': 'evaluations',
+        'all_prefs': 'training_preferences',
+        'rag': 'rag_chunks',
+        'rag_docs': 'rag_manifests',
+        'checkpoints': 'checkpoints',
     }
 
     # Preprocess query to replace magic table names
     query = args.query
 
     # Replace table names (case-insensitive)
-    # Match table names in SQL contexts: FROM, JOIN, table aliases
     for magic_name, replacement in table_mappings.items():
-        # Pattern matches:
-        # - FROM all_data
-        # - JOIN all_data
-        # - FROM all_data AS a
-        # - all_data a (implicit alias)
-        # - all_data.column_name
-        # Case-insensitive replacement
         pattern = r'\b' + magic_name + r'\b'
         query = re.sub(pattern, replacement, query, flags=re.IGNORECASE)
 
@@ -682,197 +702,159 @@ def cmd_sql(args):
     except Exception as e:
         print(f"✗ Query failed: {e}", file=sys.stderr)
         print()
-        print("Available magic tables:")
-        print(f"  • all_data  → {config.data_dir}/*.parquet")
-        print(f"  • all_evals → {config.data_dir}/evals/*.parquet")
+        print(f"ClickHouse: {get_clickhouse_url()}")
         print()
-        print(f"Data directory: {config.data_dir}")
-        print(f"(Set WINDLASS_ROOT env var to change)")
+        print("Available tables (magic names → actual):")
+        for magic, actual in table_mappings.items():
+            print(f"  • {magic} → {actual}")
         print()
         print("Example queries:")
         print("  windlass sql \"SELECT * FROM all_data LIMIT 10\"")
-        print("  windlass sql \"SELECT session_id, cost FROM all_data WHERE cost > 0.01\"")
-        print("  windlass sql \"SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id\"")
+        print("  windlass sql \"SELECT session_id, SUM(cost) FROM unified_logs GROUP BY session_id\"")
+        print("  windlass sql \"SELECT * FROM rag WHERE rag_id = 'abc123' LIMIT 5\"")
         sys.exit(1)
 
 
 # ========== DATA MANAGEMENT COMMANDS ==========
 
 def cmd_data_compact(args):
-    """Compact multiple Parquet files into larger files."""
-    import glob
-    import uuid
-    import time
-    from pathlib import Path
+    """
+    DEPRECATED: Compact Parquet files.
+
+    This command is no longer needed since Windlass now stores data directly
+    in ClickHouse. Data management is handled automatically by ClickHouse.
+
+    Use 'windlass db status' to check database health.
+    """
+    from windlass.config import get_clickhouse_url
+
+    print()
+    print("="*60)
+    print("DEPRECATED COMMAND")
+    print("="*60)
+    print()
+    print("The 'data compact' command is no longer needed.")
+    print()
+    print("Windlass now stores all data directly in ClickHouse:")
+    print(f"  {get_clickhouse_url()}")
+    print()
+    print("ClickHouse handles data compaction automatically via:")
+    print("  • MergeTree engine background merges")
+    print("  • Partitioning by month (toYYYYMM)")
+    print("  • TTL-based data expiration")
+    print()
+    print("To check database status:")
+    print("  windlass db status")
+    print()
+    print("To optimize tables manually (if needed):")
+    print("  windlass sql \"OPTIMIZE TABLE unified_logs FINAL\"")
+    print()
+
+
+def cmd_db_status(args):
+    """Show ClickHouse database status and statistics."""
+    from windlass.config import get_clickhouse_url
+    from windlass.db_adapter import get_db
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    print()
+    print("="*60)
+    print("CLICKHOUSE DATABASE STATUS")
+    print("="*60)
+    print()
+    print(f"Connection: {get_clickhouse_url()}")
+    print()
 
     try:
-        import duckdb
-    except ImportError:
-        print("✗ DuckDB required for compaction. Install with: pip install duckdb")
+        db = get_db()
+
+        # Get table statistics
+        tables_info = db.query("""
+            SELECT
+                name as table_name,
+                formatReadableSize(total_bytes) as size,
+                formatReadableQuantity(total_rows) as rows,
+                partition_count
+            FROM (
+                SELECT
+                    table as name,
+                    sum(bytes) as total_bytes,
+                    sum(rows) as total_rows,
+                    count() as partition_count
+                FROM system.parts
+                WHERE database = currentDatabase()
+                  AND active
+                GROUP BY table
+            )
+            ORDER BY total_bytes DESC
+        """)
+
+        if tables_info:
+            table = Table(title="Table Statistics", show_header=True, header_style="bold cyan")
+            table.add_column("Table")
+            table.add_column("Size", justify="right")
+            table.add_column("Rows", justify="right")
+            table.add_column("Partitions", justify="right")
+
+            for row in tables_info:
+                table.add_row(
+                    row['table_name'],
+                    row['size'],
+                    row['rows'],
+                    str(row['partition_count'])
+                )
+
+            console.print(table)
+        else:
+            print("No tables with data found.")
+
+        print()
+        print("✓ Database connection OK")
+        print()
+
+    except Exception as e:
+        print(f"✗ Database connection failed: {e}")
+        print()
+        print("Check that ClickHouse is running and accessible.")
         sys.exit(1)
 
-    from windlass.config import get_config
-    config = get_config()
 
-    # Determine directories to compact
-    if args.path:
-        base_dirs = [Path(args.path)]
-    else:
-        base_dirs = [Path(config.data_dir)]
+def cmd_db_init(args):
+    """Initialize ClickHouse schema (create tables if needed)."""
+    from windlass.config import get_clickhouse_url
+    from windlass.db_adapter import get_db
+    from windlass.schema import ensure_schema
 
-    # Directories to never compact (contain structured data that must remain as-is)
-    EXCLUDED_DIRS = {'rag'}
+    print()
+    print("="*60)
+    print("CLICKHOUSE SCHEMA INITIALIZATION")
+    print("="*60)
+    print()
+    print(f"Connection: {get_clickhouse_url()}")
+    print()
 
-    # Add subdirectories if recursive
-    all_dirs = []
-    for base_dir in base_dirs:
-        if not base_dir.exists():
-            print(f"⚠ Directory does not exist: {base_dir}")
-            continue
-        # Skip excluded directories even at top level
-        if base_dir.name in EXCLUDED_DIRS:
-            print(f"⚠ Skipping excluded directory: {base_dir}")
-            continue
-        all_dirs.append(base_dir)
-        if args.recursive:
-            for subdir in base_dir.iterdir():
-                if subdir.is_dir():
-                    if subdir.name in EXCLUDED_DIRS:
-                        print(f"⚠ Skipping excluded directory: {subdir}")
-                        continue
-                    all_dirs.append(subdir)
+    try:
+        db = get_db()
+        print("Creating/verifying tables...")
+        print()
 
-    if not all_dirs:
-        print("✗ No directories to compact")
+        ensure_schema(db)
+
+        print()
+        print("✓ Schema initialization complete!")
+        print()
+        print("Run 'windlass db status' to view table statistics.")
+        print()
+
+    except Exception as e:
+        print(f"✗ Schema initialization failed: {e}")
+        print()
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
-
-    max_size_bytes = args.max_size * 1024 * 1024  # Convert MB to bytes
-
-    print()
-    print("="*60)
-    print("PARQUET COMPACTION")
-    print("="*60)
-    print()
-    print(f"Max file size: {args.max_size} MB")
-    print(f"Keep originals: {args.keep_originals}")
-    print(f"Dry run: {args.dry_run}")
-    print()
-
-    total_original_files = 0
-    total_original_size = 0
-    total_compacted_files = 0
-    total_compacted_size = 0
-
-    for target_dir in all_dirs:
-        parquet_files = sorted(glob.glob(str(target_dir / "*.parquet")))
-
-        if not parquet_files:
-            print(f"⚠ No Parquet files in: {target_dir}")
-            continue
-
-        # Calculate original stats
-        original_size = sum(os.path.getsize(f) for f in parquet_files)
-        original_count = len(parquet_files)
-        total_original_files += original_count
-        total_original_size += original_size
-
-        print(f"📁 {target_dir}")
-        print(f"   Found: {original_count} files ({original_size / 1024 / 1024:.2f} MB)")
-
-        if args.dry_run:
-            # Estimate compacted file count
-            estimated_files = max(1, int(original_size / max_size_bytes) + 1)
-            print(f"   Would compact to: ~{estimated_files} file(s)")
-            print()
-            continue
-
-        # Create temp directory for compaction
-        temp_dir = target_dir / f".compact_temp_{uuid.uuid4().hex[:8]}"
-        temp_dir.mkdir(exist_ok=True)
-
-        try:
-            # Use DuckDB to read all files, sort by timestamp, and write compacted
-            conn = duckdb.connect()
-
-            # Read all parquet files with union_by_name for schema evolution
-            conn.execute(f"""
-                CREATE TABLE all_data AS
-                SELECT * FROM read_parquet('{target_dir}/*.parquet', union_by_name=true)
-                ORDER BY COALESCE(timestamp, 0)
-            """)
-
-            row_count = conn.execute("SELECT COUNT(*) FROM all_data").fetchone()[0]
-
-            if row_count == 0:
-                print(f"   ⚠ No data found, skipping")
-                conn.close()
-                temp_dir.rmdir()
-                continue
-
-            # Write compacted files with size limit
-            # DuckDB with FILE_SIZE_BYTES creates directory with data_N.parquet files
-            output_dir = temp_dir / "output"
-
-            conn.execute(f"""
-                COPY all_data TO '{output_dir}'
-                (FORMAT PARQUET, FILE_SIZE_BYTES {max_size_bytes}, COMPRESSION 'zstd')
-            """)
-
-            conn.close()
-
-            # DuckDB creates files like output/data_0.parquet, output/data_1.parquet
-            compacted_files = list(output_dir.glob("*.parquet"))
-            compacted_size = sum(f.stat().st_size for f in compacted_files)
-            total_compacted_files += len(compacted_files)
-            total_compacted_size += compacted_size
-
-            print(f"   Compacted to: {len(compacted_files)} file(s) ({compacted_size / 1024 / 1024:.2f} MB)")
-
-            # Delete originals (unless --keep-originals)
-            if not args.keep_originals:
-                for f in parquet_files:
-                    os.remove(f)
-                print(f"   Deleted: {original_count} original files")
-
-            # Move compacted files to target directory with proper naming
-            for i, cf in enumerate(sorted(compacted_files)):
-                # Generate timestamp-based name like original files
-                ts = int(time.time())
-                new_name = f"log_{ts}_{uuid.uuid4().hex[:8]}.parquet"
-                new_path = target_dir / new_name
-                cf.rename(new_path)
-                time.sleep(0.01)  # Ensure unique timestamps
-
-            # Remove temp directories
-            output_dir.rmdir()
-            temp_dir.rmdir()
-
-            compression_ratio = (1 - compacted_size / original_size) * 100 if original_size > 0 else 0
-            print(f"   Compression: {compression_ratio:.1f}% smaller")
-            print()
-
-        except Exception as e:
-            print(f"   ✗ Error: {e}")
-            # Cleanup temp dir on error
-            import shutil
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
-            continue
-
-    # Summary
-    print("="*60)
-    if args.dry_run:
-        print("DRY RUN SUMMARY")
-        print(f"  Would compact: {total_original_files} files ({total_original_size / 1024 / 1024:.2f} MB)")
-    else:
-        print("COMPACTION COMPLETE")
-        print(f"  Original: {total_original_files} files ({total_original_size / 1024 / 1024:.2f} MB)")
-        print(f"  Compacted: {total_compacted_files} files ({total_compacted_size / 1024 / 1024:.2f} MB)")
-        if total_original_size > 0:
-            ratio = (1 - total_compacted_size / total_original_size) * 100
-            print(f"  Space saved: {ratio:.1f}%")
-    print("="*60)
-    print()
 
 
 # ========== HOT OR NOT COMMANDS ==========

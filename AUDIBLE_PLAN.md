@@ -440,12 +440,12 @@ Images are saved to `images/{session}/{phase}/` by tools like `create_chart`.
 - `windlass/windlass/runner.py` - Turn loop audible check, injection logic, signal handling
 - `windlass/windlass/checkpoints.py` - Added AUDIBLE checkpoint type
 - `windlass/windlass/cascade.py` - Added AudibleConfig to PhaseConfig
-- `extras/ui/backend/checkpoint_api.py` - Audible signal/status/clear endpoints
-- `extras/ui/frontend/src/components/CheckpointPanel.js` - Audible checkpoint routing
-- `extras/ui/frontend/src/components/CheckpointView.js` - Audible type badge
-- `extras/ui/frontend/src/components/DetailView.js` - Audible button when running
-- New: `extras/ui/frontend/src/components/AudibleModal.js` - Feedback collection component
-- New: `extras/ui/frontend/src/components/AudibleModal.css` - Styling
+- `dashboard/backend/checkpoint_api.py` - Audible signal/status/clear endpoints
+- `dashboard/frontend/src/components/CheckpointPanel.js` - Audible checkpoint routing
+- `dashboard/frontend/src/components/CheckpointView.js` - Audible type badge
+- `dashboard/frontend/src/components/DetailView.js` - Audible button when running
+- New: `dashboard/frontend/src/components/AudibleModal.js` - Feedback collection component
+- New: `dashboard/frontend/src/components/AudibleModal.css` - Styling
 
 **Test cascade:** `examples/audible_demo.json`
 

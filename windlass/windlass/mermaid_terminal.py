@@ -24,7 +24,7 @@ def _ensure_mmdc() -> str:
     mmdc_path = next((c for c in candidates if c and os.path.exists(c)), None)
     if not mmdc_path:
         raise MermaidRenderError(
-            "Mermaid CLI (`mmdc`) not found. Install with `npm --prefix extras/ui/frontend install @mermaid-js/mermaid-cli` (or add it to PATH)."
+            "Mermaid CLI (`mmdc`) not found. Install with `npm --prefix dashboard/frontend install @mermaid-js/mermaid-cli` (or add it to PATH)."
         )
     return mmdc_path
 

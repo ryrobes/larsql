@@ -1,29 +1,43 @@
+"""
+RAG Indexer - ClickHouse Implementation
+
+Builds and updates RAG indexes by:
+1. Scanning directories for files
+2. Chunking text files
+3. Generating embeddings via Agent.embed()
+4. Storing chunks and embeddings in ClickHouse tables (rag_chunks, rag_manifests)
+
+Uses ClickHouse's cosineDistance() for vector search - no Python similarity needed.
+"""
 import hashlib
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
+from rich.console import Console
 
 from ..cascade import RagConfig
 from ..config import get_config
 from ..agent import Agent
 from .context import RagContext
-from rich.console import Console
 
 console = Console()
 
+
 @dataclass
 class Chunk:
+    """A text chunk with position info."""
     text: str
     start_char: int
     end_char: int
     start_line: int
     end_line: int
+
 
 def _resolve_directory(rag_config: RagConfig, cascade_path: Optional[str]) -> str:
     """Resolve directory relative to cascade file if not absolute."""
@@ -33,10 +47,12 @@ def _resolve_directory(rag_config: RagConfig, cascade_path: Optional[str]) -> st
     base_dir = os.path.dirname(cascade_path) if isinstance(cascade_path, str) else get_config().root_dir
     return os.path.abspath(os.path.join(base_dir, rag_config.directory))
 
+
 def _doc_id_for_path(rag_id: str, rel_path: str) -> str:
     """Stable doc id for a file path."""
     digest = hashlib.sha1(f"{rag_id}:{rel_path}".encode()).hexdigest()
     return digest[:12]
+
 
 def _list_candidate_files(base_dir: str, recursive: bool, include: List[str], exclude: List[str]) -> List[Path]:
     """Return candidate files respecting include/exclude globs."""
@@ -46,6 +62,7 @@ def _list_candidate_files(base_dir: str, recursive: bool, include: List[str], ex
 
     paths = base.rglob("*") if recursive else base.glob("*")
     candidates = []
+
     for path in paths:
         if path.is_dir():
             continue
@@ -59,7 +76,9 @@ def _list_candidate_files(base_dir: str, recursive: bool, include: List[str], ex
             continue
 
         candidates.append(path)
+
     return candidates
+
 
 def _is_probably_binary(sample: bytes) -> bool:
     """Heuristic to skip obvious binary files."""
@@ -71,6 +90,7 @@ def _is_probably_binary(sample: bytes) -> bool:
     text_chars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x100)))
     nontext = sample.translate(None, text_chars)
     return float(len(nontext)) / max(len(sample), 1) > 0.30
+
 
 def _read_text_file(path: Path) -> Optional[str]:
     """Read text content, skipping binaries."""
@@ -85,6 +105,7 @@ def _read_text_file(path: Path) -> Optional[str]:
     except Exception:
         return None
 
+
 def _chunk_text(text: str, chunk_size: int, overlap: int) -> List[Chunk]:
     """Split text into overlapping chunks."""
     norm = text.replace("\r\n", "\n")
@@ -94,6 +115,7 @@ def _chunk_text(text: str, chunk_size: int, overlap: int) -> List[Chunk]:
     chunks: List[Chunk] = []
     start = 0
     total_len = len(norm)
+
     while start < total_len:
         end = min(total_len, start + chunk_size)
         chunk_text = norm[start:end]
@@ -126,6 +148,7 @@ def _chunk_text(text: str, chunk_size: int, overlap: int) -> List[Chunk]:
 
     return chunks
 
+
 def embed_texts(
     texts: List[str],
     model: Optional[str] = None,
@@ -150,6 +173,7 @@ def embed_texts(
         cascade_id=cascade_id,
     )
 
+
 def ensure_rag_index(
     rag_config: RagConfig,
     cascade_path: Optional[str],
@@ -160,15 +184,22 @@ def ensure_rag_index(
     cascade_id: Optional[str] = None
 ) -> RagContext:
     """
-    Build or update a RAG index for the given rag_config.
-    Returns a RagContext with paths and metadata.
+    Build or update a RAG index in ClickHouse.
+
+    Returns a RagContext with rag_id and metadata.
+    Data is stored in rag_chunks and rag_manifests tables.
     """
+    from ..db_adapter import get_db
+
     abs_dir = _resolve_directory(rag_config, cascade_path)
     console.print(f"[bold cyan]📚 Building RAG index[/bold cyan] for [white]{abs_dir}[/white] (recursive={rag_config.recursive})")
+
     if not os.path.isdir(abs_dir):
         raise FileNotFoundError(f"RAG directory not found: {abs_dir}")
 
     cfg = get_config()
+    db = get_db()
+
     include = rag_config.include or RagConfig.model_fields["include"].default_factory()
     exclude = rag_config.exclude or RagConfig.model_fields["exclude"].default_factory()
     chunk_chars = max(rag_config.chunk_chars or 1200, 200)
@@ -187,44 +218,23 @@ def ensure_rag_index(
     }, sort_keys=True)
     rag_id = hashlib.sha1(settings_key.encode()).hexdigest()[:12]
 
-    rag_base = os.path.join(cfg.data_dir, "rag", rag_id)
-    os.makedirs(rag_base, exist_ok=True)
+    # Get existing manifests from ClickHouse
+    existing_manifests = db.query(
+        f"SELECT doc_id, rel_path, file_hash, mtime, file_size FROM rag_manifests WHERE rag_id = '{rag_id}'"
+    )
+    prev_by_path: Dict[str, Dict[str, Any]] = {r['rel_path']: r for r in existing_manifests}
 
-    manifest_path = os.path.join(rag_base, "manifest.parquet")
-    chunks_path = os.path.join(rag_base, "chunks.parquet")
-    meta_path = os.path.join(rag_base, "meta.json")
+    # Get current embedding dimension from existing data (if any)
+    existing_dim_result = db.query(
+        f"SELECT embedding_dim FROM rag_chunks WHERE rag_id = '{rag_id}' LIMIT 1"
+    )
+    expected_dim = existing_dim_result[0]['embedding_dim'] if existing_dim_result else None
 
-    existing_manifest = pd.read_parquet(manifest_path) if os.path.exists(manifest_path) else None
-    existing_chunks = pd.read_parquet(chunks_path) if os.path.exists(chunks_path) else None
-    existing_meta = None
-    if os.path.exists(meta_path):
-        try:
-            with open(meta_path, "r") as f:
-                existing_meta = json.load(f)
-        except Exception:
-            existing_meta = None
-
-    # If we already have an index with a different model, we need to reindex
-    expected_dim = None
-    if existing_meta:
-        existing_model = existing_meta.get("embed_model")
-        if existing_model and existing_model != embed_model:
-            console.print(f"[yellow]⚠️  Model changed from {existing_model} to {embed_model}, will reindex all files[/yellow]")
-            existing_manifest = None
-            existing_chunks = None
-        else:
-            expected_dim = existing_meta.get("embedding_dim")
-
+    # Scan directory for candidate files
     candidates = _list_candidate_files(abs_dir, rag_config.recursive, include, exclude)
     console.print(f"[dim]Found {len(candidates)} candidate files for RAG indexing[/dim]")
 
-    prev_by_path: Dict[str, Dict[str, Any]] = {}
-    if existing_manifest is not None:
-        prev_by_path = {row["rel_path"]: row.to_dict() for _, row in existing_manifest.iterrows()}
-
-    new_manifest_rows: List[Dict[str, Any]] = []
-    new_chunk_rows: List[Dict[str, Any]] = []
-
+    # Track stats
     indexed_files = 0
     skipped_files = 0
     removed_files = 0
@@ -232,27 +242,36 @@ def ensure_rag_index(
     chunks_reused = 0
     embedding_dim_used = expected_dim
 
+    # Process each file
+    chunks_to_insert = []
+    manifests_to_insert = []
+    current_rel_paths = set()
+
     for path in candidates:
         rel_path = path.relative_to(abs_dir).as_posix()
+        current_rel_paths.add(rel_path)
+
         stat = path.stat()
         doc_id = _doc_id_for_path(rag_id, rel_path)
         prev = prev_by_path.get(rel_path)
 
         # Reuse if size + mtime unchanged
-        if prev is not None and abs(prev.get("mtime", 0) - stat.st_mtime) < 1e-6 and prev.get("size") == stat.st_size:
-            new_manifest_rows.append(prev)
-            if existing_chunks is not None:
-                doc_chunks = existing_chunks[existing_chunks["doc_id"] == prev["doc_id"]]
-                chunks_reused += len(doc_chunks)
-                new_chunk_rows.extend(doc_chunks.to_dict("records"))
+        # Note: prev values may be numpy types from ClickHouse, so convert to Python types
+        if prev is not None and abs(float(prev.get("mtime", 0)) - stat.st_mtime) < 1e-6 and int(prev.get("file_size", 0)) == stat.st_size:
+            chunks_reused_count = db.query(
+                f"SELECT count() as cnt FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'"
+            )
+            chunks_reused += chunks_reused_count[0]['cnt'] if chunks_reused_count else 0
             skipped_files += 1
             continue
 
+        # Read and validate file
         content = _read_text_file(path)
         if content is None:
             skipped_files += 1
             continue
 
+        # Chunk the content
         chunk_objs = _chunk_text(content, chunk_chars, chunk_overlap)
         if not chunk_objs:
             skipped_files += 1
@@ -277,113 +296,97 @@ def ensure_rag_index(
         if expected_dim and embed_result["dim"] != expected_dim:
             raise ValueError(
                 f"Embedding dimension mismatch (expected {expected_dim}, got {embed_result['dim']}). "
-                f"Delete the index at {rag_base} and rebuild."
+                f"Delete existing chunks for this rag_id and rebuild."
             )
 
-        manifest_row = {
+        # Delete old chunks for this doc (if updating)
+        if prev:
+            db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+
+        # Prepare manifest row
+        content_hash = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
+        manifests_to_insert.append({
             "doc_id": doc_id,
+            "rag_id": rag_id,
             "rel_path": rel_path,
             "abs_path": str(path),
+            "file_hash": content_hash,
+            "file_size": stat.st_size,
             "mtime": stat.st_mtime,
-            "size": stat.st_size,
             "chunk_count": len(chunk_objs),
-            "content_hash": hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
-        }
-        new_manifest_rows.append(manifest_row)
+            "content_hash": content_hash,
+        })
 
+        # Prepare chunk rows
         for idx, chunk in enumerate(chunk_objs):
             chunk_id = f"{doc_id}_{idx}"
-            new_chunk_rows.append({
+            chunks_to_insert.append({
                 "rag_id": rag_id,
                 "doc_id": doc_id,
-                "chunk_id": chunk_id,
                 "rel_path": rel_path,
-                "start_char": chunk.start_char,
-                "end_char": chunk.end_char,
+                "chunk_index": idx,
+                "text": chunk.text,
+                "char_start": chunk.start_char,
+                "char_end": chunk.end_char,
                 "start_line": chunk.start_line,
                 "end_line": chunk.end_line,
-                "text": chunk.text,
+                "file_hash": content_hash,
                 "embedding": embeddings[idx],
+                "embedding_model": embed_model,
+                "embedding_dim": embedding_dim_used or len(embeddings[idx]),
             })
 
         indexed_files += 1
         chunks_written += len(chunk_objs)
 
     # Handle removed files
-    current_rel_paths = {p.relative_to(abs_dir).as_posix() for p in candidates}
     previous_rel_paths = set(prev_by_path.keys())
     removed_paths = previous_rel_paths - current_rel_paths
     removed_files = len(removed_paths)
 
-    # Filter out removed docs from reused chunks/manifest
     if removed_paths:
-        new_manifest_rows = [row for row in new_manifest_rows if row["rel_path"] not in removed_paths]
-        new_chunk_rows = [row for row in new_chunk_rows if row["rel_path"] not in removed_paths]
+        for rel_path in removed_paths:
+            prev = prev_by_path[rel_path]
+            db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
 
-    manifest_columns = ["doc_id", "rel_path", "abs_path", "mtime", "size", "chunk_count", "content_hash"]
-    chunk_columns = [
-        "rag_id", "doc_id", "chunk_id", "rel_path",
-        "start_char", "end_char", "start_line", "end_line",
-        "text", "embedding"
-    ]
+    # Batch insert new data
+    if chunks_to_insert:
+        db.insert_rows('rag_chunks', chunks_to_insert)
 
-    manifest_df = pd.DataFrame(new_manifest_rows, columns=manifest_columns)
-    chunks_df = pd.DataFrame(new_chunk_rows, columns=chunk_columns)
+    if manifests_to_insert:
+        db.insert_rows('rag_manifests', manifests_to_insert)
 
-    # Save Parquet
-    manifest_df.to_parquet(manifest_path, index=False)
-    chunks_df.to_parquet(chunks_path, index=False)
+    # Get final stats
+    total_chunks_result = db.query(f"SELECT count() as cnt FROM rag_chunks WHERE rag_id = '{rag_id}'")
+    total_chunks = total_chunks_result[0]['cnt'] if total_chunks_result else 0
 
-    # Clear store cache so subsequent searches use fresh data
-    from .store import clear_cache
-    clear_cache()
+    total_docs_result = db.query(f"SELECT count() as cnt FROM rag_manifests WHERE rag_id = '{rag_id}'")
+    total_docs = total_docs_result[0]['cnt'] if total_docs_result else 0
 
-    # Stats and meta
     stats = {
         "indexed_files": indexed_files,
         "skipped_files": skipped_files,
         "removed_files": removed_files,
         "chunks_written": chunks_written,
         "chunks_reused": chunks_reused,
-        "total_files": len(candidates),
-        "total_chunks": len(chunks_df),
+        "total_files": total_docs,
+        "total_chunks": total_chunks,
     }
-
-    meta = {
-        "rag_id": rag_id,
-        "directory": abs_dir,
-        "recursive": rag_config.recursive,
-        "include": include,
-        "exclude": exclude,
-        "chunk_chars": chunk_chars,
-        "chunk_overlap": chunk_overlap,
-        "embed_model": embed_model,
-        "embedding_dim": embedding_dim_used,
-        "manifest_path": manifest_path,
-        "chunks_path": chunks_path,
-        "created_at": existing_meta.get("created_at") if existing_meta else time.time(),
-        "updated_at": time.time(),
-        "stats": stats,
-    }
-
-    with open(meta_path, "w") as f:
-        json.dump(meta, f, indent=2)
 
     if indexed_files == 0 and removed_files == 0:
         console.print(f"[green]✓ RAG index up-to-date[/green] (rag_id={rag_id}, model={embed_model})")
     else:
         console.print(
             f"[green]✓ RAG index refreshed[/green] (rag_id={rag_id}, model={embed_model}) "
-            f"[dim](indexed: {indexed_files}, reused: {chunks_reused}, removed: {removed_files}, chunks: {meta['stats']['total_chunks']})[/dim]"
+            f"[dim](indexed: {indexed_files}, reused: {chunks_reused}, removed: {removed_files}, chunks: {total_chunks})[/dim]"
         )
 
     return RagContext(
         rag_id=rag_id,
         directory=abs_dir,
-        manifest_path=manifest_path,
-        chunks_path=chunks_path,
-        meta_path=meta_path,
         embed_model=embed_model,
+        embedding_dim=embedding_dim_used or 0,
         stats=stats,
         # Session context for logging (so query embeddings get tracked)
         session_id=session_id,
@@ -392,3 +395,31 @@ def ensure_rag_index(
         trace_id=trace_id,
         parent_id=parent_id,
     )
+
+
+def delete_rag_index(rag_id: str):
+    """Delete all data for a RAG index."""
+    from ..db_adapter import get_db
+
+    db = get_db()
+    db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}'")
+    db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}'")
+    console.print(f"[yellow]Deleted RAG index: {rag_id}[/yellow]")
+
+
+def list_rag_indexes() -> List[Dict[str, Any]]:
+    """List all RAG indexes in ClickHouse."""
+    from ..db_adapter import get_db
+
+    db = get_db()
+    return db.query("""
+        SELECT
+            rag_id,
+            count(DISTINCT doc_id) as doc_count,
+            count() as chunk_count,
+            any(embedding_model) as embed_model,
+            min(created_at) as created_at
+        FROM rag_chunks
+        GROUP BY rag_id
+        ORDER BY created_at DESC
+    """)

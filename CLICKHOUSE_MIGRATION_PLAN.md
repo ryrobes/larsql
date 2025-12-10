@@ -1585,7 +1585,7 @@ def list_sources(rag_id: str) -> List[Dict]:
 
 ### 4.4 UI Backend Changes
 
-#### `extras/ui/backend/app.py` - MAJOR REWRITE
+#### `dashboard/backend/app.py` - MAJOR REWRITE
 
 **Remove:**
 - All DuckDB imports and connections
@@ -1672,7 +1672,7 @@ def get_message_flow(session_id):
     return jsonify(structure_message_flow(messages))
 ```
 
-#### `extras/ui/backend/live_store.py` - DELETE
+#### `dashboard/backend/live_store.py` - DELETE
 
 No longer needed. ClickHouse queries are fast enough for real-time data.
 SSE events can query ClickHouse directly on each event.
@@ -1686,7 +1686,7 @@ windlass/windlass/
 ├── db_adapter.py        # Replace with new single-adapter version
 └── (parts of unified_logs.py - Parquet code)
 
-extras/ui/backend/
+dashboard/backend/
 ├── live_store.py        # DELETE entirely
 
 # Dependencies to remove from requirements.txt:
@@ -1877,7 +1877,7 @@ The LiveStore was needed because Parquet writes had a 10-second buffer lag.
 With direct ClickHouse INSERTs (even batched), data is queryable immediately.
 
 ```python
-# DELETE: extras/ui/backend/live_store.py (entire file)
+# DELETE: dashboard/backend/live_store.py (entire file)
 
 # REMOVE from app.py:
 # - from live_store import LiveStore
@@ -2008,7 +2008,7 @@ services:
         hard: 262144
 
   windlass-ui:
-    build: ./extras/ui
+    build: ./dashboard
     ports:
       - "5001:5001"
     environment:

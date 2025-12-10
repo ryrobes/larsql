@@ -1896,7 +1896,7 @@ function TimeoutWarning({ timeout }) {
 ## Part 5: API Endpoints
 
 ```python
-# extras/ui/backend/checkpoint_api.py
+# dashboard/backend/checkpoint_api.py
 
 from flask import Blueprint, request, jsonify
 from windlass.checkpoints import CheckpointManager

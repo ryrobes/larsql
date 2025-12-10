@@ -1,23 +1,45 @@
+"""
+RAG Context Management - Thread-local and global registry for RAG indexes.
+
+In the ClickHouse implementation, RAG data is stored in tables (rag_chunks, rag_manifests).
+The context primarily tracks the rag_id and session info for queries.
+"""
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
+
 
 @dataclass
 class RagContext:
-    """Runtime RAG context for the current phase."""
+    """
+    Runtime RAG context for the current phase.
+
+    In the ClickHouse implementation, all data is in tables.
+    This context tracks:
+    - rag_id: The unique identifier for this RAG index
+    - directory: Original source directory (for file path display)
+    - embed_model: Embedding model used (for query consistency)
+    - stats: Index statistics
+    - Session context: For logging queries
+    """
     rag_id: str
     directory: str
-    manifest_path: str
-    chunks_path: str
-    meta_path: str
     embed_model: str
-    stats: Dict[str, Any]
+    embedding_dim: int = 0
+    stats: Dict[str, Any] = field(default_factory=dict)
+
     # Session context for logging (populated when context is created)
     session_id: Optional[str] = None
     cascade_id: Optional[str] = None
     phase_name: Optional[str] = None
     trace_id: Optional[str] = None
     parent_id: Optional[str] = None
+
+    # Deprecated file paths - kept for backward compatibility during migration
+    # These are no longer used in the ClickHouse implementation
+    manifest_path: Optional[str] = None
+    chunks_path: Optional[str] = None
+    meta_path: Optional[str] = None
 
 
 # Thread-local storage for "current" RAG context (what rag_search uses)

@@ -81,7 +81,7 @@ WHERE session_id = ? AND node_type = 'error'
 ## Testing
 
 ```bash
-cd extras/ui/backend
+cd dashboard/backend
 python3 << 'EOF'
 from app import get_db_connection
 conn = get_db_connection()

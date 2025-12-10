@@ -53,15 +53,15 @@ class Agent:
 
         # DEBUG: Log message structure being sent to API
         import json
-        print(f"\n[DEBUG] Agent.run() called - building {len(messages)} messages:")
-        for i, msg in enumerate(messages):
-            role = msg.get("role", "unknown")
-            content_preview = str(msg.get("content", ""))[:80] if msg.get("content") else "(empty)"
-            has_tools = "tool_calls" in msg
-            has_tool_id = "tool_call_id" in msg
-            has_extra = any(k not in {'role', 'content', 'tool_calls', 'tool_call_id', 'name'} for k in msg.keys())
-            print(f"  [{i}] {role:12s} | Tools:{has_tools} | ToolID:{has_tool_id} | Extra:{has_extra} | {content_preview}")
-        print()
+        #print(f"\n[DEBUG] Agent.run() called - building {len(messages)} messages:")
+        # for i, msg in enumerate(messages):
+        #     role = msg.get("role", "unknown")
+        #     content_preview = str(msg.get("content", ""))[:80] if msg.get("content") else "(empty)"
+        #     has_tools = "tool_calls" in msg
+        #     has_tool_id = "tool_call_id" in msg
+        #     has_extra = any(k not in {'role', 'content', 'tool_calls', 'tool_call_id', 'name'} for k in msg.keys())
+        #     print(f"  [{i}] {role:12s} | Tools:{has_tools} | ToolID:{has_tool_id} | Extra:{has_extra} | {content_preview}")
+        # print()
         
         # Litellm call
         args = {
@@ -122,15 +122,15 @@ class Agent:
         original_count = len(messages)
         messages = sanitized_messages
 
-        print(f"[DEBUG] After sanitization: {len(messages)} messages (removed {original_count - len(messages)} empty/invalid messages)")
-        print(f"[DEBUG] Final message list being sent to LLM API:")
-        for i, msg in enumerate(messages):
-            role = msg.get("role", "unknown")
-            content_preview = str(msg.get("content", ""))[:60] if msg.get("content") else "(no content)"
-            has_tools = "tool_calls" in msg
-            has_tool_id = "tool_call_id" in msg
-            print(f"  [{i}] {role:12s} | tools:{has_tools} | tool_id:{has_tool_id} | {content_preview}")
-        print()
+        # print(f"[DEBUG] After sanitization: {len(messages)} messages (removed {original_count - len(messages)} empty/invalid messages)")
+        # print(f"[DEBUG] Final message list being sent to LLM API:")
+        # for i, msg in enumerate(messages):
+        #     role = msg.get("role", "unknown")
+        #     content_preview = str(msg.get("content", ""))[:60] if msg.get("content") else "(no content)"
+        #     has_tools = "tool_calls" in msg
+        #     has_tool_id = "tool_call_id" in msg
+        #     print(f"  [{i}] {role:12s} | tools:{has_tools} | tool_id:{has_tool_id} | {content_preview}")
+        # print()
 
         # Save full request for logging
         full_request = {

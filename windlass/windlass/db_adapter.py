@@ -1,195 +1,47 @@
 """
-Database adapter layer for Windlass logging queries.
+Database adapter layer for Windlass - Pure ClickHouse Implementation.
 
-Supports both:
-- chDB (embedded): Reads parquet files directly - perfect for development
-- ClickHouse server: Production-ready OLAP database
+This module provides a single ClickHouseAdapter that handles all database operations.
+No more dual-mode (chDB/ClickHouse) - we now use ClickHouse server exclusively.
 
-The adapter provides a consistent interface regardless of backend,
-making it trivial to upgrade from embedded chDB to a full ClickHouse server.
+Key features:
+- Singleton pattern for connection reuse
+- Batch INSERT for efficient writes
+- ALTER TABLE UPDATE for cost tracking and winner flagging
+- Native vector search with cosineDistance()
+- Auto-create database and tables on startup
 """
-from abc import ABC, abstractmethod
+import json
+import threading
+from typing import Any, Dict, List, Optional, Union
 import pandas as pd
-from typing import Optional, Any
-import re
 
 
-class DatabaseAdapter(ABC):
-    """Abstract base class for database adapters."""
-
-    @abstractmethod
-    def query(self, sql: str, output_format: str = "dataframe") -> Any:
-        """
-        Execute a SELECT query and return results.
-
-        Args:
-            sql: SQL query string
-            output_format: Output format - "dataframe", "dict", "arrow"
-
-        Returns:
-            Query results in requested format
-        """
-        pass
-
-    @abstractmethod
-    def execute(self, sql: str):
-        """
-        Execute a non-SELECT query (CREATE, INSERT, ALTER, etc.).
-
-        Args:
-            sql: SQL statement
-        """
-        pass
-
-
-class ChDBAdapter(DatabaseAdapter):
+class ClickHouseAdapter:
     """
-    Embedded chDB adapter - reads parquet files directly.
+    Pure ClickHouse adapter - single implementation for all database operations.
 
-    This is perfect for development and single-machine deployments.
-    No server process needed, just point at parquet files.
+    This adapter:
+    - Connects to ClickHouse server (no embedded chDB, no Parquet files)
+    - Provides batch INSERT for efficient writes
+    - Supports ALTER TABLE UPDATE for cost tracking and winner flagging
+    - Implements native vector search with cosineDistance()
+    - Auto-creates database and tables on first use
+    - Thread-safe: Uses locks for concurrent access from main thread + background workers
     """
 
-    def __init__(self, data_dir: str, use_shared_session: bool = False):
-        """
-        Initialize chDB adapter.
+    _instance = None
+    _lock = threading.Lock()
+    _initialized = False
+    _query_lock = threading.Lock()  # Serialize all queries to avoid concurrent connection issues
 
-        Args:
-            data_dir: Directory containing parquet files
-            use_shared_session: If True, use a persistent session (not safe for multi-worker).
-                               If False, create new session per query (safe for gunicorn).
-        """
-        self.data_dir = data_dir
-        self.use_shared_session = use_shared_session
-        # Import here to avoid hard dependency if using ClickHouse server
-        try:
-            import chdb
-            import chdb.session
-            self.chdb = chdb
-            if use_shared_session:
-                # Create a session for consistent state across queries
-                # WARNING: Not safe for multi-worker/multi-process deployments
-                self.session = chdb.session.Session()
-            else:
-                self.session = None
-        except ImportError:
-            raise ImportError(
-                "chdb is not installed. Install it with: pip install chdb"
-            )
-
-    def query(self, sql: str, output_format: str = "dataframe") -> Any:
-        """
-        Execute query and return results.
-
-        Args:
-            sql: SQL query (will be adapted from DuckDB patterns if needed)
-            output_format: "dataframe" (default), "dict", "arrow"
-
-        Returns:
-            Query results in requested format
-        """
-        # Adapt SQL from DuckDB patterns to chDB
-        sql = self._adapt_sql(sql)
-
-        # Map output format to chDB format
-        format_map = {
-            "dataframe": "DataFrame",
-            "dict": "JSON",
-            "arrow": "Arrow"
-        }
-        chdb_format = format_map.get(output_format, "DataFrame")
-
-        try:
-            if self.session:
-                # Use persistent session (faster but not multi-worker safe)
-                result = self.session.query(sql, chdb_format)
-            else:
-                # Create new session per query (slower but multi-worker safe)
-                import chdb.session
-                session = chdb.session.Session()
-                result = session.query(sql, chdb_format)
-            return result
-        except Exception as e:
-            # Add more context to errors
-            print(f"[ChDB Error] Query failed: {e}")
-            print(f"[ChDB Error] SQL: {sql}")
-            raise
-
-    def execute(self, sql: str):
-        """Execute non-SELECT query."""
-        sql = self._adapt_sql(sql)
-        self.session.query(sql)
-
-    def _adapt_sql(self, sql: str) -> str:
-        """
-        Adapt SQL from DuckDB patterns to chDB/ClickHouse syntax.
-
-        Converts common DuckDB patterns:
-        - FROM 'path/*.parquet' → FROM file('path/*.parquet', Parquet)
-        - FROM read_parquet('path') → FROM file('path', Parquet)
-        - DuckDB time functions → ClickHouse equivalents
-
-        Args:
-            sql: Original SQL (potentially with DuckDB syntax)
-
-        Returns:
-            Adapted SQL for chDB/ClickHouse
-        """
-        # Pattern 1: FROM 'path/*.parquet' or FROM "path/*.parquet"
-        # Replace with: FROM file('path/*.parquet', Parquet)
-        pattern1 = r"FROM\s+['\"]([^'\"]+\.parquet)['\"]"
-
-        def replacer1(match):
-            path = match.group(1)
-            return f"FROM file('{path}', Parquet)"
-
-        sql = re.sub(pattern1, replacer1, sql, flags=re.IGNORECASE)
-
-        # Pattern 2: FROM read_parquet('path/**/*.parquet')
-        # Replace with: FROM file('path/**/*.parquet', Parquet)
-        pattern2 = r"FROM\s+read_parquet\s*\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*[^)]+)?\s*\)"
-
-        def replacer2(match):
-            path = match.group(1)
-            return f"FROM file('{path}', Parquet)"
-
-        sql = re.sub(pattern2, replacer2, sql, flags=re.IGNORECASE)
-
-        # DuckDB time functions → ClickHouse equivalents
-        time_conversions = {
-            # DATE_TRUNC patterns
-            r"DATE_TRUNC\s*\(\s*'day'\s*,\s*CAST\s*\(\s*(\w+)\s+AS\s+TIMESTAMP\s*\)\s*\)":
-                r"toStartOfDay(toDateTime(\1))",
-            r"DATE_TRUNC\s*\(\s*'week'\s*,\s*CAST\s*\(\s*(\w+)\s+AS\s+TIMESTAMP\s*\)\s*\)":
-                r"toStartOfWeek(toDateTime(\1))",
-            r"DATE_TRUNC\s*\(\s*'month'\s*,\s*CAST\s*\(\s*(\w+)\s+AS\s+TIMESTAMP\s*\)\s*\)":
-                r"toStartOfMonth(toDateTime(\1))",
-            r"DATE_TRUNC\s*\(\s*'hour'\s*,\s*CAST\s*\(\s*(\w+)\s+AS\s+TIMESTAMP\s*\)\s*\)":
-                r"toStartOfHour(toDateTime(\1))",
-
-            # strftime patterns
-            r"strftime\s*\(\s*'%Y-%m-%d %H:00'\s*,\s*(\w+)\s*\)":
-                r"formatDateTime(toDateTime(\1), '%Y-%m-%d %H:00')",
-            r"strftime\s*\(\s*'%Y-%m-%d'\s*,\s*(\w+)\s*\)":
-                r"formatDateTime(toDateTime(\1), '%Y-%m-%d')",
-        }
-
-        for pattern, replacement in time_conversions.items():
-            sql = re.sub(pattern, replacement, sql, flags=re.IGNORECASE)
-
-        return sql
-
-
-class ClickHouseServerAdapter(DatabaseAdapter):
-    """
-    ClickHouse server adapter for production deployments.
-
-    Use this when you've outgrown embedded chDB and need:
-    - Multi-user access
-    - Horizontal scaling
-    - Replication and high availability
-    - Advanced monitoring
-    """
+    def __new__(cls, *args, **kwargs):
+        # Singleton pattern for connection reuse
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(
         self,
@@ -201,86 +53,463 @@ class ClickHouseServerAdapter(DatabaseAdapter):
         auto_create: bool = True
     ):
         """
-        Initialize ClickHouse server connection.
+        Initialize ClickHouse adapter (singleton - only runs once).
 
         Args:
-            host: Server hostname
+            host: ClickHouse server hostname
             port: Native protocol port (9000)
             database: Database name
             user: Username
             password: Password
-            auto_create: Automatically create database if it doesn't exist (default: True)
+            auto_create: Automatically create database and tables if they don't exist
         """
+        # Skip if already initialized (singleton)
+        if ClickHouseAdapter._initialized:
+            return
+
+        self.host = host
+        self.port = port
         self.database = database
+        self.user = user
+        self.password = password
 
         try:
             from clickhouse_driver import Client
-
-            # First connect without database to check/create it
-            if auto_create:
-                system_client = Client(
-                    host=host,
-                    port=port,
-                    user=user,
-                    password=password
-                )
-
-                try:
-                    # Check if database exists
-                    result = system_client.execute(
-                        f"SELECT 1 FROM system.databases WHERE name = '{database}'"
-                    )
-
-                    if not result:
-                        # Database doesn't exist - create it
-                        print(f"[Windlass] Creating database '{database}'...")
-                        system_client.execute(f"CREATE DATABASE {database}")
-                        print(f"[Windlass] ✓ Database '{database}' created")
-                except Exception as e:
-                    print(f"[Windlass] Warning: Could not check/create database: {e}")
-
-            # Now connect to the database
-            self.client = Client(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password
-            )
+            self._Client = Client
         except ImportError:
             raise ImportError(
                 "clickhouse-driver is not installed. "
                 "Install it with: pip install clickhouse-driver"
             )
 
-    def query(self, sql: str, output_format: str = "dataframe") -> Any:
+        # Create system client first (without database) to ensure database exists
+        if auto_create:
+            self._ensure_database()
+
+        # Now connect to the database
+        self.client = self._Client(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            settings={
+                'use_numpy': True,
+                'max_block_size': 100000,
+            }
+        )
+
+        # Auto-create tables
+        if auto_create:
+            self._ensure_tables()
+
+        ClickHouseAdapter._initialized = True
+
+    def _ensure_database(self):
+        """Ensure the database exists, creating it if necessary."""
+        system_client = self._Client(
+            host=self.host,
+            port=self.port,
+            user=self.user,
+            password=self.password
+        )
+
+        try:
+            result = system_client.execute(
+                f"SELECT 1 FROM system.databases WHERE name = '{self.database}'"
+            )
+            if not result:
+                print(f"[Windlass] Creating database '{self.database}'...")
+                system_client.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
+                print(f"[Windlass] Database '{self.database}' created")
+        except Exception as e:
+            print(f"[Windlass] Warning: Could not check/create database: {e}")
+
+    def _ensure_tables(self):
+        """Ensure all required tables exist."""
+        from .schema import get_all_schemas
+
+        schemas = get_all_schemas()
+        for table_name, ddl in schemas.items():
+            try:
+                # Check if table exists
+                result = self.client.execute(
+                    f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
+                )
+                if not result:
+                    print(f"[Windlass] Creating table '{table_name}'...")
+                    self.client.execute(ddl)
+                    print(f"[Windlass] Table '{table_name}' created")
+            except Exception as e:
+                print(f"[Windlass] Warning: Could not ensure table '{table_name}': {e}")
+
+    # =========================================================================
+    # Query Operations
+    # =========================================================================
+
+    def query(self, sql: str, params: Dict = None, output_format: str = "dict") -> Any:
         """
-        Execute query on ClickHouse server.
+        Execute a SELECT query and return results.
 
         Args:
-            sql: SQL query
-            output_format: "dataframe", "dict", "arrow"
+            sql: SQL query string
+            params: Optional query parameters (for parameterized queries)
+            output_format: "dict" (list of dicts), "dataframe", or "raw" (tuples)
 
         Returns:
             Query results in requested format
         """
-        if output_format == "dataframe":
-            return self.client.query_dataframe(sql)
-        elif output_format == "dict":
-            result = self.client.execute(sql, with_column_types=True)
-            # Convert to list of dicts
-            rows, columns = result
-            column_names = [col[0] for col in columns]
-            return [dict(zip(column_names, row)) for row in rows]
-        elif output_format == "arrow":
-            # ClickHouse can export to Arrow format
-            return self.client.query_arrow(sql)
-        else:
-            raise ValueError(f"Unknown output format: {output_format}")
+        with ClickHouseAdapter._query_lock:
+            try:
+                if output_format == "dataframe":
+                    return self.client.query_dataframe(sql, params or {})
+                elif output_format == "dict":
+                    # Disable numpy for dict output to get native Python types
+                    result = self.client.execute(sql, params or {}, with_column_types=True, settings={'use_numpy': False})
+                    rows, columns = result
+                    col_names = [c[0] for c in columns]
+                    return [dict(zip(col_names, row)) for row in rows]
+                else:  # raw
+                    return self.client.execute(sql, params or {})
+            except Exception as e:
+                print(f"[ClickHouse Error] Query failed: {e}")
+                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
+                raise
 
-    def execute(self, sql: str):
-        """Execute non-SELECT query."""
-        self.client.execute(sql)
+    def query_df(self, sql: str, params: Dict = None) -> pd.DataFrame:
+        """
+        Execute query and return pandas DataFrame.
+
+        Convenience wrapper for query(..., output_format="dataframe").
+        """
+        return self.query(sql, params, output_format="dataframe")
+
+    def execute(self, sql: str, params: Dict = None):
+        """
+        Execute a non-SELECT statement (CREATE, INSERT, ALTER, etc.).
+
+        Args:
+            sql: SQL statement
+            params: Optional parameters
+        """
+        with ClickHouseAdapter._query_lock:
+            try:
+                self.client.execute(sql, params or {})
+            except Exception as e:
+                print(f"[ClickHouse Error] Execute failed: {e}")
+                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
+                raise
+
+    # =========================================================================
+    # Insert Operations
+    # =========================================================================
+
+    def insert_rows(self, table: str, rows: List[Dict], columns: List[str] = None):
+        """
+        Batch INSERT rows into a table.
+
+        Args:
+            table: Table name
+            rows: List of dicts to insert
+            columns: Optional column list (defaults to keys of first row)
+        """
+        if not rows:
+            return
+
+        if columns is None:
+            columns = list(rows[0].keys())
+
+        def convert_value(val, col):
+            """Convert value to ClickHouse-compatible type."""
+            # Handle None
+            if val is None:
+                # For non-nullable String columns, convert None to empty string
+                # ClickHouse's clickhouse-driver can't serialize None for String type
+                if col in ('session_id', 'trace_id', 'timestamp_iso'):
+                    return ''
+                return val
+
+            # Handle numpy types (convert to Python native)
+            try:
+                import numpy as np
+                # Check if it's any numpy integer type
+                if isinstance(val, np.integer):
+                    return int(val)
+                # Check if it's any numpy floating type
+                if isinstance(val, np.floating):
+                    return float(val)
+                # Check if it's numpy boolean
+                if isinstance(val, (np.bool_, bool)) and type(val).__module__ == 'numpy':
+                    return bool(val)
+                # Check if it's numpy array
+                if isinstance(val, np.ndarray):
+                    return val.tolist()
+                # Check if it's numpy string
+                if isinstance(val, np.str_) or (hasattr(val, 'dtype') and val.dtype.kind in ('U', 'S')):
+                    return str(val)
+            except (ImportError, AttributeError):
+                pass
+
+            # Handle JSON columns
+            if isinstance(val, (list, dict)) and col.endswith('_json'):
+                if not isinstance(val, str):
+                    return json.dumps(val, default=str, ensure_ascii=False)
+
+            # Handle array columns (context_hashes, etc.)
+            if isinstance(val, list):
+                return [str(v) if not isinstance(v, (int, float, bool, str, type(None))) else v for v in val]
+
+            return val
+
+        # Convert rows to list of tuples
+        values = []
+        for row in rows:
+            row_values = []
+            for col in columns:
+                val = row.get(col)
+                val = convert_value(val, col)
+                row_values.append(val)
+            values.append(tuple(row_values))
+
+        cols_str = ', '.join(columns)
+        with ClickHouseAdapter._query_lock:
+            try:
+                # Disable numpy processing in clickhouse_driver
+                self.client.execute(
+                    f"INSERT INTO {table} ({cols_str}) VALUES",
+                    values,
+                    settings={'use_numpy': False}
+                )
+            except Exception as e:
+                print(f"[ClickHouse Error] Insert failed: {e}")
+                print(f"[ClickHouse Error] Table: {table}, Columns: {columns}")
+                raise
+
+    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] = None):
+        """
+        Insert a pandas DataFrame into a table.
+
+        Args:
+            table: Table name
+            df: DataFrame to insert
+            columns: Optional column subset
+        """
+        if df.empty:
+            return
+
+        if columns is None:
+            columns = list(df.columns)
+
+        # Use clickhouse-driver's native DataFrame insert
+        cols_str = ', '.join(columns)
+        with ClickHouseAdapter._query_lock:
+            try:
+                self.client.insert_dataframe(
+                    f"INSERT INTO {table} ({cols_str}) VALUES",
+                    df[columns],
+                    settings={'use_numpy': True}
+                )
+            except Exception as e:
+                print(f"[ClickHouse Error] Insert DataFrame failed: {e}")
+                print(f"[ClickHouse Error] Table: {table}")
+                raise
+
+    # =========================================================================
+    # Update Operations (Mutations)
+    # =========================================================================
+    # ClickHouse supports ALTER TABLE UPDATE for in-place mutations.
+    # These are efficient for our use case: one update per row, shortly after insert.
+
+    def update_row(
+        self,
+        table: str,
+        updates: Dict[str, Any],
+        where: str,
+        sync: bool = True
+    ):
+        """
+        Update rows matching condition using ALTER TABLE UPDATE.
+
+        Args:
+            table: Table name
+            updates: Dict of {column: value} to update
+            where: WHERE clause (without WHERE keyword)
+            sync: If True, wait for mutation to complete (mutations_sync=1)
+        """
+        if not updates:
+            return
+
+        # Build SET clause with proper value formatting
+        set_parts = []
+        for col, val in updates.items():
+            if val is None:
+                set_parts.append(f"{col} = NULL")
+            elif isinstance(val, bool):
+                set_parts.append(f"{col} = {str(val).lower()}")
+            elif isinstance(val, (int, float)):
+                set_parts.append(f"{col} = {val}")
+            elif isinstance(val, str):
+                # Escape single quotes
+                escaped = val.replace("'", "''")
+                set_parts.append(f"{col} = '{escaped}'")
+            elif isinstance(val, (list, dict)):
+                json_str = json.dumps(val, default=str, ensure_ascii=False).replace("'", "''")
+                set_parts.append(f"{col} = '{json_str}'")
+            else:
+                set_parts.append(f"{col} = '{str(val)}'")
+
+        set_clause = ', '.join(set_parts)
+        settings = "SETTINGS mutations_sync = 1" if sync else ""
+
+        sql = f"""
+            ALTER TABLE {table}
+            UPDATE {set_clause}
+            WHERE {where}
+            {settings}
+        """
+        with ClickHouseAdapter._query_lock:
+            try:
+                self.client.execute(sql)
+            except Exception as e:
+                print(f"[ClickHouse Error] Update failed: {e}")
+                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
+                raise
+
+    def batch_update_costs(self, table: str, updates: List[Dict]):
+        """
+        Batch update cost data for multiple rows by trace_id.
+
+        This is more efficient than individual updates - ClickHouse processes
+        as a single mutation operation.
+
+        Args:
+            updates: List of dicts with keys: trace_id, cost, tokens_in, tokens_out, provider, model
+        """
+        if not updates:
+            return
+
+        # Build individual UPDATE statements for each trace_id
+        # ClickHouse doesn't have CASE/WHEN in UPDATE, so we batch by grouping
+        for update in updates:
+            trace_id = update.get('trace_id')
+            if not trace_id:
+                continue
+
+            update_data = {}
+            if 'cost' in update and update['cost'] is not None:
+                update_data['cost'] = update['cost']
+            if 'tokens_in' in update and update['tokens_in'] is not None:
+                update_data['tokens_in'] = update['tokens_in']
+            if 'tokens_out' in update and update['tokens_out'] is not None:
+                update_data['tokens_out'] = update['tokens_out']
+            if 'provider' in update and update['provider']:
+                update_data['provider'] = update['provider']
+            if 'model' in update and update['model']:
+                update_data['model'] = update['model']
+
+            # Calculate total_tokens (only if we have at least one token count)
+            tokens_in_val = update_data.get('tokens_in', 0) or 0
+            tokens_out_val = update_data.get('tokens_out', 0) or 0
+            if 'tokens_in' in update_data or 'tokens_out' in update_data:
+                update_data['total_tokens'] = tokens_in_val + tokens_out_val
+
+            if update_data:
+                self.update_row(
+                    table,
+                    update_data,
+                    f"trace_id = '{trace_id}'",
+                    sync=False  # Don't wait for each individual update
+                )
+
+    def mark_sounding_winner(
+        self,
+        table: str,
+        session_id: str,
+        phase_name: str,
+        winning_index: int
+    ):
+        """
+        Mark all rows in a sounding as winner/loser.
+
+        Updates is_winner for all rows matching the session/phase/sounding.
+
+        Args:
+            table: Table name (usually unified_logs)
+            session_id: Session ID
+            phase_name: Phase name
+            winning_index: The winning sounding index
+        """
+        # Mark winner
+        self.update_row(
+            table,
+            {'is_winner': True},
+            f"session_id = '{session_id}' AND phase_name = '{phase_name}' AND sounding_index = {winning_index}",
+            sync=True
+        )
+
+        # Mark losers (all other sounding indexes in same phase)
+        sql = f"""
+            ALTER TABLE {table}
+            UPDATE is_winner = false
+            WHERE session_id = '{session_id}'
+              AND phase_name = '{phase_name}'
+              AND sounding_index IS NOT NULL
+              AND sounding_index != {winning_index}
+            SETTINGS mutations_sync = 1
+        """
+        with ClickHouseAdapter._query_lock:
+            try:
+                self.client.execute(sql)
+            except Exception as e:
+                print(f"[ClickHouse Error] Mark losers failed: {e}")
+                raise
+
+    # =========================================================================
+    # Vector Search Operations
+    # =========================================================================
+
+    def vector_search(
+        self,
+        table: str,
+        embedding_col: str,
+        query_vector: List[float],
+        limit: int = 10,
+        where: str = None,
+        select_cols: str = "*"
+    ) -> List[Dict]:
+        """
+        Semantic search using ClickHouse's cosineDistance function.
+
+        Args:
+            table: Table name
+            embedding_col: Column containing embeddings (Array(Float32))
+            query_vector: Query embedding vector
+            limit: Max results to return
+            where: Optional WHERE clause filter
+            select_cols: Columns to select (default: *)
+
+        Returns:
+            List of dicts with results, sorted by similarity (ascending distance)
+        """
+        where_clause = f"WHERE {where}" if where else ""
+
+        # Convert query vector to ClickHouse array format
+        vec_str = f"[{','.join(str(v) for v in query_vector)}]"
+
+        sql = f"""
+            SELECT {select_cols},
+                   cosineDistance({embedding_col}, {vec_str}) AS distance,
+                   1 - cosineDistance({embedding_col}, {vec_str}) AS similarity
+            FROM {table}
+            {where_clause}
+            ORDER BY distance ASC
+            LIMIT {limit}
+        """
+        return self.query(sql, output_format="dict")
+
+    # =========================================================================
+    # Table Management
+    # =========================================================================
 
     def ensure_table_exists(self, table_name: str, ddl: str):
         """
@@ -290,37 +519,49 @@ class ClickHouseServerAdapter(DatabaseAdapter):
             table_name: Name of the table to check
             ddl: CREATE TABLE statement (should include IF NOT EXISTS)
         """
-        try:
-            # Try a simple query to check if table exists
-            self.client.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
-        except Exception:
-            # Table doesn't exist - create it
-            print(f"[Windlass] Creating table '{table_name}'...")
-            self.execute(ddl)
-            print(f"[Windlass] ✓ Table '{table_name}' created")
+        with ClickHouseAdapter._query_lock:
+            try:
+                result = self.client.execute(
+                    f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
+                )
+                if not result:
+                    print(f"[Windlass] Creating table '{table_name}'...")
+                    self.client.execute(ddl)  # Direct execute to avoid nested lock
+                    print(f"[Windlass] Table '{table_name}' created")
+            except Exception as e:
+                print(f"[Windlass] Warning: Could not ensure table '{table_name}': {e}")
+
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists."""
+        with ClickHouseAdapter._query_lock:
+            result = self.client.execute(
+                f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
+            )
+            return len(result) > 0
+
+    def get_table_row_count(self, table_name: str) -> int:
+        """Get approximate row count for a table."""
+        with ClickHouseAdapter._query_lock:
+            result = self.client.execute(f"SELECT count() FROM {table_name}")
+            return result[0][0] if result else 0
 
 
-# Global adapter singleton (to reuse shared sessions)
-_adapter_singleton = None
+# Global adapter singleton
+_adapter_singleton: Optional[ClickHouseAdapter] = None
 
-def get_db_adapter() -> DatabaseAdapter:
+
+def get_db_adapter() -> ClickHouseAdapter:
     """
-    Get the appropriate database adapter based on configuration.
+    Get the ClickHouse database adapter (singleton).
 
     This is the main entry point for all database operations.
-    It checks the config and returns (in order of preference):
-    1. ClickHouseServerAdapter (if configured)
-    2. ChDBAdapter (embedded chDB, if available)
-    3. DuckDBAdapter (fallback, widely available)
-
-    Returns a singleton instance to reuse shared sessions and avoid chdb warnings.
+    Returns a singleton instance to reuse connections.
 
     Returns:
-        DatabaseAdapter instance
+        ClickHouseAdapter instance
     """
     global _adapter_singleton
 
-    # Return cached adapter if available
     if _adapter_singleton is not None:
         return _adapter_singleton
 
@@ -328,20 +569,25 @@ def get_db_adapter() -> DatabaseAdapter:
 
     config = get_config()
 
-    # Check if ClickHouse server is configured
-    if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-        _adapter_singleton = ClickHouseServerAdapter(
-            host=config.clickhouse_host,
-            port=config.clickhouse_port,
-            database=config.clickhouse_database,
-            user=getattr(config, 'clickhouse_user', 'default'),
-            password=getattr(config, 'clickhouse_password', '')
-        )
-        return _adapter_singleton
+    _adapter_singleton = ClickHouseAdapter(
+        host=config.clickhouse_host,
+        port=config.clickhouse_port,
+        database=config.clickhouse_database,
+        user=config.clickhouse_user,
+        password=config.clickhouse_password
+    )
 
-    # Use chDB (embedded ClickHouse)
-    # Check if we should use stateless mode (for multi-worker deployments like gunicorn)
-    import os
-    use_shared_session = os.getenv('WINDLASS_CHDB_SHARED_SESSION', 'false').lower() == 'true'
-    _adapter_singleton = ChDBAdapter(config.data_dir, use_shared_session=use_shared_session)
     return _adapter_singleton
+
+
+def get_db() -> ClickHouseAdapter:
+    """Alias for get_db_adapter() - shorter name for convenience."""
+    return get_db_adapter()
+
+
+def reset_adapter():
+    """Reset the adapter singleton (useful for testing)."""
+    global _adapter_singleton
+    _adapter_singleton = None
+    ClickHouseAdapter._instance = None
+    ClickHouseAdapter._initialized = False

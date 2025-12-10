@@ -1,18 +1,15 @@
 """
-Unified Logging System - Single Mega Table Approach
+Unified Logging System - Pure ClickHouse Implementation
 
-Consolidates logs.py and echoes.py into a single comprehensive logging system
-with per-message granularity and NON-BLOCKING cost tracking.
-
-Messages are buffered with two-stage processing:
-1. Messages with pending cost lookups are held in a separate buffer
-2. A background worker fetches costs after a delay (OpenRouter needs ~3-5s)
-3. Cost data is merged into messages before writing to Parquet
+Writes directly to ClickHouse with immediate INSERTs:
+1. Each log() call INSERTs immediately (no buffering, ~100ms latency)
+2. Background worker UPDATEs cost data after OpenRouter's 3-5s delay
+3. No Parquet files, no chDB, no DuckDB
 
 This ensures:
+- UI sees data instantly (no buffer lag)
 - Cascade execution is never blocked by cost API calls
-- Cost data is still included in the same row as the message
-- Writes happen in batches for efficiency (100 messages OR 10 seconds)
+- Cost data is updated in-place via ALTER TABLE UPDATE
 """
 
 import os
@@ -25,23 +22,15 @@ import threading
 import requests
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
-import pandas as pd
-from .config import get_config
-from .db_adapter import get_db_adapter
 
 
 # ============================================================================
 # Content Identity Functions
 # ============================================================================
-# These enable tracking which messages were in context when a message was sent.
-# Use cases: Gantt charts of context lifespan, cost attribution, context graphs.
 
 def compute_content_hash(role: str, content: Any) -> str:
     """
     Compute deterministic hash for message identity based on role + content.
-
-    Same content = same hash, regardless of when/where it was logged.
-    This enables tracking message identity across context injections.
 
     Args:
         role: Message role (user, assistant, system, tool)
@@ -52,29 +41,22 @@ def compute_content_hash(role: str, content: Any) -> str:
     """
     role_str = role or ""
 
-    # Normalize content to string
     if content is None:
         content_str = ""
     elif isinstance(content, str):
         content_str = content
     elif isinstance(content, (dict, list)):
-        # Sort keys for deterministic hashing
         content_str = json.dumps(content, sort_keys=True, ensure_ascii=False)
     else:
         content_str = str(content)
 
-    # Combine role and content
     raw = f"{role_str}:{content_str}"
-
-    # SHA256 truncated to 16 chars for readability
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
 
 
 def extract_context_hashes(full_request: Optional[Dict]) -> List[str]:
     """
     Extract content hashes from all messages in a full LLM request.
-
-    This captures which messages were in the context when this request was made.
 
     Args:
         full_request: The complete LLM request dict with 'messages' array
@@ -103,9 +85,6 @@ def estimate_tokens(content: Any) -> int:
     """
     Estimate token count for content using chars/4 approximation.
 
-    This is a rough estimate useful for cost attribution before
-    actual token counts are available from the provider.
-
     Args:
         content: Message content (string, dict, list, or None)
 
@@ -122,243 +101,105 @@ def estimate_tokens(content: Any) -> int:
     else:
         char_count = len(str(content))
 
-    # ~4 chars per token is a common approximation
     return max(1, char_count // 4) if char_count > 0 else 0
-
-
-class MegaTableSchema:
-    """
-    Unified schema for all logging data.
-
-    This schema captures everything needed for analytics, debugging, and
-    reconstruction of execution flows.
-    """
-
-    @staticmethod
-    def get_fields():
-        """Return all field names and their types for documentation."""
-        return {
-            # Core identification
-            "message_id": "str (UUID for each message - enables deduplication, direct links)",
-            "timestamp": "float (Unix timestamp in local timezone)",
-            "timestamp_iso": "str (ISO 8601 format for human readability)",
-            "session_id": "str (Cascade session ID)",
-            "trace_id": "str (Unique event ID)",
-            "parent_id": "str (Parent trace ID)",
-            "parent_session_id": "str (Parent session if sub-cascade)",
-            "parent_message_id": "str (Parent calling message trace ID)",
-
-            # Message classification
-            "node_type": "str (message, tool_call, tool_result, agent, user, system, etc.)",
-            "role": "str (user, assistant, tool, system)",
-            "depth": "int (Nesting depth for sub-cascades)",
-
-            # Semantic classification (human-readable roles for debugging)
-            "semantic_actor": "str (WHO is speaking: main_agent, evaluator, validator, quartermaster, human, framework)",
-            "semantic_purpose": "str (WHAT is this for: instructions, task_input, tool_request, tool_response, evaluation_output, etc.)",
-
-            # Execution context - special indexes
-            "sounding_index": "int (Which sounding attempt, 0-indexed, null if N/A)",
-            "is_winner": "bool (True if winning sounding, null if N/A)",
-            "reforge_step": "int (Reforge iteration, 1-indexed, null if N/A)",
-            "winning_sounding_index": "int (For reforge: which initial sounding won and is being refined)",
-            "attempt_number": "int (Retry/validation attempt, null if N/A)",
-            "turn_number": "int (Turn within phase, null if N/A)",
-            "mutation_applied": "str (What mutation/variation was applied to this sounding)",
-
-            # Cascade context
-            "cascade_id": "str (Cascade identifier)",
-            "cascade_file": "str (Full path to cascade JSON)",
-            "cascade_json": "str (JSON: Entire cascade config)",
-            "phase_name": "str (Current phase name)",
-            "phase_json": "str (JSON: Current phase config)",
-
-            # LLM provider data (unwrapped from OpenRouter response)
-            "model": "str (Model name/ID)",
-            "request_id": "str (OpenRouter/provider request ID)",
-            "provider": "str (openrouter, anthropic, openai, etc.)",
-
-            # Performance metrics (blocking - not async!)
-            "duration_ms": "float (Operation duration)",
-            "tokens_in": "int (Input tokens)",
-            "tokens_out": "int (Output tokens)",
-            "total_tokens": "int (tokens_in + tokens_out)",
-            "cost": "float (Dollar cost from provider)",
-
-            # Content (JSON blobs for complete reconstruction)
-            "content_json": "str (JSON: Latest message content only)",
-            "full_request_json": "str (JSON: Complete request with history)",
-            "full_response_json": "str (JSON: Complete response from LLM)",
-            "tool_calls_json": "str (JSON: Array of tool call objects)",
-
-            # Images
-            "images_json": "str (JSON: Array of image file paths)",
-            "has_images": "bool",
-            "has_base64": "bool",
-
-            # Audio
-            "audio_json": "str (JSON: Array of audio file paths)",
-            "has_audio": "bool",
-
-            # Mermaid diagram state
-            "mermaid_content": "str (Mermaid diagram at time of message)",
-
-            # Content identity and context tracking
-            "content_hash": "str (16-char SHA256 hash of role+content for stable identity)",
-            "context_hashes": "list (Array of content_hashes in LLM context when this message was sent)",
-            "estimated_tokens": "int (Estimated token count for cost attribution: chars/4)",
-
-            # Metadata
-            "metadata_json": "str (JSON: Additional context)"
-        }
 
 
 class UnifiedLogger:
     """
-    Single mega-table logger with buffered writes to Parquet files.
+    Direct ClickHouse logger with immediate INSERTs and UPDATE-based cost tracking.
 
     Key features:
-    - Two-stage buffering: pending costs + ready-to-write
-    - NON-BLOCKING cost tracking via background worker
-    - Background worker fetches costs after delay (OpenRouter needs ~3-5s)
-    - Cost data merged into messages before writing
-    - Complete context in every row
-    - Automatic flush on program exit (atexit handler)
-    - Ready for time-based compaction
+    - Immediate INSERT to ClickHouse (no buffering, ~100ms UI latency)
+    - Background worker UPDATEs cost data after OpenRouter delay
+    - Real-time queryable data for snappy UI updates
     """
 
     def __init__(self):
-        # Use "data" directory from config (respects WINDLASS_DATA_DIR env var)
-        config = get_config()
-        self.log_dir = config.data_dir
-        self.config = config
-        os.makedirs(self.log_dir, exist_ok=True)
+        from .config import get_config
 
-        # If using ClickHouse server, ensure database and table exist
-        if config.use_clickhouse_server:
-            self._ensure_clickhouse_setup()
+        self.config = get_config()
 
-        # Main write buffer - messages ready to be written to Parquet or ClickHouse
-        self.buffer = []
-        self.buffer_lock = threading.Lock()
-        self.buffer_limit = 100  # Flush after 100 messages
-        self.flush_interval = 10.0  # Flush every 10 seconds
-        self.last_flush_time = time.time()
-
-        # Pending cost buffer - messages waiting for cost data
+        # Pending cost buffer - trace_ids waiting for cost data
+        # After INSERT, we track which rows need cost updates
         self.pending_cost_buffer = []
         self.pending_lock = threading.Lock()
         self.cost_fetch_delay = 3.0  # Wait 3 seconds before fetching cost
         self.cost_max_wait = 15.0  # Max wait time for cost data
+        self.cost_batch_interval = 5.0  # Batch cost updates every 5 seconds
 
-        # Background worker for cost fetching
+        # Background cost worker (still needed - OpenRouter delays cost 3-5s)
         self._running = True
-        self._cost_worker = threading.Thread(target=self._cost_fetch_worker, daemon=True)
+        self._cost_worker = threading.Thread(target=self._cost_update_worker, daemon=True)
         self._cost_worker.start()
 
-    def _ensure_clickhouse_setup(self):
+    def _cost_update_worker(self):
         """
-        Ensure ClickHouse database and table exist.
-
-        This runs automatically when using ClickHouse server mode.
-        Database and table are created if they don't exist.
-        """
-        from .db_adapter import get_db_adapter
-        from .schema import get_schema
-
-        try:
-            db = get_db_adapter()
-
-            # Database creation is handled by ClickHouseServerAdapter.__init__()
-            # Now ensure the table exists
-            if hasattr(db, 'ensure_table_exists'):
-                ddl = get_schema("unified_logs")
-                db.ensure_table_exists("unified_logs", ddl)
-        except Exception as e:
-            print(f"[Windlass] Warning: Could not ensure ClickHouse setup: {e}")
-            print(f"[Windlass] Continuing with parquet-only mode...")
-
-    def _cost_fetch_worker(self):
-        """
-        Background worker that fetches costs for pending messages.
-
-        This runs in a separate thread and:
+        Background worker that:
         1. Waits for messages to age (3 seconds for OpenRouter to process)
-        2. Fetches cost data from the API with retries on 404
-        3. Merges cost into the message
-        4. Moves completed messages to the main write buffer
+        2. Fetches cost data from the API
+        3. UPDATEs existing rows with cost data
         """
-        config = get_config()
-
         while self._running:
             try:
-                # Check for messages ready to process
-                now = time.time()
-                ready_items = []
+                time.sleep(self.cost_batch_interval)
+
+                # Get items ready for cost fetch (queued > 3 seconds ago)
+                ready = []
                 still_pending = []
+                now = time.time()
 
                 with self.pending_lock:
                     for item in self.pending_cost_buffer:
-                        age = now - item["_queued_at"]
+                        age = now - item['queued_at']
 
                         if age >= self.cost_fetch_delay:
-                            ready_items.append(item)
+                            ready.append(item)
                         elif age >= self.cost_max_wait:
-                            # Exceeded max wait - log without cost
-                            ready_items.append(item)
+                            # Exceeded max wait - skip
+                            pass
                         else:
                             still_pending.append(item)
 
                     self.pending_cost_buffer = still_pending
 
-                # Process ready items outside the lock
-                for item in ready_items:
-                    request_id = item.get("request_id")
-                    row = item["_row"]
+                if not ready:
+                    continue
 
-                    if request_id:
-                        cost_data = self._fetch_cost_with_retry(request_id, config.provider_api_key)
+                # Fetch costs and batch UPDATE
+                updates = []
+                for item in ready:
+                    cost_data = self._fetch_cost_with_retry(
+                        item['request_id'],
+                        self.config.provider_api_key
+                    )
 
-                        # Merge cost data into row
-                        row["cost"] = cost_data.get("cost")
-                        row["tokens_in"] = cost_data.get("tokens_in", 0)
-                        row["tokens_out"] = cost_data.get("tokens_out", 0)
-                        row["provider"] = cost_data.get("provider", row.get("provider", "unknown"))
+                    if cost_data.get('cost') is not None or cost_data.get('tokens_in', 0) > 0:
+                        updates.append({
+                            'trace_id': item['trace_id'],
+                            **cost_data
+                        })
 
-                        # Recalculate total tokens
-                        if row["tokens_in"] is not None and row["tokens_out"] is not None:
-                            row["total_tokens"] = row["tokens_in"] + row["tokens_out"]
+                        # Publish cost_update event for real-time UI
+                        self._publish_cost_event(item, cost_data)
 
-                        # Publish cost_update event for LiveStore real-time UI updates
-                        self._publish_cost_event(row, cost_data)
+                # Batch UPDATE to ClickHouse
+                if updates:
+                    try:
+                        from .db_adapter import get_db
+                        db = get_db()
+                        db.batch_update_costs('unified_logs', updates)
+                        print(f"[Unified Log] Updated costs for {len(updates)} messages")
+                    except Exception as e:
+                        print(f"[Unified Log] Cost update error: {e}")
 
-                    # Move to main buffer
-                    with self.buffer_lock:
-                        self.buffer.append(row)
-
-                # Check if main buffer needs flushing
-                current_time = time.time()
-                with self.buffer_lock:
-                    time_since_flush = current_time - self.last_flush_time
-                    if len(self.buffer) >= self.buffer_limit or time_since_flush >= self.flush_interval:
-                        self._flush_internal()
-                        self.last_flush_time = current_time
-
-                # Sleep briefly before next iteration
-                time.sleep(0.5)
-
-            except Exception:
-                # Worker loop error - continue processing
+            except Exception as e:
+                print(f"[Unified Log] Cost worker error: {e}")
                 time.sleep(1)
 
     def _fetch_cost_with_retry(self, request_id: str, api_key: str) -> Dict:
-        """
-        Fetch cost data from OpenRouter with retries on 404.
-
-        Returns dict with cost, tokens_in, tokens_out, provider.
-        """
+        """Fetch cost data from OpenRouter with retries on 404."""
         if not api_key or not request_id:
-            return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown"}
+            return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown", "model": None}
 
         headers = {"Authorization": f"Bearer {api_key}"}
         url = f"https://openrouter.ai/api/v1/generation?id={request_id}"
@@ -375,13 +216,21 @@ class UnifiedLogger:
 
                 if resp.ok:
                     data = resp.json().get("data", {})
-                    cost = data.get("total_cost", 0) or data.get("cost", 0)
-                    tokens_in = data.get("native_tokens_prompt", 0) or data.get("tokens_prompt", 0)
-                    tokens_out = data.get("native_tokens_completion", 0) or data.get("tokens_completion", 0)
-                    provider = data.get("provider", "unknown")
+                    cost = data.get("total_cost") or data.get("cost") or 0
+                    # Ensure we never return None for tokens - always use 0 as fallback
+                    tokens_in = data.get("native_tokens_prompt") or data.get("tokens_prompt") or 0
+                    tokens_out = data.get("native_tokens_completion") or data.get("tokens_completion") or 0
+                    provider = data.get("provider") or "unknown"
 
                     if cost > 0 or tokens_in > 0 or tokens_out > 0:
-                        return {"cost": cost, "tokens_in": tokens_in, "tokens_out": tokens_out, "provider": provider}
+                        model = data.get("model")  # OpenRouter returns the model used
+                        return {
+                            "cost": cost,
+                            "tokens_in": tokens_in,
+                            "tokens_out": tokens_out,
+                            "provider": provider,
+                            "model": model
+                        }
 
                     # Data empty but OK - continue retrying
                     continue
@@ -395,40 +244,38 @@ class UnifiedLogger:
                     break
 
             except Exception:
-                # Request failed - stop retrying
-                break
+                # Request failed - continue retrying
+                continue
 
         # All retries exhausted
-        return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown"}
+        return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown", "model": None}
 
-    def _publish_cost_event(self, row: Dict, cost_data: Dict):
-        """Publish cost_update event to event bus for LiveStore real-time UI updates."""
+    def _publish_cost_event(self, item: Dict, cost_data: Dict):
+        """Publish cost_update event to event bus for real-time UI updates."""
         try:
             from .events import get_event_bus, Event
-            from datetime import datetime
 
-            # Only publish if we have cost data (allow 0 for free models)
             cost = cost_data.get("cost")
             if cost is None:
                 return
 
             bus = get_event_bus()
             event_data = {
-                "trace_id": row.get("trace_id"),
-                "request_id": row.get("request_id"),
+                "trace_id": item.get("trace_id"),
+                "request_id": item.get("request_id"),
                 "cost": cost,
                 "tokens_in": cost_data.get("tokens_in", 0),
                 "tokens_out": cost_data.get("tokens_out", 0),
-                "phase_name": row.get("phase_name"),
-                "cascade_id": row.get("cascade_id"),
-                "sounding_index": row.get("sounding_index"),
-                "turn_number": row.get("turn_number"),
-                "model": row.get("model"),  # Include model for real-time model_costs tracking
+                "phase_name": item.get("phase_name"),
+                "cascade_id": item.get("cascade_id"),
+                "sounding_index": item.get("sounding_index"),
+                "turn_number": item.get("turn_number"),
+                "model": item.get("model"),
             }
 
             bus.publish(Event(
                 type="cost_update",
-                session_id=row.get("session_id", "unknown"),
+                session_id=item.get("session_id", "unknown"),
                 timestamp=datetime.now().isoformat(),
                 data=event_data
             ))
@@ -450,27 +297,27 @@ class UnifiedLogger:
         role: str = None,
         depth: int = 0,
 
-        # Semantic classification (human-readable roles for debugging)
-        semantic_actor: str = None,   # WHO: main_agent, evaluator, validator, quartermaster, human, framework
-        semantic_purpose: str = None, # WHAT: instructions, task_input, tool_request, tool_response, etc.
+        # Semantic classification
+        semantic_actor: str = None,
+        semantic_purpose: str = None,
 
-        # Execution context - special indexes
+        # Execution context
         sounding_index: int = None,
         is_winner: bool = None,
         reforge_step: int = None,
-        winning_sounding_index: int = None,  # For reforge: which initial sounding won
+        winning_sounding_index: int = None,
         attempt_number: int = None,
         turn_number: int = None,
         mutation_applied: str = None,
-        mutation_type: str = None,      # 'augment', 'rewrite', or None for baseline
-        mutation_template: str = None,  # For rewrite: the instruction used to generate mutation
+        mutation_type: str = None,
+        mutation_template: str = None,
 
         # Cascade context
         cascade_id: str = None,
         cascade_file: str = None,
-        cascade_config: dict = None,  # Will be serialized to JSON
+        cascade_config: dict = None,
         phase_name: str = None,
-        phase_config: dict = None,  # Will be serialized to JSON
+        phase_config: dict = None,
 
         # LLM provider data
         model: str = None,
@@ -483,10 +330,10 @@ class UnifiedLogger:
         tokens_out: int = None,
         cost: float = None,
 
-        # Content (will be serialized to JSON)
-        content: Any = None,  # Latest message content
-        full_request: dict = None,  # Complete request with history
-        full_response: dict = None,  # Complete response from LLM
+        # Content
+        content: Any = None,
+        full_request: dict = None,
+        full_response: dict = None,
         tool_calls: List[Dict] = None,
 
         # Images
@@ -496,29 +343,24 @@ class UnifiedLogger:
         # Audio
         audio: List[str] = None,
 
-        # Mermaid diagram state
+        # Mermaid
         mermaid_content: str = None,
 
         # Metadata
         metadata: Dict = None
     ):
         """
-        Log a single message/event with complete context.
+        Log a single message/event to ClickHouse.
 
-        This is a NON-BLOCKING call. If request_id is provided but cost is None,
-        the message is queued for deferred cost fetching. The background worker
-        will fetch the cost after a delay and merge it into the message.
+        This is a NON-BLOCKING call. Messages are buffered and INSERTed in batches.
+        If request_id is provided (LLM response), the message is also queued for
+        cost UPDATE after OpenRouter's delay.
         """
-
-        # Generate defaults
-        message_id = str(uuid.uuid4())  # Unique ID for this message
         trace_id = trace_id or str(uuid.uuid4())
-        timestamp = time.time()
+        timestamp = datetime.now(timezone.utc)
+        timestamp_iso = timestamp.isoformat()
 
-        # Convert to local timezone ISO string
-        timestamp_iso = datetime.fromtimestamp(timestamp).isoformat()
-
-        # Calculate total tokens (will be updated later if pending cost)
+        # Calculate total tokens
         total_tokens = None
         if tokens_in is not None and tokens_out is not None:
             total_tokens = tokens_in + tokens_out
@@ -527,25 +369,19 @@ class UnifiedLogger:
         elif tokens_out is not None:
             total_tokens = tokens_out
 
-        # Process images
+        # Process images and audio
         image_paths = images or []
         has_images = len(image_paths) > 0
-
-        # Process audio
         audio_paths = audio or []
         has_audio = len(audio_paths) > 0
 
         # Compute content identity fields
-        # content_hash: deterministic ID for this message based on role+content
-        # context_hashes: which messages were in context when this was created
-        # estimated_tokens: rough token count for cost attribution
         content_hash = compute_content_hash(role, content)
         context_hashes = extract_context_hashes(full_request)
         estimated_tokens_val = estimate_tokens(content)
 
-        # Serialize JSON fields (with fallback for non-serializable objects)
+        # JSON serializer with fallback
         def safe_json(obj):
-            """Serialize to JSON with fallback for edge cases."""
             if obj is None:
                 return None
             try:
@@ -553,11 +389,9 @@ class UnifiedLogger:
             except:
                 return json.dumps(str(obj))
 
-        # Build mega-table row
+        # Build row for ClickHouse
         row = {
             # Core identification
-            "message_id": message_id,
-            "timestamp": timestamp,
             "timestamp_iso": timestamp_iso,
             "session_id": session_id,
             "trace_id": trace_id,
@@ -565,9 +399,9 @@ class UnifiedLogger:
             "parent_session_id": parent_session_id,
             "parent_message_id": parent_message_id,
 
-            # Message classification
-            "node_type": node_type,
-            "role": role,
+            # Classification
+            "node_type": node_type or "message",
+            "role": role or "",
             "depth": depth,
 
             # Semantic classification
@@ -614,226 +448,105 @@ class UnifiedLogger:
             "images_json": safe_json(image_paths),
             "has_images": has_images,
             "has_base64": has_base64,
+            "has_base64_stripped": False,
 
             # Audio
             "audio_json": safe_json(audio_paths),
             "has_audio": has_audio,
 
-            # Mermaid diagram state
+            # Mermaid
             "mermaid_content": mermaid_content,
 
-            # Content identity and context tracking
+            # Content identity
             "content_hash": content_hash,
-            "context_hashes": context_hashes,  # Array of strings
+            "context_hashes": context_hashes,
             "estimated_tokens": estimated_tokens_val,
 
             # Metadata
             "metadata_json": safe_json(metadata)
         }
 
-        # Decide whether to queue for deferred cost or buffer immediately
-        # Queue if: has request_id, cost is None, and role is assistant (LLM response)
-        needs_deferred_cost = (
+        # INSERT immediately to ClickHouse (no buffering for snappy UI)
+        try:
+            from .db_adapter import get_db
+            db = get_db()
+            db.insert_rows('unified_logs', [row])
+        except Exception as e:
+            print(f"[Unified Log] INSERT error: {e}")
+
+        # Queue for cost UPDATE if needed (LLM response with no cost yet)
+        needs_cost_update = (
             request_id is not None and
             cost is None and
             role == "assistant"
         )
 
-        if needs_deferred_cost:
-            # Add to pending cost buffer - background worker will fetch cost
+        if needs_cost_update:
             with self.pending_lock:
                 self.pending_cost_buffer.append({
-                    "request_id": request_id,
-                    "_row": row,
-                    "_queued_at": timestamp
+                    'trace_id': trace_id,
+                    'request_id': request_id,
+                    'session_id': session_id,
+                    'phase_name': phase_name,
+                    'cascade_id': cascade_id,
+                    'sounding_index': sounding_index,
+                    'turn_number': turn_number,
+                    'model': model,
+                    'queued_at': time.time()
                 })
-        else:
-            # Buffer immediately - no cost fetch needed
-            with self.buffer_lock:
-                self.buffer.append(row)
-
-                # Check if we should flush
-                current_time = time.time()
-                time_since_flush = current_time - self.last_flush_time
-
-                if len(self.buffer) >= self.buffer_limit or time_since_flush >= self.flush_interval:
-                    self._flush_internal()
-                    self.last_flush_time = current_time
-
-    def _flush_internal(self):
-        """
-        Internal flush - must be called with buffer_lock held.
-
-        Writes to ClickHouse server if configured, otherwise writes to Parquet files.
-        """
-        if not self.buffer:
-            return
-
-        try:
-            # Create DataFrame from all buffered rows
-            df = pd.DataFrame(self.buffer)
-
-            # Write to ClickHouse server or Parquet based on config
-            if self.config.use_clickhouse_server:
-                # Write directly to ClickHouse server
-                from .db_adapter import get_db_adapter
-                db = get_db_adapter()
-
-                # ClickHouse prefers batch inserts - use execute with VALUES
-                # The clickhouse-driver supports insert_dataframe for pandas
-                if hasattr(db.client, 'insert_dataframe'):
-                    db.client.insert_dataframe(
-                        "INSERT INTO unified_logs VALUES",
-                        df,
-                        settings={'use_numpy': True}
-                    )
-                    print(f"[Unified Log] Flushed {len(self.buffer)} messages to ClickHouse")
-                else:
-                    print(f"[Unified Log] Warning: ClickHouse driver doesn't support insert_dataframe, falling back to Parquet")
-                    self._write_parquet(df)
-            else:
-                # Write to Parquet files (default)
-                self._write_parquet(df)
-
-            # Force cleanup
-            del df
-
-        except Exception as e:
-            print(f"[ERROR] Failed to flush unified log: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            # Always clear buffer
-            self.buffer = []
-
-    def _write_parquet(self, df: pd.DataFrame):
-        """Write DataFrame to Parquet file with enforced schema."""
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-
-        # Generate unique filename (timestamp + uuid + count for ordering)
-        filename = f"log_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
-        filepath = os.path.join(self.log_dir, filename)
-
-        # Define explicit pyarrow schema to prevent type inference issues
-        # When all values in a column are NULL, pyarrow defaults to int32
-        # We need to force string types for string columns
-        schema = pa.schema([
-            ('message_id', pa.string()),
-            ('timestamp', pa.float64()),
-            ('timestamp_iso', pa.string()),
-            ('session_id', pa.string()),
-            ('trace_id', pa.string()),
-            ('parent_id', pa.string()),
-            ('parent_session_id', pa.string()),
-            ('parent_message_id', pa.string()),
-            ('node_type', pa.string()),
-            ('role', pa.string()),
-            ('depth', pa.int32()),
-            ('semantic_actor', pa.string()),
-            ('semantic_purpose', pa.string()),
-            ('sounding_index', pa.int32()),
-            ('is_winner', pa.bool_()),
-            ('reforge_step', pa.int32()),
-            ('winning_sounding_index', pa.int32()),
-            ('attempt_number', pa.int32()),
-            ('turn_number', pa.int32()),
-            ('mutation_applied', pa.string()),
-            ('mutation_type', pa.string()),
-            ('mutation_template', pa.string()),
-            ('cascade_id', pa.string()),
-            ('cascade_file', pa.string()),
-            ('cascade_json', pa.string()),
-            ('phase_name', pa.string()),
-            ('phase_json', pa.string()),
-            ('model', pa.string()),
-            ('request_id', pa.string()),
-            ('provider', pa.string()),
-            ('duration_ms', pa.float64()),
-            ('tokens_in', pa.int32()),
-            ('tokens_out', pa.int32()),
-            ('total_tokens', pa.int32()),
-            ('cost', pa.float64()),
-            ('content_json', pa.string()),
-            ('full_request_json', pa.string()),
-            ('full_response_json', pa.string()),
-            ('tool_calls_json', pa.string()),
-            ('images_json', pa.string()),
-            ('has_images', pa.bool_()),
-            ('has_base64', pa.bool_()),
-            ('audio_json', pa.string()),
-            ('has_audio', pa.bool_()),
-            ('mermaid_content', pa.string()),
-            ('content_hash', pa.string()),
-            ('context_hashes', pa.list_(pa.string())),
-            ('estimated_tokens', pa.int32()),
-            ('metadata_json', pa.string()),
-        ])
-
-        # Convert DataFrame to pyarrow Table with explicit schema
-        # Only include columns that exist in the DataFrame
-        existing_schema = pa.schema([
-            field for field in schema
-            if field.name in df.columns
-        ])
-        table = pa.Table.from_pandas(df, schema=existing_schema, preserve_index=False)
-
-        # Write to Parquet
-        pq.write_table(table, filepath)
-
-        print(f"[Unified Log] Flushed {len(df)} messages to {filename}")
 
     def flush(self):
         """
-        Flush buffered rows to a single Parquet file.
+        Process any remaining pending cost items immediately.
 
-        Also processes any remaining pending cost items immediately
-        (useful at program exit).
+        Since we now INSERT immediately, this only handles cost updates.
+        Called at program exit to ensure all costs are captured.
         """
-        # First, flush any pending cost items (with immediate cost fetch)
+        # Process pending cost items (with immediate cost fetch)
         with self.pending_lock:
             pending_items = list(self.pending_cost_buffer)
             self.pending_cost_buffer = []
 
         if pending_items:
-            config = get_config()
+            updates = []
             for item in pending_items:
-                request_id = item.get("request_id")
-                row = item["_row"]
+                cost_data = self._fetch_cost_with_retry(
+                    item['request_id'],
+                    self.config.provider_api_key
+                )
 
-                if request_id:
-                    cost_data = self._fetch_cost_with_retry(request_id, config.provider_api_key)
-                    row["cost"] = cost_data.get("cost")
-                    row["tokens_in"] = cost_data.get("tokens_in", 0)
-                    row["tokens_out"] = cost_data.get("tokens_out", 0)
-                    row["provider"] = cost_data.get("provider", row.get("provider", "unknown"))
+                if cost_data.get('cost') is not None or cost_data.get('tokens_in', 0) > 0:
+                    updates.append({
+                        'trace_id': item['trace_id'],
+                        **cost_data
+                    })
 
-                    if row["tokens_in"] is not None and row["tokens_out"] is not None:
-                        row["total_tokens"] = row["tokens_in"] + row["tokens_out"]
-
-                with self.buffer_lock:
-                    self.buffer.append(row)
-
-        # Now flush the main buffer
-        with self.buffer_lock:
-            self._flush_internal()
+            if updates:
+                try:
+                    from .db_adapter import get_db
+                    db = get_db()
+                    db.batch_update_costs('unified_logs', updates)
+                    print(f"[Unified Log] Final cost update for {len(updates)} messages")
+                except Exception as e:
+                    print(f"[Unified Log] Final cost update error: {e}")
 
 
 # Global logger instance
-_unified_logger = UnifiedLogger()
+_unified_logger = None
 
-# Register cleanup handler to flush on program exit
-atexit.register(_unified_logger.flush)
+
+def _get_logger() -> UnifiedLogger:
+    """Get or create the global unified logger instance."""
+    global _unified_logger
+    if _unified_logger is None:
+        _unified_logger = UnifiedLogger()
+        atexit.register(_unified_logger.flush)
+    return _unified_logger
 
 
 def get_unified_logger() -> UnifiedLogger:
-    """Get the global unified logger instance.
-
-    This is useful for:
-    - Forcing a flush after critical operations (e.g., checkpoint resume)
-    - Accessing logger statistics
-    """
-    return _unified_logger
+    """Get the global unified logger instance."""
+    return _get_logger()
 
 
 def log_unified(
@@ -845,17 +558,17 @@ def log_unified(
     node_type: str = "message",
     role: str = None,
     depth: int = 0,
-    semantic_actor: str = None,   # WHO: main_agent, evaluator, validator, quartermaster, human, framework
-    semantic_purpose: str = None, # WHAT: instructions, task_input, tool_request, tool_response, etc.
+    semantic_actor: str = None,
+    semantic_purpose: str = None,
     sounding_index: int = None,
     is_winner: bool = None,
     reforge_step: int = None,
-    winning_sounding_index: int = None,  # For reforge: which initial sounding won
+    winning_sounding_index: int = None,
     attempt_number: int = None,
     turn_number: int = None,
     mutation_applied: str = None,
-    mutation_type: str = None,      # 'augment', 'rewrite', or None for baseline
-    mutation_template: str = None,  # For rewrite: the instruction used to generate mutation
+    mutation_type: str = None,
+    mutation_template: str = None,
     cascade_id: str = None,
     cascade_file: str = None,
     cascade_config: dict = None,
@@ -881,15 +594,10 @@ def log_unified(
     """
     Global function to log unified mega-table entries.
 
-    This is a NON-BLOCKING call. If request_id is provided but cost is None
-    (and role is "assistant"), the message is queued for deferred cost fetching.
-    A background worker will fetch the cost from OpenRouter after ~3 seconds
-    (when the data becomes available) and merge it into the message before
-    writing to Parquet.
-
-    This ensures cascade execution is never blocked waiting for cost API calls.
+    This is a NON-BLOCKING call. Messages are buffered and written to ClickHouse
+    in batches. Cost data is UPDATEd separately after OpenRouter's delay.
     """
-    _unified_logger.log(
+    _get_logger().log(
         session_id=session_id,
         trace_id=trace_id,
         parent_id=parent_id,
@@ -935,17 +643,21 @@ def log_unified(
 
 def force_flush():
     """
-    Force flush any buffered log messages to disk.
+    Force flush any buffered log messages to ClickHouse.
 
     Call this at important lifecycle events (phase complete, cascade complete)
     to ensure data is persisted for UI visibility.
     """
-    _unified_logger.flush()
+    _get_logger().flush()
 
 
-def query_unified(where_clause: str = None, order_by: str = "timestamp") -> pd.DataFrame:
+# ============================================================================
+# Query Functions (now using ClickHouse tables directly)
+# ============================================================================
+
+def query_unified(where_clause: str = None, order_by: str = "timestamp") -> 'pd.DataFrame':
     """
-    Query unified logs using chDB (ClickHouse).
+    Query unified logs from ClickHouse.
 
     Args:
         where_clause: SQL WHERE clause (e.g., "session_id = 'abc' AND cost > 0")
@@ -953,26 +665,14 @@ def query_unified(where_clause: str = None, order_by: str = "timestamp") -> pd.D
 
     Returns:
         pandas DataFrame with results
-
-    Examples:
-        # All messages for a session
-        df = query_unified("session_id = 'session_123'")
-
-        # All soundings winners
-        df = query_unified("is_winner = true")
-
-        # High-cost messages
-        df = query_unified("cost > 0.01")
-
-        # Specific phase in specific cascade
-        df = query_unified("cascade_id = 'blog_flow' AND phase_name = 'research'")
     """
-    config = get_config()
-    data_dir = config.data_dir
-    db = get_db_adapter()
+    import pandas as pd
+    from .db_adapter import get_db
 
-    # Build query with file() function for parquet
-    base_query = f"SELECT * FROM file('{data_dir}/*.parquet', Parquet)"
+    db = get_db()
+
+    # Build query against ClickHouse table
+    base_query = "SELECT * FROM unified_logs"
 
     if where_clause:
         query = f"{base_query} WHERE {where_clause}"
@@ -982,16 +682,14 @@ def query_unified(where_clause: str = None, order_by: str = "timestamp") -> pd.D
     if order_by:
         query = f"{query} ORDER BY {order_by}"
 
-    # Execute and return DataFrame
-    result = db.query(query, output_format="dataframe")
-    return result
+    return db.query_df(query)
 
 
 def query_unified_json_parsed(
     where_clause: str = None,
     order_by: str = "timestamp",
     parse_json_fields: List[str] = None
-) -> pd.DataFrame:
+) -> 'pd.DataFrame':
     """
     Query unified logs and automatically parse JSON fields.
 
@@ -999,19 +697,9 @@ def query_unified_json_parsed(
         where_clause: SQL WHERE clause
         order_by: SQL ORDER BY clause
         parse_json_fields: List of JSON field names to auto-parse
-                          (e.g., ['content_json', 'metadata_json'])
 
     Returns:
         pandas DataFrame with JSON fields parsed to Python objects
-
-    Example:
-        df = query_unified_json_parsed(
-            "session_id = 'abc'",
-            parse_json_fields=['content_json', 'tool_calls_json', 'metadata_json']
-        )
-
-        # Now you can access parsed objects directly:
-        first_content = df['content_json'][0]  # Already a dict/list
     """
     df = query_unified(where_clause, order_by)
 
@@ -1025,37 +713,19 @@ def query_unified_json_parsed(
     return df
 
 
-# Backward compatibility functions for old code
-def query_logs(where_clause: str) -> pd.DataFrame:
-    """
-    Backward compatibility wrapper for old logs.query_logs() calls.
-
-    Maps to new unified system.
-    """
+# Backward compatibility wrappers
+def query_logs(where_clause: str) -> 'pd.DataFrame':
+    """Backward compatibility wrapper for old logs.query_logs() calls."""
     return query_unified(where_clause)
 
 
-def query_echoes_parquet(where_clause: str = None) -> pd.DataFrame:
-    """
-    Backward compatibility wrapper for old echoes.query_echoes_parquet() calls.
-
-    Maps to new unified system.
-    """
+def query_echoes_parquet(where_clause: str = None) -> 'pd.DataFrame':
+    """Backward compatibility wrapper for old echoes.query_echoes_parquet() calls."""
     return query_unified(where_clause)
 
 
-# Helper functions for common queries
-def get_session_messages(session_id: str, parse_json: bool = True) -> pd.DataFrame:
-    """
-    Get all messages for a session, optionally parsing JSON fields.
-
-    Args:
-        session_id: Session ID to query
-        parse_json: Auto-parse JSON fields (default: True)
-
-    Returns:
-        DataFrame with all messages, ordered by timestamp
-    """
+def get_session_messages(session_id: str, parse_json: bool = True) -> 'pd.DataFrame':
+    """Get all messages for a session."""
     if parse_json:
         return query_unified_json_parsed(
             f"session_id = '{session_id}'",
@@ -1067,17 +737,11 @@ def get_session_messages(session_id: str, parse_json: bool = True) -> pd.DataFra
         return query_unified(f"session_id = '{session_id}'")
 
 
-def get_cascade_costs(cascade_id: str) -> pd.DataFrame:
-    """
-    Get cost breakdown for all runs of a cascade.
+def get_cascade_costs(cascade_id: str) -> 'pd.DataFrame':
+    """Get cost breakdown for all runs of a cascade."""
+    from .db_adapter import get_db
 
-    Returns:
-        DataFrame with session_id, phase_name, total_cost, total_tokens
-    """
-    config = get_config()
-    data_dir = config.data_dir
-    db = get_db_adapter()
-
+    db = get_db()
     query = f"""
     SELECT
         session_id,
@@ -1085,25 +749,19 @@ def get_cascade_costs(cascade_id: str) -> pd.DataFrame:
         SUM(cost) as total_cost,
         SUM(total_tokens) as total_tokens,
         COUNT(*) as message_count
-    FROM file('{data_dir}/*.parquet', Parquet)
+    FROM unified_logs
     WHERE cascade_id = '{cascade_id}' AND cost IS NOT NULL
     GROUP BY session_id, phase_name
     ORDER BY session_id, phase_name
     """
-    return db.query(query, output_format="dataframe")
+    return db.query_df(query)
 
 
-def get_soundings_analysis(session_id: str, phase_name: str) -> pd.DataFrame:
-    """
-    Analyze sounding attempts for a specific phase in a session.
+def get_soundings_analysis(session_id: str, phase_name: str) -> 'pd.DataFrame':
+    """Analyze sounding attempts for a specific phase in a session."""
+    from .db_adapter import get_db
 
-    Returns:
-        DataFrame with sounding_index, is_winner, cost, tokens, message summary
-    """
-    config = get_config()
-    data_dir = config.data_dir
-    db = get_db_adapter()
-
+    db = get_db()
     query = f"""
     SELECT
         sounding_index,
@@ -1111,38 +769,28 @@ def get_soundings_analysis(session_id: str, phase_name: str) -> pd.DataFrame:
         SUM(cost) as total_cost,
         SUM(total_tokens) as total_tokens,
         COUNT(*) as turn_count,
-        MAX(timestamp) - MIN(timestamp) as duration_seconds
-    FROM file('{data_dir}/*.parquet', Parquet)
+        dateDiff('second', MIN(timestamp), MAX(timestamp)) as duration_seconds
+    FROM unified_logs
     WHERE session_id = '{session_id}'
       AND phase_name = '{phase_name}'
       AND sounding_index IS NOT NULL
     GROUP BY sounding_index, is_winner
     ORDER BY sounding_index
     """
-    return db.query(query, output_format="dataframe")
+    return db.query_df(query)
 
 
-def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> pd.DataFrame:
-    """
-    Get cost timeline for analysis.
+def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> 'pd.DataFrame':
+    """Get cost timeline for analysis."""
+    from .db_adapter import get_db
 
-    Args:
-        cascade_id: Optional filter by cascade
-        group_by: Time grouping ("hour", "day", "week")
+    db = get_db()
 
-    Returns:
-        DataFrame with time bucket, total cost, total tokens
-    """
-    config = get_config()
-    data_dir = config.data_dir
-    db = get_db_adapter()
-
-    # Time bucket formatting using ClickHouse functions
     time_format = {
-        "hour": "toStartOfHour(toDateTime(timestamp))",
-        "day": "toStartOfDay(toDateTime(timestamp))",
-        "week": "toStartOfWeek(toDateTime(timestamp))"
-    }.get(group_by, "toStartOfHour(toDateTime(timestamp))")
+        "hour": "toStartOfHour(timestamp)",
+        "day": "toStartOfDay(timestamp)",
+        "week": "toStartOfWeek(timestamp)"
+    }.get(group_by, "toStartOfHour(timestamp)")
 
     cascade_filter = f"AND cascade_id = '{cascade_id}'" if cascade_id else ""
 
@@ -1153,26 +801,20 @@ def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> pd.Data
         SUM(total_tokens) as total_tokens,
         COUNT(DISTINCT session_id) as session_count,
         COUNT(*) as message_count
-    FROM file('{data_dir}/*.parquet', Parquet)
+    FROM unified_logs
     WHERE cost IS NOT NULL {cascade_filter}
     GROUP BY time_bucket
     ORDER BY time_bucket
     """
-    return db.query(query, output_format="dataframe")
+    return db.query_df(query)
 
 
-def get_model_usage_stats() -> pd.DataFrame:
-    """
-    Get usage statistics by model.
+def get_model_usage_stats() -> 'pd.DataFrame':
+    """Get usage statistics by model."""
+    from .db_adapter import get_db
 
-    Returns:
-        DataFrame with model, provider, total cost, total tokens, call count
-    """
-    config = get_config()
-    data_dir = config.data_dir
-    db = get_db_adapter()
-
-    query = f"""
+    db = get_db()
+    query = """
     SELECT
         model,
         provider,
@@ -1182,9 +824,21 @@ def get_model_usage_stats() -> pd.DataFrame:
         AVG(cost) as avg_cost_per_call,
         SUM(tokens_in) as total_tokens_in,
         SUM(tokens_out) as total_tokens_out
-    FROM file('{data_dir}/*.parquet', Parquet)
+    FROM unified_logs
     WHERE cost IS NOT NULL AND model IS NOT NULL
     GROUP BY model, provider
     ORDER BY total_cost DESC
     """
-    return db.query(query, output_format="dataframe")
+    return db.query_df(query)
+
+
+def mark_sounding_winner(session_id: str, phase_name: str, winning_index: int):
+    """
+    Mark all messages in winning sounding with is_winner=True.
+
+    Called after evaluator selects winner. Updates ALL rows in that
+    sounding thread, not just a single "winner" row.
+    """
+    from .db_adapter import get_db
+    db = get_db()
+    db.mark_sounding_winner('unified_logs', session_id, phase_name, winning_index)

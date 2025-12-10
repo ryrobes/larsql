@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from typing import Dict, Any, Optional, List, Union
 import logging
@@ -3820,8 +3821,28 @@ Use only numbers 0-100 for scores."""
                     try:
                         decode_and_save_image(img_data, save_path)
                         console.print(f"{indent}    [dim]💾 Saved image: {save_path}[/dim]")
+                        self._maybe_render_image_to_console(save_path, indent)
                     except Exception as e:
                         console.print(f"{indent}    [dim yellow]⚠️  Failed to save image: {e}[/dim yellow]")
+
+    def _maybe_render_image_to_console(self, image_path: str, indent: str = ""):
+        """Render image to console if enabled and terminal supports it."""
+        # Check env var / config
+        if not os.environ.get("WINDLASS_SHOW_CLI_IMAGES", "true").lower() in ("true", "1"):
+            return
+
+        # Check if stdout is a TTY
+        if not sys.stdout.isatty():
+            return
+
+        try:
+            from .terminal_image import render_image_in_terminal
+            console.print(f"{indent}    [dim cyan]👁️  Rendering image:[/dim cyan]")
+            render_image_in_terminal(image_path, max_width=80)
+            console.print(f"{indent}    [dim]{'─' * 60}[/dim]")
+        except Exception as e:
+            # Silently fail - don't break execution
+            pass
 
     def _build_context_with_images(self, winner_context: list, refinement_instructions: str) -> list:
         """
@@ -4522,17 +4543,19 @@ Refinement directive: {reforge_config.honing_prompt}
         final_instructions = rendered_instructions + rag_prompt
         use_native = phase.use_native_tools
 
-        if not use_native and tool_descriptions:
-            # Prompt-based tools: Add tool descriptions to system prompt
-            console.print(f"{indent}  [dim cyan]Using prompt-based tools (provider-agnostic)[/dim cyan]")
-            tools_prompt = "\n\n## Available Tools\n\n" + "\n\n".join(tool_descriptions)
-            tools_prompt += "\n\n**Important:** To call a tool, you MUST wrap your JSON in a ```json code fence:\n\n"
-            tools_prompt += "Example:\n```json\n"
-            tools_prompt += '{"tool": "tool_name", "arguments": {"param": "value"}}\n```\n\n'
-            tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
-            final_instructions += tools_prompt
-        else:
-            console.print(f"{indent}  [dim cyan]Using native tool calling (provider-specific)[/dim cyan]")
+        if tool_descriptions:
+            if use_native:
+                # Native tool calling via provider API
+                console.print(f"{indent}  [dim cyan]Using native tool calling (provider-specific)[/dim cyan]")
+            else:
+                # Prompt-based tools: Add tool descriptions to system prompt
+                console.print(f"{indent}  [dim cyan]Using prompt-based tools (provider-agnostic)[/dim cyan]")
+                tools_prompt = "\n\n## Available Tools\n\n" + "\n\n".join(tool_descriptions)
+                tools_prompt += "\n\n**Important:** To call a tool, you MUST wrap your JSON in a ```json code fence:\n\n"
+                tools_prompt += "Example:\n```json\n"
+                tools_prompt += '{"tool": "tool_name", "arguments": {"param": "value"}}\n```\n\n'
+                tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
+                final_instructions += tools_prompt
 
         # Initialize Agent (using phase_model determined earlier)
         agent = Agent(
@@ -4890,7 +4913,6 @@ Refinement directive: {reforge_config.honing_prompt}
 
                             # Cull old content to prevent token explosion
                             from .utils import cull_old_base64_images, cull_old_conversation_history
-                            import os
 
                             # Get config from environment (with defaults)
                             keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))
@@ -5117,10 +5139,12 @@ Refinement directive: {reforge_config.honing_prompt}
                                                                          semantic_actor="framework", semantic_purpose="task_input"))
 
                     # Add assistant response to Echo (needed for message injection in context.from)
+                    # skip_unified_log=True because we already logged this response above with full LLM metadata
                     output_trace = turn_trace.create_child("msg", "assistant_output")
                     self.echo.add_history({"role": "assistant", "content": content}, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="agent",
                                          metadata=self._get_metadata({"phase_name": phase.name, "turn": i},
-                                                                     semantic_purpose="generation"))
+                                                                     semantic_purpose="generation"),
+                                         skip_unified_log=True)
 
                     self._update_graph()
 
@@ -5297,6 +5321,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                             decode_and_save_image(encoded_img, save_path)
                                             saved_image_paths.append(save_path)
                                             console.print(f"{indent}    [dim]💾 Saved image: {save_path}[/dim]")
+                                            self._maybe_render_image_to_console(save_path, indent)
                                         except Exception as e:
                                             console.print(f"{indent}    [dim yellow]⚠️  Failed to save image: {e}[/dim yellow]")
                                     else:
@@ -5368,7 +5393,6 @@ Refinement directive: {reforge_config.honing_prompt}
                         # Immediate follow-up
                         # Cull old content to prevent token explosion
                         from .utils import cull_old_base64_images, cull_old_conversation_history
-                        import os
 
                         # Get config from environment (with defaults)
                         keep_images = int(os.getenv('WINDLASS_KEEP_RECENT_IMAGES', '0'))

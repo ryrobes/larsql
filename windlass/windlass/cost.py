@@ -93,24 +93,28 @@ class CostTracker:
                 cost = data.get("total_cost", 0)
                 tokens_in = data.get("native_tokens_prompt", 0)
                 tokens_out = data.get("native_tokens_completion", 0)
+                model = data.get("model")  # OpenRouter returns the model used
 
                 # Log with cost data
-                self._log_pending_or_fallback(item, cost, tokens_in, tokens_out)
+                self._log_pending_or_fallback(item, cost, tokens_in, tokens_out, model)
             else:
                 # API call failed - log without cost
-                self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0)
+                self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None)
 
         except Exception as e:
             print(f"[CostTracker Error] {e}")
             # Log without cost on error
-            self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0)
+            self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None)
 
-    def _log_pending_or_fallback(self, item, cost, tokens_in, tokens_out):
+    def _log_pending_or_fallback(self, item, cost, tokens_in, tokens_out, model=None):
         """
         Log the message with cost data.
 
         If pending_message exists: merge cost and log complete agent message.
         Otherwise: fall back to old behavior (log separate cost_update).
+
+        Args:
+            model: Model name from OpenRouter API response (fallback if not in pending_message)
         """
         pending_message = item.get("pending_message")
 
@@ -122,6 +126,10 @@ class CostTracker:
             pending_message["cost"] = cost
             pending_message["tokens_in"] = tokens_in
             pending_message["tokens_out"] = tokens_out
+
+            # If pending_message doesn't have model but we got it from OpenRouter, use it
+            if not pending_message.get("model") and model:
+                pending_message["model"] = model
 
             # Log complete message with cost included
             log_unified(**pending_message)
@@ -148,7 +156,8 @@ class CostTracker:
                 cost=cost,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
-                sounding_index=item.get("sounding_index")
+                sounding_index=item.get("sounding_index"),
+                model=model  # Now includes model from OpenRouter response
             )
 
         # ALWAYS publish cost_update event for LiveStore (regardless of logging path)

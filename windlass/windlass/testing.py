@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional
 
 
 class SnapshotCapture:
-    """Captures cascade executions from chDB (ClickHouse) logs."""
+    """Captures cascade executions from ClickHouse unified_logs table."""
 
     def __init__(self, data_dir: str = None):
         from windlass.config import get_config
@@ -41,23 +41,27 @@ class SnapshotCapture:
         """
         print(f"Freezing session {session_id} as test snapshot...")
 
-        # Get all events for this session
-        parquet_pattern = str(self.data_dir / "*.parquet")
+        # Query unified_logs table directly (pure ClickHouse)
         query = f"""
             SELECT
                 timestamp,
                 session_id,
                 role,
                 content_json,
-                metadata_json
-            FROM file('{parquet_pattern}', Parquet)
+                metadata_json,
+                cascade_file,
+                phase_name,
+                node_type
+            FROM unified_logs
             WHERE session_id = '{session_id}'
             ORDER BY timestamp ASC
         """
 
         try:
-            df = self.db.query(query)
-            events = df.values.tolist()
+            result = self.db.query(query, output_format="dict")
+            events = [[r['timestamp'], r['session_id'], r['role'], r['content_json'],
+                      r['metadata_json'], r['cascade_file'], r['phase_name'], r['node_type']]
+                     for r in result]
         except Exception as e:
             raise ValueError(f"Failed to query logs: {e}")
 
@@ -119,68 +123,72 @@ class SnapshotCapture:
         error_count = 0
 
         for event in events:
-            timestamp, session_id_col, role, content, metadata_str = event
+            # New format: [timestamp, session_id, role, content_json, metadata_json, cascade_file, phase_name, node_type]
+            timestamp, session_id_col, role, content_json, metadata_str, cascade_file, phase_name, node_type = event
+
+            # Parse content from JSON
+            content = None
+            if content_json:
+                try:
+                    content = json.loads(content_json) if isinstance(content_json, str) else content_json
+                    # If content is a dict with 'content' key, extract it
+                    if isinstance(content, dict) and 'content' in content:
+                        content = content['content']
+                    elif isinstance(content, str):
+                        pass  # Already a string
+                    else:
+                        content = str(content) if content else None
+                except:
+                    content = content_json
 
             # Parse metadata
             metadata = {}
             if metadata_str:
                 try:
-                    metadata = json.loads(metadata_str)
+                    metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
                 except:
                     pass
 
-            # Extract cascade info from metadata (more reliable than parsing messages)
-            if metadata.get("cascade_file") and snapshot["cascade_file"] is None:
+            # Extract cascade info from direct column (preferred) or metadata
+            if cascade_file and snapshot["cascade_file"] is None:
+                snapshot["cascade_file"] = cascade_file
+            elif metadata.get("cascade_file") and snapshot["cascade_file"] is None:
                 snapshot["cascade_file"] = metadata["cascade_file"]
-            elif metadata.get("config_path") and snapshot["cascade_file"] is None:
-                snapshot["cascade_file"] = metadata["config_path"]
-
-            # Fallback: Extract from system messages
-            elif role == "system" and content and "Starting cascade" in content:
-                if snapshot["cascade_file"] is None:
-                    # Extract from "Starting cascade X (Depth Y)" message
-                    # Remove "Starting cascade " prefix
-                    cascade_name = content.replace("Starting cascade ", "").strip()
-                    # Remove depth suffix like " (Depth 0)"
-                    if " (Depth" in cascade_name:
-                        cascade_name = cascade_name.split(" (Depth")[0].strip()
-                    # Remove trailing ellipsis
-                    cascade_name = cascade_name.replace("...", "").strip()
-
-                    # This is the cascade_id, we'd need to map it to filename
-                    # For now, try common pattern
-                    snapshot["cascade_file"] = f"examples/{cascade_name}.json"
 
             # Track errors
-            if role == "error":
+            if role == "error" or node_type == "error":
                 error_count += 1
 
-            # Track phase starts
-            if role == "phase_start":
-                phase_name = content.strip().replace("...", "") if content else "unknown"
+            # Track phase starts using node_type (more reliable than role)
+            if node_type == "phase_start" or role == "phase_start":
+                # Use phase_name column if available, otherwise parse from content
+                pname = phase_name
+                if not pname and content:
+                    pname = str(content).strip().replace("...", "")
+                pname = pname or "unknown"
 
-                if phase_name not in phases_map:
-                    phases_map[phase_name] = {
-                        "name": phase_name,
+                if pname not in phases_map:
+                    phases_map[pname] = {
+                        "name": pname,
                         "turns": []
                     }
 
-                current_phase_name = phase_name
+                current_phase_name = pname
                 current_turn = {
-                    "turn_number": len(phases_map[phase_name]["turns"]) + 1,
+                    "turn_number": len(phases_map[pname]["turns"]) + 1,
                     "agent_response": None,
                     "tool_results": []
                 }
-                phases_map[phase_name]["turns"].append(current_turn)
+                phases_map[pname]["turns"].append(current_turn)
 
             # Track agent responses
-            elif role == "agent" and current_turn is not None:
+            elif (role == "assistant" or node_type == "agent") and current_turn is not None:
                 current_turn["agent_response"] = {
                     "content": content or ""
                 }
 
             # Track tool results
-            elif role == "tool_result" and current_turn is not None:
+            elif (role == "tool" or node_type == "tool_result") and current_turn is not None:
                 tool_name = metadata.get("tool", "unknown")
 
                 current_turn["tool_results"].append({

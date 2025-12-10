@@ -9,6 +9,8 @@ The goal: Collect human preference data that can later be used to:
 1. Validate evaluator quality (does the judge pick what humans prefer?)
 2. Train/prompt a model judge for scaled evaluation
 3. Identify winning patterns for prompt optimization
+
+Now uses pure ClickHouse for all operations (no DuckDB, no Parquet files).
 """
 
 import os
@@ -22,21 +24,11 @@ import pandas as pd
 
 from .config import get_config
 
-# Try to import duckdb for UI/query contexts, fall back to db_adapter for core usage
-try:
-    import duckdb
-    _USE_DUCKDB = True
-except ImportError:
-    _USE_DUCKDB = False
-
 
 def _get_db():
-    """Get database connection - uses DuckDB directly when available (for UI compatibility)."""
-    if _USE_DUCKDB:
-        return duckdb.connect(database=':memory:')
-    else:
-        from .db_adapter import get_db_adapter
-        return get_db_adapter()
+    """Get ClickHouse database adapter."""
+    from .db_adapter import get_db_adapter
+    return get_db_adapter()
 
 
 # Schema for evaluations table
@@ -95,18 +87,12 @@ SETTINGS index_granularity = 8192;
 
 class EvaluationsLogger:
     """
-    Logger for human evaluations with buffered writes to Parquet.
+    Logger for human evaluations with buffered writes to ClickHouse.
 
-    Similar architecture to UnifiedLogger - writes to data/evaluations/ folder
-    as parquet files that can be queried with chDB.
+    Writes directly to the evaluations table in ClickHouse.
     """
 
     def __init__(self):
-        config = get_config()
-        # Store evaluations in data/evaluations/ subfolder
-        self.eval_dir = os.path.join(config.data_dir, "evaluations")
-        os.makedirs(self.eval_dir, exist_ok=True)
-
         self.buffer = []
         self.buffer_limit = 10  # Smaller buffer for evals (fewer, more important)
 
@@ -260,19 +246,14 @@ class EvaluationsLogger:
             self.flush()
 
     def flush(self):
-        """Flush buffered evaluations to Parquet."""
+        """Flush buffered evaluations to ClickHouse."""
         if not self.buffer:
             return
 
         try:
-            df = pd.DataFrame(self.buffer)
-
-            # Generate filename
-            filename = f"eval_{int(time.time())}_{uuid.uuid4().hex[:8]}.parquet"
-            filepath = os.path.join(self.eval_dir, filename)
-
-            df.to_parquet(filepath, engine='pyarrow', index=False)
-            print(f"[Hot or Not] Saved {len(self.buffer)} evaluations to {filename}")
+            db = _get_db()
+            db.insert_rows('evaluations', self.buffer)
+            print(f"[Hot or Not] Saved {len(self.buffer)} evaluations to ClickHouse")
 
         except Exception as e:
             print(f"[Hot or Not] Error flushing evaluations: {e}")
@@ -333,7 +314,7 @@ def flush_evaluations():
 # Query functions
 def query_evaluations(where_clause: str = None, order_by: str = "timestamp DESC") -> pd.DataFrame:
     """
-    Query evaluations using DuckDB or chDB.
+    Query evaluations from ClickHouse.
 
     Examples:
         # All evaluations
@@ -348,34 +329,16 @@ def query_evaluations(where_clause: str = None, order_by: str = "timestamp DESC"
         # Preference disagreements (human disagreed with system)
         df = query_evaluations("evaluation_type = 'preference' AND agreement = false")
     """
-    config = get_config()
-    eval_dir = os.path.join(config.data_dir, "evaluations")
-
-    # Check if directory exists and has files
-    if not os.path.exists(eval_dir) or not os.listdir(eval_dir):
-        return pd.DataFrame()
-
     try:
-        if _USE_DUCKDB:
-            conn = _get_db()
-            base_query = f"SELECT * FROM read_parquet('{eval_dir}/*.parquet', union_by_name=true)"
-            if where_clause:
-                query = f"{base_query} WHERE {where_clause}"
-            else:
-                query = base_query
-            if order_by:
-                query = f"{query} ORDER BY {order_by}"
-            return conn.execute(query).fetchdf()
+        db = _get_db()
+        base_query = "SELECT * FROM evaluations"
+        if where_clause:
+            query = f"{base_query} WHERE {where_clause}"
         else:
-            db = _get_db()
-            base_query = f"SELECT * FROM file('{eval_dir}/*.parquet', Parquet)"
-            if where_clause:
-                query = f"{base_query} WHERE {where_clause}"
-            else:
-                query = base_query
-            if order_by:
-                query = f"{query} ORDER BY {order_by}"
-            return db.query(query, output_format="dataframe")
+            query = base_query
+        if order_by:
+            query = f"{query} ORDER BY {order_by}"
+        return db.query_df(query)
     except Exception as e:
         print(f"[Hot or Not] Query error: {e}")
         return pd.DataFrame()
@@ -388,84 +351,46 @@ def get_evaluation_stats() -> Dict:
     Returns:
         Dict with counts, agreement rates, etc.
     """
-    config = get_config()
-    eval_dir = os.path.join(config.data_dir, "evaluations")
-
-    if not os.path.exists(eval_dir) or not os.listdir(eval_dir):
-        return {
-            "total_evaluations": 0,
-            "binary_good": 0,
-            "binary_bad": 0,
-            "preferences_total": 0,
-            "preferences_agreed": 0,
-            "agreement_rate": 0.0,
-            "flags": 0
-        }
-
     try:
-        if _USE_DUCKDB:
-            conn = _get_db()
-            parquet_path = f"read_parquet('{eval_dir}/*.parquet', union_by_name=true)"
+        db = _get_db()
 
-            # Total counts
-            total_df = conn.execute(
-                f"SELECT evaluation_type, COUNT(*) as cnt FROM {parquet_path} GROUP BY evaluation_type"
-            ).fetchdf()
+        # Total counts by type
+        total_result = db.query(
+            "SELECT evaluation_type, COUNT(*) as cnt FROM evaluations GROUP BY evaluation_type",
+            output_format="dict"
+        )
+        type_counts = {r['evaluation_type']: r['cnt'] for r in total_result} if total_result else {}
 
-            # Binary breakdown
-            binary_df = conn.execute(
-                f"SELECT is_good, COUNT(*) as cnt FROM {parquet_path} WHERE evaluation_type = 'binary' GROUP BY is_good"
-            ).fetchdf()
-
-            # Preference agreement
-            pref_df = conn.execute(
-                f"SELECT agreement, COUNT(*) as cnt FROM {parquet_path} WHERE evaluation_type = 'preference' GROUP BY agreement"
-            ).fetchdf()
-        else:
-            db = _get_db()
-            parquet_path = f"file('{eval_dir}/*.parquet', Parquet)"
-
-            # Total counts
-            total_df = db.query(
-                f"SELECT evaluation_type, COUNT(*) as cnt FROM {parquet_path} GROUP BY evaluation_type",
-                output_format="dataframe"
-            )
-
-            # Binary breakdown
-            binary_df = db.query(
-                f"SELECT is_good, COUNT(*) as cnt FROM {parquet_path} WHERE evaluation_type = 'binary' GROUP BY is_good",
-                output_format="dataframe"
-            )
-
-            # Preference agreement
-            pref_df = db.query(
-                f"SELECT agreement, COUNT(*) as cnt FROM {parquet_path} WHERE evaluation_type = 'preference' GROUP BY agreement",
-                output_format="dataframe"
-            )
-
-        # Build stats
-        type_counts = dict(zip(total_df['evaluation_type'], total_df['cnt'])) if not total_df.empty else {}
+        # Binary breakdown
+        binary_result = db.query(
+            "SELECT is_good, COUNT(*) as cnt FROM evaluations WHERE evaluation_type = 'binary' GROUP BY is_good",
+            output_format="dict"
+        )
 
         binary_good = 0
         binary_bad = 0
-        if not binary_df.empty:
-            for _, row in binary_df.iterrows():
-                if row['is_good'] == True:
-                    binary_good = row['cnt']
-                elif row['is_good'] == False:
-                    binary_bad = row['cnt']
+        for r in (binary_result or []):
+            if r['is_good'] == True:
+                binary_good = r['cnt']
+            elif r['is_good'] == False:
+                binary_bad = r['cnt']
+
+        # Preference agreement
+        pref_result = db.query(
+            "SELECT agreement, COUNT(*) as cnt FROM evaluations WHERE evaluation_type = 'preference' GROUP BY agreement",
+            output_format="dict"
+        )
 
         pref_total = type_counts.get('preference', 0)
         pref_agreed = 0
-        if not pref_df.empty:
-            for _, row in pref_df.iterrows():
-                if row['agreement'] == True:
-                    pref_agreed = row['cnt']
+        for r in (pref_result or []):
+            if r['agreement'] == True:
+                pref_agreed = r['cnt']
 
         agreement_rate = (pref_agreed / pref_total * 100) if pref_total > 0 else 0.0
 
         return {
-            "total_evaluations": sum(type_counts.values()),
+            "total_evaluations": sum(type_counts.values()) if type_counts else 0,
             "binary_good": binary_good,
             "binary_bad": binary_bad,
             "preferences_total": pref_total,
@@ -476,7 +401,15 @@ def get_evaluation_stats() -> Dict:
 
     except Exception as e:
         print(f"[Hot or Not] Stats error: {e}")
-        return {"error": str(e)}
+        return {
+            "total_evaluations": 0,
+            "binary_good": 0,
+            "binary_bad": 0,
+            "preferences_total": 0,
+            "preferences_agreed": 0,
+            "agreement_rate": 0.0,
+            "flags": 0
+        }
 
 
 def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
@@ -486,80 +419,43 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
     Finds sessions with soundings that don't have corresponding evaluations.
     Returns data needed for the Hot or Not UI.
     """
-    config = get_config()
-    data_dir = config.data_dir
-    eval_dir = os.path.join(data_dir, "evaluations")
+    db = _get_db()
 
-    # First, get all evaluated session+phase combos
+    # First, get all evaluated session+phase combos from evaluations table
     evaluated_set = set()
-    if os.path.exists(eval_dir) and os.listdir(eval_dir):
-        try:
-            if _USE_DUCKDB:
-                conn = _get_db()
-                eval_df = conn.execute(
-                    f"SELECT DISTINCT session_id, phase_name FROM read_parquet('{eval_dir}/*.parquet', union_by_name=true)"
-                ).fetchdf()
-            else:
-                db = _get_db()
-                eval_df = db.query(
-                    f"SELECT DISTINCT session_id, phase_name FROM file('{eval_dir}/*.parquet', Parquet)",
-                    output_format="dataframe"
-                )
-            if not eval_df.empty:
-                for _, row in eval_df.iterrows():
-                    evaluated_set.add((row['session_id'], row['phase_name']))
-        except:
-            pass
-
-    # Get sounding attempts from unified logs
     try:
-        if _USE_DUCKDB:
-            conn = _get_db()
-            soundings_df = conn.execute(
-                f"""
-                SELECT
-                    session_id,
-                    phase_name,
-                    sounding_index,
-                    is_winner,
-                    content_json,
-                    cascade_id,
-                    cascade_file,
-                    timestamp,
-                    cost,
-                    tokens_out
-                FROM read_parquet('{data_dir}/*.parquet', union_by_name=true)
-                WHERE sounding_index IS NOT NULL
-                  AND role = 'assistant'
-                  AND content_json IS NOT NULL
-                ORDER BY timestamp DESC
-                LIMIT {limit * 5}
-                """
-            ).fetchdf()
-        else:
-            db = _get_db()
-            soundings_df = db.query(
-                f"""
-                SELECT
-                    session_id,
-                    phase_name,
-                    sounding_index,
-                    is_winner,
-                    content_json,
-                    cascade_id,
-                    cascade_file,
-                    timestamp,
-                    cost,
-                    tokens_out
-                FROM file('{data_dir}/*.parquet', Parquet)
-                WHERE sounding_index IS NOT NULL
-                  AND role = 'assistant'
-                  AND content_json IS NOT NULL
-                ORDER BY timestamp DESC
-                LIMIT {limit * 5}
-                """,
-                output_format="dataframe"
-            )
+        eval_result = db.query(
+            "SELECT DISTINCT session_id, phase_name FROM evaluations",
+            output_format="dict"
+        )
+        for r in (eval_result or []):
+            if r.get('session_id') and r.get('phase_name'):
+                evaluated_set.add((r['session_id'], r['phase_name']))
+    except:
+        pass
+
+    # Get sounding attempts from unified_logs
+    try:
+        soundings_df = db.query_df(f"""
+            SELECT
+                session_id,
+                phase_name,
+                sounding_index,
+                is_winner,
+                content_json,
+                cascade_id,
+                cascade_file,
+                timestamp,
+                cost,
+                tokens_out
+            FROM unified_logs
+            WHERE sounding_index IS NOT NULL
+              AND role = 'assistant'
+              AND content_json IS NOT NULL
+              AND content_json != ''
+            ORDER BY timestamp DESC
+            LIMIT {limit * 5}
+        """)
 
         if soundings_df.empty:
             return pd.DataFrame()
@@ -630,58 +526,29 @@ def get_sounding_group(session_id: str, phase_name: str) -> Dict:
         - system_winner_index: Which one the evaluator picked
     """
     config = get_config()
-    data_dir = config.data_dir
+    db = _get_db()
 
     try:
-        if _USE_DUCKDB:
-            conn = _get_db()
-            # Get assistant messages (sounding outputs)
-            df = conn.execute(
-                f"""
-                SELECT
-                    sounding_index,
-                    is_winner,
-                    content_json,
-                    cascade_id,
-                    cascade_file,
-                    cost,
-                    tokens_out,
-                    model,
-                    mutation_applied,
-                    full_request_json
-                FROM read_parquet('{data_dir}/*.parquet', union_by_name=true)
-                WHERE session_id = '{session_id}'
-                  AND phase_name = '{phase_name}'
-                  AND sounding_index IS NOT NULL
-                  AND role = 'assistant'
-                ORDER BY sounding_index
-                """
-            ).fetchdf()
-
-        else:
-            db = _get_db()
-            df = db.query(
-                f"""
-                SELECT
-                    sounding_index,
-                    is_winner,
-                    content_json,
-                    cascade_id,
-                    cascade_file,
-                    cost,
-                    tokens_out,
-                    model,
-                    mutation_applied,
-                    full_request_json
-                FROM file('{data_dir}/*.parquet', Parquet)
-                WHERE session_id = '{session_id}'
-                  AND phase_name = '{phase_name}'
-                  AND sounding_index IS NOT NULL
-                  AND role = 'assistant'
-                ORDER BY sounding_index
-                """,
-                output_format="dataframe"
-            )
+        # Get assistant messages (sounding outputs) from unified_logs
+        df = db.query_df(f"""
+            SELECT
+                sounding_index,
+                is_winner,
+                content_json,
+                cascade_id,
+                cascade_file,
+                cost,
+                tokens_out,
+                model,
+                mutation_applied,
+                full_request_json
+            FROM unified_logs
+            WHERE session_id = '{session_id}'
+              AND phase_name = '{phase_name}'
+              AND sounding_index IS NOT NULL
+              AND role = 'assistant'
+            ORDER BY sounding_index
+        """)
 
         if df.empty:
             return None

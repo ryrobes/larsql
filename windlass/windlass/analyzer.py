@@ -44,18 +44,18 @@ class SoundingAnalyzer:
         print(f"Minimum runs: {min_runs}, Confidence threshold: {min_confidence*100}%")
         print()
 
-        parquet_pattern = str(self.data_dir / "*.parquet")
-
-        # Get all sessions for this cascade
+        # Query unified_logs table directly (pure ClickHouse)
+        # Use position() instead of LIKE to avoid % escaping issues with clickhouse_driver
         sessions_query = f"""
             SELECT DISTINCT session_id
-            FROM file('{parquet_pattern}', Parquet)
-            WHERE metadata_json LIKE '%{cascade_file}%'
+            FROM unified_logs
+            WHERE cascade_file = '{cascade_file}'
+               OR position(cascade_file, '{cascade_file}') > 0
         """
 
         try:
-            df = self.db.query(sessions_query)
-            sessions = df.values.tolist()
+            result = self.db.query(sessions_query, output_format="dict")
+            sessions = [r['session_id'] for r in result]
         except Exception as e:
             print(f"Error querying logs: {e}")
             return {"suggestions": []}
@@ -69,34 +69,28 @@ class SoundingAnalyzer:
         # Analyze each phase that has soundings
         suggestions = []
 
-        # Get phases with soundings
+        # Get phases with soundings (use phase_name column directly)
+        # Use position() instead of LIKE to avoid % escaping issues
         phases_query = f"""
-            SELECT DISTINCT metadata_json
-            FROM file('{parquet_pattern}', Parquet)
-            WHERE metadata_json LIKE '%{cascade_file}%'
-            AND role = 'phase_start'
-            LIMIT 50
+            SELECT DISTINCT phase_name
+            FROM unified_logs
+            WHERE (cascade_file = '{cascade_file}' OR position(cascade_file, '{cascade_file}') > 0)
+              AND phase_name IS NOT NULL
+              AND sounding_index IS NOT NULL
         """
 
-        df_phases = self.db.query(phases_query)
-        phase_events = df_phases.values.tolist()
-
-        # Extract unique phase names
-        phases = set()
-        for event in phase_events:
-            try:
-                meta = json.loads(event[0]) if event[0] else {}
-                if meta.get("phase_name"):
-                    phases.add(meta["phase_name"])
-            except:
-                pass
+        try:
+            result = self.db.query(phases_query, output_format="dict")
+            phases = set(r['phase_name'] for r in result if r['phase_name'])
+        except Exception as e:
+            print(f"Error querying phases: {e}")
+            phases = set()
 
         print(f"Analyzing {len(phases)} phase(s) with soundings data...")
         print()
 
         for phase_name in phases:
             suggestion = self._analyze_phase(
-                parquet_pattern,
                 cascade_file,
                 phase_name,
                 min_confidence
@@ -114,30 +108,32 @@ class SoundingAnalyzer:
 
     def _analyze_phase(
         self,
-        parquet_pattern: str,
         cascade_file: str,
         phase_name: str,
         min_confidence: float
     ) -> Optional[Dict[str, Any]]:
         """Analyze a single phase's sounding patterns."""
 
-        # Query for sounding winners in this phase
+        # Query unified_logs table directly for sounding data
+        # Use position() instead of LIKE to avoid % escaping issues
         query = f"""
             SELECT
-                metadata_json,
-                content_json,
-                role
-            FROM file('{parquet_pattern}', Parquet)
-            WHERE metadata_json LIKE '%{cascade_file}%'
-            AND metadata_json LIKE '%{phase_name}%'
-            AND metadata_json LIKE '%sounding_index%'
+                sounding_index,
+                is_winner,
+                cost,
+                role,
+                content_json
+            FROM unified_logs
+            WHERE (cascade_file = '{cascade_file}' OR position(cascade_file, '{cascade_file}') > 0)
+              AND phase_name = '{phase_name}'
+              AND sounding_index IS NOT NULL
             ORDER BY timestamp DESC
             LIMIT 500
         """
 
         try:
-            df = self.db.query(query)
-            events = df.values.tolist()
+            result = self.db.query(query, output_format="dict")
+            events = result
         except Exception as e:
             return None
 
@@ -147,11 +143,13 @@ class SoundingAnalyzer:
         # Parse sounding data
         sounding_attempts = {}  # {sounding_index: {"wins": N, "costs": [], "content": []}}
 
-        for meta_str, content, role in events:
+        for row in events:
             try:
-                meta = json.loads(meta_str) if meta_str else {}
-                sounding_index = meta.get("sounding_index")
-                is_winner = meta.get("is_winner")
+                sounding_index = row.get("sounding_index")
+                is_winner = row.get("is_winner")
+                cost = row.get("cost")
+                role = row.get("role")
+                content = row.get("content_json")
 
                 if sounding_index is None:
                     continue
@@ -170,13 +168,18 @@ class SoundingAnalyzer:
                     sounding_attempts[sounding_index]["wins"] += 1
 
                 # Track cost if available
-                cost = meta.get("cost", 0)
                 if cost:
                     sounding_attempts[sounding_index]["costs"].append(cost)
 
                 # Track agent responses for pattern extraction
-                if role == "agent" and content:
-                    sounding_attempts[sounding_index]["content"].append(content)
+                if role == "assistant" and content:
+                    # Parse content if it's JSON string
+                    if isinstance(content, str):
+                        try:
+                            content = json.loads(content)
+                        except:
+                            pass
+                    sounding_attempts[sounding_index]["content"].append(str(content) if content else "")
 
             except:
                 continue

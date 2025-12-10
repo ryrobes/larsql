@@ -382,7 +382,7 @@ def get_session_messages(session_id: str) -> pd.DataFrame:
 
 #### 3.2.1 Create Shared Adapter Module for UI
 
-**File**: `extras/ui/backend/db_utils.py`
+**File**: `dashboard/backend/db_utils.py`
 
 ```python
 """
@@ -442,7 +442,7 @@ def is_using_clickhouse_server() -> bool:
 
 #### 3.2.2 Update message_flow_api.py
 
-**File**: `extras/ui/backend/message_flow_api.py`
+**File**: `dashboard/backend/message_flow_api.py`
 
 ```python
 """
@@ -536,7 +536,7 @@ def _build_response_from_dataframe(session_id: str, df, data_source: str) -> dic
 
 #### 3.2.3 Update app.py Aggregation Queries
 
-**File**: `extras/ui/backend/app.py`
+**File**: `dashboard/backend/app.py`
 
 Replace DuckDB queries with adapter calls:
 
@@ -935,7 +935,7 @@ class TestUIBackendModeSwitch:
 
 ### 6.2 Phase 2: UI Integration (Week 2)
 
-- [ ] Create `extras/ui/backend/db_utils.py`
+- [ ] Create `dashboard/backend/db_utils.py`
 - [ ] Update `message_flow_api.py` to use framework adapter
 - [ ] Update `app.py` aggregation queries
 - [ ] Add `data_source` field to API responses

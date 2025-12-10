@@ -43,7 +43,7 @@ class Echo:
         self.state[key] = value
 
     def add_history(self, entry: Dict[str, Any], trace_id: str = None, parent_id: str = None,
-                   node_type: str = "msg", metadata: Dict[str, Any] = None):
+                   node_type: str = "msg", metadata: Dict[str, Any] = None, skip_unified_log: bool = False):
         """
         Add an entry to the history with full metadata for visualization.
 
@@ -53,6 +53,7 @@ class Echo:
             parent_id: Parent trace ID for tree structure
             node_type: Type of node (cascade, phase, turn, tool, etc.)
             metadata: Additional metadata dict (sounding_index, is_winner, phase_name, etc.)
+            skip_unified_log: If True, skip automatic logging to unified_logs (caller already logged)
         """
         # CRITICAL: Create a COPY of the entry dict to avoid mutating the original
         # The caller may reuse the same dict (e.g., appending to context_messages)
@@ -72,6 +73,10 @@ class Echo:
 
         enriched_entry["metadata"] = meta
         self.history.append(enriched_entry)
+
+        # Skip unified logging if caller already logged (e.g., agent responses with full LLM data)
+        if skip_unified_log:
+            return
 
         # Also log to unified logging system automatically
         try:

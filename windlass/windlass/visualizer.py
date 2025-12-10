@@ -12,6 +12,7 @@ Generates execution flow diagrams from Echo history showing:
 import json
 import re
 import os
+import sys
 import glob
 import subprocess
 from datetime import datetime
@@ -236,7 +237,43 @@ def validate_and_write_mermaid(
     with open(output_path, "w") as f:
         f.write(mermaid_content)
 
+    # Try to render to console (silently fails if not supported)
+    _maybe_render_mermaid_to_console(mermaid_content)
+
     return True, output_path
+
+
+def _maybe_render_mermaid_to_console(mermaid_content: str) -> None:
+    """
+    Attempt to render Mermaid diagram to console using mermaid-ascii.
+    Silently fails if mermaid-ascii is not available or rendering fails.
+    """
+    # Check env var to disable
+    if not os.environ.get("WINDLASS_SHOW_CLI_MERMAID", "true").lower() in ("true", "1"):
+        return
+
+    # Check if stdout is a TTY
+    if not sys.stdout.isatty():
+        return
+
+    try:
+        # Try to run mermaid-ascii
+        result = subprocess.run(
+            ["mermaid-ascii"],
+            input=mermaid_content,
+            capture_output=True,
+            text=True,
+            timeout=5  # Don't hang
+        )
+
+        if result.returncode == 0 and result.stdout:
+            # Successfully rendered
+            print("\n📊 Mermaid Diagram:")
+            print(result.stdout)
+            print("─" * 60 + "\n")
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        # Silently fail - mermaid-ascii not installed, timed out, or other error
+        pass
 
 
 def load_sub_cascade_mermaid(sub_session_id: str, graph_dir: Optional[str] = None) -> Optional[str]:

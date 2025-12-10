@@ -1226,7 +1226,7 @@ def _process_tool_result(self, result, phase_name):
 ### 7.2 Checkpoint API Extension
 
 ```python
-# extras/ui/backend/app.py
+# dashboard/backend/app.py
 
 @app.route('/api/checkpoint/<checkpoint_id>', methods=['GET'])
 def get_checkpoint(checkpoint_id):

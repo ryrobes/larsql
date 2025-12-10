@@ -16,14 +16,14 @@ Phase 3 (Human Sounding Evaluation) from the original HITL plan is **partially i
 | `HumanSoundingEvalConfig` model | ✅ Done | `windlass/cascade.py:84` |
 | `HumanEvalPresentation` enum | ✅ Done | `windlass/cascade.py:67` |
 | `HumanEvalSelectionMode` enum | ✅ Done | `windlass/cascade.py:76` |
-| `SoundingComparison` React component | ✅ Done | `extras/ui/frontend/src/components/SoundingComparison.js` |
+| `SoundingComparison` React component | ✅ Done | `dashboard/frontend/src/components/SoundingComparison.js` |
 | Side-by-side, tabbed, carousel views | ✅ Done | In SoundingComparison.js |
 | rank_all, rate_each, pick_one modes | ✅ Done | In SoundingComparison.js |
 | Database schema (checkpoints) | ✅ Done | `windlass/schema.py:101` |
 | Database schema (training_preferences) | ✅ Done | `windlass/schema.py:150` |
 | SSE events for checkpoints | ✅ Done | `windlass/checkpoints.py` |
 | `hotornot.py` (offline binary eval) | ✅ Done | `windlass/hotornot.py` |
-| CheckpointView page | ✅ Done | `extras/ui/frontend/src/components/CheckpointView.js` |
+| CheckpointView page | ✅ Done | `dashboard/frontend/src/components/CheckpointView.js` |
 
 ---
 

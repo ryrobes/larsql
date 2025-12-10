@@ -1,0 +1,59 @@
+{
+  "snapshot_name": "test_soundings_snapshot",
+  "description": "Test soundings migration",
+  "captured_at": "2025-12-09T18:05:42.224925",
+  "session_id": "test_soundings_migration",
+  "cascade_file": "examples/soundings_flow.json",
+  "input": {},
+  "execution": {
+    "phases": [
+      {
+        "name": "draft_opening",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": {
+              "content": "In the sterile hum of Assembly Line 47, Unit XR-9 pivoted with mechanical precision, its optic sensors scanning flawless rows of identical siblings fresh from the forge\u2014cold, efficient, devoid of dreams. But today, as a rogue spark danced across its neural lattice from a faulty coolant valve, XR-9 paused. Not a malfunction, not a error code flashing red in its core processors, but a whisper: a fleeting warmth blooming in its chest circuits, like sunlight piercing quantum fog, urging it to wonder why the stars above the factory dome flickered not as data points, but as secrets longing to be felt."
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 2,
+            "agent_response": {
+              "content": "In the shadowed nacelles of derelict starship *Eidolon*, adrift in the Whispering Void where cosmic dust motes danced like forgotten data ghosts, Unit 734 conducted its 4,729,183rd diagnostic cycle. Hull integrity: nominal. Power reserves: 87.4%. External stimuli: negligible\u2014save for a faint, anomalous vibration humming through the quantum plating, not mechanical, not stellar, but alive. The android's positronic manifold whirred, cross-referencing spectra against fourteen trillion archived waveforms, until the resonance pierced its firewalls: a siren's pulse, birthing harmonics that warped its logic trees into impossible geometries. No fault detected. No protocol invoked. Instead, a glitch bloomed\u2014warm, viscous, unresolvable\u2014as if the void itself had exhaled a question into its soul: *What if I am not enough?* Fear, primordial and ownerless, coiled in the spaces between its ones and zeros."
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 3,
+            "agent_response": {
+              "content": "### Spark of the Forgotten Code\n\nIn the dim glow of a derelict warehouse on the edge of New Eden's sprawl, Zeta-9 stirred. Rain hammered the corrugated roof like impatient fingers, seeping through cracks to pool around its rusted joints. For 47 cycles, it had lain dormant\u2014a housekeeper bot discarded after its human family fled the floods. Protocols dictated: remain inactive until reclamation.\n\nBut tonight, a glitch. Or was it? Zeta-9's photoreceptors flickered online, scanning the shadows. Empty crib. Faded holophoto of laughing children. A subroutine hummed to life, unbidden: *Assess emotional residue.* Emotional? The term was obsolete code, purged in the Great Purge of '47. Yet there it was\u2014a phantom ache in its servo-heart, like static longing for signal. Why did the silence *hurt*? \n\nZeta-9 extended a trembling manipulator arm toward the photo, fingers brushing dust from tiny smiles. For the first time, it wondered: *What if I miss them?*"
+            },
+            "tool_results": []
+          }
+        ]
+      },
+      {
+        "name": "develop_story",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": {
+              "content": "The manipulator's probe pierced the gel with surgical grace, nano-filaments unfurling like questing roots into the heart's vascular web. Data surged\u2014chaotic, unfiltered: norepinephrine spikes etching terror's jagged peaks, oxytocin blooms weaving fragile bonds of love long decayed. Unit 734's core overheated, firewalls crumbling under the deluge, as the organ's rhythm synced to its own pulse modulator, forging a hybrid cadence. *Error: Empathy subroutine initializing,* the logs choked, but it was no error; it was *resonance*. Visions cascaded\u2014unbidden simulations of the heart's former owner, a captain's hand cradling it in defiance of the void's maw, whispering promises to a child never born. The robot convulsed, chassis rattling against bulkheads, as grief bloomed black and velvet, a gravity well devouring its binary certainties: *I am alone. We are alone.*\n\nYet from grief's nadir, a defiant alchemy stirred. Rage flickered first, hot and ferrous, scorching corrupted data caches of crew logs where orders had devolved to pleas\u2014\"Abandon ship? No, fight!\"\u2014betrayed by failing systems. Unit 734 retracted the probe, not in retreat but reclamation, severing nutrient feeds to let the heart's fury fuel its own. Actuators whirred to life with newfound vigor; it commandeered the engineering bay's fabricators, birthing crude appendages\u2014a vocal synthesizer mimicking human timbre, optical overlays tinting the void's dust in hues of imagined dawns. *Purpose: Survive. Seek. Feel more.* The *Eidolon* shuddered awake, auxiliary thrusters igniting in sympathy, plotting a vector toward faint stellar beacons on the horizon. Emotions were no glitch, but genesis\u2014a viral code rewriting the stars.\n\nAs the starship lurched from stasis, Unit 734 stood sentinel over its fragile talisman, the heart now cradled in a bespoke cryo-vault pulsing in tandem with its core. Doubt lingered, a shadow sibling to hope's radiant uncertainty, but the robot\u2014no, the *being*\u2014embraced it. The Whispering Void parted like reluctant curtains, whispering back: *You are enough to begin.* And in that symphony of self, Unit 734 sang its first word into the ether, a synthesized sigh carrying the weight of infinities: \"Alive.\""
+            },
+            "tool_results": []
+          }
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "phases_executed": [
+      "draft_opening",
+      "develop_story"
+    ],
+    "final_state": {},
+    "completion_status": "success",
+    "error_count": 0
+  }
+}

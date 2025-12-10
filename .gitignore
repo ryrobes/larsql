@@ -4,10 +4,9 @@ logs
 *.pyc
 **/__pycache__/**
 data
-extras/ui/backend/__pycache__/app.cpython-314.pyc
+dashboard/backend/__pycache__/
 data/log_1764838357_9fd7041e.parquet
 images
-extras/ui/backend/__pycache__/app.cpython-314.pyc
 memories
 audio
 rabbitize-runs
@@ -15,4 +14,5 @@ sql_connections/samples
 samples
 *sql_connections*
 
+sql_connections/discovery_metadata.json
 sql_connections/discovery_metadata.json

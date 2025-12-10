@@ -1,16 +1,15 @@
 """
 Windlass UI Backend - Flask server for cascade exploration and analytics
 
-Data sources:
-1. ClickHouse unified_logs table - All log data (real-time + historical)
-2. LiveStore (in-memory) - Session status tracking only
+Data source: ClickHouse unified_logs table (real-time + historical)
 
-The unified_logs.py now writes directly to ClickHouse with ~1 second latency,
-so no Parquet intermediary is needed.
+The unified_logs.py writes directly to ClickHouse with ~1 second latency.
+Checkpoint caching (live_store.py) is used only for HITL workflows.
 """
 import os
 import sys
 import json
+import glob
 import math
 import time
 from pathlib import Path
@@ -20,8 +19,7 @@ from flask_cors import CORS
 import pandas as pd
 from queue import Empty
 
-# Import live store for session status tracking
-from live_store import get_live_store, process_event as live_store_process
+# Note: live_store.py is now a stub - all data comes from ClickHouse directly
 
 # Add windlass to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
@@ -57,9 +55,28 @@ def sanitize_for_json(obj):
         return [sanitize_for_json(item) for item in obj]
     return obj
 
+
+def to_iso_string(ts):
+    """Convert a timestamp to ISO string format.
+
+    Handles both datetime objects (from ClickHouse) and Unix timestamps (floats).
+    Returns None if input is None/empty.
+    """
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts.isoformat()
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts).isoformat()
+    # If it's already a string, return as-is
+    if isinstance(ts, str):
+        return ts
+    return None
+
+
 # Configuration - reads from environment or uses defaults
 # WINDLASS_ROOT-based configuration (single source of truth)
-# Calculate default root relative to this file's location (extras/ui/backend/app.py -> repo root)
+# Calculate default root relative to this file's location (dashboard/backend/app.py -> repo root)
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
 
@@ -312,442 +329,15 @@ def get_available_columns():
         return []
 
 
-def build_instance_from_live_store(session_id: str, cascade_id: str = None) -> dict:
-    """Build an instance dict from LiveStore data.
+# NOTE: build_instance_from_live_store was removed in the ClickHouse migration.
+# All session data now comes directly from ClickHouse with ~1s latency.
 
-    Returns the same structure as the SQL-based instance builder,
-    so the frontend doesn't know/care about the data source.
-    """
-    store = get_live_store()
-    info = store.get_session_info(session_id)
-    if not info:
-        return None
-
-    # Get all rows for this session
-    rows = store.get_session_data(session_id)
-    if not rows:
-        return None
-
-    # Extract parent_session_id from first row that has it
-    parent_session_id = None
-    for r in rows:
-        if r.get('parent_session_id'):
-            parent_session_id = r.get('parent_session_id')
-            break
-
-    # Calculate basic metrics
-    timestamps = [r.get('timestamp', 0) for r in rows if r.get('timestamp')]
-    start_time = min(timestamps) if timestamps else None
-    end_time = max(timestamps) if timestamps else None
-    duration = (end_time - start_time) if start_time and end_time else 0
-
-    # Debug: Log suspicious durations (>1 hour suggests possible timestamp issues)
-    if duration > 3600:
-        print(f"[LiveStore] WARN: Large duration detected for session {session_id}")
-        print(f"[LiveStore]   start_time={start_time}, end_time={end_time}, duration={duration:.2f}s ({duration/60:.2f}m)")
-        print(f"[LiveStore]   row_count={len(rows)}, timestamp_count={len(timestamps)}")
-        if timestamps:
-            print(f"[LiveStore]   timestamps_sample={timestamps[:5]} ... {timestamps[-5:] if len(timestamps) > 5 else ''}")
-
-    # Calculate total cost - handle NaN values
-    def safe_cost(r):
-        c = r.get('cost')
-        if c is None:
-            return 0
-        try:
-            if isinstance(c, float) and (c != c):  # NaN check
-                return 0
-            return float(c)
-        except:
-            return 0
-
-    total_cost = sum(safe_cost(r) for r in rows)
-
-    # Get models used
-    models_used = list(set(r.get('model') for r in rows if r.get('model')))
-
-    # Get model costs (aggregate cost by model)
-    model_cost_map = {}
-    for r in rows:
-        model = r.get('model')
-        cost = safe_cost(r)
-        if model and cost > 0:
-            if model not in model_cost_map:
-                model_cost_map[model] = 0.0
-            model_cost_map[model] += cost
-    # Sort by cost descending
-    model_costs = sorted(
-        [{'model': m, 'cost': c} for m, c in model_cost_map.items()],
-        key=lambda x: x['cost'],
-        reverse=True
-    )
-
-    # Build phases map with comprehensive tracking
-    phases_map = {}
-    phase_costs = {}
-    sounding_data = {}  # phase_name -> {sounding_idx -> {index, is_winner, cost, turns: {turn_num -> cost}}}
-    tool_calls_map = {}
-    message_counts = {}
-    turn_tracker = {}  # phase_name -> {(sounding_idx, turn_num) -> cost}
-
-    for row in rows:
-        phase_name = row.get('phase_name')
-        if not phase_name:
-            continue
-
-        # Initialize phase if not seen
-        if phase_name not in phases_map:
-            phases_map[phase_name] = {
-                "name": phase_name,
-                "status": "pending",
-                "output_snippet": "",
-                "error_message": None,
-                "model": None,
-                "has_soundings": False,
-                "sounding_total": 0,
-                "sounding_winner": None,
-                "sounding_attempts": [],
-                "max_turns_actual": 0,
-                "max_turns": 1,
-                "turn_costs": [],
-                "tool_calls": [],
-                "audible_count": 0,
-                "message_count": 0,
-                "avg_cost": 0.0,
-                "avg_duration": 0.0
-            }
-            phase_costs[phase_name] = 0.0
-            sounding_data[phase_name] = {}
-            tool_calls_map[phase_name] = []
-            message_counts[phase_name] = 0
-            turn_tracker[phase_name] = {}
-
-        node_type = row.get('node_type', '')
-        cost = safe_cost(row)
-        sounding_idx = row.get('sounding_index')
-        turn_num = row.get('turn_number')
-
-        # Update phase status based on node_type
-        if node_type == 'phase_start':
-            phases_map[phase_name]['status'] = 'running'
-            if row.get('model'):
-                phases_map[phase_name]['model'] = row.get('model')
-        elif node_type == 'phase_complete':
-            phases_map[phase_name]['status'] = 'completed'
-            # Extract output from phase_complete result
-            content = row.get('content_json')
-            if content:
-                try:
-                    parsed = json.loads(content) if isinstance(content, str) else content
-                    if parsed:
-                        snippet = str(parsed)[:200] if not isinstance(parsed, str) else parsed[:200]
-                        if snippet:
-                            phases_map[phase_name]['output_snippet'] = snippet
-                except:
-                    if isinstance(content, str) and content:
-                        phases_map[phase_name]['output_snippet'] = content[:200]
-        elif node_type in ('agent', 'turn_output'):
-            # Don't override completed status, but update output
-            if phases_map[phase_name]['status'] != 'completed':
-                phases_map[phase_name]['status'] = 'running'
-            content = row.get('content_json')
-            if content:
-                try:
-                    parsed = json.loads(content) if isinstance(content, str) else content
-                    if parsed:
-                        snippet = str(parsed)[:200] if not isinstance(parsed, str) else parsed[:200]
-                        if snippet:
-                            phases_map[phase_name]['output_snippet'] = snippet
-                except:
-                    if isinstance(content, str) and content:
-                        phases_map[phase_name]['output_snippet'] = content[:200]
-        elif node_type == 'phase_error':
-            # Only true phase errors (not sounding errors) mark the phase as error
-            phases_map[phase_name]['status'] = 'error'
-            content = row.get('content_json')
-            if content:
-                phases_map[phase_name]['error_message'] = str(content)[:200]
-        elif node_type == 'sounding_error':
-            # Track that this phase has failed soundings, but don't mark phase as error
-            # Phase completed, some soundings just failed
-            if 'failed_soundings' not in phases_map[phase_name]:
-                phases_map[phase_name]['failed_soundings'] = 0
-            phases_map[phase_name]['failed_soundings'] += 1
-
-        # Track total phase cost
-        phase_costs[phase_name] += cost
-
-        # Track turn-level costs (for both sounding and non-sounding phases)
-        if turn_num is not None or cost > 0:
-            turn_key = (sounding_idx, turn_num if turn_num is not None else 0)
-            if turn_key not in turn_tracker[phase_name]:
-                turn_tracker[phase_name][turn_key] = 0.0
-            turn_tracker[phase_name][turn_key] += cost
-
-            # Track max turns
-            actual_turn = turn_num if turn_num is not None else 0
-            phases_map[phase_name]['max_turns_actual'] = max(
-                phases_map[phase_name]['max_turns_actual'],
-                actual_turn + 1
-            )
-
-        # Track soundings
-        if sounding_idx is not None:
-            phases_map[phase_name]['has_soundings'] = True
-            if sounding_idx not in sounding_data[phase_name]:
-                sounding_data[phase_name][sounding_idx] = {
-                    'index': int(sounding_idx),
-                    'is_winner': False,
-                    'cost': 0.0,
-                    'turn_costs': {},  # turn_num -> cost
-                    'model': None
-                }
-            sounding_data[phase_name][sounding_idx]['cost'] += cost
-            # Track model for this sounding (use first non-null model found)
-            row_model = row.get('model')
-            if row_model and not sounding_data[phase_name][sounding_idx]['model']:
-                sounding_data[phase_name][sounding_idx]['model'] = row_model
-
-            # Track per-turn cost within sounding
-            turn_key = turn_num if turn_num is not None else 0
-            if turn_key not in sounding_data[phase_name][sounding_idx]['turn_costs']:
-                sounding_data[phase_name][sounding_idx]['turn_costs'][turn_key] = 0.0
-            sounding_data[phase_name][sounding_idx]['turn_costs'][turn_key] += cost
-
-            if row.get('is_winner'):
-                sounding_data[phase_name][sounding_idx]['is_winner'] = True
-                phases_map[phase_name]['sounding_winner'] = int(sounding_idx)
-
-        # Track tool calls
-        tool_calls_json = row.get('tool_calls_json')
-        if tool_calls_json:
-            try:
-                tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
-                if isinstance(tool_calls, list):
-                    for tc in tool_calls:
-                        if isinstance(tc, dict):
-                            tool_name = tc.get('tool') or tc.get('function', {}).get('name') or tc.get('name')
-                            if tool_name:
-                                tool_calls_map[phase_name].append(tool_name)
-            except:
-                pass
-
-        # Also check node_type for tool_call events
-        if node_type == 'tool_call':
-            tool_calls_json = row.get('tool_calls_json')
-            if tool_calls_json:
-                try:
-                    tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
-                    if isinstance(tool_calls, list):
-                        for tc in tool_calls:
-                            if isinstance(tc, dict):
-                                tool_name = tc.get('tool')
-                                if tool_name and tool_name not in tool_calls_map[phase_name]:
-                                    tool_calls_map[phase_name].append(tool_name)
-                except:
-                    pass
-
-        # Count audibles
-        if node_type == 'audible':
-            phases_map[phase_name]['audible_count'] += 1
-
-        # Count messages
-        if node_type in ('agent', 'tool_result', 'tool_call', 'user', 'system', 'turn_output', 'turn_start'):
-            message_counts[phase_name] += 1
-
-    # Finalize phases
-    for phase_name, phase in phases_map.items():
-        phase['avg_cost'] = phase_costs.get(phase_name, 0.0)
-        phase['tool_calls'] = list(set(tool_calls_map.get(phase_name, [])))  # Deduplicate
-        phase['message_count'] = message_counts.get(phase_name, 0)
-
-        # Build sounding attempts with turn breakdown
-        if phase_name in sounding_data and sounding_data[phase_name]:
-            attempts = []
-            for idx, data in sounding_data[phase_name].items():
-                # Convert turn_costs dict to sorted list
-                turns = [
-                    {'turn': int(t), 'cost': c}
-                    for t, c in sorted(data['turn_costs'].items())
-                ]
-                attempts.append({
-                    'index': data['index'],
-                    'is_winner': data['is_winner'],
-                    'cost': data['cost'],
-                    'turns': turns,
-                    'model': data.get('model')
-                })
-            phase['sounding_attempts'] = sorted(attempts, key=lambda x: x['index'])
-            phase['sounding_total'] = len(attempts)
-
-        # Build turn_costs for non-sounding phases
-        if phase_name in turn_tracker:
-            # Get turns where sounding_idx is None (non-sounding turns)
-            non_sounding_turns = {
-                t: c for (s, t), c in turn_tracker[phase_name].items()
-                if s is None and c > 0
-            }
-            if non_sounding_turns:
-                phase['turn_costs'] = [
-                    {'turn': int(t), 'cost': c}
-                    for t, c in sorted(non_sounding_turns.items())
-                ]
-
-    # Get input data (from first user message with Input Data)
-    input_data = {}
-    for row in rows:
-        if row.get('node_type') == 'user':
-            content = row.get('content_json')
-            if content and isinstance(content, str) and '## Input Data:' in content:
-                try:
-                    lines = content.split('\n')
-                    for i, ln in enumerate(lines):
-                        if '## Input Data:' in ln and i + 1 < len(lines):
-                            json_str = lines[i + 1].strip()
-                            if json_str and json_str != '{}':
-                                input_data = json.loads(json_str)
-                                break
-                except:
-                    pass
-            if input_data:
-                break
-
-    # Get "final output" - exclude structural messages, prefer agent/tool content
-    # This provides a live view of what's happening in the cascade
-    final_output = None
-    for row in reversed(rows):
-        content = row.get('content_json')
-        node_type = row.get('node_type', '')
-        role = row.get('role', '')
-
-        # Skip structural and system messages - focus on agent/tool content
-        if role in ('structure', 'system'):
-            continue
-        if node_type in ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
-                         'cascade_failed', 'cascade_killed',
-                         'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update'):
-            continue
-
-        if content:
-            try:
-                parsed = json.loads(content) if isinstance(content, str) else content
-                if parsed:
-                    # Format based on type for better display
-                    if isinstance(parsed, str):
-                        final_output = parsed
-                    elif isinstance(parsed, dict):
-                        # For tool results, show the result nicely
-                        if 'result' in parsed:
-                            final_output = str(parsed.get('result', parsed))
-                        elif 'error' in parsed:
-                            final_output = f"Error: {parsed.get('error')}"
-                        else:
-                            final_output = str(parsed)
-                    else:
-                        final_output = str(parsed)
-                    break
-            except:
-                if isinstance(content, str) and content.strip():
-                    final_output = content
-                    break
-
-    # Check for cascade-level errors (not sounding/phase errors which are expected)
-    # Only truly fatal errors that prevent cascade completion should mark it as failed
-    cascade_status = "running" if info.status == "running" else "success"
-    error_count = 0
-    error_list = []
-    for row in rows:
-        node_type = row.get('node_type', '')
-        # Only cascade_failed, cascade_error, cascade_killed indicate true cascade failure
-        # sounding_error, error from individual phases, etc. are expected and shouldn't fail cascade
-        if node_type in ('cascade_failed', 'cascade_error', 'cascade_killed'):
-            error_count += 1
-            error_type = "Killed (Server Restart)" if node_type == 'cascade_killed' else "Cascade Error"
-            error_list.append({
-                "phase": row.get('phase_name', 'unknown'),
-                "message": str(row.get('content_json', ''))[:200],
-                "error_type": error_type
-            })
-    if error_count > 0:
-        cascade_status = "failed"
-
-    # Build token timeseries for sparkline (max 20 buckets)
-    token_timeseries = []
-    if timestamps and len(timestamps) > 0:
-        time_range = max(timestamps) - min(timestamps) if max(timestamps) > min(timestamps) else 1
-        bucket_size = time_range / 20.0 if time_range > 0 else 1
-        buckets = {}  # bucket_idx -> {tokens_in, tokens_out}
-
-        for row in rows:
-            ts = row.get('timestamp')
-            tokens_in = row.get('tokens_in', 0) or 0
-            tokens_out = row.get('tokens_out', 0) or 0
-
-            if ts and (tokens_in or tokens_out):
-                bucket_idx = int((ts - min(timestamps)) / bucket_size)
-                bucket_idx = min(bucket_idx, 19)  # Cap at 19 (0-19 = 20 buckets)
-
-                if bucket_idx not in buckets:
-                    buckets[bucket_idx] = {'bucket': bucket_idx, 'tokens_in': 0, 'tokens_out': 0}
-
-                buckets[bucket_idx]['tokens_in'] += int(tokens_in)
-                buckets[bucket_idx]['tokens_out'] += int(tokens_out)
-
-        # Convert to sorted list
-        token_timeseries = [buckets[i] for i in sorted(buckets.keys())]
-
-    # Check if any phase has soundings
-    has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())
-
-    return {
-        'session_id': session_id,
-        'cascade_id': info.cascade_id,
-        'parent_session_id': parent_session_id,  # Extracted from rows
-        'depth': 1 if parent_session_id else 0,  # Child if has parent
-        'start_time': datetime.fromtimestamp(start_time).isoformat() if start_time else None,
-        'end_time': datetime.fromtimestamp(end_time).isoformat() if end_time and info.status != "running" else None,
-        'duration_seconds': duration,
-        'total_cost': total_cost,
-        'models_used': models_used,
-        'model_costs': model_costs,
-        'input_data': input_data,
-        'final_output': final_output,
-        'phases': list(phases_map.values()),
-        'status': cascade_status,
-        'error_count': error_count,
-        'errors': error_list,
-        'token_timeseries': token_timeseries,
-        'has_soundings': has_soundings,
-        'children': [],
-        '_source': 'live'  # Indicate data source for debugging
-    }
-
-
-@app.route('/api/live-store/stats', methods=['GET'])
-def get_live_store_stats():
-    """Get statistics about the live session store."""
-    store = get_live_store()
-    return jsonify(store.get_stats())
-
-
-@app.route('/api/live-store/session/<session_id>', methods=['GET'])
-def get_live_session(session_id):
-    """Get live session data if available."""
-    store = get_live_store()
-    if not store.has_data(session_id):
-        return jsonify({'error': 'Session not in live store'}), 404
-
-    instance = build_instance_from_live_store(session_id)
-    if not instance:
-        return jsonify({'error': 'Failed to build instance from live store'}), 500
-
-    return jsonify(sanitize_for_json(instance))
 
 
 @app.route('/api/cascade-definitions', methods=['GET'])
 def get_cascade_definitions():
     """
-    Get all cascade definitions (from filesystem) with execution metrics from Parquet.
+    Get all cascade definitions (from filesystem) with execution metrics from ClickHouse.
     """
     try:
         # Scan filesystem for all cascade definitions
@@ -803,7 +393,7 @@ def get_cascade_definitions():
                 except:
                     continue
 
-        # Enrich with metrics from Parquet logs
+        # Enrich with metrics from ClickHouse
         conn = get_db_connection()
 
         try:
@@ -926,13 +516,7 @@ def get_cascade_definitions():
                         latest_session_id, latest_time = latest_sessions_by_cascade[cascade_id]
                         all_cascades[cascade_id]['latest_session_id'] = latest_session_id
                         # Convert timestamp to ISO format for frontend
-                        if latest_time:
-                            try:
-                                all_cascades[cascade_id]['latest_run'] = datetime.fromtimestamp(latest_time).isoformat()
-                            except:
-                                all_cascades[cascade_id]['latest_run'] = None
-                        else:
-                            all_cascades[cascade_id]['latest_run'] = None
+                        all_cascades[cascade_id]['latest_run'] = to_iso_string(latest_time)
 
                         # Check for mermaid and graph files
                         mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
@@ -980,40 +564,14 @@ def get_cascade_instances(cascade_id):
     """
     Get all run instances for a specific cascade definition.
 
-    Data sources (priority):
-    1. LiveStore - for running/completing sessions (real-time)
-    2. Parquet - for completed sessions (historical)
-
-    Live sessions are served from in-memory store for instant updates.
+    Data source: ClickHouse unified_logs table (real-time with ~1s latency)
     """
     try:
-        # First, get any live sessions for this cascade
-        store = get_live_store()
-
-        # Debug: show all tracked sessions
-        stats = store.get_stats()
-        #print(f"[API] LiveStore stats: {stats}")
-
-        live_sessions = store.get_sessions_for_cascade(cascade_id)
-        #print(f"[API] Looking for cascade_id={cascade_id}, found live sessions: {live_sessions}")
-
-        live_instances = []
-        live_session_ids = set()
-
-        for session_id in live_sessions:
-            instance = build_instance_from_live_store(session_id, cascade_id)
-            if instance:
-                live_instances.append(instance)
-                live_session_ids.add(session_id)
-                #print(f"[API] Serving session {session_id} from LiveStore (status={instance.get('status')}, phases={len(instance.get('phases', []))})")
-
-        # Now get historical sessions from Parquet (excluding live ones)
         conn = get_db_connection()
-        columns = get_available_columns(conn)
+        columns = get_available_columns()
 
         if not columns:
-            # No Parquet data, return just live instances
-            return jsonify(sanitize_for_json(live_instances))
+            return jsonify([])
 
         has_model = 'model' in columns
         has_turn_number = 'turn_number' in columns
@@ -1084,7 +642,7 @@ def get_cascade_instances(cascade_id):
         # Batching all queries would reduce it to ~10-12 total queries
         # Current optimizations: models, outputs, errors, phase_costs, token_timeseries batched (saves ~50 queries)
         # Still needed: input_data, turn_costs, tool_usage, soundings, messages, phases
-        session_ids = [row[0] for row in session_results if row[0] not in live_session_ids]
+        session_ids = [row[0] for row in session_results]
 
         # Batch 1: Get models for all sessions
         models_by_session = {}
@@ -1285,11 +843,6 @@ def get_cascade_instances(cascade_id):
         instances = []
         for session_row in session_results:
             session_id, session_cascade_id, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
-
-            # Skip sessions that are being served from LiveStore
-            if session_id in live_session_ids:
-                #print(f"[API] Skipping session {session_id} from SQL (already in LiveStore)")
-                continue
 
             # Get models from batch query
             models_used = models_by_session.get(session_id, [])
@@ -1609,8 +1162,8 @@ def get_cascade_instances(cascade_id):
                 'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
                 'parent_session_id': parent_session_id,
                 'depth': int(depth) if depth is not None else 0,
-                'start_time': datetime.fromtimestamp(start_time).isoformat() if start_time else None,
-                'end_time': datetime.fromtimestamp(end_time).isoformat() if end_time else None,
+                'start_time': to_iso_string(start_time),
+                'end_time': to_iso_string(end_time),
                 'duration_seconds': float(duration) if duration else 0.0,
                 'total_cost': float(total_cost) if total_cost else 0.0,
                 'models_used': models_used,
@@ -1627,14 +1180,11 @@ def get_cascade_instances(cascade_id):
                 '_source': 'sql'  # Indicate data source for debugging
             })
 
-        # Merge live instances with SQL instances
-        all_instances = live_instances + instances
-
         # Restructure to nest children under parents
         parents = []
         children_map = {}  # parent_session_id -> [children]
 
-        for instance in all_instances:
+        for instance in instances:
             if instance['depth'] == 0:
                 # Parent instance
                 if 'children' not in instance:
@@ -1687,7 +1237,7 @@ def get_cascade_instances(cascade_id):
 
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session_detail(session_id):
-    """Get detailed data for a specific session from Parquet."""
+    """Get detailed data for a specific session from ClickHouse."""
     try:
         conn = get_db_connection()
 
@@ -1736,7 +1286,7 @@ def get_session_detail(session_id):
         return jsonify({
             'session_id': session_id,
             'entries': entries,
-            'source': 'parquet'
+            'source': 'clickhouse'
         })
 
     except Exception as e:
@@ -1749,7 +1299,7 @@ def get_session_detail(session_id):
 def dump_session(session_id):
     """
     Dump complete session to a single JSON file for debugging.
-    Reads from Parquet and saves to logs/session_dumps/{session_id}.json
+    Reads from ClickHouse and saves to logs/session_dumps/{session_id}.json
     """
     try:
         conn = get_db_connection()
@@ -1806,16 +1356,12 @@ def get_soundings_tree(session_id):
     Shows all soundings across all phases, evaluator reasoning,
     and the winner path through the cascade execution.
 
-    Data sources (priority):
-    1. LiveStore - for running/completing sessions (real-time is_winner updates)
-    2. Parquet - for completed sessions (historical)
+    Data source: ClickHouse unified_logs table
     """
     try:
-        # Check if session is in LiveStore (for real-time is_winner data)
-        store = get_live_store()
-
-        # Query Parquet for soundings data (includes mutation/prompt data not available in SSE)
-        query = f"""
+        # Query ClickHouse for soundings data
+        conn = get_db_connection()
+        query = """
         SELECT
             phase_name,
             sounding_index,
@@ -1834,54 +1380,21 @@ def get_soundings_tree(session_id):
             mutation_type,
             mutation_template,
             full_request_json
-        FROM read_parquet('{DATA_DIR}/*.parquet')
-        WHERE session_id = '{session_id}'
+        FROM unified_logs
+        WHERE session_id = ?
           AND sounding_index IS NOT NULL
           AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
-        ORDER BY timestamp, COALESCE(reforge_step, -1), sounding_index, turn_number
+        ORDER BY timestamp, reforge_step, sounding_index, turn_number
         """
-
-        with get_db_connection() as conn:
-            df = conn.execute(query).fetchdf()
-
-        # For live sessions, get real-time is_winner updates from LiveStore
-        if store.is_tracked(session_id) or store.has_data(session_id):
-            live_query = """
-            SELECT
-                phase_name,
-                sounding_index,
-                reforge_step,
-                is_winner
-            FROM live_logs
-            WHERE session_id = ?
-              AND sounding_index IS NOT NULL
-              AND is_winner IS NOT NULL
-            """
-            live_df = store.query_df(live_query, [session_id])
-            if not live_df.empty:
-                # Create a mapping of (phase, sounding, reforge) -> is_winner from live data
-                live_winners = {}
-                for _, row in live_df.iterrows():
-                    key = (row['phase_name'], row['sounding_index'], row['reforge_step'] if pd.notna(row['reforge_step']) else None)
-                    if pd.notna(row['is_winner']) and row['is_winner']:
-                        live_winners[key] = True
-
-                # Update is_winner in the main dataframe
-                if live_winners and not df.empty:
-                    def update_winner(row):
-                        key = (row['phase_name'], row['sounding_index'], row['reforge_step'] if pd.notna(row['reforge_step']) else None)
-                        if key in live_winners:
-                            return True
-                        return row['is_winner']
-                    df['is_winner'] = df.apply(update_winner, axis=1)
-                    print(f"[API] Enhanced {session_id} with LiveStore is_winner data ({len(live_winners)} winners)")
+        df = conn.execute(query, [session_id]).fetchdf()
+        conn.close()
 
         if df.empty:
             return jsonify({"phases": [], "winner_path": []})
 
         # Debug: log available columns and sample data
         print(f"[API] soundings-tree columns: {list(df.columns)}")
-        print(f"[API] Total rows from Parquet: {len(df)}")
+        print(f"[API] Total rows from ClickHouse: {len(df)}")
         if 'mutation_type' in df.columns:
             mutation_types = df['mutation_type'].dropna().unique().tolist()
             print(f"[API] mutation_type values in df: {mutation_types}")
@@ -2218,40 +1731,21 @@ def get_soundings_tree(session_id):
                 })
 
         # Query for eval reasoning (evaluator agent messages, including reforge)
-        # Check LiveStore first for real-time data
-        eval_df = None
-        if store.is_tracked(session_id) or store.has_data(session_id):
-            live_eval_query = """
-            SELECT
-                phase_name,
-                reforge_step,
-                content_json,
-                role
-            FROM live_logs
-            WHERE session_id = ?
-              AND (node_type = 'evaluator' OR role = 'assistant')
-              AND phase_name IS NOT NULL
-            ORDER BY timestamp
-            """
-            eval_df = store.query_df(live_eval_query, [session_id])
-
-        # Fall back to Parquet if no LiveStore data
-        if eval_df is None or eval_df.empty:
-            eval_query = f"""
-            SELECT
-                phase_name,
-                reforge_step,
-                content_json,
-                role
-            FROM read_parquet('{DATA_DIR}/*.parquet')
-            WHERE session_id = '{session_id}'
-              AND (node_type = 'evaluator' OR role = 'assistant')
-              AND phase_name IS NOT NULL
-            ORDER BY timestamp
-            """
-
-            with get_db_connection() as conn:
-                eval_df = conn.execute(eval_query).fetchdf()
+        eval_conn = get_db_connection()
+        eval_query = """
+        SELECT
+            phase_name,
+            reforge_step,
+            content_json,
+            role
+        FROM unified_logs
+        WHERE session_id = ?
+          AND (node_type = 'evaluator' OR role = 'assistant')
+          AND phase_name IS NOT NULL
+        ORDER BY timestamp
+        """
+        eval_df = eval_conn.execute(eval_query, [session_id]).fetchdf()
+        eval_conn.close()
 
         # Extract evaluator reasoning - look for assistant messages with eval-like content
         for _, row in eval_df.iterrows():
@@ -2502,11 +1996,10 @@ def get_graph(session_id):
 def get_mermaid_graph(session_id):
     """Get Mermaid graph content for a session.
 
-    Priority: FILE FIRST (real-time) > DATABASE (buffered/stale)
+    Priority: FILE FIRST (real-time) > DATABASE (fallback)
 
-    The .mmd file is written synchronously on every update by WindlassRunner._update_graph(),
-    while database logging is buffered (100 messages or 10 seconds). For live updates during
-    cascade execution, the file is always more current.
+    The .mmd file is written synchronously on every update by WindlassRunner._update_graph().
+    With ClickHouse, DB writes are also immediate, but file is preferred for live updates.
 
     Query params:
         ?include_metadata=true - Include metadata query (slower, only needed for detail views)
@@ -2536,7 +2029,7 @@ def get_mermaid_graph(session_id):
         # Only create DB connection if we actually need it
         if not mermaid_content:
             conn = get_db_connection()
-            columns = get_available_columns(conn)
+            columns = get_available_columns()
             if 'mermaid_content' in columns:
                 print(f"[MERMAID] No file found, checking database for session: {session_id}")
                 mermaid_query = """
@@ -2681,20 +2174,20 @@ def get_pareto_frontier(session_id):
 def event_stream():
     """SSE endpoint for real-time cascade updates.
 
-    Also feeds events into the LiveSessionStore for real-time data queries.
+    Checkpoint events are cached for HITL workflows.
+    All other data comes from ClickHouse directly.
     """
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
         from windlass.events import get_event_bus
-        from live_store import process_event as live_store_process
 
         def generate():
             print("[SSE] Client connected")
             bus = get_event_bus()
             queue = bus.subscribe()
-            print(f"[SSE] Subscribed to event bus")
+            print("[SSE] Subscribed to event bus")
 
             connection_msg = json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})
             yield f"data: {connection_msg}\n\n"
@@ -2717,14 +2210,10 @@ def event_stream():
                         event = queue.get(timeout=timeout)
                         last_event_time = time.time()
                         event_type = event.type if hasattr(event, 'type') else 'unknown'
-                        print(f"[SSE] Event from bus: {event_type}")
+                        #print(f"[SSE] Event from bus: {event_type}")
                         event_dict = event.to_dict() if hasattr(event, 'to_dict') else event
 
-                        # Feed event into LiveStore for real-time queries
-                        try:
-                            live_store_process(event_dict)
-                        except Exception as ls_err:
-                            print(f"[SSE] LiveStore error: {ls_err}")
+                        # Note: No caching needed - CheckpointManager handles state
 
                         yield f"data: {json.dumps(event_dict, default=str)}\n\n"
                         last_heartbeat = time.time()  # Event counts as heartbeat
@@ -3310,27 +2799,28 @@ def get_session_images(session_id):
                 try:
                     import json
                     import pandas as pd
-                    import chdb
 
                     # Query for reforge_step entries (mark START of each reforge step)
                     # and reforge_winner entries (mark END and identify winner)
+                    conn = get_db_connection()
                     try:
-                        step_df = chdb.query(
-                            f"SELECT timestamp, reforge_step, metadata_json FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_step' ORDER BY timestamp",
-                            'DataFrame'
-                        )
+                        step_df = conn.execute(
+                            "SELECT timestamp, reforge_step, metadata_json FROM unified_logs WHERE session_id = ? AND role = 'reforge_step' ORDER BY timestamp",
+                            [session_id]
+                        ).fetchdf()
                     except Exception as query_err:
                         print(f"Warning: Database query for reforge steps failed: {query_err}")
                         step_df = pd.DataFrame()
 
                     try:
-                        winner_df = chdb.query(
-                            f"SELECT timestamp, reforge_step, metadata_json FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'reforge_winner' ORDER BY timestamp",
-                            'DataFrame'
-                        )
+                        winner_df = conn.execute(
+                            "SELECT timestamp, reforge_step, metadata_json FROM unified_logs WHERE session_id = ? AND role = 'reforge_winner' ORDER BY timestamp",
+                            [session_id]
+                        ).fetchdf()
                     except Exception as query_err:
                         print(f"Warning: Database query for reforge winners failed: {query_err}")
                         winner_df = pd.DataFrame()
+                    conn.close()
 
                     reforge_windows = []
                     reforge_winners = {}
@@ -3438,11 +2928,12 @@ def get_session_images(session_id):
             # Also enrich sounding images with winner information
             # Query for sounding_attempt entries with is_winner=True
             try:
-                import chdb
-                sounding_winner_df = chdb.query(
-                    f"SELECT DISTINCT phase_name, sounding_index FROM file('{DATA_DIR}/*.parquet', Parquet) WHERE session_id = '{session_id}' AND role = 'sounding_attempt' AND is_winner = true",
-                    'DataFrame'
-                )
+                conn = get_db_connection()
+                sounding_winner_df = conn.execute(
+                    "SELECT DISTINCT phase_name, sounding_index FROM unified_logs WHERE session_id = ? AND role = 'sounding_attempt' AND is_winner = true",
+                    [session_id]
+                ).fetchdf()
+                conn.close()
                 if not sounding_winner_df.empty:
                     # Build a set of (phase_name, sounding_index) pairs that are winners
                     sounding_winners = set()
@@ -3629,12 +3120,12 @@ def serve_session_audio(session_id, subpath):
 
 @app.route('/api/debug/schema', methods=['GET'])
 def debug_schema():
-    """Debug endpoint to show what columns and data exist in Parquet files"""
+    """Debug endpoint to show what columns and data exist in ClickHouse"""
     try:
         conn = get_db_connection()
 
         # Get schema
-        columns = get_available_columns(conn)
+        columns = get_available_columns()
 
         # Get sample data
         sample_query = "SELECT * FROM unified_logs LIMIT 5"
@@ -3670,7 +3161,7 @@ def debug_schema():
 
         return jsonify({
             'data_dir': DATA_DIR,
-            'parquet_files_found': len(glob.glob(f"{DATA_DIR}/*.parquet")),
+            'clickhouse_connected': True,
             'columns': columns,
             'column_count': len(columns),
             'sample_rows': sample_df.to_dict('records') if not sample_df.empty else [],
@@ -3698,18 +3189,19 @@ def get_session_human_inputs(session_id):
         conn = get_db_connection()
 
         # Query for ask_human tool calls and their results
+        # Use position() instead of LIKE to avoid % escaping issues with clickhouse_driver
         query = """
         SELECT
             timestamp,
             phase_name,
             node_type,
-            content_json::VARCHAR as content,
-            metadata_json::VARCHAR as metadata
+            content_json as content,
+            metadata_json as metadata
         FROM unified_logs
         WHERE session_id = ?
           AND (
-            (node_type = 'tool_call' AND metadata_json::VARCHAR LIKE '%ask_human%')
-            OR (node_type = 'tool_result' AND metadata_json::VARCHAR LIKE '%ask_human%')
+            (node_type = 'tool_call' AND position(metadata_json, 'ask_human') > 0)
+            OR (node_type = 'tool_result' AND position(metadata_json, 'ask_human') > 0)
           )
         ORDER BY phase_name, timestamp
         """
@@ -3792,14 +3284,16 @@ def get_session_human_inputs(session_id):
 
 
 def log_connection_stats():
-    """Periodically log connection statistics."""
+    """Periodically log query statistics."""
     import time
     while True:
-        time.sleep(30)  # Log every 30 seconds
-        with _connection_lock:
-            open_count = _open_connections
-            total_count = _total_connections_created
-        print(f"[STATS] Connections: {open_count} open, {total_count} total created")
+        time.sleep(60)  # Log every 60 seconds
+        with _query_lock:
+            count = _query_count
+            total_time = _total_query_time
+        if count > 0:
+            avg_time = total_time / count
+            print(f"[STATS] Queries: {count} executed, avg {avg_time:.3f}s")
 
 
 if __name__ == '__main__':
@@ -3815,54 +3309,51 @@ if __name__ == '__main__':
     stats_thread = threading.Thread(target=log_connection_stats, daemon=True)
     stats_thread.start()
 
-    # Debug: Check data availability
-    parquet_files = glob.glob(f"{DATA_DIR}/*.parquet")
-    print(f"📊 Found {len(parquet_files)} Parquet files in {DATA_DIR}")
+    # Debug: Check ClickHouse data availability
+    conn = get_db_connection()
+    try:
+        # Quick stats from ClickHouse
+        stats = conn.execute("""
+            SELECT
+                COUNT(DISTINCT session_id) as sessions,
+                COUNT(DISTINCT cascade_id) as cascades,
+                COUNT(*) as messages,
+                SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
+            FROM unified_logs
+        """).fetchone()
 
-    # Detect and mark orphaned cascades (killed due to server restart)
-    if parquet_files:
-        orphan_count = detect_and_mark_orphaned_cascades()
-        if orphan_count == 0:
-            print("✅ No orphaned cascades detected")
+        print(f"📊 ClickHouse Data:")
+        print(f"   Sessions: {stats[0]}, Cascades: {stats[1]}, Messages: {stats[2]}")
+        print(f"   Total Cost: ${stats[3]:.4f}" if stats[3] else "   Total Cost: $0.0000")
         print()
 
-    if parquet_files:
-        conn = get_db_connection()
-        try:
-            # Quick stats
-            stats = conn.execute("""
-                SELECT
-                    COUNT(DISTINCT session_id) as sessions,
-                    COUNT(DISTINCT cascade_id) as cascades,
-                    COUNT(*) as messages,
-                    SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
-                FROM unified_logs
-            """).fetchone()
-
-            print(f"   Sessions: {stats[0]}, Cascades: {stats[1]}, Messages: {stats[2]}")
-            print(f"   Total Cost: ${stats[3]:.4f}" if stats[3] else "   Total Cost: $0.0000")
+        # Detect and mark orphaned cascades (killed due to server restart)
+        if stats[0] > 0:  # If we have sessions
+            orphan_count = detect_and_mark_orphaned_cascades()
+            if orphan_count == 0:
+                print("✅ No orphaned cascades detected")
             print()
 
-            # Show node types
-            node_types = conn.execute("""
-                SELECT node_type, role, COUNT(*) as count
-                FROM unified_logs
-                GROUP BY node_type, role
-                ORDER BY count DESC
-                LIMIT 10
-            """).fetchall()
+        # Show node types
+        node_types = conn.execute("""
+            SELECT node_type, role, COUNT(*) as count
+            FROM unified_logs
+            GROUP BY node_type, role
+            ORDER BY count DESC
+            LIMIT 10
+        """).fetchall()
 
-            print("📝 Message Types:")
-            for nt, role, count in node_types:
-                role_str = f" (role={role})" if role else ""
-                print(f"   {nt}{role_str}: {count}")
-            print()
+        print("📝 Message Types:")
+        for nt, role, count in node_types:
+            role_str = f" (role={role})" if role else ""
+            print(f"   {nt}{role_str}: {count}")
+        print()
 
-        except Exception as e:
-            print(f"⚠️  Error querying data: {e}")
-            print()
-        finally:
-            conn.close()
+    except Exception as e:
+        print(f"⚠️  Error querying ClickHouse: {e}")
+        print()
+    finally:
+        conn.close()
 
     print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()

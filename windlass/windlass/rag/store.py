@@ -1,56 +1,104 @@
-import json
-import math
-import os
-from typing import Any, Dict, List, Optional
+"""
+RAG Store - ClickHouse Vector Search Implementation
 
-import pandas as pd
+Provides semantic search over RAG chunks using ClickHouse's native cosineDistance().
+No more Python cosine similarity - ClickHouse handles it natively.
+
+Key functions:
+- search_chunks(): Semantic search with optional filters
+- read_chunk(): Get a specific chunk by ID
+- list_sources(): List all indexed documents
+"""
+from typing import Any, Dict, List, Optional
 
 from .context import RagContext
 from .indexer import embed_texts
 
-_INDEX_CACHE: Dict[str, Dict[str, Any]] = {}
-
-def _load_meta(meta_path: str) -> Dict[str, Any]:
-    if not os.path.exists(meta_path):
-        raise FileNotFoundError(f"RAG meta file missing: {meta_path}")
-    with open(meta_path, "r") as f:
-        return json.load(f)
-
-def _get_index(rag_ctx: RagContext) -> Dict[str, Any]:
-    """Load manifest, chunks, and meta (cached by rag_id)."""
-    if rag_ctx.rag_id in _INDEX_CACHE:
-        return _INDEX_CACHE[rag_ctx.rag_id]
-
-    manifest = pd.read_parquet(rag_ctx.manifest_path) if os.path.exists(rag_ctx.manifest_path) else pd.DataFrame()
-    chunks = pd.read_parquet(rag_ctx.chunks_path) if os.path.exists(rag_ctx.chunks_path) else pd.DataFrame()
-    meta = _load_meta(rag_ctx.meta_path)
-
-    _INDEX_CACHE[rag_ctx.rag_id] = {"manifest": manifest, "chunks": chunks, "meta": meta}
-    return _INDEX_CACHE[rag_ctx.rag_id]
 
 def list_sources(rag_ctx: RagContext) -> List[Dict[str, Any]]:
-    idx = _get_index(rag_ctx)
-    manifest = idx["manifest"]
-    if manifest.empty:
-        return []
-    return manifest[["doc_id", "rel_path", "chunk_count", "size", "mtime"]].to_dict("records")
+    """
+    List all documents indexed in a RAG context.
+
+    Args:
+        rag_ctx: RAG context with rag_id
+
+    Returns:
+        List of document metadata dicts
+    """
+    from ..db_adapter import get_db
+
+    db = get_db()
+    results = db.query(f"""
+        SELECT
+            doc_id,
+            rel_path,
+            chunk_count,
+            file_size as size,
+            mtime
+        FROM rag_manifests
+        WHERE rag_id = '{rag_ctx.rag_id}'
+        ORDER BY rel_path
+    """)
+
+    return results
+
 
 def read_chunk(rag_ctx: RagContext, chunk_id: str) -> Dict[str, Any]:
-    idx = _get_index(rag_ctx)
-    chunks = idx["chunks"]
-    if chunks.empty:
-        raise ValueError("RAG index is empty.")
-    row = chunks[chunks["chunk_id"] == chunk_id]
-    if row.empty:
-        raise ValueError(f"Chunk {chunk_id} not found.")
-    rec = row.iloc[0].to_dict()
+    """
+    Get a specific chunk by ID.
+
+    Args:
+        rag_ctx: RAG context with rag_id
+        chunk_id: Chunk ID (format: {doc_id}_{chunk_index})
+
+    Returns:
+        Chunk data dict
+
+    Raises:
+        ValueError: If chunk not found
+    """
+    from ..db_adapter import get_db
+
+    db = get_db()
+
+    # Parse chunk_id to get doc_id and chunk_index
+    parts = chunk_id.rsplit('_', 1)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid chunk_id format: {chunk_id}")
+
+    doc_id = parts[0]
+    try:
+        chunk_index = int(parts[1])
+    except ValueError:
+        raise ValueError(f"Invalid chunk_id format: {chunk_id}")
+
+    results = db.query(f"""
+        SELECT
+            doc_id,
+            rel_path,
+            chunk_index,
+            start_line,
+            end_line,
+            text
+        FROM rag_chunks
+        WHERE rag_id = '{rag_ctx.rag_id}'
+          AND doc_id = '{doc_id}'
+          AND chunk_index = {chunk_index}
+        LIMIT 1
+    """)
+
+    if not results:
+        raise ValueError(f"Chunk {chunk_id} not found in rag_id={rag_ctx.rag_id}")
+
+    rec = results[0]
     return {
-        "chunk_id": rec["chunk_id"],
+        "chunk_id": chunk_id,
         "doc_id": rec["doc_id"],
         "source": rec["rel_path"],
         "lines": [int(rec["start_line"]), int(rec["end_line"])],
         "text": rec["text"],
     }
+
 
 def search_chunks(
     rag_ctx: RagContext,
@@ -59,73 +107,136 @@ def search_chunks(
     score_threshold: Optional[float] = None,
     doc_filter: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    idx = _get_index(rag_ctx)
-    chunks = idx["chunks"]
-    meta = idx["meta"]
+    """
+    Semantic search using ClickHouse cosineDistance.
 
-    if chunks.empty:
-        return []
+    Args:
+        rag_ctx: RAG context with rag_id and session info
+        query: Search query text
+        k: Number of results to return
+        score_threshold: Minimum similarity score (0-1, higher = more similar)
+        doc_filter: Optional filter on rel_path (substring match)
 
-    df = chunks
-    if doc_filter:
-        mask = df["rel_path"].str.contains(doc_filter, case=False, na=False)
-        df = df[mask]
-    if df.empty:
-        return []
+    Returns:
+        List of search results with chunk data and similarity scores
+    """
+    from ..db_adapter import get_db
+
+    db = get_db()
 
     # Embed query using Agent.embed() - same model as the index
-    # Pass session context from rag_ctx so query embeddings are properly logged
     embed_result = embed_texts(
         texts=[query],
-        model=meta.get("embed_model"),
+        model=rag_ctx.embed_model,
         session_id=rag_ctx.session_id,
         trace_id=rag_ctx.trace_id,
         parent_id=rag_ctx.parent_id,
         phase_name=rag_ctx.phase_name,
         cascade_id=rag_ctx.cascade_id,
     )
-    query_vecs = embed_result["embeddings"]
+    query_vec = embed_result["embeddings"][0]
 
-    # Build dense matrix lazily to avoid a hard numpy dependency
-    try:
-        import numpy as np  # type: ignore
+    # Build WHERE clause
+    conditions = [f"rag_id = '{rag_ctx.rag_id}'"]
+    if doc_filter:
+        # Escape single quotes in filter
+        safe_filter = doc_filter.replace("'", "''")
+        conditions.append(f"rel_path LIKE '%{safe_filter}%'")
 
-        matrix = np.vstack(df["embedding"].to_list()).astype(float)
-        query_vec = np.array(query_vecs[0], dtype=float)
-        norms = (np.linalg.norm(matrix, axis=1) * (np.linalg.norm(query_vec) or 1.0)) + 1e-9
-        scores = matrix.dot(query_vec) / norms
-    except Exception:
-        # Pure-Python fallback (slower, but avoids dependency issues)
-        def _dot(a, b):
-            return sum(x * y for x, y in zip(a, b))
+    where_clause = " AND ".join(conditions)
 
-        q = query_vecs[0]
-        q_norm = math.sqrt(_dot(q, q)) or 1.0
-        scores_list = []
-        for emb in df["embedding"]:
-            denom = (math.sqrt(_dot(emb, emb)) * q_norm) or 1.0
-            scores_list.append(_dot(emb, q) / denom)
-        scores = scores_list
+    # Use ClickHouse vector search
+    results = db.vector_search(
+        table='rag_chunks',
+        embedding_col='embedding',
+        query_vector=query_vec,
+        limit=k * 2 if score_threshold else k,  # Fetch extra if filtering
+        where=where_clause,
+        select_cols="doc_id, rel_path, chunk_index, start_line, end_line, text"
+    )
 
-    df = df.copy()
-    df["score"] = scores
+    # Filter by threshold if specified (similarity = 1 - distance)
     if score_threshold is not None:
-        df = df[df["score"] >= score_threshold]
+        results = [r for r in results if r['similarity'] >= score_threshold]
 
-    df = df.sort_values("score", ascending=False).head(k)
+    # Limit to k results
+    results = results[:k]
 
-    results = []
-    for _, row in df.iterrows():
-        results.append({
-            "chunk_id": row["chunk_id"],
-            "doc_id": row["doc_id"],
-            "source": row["rel_path"],
-            "lines": [int(row["start_line"]), int(row["end_line"])],
-            "score": float(row["score"]),
-            "snippet": row["text"][:400].strip(),
+    # Format results
+    formatted = []
+    for r in results:
+        chunk_id = f"{r['doc_id']}_{r['chunk_index']}"
+        formatted.append({
+            "chunk_id": chunk_id,
+            "doc_id": r["doc_id"],
+            "source": r["rel_path"],
+            "lines": [int(r["start_line"]), int(r["end_line"])],
+            "score": float(r["similarity"]),
+            "snippet": r["text"][:400].strip(),
         })
-    return results
+
+    return formatted
+
+
+def get_chunk_by_id(rag_id: str, chunk_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get a specific chunk by rag_id and chunk_id (convenience function).
+
+    Args:
+        rag_id: RAG index ID
+        chunk_id: Chunk ID
+
+    Returns:
+        Chunk data dict or None if not found
+    """
+    from ..db_adapter import get_db
+
+    db = get_db()
+
+    # Parse chunk_id
+    parts = chunk_id.rsplit('_', 1)
+    if len(parts) != 2:
+        return None
+
+    doc_id = parts[0]
+    try:
+        chunk_index = int(parts[1])
+    except ValueError:
+        return None
+
+    results = db.query(f"""
+        SELECT
+            doc_id,
+            rel_path,
+            chunk_index,
+            start_line,
+            end_line,
+            text
+        FROM rag_chunks
+        WHERE rag_id = '{rag_id}'
+          AND doc_id = '{doc_id}'
+          AND chunk_index = {chunk_index}
+        LIMIT 1
+    """)
+
+    if not results:
+        return None
+
+    rec = results[0]
+    return {
+        "chunk_id": chunk_id,
+        "doc_id": rec["doc_id"],
+        "source": rec["rel_path"],
+        "lines": [int(rec["start_line"]), int(rec["end_line"])],
+        "text": rec["text"],
+    }
+
 
 def clear_cache():
-    """Clear cached manifests/chunks."""
-    _INDEX_CACHE.clear()
+    """
+    Clear any cached data.
+
+    In the ClickHouse implementation, there's no local cache to clear.
+    This function is kept for backward compatibility.
+    """
+    pass  # No-op - ClickHouse handles caching internally
