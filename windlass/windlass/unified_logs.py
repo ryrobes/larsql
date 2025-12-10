@@ -318,6 +318,7 @@ class UnifiedLogger:
         cascade_config: dict = None,
         phase_name: str = None,
         phase_config: dict = None,
+        species_hash: str = None,  # Hash of phase template DNA for prompt evolution tracking
 
         # LLM provider data
         model: str = None,
@@ -429,6 +430,7 @@ class UnifiedLogger:
             "cascade_json": safe_json(cascade_config),
             "phase_name": phase_name,
             "phase_json": safe_json(phase_config),
+            "species_hash": species_hash,
 
             # LLM provider data
             "model": model,
@@ -582,6 +584,7 @@ def log_unified(
     cascade_config: dict = None,
     phase_name: str = None,
     phase_config: dict = None,
+    species_hash: str = None,
     model: str = None,
     request_id: str = None,
     provider: str = None,
@@ -632,6 +635,7 @@ def log_unified(
         cascade_config=cascade_config,
         phase_name=phase_name,
         phase_config=phase_config,
+        species_hash=species_hash,
         model=model,
         request_id=request_id,
         provider=provider,

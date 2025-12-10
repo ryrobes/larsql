@@ -837,6 +837,12 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       const totalTokensIn = entries.reduce((sum, e) => sum + safeNum(e.tokens_in), 0);
       const totalTokensOut = entries.reduce((sum, e) => sum + safeNum(e.tokens_out), 0);
 
+      // Collect winning models from all phases that have soundings
+      const winnerModels = phases
+        .filter(p => p.sounding_total > 1) // Only phases with multiple soundings
+        .flatMap(p => p.sounding_attempts.filter(a => a.is_winner && a.model).map(a => a.model))
+        .filter((m, i, arr) => arr.indexOf(m) === i); // Unique models
+
       const modelsSet = new Set();
       const modelCostsMap = new Map();
 
@@ -953,7 +959,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         token_timeseries: tokenTimeseries,
         duration_seconds: durationSeconds,
         error_count: entries.filter(e => e.node_type === 'error').length,
-        has_soundings: phases.some(p => p.sounding_total > 1)
+        has_soundings: phases.some(p => p.sounding_total > 1),
+        winner_models: winnerModels
       });
 
       setLoading(false);
@@ -1124,6 +1131,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               totalCost={instance.total_cost}
               usedCost={instance.used_cost}
               explorationCost={instance.exploration_cost}
+              winnerModel={instance.winner_models}
             />
           )}
 

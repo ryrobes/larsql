@@ -533,6 +533,13 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 <ModelCostBar
                   modelCosts={instance.model_costs}
                   totalCost={instance.total_cost}
+                  winnerModel={
+                    // Compute winner models from phases with soundings
+                    instance.phases
+                      ?.filter(p => p.sounding_total > 1)
+                      .flatMap(p => (p.sounding_attempts || []).filter(a => a.is_winner && a.model).map(a => a.model))
+                      .filter((m, i, arr) => arr.indexOf(m) === i) // unique
+                  }
                 />
               )}
             </div>

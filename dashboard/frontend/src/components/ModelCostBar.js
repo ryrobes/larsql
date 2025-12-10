@@ -14,11 +14,23 @@ const MODEL_COLORS = [
   '#22d3ee', // Cyan
 ];
 
-function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0 }) {
+function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0, winnerModel = null }) {
   // Don't render if no model cost data
   if (!modelCosts || modelCosts.length === 0) {
     return null;
   }
+
+  // Normalize winnerModel to an array for easier comparison
+  const winnerModels = winnerModel
+    ? (Array.isArray(winnerModel) ? winnerModel : [winnerModel])
+    : [];
+
+  // Helper to check if a model is a winner (compares full name or short name)
+  const isWinner = (model) => {
+    if (winnerModels.length === 0) return false;
+    const shortName = model.split('/').pop();
+    return winnerModels.some(w => w === model || w === shortName || w.split('/').pop() === shortName);
+  };
 
   // Calculate percentages and assign colors
   // Use model costs sum as the denominator to ensure bar adds to 100%
@@ -30,7 +42,8 @@ function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0
     ...mc,
     percentage: denominator > 0 ? (mc.cost / denominator) * 100 : 0,
     color: MODEL_COLORS[idx % MODEL_COLORS.length],
-    shortName: mc.model.split('/').pop() // Just the model name without provider
+    shortName: mc.model.split('/').pop(), // Just the model name without provider
+    isWinner: isWinner(mc.model)
   }));
 
   const formatCost = (cost) => {
@@ -53,12 +66,12 @@ function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0
         {modelsWithPercentage.map((mc, idx) => (
           <div
             key={idx}
-            className="model-cost-segment"
+            className={`model-cost-segment${mc.isWinner ? ' winner' : ''}`}
             style={{
               width: `${Math.max(mc.percentage, 2)}%`, // Min 2% for visibility
               backgroundColor: mc.color,
             }}
-            title={`${mc.shortName}: ${formatCost(mc.cost)} (${mc.percentage.toFixed(1)}%)`}
+            title={`${mc.shortName}: ${formatCost(mc.cost)} (${mc.percentage.toFixed(1)}%)${mc.isWinner ? ' ★ Winner' : ''}`}
           />
         ))}
       </div>
@@ -66,12 +79,13 @@ function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0
       {/* Legend items */}
       <div className="model-cost-legend">
         {modelsWithPercentage.map((mc, idx) => (
-          <div key={idx} className="model-cost-legend-item">
+          <div key={idx} className={`model-cost-legend-item${mc.isWinner ? ' winner' : ''}`}>
             <span
               className="model-cost-dot"
               style={{ backgroundColor: mc.color }}
             />
             <span className="model-cost-name">{mc.shortName}</span>
+            {mc.isWinner && <span className="winner-badge">★</span>}
             <span className="model-cost-value">{formatCost(mc.cost)}</span>
           </div>
         ))}

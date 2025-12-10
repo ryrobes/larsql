@@ -45,6 +45,9 @@ with open('windlass/migrations/add_callouts_columns.sql') as f:
 ## Available Migrations
 
 - `add_callouts_columns.sql` - Adds `is_callout` and `callout_name` columns for semantic message tagging (2025-12-09)
+- `add_species_hash_column.sql` - Adds `species_hash` column for prompt evolution tracking in Sextant (2025-12-10)
+- `add_prompt_lineage_table.sql` - Creates `prompt_lineage` table for tracking prompt evolution (2025-12-10, Phase 3)
+- `add_species_stats_view.sql` - Creates `species_stats` materialized view for fast species queries (2025-12-10, Phase 3)
 
 ## Notes
 

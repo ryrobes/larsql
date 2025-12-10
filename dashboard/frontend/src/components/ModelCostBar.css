@@ -70,7 +70,10 @@
   color: #9AA5B1;
   font-weight: 500;
   flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .model-cost-value {
@@ -90,6 +93,47 @@
 .model-cost-legend-item:hover .model-cost-dot {
   transform: scale(1.4);
   transition: transform 0.15s ease;
+}
+
+/* Winner highlighting */
+.model-cost-legend-item.winner {
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.model-cost-legend-item.winner .model-cost-name {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.model-cost-legend-item.winner .model-cost-dot {
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.model-cost-legend-item .winner-badge {
+  font-size: 0.55rem;
+  color: #22c55e;
+  font-weight: 600;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.model-cost-segment.winner {
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  position: relative;
+}
+
+.model-cost-segment.winner::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #22c55e;
+  border-radius: 1px;
 }
 
 /* Efficiency summary row - bottom of the component */

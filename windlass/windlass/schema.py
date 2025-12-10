@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     cascade_json Nullable(String) CODEC(ZSTD(3)),
     phase_name Nullable(String),
     phase_json Nullable(String) CODEC(ZSTD(3)),
+    species_hash Nullable(String),  -- Hash of phase template DNA for prompt evolution tracking
 
     -- LLM Provider
     model Nullable(String),
@@ -109,6 +110,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     INDEX idx_session_id session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade_id cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_phase_name phase_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_species_hash species_hash TYPE bloom_filter GRANULARITY 1,
     INDEX idx_trace_id trace_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_node_type node_type TYPE set(100) GRANULARITY 1,
     INDEX idx_role role TYPE set(10) GRANULARITY 1,

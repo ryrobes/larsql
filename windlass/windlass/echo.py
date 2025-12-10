@@ -116,6 +116,9 @@ class Echo:
             is_callout = meta.get("is_callout", False)
             callout_name = meta.get("callout_name")
 
+            # Species hash (prompt DNA for evolution tracking)
+            species_hash = meta.get("species_hash")
+
             # Generate mermaid diagram content (includes the newly added entry)
             # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
             # The mermaid chart is monotonically growing, so previous state is always a valid subset
@@ -165,6 +168,7 @@ class Echo:
                 mutation_template=mutation_template,
                 is_callout=is_callout,  # Pass callout info
                 callout_name=callout_name,
+                species_hash=species_hash,  # Pass species hash for prompt evolution tracking
             )
 
             # Emit SSE events for sounding-related entries so LiveStore can receive real-time data

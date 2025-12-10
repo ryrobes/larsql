@@ -10,18 +10,26 @@ import './SextantView.css';
  * - Heat = cross-prompt frequency (how often this chunk appears in OTHER winners vs losers)
  * - High heat (green) = this pattern appears in many winners, few losers - KEEP IT
  * - Low heat (red) = this pattern appears in many losers, few winners - AVOID IT
+ * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function PromptPatternCards({ cascadeId, phaseName }) {
+function PromptPatternCards({ cascadeId, phaseName, speciesHash }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showLosers, setShowLosers] = useState(false);
 
+  // Reset data when speciesHash changes to force reload
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [speciesHash]);
+
   const loadPatterns = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sextant/prompt-patterns/${cascadeId}/${phaseName}`);
+      const speciesParam = speciesHash ? `?species_hash=${speciesHash}` : '';
+      const res = await fetch(`/api/sextant/prompt-patterns/${cascadeId}/${phaseName}${speciesParam}`);
       const result = await res.json();
       if (result.error) {
         setError(result.error);
@@ -97,6 +105,22 @@ function PromptPatternCards({ cascadeId, phaseName }) {
 
   const prompts = showLosers ? data.losing_prompts : data.winning_prompts;
 
+  // Format cost as currency
+  const formatCost = (cost) => {
+    if (!cost || cost === 0) return '$0';
+    if (cost < 0.0001) return `$${cost.toFixed(6)}`;
+    if (cost < 0.01) return `$${cost.toFixed(4)}`;
+    return `$${cost.toFixed(2)}`;
+  };
+
+  // Format cost premium with sign
+  const formatPremium = (pct) => {
+    if (!pct || pct === 0) return '0%';
+    return pct > 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
+  };
+
+  const costAnalysis = data.cost_analysis;
+
   return (
     <div className="prompt-patterns">
       {/* Header with stats and toggle */}
@@ -133,6 +157,50 @@ function PromptPatternCards({ cascadeId, phaseName }) {
         </div>
       </div>
 
+      {/* Species Warning */}
+      {data.species_info?.warning && (
+        <div className="species-warning">
+          <Icon icon="mdi:dna" width="18" />
+          <span className="warning-text">{data.species_info.warning}</span>
+          {data.species_info.detected_species?.length > 1 && (
+            <span className="species-list">
+              Species: {data.species_info.detected_species.map(s => s.slice(0, 8)).join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Cost Analysis Section */}
+      {costAnalysis && (costAnalysis.avg_winner_cost > 0 || costAnalysis.avg_loser_cost > 0) && (
+        <div className="cost-analysis-section">
+          <div className="cost-analysis-header">
+            <Icon icon="mdi:currency-usd" width="16" />
+            <span>Cost Analysis</span>
+            <span className={`cost-premium ${costAnalysis.cost_premium_pct > 0 ? 'positive' : costAnalysis.cost_premium_pct < 0 ? 'negative' : ''}`}>
+              Winners cost {formatPremium(costAnalysis.cost_premium_pct)} {costAnalysis.cost_premium_pct > 0 ? 'more' : costAnalysis.cost_premium_pct < 0 ? 'less' : 'same'}
+            </span>
+          </div>
+          <div className="cost-analysis-stats">
+            <div className="cost-stat winner">
+              <span className="cost-label">Avg Winner</span>
+              <span className="cost-value">{formatCost(costAnalysis.avg_winner_cost)}</span>
+            </div>
+            <div className="cost-stat loser">
+              <span className="cost-label">Avg Loser</span>
+              <span className="cost-value">{formatCost(costAnalysis.avg_loser_cost)}</span>
+            </div>
+            <div className="cost-stat total">
+              <span className="cost-label">Total Spent</span>
+              <span className="cost-value">{formatCost(costAnalysis.total_winner_cost + costAnalysis.total_loser_cost)}</span>
+            </div>
+            <div className="cost-stat winrate">
+              <span className="cost-label">Win Rate</span>
+              <span className="cost-value">{costAnalysis.win_rate_pct?.toFixed(1) || 0}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Heat Legend */}
       <div className="patterns-legend">
         <span className="legend-label">Heat = cross-prompt frequency:</span>
@@ -147,42 +215,85 @@ function PromptPatternCards({ cascadeId, phaseName }) {
         </span>
       </div>
 
-      {/* Global Patterns Summary */}
-      {(data.global_hot_patterns?.length > 0 || data.global_cold_patterns?.length > 0) && (
-        <div className="global-patterns">
-          {data.global_hot_patterns?.length > 0 && (
-            <div className="pattern-group hot">
-              <h5><Icon icon="mdi:fire" width="14" /> Hot Patterns (keep these!)</h5>
-              {data.global_hot_patterns.map((p, i) => (
-                <div key={i} className="pattern-item">
-                  <span className="pattern-heat" style={{ color: '#fb923c' }}>
-                    {formatHeat(p.avg_heat)}
-                  </span>
-                  <span className="pattern-text">"{p.text}"</span>
-                  <span className="pattern-freq">
-                    {p.winner_appearances}W / {p.loser_appearances}L
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {data.global_cold_patterns?.length > 0 && (
-            <div className="pattern-group cold">
-              <h5><Icon icon="mdi:snowflake" width="14" /> Cold Patterns (avoid these!)</h5>
-              {data.global_cold_patterns.map((p, i) => (
-                <div key={i} className="pattern-item">
-                  <span className="pattern-heat" style={{ color: '#38bdf8' }}>
-                    {formatHeat(p.avg_heat)}
-                  </span>
-                  <span className="pattern-text">"{p.text}"</span>
-                  <span className="pattern-freq">
-                    {p.winner_appearances}W / {p.loser_appearances}L
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* N-gram Patterns (phrase-level, interpretable) */}
+      {(data.hot_ngrams?.length > 0 || data.cold_ngrams?.length > 0) && (
+        <div className="ngram-patterns">
+          <div className="ngram-patterns-header">
+            <Icon icon="mdi:format-quote-close" width="16" />
+            <span>Phrase Patterns</span>
+            <span className="ngram-hint">Exact phrases that correlate with winning/losing</span>
+          </div>
+          <div className="ngram-columns">
+            {data.hot_ngrams?.length > 0 && (
+              <div className="ngram-column hot">
+                <h5><Icon icon="mdi:fire" width="14" /> Winner Phrases</h5>
+                {data.hot_ngrams.slice(0, 10).map((p, i) => (
+                  <div key={i} className="ngram-item" title={`${p.winner_count} winners, ${p.loser_count} losers`}>
+                    <span className="ngram-heat">{(p.winner_freq * 100).toFixed(0)}%</span>
+                    <span className="ngram-text">"{p.ngram}"</span>
+                    <span className="ngram-freq">{p.winner_count}W/{p.loser_count}L</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {data.cold_ngrams?.length > 0 && (
+              <div className="ngram-column cold">
+                <h5><Icon icon="mdi:snowflake" width="14" /> Loser Phrases</h5>
+                {data.cold_ngrams.slice(0, 10).map((p, i) => (
+                  <div key={i} className="ngram-item" title={`${p.winner_count} winners, ${p.loser_count} losers`}>
+                    <span className="ngram-heat">{(p.loser_freq * 100).toFixed(0)}%</span>
+                    <span className="ngram-text">"{p.ngram}"</span>
+                    <span className="ngram-freq">{p.winner_count}W/{p.loser_count}L</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+      )}
+
+      {/* Chunk-based Patterns (legacy, larger segments) */}
+      {(data.global_hot_patterns?.length > 0 || data.global_cold_patterns?.length > 0) && (
+        <details className="chunk-patterns-details">
+          <summary>
+            <Icon icon="mdi:text-box-outline" width="14" />
+            Chunk Patterns (larger segments)
+          </summary>
+          <div className="global-patterns">
+            {data.global_hot_patterns?.length > 0 && (
+              <div className="pattern-group hot">
+                <h5><Icon icon="mdi:fire" width="14" /> Hot Chunks</h5>
+                {data.global_hot_patterns.map((p, i) => (
+                  <div key={i} className="pattern-item">
+                    <span className="pattern-heat" style={{ color: '#fb923c' }}>
+                      {formatHeat(p.avg_heat)}
+                    </span>
+                    <span className="pattern-text">"{p.text}"</span>
+                    <span className="pattern-freq">
+                      {p.winner_appearances}W / {p.loser_appearances}L
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {data.global_cold_patterns?.length > 0 && (
+              <div className="pattern-group cold">
+                <h5><Icon icon="mdi:snowflake" width="14" /> Cold Chunks</h5>
+                {data.global_cold_patterns.map((p, i) => (
+                  <div key={i} className="pattern-item">
+                    <span className="pattern-heat" style={{ color: '#38bdf8' }}>
+                      {formatHeat(p.avg_heat)}
+                    </span>
+                    <span className="pattern-text">"{p.text}"</span>
+                    <span className="pattern-freq">
+                      {p.winner_appearances}W / {p.loser_appearances}L
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
       )}
 
       {/* Multi-card Grid of Prompts */}
@@ -193,7 +304,12 @@ function PromptPatternCards({ cascadeId, phaseName }) {
               <span className="prompt-badge">
                 {prompt.is_winner ? '🏆' : '❌'} #{prompt.sounding_index}
               </span>
-              <span className="prompt-model">{prompt.model}</span>
+              <div className="prompt-card-meta">
+                <span className="prompt-model">{prompt.model}</span>
+                {prompt.cost > 0 && (
+                  <span className="prompt-cost">{formatCost(prompt.cost)}</span>
+                )}
+              </div>
             </div>
             <div className="prompt-card-content">
               {prompt.chunks?.map((chunk, i) => (
@@ -225,20 +341,28 @@ function PromptPatternCards({ cascadeId, phaseName }) {
 /**
  * EmbeddingHotspotViz - 2D scatter plot of winner/loser embeddings
  * Phase 2 of Sextant Evolution: Visualize WHERE winners cluster
+ * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function EmbeddingHotspotViz({ cascadeId, phaseName }) {
+function EmbeddingHotspotViz({ cascadeId, phaseName, speciesHash }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const canvasRef = useRef(null);
 
+  // Reset data when speciesHash changes to force reload
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [speciesHash]);
+
   const loadHotspots = async () => {
     setLoading(true);
     setError(null);
     try {
+      const speciesParam = speciesHash ? `&species_hash=${speciesHash}` : '';
       const res = await fetch(
-        `/api/sextant/embedding-hotspots/${cascadeId}/${phaseName}?n_regions=5`
+        `/api/sextant/embedding-hotspots/${cascadeId}/${phaseName}?n_regions=5${speciesParam}`
       );
       const result = await res.json();
       if (result.error) {
@@ -424,7 +548,12 @@ function EmbeddingHotspotViz({ cascadeId, phaseName }) {
             <div className={`tooltip-badge ${hoveredPoint.is_winner ? 'winner' : 'loser'}`}>
               {hoveredPoint.is_winner ? 'Winning Prompt' : 'Losing Prompt'}
             </div>
-            <div className="tooltip-model">{hoveredPoint.model}</div>
+            <div className="tooltip-meta">
+              <span className="tooltip-model">{hoveredPoint.model}</span>
+              {hoveredPoint.cost > 0 && (
+                <span className="tooltip-cost">${hoveredPoint.cost.toFixed(4)}</span>
+              )}
+            </div>
             <div className="tooltip-prompt">{hoveredPoint.prompt_preview}</div>
           </div>
         )}
@@ -480,6 +609,32 @@ function EmbeddingHotspotViz({ cascadeId, phaseName }) {
         <div className="hotspot-interpretation">
           <Icon icon="mdi:lightbulb" width="16" />
           <span>{data.interpretation}</span>
+        </div>
+      )}
+
+      {/* Cost Analysis Summary */}
+      {data.cost_analysis && (data.cost_analysis.avg_winner_cost > 0 || data.cost_analysis.avg_loser_cost > 0) && (
+        <div className="hotspot-cost-analysis">
+          <h5>
+            <Icon icon="mdi:currency-usd" width="16" />
+            Cost Analysis
+          </h5>
+          <div className="cost-stats-row">
+            <div className="cost-stat">
+              <span className="label">Avg Winner</span>
+              <span className="value winner">${data.cost_analysis.avg_winner_cost.toFixed(4)}</span>
+            </div>
+            <div className="cost-stat">
+              <span className="label">Avg Loser</span>
+              <span className="value loser">${data.cost_analysis.avg_loser_cost.toFixed(4)}</span>
+            </div>
+            <div className="cost-stat">
+              <span className="label">Premium</span>
+              <span className={`value ${data.cost_analysis.cost_premium_pct > 0 ? 'positive' : 'negative'}`}>
+                {data.cost_analysis.cost_premium_pct > 0 ? '+' : ''}{data.cost_analysis.cost_premium_pct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -623,18 +778,26 @@ function SynopsisPanel({ synopsis, onApply }) {
 /**
  * WinnerLoserAnalysis - Compare winning vs losing PROMPTS with AI synopsis
  * REFOCUSED: Analyzes PROMPTS (inputs) not responses (outputs)
+ * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function WinnerLoserAnalysis({ cascadeId, phaseName, onApply }) {
+function WinnerLoserAnalysis({ cascadeId, phaseName, speciesHash, onApply }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Reset data when speciesHash changes to force reload
+  useEffect(() => {
+    setData(null);
+    setError(null);
+  }, [speciesHash]);
 
   const loadAnalysis = async () => {
     setLoading(true);
     setError(null);
     try {
+      const speciesParam = speciesHash ? `&species_hash=${speciesHash}` : '';
       const res = await fetch(
-        `/api/sextant/winner-loser-analysis/${cascadeId}/${phaseName}?limit=5`
+        `/api/sextant/winner-loser-analysis/${cascadeId}/${phaseName}?limit=5${speciesParam}`
       );
       const result = await res.json();
       if (result.error) {
@@ -818,13 +981,155 @@ function ConfidenceBadge({ confidence }) {
 }
 
 /**
+ * SpeciesCard - Clickable card showing a species (DNA hash) with stats
+ */
+function SpeciesCard({ species, isSelected, onClick }) {
+  const shortHash = species.species_hash?.slice(0, 8) || 'unknown';
+
+  return (
+    <div
+      className={`species-card ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+    >
+      <div className="species-card-header">
+        <Icon icon="mdi:dna" width="16" className="dna-icon" />
+        <span className="species-hash">{shortHash}</span>
+        {isSelected && <Icon icon="mdi:check-circle" width="14" className="selected-icon" />}
+      </div>
+
+      {/* Instructions preview - the "what" of this species */}
+      {species.instructions_preview && (
+        <div className="species-instructions-preview">
+          <Icon icon="mdi:text-box-outline" width="12" />
+          <span>{species.instructions_preview}</span>
+        </div>
+      )}
+
+      {/* Input preview - sample data this species was run with */}
+      {species.input_preview && (
+        <div className="species-input-preview">
+          <Icon icon="mdi:code-json" width="12" />
+          <span>{species.input_preview}</span>
+        </div>
+      )}
+
+      <div className="species-card-stats">
+        <span className="stat">
+          <Icon icon="mdi:trophy" width="12" />
+          {species.winner_count} wins
+        </span>
+        <span className="stat">
+          <Icon icon="mdi:counter" width="12" />
+          {species.session_count} sessions
+        </span>
+        <span className="stat win-rate" style={{
+          color: species.win_rate >= 50 ? '#34d399' : species.win_rate >= 25 ? '#fbbf24' : '#8b92a0'
+        }}>
+          {species.win_rate?.toFixed(0)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * SpeciesSelector - Shows available species for a phase, user picks one to analyze
+ */
+function SpeciesSelector({ cascadeId, phaseName, selectedSpecies, onSelectSpecies }) {
+  const [species, setSpecies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadSpecies();
+  }, [cascadeId, phaseName]);
+
+  const loadSpecies = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sextant/species/${cascadeId}/${phaseName}`);
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setSpecies(data.species || []);
+        // Auto-select first species if only one (or none selected)
+        if (!selectedSpecies && data.species?.length === 1) {
+          onSelectSpecies(data.species[0].species_hash);
+        }
+      }
+    } catch (err) {
+      setError('Failed to load species: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="species-selector loading">
+        <Icon icon="mdi:loading" width="16" className="spin" />
+        <span>Loading species...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="species-selector error">
+        <Icon icon="mdi:alert-circle" width="16" />
+        <span>{error}</span>
+      </div>
+    );
+  }
+
+  if (species.length === 0) {
+    return (
+      <div className="species-selector empty">
+        <Icon icon="mdi:dna" width="16" />
+        <span>No species data available. Run cascades with soundings to generate species data.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="species-selector">
+      <div className="species-selector-header">
+        <Icon icon="mdi:dna" width="16" />
+        <span>Select Species (Prompt DNA)</span>
+        <span className="species-count">{species.length} species</span>
+      </div>
+
+      <div className="species-grid">
+        {species.map(s => (
+          <SpeciesCard
+            key={s.species_hash}
+            species={s}
+            isSelected={selectedSpecies === s.species_hash}
+            onClick={() => onSelectSpecies(s.species_hash)}
+          />
+        ))}
+      </div>
+
+      {species.length > 1 && (
+        <div className="species-hint">
+          <Icon icon="mdi:information-outline" width="14" />
+          <span>Multiple species detected. Select one for apples-to-apples comparison.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * PhaseAnalysisCard - Expandable card showing per-phase analysis
  *
- * Key insight: We analyze by MODEL and MUTATION TYPE, not by sounding index.
- * Sounding indices are arbitrary - what matters is WHAT made each sounding different.
+ * NEW: Now shows species selector first, then analysis for selected species.
+ * This ensures we only compare prompts within the same "DNA" template.
  */
 function PhaseAnalysisCard({ phase, cascadeId }) {
   const [expanded, setExpanded] = useState(false);
+  const [selectedSpecies, setSelectedSpecies] = useState(null);
   const [samples, setSamples] = useState(null);
   const [loadingSamples, setLoadingSamples] = useState(false);
 
@@ -905,101 +1210,135 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
       {/* Expanded content */}
       {expanded && (
         <div className="phase-expanded-content">
-          {/* Model Leaderboard - THE KEY INSIGHT */}
-          <div className="analysis-section">
-            <h4>
-              <Icon icon="mdi:podium" width="16" />
-              Model Performance
-              <span className="section-hint">Which models win most often?</span>
-            </h4>
-            <div className="model-leaderboard">
-              {phase.models?.map((m, i) => (
-                <ModelWinRateBar
-                  key={m.model}
-                  model={m.model}
-                  modelShort={m.model_short}
-                  winRate={m.win_rate}
-                  wins={m.wins}
-                  attempts={m.attempts}
-                  avgCost={m.avg_cost}
-                />
-              ))}
-            </div>
-            {phase.models?.length === 1 && (
-              <div className="single-model-note">
-                <Icon icon="mdi:information-outline" width="14" />
-                Single model tested. Run with multiple models to compare performance.
-              </div>
-            )}
+          {/* Species Selector - FIRST: Pick which DNA to analyze */}
+          <div className="analysis-section species-section">
+            <SpeciesSelector
+              cascadeId={cascadeId}
+              phaseName={phase.phase_name}
+              selectedSpecies={selectedSpecies}
+              onSelectSpecies={setSelectedSpecies}
+            />
           </div>
 
-          {/* Mutation Strategy Analysis (when relevant) */}
-          {phase.has_mutations && phase.mutations?.length > 0 && (
-            <div className="analysis-section">
-              <h4>
-                <Icon icon="mdi:auto-fix" width="16" />
-                Mutation Strategy Effectiveness
-              </h4>
-              <div className="mutation-stats">
-                {phase.mutations.map((m, i) => (
-                  <div key={m.type} className="mutation-stat-item">
-                    <span className="mutation-type">{m.type}</span>
-                    <span className="mutation-wins">{m.wins}/{m.attempts}</span>
-                    <span className="mutation-rate" style={{
-                      color: m.win_rate >= 50 ? '#34d399' : '#8b92a0'
-                    }}>
-                      {m.win_rate.toFixed(0)}%
-                    </span>
-                  </div>
-                ))}
+          {/* Analysis only shown when species is selected */}
+          {selectedSpecies ? (
+            <>
+              {/* Selected species badge */}
+              <div className="selected-species-banner">
+                <Icon icon="mdi:dna" width="16" />
+                <span>Analyzing species: <code>{selectedSpecies.slice(0, 8)}</code></span>
+                <button
+                  className="change-species-btn"
+                  onClick={() => setSelectedSpecies(null)}
+                >
+                  Change
+                </button>
               </div>
+
+              {/* Model Leaderboard */}
+              <div className="analysis-section">
+                <h4>
+                  <Icon icon="mdi:podium" width="16" />
+                  Model Performance
+                  <span className="section-hint">Which models win most often?</span>
+                </h4>
+                <div className="model-leaderboard">
+                  {phase.models?.map((m, i) => (
+                    <ModelWinRateBar
+                      key={m.model}
+                      model={m.model}
+                      modelShort={m.model_short}
+                      winRate={m.win_rate}
+                      wins={m.wins}
+                      attempts={m.attempts}
+                      avgCost={m.avg_cost}
+                    />
+                  ))}
+                </div>
+                {phase.models?.length === 1 && (
+                  <div className="single-model-note">
+                    <Icon icon="mdi:information-outline" width="14" />
+                    Single model tested. Run with multiple models to compare performance.
+                  </div>
+                )}
+              </div>
+
+              {/* Mutation Strategy Analysis (when relevant) */}
+              {phase.has_mutations && phase.mutations?.length > 0 && (
+                <div className="analysis-section">
+                  <h4>
+                    <Icon icon="mdi:auto-fix" width="16" />
+                    Mutation Strategy Effectiveness
+                  </h4>
+                  <div className="mutation-stats">
+                    {phase.mutations.map((m, i) => (
+                      <div key={m.type} className="mutation-stat-item">
+                        <span className="mutation-type">{m.type}</span>
+                        <span className="mutation-wins">{m.wins}/{m.attempts}</span>
+                        <span className="mutation-rate" style={{
+                          color: m.win_rate >= 50 ? '#34d399' : '#8b92a0'
+                        }}>
+                          {m.win_rate.toFixed(0)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Winner/Loser Prompt Analysis - Compare prompts that won vs lost */}
+              <div className="analysis-section evolution-section">
+                <h4>
+                  <Icon icon="mdi:compare" width="16" />
+                  Winner vs Loser Analysis
+                  <span className="section-hint">Understand WHY winners win</span>
+                </h4>
+                <WinnerLoserAnalysis
+                  cascadeId={cascadeId}
+                  phaseName={phase.phase_name}
+                  speciesHash={selectedSpecies}
+                  onApply={(suggestion) => {
+                    console.log('Apply suggestion:', suggestion);
+                    alert(`Suggestion to apply:\n\n${suggestion}\n\n(Apply functionality coming in Phase 6)`);
+                  }}
+                />
+              </div>
+
+              {/* Cross-Prompt Pattern Analysis - The CORE of prompt optimization */}
+              <div className="analysis-section patterns-section">
+                <h4>
+                  <Icon icon="mdi:view-grid" width="16" />
+                  Prompt Pattern Analysis
+                  <span className="section-hint">See what makes winning prompts win (cross-prompt heat)</span>
+                </h4>
+                <PromptPatternCards
+                  cascadeId={cascadeId}
+                  phaseName={phase.phase_name}
+                  speciesHash={selectedSpecies}
+                />
+              </div>
+
+              {/* Prompt Embedding Visualization - See where winning prompts cluster */}
+              <div className="analysis-section hotspot-section">
+                <h4>
+                  <Icon icon="mdi:scatter-plot" width="16" />
+                  Prompt Embedding Space
+                  <span className="section-hint">See WHERE winning prompts cluster</span>
+                </h4>
+                <EmbeddingHotspotViz
+                  cascadeId={cascadeId}
+                  phaseName={phase.phase_name}
+                  speciesHash={selectedSpecies}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="no-species-selected">
+              <Icon icon="mdi:arrow-up" width="24" />
+              <span>Select a species above to begin analysis</span>
+              <p>Each species represents a distinct prompt template. Analyzing within a species ensures apples-to-apples comparison.</p>
             </div>
           )}
-
-          {/* Winner/Loser Prompt Analysis - Compare prompts that won vs lost */}
-          <div className="analysis-section evolution-section">
-            <h4>
-              <Icon icon="mdi:compare" width="16" />
-              Winner vs Loser Analysis
-              <span className="section-hint">Understand WHY winners win</span>
-            </h4>
-            <WinnerLoserAnalysis
-              cascadeId={cascadeId}
-              phaseName={phase.phase_name}
-              onApply={(suggestion) => {
-                console.log('Apply suggestion:', suggestion);
-                // TODO: Open apply modal
-                alert(`Suggestion to apply:\n\n${suggestion}\n\n(Apply functionality coming in Phase 6)`);
-              }}
-            />
-          </div>
-
-          {/* Cross-Prompt Pattern Analysis - The CORE of prompt optimization */}
-          <div className="analysis-section patterns-section">
-            <h4>
-              <Icon icon="mdi:view-grid" width="16" />
-              Prompt Pattern Analysis
-              <span className="section-hint">See what makes winning prompts win (cross-prompt heat)</span>
-            </h4>
-            <PromptPatternCards
-              cascadeId={cascadeId}
-              phaseName={phase.phase_name}
-            />
-          </div>
-
-          {/* Prompt Embedding Visualization - See where winning prompts cluster */}
-          <div className="analysis-section hotspot-section">
-            <h4>
-              <Icon icon="mdi:scatter-plot" width="16" />
-              Prompt Embedding Space
-              <span className="section-hint">See WHERE winning prompts cluster</span>
-            </h4>
-            <EmbeddingHotspotViz
-              cascadeId={cascadeId}
-              phaseName={phase.phase_name}
-            />
-          </div>
-
         </div>
       )}
     </div>

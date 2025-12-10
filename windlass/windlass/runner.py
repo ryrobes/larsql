@@ -28,7 +28,7 @@ from .eddies.base import create_eddy
 console = Console()
 
 from .agent import Agent
-from .utils import get_tool_schema, encode_image_base64
+from .utils import get_tool_schema, encode_image_base64, compute_species_hash
 from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
@@ -1527,6 +1527,10 @@ To use: Output JSON in this format:
         # Sort results by index to maintain consistent ordering
         sounding_results.sort(key=lambda x: x['index'])
 
+        # Compute species hash for cascade-level soundings (uses cascade soundings config as DNA)
+        cascade_soundings_config = self.config.soundings.model_dump() if hasattr(self.config.soundings, 'model_dump') else None
+        cascade_species_hash = compute_species_hash({"soundings": cascade_soundings_config, "cascade_id": self.config.cascade_id})
+
         # Log results to echo history (must be done sequentially after parallel execution)
         for sr in sounding_results:
             i = sr['index']
@@ -1535,7 +1539,7 @@ To use: Output JSON in this format:
                            trace_id=sr['trace_id'], parent_id=soundings_trace.id,
                            node_type="sounding_error", depth=self.depth,
                            sounding_index=i, is_winner=False,
-                           metadata={"phase_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True})
+                           metadata={"phase_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True, "species_hash": cascade_species_hash})
             else:
                 self.echo.add_history({
                     "role": "cascade_sounding_attempt",
@@ -1550,7 +1554,8 @@ To use: Output JSON in this format:
                        "is_winner": False,  # Updated later when winner is selected
                        "result_preview": str(sr['result'])[:200],
                        "semantic_actor": "sounding_agent",
-                       "semantic_purpose": "generation"
+                       "semantic_purpose": "generation",
+                       "species_hash": cascade_species_hash,  # Track cascade DNA for evolution analysis
                    })
 
         # Now evaluate all soundings
@@ -2161,7 +2166,66 @@ If no tools are needed, return an empty array: []
 
         return valid_tackle
 
-    def _rewrite_prompt_with_llm(self, phase: PhaseConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode) -> str:
+    def _fetch_winning_mutations(self, cascade_id: str, phase_name: str, species_hash: str, limit: int = 5) -> List[Dict]:
+        """
+        Fetch previous winning rewrite mutations for this exact phase species.
+
+        Only returns winners from runs with the SAME species_hash (apples-to-apples).
+        This enables learning from what worked before without cross-contaminating
+        different phase configurations.
+
+        Args:
+            cascade_id: Cascade identifier
+            phase_name: Phase name
+            species_hash: Species hash for this phase config
+            limit: Max number of winners to fetch
+
+        Returns:
+            List of dicts with winner info (prompt, score, cost, timestamp)
+        """
+        try:
+            from .db_adapter import get_db
+
+            db = get_db()
+
+            # Query for previous winners with exact same species
+            # Include both baseline winners (mutation_type = null) and rewrite winners
+            # We want to learn from ANY previous winner of the same species
+            query = f"""
+                SELECT
+                    mutation_applied,
+                    timestamp,
+                    mutation_type
+                FROM unified_logs
+                WHERE cascade_id = '{cascade_id}'
+                  AND phase_name = '{phase_name}'
+                  AND species_hash = '{species_hash}'
+                  AND is_winner = true
+                  AND (mutation_type = 'rewrite' OR mutation_type IS NULL)
+                  AND mutation_applied IS NOT NULL
+                  AND mutation_applied != ''
+                ORDER BY timestamp DESC
+                LIMIT {limit}
+            """
+
+            results = db.query(query, output_format='dict')
+
+            # Format for rewrite prompt
+            winners = []
+            for row in results:
+                winners.append({
+                    'prompt': row.get('mutation_applied', ''),
+                    'timestamp': row.get('timestamp')
+                })
+
+            return winners
+
+        except Exception as e:
+            # Silently fail - learning is optional
+            logger.debug(f"Failed to fetch winning mutations: {e}")
+            return []
+
+    def _rewrite_prompt_with_llm(self, phase: PhaseConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode, mutation_mode: str = "rewrite", species_hash: str = None) -> str:
         """
         Use an LLM to rewrite the phase prompt based on the mutation template.
 
@@ -2193,9 +2257,69 @@ If no tools are needed, return an empty array: []
         }
         original_prompt = render_instruction(phase.instructions, render_context)
 
-        # Build the rewrite request
-        rewrite_request = f"""You are a prompt rewriting assistant. Your job is to rewrite a prompt while preserving its core intent.
+        # LEARNING FROM WINNERS: Fetch previous winning mutations for "rewrite" mode
+        # (but not "rewrite_free" which is pure exploration)
+        winner_context = ""
+        if mutation_mode == "rewrite":
+            # Get species hash for this exact phase config
+            if not species_hash:
+                species_hash = compute_species_hash(phase.dict())
 
+            # Fetch previous winners with same species (apples-to-apples)
+            limit = int(os.environ.get("WINDLASS_WINNER_HISTORY_LIMIT", "5"))
+            winners = self._fetch_winning_mutations(
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                species_hash=species_hash,
+                limit=limit
+            )
+
+            if winners:
+                console.print(f"{indent}    [dim cyan]📚 Learning from {len(winners)} previous winning rewrites[/dim cyan]")
+
+                # Format winners for inclusion in prompt
+                winner_examples = []
+                from datetime import datetime
+                now = datetime.now()
+
+                for i, w in enumerate(winners, 1):
+                    # Calculate age
+                    if w['timestamp']:
+                        age = now - w['timestamp']
+                        if age.days == 0:
+                            time_info = "today"
+                        elif age.days == 1:
+                            time_info = "yesterday"
+                        else:
+                            time_info = f"{age.days} days ago"
+                    else:
+                        time_info = "recently"
+
+                    # Truncate long prompts
+                    prompt_text = w['prompt']
+                    if len(prompt_text) > 400:
+                        prompt_text = prompt_text[:400] + "..."
+
+                    winner_examples.append(f"""
+### Example {i} - Winner from {time_info}
+{prompt_text}
+""")
+
+                winner_context = f"""
+## Learning from Previous Winning Rewrites:
+Below are {len(winners)} rewrites that WON in previous runs of this exact same phase configuration.
+Use them as inspiration for effective patterns, but stay creative - find novel variations, don't just copy.
+{"".join(winner_examples)}
+"""
+            else:
+                console.print(f"{indent}    [dim]🔬 No previous winners - exploratory rewrite[/dim]")
+
+        elif mutation_mode == "rewrite_free":
+            console.print(f"{indent}    [dim]🔬 Pure exploration mode (rewrite_free)[/dim]")
+
+        # Build the rewrite request with optional winner context
+        rewrite_request = f"""You are a prompt rewriting assistant. Your job is to rewrite a prompt while preserving its core intent.
+{winner_context}
 ## Original Prompt:
 {original_prompt}
 
@@ -2205,14 +2329,17 @@ If no tools are needed, return an empty array: []
 ## Rules:
 1. Preserve the core task/intent of the original prompt
 2. Apply the rewrite instruction to change how the prompt is formulated
-3. Output ONLY the rewritten prompt, nothing else
-4. Do not add meta-commentary or explanations
-5. The rewritten prompt should be self-contained and complete
+3. {"Consider the winning examples above as inspiration, but find creative variations" if winner_context else "Be creative and exploratory in your rewrite"}
+4. Output ONLY the rewritten prompt, nothing else
+5. Do not add meta-commentary or explanations
+6. The rewritten prompt should be self-contained and complete
 
 ## Rewritten Prompt:"""
 
-        # Use a fast, cheap model for rewriting (gemini flash lite or similar)
-        rewrite_model = os.environ.get("WINDLASS_REWRITE_MODEL", "google/gemini-2.5-flash-lite")
+        # Use the cascade's base model for rewriting to ensure consistency
+        # All rewrites within a cascade should use the same model (not per-sounding models)
+        # This can be overridden via WINDLASS_REWRITE_MODEL env var
+        rewrite_model = os.environ.get("WINDLASS_REWRITE_MODEL", self.model)
 
         rewrite_agent = Agent(
             model=rewrite_model,
@@ -2569,6 +2696,121 @@ If no tools are needed, return an empty array: []
 
         # Fallback: use default
         return [self.model] * soundings_config.factor
+
+    def _filter_models_by_context(
+        self,
+        models: List[str],
+        phase: PhaseConfig,
+        input_data: dict
+    ) -> Dict[str, Any]:
+        """
+        Filter models based on context window requirements.
+
+        Estimates token usage for the current request and filters out models
+        with insufficient context limits.
+
+        Args:
+            models: List of candidate model IDs
+            phase: Phase configuration
+            input_data: Input data for rendering
+
+        Returns:
+            Dict with:
+                - viable_models: List[str] - Models with sufficient context
+                - filtered_models: List[str] - Models that were filtered out
+                - filter_details: Dict - Details about why models were filtered
+                - estimated_tokens: int - Estimated token count
+        """
+        from .model_metadata import get_model_cache, estimate_request_tokens
+        from .prompts import render_instruction
+
+        # Get unique models (dedup before checking)
+        unique_models = list(dict.fromkeys(models))
+
+        # If only one unique model, skip filtering (no point)
+        if len(unique_models) <= 1:
+            return {
+                "viable_models": models,
+                "filtered_models": [],
+                "filter_details": {},
+                "estimated_tokens": 0,
+                "required_tokens": 0
+            }
+
+        # Build render context for system prompt
+        # outputs is built dynamically from lineage (not an Echo attribute)
+        outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        render_context = {
+            "input": input_data or {},
+            "state": self.echo.state,
+            "outputs": outputs,
+            "lineage": self.echo.lineage,
+            "history": self.echo.history
+        }
+
+        # Render system prompt to estimate tokens
+        try:
+            rendered_instructions = render_instruction(phase.instructions, render_context)
+        except Exception as e:
+            # If rendering fails, skip filtering
+            console.print(f"  [yellow]Warning: Failed to render instructions for token estimation: {e}[/yellow]")
+            return {
+                "viable_models": models,
+                "filtered_models": [],
+                "filter_details": {},
+                "estimated_tokens": 0,
+                "required_tokens": 0
+            }
+
+        # Get tool schemas (estimate token cost)
+        tools_schema = []
+        if phase.tackle:
+            try:
+                from .tackle import get_tackle
+                tool_map, tools_schema, tool_descriptions = get_tackle(phase.tackle)
+            except Exception:
+                pass  # If tackle fails, just skip tool token estimation
+
+        # Estimate tokens for full request
+        estimated_tokens = estimate_request_tokens(
+            messages=self.context_messages,
+            tools=tools_schema if tools_schema else None,
+            system_prompt=rendered_instructions,
+            model=models[0] if models else self.model
+        )
+
+        # Get model cache and filter
+        cache = get_model_cache()
+
+        # Run async filtering
+        import asyncio
+        try:
+            # Run in new event loop
+            filter_result = asyncio.run(cache.filter_viable_models(
+                models=unique_models,
+                estimated_tokens=estimated_tokens,
+                buffer_factor=1.15
+            ))
+
+            # Map filtered unique models back to original list (preserving duplicates)
+            viable_unique = set(filter_result["viable_models"])
+            viable_models = [m for m in models if m in viable_unique]
+
+            # Update result with mapped models
+            filter_result["viable_models"] = viable_models
+
+            return filter_result
+
+        except Exception as e:
+            # If filtering fails, log and return all models
+            console.print(f"  [yellow]Warning: Model filtering failed: {e}[/yellow]")
+            return {
+                "viable_models": models,
+                "filtered_models": [],
+                "filter_details": {},
+                "estimated_tokens": estimated_tokens,
+                "required_tokens": estimated_tokens
+            }
 
     def _get_sounding_costs(self, sounding_results: List[Dict], timeout: float = 5.0) -> List[float]:
         """
@@ -3006,6 +3248,88 @@ Use only numbers 0-100 for scores."""
         # Assign models first to determine actual factor
         assigned_models = self._assign_models(phase.soundings)
 
+        # Filter models by context window if multi-model soundings
+        if phase.soundings.models and len(set(assigned_models)) > 1:
+            filter_result = self._filter_models_by_context(
+                models=assigned_models,
+                phase=phase,
+                input_data=input_data
+            )
+
+            # Show detailed per-model context check (dimmed)
+            if filter_result["estimated_tokens"] > 0:
+                console.print(f"{indent}  [dim]Context check: estimated {filter_result['estimated_tokens']:,} tokens (with buffer: {filter_result['required_tokens']:,})[/dim]")
+
+                # Show each model's verdict
+                unique_models_checked = list(dict.fromkeys(assigned_models))
+                model_limits = filter_result.get("model_limits", {})
+
+                for model in unique_models_checked:
+                    filter_detail = filter_result["filter_details"].get(model)
+                    if filter_detail:
+                        # Model was filtered
+                        console.print(
+                            f"{indent}  [dim red]✗ {model}: {filter_detail['model_limit']:,} token limit "
+                            f"(shortfall: {filter_detail['shortfall']:,})[/dim red]"
+                        )
+                    else:
+                        # Model passed - show its limit if available
+                        limit = model_limits.get(model)
+                        if limit:
+                            console.print(f"{indent}  [dim green]✓ {model}: {limit:,} token limit[/dim green]")
+                        else:
+                            console.print(f"{indent}  [dim green]✓ {model}: sufficient context[/dim green]")
+
+            # Update assigned models with filtered list
+            original_count = len(assigned_models)
+            assigned_models = filter_result["viable_models"]
+            filtered_count = len(filter_result["filtered_models"])
+
+            # Emit event if any models were filtered
+            if filtered_count > 0:
+                console.print(
+                    f"{indent}  [yellow]⚡ Filtered {filtered_count} model(s) with insufficient context[/yellow]"
+                )
+
+                # Log filtering event to unified logs and emit event
+                from .events import get_event_bus, Event
+                from datetime import datetime
+
+                filter_event_data = {
+                    "phase_name": phase.name,
+                    "original_models": list(set(self._assign_models(phase.soundings))),
+                    "filtered_models": filter_result["filtered_models"],
+                    "viable_models": list(set(assigned_models)),
+                    "filter_details": filter_result["filter_details"],
+                    "estimated_tokens": filter_result["estimated_tokens"],
+                    "required_tokens": filter_result["required_tokens"],
+                    "buffer_factor": filter_result.get("buffer_factor", 1.15)
+                }
+
+                # Emit real-time event for UI observability
+                event_bus = get_event_bus()
+                event_bus.publish(Event(
+                    type="models_filtered",
+                    session_id=self.session_id,
+                    timestamp=datetime.now().isoformat(),
+                    data=filter_event_data
+                ))
+
+                # Log to unified logs for analytics
+                from .unified_logs import log_unified
+                log_unified(
+                    session_id=self.session_id,
+                    trace_id=trace.id,
+                    parent_id=trace.parent_id,
+                    node_type="model_filter",
+                    role="system",
+                    depth=self.depth,
+                    phase_name=phase.name,
+                    cascade_id=self.config.cascade_id,
+                    content=f"Filtered {filtered_count} models with insufficient context",
+                    metadata=filter_event_data
+                )
+
         # When using dict-based models with per-model factors, the actual number of soundings
         # is determined by the model assignments, not the top-level factor
         if isinstance(phase.soundings.models, dict):
@@ -3044,18 +3368,23 @@ Use only numbers 0-100 for scores."""
         # Store all sounding results
         sounding_results = []
 
+        # Compute species hash once for this phase (for winner learning)
+        # Convert PhaseConfig to dict for compute_species_hash
+        phase_species_hash = compute_species_hash(phase.dict())
+
         # Determine mutations to apply
         mutations_to_use = []
-        mutation_mode = phase.soundings.mutation_mode  # "rewrite", "augment", or "approach"
+        mutation_mode = phase.soundings.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
 
         if phase.soundings.mutate:
             if phase.soundings.mutations:
                 # Use custom mutations/templates
                 mutations_to_use = phase.soundings.mutations
-            elif mutation_mode == "rewrite":
+            elif mutation_mode in ("rewrite", "rewrite_free"):
                 # Rewrite templates: LLM will rewrite the prompt using these instructions
                 # These are META-instructions for how to transform the prompt
                 # IMPORTANT: Templates must be task-agnostic (work for creative, analytical, coding, etc.)
+                # "rewrite" mode learns from previous winners, "rewrite_free" is pure exploration
                 mutations_to_use = [
                     "Rewrite this prompt to be more specific and detailed. Add concrete details while preserving the core intent.",
                     "Rewrite this prompt to be more concise and focused. Keep only what's essential, remove fluff.",
@@ -3119,11 +3448,13 @@ Use only numbers 0-100 for scores."""
                 mutation_template = mutations_to_use[(i - 1) % len(mutations_to_use)]
                 mutation_type = mutation_mode
 
-                if mutation_mode == "rewrite":
-                    # For rewrite mode: use LLM to rewrite the prompt
+                if mutation_mode in ("rewrite", "rewrite_free"):
+                    # For rewrite modes: use LLM to rewrite the prompt
+                    # "rewrite" learns from winners, "rewrite_free" is pure exploration
                     console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan] [yellow]🧬 Rewriting prompt...[/yellow]")
                     mutation_applied = self._rewrite_prompt_with_llm(
-                        phase, input_data, mutation_template, soundings_trace
+                        phase, input_data, mutation_template, soundings_trace,
+                        mutation_mode=mutation_mode, species_hash=phase_species_hash
                     )
                     console.print(f"{indent}    [dim]Rewritten: {mutation_applied[:80]}...[/dim]")
                 else:
@@ -3712,6 +4043,10 @@ Use only numbers 0-100 for scores."""
         # Track original winner index for metadata logging
         original_winner_index = winner['index']
 
+        # Compute species hash for prompt evolution tracking (once for all soundings in this phase)
+        phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
+        phase_species_hash = compute_species_hash(phase_config_dict)
+
         # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
             is_winner = sr["index"] == original_winner_index
@@ -3721,8 +4056,11 @@ Use only numbers 0-100 for scores."""
                 "is_winner": is_winner,
                 "factor": factor,
                 "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
+                "mutation_type": sr.get("mutation_type"),  # Log mutation type: rewrite, augment, approach
+                "mutation_template": sr.get("mutation_template"),  # Log mutation template/instruction
                 "model": sr.get("model"),  # Log which model was used (Phase 1: Multi-Model Soundings)
                 "validation": sr.get("validation"),  # Log validation result if validator was used
+                "species_hash": phase_species_hash,  # Track prompt template DNA for evolution analysis
             }
             # Add cost data if available (Phase 2: Cost-Aware Evaluation)
             if sr.get("cost") is not None:

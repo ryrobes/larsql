@@ -1,10 +1,69 @@
 import inspect
-from typing import Any, Callable, Dict, List, get_type_hints, Tuple
+from typing import Any, Callable, Dict, List, get_type_hints, Tuple, Optional
 import re
 import base64
 import mimetypes
 import os
 import shutil
+import json
+import hashlib
+
+
+def compute_species_hash(phase_config: Optional[Dict[str, Any]]) -> Optional[str]:
+    """
+    Compute a deterministic hash ("species hash") for a phase configuration.
+
+    The species hash captures the "DNA" of a prompt - the template and config
+    that defines how prompts are generated, NOT the rendered prompt itself.
+    This allows comparing prompts across runs that use the same template.
+
+    Species identity includes:
+    - instructions: The Jinja2 template (pre-rendering)
+    - soundings: Full config (factor, evaluator_instructions, mutations, reforge)
+    - rules: max_turns, loop_until, etc.
+
+    Species identity EXCLUDES (these are filterable attributes):
+    - model: Allows "which model wins with this template?" analysis
+    - rendered values: Template variables are NOT in the hash
+
+    Args:
+        phase_config: Dict from PhaseConfig.model_dump() or phase JSON
+
+    Returns:
+        16-character hex hash, or None if phase_config is None/empty
+
+    Example:
+        >>> config = {"instructions": "Write a poem about {{topic}}", "soundings": {"factor": 3}}
+        >>> compute_species_hash(config)
+        'a1b2c3d4e5f6g7h8'
+    """
+    if not phase_config:
+        return None
+
+    # Extract the DNA-defining fields (order matters for deterministic hash)
+    spec_parts = {
+        # The template itself - the core DNA
+        'instructions': phase_config.get('instructions', ''),
+
+        # Soundings config affects prompt generation strategy
+        'soundings': phase_config.get('soundings'),
+
+        # Rules affect execution behavior (max_turns, loop_until, etc.)
+        'rules': phase_config.get('rules'),
+
+        # Output schema affects what we're asking for
+        'output_schema': phase_config.get('output_schema'),
+
+        # Wards (validators) affect the evolution pressure
+        'wards': phase_config.get('wards'),
+    }
+
+    # Create deterministic JSON string (sorted keys, no whitespace)
+    # None values are preserved as null in JSON
+    spec_json = json.dumps(spec_parts, sort_keys=True, separators=(',', ':'), default=str)
+
+    # SHA256 truncated to 16 chars (64 bits) - collision-resistant for our use case
+    return hashlib.sha256(spec_json.encode('utf-8')).hexdigest()[:16]
 
 def encode_image_base64(image_path: str, max_dimension: int = 1280) -> str:
     """

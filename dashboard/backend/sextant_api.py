@@ -8,7 +8,7 @@ Endpoints:
 - GET /api/sextant/suggestions/<cascade_id> - Get/generate improvement suggestions
 - POST /api/sextant/apply - Apply a suggestion to a cascade file
 - GET /api/sextant/patterns/<cascade_id>/<phase_name> - Token-level pattern analysis
-- GET /api/sextant/lineage/<cascade_id>/<phase_name> - Prompt evolution history
+- GET /api/sextant/evolution/<session_id> - Prompt evolution/phylogeny visualization data
 """
 
 import os
@@ -76,6 +76,154 @@ def list_cascades_with_soundings():
         return jsonify({'cascades': cascades})
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@sextant_bp.route('/species/<cascade_id>/<phase_name>', methods=['GET'])
+def list_species(cascade_id, phase_name):
+    """
+    List distinct species (phase template DNA hashes) for a cascade/phase.
+
+    Species represents the "DNA" of the prompt template - the instructions,
+    soundings config, and rules that define how prompts are generated.
+
+    Returns:
+    - species: List of species with counts and metadata
+    - warning: Set if multiple species detected (mixed-spec comparison warning)
+    """
+    db = get_db()
+
+    try:
+        # Get distinct species with counts
+        species_query = f"""
+            SELECT
+                species_hash,
+                COUNT(DISTINCT session_id) as session_count,
+                SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
+                COUNT(*) as total_attempts,
+                MIN(timestamp) as first_seen,
+                MAX(timestamp) as last_seen
+            FROM unified_logs
+            WHERE cascade_id = '{cascade_id}'
+              AND phase_name = '{phase_name}'
+              AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
+              AND species_hash IS NOT NULL
+            GROUP BY species_hash
+            ORDER BY session_count DESC
+        """
+
+        result = db.query(species_query, output_format='dict')
+
+        # For each species, fetch a sample to get the input/instructions
+        def get_species_sample(species_hash):
+            """Get sample input data for a species to help identify it."""
+            sample_query = f"""
+                SELECT
+                    phase_json,
+                    metadata_json,
+                    content_json
+                FROM unified_logs
+                WHERE cascade_id = '{cascade_id}'
+                  AND phase_name = '{phase_name}'
+                  AND species_hash = '{species_hash}'
+                  AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
+                LIMIT 1
+            """
+            sample = db.query(sample_query, output_format='dict')
+            if not sample:
+                return None, None
+
+            row = sample[0]
+            input_preview = None
+            instructions_preview = None
+
+            # Try to extract instructions from phase_json (the phase config)
+            if row.get('phase_json'):
+                try:
+                    phase_data = json.loads(row['phase_json']) if isinstance(row['phase_json'], str) else row['phase_json']
+                    if isinstance(phase_data, dict):
+                        instr = phase_data.get('instructions', '')
+                        if instr:
+                            # Truncate but try to get meaningful first line
+                            lines = instr.strip().split('\n')
+                            first_line = lines[0][:80]
+                            instructions_preview = first_line + ('...' if len(lines) > 1 or len(lines[0]) > 80 else '')
+                except:
+                    pass
+
+            # Fallback: try metadata_json for instructions
+            if not instructions_preview and row.get('metadata_json'):
+                try:
+                    meta = json.loads(row['metadata_json']) if isinstance(row['metadata_json'], str) else row['metadata_json']
+                    if isinstance(meta, dict):
+                        instr = meta.get('instructions', '')
+                        if instr:
+                            lines = instr.strip().split('\n')
+                            first_line = lines[0][:80]
+                            instructions_preview = first_line + ('...' if len(lines) > 1 or len(lines[0]) > 80 else '')
+                except:
+                    pass
+
+            # Try to extract input preview from metadata (often contains input data)
+            if row.get('metadata_json'):
+                try:
+                    meta = json.loads(row['metadata_json']) if isinstance(row['metadata_json'], str) else row['metadata_json']
+                    if isinstance(meta, dict):
+                        # Look for common input fields
+                        input_data = meta.get('input') or meta.get('inputs') or meta.get('context')
+                        if input_data:
+                            if isinstance(input_data, dict):
+                                preview_parts = []
+                                for k, v in list(input_data.items())[:3]:
+                                    val_str = str(v)[:50] + '...' if len(str(v)) > 50 else str(v)
+                                    preview_parts.append(f"{k}: {val_str}")
+                                input_preview = " | ".join(preview_parts)
+                            elif isinstance(input_data, str):
+                                input_preview = input_data[:100] + ('...' if len(input_data) > 100 else '')
+                except:
+                    pass
+
+            return input_preview, instructions_preview
+
+        species = []
+        for row in result:
+            # Win rate = winners / sessions (not winners / attempts)
+            # Each session has exactly 1 winner, so session_count = max possible wins
+            session_count = row['session_count']
+            winner_count = row['winner_count']
+            win_rate = round(winner_count / session_count * 100, 1) if session_count > 0 else 0
+
+            # Get identifying information for this species
+            input_preview, instructions_preview = get_species_sample(row['species_hash'])
+
+            species.append({
+                'species_hash': row['species_hash'],
+                'session_count': session_count,
+                'winner_count': winner_count,
+                'total_attempts': row['total_attempts'],
+                'win_rate': win_rate,
+                'input_preview': input_preview,
+                'instructions_preview': instructions_preview,
+                'first_seen': str(row['first_seen']) if row['first_seen'] else None,
+                'last_seen': str(row['last_seen']) if row['last_seen'] else None,
+            })
+
+        # Generate warning if multiple species
+        warning = None
+        if len(species) > 1:
+            warning = f"Multiple species detected ({len(species)}). Select a single species for accurate comparison."
+
+        return jsonify({
+            'cascade_id': cascade_id,
+            'phase_name': phase_name,
+            'species': species,
+            'species_count': len(species),
+            'warning': warning,
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -235,14 +383,21 @@ def winner_loser_analysis(cascade_id, phase_name):
     REFOCUSED: This now analyzes PROMPTS (inputs) not responses (outputs).
     The response quality is just a signal - what matters is the prompt that caused it.
 
+    Query params:
+    - limit: Max prompts per category (default 5)
+    - skip_llm: Skip LLM synopsis generation
+    - species_hash: Filter to specific species (prompt template DNA)
+
     Returns:
     - Top N winning prompts with content preview
     - Top N losing prompts with content preview
     - LLM-generated synopsis analyzing PROMPT patterns
+    - species_info: Species metadata and warnings
     """
     db = get_db()
     limit = request.args.get('limit', 5, type=int)
     skip_llm = request.args.get('skip_llm', 'false').lower() == 'true'
+    species_filter = request.args.get('species_hash', None)
 
     try:
         import json as json_mod
@@ -264,6 +419,10 @@ def winner_loser_analysis(cascade_id, phase_name):
             except:
                 return ""
 
+        # Build species filter clause
+        species_clause = f"AND species_hash = '{species_filter}'" if species_filter else ""
+        species_clause_a = f"AND a.species_hash = '{species_filter}'" if species_filter else ""
+
         # Get winning PROMPTS (join agent rows with sounding_attempt for is_winner)
         winners_query = f"""
             SELECT
@@ -275,15 +434,17 @@ def winner_loser_analysis(cascade_id, phase_name):
                 a.cost,
                 a.duration_ms,
                 s.mutation_type AS mutation_type,
+                s.species_hash AS species_hash,
                 a.timestamp
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id, mutation_type
+                SELECT sounding_index, is_winner, session_id, mutation_type, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND phase_name = '{phase_name}'
                   AND node_type = 'sounding_attempt'
                   AND is_winner = true
+                  {species_clause}
             ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
               AND a.phase_name = '{phase_name}'
@@ -319,15 +480,17 @@ def winner_loser_analysis(cascade_id, phase_name):
                 a.cost,
                 a.duration_ms,
                 s.mutation_type AS mutation_type,
+                s.species_hash AS species_hash,
                 a.timestamp
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id, mutation_type
+                SELECT sounding_index, is_winner, session_id, mutation_type, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND phase_name = '{phase_name}'
                   AND node_type = 'sounding_attempt'
                   AND (is_winner = false OR is_winner IS NULL)
+                  {species_clause}
             ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
               AND a.phase_name = '{phase_name}'
@@ -381,6 +544,40 @@ def winner_loser_analysis(cascade_id, phase_name):
         if not skip_llm and winners and losers:
             synopsis = generate_prompt_synopsis(winners, losers, cascade_id, phase_name)
 
+        # Compute cost analysis
+        winner_costs = [w['cost'] for w in winners if w['cost'] > 0]
+        loser_costs = [l['cost'] for l in losers if l['cost'] > 0]
+
+        avg_winner_cost = sum(winner_costs) / len(winner_costs) if winner_costs else 0
+        avg_loser_cost = sum(loser_costs) / len(loser_costs) if loser_costs else 0
+        cost_premium_pct = ((avg_winner_cost - avg_loser_cost) / avg_loser_cost * 100) if avg_loser_cost > 0 else 0
+
+        cost_analysis = {
+            'avg_winner_cost': round(avg_winner_cost, 6),
+            'avg_loser_cost': round(avg_loser_cost, 6),
+            'cost_premium_pct': round(cost_premium_pct, 1),
+            'total_winner_cost': round(sum(winner_costs), 6),
+            'total_loser_cost': round(sum(loser_costs), 6),
+        }
+
+        # Collect species info from results
+        all_species = set()
+        for row in winners_result:
+            if row.get('species_hash'):
+                all_species.add(row['species_hash'])
+        for row in losers_result:
+            if row.get('species_hash'):
+                all_species.add(row['species_hash'])
+
+        species_info = {
+            'species_hash': species_filter,  # Active filter (or None)
+            'detected_species': list(all_species),
+            'species_count': len(all_species),
+            'warning': None
+        }
+        if len(all_species) > 1 and not species_filter:
+            species_info['warning'] = f"Data contains {len(all_species)} different species (prompt templates). Comparing prompts from different templates may give misleading results. Use ?species_hash=X to filter."
+
         return jsonify({
             'cascade_id': cascade_id,
             'phase_name': phase_name,
@@ -389,6 +586,8 @@ def winner_loser_analysis(cascade_id, phase_name):
             'synopsis': synopsis,
             'winner_count': len(winners),
             'loser_count': len(losers),
+            'cost_analysis': cost_analysis,
+            'species_info': species_info,
         })
 
     except Exception as e:
@@ -720,11 +919,15 @@ def get_winning_samples(cascade_id, phase_name):
 
     Useful for understanding WHY certain soundings win.
     Note: is_winner is marked on sounding_attempt rows, not assistant rows.
+    Now supports species_hash filtering for apples-to-apples comparison.
     """
     db = get_db()
     limit = request.args.get('limit', 5, type=int)
+    species_filter = request.args.get('species_hash', None)
 
     try:
+        species_clause = f"AND species_hash = '{species_filter}'" if species_filter else ""
+
         query = f"""
             SELECT
                 session_id,
@@ -733,12 +936,14 @@ def get_winning_samples(cascade_id, phase_name):
                 cost,
                 duration_ms,
                 model,
+                species_hash,
                 timestamp
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
               AND phase_name = '{phase_name}'
               AND is_winner = true
               AND node_type = 'sounding_attempt'
+              {species_clause}
             ORDER BY timestamp DESC
             LIMIT {limit}
         """
@@ -790,6 +995,7 @@ def embedding_hotspots(cascade_id, phase_name):
     db = get_db()
     n_regions = request.args.get('n_regions', 5, type=int)
     min_samples = request.args.get('min_samples', 4, type=int)
+    species_filter = request.args.get('species_hash', None)
 
     try:
         import numpy as np
@@ -798,6 +1004,10 @@ def embedding_hotspots(cascade_id, phase_name):
         from windlass.config import get_config
 
         config = get_config()
+
+        # Build species filter clause for subquery
+        species_clause_sub = f"AND species_hash = '{species_filter}'" if species_filter else ""
+        species_clause_main = f"AND a.species_hash = '{species_filter}'" if species_filter else ""
 
         # Helper to extract prompt text from full_request_json
         def extract_prompt_text(full_request_json):
@@ -817,6 +1027,7 @@ def embedding_hotspots(cascade_id, phase_name):
                 return ""
 
         # Get PROMPTS from agent rows, joined with sounding_attempt for is_winner
+        # Include cost for cost analysis
         query = f"""
             SELECT
                 a.trace_id,
@@ -824,6 +1035,8 @@ def embedding_hotspots(cascade_id, phase_name):
                 a.sounding_index,
                 a.full_request_json,
                 a.model,
+                a.cost,
+                a.species_hash,
                 s.is_winner AS is_winner
             FROM unified_logs a
             INNER JOIN (
@@ -832,6 +1045,7 @@ def embedding_hotspots(cascade_id, phase_name):
                 WHERE cascade_id = '{cascade_id}'
                   AND phase_name = '{phase_name}'
                   AND node_type = 'sounding_attempt'
+                  {species_clause_sub}
             ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
               AND a.phase_name = '{phase_name}'
@@ -839,6 +1053,7 @@ def embedding_hotspots(cascade_id, phase_name):
               AND a.sounding_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
               AND length(a.full_request_json) > 10
+              {species_clause_main}
             ORDER BY a.timestamp DESC
             LIMIT 100
         """
@@ -864,6 +1079,7 @@ def embedding_hotspots(cascade_id, phase_name):
                     'is_winner': bool(row.get('is_winner')),
                     'prompt': prompt_text[:1000],  # Limit for embedding
                     'model': row.get('model', '').split('/')[-1] if row.get('model') else 'unknown',
+                    'cost': float(row.get('cost') or 0),
                 })
 
         if len(prompts_data) < min_samples:
@@ -897,6 +1113,7 @@ def embedding_hotspots(cascade_id, phase_name):
                 'is_winner': p['is_winner'],
                 'prompt': p['prompt'][:500],
                 'model': p['model'],
+                'cost': p['cost'],
                 'embedding': embeddings[i]
             })
 
@@ -983,7 +1200,26 @@ def embedding_hotspots(cascade_id, phase_name):
                 'model': p['model'],
                 'sounding_index': p.get('sounding_index'),
                 'prompt_preview': p['prompt'][:100],
+                'cost': p['cost'],
             })
+
+        # Compute cost analysis
+        winner_costs = [p['cost'] for p in points if p['is_winner']]
+        loser_costs = [p['cost'] for p in points if not p['is_winner']]
+
+        avg_winner_cost = sum(winner_costs) / len(winner_costs) if winner_costs else 0
+        avg_loser_cost = sum(loser_costs) / len(loser_costs) if loser_costs else 0
+        cost_premium_pct = ((avg_winner_cost - avg_loser_cost) / avg_loser_cost * 100) if avg_loser_cost > 0 else 0
+
+        cost_analysis = {
+            'avg_winner_cost': round(avg_winner_cost, 6),
+            'avg_loser_cost': round(avg_loser_cost, 6),
+            'cost_premium_pct': round(cost_premium_pct, 1),
+            'total_winner_cost': round(sum(winner_costs), 6),
+            'total_loser_cost': round(sum(loser_costs), 6),
+            'max_cost': round(max(p['cost'] for p in points), 6) if points else 0,
+            'min_cost': round(min(p['cost'] for p in points), 6) if points else 0,
+        }
 
         # Generate interpretation
         hot_regions = [h for h in hotspots if h['heat'] > 0.3]
@@ -1010,6 +1246,7 @@ def embedding_hotspots(cascade_id, phase_name):
                 'loser_count': sum(1 for p in points if not p['is_winner']),
                 'n_clusters': n_clusters,
             },
+            'cost_analysis': cost_analysis,
             'interpretation': interpretation,
         })
 
@@ -1205,6 +1442,140 @@ def text_heatmap(cascade_id, phase_name):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+def extract_ngrams(text: str, min_n: int = 2, max_n: int = 4) -> dict:
+    """
+    Extract n-grams from text for pattern analysis.
+
+    Returns dict with:
+    - bigrams: 2-word phrases
+    - trigrams: 3-word phrases
+    - quadgrams: 4-word phrases
+    - all_ngrams: combined set for easy lookup
+
+    These are MUCH more useful than large chunks for pattern detection:
+    - "step by step" appearing in 85% of winners vs 12% of losers = actionable insight
+    - Users can copy/paste winning phrases directly
+    - No embedding cost - just string operations
+    """
+    import re
+
+    if not text:
+        return {'bigrams': [], 'trigrams': [], 'quadgrams': [], 'all_ngrams': set()}
+
+    # Tokenize: lowercase, split on whitespace/punctuation, filter short words
+    text_lower = text.lower()
+    # Keep alphanumeric and basic punctuation that's meaningful
+    words = re.findall(r'\b[a-z][a-z0-9]*(?:\'[a-z]+)?\b', text_lower)
+
+    # Filter very short/common words for cleaner patterns
+    stopwords = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+                 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+                 'would', 'could', 'should', 'may', 'might', 'must', 'shall',
+                 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
+                 'as', 'into', 'through', 'during', 'before', 'after', 'above',
+                 'below', 'between', 'under', 'again', 'further', 'then', 'once',
+                 'and', 'but', 'or', 'nor', 'so', 'yet', 'both', 'either', 'neither',
+                 'not', 'only', 'own', 'same', 'than', 'too', 'very', 'just',
+                 'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he',
+                 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my',
+                 'your', 'his', 'our', 'their', 'what', 'which', 'who', 'whom'}
+
+    # For n-grams, we keep all words but filter stopword-only n-grams later
+
+    result = {
+        'bigrams': [],
+        'trigrams': [],
+        'quadgrams': [],
+        'all_ngrams': set(),
+    }
+
+    # Extract n-grams
+    for n in range(min_n, max_n + 1):
+        ngrams = []
+        for i in range(len(words) - n + 1):
+            gram_words = words[i:i+n]
+            # Skip if ALL words are stopwords (but allow mixed)
+            if all(w in stopwords for w in gram_words):
+                continue
+            # Skip if any word is too short (likely noise)
+            if any(len(w) < 2 for w in gram_words):
+                continue
+            gram = ' '.join(gram_words)
+            ngrams.append(gram)
+            result['all_ngrams'].add(gram)
+
+        if n == 2:
+            result['bigrams'] = ngrams
+        elif n == 3:
+            result['trigrams'] = ngrams
+        elif n == 4:
+            result['quadgrams'] = ngrams
+
+    return result
+
+
+def compute_ngram_heat(winner_ngrams_list: list, loser_ngrams_list: list,
+                       min_occurrences: int = 2) -> list:
+    """
+    Compute heat scores for n-grams based on winner vs loser frequency.
+
+    Heat = winner_freq - loser_freq
+    - High heat (>0): pattern appears more in winners (keep it!)
+    - Low heat (<0): pattern appears more in losers (avoid it!)
+
+    Returns list of {ngram, heat, winner_freq, loser_freq, winner_count, loser_count}
+    sorted by absolute heat (most distinctive patterns first).
+    """
+    from collections import Counter
+
+    # Count occurrences in winners and losers
+    winner_counts = Counter()
+    loser_counts = Counter()
+
+    for ngrams in winner_ngrams_list:
+        # Use set to count each prompt once (not multiple times per prompt)
+        for gram in set(ngrams):
+            winner_counts[gram] += 1
+
+    for ngrams in loser_ngrams_list:
+        for gram in set(ngrams):
+            loser_counts[gram] += 1
+
+    # Get all unique n-grams
+    all_grams = set(winner_counts.keys()) | set(loser_counts.keys())
+
+    n_winners = len(winner_ngrams_list)
+    n_losers = len(loser_ngrams_list)
+
+    patterns = []
+    for gram in all_grams:
+        w_count = winner_counts.get(gram, 0)
+        l_count = loser_counts.get(gram, 0)
+
+        # Skip rare patterns
+        if w_count + l_count < min_occurrences:
+            continue
+
+        winner_freq = w_count / n_winners if n_winners > 0 else 0
+        loser_freq = l_count / n_losers if n_losers > 0 else 0
+        heat = winner_freq - loser_freq
+
+        patterns.append({
+            'ngram': gram,
+            'heat': round(heat, 3),
+            'winner_freq': round(winner_freq, 3),
+            'loser_freq': round(loser_freq, 3),
+            'winner_count': w_count,
+            'loser_count': l_count,
+            'total_count': w_count + l_count,
+        })
+
+    # Sort by absolute heat (most distinctive first)
+    patterns.sort(key=lambda x: abs(x['heat']), reverse=True)
+
+    return patterns
 
 
 def chunk_text_smart(text: str, target_size: int = 150) -> list:
@@ -1514,16 +1885,25 @@ def prompt_patterns(cascade_id, phase_name):
     - High heat: This pattern appears in many winners, few losers (keep it!)
     - Low heat: This pattern appears in many losers, few winners (avoid it!)
 
+    Query params:
+    - threshold: Similarity threshold for chunk matching (default 0.75)
+    - chunk_size: Characters per chunk (default 120)
+    - max_winners: Max winning prompts to include (default 10)
+    - max_losers: Max losing prompts to include (default 10)
+    - species_hash: Filter to specific species (prompt template DNA)
+
     Returns:
     - All winning prompts with per-chunk heat scores
     - Sample losing prompts for comparison
     - Global hot/cold patterns across all prompts
+    - species_info: Species metadata and warnings
     """
     db = get_db()
     similarity_threshold = request.args.get('threshold', 0.75, type=float)
     chunk_size = request.args.get('chunk_size', 120, type=int)
     max_winners = request.args.get('max_winners', 10, type=int)
     max_losers = request.args.get('max_losers', 10, type=int)
+    species_filter = request.args.get('species_hash', None)
 
     try:
         import numpy as np
@@ -1533,7 +1913,11 @@ def prompt_patterns(cascade_id, phase_name):
 
         config = get_config()
 
+        # Build species filter clause
+        species_clause = f"AND species_hash = '{species_filter}'" if species_filter else ""
+
         # Step 1: Get all prompts (from agent rows joined with sounding_attempt for is_winner)
+        # Use INNER JOIN to ensure species filtering is respected
         query = f"""
             SELECT
                 a.trace_id,
@@ -1541,14 +1925,17 @@ def prompt_patterns(cascade_id, phase_name):
                 a.session_id,
                 a.full_request_json,
                 a.model,
-                s.is_winner AS is_winner
+                a.cost,
+                s.is_winner AS is_winner,
+                s.species_hash AS species_hash
             FROM unified_logs a
-            LEFT JOIN (
-                SELECT sounding_index, is_winner, session_id
+            INNER JOIN (
+                SELECT sounding_index, is_winner, session_id, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND phase_name = '{phase_name}'
                   AND node_type = 'sounding_attempt'
+                  {species_clause}
             ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
               AND a.phase_name = '{phase_name}'
@@ -1698,6 +2085,7 @@ def prompt_patterns(cascade_id, phase_name):
                 'model': prompt.get('model', '').split('/')[-1] if prompt.get('model') else 'unknown',
                 'full_prompt': prompt['prompt_text'],
                 'is_winner': prompt['is_winner'],
+                'cost': float(prompt.get('cost') or 0),
                 'chunks': [
                     {
                         'text': c['text'],
@@ -1715,6 +2103,36 @@ def prompt_patterns(cascade_id, phase_name):
 
         winning_prompts = [format_prompt_with_chunks(p, all_chunks) for p in winners]
         losing_prompts = [format_prompt_with_chunks(p, all_chunks) for p in losers[:5]]  # Show fewer losers
+
+        # Step 6b: Compute cost analysis
+        winner_costs = [float(p.get('cost') or 0) for p in all_winners]
+        loser_costs = [float(p.get('cost') or 0) for p in all_losers]
+
+        avg_winner_cost = sum(winner_costs) / len(winner_costs) if winner_costs else 0
+        avg_loser_cost = sum(loser_costs) / len(loser_costs) if loser_costs else 0
+        total_winner_cost = sum(winner_costs)
+        total_loser_cost = sum(loser_costs)
+
+        # Cost premium: how much more do winners cost vs losers (as percentage)
+        cost_premium_pct = ((avg_winner_cost - avg_loser_cost) / avg_loser_cost * 100) if avg_loser_cost > 0 else 0
+
+        # Cost efficiency: cost per outcome
+        win_rate = len(all_winners) / (len(all_winners) + len(all_losers)) if (all_winners or all_losers) else 0
+
+        cost_analysis = {
+            'avg_winner_cost': round(avg_winner_cost, 6),
+            'avg_loser_cost': round(avg_loser_cost, 6),
+            'total_winner_cost': round(total_winner_cost, 6),
+            'total_loser_cost': round(total_loser_cost, 6),
+            'cost_premium_pct': round(cost_premium_pct, 1),
+            'winner_count': len(all_winners),
+            'loser_count': len(all_losers),
+            'win_rate_pct': round(win_rate * 100, 1),
+            'min_winner_cost': round(min(winner_costs), 6) if winner_costs else 0,
+            'max_winner_cost': round(max(winner_costs), 6) if winner_costs else 0,
+            'min_loser_cost': round(min(loser_costs), 6) if loser_costs else 0,
+            'max_loser_cost': round(max(loser_costs), 6) if loser_costs else 0,
+        }
 
         # Step 7: Find global hot/cold patterns
         # Group chunks by text similarity and compute aggregate stats
@@ -1766,6 +2184,41 @@ def prompt_patterns(cascade_id, phase_name):
             if p['count'] > 0 and (p['total_heat'] / p['count']) < -0.1
         ]
 
+        # Step 8: N-gram analysis (FAST, interpretable phrase patterns)
+        # This is much better than embedding-based chunks for actionable insights
+        winner_ngrams_list = []
+        loser_ngrams_list = []
+
+        for prompt in all_winners:
+            ngrams = extract_ngrams(prompt['prompt_text'])
+            winner_ngrams_list.append(ngrams['all_ngrams'])
+
+        for prompt in all_losers:
+            ngrams = extract_ngrams(prompt['prompt_text'])
+            loser_ngrams_list.append(ngrams['all_ngrams'])
+
+        # Compute n-gram heat (winner_freq - loser_freq)
+        ngram_patterns = compute_ngram_heat(winner_ngrams_list, loser_ngrams_list, min_occurrences=2)
+
+        # Split into hot (winner-correlated) and cold (loser-correlated)
+        hot_ngrams = [p for p in ngram_patterns if p['heat'] > 0][:15]
+        cold_ngrams = [p for p in ngram_patterns if p['heat'] < 0][:15]
+
+        # Collect species info from results
+        all_species = set()
+        for row in results:
+            if row.get('species_hash'):
+                all_species.add(row['species_hash'])
+
+        species_info = {
+            'species_hash': species_filter,  # Active filter (or None)
+            'detected_species': list(all_species),
+            'species_count': len(all_species),
+            'warning': None
+        }
+        if len(all_species) > 1 and not species_filter:
+            species_info['warning'] = f"Data contains {len(all_species)} different species (prompt templates). Comparing prompts from different templates may give misleading results. Use ?species_hash=X to filter."
+
         return jsonify({
             'cascade_id': cascade_id,
             'phase_name': phase_name,
@@ -1773,6 +2226,11 @@ def prompt_patterns(cascade_id, phase_name):
             'losing_prompts': losing_prompts,
             'global_hot_patterns': hot_patterns,
             'global_cold_patterns': cold_patterns,
+            # NEW: N-gram based patterns (fast, interpretable)
+            'hot_ngrams': hot_ngrams,
+            'cold_ngrams': cold_ngrams,
+            'cost_analysis': cost_analysis,
+            'species_info': species_info,
             'stats': {
                 'total_winners': len(all_winners),
                 'total_losers': len(all_losers),
@@ -1945,3 +2403,229 @@ def extract_patterns(content_samples: list) -> list:
             patterns.append("Detailed responses (> 2000 chars)")
 
     return patterns if patterns else ["No clear patterns detected"]
+
+@sextant_bp.route('/evolution/<session_id>', methods=['GET'])
+def get_prompt_evolution(session_id):
+    """
+    Get prompt evolution (phylogeny) for the species of the given session.
+
+    Returns React Flow compatible graph showing how prompts evolved across
+    multiple runs of the same species (phase configuration).
+
+    Query params:
+    - as_of: timestamp | 'current' (default: session timestamp - show tree as it was at that time)
+    - include_future: bool (default: false - whether to show runs after this session)
+    - phase_name: string (optional - filter to specific phase)
+
+    Returns:
+    {
+        "nodes": [list of React Flow nodes],
+        "edges": [list of React Flow edges],
+        "metadata": {
+            "cascade_id": str,
+            "phase_name": str,
+            "species_hash": str,
+            "session_count": int,
+            "as_of_timestamp": str,
+            "current_session_generation": int
+        }
+    }
+    """
+    db = get_db()
+
+    try:
+        # Parse query params
+        as_of = request.args.get('as_of', 'session')  # 'session', 'latest', or ISO timestamp
+        include_future = request.args.get('include_future', 'false').lower() == 'true'
+        phase_filter = request.args.get('phase_name')
+
+        # 1. Get metadata for the current session (cascade_id, phase_name, species_hash, timestamp)
+        session_query = f"""
+            SELECT
+                cascade_id,
+                phase_name,
+                species_hash,
+                timestamp
+            FROM unified_logs
+            WHERE session_id = '{session_id}'
+              AND species_hash IS NOT NULL
+              AND species_hash != ''
+            LIMIT 1
+        """
+
+        session_info = db.query(session_query, output_format='dict')
+        if not session_info:
+            return jsonify({'error': 'Session not found or has no species_hash'}), 404
+
+        session_info = session_info[0]
+        cascade_id = session_info['cascade_id']
+        phase_name = session_info['phase_name'] if not phase_filter else phase_filter
+        species_hash = session_info['species_hash']
+        session_timestamp = session_info['timestamp']
+
+        # 2. Determine time filter
+        if as_of == 'session':
+            time_filter = f"AND timestamp <= '{session_timestamp}'"
+        elif as_of == 'latest':
+            time_filter = ""
+        else:
+            # User provided specific timestamp
+            time_filter = f"AND timestamp <= '{as_of}'"
+
+        # Optional: also get future runs (grayed out in UI)
+        future_filter = ""
+        if not include_future and as_of == 'session':
+            # Don't include future runs
+            pass
+        elif as_of == 'session':
+            # Include future but mark them
+            future_filter = f", (timestamp > '{session_timestamp}') as is_future"
+
+        # 3. Query all soundings for this species
+        evolution_query = f"""
+            SELECT
+                session_id,
+                sounding_index,
+                mutation_applied,
+                mutation_type,
+                mutation_template,
+                is_winner,
+                timestamp,
+                model
+                {future_filter}
+            FROM unified_logs
+            WHERE cascade_id = '{cascade_id}'
+              AND phase_name = '{phase_name}'
+              AND species_hash = '{species_hash}'
+              AND sounding_index IS NOT NULL
+              AND mutation_applied IS NOT NULL
+              AND mutation_applied != ''
+              {time_filter}
+            ORDER BY timestamp ASC, sounding_index ASC
+        """
+
+        results = db.query(evolution_query, output_format='dict')
+
+        if not results:
+            return jsonify({
+                'nodes': [],
+                'edges': [],
+                'metadata': {
+                    'cascade_id': cascade_id,
+                    'phase_name': phase_name,
+                    'species_hash': species_hash,
+                    'session_count': 0,
+                    'as_of_timestamp': str(session_timestamp),
+                    'message': 'No evolution data found'
+                }
+            })
+
+        # 4. Group by sessions (generations)
+        generations = {}
+        for row in results:
+            sess_id = row['session_id']
+            if sess_id not in generations:
+                generations[sess_id] = {
+                    'session_id': sess_id,
+                    'timestamp': row['timestamp'],
+                    'soundings': [],
+                    'is_future': row.get('is_future', False) if 'is_future' in row else False
+                }
+
+            generations[sess_id]['soundings'].append({
+                'sounding_index': row['sounding_index'],
+                'prompt': row['mutation_applied'],
+                'type': row['mutation_type'],
+                'template': row['mutation_template'],
+                'is_winner': row['is_winner'],
+                'model': row['model']
+            })
+
+        # Sort generations by timestamp
+        gen_list = sorted(generations.values(), key=lambda x: x['timestamp'])
+
+        # 5. Find which generation the current session belongs to
+        current_gen_index = next((i for i, g in enumerate(gen_list) if g['session_id'] == session_id), -1)
+
+        # 6. Build React Flow nodes and edges
+        nodes = []
+        edges = []
+
+        for gen_idx, generation in enumerate(gen_list):
+            is_current_session = generation['session_id'] == session_id
+            is_future = generation.get('is_future', False)
+
+            # Horizontal position (x) based on generation
+            x = gen_idx * 450
+
+            # Get winner(s) from this generation for connections
+            winners = [s for s in generation['soundings'] if s['is_winner']]
+
+            for sound_idx, sounding in enumerate(generation['soundings']):
+                # Vertical position (y) based on sounding index within generation
+                y = sound_idx * 180
+
+                node_id = f"{generation['session_id']}_{sounding['sounding_index']}"
+
+                nodes.append({
+                    'id': node_id,
+                    'type': 'promptNode',
+                    'position': {'x': x, 'y': y},
+                    'data': {
+                        'generation': gen_idx + 1,
+                        'sounding_index': sounding['sounding_index'],
+                        'prompt': sounding['prompt'],
+                        'mutation_type': sounding['type'],
+                        'mutation_template': sounding['template'],
+                        'is_winner': sounding['is_winner'],
+                        'model': sounding['model'],
+                        'is_current_session': is_current_session,
+                        'is_future': is_future,
+                        'session_id': generation['session_id'],
+                        'timestamp': str(generation['timestamp'])
+                    }
+                })
+
+                # Connect to previous generation's winners
+                if gen_idx > 0:
+                    prev_generation = gen_list[gen_idx - 1]
+                    prev_winners = [s for s in prev_generation['soundings'] if s['is_winner']]
+
+                    for prev_winner in prev_winners:
+                        source_id = f"{prev_generation['session_id']}_{prev_winner['sounding_index']}"
+
+                        edges.append({
+                            'id': f"{source_id}->{node_id}",
+                            'source': source_id,
+                            'target': node_id,
+                            'type': 'smoothstep',
+                            'animated': sounding['is_winner'],  # Animate winner paths
+                            'style': {
+                                'stroke': '#22c55e' if sounding['is_winner'] else '#9ca3af',
+                                'strokeWidth': 3 if sounding['is_winner'] else 1,
+                                'opacity': 0.3 if is_future else 1.0
+                            }
+                        })
+
+        # 7. Return response
+        return jsonify({
+            'nodes': nodes,
+            'edges': edges,
+            'metadata': {
+                'cascade_id': cascade_id,
+                'phase_name': phase_name,
+                'species_hash': species_hash,
+                'session_count': len(gen_list),
+                'as_of_timestamp': str(session_timestamp),
+                'current_session_generation': current_gen_index + 1 if current_gen_index >= 0 else None,
+                'total_soundings': len(nodes),
+                'winner_count': sum(1 for n in nodes if n['data']['is_winner'])
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

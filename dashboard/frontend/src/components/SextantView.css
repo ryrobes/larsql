@@ -2194,6 +2194,161 @@
   border-radius: 4px;
 }
 
+/* =============================================================================
+   N-gram Patterns (phrase-level, interpretable patterns)
+   ============================================================================= */
+
+.ngram-patterns {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--surface-primary, #111827);
+  border: 1px solid var(--border-subtle, #374151);
+  border-radius: 12px;
+}
+
+.ngram-patterns-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle, #374151);
+  font-size: 14px;
+  font-weight: 500;
+  color: #e5e7eb;
+}
+
+.ngram-patterns-header svg {
+  color: #a78bfa;
+}
+
+.ngram-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.ngram-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.ngram-column {
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.ngram-column.hot {
+  background: rgba(251, 146, 60, 0.06);
+  border: 1px solid rgba(251, 146, 60, 0.2);
+}
+
+.ngram-column.cold {
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.ngram-column h5 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ngram-column.hot h5 {
+  color: #fb923c;
+}
+
+.ngram-column.cold h5 {
+  color: #38bdf8;
+}
+
+.ngram-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: default;
+}
+
+.ngram-item:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.ngram-heat {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 11px;
+  min-width: 32px;
+  text-align: right;
+}
+
+.ngram-column.hot .ngram-heat {
+  color: #fb923c;
+}
+
+.ngram-column.cold .ngram-heat {
+  color: #38bdf8;
+}
+
+.ngram-text {
+  flex: 1;
+  color: #d1d5db;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ngram-freq {
+  font-size: 10px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* Chunk patterns details (collapsible legacy view) */
+.chunk-patterns-details {
+  margin: 12px 0;
+}
+
+.chunk-patterns-details summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-secondary, #1f2937);
+  border: 1px solid var(--border-subtle, #374151);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #9ca3af;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chunk-patterns-details summary:hover {
+  background: var(--surface-hover, #374151);
+  color: #e5e7eb;
+}
+
+.chunk-patterns-details[open] summary {
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+}
+
+.chunk-patterns-details .global-patterns {
+  border: 1px solid var(--border-subtle, #374151);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 12px;
+}
+
 /* Global Patterns Summary */
 .global-patterns {
   display: grid;
@@ -2488,4 +2643,566 @@
   .prompts-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===================================
+   COST ANALYSIS STYLES
+   =================================== */
+
+/* Cost Analysis Section in PromptPatternCards */
+.cost-analysis-section {
+  margin: 16px 0;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.cost-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #2dd4bf;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.cost-analysis-header .cost-premium {
+  margin-left: auto;
+  font-size: 0.85rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(107, 114, 128, 0.2);
+  color: #9AA5B1;
+}
+
+.cost-analysis-header .cost-premium.positive {
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+}
+
+.cost-analysis-header .cost-premium.negative {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
+.cost-analysis-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.cost-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.cost-stat .cost-label {
+  font-size: 0.7rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cost-stat .cost-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #F0F4F8;
+}
+
+.cost-stat.winner .cost-value {
+  color: #fb923c;
+}
+
+.cost-stat.loser .cost-value {
+  color: #38bdf8;
+}
+
+/* Prompt card cost badge */
+.prompt-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-cost {
+  font-size: 0.75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 2px 8px;
+  background: rgba(45, 212, 191, 0.15);
+  border-radius: 4px;
+  color: #2dd4bf;
+}
+
+/* Embedding Hotspot Cost Analysis */
+.hotspot-cost-analysis {
+  margin-top: 16px;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.hotspot-cost-analysis h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px 0;
+  color: #2dd4bf;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.cost-stats-row {
+  display: flex;
+  gap: 16px;
+}
+
+.cost-stats-row .cost-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.cost-stats-row .label {
+  font-size: 0.7rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cost-stats-row .value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #F0F4F8;
+}
+
+.cost-stats-row .value.winner {
+  color: #fb923c;
+}
+
+.cost-stats-row .value.loser {
+  color: #38bdf8;
+}
+
+.cost-stats-row .value.positive {
+  color: #fb923c;
+}
+
+.cost-stats-row .value.negative {
+  color: #38bdf8;
+}
+
+/* Tooltip cost */
+.hotspot-tooltip .tooltip-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.hotspot-tooltip .tooltip-cost {
+  font-size: 0.75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 2px 6px;
+  background: rgba(45, 212, 191, 0.2);
+  border-radius: 3px;
+  color: #2dd4bf;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cost-analysis-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cost-stats-row {
+    flex-wrap: wrap;
+  }
+
+  .cost-stats-row .cost-stat {
+    flex: 1 1 45%;
+  }
+}
+
+/* =============================================================================
+   Species Warning Styles
+   ============================================================================= */
+
+.species-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: linear-gradient(135deg, #3b2a14 0%, #2a2015 100%);
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.species-warning svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.species-warning .warning-text {
+  flex: 1;
+  min-width: 200px;
+  line-height: 1.5;
+}
+
+.species-warning .species-list {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.15);
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Species selector (for future use) */
+.species-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  background: var(--surface-secondary, #1f2937);
+  border: 1px solid var(--border-subtle, #374151);
+  border-radius: 8px;
+}
+
+.species-selector label {
+  font-size: 12px;
+  color: var(--text-secondary, #9ca3af);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.species-selector select {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--surface-primary, #111827);
+  border: 1px solid var(--border-subtle, #374151);
+  border-radius: 4px;
+  color: var(--text-primary, #f9fafb);
+  cursor: pointer;
+}
+
+.species-selector select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.species-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  color: #a78bfa;
+}
+
+.species-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* =============================================================================
+   Species Card Styles (Clickable DNA hash cards)
+   ============================================================================= */
+
+.species-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-secondary, #1f2937);
+  border: 2px solid var(--border-subtle, #374151);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.species-card:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.species-card.selected {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.15);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+}
+
+.species-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.species-card-header .dna-icon {
+  color: #a78bfa;
+}
+
+.species-card-header .species-hash {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.species-card-header .selected-icon {
+  color: #34d399;
+  margin-left: auto;
+}
+
+.species-card-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.species-card-stats .stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.species-card-stats .stat svg {
+  color: #6b7280;
+}
+
+.species-card-stats .win-rate {
+  font-weight: 600;
+}
+
+/* Species preview sections */
+.species-instructions-preview,
+.species-input-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #9ca3af;
+}
+
+.species-instructions-preview {
+  border-left: 2px solid #8b5cf6;
+}
+
+.species-input-preview {
+  border-left: 2px solid #3b82f6;
+}
+
+.species-instructions-preview svg,
+.species-input-preview svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #6b7280;
+}
+
+.species-instructions-preview span,
+.species-input-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* =============================================================================
+   Species Selector Styles
+   ============================================================================= */
+
+.species-selector {
+  padding: 16px;
+  background: var(--surface-primary, #111827);
+  border: 1px solid var(--border-subtle, #374151);
+  border-radius: 12px;
+}
+
+.species-selector.loading,
+.species-selector.error,
+.species-selector.empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.species-selector.error {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.species-selector-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle, #374151);
+  font-size: 14px;
+  font-weight: 500;
+  color: #e5e7eb;
+}
+
+.species-selector-header svg {
+  color: #a78bfa;
+}
+
+.species-selector-header .species-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6b7280;
+  background: rgba(139, 92, 246, 0.15);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.species-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.species-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.species-hint svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+
+/* =============================================================================
+   Selected Species Banner
+   ============================================================================= */
+
+.selected-species-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  border: 1px solid #4c1d95;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #c4b5fd;
+}
+
+.selected-species-banner svg {
+  color: #a78bfa;
+}
+
+.selected-species-banner code {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: #e9d5ff;
+  background: rgba(139, 92, 246, 0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.selected-species-banner .change-species-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 6px;
+  color: #c4b5fd;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.selected-species-banner .change-species-btn:hover {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: #8b5cf6;
+}
+
+/* =============================================================================
+   No Species Selected State
+   ============================================================================= */
+
+.no-species-selected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.no-species-selected svg {
+  color: #4b5563;
+  animation: bounce-subtle 2s ease-in-out infinite;
+}
+
+.no-species-selected span {
+  font-size: 16px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.no-species-selected p {
+  max-width: 400px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Species section styling */
+.species-section {
+  margin-bottom: 8px;
 }

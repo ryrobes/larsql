@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
 import VideoSpinner from './VideoSpinner';
 import ParetoChart from './ParetoChart';
+import ModelFilterBanner from './ModelFilterBanner';
 import './SoundingsExplorer.css';
 
 /**
@@ -141,10 +142,12 @@ function SoundingsExplorer({ sessionId, onClose }) {
   const [expandedRefinement, setExpandedRefinement] = useState(null); // {phaseIdx, stepIdx, refIdx}
   const [paretoData, setParetoData] = useState(null); // Pareto frontier data for multi-model soundings
   const [paretoExpanded, setParetoExpanded] = useState(true); // Pareto section expanded by default
+  const [modelFilters, setModelFilters] = useState([]); // Model filter events
 
   useEffect(() => {
     fetchSoundingsData();
     fetchParetoData();
+    fetchModelFilters();
   }, [sessionId]);
 
   // Poll for updates while the modal is open
@@ -194,6 +197,18 @@ function SoundingsExplorer({ sessionId, onClose }) {
     } catch (err) {
       // Pareto data is optional, don't show error
       console.debug('No Pareto data for session:', sessionId);
+    }
+  };
+
+  const fetchModelFilters = async () => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/session/${sessionId}/model-filters`);
+      if (response.ok) {
+        const result = await response.json();
+        setModelFilters(result.filters || []);
+      }
+    } catch (err) {
+      console.debug('No model filter data for session:', sessionId);
     }
   };
 
@@ -330,6 +345,14 @@ function SoundingsExplorer({ sessionId, onClose }) {
                     </span>
                   </div>
                 </div>
+
+                {/* Model Filter Banner - show if models were filtered for this phase */}
+                {modelFilters && modelFilters.length > 0 && (
+                  (() => {
+                    const phaseFilter = modelFilters.find(f => f.phase_name === phase.name);
+                    return phaseFilter ? <ModelFilterBanner filterData={phaseFilter} /> : null;
+                  })()
+                )}
 
                 {/* Pareto Frontier Chart - shown inline for phases with multi-model analysis */}
                 {phaseHasPareto && (

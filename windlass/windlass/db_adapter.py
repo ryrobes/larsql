@@ -102,6 +102,7 @@ class ClickHouseAdapter:
         # Auto-create tables
         if auto_create:
             self._ensure_tables()
+            self._run_migrations()
 
         ClickHouseAdapter._initialized = True
 
@@ -142,6 +143,64 @@ class ClickHouseAdapter:
                     print(f"[Windlass] Table '{table_name}' created")
             except Exception as e:
                 print(f"[Windlass] Warning: Could not ensure table '{table_name}': {e}")
+
+    def _run_migrations(self):
+        """
+        Run all pending migrations from the migrations directory.
+
+        Migrations are SQL files that use IF NOT EXISTS / IF EXISTS clauses
+        for idempotency, so they're safe to run multiple times.
+        """
+        from pathlib import Path
+
+        # Find migrations directory (relative to this file)
+        migrations_dir = Path(__file__).parent.parent / "migrations"
+
+        if not migrations_dir.exists():
+            return
+
+        # Get all .sql files sorted alphabetically
+        migration_files = sorted(migrations_dir.glob("*.sql"))
+
+        if not migration_files:
+            return
+
+        print(f"[Windlass] Running {len(migration_files)} migrations...")
+
+        for migration_file in migration_files:
+            try:
+                # Read migration SQL
+                sql_content = migration_file.read_text()
+
+                # Split by semicolons and execute each statement
+                statements = [s.strip() for s in sql_content.split(';') if s.strip()]
+
+                executed = 0
+                for statement in statements:
+                    # Skip comments-only blocks
+                    lines = [l for l in statement.split('\n') if l.strip() and not l.strip().startswith('--')]
+                    if not lines:
+                        continue
+
+                    # Skip SELECT statements (verification queries)
+                    first_line = lines[0].strip().upper()
+                    if first_line.startswith('SELECT'):
+                        continue
+
+                    try:
+                        self.client.execute(statement)
+                        executed += 1
+                    except Exception as stmt_err:
+                        # Log but don't fail - migration may have already been applied
+                        err_str = str(stmt_err).lower()
+                        if "already exists" not in err_str and "duplicate" not in err_str:
+                            print(f"[Windlass] Migration '{migration_file.name}' warning: {stmt_err}")
+
+                if executed > 0:
+                    print(f"[Windlass] Migration '{migration_file.name}': {executed} statements executed")
+
+            except Exception as e:
+                print(f"[Windlass] Warning: Could not run migration '{migration_file.name}': {e}")
 
     # =========================================================================
     # Query Operations

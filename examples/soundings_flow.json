@@ -13,7 +13,19 @@
         "factor": 10,
         "evaluator_instructions": "You are an expert creative writing instructor. Evaluate the following story openings based on: 1) Hook strength - does it grab attention? 2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear and compelling? Select the BEST opening.",
         "mutate": true,
-        "mutation_mode": "rewrite"
+        "mutation_mode": "rewrite",
+        "models": [
+          "anthropic/claude-sonnet-4.5",
+          "x-ai/grok-4.1-fast",
+          "allenai/olmo-3-32b-think:free",
+          "mistralai/devstral-2512:free",
+          "amazon/nova-2-lite-v1",
+          "amazon/nova-premier-v1",
+          "openai/gpt-5.1",
+          "openai/gpt-4.1",
+          "anthropic/claude-opus-4.5",
+          "google/gemini-3-pro-preview"
+        ]
       },
       "rules": {"max_turns": 1},
       "handoffs": ["develop_story"]

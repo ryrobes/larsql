@@ -1326,6 +1326,66 @@ def get_session_detail(session_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/session/<session_id>/model-filters', methods=['GET'])
+def get_model_filters(session_id):
+    """
+    Get model filtering events for a session.
+
+    Returns list of model_filter events showing which models were filtered
+    during multi-model soundings due to insufficient context limits.
+    """
+    try:
+        conn = get_db_connection()
+
+        query = """
+            SELECT
+                phase_name,
+                metadata_json,
+                timestamp
+            FROM unified_logs
+            WHERE session_id = ?
+              AND node_type = 'model_filter'
+            ORDER BY timestamp
+        """
+        result = conn.execute(query, [session_id]).fetchall()
+
+        filters = []
+        for row in result:
+            phase_name, metadata_json, timestamp = row
+
+            # Parse metadata
+            metadata = {}
+            if metadata_json:
+                try:
+                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                except:
+                    pass
+
+            filters.append({
+                'phase_name': phase_name,
+                'timestamp': str(timestamp),
+                'original_models': metadata.get('original_models', []),
+                'filtered_models': metadata.get('filtered_models', []),
+                'viable_models': metadata.get('viable_models', []),
+                'filter_details': metadata.get('filter_details', {}),
+                'estimated_tokens': metadata.get('estimated_tokens', 0),
+                'required_tokens': metadata.get('required_tokens', 0),
+                'buffer_factor': metadata.get('buffer_factor', 1.15)
+            })
+
+        conn.close()
+
+        return jsonify({
+            'session_id': session_id,
+            'filters': filters
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/session/<session_id>/dump', methods=['POST'])
 def dump_session(session_id):
     """
