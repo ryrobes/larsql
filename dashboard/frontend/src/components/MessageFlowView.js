@@ -4,6 +4,8 @@ import axios from 'axios';
 import { Icon } from '@iconify/react';
 import VideoSpinner from './VideoSpinner';
 import AudioGallery from './AudioGallery';
+import ContextMatrixView from './ContextMatrixView';
+import ContextCrossRefPanel from './ContextCrossRefPanel';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
@@ -438,6 +440,18 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   const [selectedImage, setSelectedImage] = useState(null); // For image modal
   const currentSessionIdRef = useRef(initialSessionId || null);
 
+  // Context highlighting state
+  const [hoveredContextHashes, setHoveredContextHashes] = useState(new Set());
+  const [highlightMode, setHighlightMode] = useState('ancestors'); // 'ancestors' | 'descendants' | 'both'
+  const [selectedMessageForContext, setSelectedMessageForContext] = useState(null);
+
+  // Context Matrix view state
+  const [showContextMatrix, setShowContextMatrix] = useState(false);
+
+  // Cross-reference panel state
+  const [showCrossRefPanel, setShowCrossRefPanel] = useState(false);
+  const [crossRefMessage, setCrossRefMessage] = useState(null);
+
   // Scroll to message when scrollToIndex changes (triggered by chart click)
   useEffect(() => {
     if (scrollToIndex !== null && scrollToIndex !== undefined) {
@@ -644,6 +658,76 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     'other': { bg: '#666666', color: '#1e1e1e', label: '?' }
   };
 
+  // Context highlighting handlers
+  const handleMessageHover = useCallback((msg, isEntering) => {
+    if (!isEntering || !data) {
+      setHoveredContextHashes(new Set());
+      return;
+    }
+
+    const hashesToHighlight = new Set();
+
+    // Ancestors: messages that were in this message's context
+    if (highlightMode === 'ancestors' || highlightMode === 'both') {
+      (msg.context_hashes || []).forEach(h => hashesToHighlight.add(h));
+    }
+
+    // Descendants: messages that had this message in their context
+    if ((highlightMode === 'descendants' || highlightMode === 'both') && msg.content_hash) {
+      data.all_messages.forEach(m => {
+        if (m.context_hashes?.includes(msg.content_hash)) {
+          hashesToHighlight.add(m.content_hash);
+        }
+      });
+    }
+
+    setHoveredContextHashes(hashesToHighlight);
+  }, [data, highlightMode]);
+
+  // Check if a message should be highlighted based on hovered context
+  const isContextHighlighted = useCallback((msg) => {
+    if (hoveredContextHashes.size === 0) return false;
+    return msg.content_hash && hoveredContextHashes.has(msg.content_hash);
+  }, [hoveredContextHashes]);
+
+  // Copy hash to clipboard (double-click)
+  const copyHashToClipboard = useCallback((hash, e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(hash);
+  }, []);
+
+  // Show cross-reference panel for a message (single-click on hash badge)
+  const showCrossRef = useCallback((msg, e) => {
+    e.stopPropagation();
+    setCrossRefMessage(msg);
+    setShowCrossRefPanel(true);
+  }, []);
+
+  // Navigate from cross-ref panel to a message
+  const handleCrossRefNavigate = useCallback((index) => {
+    const messageEl = document.getElementById(`message-${index}`);
+    if (messageEl) {
+      messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessage(index);
+      setTimeout(() => setHighlightedMessage(null), 3000);
+    }
+  }, []);
+
+  // Handle message selection from matrix view
+  const handleMatrixMessageSelect = useCallback((msg) => {
+    if (!msg || !data?.all_messages) return;
+    const index = data.all_messages.indexOf(msg);
+    if (index >= 0) {
+      // Scroll to and highlight the message
+      const messageEl = document.getElementById(`message-${index}`);
+      if (messageEl) {
+        messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedMessage(index);
+        setTimeout(() => setHighlightedMessage(null), 3000);
+      }
+    }
+  }, [data]);
+
   const renderMessage = (msg, index, label) => {
     const globalIndex = findGlobalIndex(msg);
     const isExpanded = expandedMessages.has(index);
@@ -670,71 +754,130 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     const firstImage = msgImages.inputs[0] || msgImages.outputs[0];
     const firstImageUrl = firstImage?.url;
 
+    const contextHighlight = isContextHighlighted(msg);
+
     return (
       <div
         key={index}
         id={`message-${globalIndex}`}
-        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''}`}
+        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''} ${contextHighlight ? 'context-highlighted' : ''}`}
         onClick={() => isExpandable && toggleMessage(index)}
+        onMouseEnter={() => handleMessageHover(msg, true)}
+        onMouseLeave={() => handleMessageHover(msg, false)}
         style={{ cursor: isExpandable ? 'pointer' : 'default' }}
       >
         <div className="message-header">
-          <span className="message-label">{label}</span>
-          {/* Category badge */}
-          <span
-            className="category-badge"
-            style={{
-              background: categoryStyle.bg,
-              color: categoryStyle.color,
-              padding: '2px 6px',
-              borderRadius: '3px',
-              fontSize: '10px',
-              fontWeight: 'bold',
-              opacity: isInternal ? 0.7 : 1
-            }}
-            title={`Category: ${category}${isInternal ? ' (internal - not sent to LLM)' : ''}`}
-          >
-            {categoryStyle.label}
-          </span>
-          {fromSounding && <span className="source-badge" style={{background: '#4ec9b0', color: '#1e1e1e', padding: '2px 6px', borderRadius: '3px', fontSize: '11px'}}>S{msg.sounding_index}</span>}
-          {fromReforge && <span className="source-badge" style={{background: '#c586c0', color: '#1e1e1e', padding: '2px 6px', borderRadius: '3px', fontSize: '11px'}}>R{msg.reforge_step}</span>}
-          <span className="message-role">{msg.role}</span>
-          <span className="message-node-type">{msg.node_type}</span>
-          {msg.model && <span className="message-model" title={msg.model}>{msg.model.split('/').pop()}</span>}
-          {msg.turn_number !== null && <span className="turn">Turn {msg.turn_number}</span>}
-          {msg.tokens_in > 0 && <span className="tokens">{msg.tokens_in.toLocaleString()} tokens in</span>}
-          {msg.cost > 0 && <span className="cost-badge">${msg.cost.toFixed(4)}</span>}
-          {/* Image badges with direction */}
-          {msgImages.inputs.length > 0 && (
-            <span className="image-badge image-in" title={`${msgImages.inputs.length} image(s) sent TO the LLM`}>
-              <Icon icon="mdi:arrow-right" width="12" />
-              <Icon icon="mdi:image" width="14" />
-              {msgImages.inputs.length}
+          {/* Row 1: Primary Identity */}
+          <div className="header-row header-primary">
+            <span className="message-label">{label}</span>
+            <span
+              className={`category-badge category-${category}`}
+              style={{ background: categoryStyle.bg, color: categoryStyle.color }}
+              title={`Category: ${category}${isInternal ? ' (internal - not sent to LLM)' : ''}`}
+            >
+              {categoryStyle.label}
             </span>
+            {fromSounding && <span className="sounding-badge">S{msg.sounding_index}</span>}
+            {fromReforge && <span className="reforge-badge">R{msg.reforge_step}</span>}
+            <span className="role-badge" data-role={msg.role}>{msg.role}</span>
+            {msg.node_type !== msg.role && (
+              <span className="node-type-badge">{msg.node_type}</span>
+            )}
+            {/* Spacer to push right-side items */}
+            <span className="header-spacer"></span>
+            {/* Winner/Special badges on the right */}
+            {msg.is_winner && (
+              <span className="winner-badge">
+                <Icon icon="mdi:trophy" width="12" />
+              </span>
+            )}
+            {isMostExpensive && (
+              <span className="most-expensive-badge" title="Most expensive message">
+                <Icon icon="mdi:currency-usd" width="12" />
+              </span>
+            )}
+            {/* Expand hint */}
+            {isExpandable && (
+              <span className="expand-icon">
+                <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
+              </span>
+            )}
+          </div>
+
+          {/* Row 2: Model & Cost (only if present) */}
+          {(msg.model || msg.tokens_in > 0 || msg.cost > 0 || msg.turn_number !== null) && (
+            <div className="header-row header-meta">
+              {msg.model && (
+                <span className="model-badge" title={msg.model}>
+                  {msg.model.split('/').pop()}
+                </span>
+              )}
+              {msg.turn_number !== null && (
+                <span className="turn-badge">T{msg.turn_number}</span>
+              )}
+              {msg.tokens_in > 0 && (
+                <span className="tokens-badge">{msg.tokens_in.toLocaleString()} tok</span>
+              )}
+              {msg.cost > 0 && (
+                <span className="cost-badge">${msg.cost.toFixed(4)}</span>
+              )}
+            </div>
           )}
-          {msgImages.outputs.length > 0 && (
-            <span className="image-badge image-out" title={`${msgImages.outputs.length} image(s) FROM tool/response`}>
-              <Icon icon="mdi:arrow-left" width="12" />
-              <Icon icon="mdi:image" width="14" />
-              {msgImages.outputs.length}
-            </span>
-          )}
-          {msg.is_winner && <span className="winner-badge"><Icon icon="mdi:trophy" width="14" style={{ marginRight: '4px' }} />Winner</span>}
-          {isMostExpensive && <span className="most-expensive-badge"><Icon icon="mdi:currency-usd" width="14" style={{ marginRight: '4px' }} />Most Expensive</span>}
-          {hasFullRequest && <span className="full-request-badge"><Icon icon="mdi:email-arrow-right" width="14" style={{ marginRight: '4px' }} />{messageCount} msgs sent to LLM</span>}
-          {isExpandable && <span className="expand-hint"><Icon icon={isExpanded ? "mdi:chevron-down" : "mdi:chevron-right"} width="14" style={{ marginRight: '4px' }} />{isExpanded ? 'Click to collapse' : 'Click to expand'}</span>}
-          {/* Compact image preview in header */}
-          {firstImageUrl && firstImageUrl.startsWith('data:image') && (
-            <img
-              src={firstImageUrl}
-              alt="Message thumbnail"
-              className="message-thumbnail"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedImage({ url: firstImageUrl, phase: msg.phase_name, index: globalIndex });
-              }}
-              title="Click to enlarge"
-            />
+
+          {/* Row 3: Context & Media (only if present) */}
+          {(msg.content_hash || hasFullRequest || hasImages) && (
+            <div className="header-row header-context">
+              {/* Hash badge */}
+              {msg.content_hash && (
+                <span
+                  className="content-hash-badge"
+                  title={`Hash: ${msg.content_hash}\nContext: ${msg.context_hashes?.length || 0} messages\nClick for cross-ref`}
+                  onClick={(e) => showCrossRef(msg, e)}
+                  onDoubleClick={(e) => copyHashToClipboard(msg.content_hash, e)}
+                >
+                  <Icon icon="mdi:pound" width="10" />
+                  {msg.content_hash.slice(0, 6)}
+                  {msg.context_hashes?.length > 0 && (
+                    <span className="context-count">{msg.context_hashes.length}</span>
+                  )}
+                </span>
+              )}
+              {/* Full request badge */}
+              {hasFullRequest && (
+                <span className="full-request-badge">
+                  <Icon icon="mdi:email-outline" width="12" />
+                  {messageCount}
+                </span>
+              )}
+              {/* Image badges */}
+              {msgImages.inputs.length > 0 && (
+                <span className="image-badge image-in" title={`${msgImages.inputs.length} image(s) sent TO LLM`}>
+                  <Icon icon="mdi:image" width="12" />
+                  <Icon icon="mdi:arrow-right" width="10" />
+                  {msgImages.inputs.length}
+                </span>
+              )}
+              {msgImages.outputs.length > 0 && (
+                <span className="image-badge image-out" title={`${msgImages.outputs.length} image(s) FROM tool`}>
+                  <Icon icon="mdi:image" width="12" />
+                  <Icon icon="mdi:arrow-left" width="10" />
+                  {msgImages.outputs.length}
+                </span>
+              )}
+              {/* Thumbnail preview */}
+              {firstImageUrl && firstImageUrl.startsWith('data:image') && (
+                <img
+                  src={firstImageUrl}
+                  alt="Preview"
+                  className="message-thumbnail"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedImage({ url: firstImageUrl, phase: msg.phase_name, index: globalIndex });
+                  }}
+                  title="Click to enlarge"
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -810,10 +953,44 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                   textContent = JSON.stringify(llmMsg.content, null, 2);
                 }
 
+                // Get the context hash for this message position (if available)
+                const contextHash = msg.context_hashes?.[i];
+                // Look up the linked message from hash_index
+                const linkedMsgs = contextHash && data?.hash_index?.[contextHash];
+                const linkedMsg = linkedMsgs?.[0]; // First match
+                const hasLink = linkedMsg && linkedMsg.index !== undefined;
+
+                // Handler to navigate to the linked message
+                const navigateToLinked = (e) => {
+                  e.stopPropagation();
+                  if (hasLink) {
+                    const messageEl = document.getElementById(`message-${linkedMsg.index}`);
+                    if (messageEl) {
+                      messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      setHighlightedMessage(linkedMsg.index);
+                      setTimeout(() => setHighlightedMessage(null), 3000);
+                    }
+                  }
+                };
+
                 return (
-                  <div key={i} className={`llm-message ${llmMsg.role}`}>
+                  <div key={i} className={`llm-message ${llmMsg.role} ${hasLink ? 'has-link' : ''}`}>
                     <div className="llm-message-header">
                       <span className="llm-role">[{i}] {llmMsg.role}</span>
+                      {/* Linked message badge */}
+                      {hasLink ? (
+                        <span
+                          className="linked-badge"
+                          onClick={navigateToLinked}
+                          title={`Navigate to source message M${linkedMsg.index}`}
+                        >
+                          <Icon icon="mdi:link" width="12" /> M{linkedMsg.index}
+                        </span>
+                      ) : contextHash ? (
+                        <span className="hash-badge" title={`Hash: ${contextHash}`}>
+                          #{contextHash.slice(0, 6)}
+                        </span>
+                      ) : null}
                       {llmMsgImages.length > 0 && (
                         <span className="msg-image-badge">
                           <Icon icon="mdi:image" width="14" style={{ marginRight: '2px' }} />
@@ -972,7 +1149,66 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                 )}
               </div>
             )}
+
+            {/* Context Stats & Highlight Controls */}
+            <div className="context-controls-row">
+              {data.context_stats && (
+                <div className="context-stats-mini">
+                  <span title="LLM calls with context">
+                    <Icon icon="mdi:message-processing" width="14" /> {data.context_stats.llm_calls_with_context} LLM calls
+                  </span>
+                  <span title="Unique context items">
+                    <Icon icon="mdi:fingerprint" width="14" /> {data.context_stats.unique_context_items} unique contexts
+                  </span>
+                  <span title="Average context size">
+                    <Icon icon="mdi:chart-line" width="14" /> avg {data.context_stats.avg_context_size} / max {data.context_stats.max_context_size}
+                  </span>
+                </div>
+              )}
+              <div className="context-highlight-controls">
+                <span className="highlight-label">Hover shows:</span>
+                <button
+                  className={`highlight-mode-btn ${highlightMode === 'ancestors' ? 'active' : ''}`}
+                  onClick={() => setHighlightMode('ancestors')}
+                  title="Show messages that were in hovered message's context"
+                >
+                  <Icon icon="mdi:arrow-up" width="14" /> Ancestors
+                </button>
+                <button
+                  className={`highlight-mode-btn ${highlightMode === 'descendants' ? 'active' : ''}`}
+                  onClick={() => setHighlightMode('descendants')}
+                  title="Show messages that saw the hovered message in their context"
+                >
+                  <Icon icon="mdi:arrow-down" width="14" /> Descendants
+                </button>
+                <button
+                  className={`highlight-mode-btn ${highlightMode === 'both' ? 'active' : ''}`}
+                  onClick={() => setHighlightMode('both')}
+                  title="Show both ancestors and descendants"
+                >
+                  <Icon icon="mdi:arrow-up-down" width="14" /> Both
+                </button>
+                <button
+                  className={`highlight-mode-btn matrix-btn ${showContextMatrix ? 'active' : ''}`}
+                  onClick={() => setShowContextMatrix(!showContextMatrix)}
+                  title="Toggle context matrix heatmap view"
+                >
+                  <Icon icon="mdi:grid" width="14" /> Matrix
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Context Matrix Heatmap View */}
+          {showContextMatrix && (
+            <div className="context-matrix-wrapper">
+              <ContextMatrixView
+                data={data}
+                onMessageSelect={handleMatrixMessageSelect}
+                onClose={() => setShowContextMatrix(false)}
+              />
+            </div>
+          )}
 
           {/* Legacy Reforge Steps - only show if not organized by phase */}
           {data.reforge_steps.length > 0 && (!data.reforge_by_phase || data.reforge_by_phase.length === 0) && (
@@ -1289,6 +1525,22 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cross-Reference Side Panel */}
+      {showCrossRefPanel && (
+        <div className="cross-ref-panel-container">
+          <ContextCrossRefPanel
+            selectedMessage={crossRefMessage}
+            allMessages={data?.all_messages}
+            hashIndex={data?.hash_index}
+            onNavigate={handleCrossRefNavigate}
+            onClose={() => {
+              setShowCrossRefPanel(false);
+              setCrossRefMessage(null);
+            }}
+          />
         </div>
       )}
 

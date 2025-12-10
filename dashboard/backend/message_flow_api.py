@@ -142,7 +142,10 @@ def get_message_flow(session_id):
             cost,
             model,
             is_winner,
-            metadata_json
+            metadata_json,
+            content_hash,
+            context_hashes,
+            estimated_tokens
         FROM unified_logs
         WHERE session_id = '{session_id}'
         ORDER BY timestamp
@@ -154,7 +157,8 @@ def get_message_flow(session_id):
             (r['timestamp'], r['role'], r['node_type'], r['sounding_index'],
              r['reforge_step'], r['turn_number'], r['phase_name'], r['content_json'],
              r['full_request_json'], r['tokens_in'], r['tokens_out'], r['cost'],
-             r['model'], r['is_winner'], r['metadata_json'])
+             r['model'], r['is_winner'], r['metadata_json'], r.get('content_hash'),
+             r.get('context_hashes', []), r.get('estimated_tokens', 0))
             for r in rows
         ]
 
@@ -177,7 +181,8 @@ def get_message_flow(session_id):
         for row in result:
             (timestamp, role, node_type, sounding_index, reforge_step, turn_number,
              phase_name, content_json, full_request_json, tokens_in, tokens_out,
-             cost, model, is_winner, metadata_json) = row
+             cost, model, is_winner, metadata_json, content_hash, context_hashes,
+             estimated_tokens) = row
 
             # Parse JSONs
             content = None
@@ -205,6 +210,9 @@ def get_message_flow(session_id):
             # Categories help with visual styling in the debug UI
             message_category, is_internal = _classify_message(node_type, role, full_request)
 
+            # Ensure context_hashes is a list (ClickHouse Array type)
+            ctx_hashes = context_hashes if isinstance(context_hashes, list) else []
+
             msg = {
                 'timestamp': timestamp,
                 'role': role,
@@ -222,7 +230,10 @@ def get_message_flow(session_id):
                 'is_winner': bool(is_winner) if is_winner is not None else None,
                 'metadata': metadata,
                 'message_category': message_category,
-                'is_internal': is_internal
+                'is_internal': is_internal,
+                'content_hash': content_hash,
+                'context_hashes': ctx_hashes,
+                'estimated_tokens': int(estimated_tokens) if estimated_tokens else 0
             }
 
             # Track evaluator messages by phase (for phase-level soundings)
@@ -437,6 +448,39 @@ def get_message_flow(session_id):
         for block in soundings_blocks:
             all_soundings_flat.extend(block['soundings'])
 
+        # Build hash_index: map of content_hash -> list of message indices/metadata
+        # This enables O(1) lookup for context lineage and cross-referencing
+        hash_index = {}
+        for i, msg in enumerate(messages):
+            h = msg.get('content_hash')
+            if h:
+                if h not in hash_index:
+                    hash_index[h] = []
+                hash_index[h].append({
+                    'index': i,
+                    'timestamp': msg['timestamp'],
+                    'role': msg['role'],
+                    'node_type': msg['node_type'],
+                    'phase_name': msg.get('phase_name'),
+                    'sounding_index': msg.get('sounding_index'),
+                    'turn_number': msg.get('turn_number')
+                })
+
+        # Context stats for analytics
+        llm_calls_with_context = [m for m in messages if m.get('context_hashes')]
+        all_context_hashes = []
+        for m in llm_calls_with_context:
+            all_context_hashes.extend(m.get('context_hashes', []))
+        unique_context_hashes = set(all_context_hashes)
+
+        context_stats = {
+            'llm_calls_with_context': len(llm_calls_with_context),
+            'unique_context_items': len(unique_context_hashes),
+            'total_context_references': len(all_context_hashes),
+            'avg_context_size': round(len(all_context_hashes) / max(len(llm_calls_with_context), 1), 1),
+            'max_context_size': max((len(m.get('context_hashes', [])) for m in messages), default=0)
+        }
+
         return jsonify({
             'session_id': session_id,
             'total_messages': len(messages),
@@ -446,6 +490,8 @@ def get_message_flow(session_id):
             'reforge_by_phase': reforge_blocks,  # New: organized by phase with timestamps
             'main_flow': main_flow,
             'all_messages': messages,
+            'hash_index': hash_index,  # Map of content_hash -> [message indices]
+            'context_stats': context_stats,  # Context analytics
             'cost_summary': {
                 'total_cost': total_cost,
                 'total_tokens_in': total_tokens_in,

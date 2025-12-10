@@ -17,17 +17,18 @@
         "set_state"
       ],
       "soundings": {
-        "factor": 4,
+        "factor": 7,
         "evaluator_instructions": "Evaluate question discovery attempts based on:\n\n1. **Question Quality** (40%): Is the question interesting, specific, and likely to produce insightful analysis?\n2. **Data Fit** (30%): Is the question well-suited to the available data? Can it actually be answered?\n3. **Visualization Potential** (20%): Would answering this question produce a compelling chart?\n4. **Exploration Quality** (10%): Did they efficiently sample the data without over-reading?\n\nSelect the attempt that:\n- Formulated the MOST interesting and insightful question\n- Demonstrated efficient data exploration (sampling, not bulk reading)\n- Chose a question that's specific enough to be actionable\n- Successfully saved the question to state\n\nPrefer questions about trends, comparisons, distributions, or anomalies over simple counts or lists.",
         "models": [
           "anthropic/claude-sonnet-4.5",
           "x-ai/grok-4.1-fast",
+          "amazon/nova-premier-v1",
           "openai/gpt-5.1",
           "openai/gpt-4.1",
           "anthropic/claude-opus-4.5",
           "google/gemini-3-pro-preview"
         ],
-        "model_strategy": "random"
+        "model_strategy": "round-robin"
       },
       "rules": {
         "max_turns": 3
@@ -50,17 +51,18 @@
         "sql_rag_search"
       ],
       "soundings": {
-        "factor": 4,
+        "factor": 7,
         "evaluator_instructions": "Evaluate schema discovery attempts based on:\n\n1. **Relevance** (40%): Did they find tables that directly answer the user's question?\n2. **Thoroughness** (30%): Did they examine multiple relevant tables and understand the schema structure?\n3. **Data Understanding** (20%): Do they demonstrate understanding of column types, value distributions, and data quality?\n4. **Actionability** (10%): Did they provide clear next steps for query writing, including specific column names and table references?\n\nSelect the attempt that:\n- Found the MOST relevant table(s) for the question\n- Demonstrated deepest understanding of the data structure\n- Provided most useful information for the next phase (query writing)\n- Avoided irrelevant tables while being thorough\n\nPrefer attempts that balance breadth (checking multiple options) with depth (understanding what's useful).",
               "models": [
         "anthropic/claude-sonnet-4.5",
         "x-ai/grok-4.1-fast",
+        "amazon/nova-premier-v1",
         "openai/gpt-5.1",
         "openai/gpt-4.1",
         "anthropic/claude-opus-4.5",
         "google/gemini-3-pro-preview"
       ],
-      "model_strategy": "random"
+      "model_strategy": "round-robin"
       },
       "handoffs": [
         "write_query"
@@ -79,17 +81,18 @@
         "sql_rag_search"
       ],
       "soundings": {
-        "factor": 8,
+        "factor": 7,
         "evaluator_instructions": "Evaluate SQL query attempts based on:\n\n1. **Correctness** (40%): Does the query execute without errors and return results?\n2. **Accuracy** (30%): Do the results actually answer the user's question?\n3. **Efficiency** (15%): Is the query optimized (proper filters, aggregations, no unnecessary data)?\n4. **Completeness** (15%): Does it return all relevant data needed to answer the question?\n\nSelect the attempt that:\n- Executed successfully (queries with errors are automatic losers)\n- Returns the MOST relevant data for the user's question\n- Uses proper SQL syntax for the connection type\n- Applies appropriate filters, aggregations, or joins\n- Returns a reasonable amount of data (not too little, not too much)\n\nCRITICAL: Syntax errors or failed queries should be heavily penalized. A working query that's slightly less optimal is better than a perfect-looking query that fails.\n\nPrefer queries that demonstrate understanding of the schema and make smart decisions about what columns/rows to include.",
               "models": [
         "anthropic/claude-sonnet-4.5",
         "x-ai/grok-4.1-fast",
+        "amazon/nova-premier-v1",
         "openai/gpt-5.1",
         "openai/gpt-4.1",
         "anthropic/claude-opus-4.5",
         "google/gemini-3-pro-preview"
       ],
-      "model_strategy": "random"
+      "model_strategy": "round-robin"
       },
       "handoffs": [
         "analyze_results"
@@ -105,17 +108,18 @@
       },
       "tackle": [],
       "soundings": {
-        "factor": 8,
+        "factor": 7,
       "evaluator_instructions": "Evaluate data analysis attempts based on:\n\n1. **Accuracy** (35%): Does the analysis correctly interpret the query results?\n2. **Insight Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n3. **Specificity** (20%): Does it reference actual numbers, percentages, or concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear, well-structured, and directly addresses the user's question?\n\nSelect the attempt that:\n- Provides the MOST insightful interpretation of the data\n- Directly and clearly answers the user's original question\n- Supports claims with specific numbers/evidence from the results\n- Identifies interesting patterns beyond just the obvious\n- Avoids vague or generic statements\n- Demonstrates quantitative thinking (percentages, comparisons, trends)\n\nPrefer analyses that go beyond surface-level observations and provide actionable insights. An analysis that says \"Sales increased by 47% in Q3, primarily driven by the Northeast region (23% growth)\" is better than \"Sales went up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n- Are too vague or generic\n- Miss obvious patterns in the results\n- Don't directly answer the user's question.\n\n IMPORTANT: Include the SQL query and a small sample of the data in your response - enough context so a chart could be constructed from the data.",
       "models": [
         "anthropic/claude-sonnet-4.5",
         "x-ai/grok-4.1-fast",
+        "amazon/nova-premier-v1",
         "openai/gpt-5.1",
         "openai/gpt-4.1",
         "anthropic/claude-opus-4.5",
         "google/gemini-3-pro-preview"
       ],
-        "model_strategy": "random"
+        "model_strategy": "round-robin"
       },
       "handoffs": [
         "create_initial_chart"
@@ -135,17 +139,18 @@
         "create_plotly"
       ],
       "soundings": {
-        "factor": 8,
+        "factor": 7,
         "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable. Must have a successfully generated chart images to be valid.",
       "models": [
         "anthropic/claude-sonnet-4.5",
         "x-ai/grok-4.1-fast",
+        "amazon/nova-premier-v1",
         "openai/gpt-5.1",
         "openai/gpt-4.1",
         "anthropic/claude-opus-4.5",
         "google/gemini-3-pro-preview"
       ],
-        "model_strategy": "random",
+        "model_strategy": "round-robin",
         "reforge": {
           "steps": 2,
           "honing_prompt": "You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:\n\n- Exact color codes for better contrast (hex values)\n- Precise font sizes for labels\n- Specific axis range adjustments\n- Data point annotation placement\n- Are things being overlapped or clipped? \nLegend positioning coordinates\n\nBe EXTREMELY specific and actionable. Reference exact elements you see in the image.",

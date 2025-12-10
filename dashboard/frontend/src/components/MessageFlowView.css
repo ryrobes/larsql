@@ -1244,17 +1244,186 @@
 
 .message-header {
   display: flex;
-  gap: 0.75rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.4rem;
   margin-bottom: 0.75rem;
+}
+
+/* Header Rows - Multi-line badge layout */
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.header-primary {
+  /* Primary identity row - always visible */
+}
+
+.header-meta {
+  /* Model/cost row - subtle */
+  opacity: 0.85;
+}
+
+.header-context {
+  /* Context/media row */
+  opacity: 0.9;
+}
+
+/* Spacer to push items to the right */
+.header-spacer {
+  flex: 1;
+  min-width: 1rem;
+}
+
+/* Badge Base Style */
+.badge-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+}
+
+/* Sounding Badge - Teal */
+.sounding-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(45, 212, 191, 0.2);
+  color: #2DD4BF;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Reforge Badge - Purple/Pink */
+.reforge-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(197, 134, 192, 0.2);
+  color: #c586c0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Role Badge - Color by role */
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: lowercase;
+  background: rgba(107, 114, 128, 0.2);
+  color: #9AA5B1;
+}
+
+.role-badge[data-role="system"] {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.role-badge[data-role="user"] {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.role-badge[data-role="assistant"] {
+  background: rgba(45, 212, 191, 0.2);
+  color: #2DD4BF;
+}
+
+.role-badge[data-role="tool"] {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+/* Node Type Badge - Orange */
+.node-type-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Model Badge - Purple */
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(167, 139, 250, 0.15);
+  color: #c4b5fd;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+}
+
+/* Turn Badge - Blue */
+.turn-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Tokens Badge - Teal */
+.tokens-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(45, 212, 191, 0.1);
+  color: #2DD4BF;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Expand Icon */
+.expand-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #6B7280;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.message:hover .expand-icon {
+  color: #2DD4BF;
 }
 
 .message-label {
   font-weight: 700;
-  color: #9AA5B1;
-  min-width: 60px;
-  font-size: 0.8rem;
+  color: #6B7280;
+  font-size: 0.7rem;
   font-family: 'IBM Plex Mono', monospace;
 }
 
@@ -1308,41 +1477,51 @@
 }
 
 .cost-badge {
+  display: inline-flex;
+  align-items: center;
   color: #0B1219;
   background: #fb923c;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
   font-weight: 700;
   font-family: 'IBM Plex Mono', monospace;
 }
 
 .winner-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #2DD4BF;
   color: #0B1219;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
   font-weight: 700;
-  font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
 }
 
 .full-request-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
   background: rgba(96, 165, 250, 0.2);
   color: #60A5FA;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
   font-weight: 600;
   font-family: 'IBM Plex Mono', monospace;
 }
 
 .image-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
   background: rgba(251, 146, 60, 0.2);
   color: #fb923c;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 0.6rem;
   font-weight: 600;
   cursor: help;
   font-family: 'IBM Plex Mono', monospace;
@@ -1501,23 +1680,23 @@
 }
 
 .message-thumbnail {
-  height: 100px;
-  max-width: 140px;
-  object-fit: contain;
-  border: 2px solid #2C3B4B;
-  border-radius: 6px;
-  margin-left: 1rem;
+  height: 28px;
+  width: 28px;
+  object-fit: cover;
+  border: 1px solid #2C3B4B;
+  border-radius: 4px;
   background: rgba(11, 18, 25, 0.8);
-  padding: 4px;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.2s ease;
 }
 
+/* Larger thumbnail on hover */
 .message-thumbnail:hover {
+  transform: scale(2);
+  z-index: 10;
   border-color: #2DD4BF;
   box-shadow: 0 4px 12px rgba(45, 212, 191, 0.3);
-  transform: scale(1.08);
 }
 
 /* Image Modal */
@@ -1711,8 +1890,14 @@
 
 /* Category badge styling */
 .category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
   font-family: 'IBM Plex Mono', monospace;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -1857,17 +2042,7 @@
   border-left: 3px solid rgba(96, 165, 250, 0.4);
 }
 
-/* Image badges in header with direction */
-.image-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
+/* Image badges in header with direction - override base badge for direction variants */
 .image-badge.image-in {
   background: rgba(52, 211, 153, 0.2);
   color: #34d399;
@@ -2114,4 +2289,301 @@
   margin-left: 4px;
   color: #9AA5B1;
   font-weight: 400;
+}
+
+/* ============================================================
+   Context Highlighting & Hash-based Lineage
+   ============================================================ */
+
+/* Context Stats & Controls Row */
+.context-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(22, 32, 42, 0.4);
+  border: 1px solid #2C3B4B;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.context-stats-mini {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.context-stats-mini > span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: #9AA5B1;
+  white-space: nowrap;
+}
+
+.context-stats-mini > span svg {
+  color: #a78bfa;
+  opacity: 0.8;
+}
+
+.context-highlight-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.highlight-label {
+  font-size: 0.75rem;
+  color: #6B7280;
+  margin-right: 0.25rem;
+}
+
+.highlight-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(22, 32, 42, 0.6);
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  color: #9AA5B1;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.highlight-mode-btn:hover {
+  background: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #2DD4BF;
+}
+
+.highlight-mode-btn.active {
+  background: rgba(45, 212, 191, 0.2);
+  border-color: #2DD4BF;
+  color: #2DD4BF;
+}
+
+.highlight-mode-btn svg {
+  opacity: 0.8;
+}
+
+/* Content Hash Badge */
+.content-hash-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.content-hash-badge:hover {
+  background: rgba(167, 139, 250, 0.25);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.content-hash-badge .context-count {
+  font-size: 9px;
+  color: #9AA5B1;
+  margin-left: 2px;
+}
+
+/* Context Highlighted Message */
+.message.context-highlighted {
+  background: rgba(251, 191, 36, 0.08) !important;
+  border-left: 3px solid #fbbf24 !important;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.2);
+  position: relative;
+}
+
+.message.context-highlighted::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 8px solid #fbbf24;
+}
+
+/* Animate context highlight */
+@keyframes contextPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.2); }
+  50% { box-shadow: inset 0 0 0 2px rgba(251, 191, 36, 0.4); }
+}
+
+.message.context-highlighted {
+  animation: contextPulse 2s ease-in-out infinite;
+}
+
+/* Linked message badge (for full_request linking) */
+.linked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #34d399;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.linked-badge:hover {
+  background: rgba(52, 211, 153, 0.15);
+  text-decoration: underline;
+}
+
+.unlinked-badge {
+  color: #6B7280;
+  font-size: 10px;
+}
+
+/* Hash badge in LLM messages within full_request */
+.llm-message .hash-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  background: rgba(167, 139, 250, 0.1);
+  color: #a78bfa;
+  padding: 1px 4px;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+/* Context relationship indicator */
+.context-relation-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 10px;
+  color: #fbbf24;
+  padding: 2px 6px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 4px;
+  margin-left: 0.5rem;
+}
+
+/* Scrollbar for context lists */
+.context-list {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.3) transparent;
+}
+
+.context-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.context-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.context-list::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 2px;
+}
+
+/* Matrix toggle button special styling */
+.highlight-mode-btn.matrix-btn {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.highlight-mode-btn.matrix-btn:hover {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.5);
+  color: #a78bfa;
+}
+
+.highlight-mode-btn.matrix-btn.active {
+  background: rgba(167, 139, 250, 0.25);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+/* Context Matrix Wrapper */
+.context-matrix-wrapper {
+  margin-top: 1rem;
+  height: 450px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Linked LLM Message styling */
+.llm-message.has-link {
+  border-left: 2px solid #34d399;
+  padding-left: 10px;
+}
+
+.llm-message.has-link:hover {
+  background: rgba(52, 211, 153, 0.05);
+}
+
+.llm-message .linked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 10px;
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.llm-message .linked-badge:hover {
+  background: rgba(52, 211, 153, 0.2);
+  text-decoration: underline;
+}
+
+.llm-message .hash-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  background: rgba(167, 139, 250, 0.1);
+  color: #a78bfa;
+  padding: 2px 5px;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+/* Cross-Reference Panel Container */
+.cross-ref-panel-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 350px;
+  max-height: calc(100vh - 120px);
+  z-index: 1000;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  overflow: hidden;
+  animation: slideInRight 0.2s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
