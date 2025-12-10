@@ -98,6 +98,10 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     embedding_model LowCardinality(Nullable(String)),
     embedding_dim Nullable(UInt16),
 
+    -- Callouts (semantic message tagging for UIs/queries)
+    is_callout Bool DEFAULT false,
+    callout_name Nullable(String),
+
     -- Metadata
     metadata_json Nullable(String),
 
@@ -109,6 +113,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     INDEX idx_node_type node_type TYPE set(100) GRANULARITY 1,
     INDEX idx_role role TYPE set(10) GRANULARITY 1,
     INDEX idx_is_winner is_winner TYPE set(2) GRANULARITY 1,
+    INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1,
     INDEX idx_cost cost TYPE minmax GRANULARITY 4,
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
 )

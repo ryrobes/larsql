@@ -346,6 +346,10 @@ class UnifiedLogger:
         # Mermaid
         mermaid_content: str = None,
 
+        # Callouts
+        is_callout: bool = False,
+        callout_name: str = None,
+
         # Metadata
         metadata: Dict = None
     ):
@@ -461,6 +465,10 @@ class UnifiedLogger:
             "content_hash": content_hash,
             "context_hashes": context_hashes,
             "estimated_tokens": estimated_tokens_val,
+
+            # Callouts
+            "is_callout": is_callout,
+            "callout_name": callout_name,
 
             # Metadata
             "metadata_json": safe_json(metadata)
@@ -589,6 +597,8 @@ def log_unified(
     has_base64: bool = False,
     audio: List[str] = None,
     mermaid_content: str = None,
+    is_callout: bool = False,
+    callout_name: str = None,
     metadata: Dict = None
 ):
     """
@@ -637,6 +647,8 @@ def log_unified(
         has_base64=has_base64,
         audio=audio,
         mermaid_content=mermaid_content,
+        is_callout=is_callout,
+        callout_name=callout_name,
         metadata=metadata
     )
 

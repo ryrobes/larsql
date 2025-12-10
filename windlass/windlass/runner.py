@@ -273,6 +273,93 @@ class WindlassRunner:
 
         return meta
 
+    def _get_callout_config(self, phase):
+        """
+        Get normalized callout config from phase.
+
+        Handles shorthand: callouts="Result" → CalloutsConfig(output="Result")
+
+        Returns CalloutsConfig or None
+        """
+        from .cascade import CalloutsConfig
+
+        if not phase.callouts:
+            return None
+
+        # String shorthand: convert to CalloutsConfig with output set
+        if isinstance(phase.callouts, str):
+            return CalloutsConfig(output=phase.callouts)
+
+        return phase.callouts
+
+    def _should_tag_as_callout(self, phase, message_type: str, turn_number: int = None) -> tuple:
+        """
+        Check if a message should be tagged as a callout based on phase config.
+
+        Args:
+            phase: PhaseConfig object
+            message_type: 'output' or 'assistant_message'
+            turn_number: Current turn number (for message filtering)
+
+        Returns:
+            (should_tag: bool, template: str or None)
+        """
+        callout_config = self._get_callout_config(phase)
+        if not callout_config:
+            return False, None
+
+        if message_type == 'output' and callout_config.output:
+            return True, callout_config.output
+
+        if message_type == 'assistant_message':
+            # Priority: messages config, fallback to output (for shorthand syntax)
+            if callout_config.messages:
+                # Check messages_filter to see if this message qualifies
+                # For now, assistant_only is default and we're already filtering to assistant messages
+                # TODO: Implement last_turn filter if needed
+                return True, callout_config.messages
+            elif callout_config.output:
+                # Fallback: use output template for shorthand syntax
+                return True, callout_config.output
+
+        return False, None
+
+    def _render_callout_name(self, template: str, phase, input_data: dict, turn_number: int = None) -> str:
+        """
+        Render a callout name template with Jinja2.
+
+        Available context:
+        - input.*: Original cascade input
+        - state.*: Current state variables
+        - turn: Current turn number
+        - phase: Current phase name
+
+        Args:
+            template: Jinja2 template string
+            phase: PhaseConfig object
+            input_data: Cascade input data
+            turn_number: Current turn number
+
+        Returns:
+            Rendered callout name
+        """
+        from .prompts import render_instruction
+
+        # Build render context similar to instruction rendering
+        render_context = {
+            "input": input_data,
+            "state": self.echo.state,
+            "turn": turn_number if turn_number is not None else 0,
+            "phase": phase.name,
+        }
+
+        try:
+            return render_instruction(template, render_context)
+        except Exception as e:
+            # Fallback to template if rendering fails
+            print(f"[Callout] Failed to render callout name template: {e}")
+            return template
+
     def _message_has_images(self, msg: dict) -> bool:
         """
         Check if a message contains images (base64 or image_url format).
@@ -5078,6 +5165,14 @@ Refinement directive: {reforge_config.honing_prompt}
                     cascade_config_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else None
                     phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
 
+                    # Check if this message should be tagged as a callout
+                    is_callout = False
+                    callout_name = None
+                    should_tag, template = self._should_tag_as_callout(phase, 'assistant_message', turn_number=i)
+                    if should_tag:
+                        is_callout = True
+                        callout_name = self._render_callout_name(template, phase, input_data, turn_number=i)
+
                     # LOG WITH UNIFIED SYSTEM (immediate write with all context)
                     log_unified(
                         session_id=self.session_id,
@@ -5114,6 +5209,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         tool_calls=tool_calls,
                         images=None,  # Images handled separately
                         has_base64=False,
+                        is_callout=is_callout,
+                        callout_name=callout_name,
                         metadata=agent_metadata
                     )
 

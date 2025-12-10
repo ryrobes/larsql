@@ -426,14 +426,14 @@ function EvaluatorSection({ evaluator, winnerIndex }) {
   );
 }
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedMessages, setExpandedMessages] = useState(new Set());
   const [highlightedMessage, setHighlightedMessage] = useState(null);
-  const [runningSessions, setRunningSessions] = useState([]);
+  const [localRunningSessions, setLocalRunningSessions] = useState([]);
   const [recentSessions, setRecentSessions] = useState([]); // Combined recent + running sessions for button row
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [waitingForData, setWaitingForData] = useState(false); // True when session is running but no data yet
@@ -443,7 +443,6 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   // Context highlighting state
   const [hoveredContextHashes, setHoveredContextHashes] = useState(new Set());
   const [highlightMode, setHighlightMode] = useState('ancestors'); // 'ancestors' | 'descendants' | 'both'
-  const [selectedMessageForContext, setSelectedMessageForContext] = useState(null);
 
   // Context Matrix view state
   const [showContextMatrix, setShowContextMatrix] = useState(false);
@@ -466,11 +465,17 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   }, [scrollToIndex]);
 
   // Check if a session ID is in the running sessions list
+  // Use parent-provided runningSessions (Set from SSE) if available, fall back to local polling
   const isSessionRunning = useCallback((sid) => {
-    return runningSessions.some(s =>
+    // If parent provides runningSessions (a Set from App.js SSE), use it for reliable real-time state
+    if (parentRunningSessions) {
+      return parentRunningSessions.has(sid);
+    }
+    // Otherwise fall back to local polling-based detection
+    return localRunningSessions.some(s =>
       s.session_id === sid && (s.status === 'running' || s.status === 'completing')
     );
-  }, [runningSessions]);
+  }, [parentRunningSessions, localRunningSessions]);
 
   const fetchMessages = useCallback(async (targetSessionId = null, silent = false) => {
     const sid = targetSessionId || currentSessionIdRef.current || sessionId;
@@ -520,13 +525,14 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
         setLoading(false);
       }
     }
-  }, [sessionId, isSessionRunning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, isSessionRunning]); // onSessionChange intentionally excluded - it's stable from parent
 
   const fetchRunningSessions = useCallback(async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/running-sessions`);
       const sessions = response.data.sessions || [];
-      setRunningSessions(sessions);
+      setLocalRunningSessions(sessions);
 
       // Update recent sessions list (combine running sessions with history)
       setRecentSessions(prev => {
@@ -590,6 +596,20 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     return () => clearInterval(interval);
   }, [autoRefresh, data?.session_id, isCurrentSessionRunning, waitingForData, fetchMessages]);
 
+  // Immediate refresh when parent notifies us of SSE session updates
+  // This makes updates appear instantly instead of waiting for the 2s poll
+  useEffect(() => {
+    if (!parentSessionUpdates) return;
+    const sid = data?.session_id || currentSessionIdRef.current;
+    if (!sid) return;
+
+    // If the parent has an update for our session, refresh immediately
+    const lastUpdate = parentSessionUpdates[sid];
+    if (lastUpdate) {
+      fetchMessages(null, true); // silent refresh
+    }
+  }, [parentSessionUpdates, data?.session_id, fetchMessages]);
+
   const handleSessionSelect = (session) => {
     fetchMessages(session.session_id);
     // Add to recent sessions if not already there
@@ -599,12 +619,6 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
       const updated = [{ ...session, isActive: session.status === 'running' }, ...prev];
       return updated.slice(0, 10);
     });
-  };
-
-  const formatAge = (seconds) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${Math.round(seconds / 3600)}h`;
   };
 
   const toggleMessage = (index) => {
@@ -730,7 +744,11 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
   const renderMessage = (msg, index, label) => {
     const globalIndex = findGlobalIndex(msg);
-    const isExpanded = expandedMessages.has(index);
+    // When onMessageSelect is provided (embedded mode), use external selection state
+    // Otherwise use local expansion state
+    const isExternalMode = !!onMessageSelect;
+    const isExpanded = isExternalMode ? false : expandedMessages.has(index); // Never expand inline when external mode
+    const isSelected = isExternalMode && selectedMessageIndex === globalIndex;
     const hasFullRequest = msg.full_request && msg.full_request.messages;
     const hasContent = msg.content && (typeof msg.content === 'string' ? msg.content.length > 200 : true);
     const isExpandable = hasFullRequest || hasContent;
@@ -756,12 +774,22 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
     const contextHighlight = isContextHighlighted(msg);
 
+    // Click handler - either external selection or local expansion
+    const handleClick = () => {
+      if (!isExpandable) return;
+      if (isExternalMode) {
+        onMessageSelect(msg, globalIndex);
+      } else {
+        toggleMessage(index);
+      }
+    };
+
     return (
       <div
         key={index}
         id={`message-${globalIndex}`}
-        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''} ${contextHighlight ? 'context-highlighted' : ''}`}
-        onClick={() => isExpandable && toggleMessage(index)}
+        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''} ${contextHighlight ? 'context-highlighted' : ''} ${isSelected ? 'selected-for-detail' : ''}`}
+        onClick={handleClick}
         onMouseEnter={() => handleMessageHover(msg, true)}
         onMouseLeave={() => handleMessageHover(msg, false)}
         style={{ cursor: isExpandable ? 'pointer' : 'default' }}
@@ -794,12 +822,6 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             {isMostExpensive && (
               <span className="most-expensive-badge" title="Most expensive message">
                 <Icon icon="mdi:currency-usd" width="12" />
-              </span>
-            )}
-            {/* Expand hint */}
-            {isExpandable && (
-              <span className="expand-icon">
-                <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} width="16" />
               </span>
             )}
           </div>
@@ -881,21 +903,60 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
           )}
         </div>
 
-        {msg.content && !isExpanded && (
+        {/* Text preview - only show if no images (images speak for themselves) */}
+        {msg.content && !isExpanded && !hasImages && (
           <div className="message-content-preview">
-            {typeof msg.content === 'string'
-              ? msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : '')
-              : JSON.stringify(msg.content).substring(0, 200) + '...'}
+            {(() => {
+              // Helper to strip base64 data from content for preview
+              const stripBase64 = (str) => {
+                return str.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[IMAGE]');
+              };
+
+              if (typeof msg.content === 'string') {
+                const cleaned = stripBase64(msg.content);
+                return cleaned.substring(0, 200) + (cleaned.length > 200 ? '...' : '');
+              }
+
+              // For objects, create a cleaned copy for display
+              const cleanForPreview = (obj) => {
+                if (typeof obj === 'string') return stripBase64(obj);
+                if (Array.isArray(obj)) {
+                  return obj.map(item => {
+                    if (item?.type === 'image_url') return { type: 'image_url', image_url: '[IMAGE DATA]' };
+                    if (typeof item === 'string') return stripBase64(item);
+                    return cleanForPreview(item);
+                  });
+                }
+                if (typeof obj === 'object' && obj !== null) {
+                  const cleaned = {};
+                  for (const [key, value] of Object.entries(obj)) {
+                    if (key === 'image_url' || (typeof value === 'string' && value.startsWith('data:image'))) {
+                      cleaned[key] = '[IMAGE DATA]';
+                    } else {
+                      cleaned[key] = cleanForPreview(value);
+                    }
+                  }
+                  return cleaned;
+                }
+                return obj;
+              };
+
+              const cleaned = cleanForPreview(msg.content);
+              const str = JSON.stringify(cleaned);
+              return str.substring(0, 200) + (str.length > 200 ? '...' : '');
+            })()}
           </div>
         )}
 
-        {/* Inline image gallery when NOT expanded (quick preview) */}
+        {/* Inline image gallery when NOT expanded - shown prominently below badges */}
         {!isExpanded && hasImages && (
-          <MessageImages
-            images={msgImages}
-            onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
-            compact={true}
-          />
+          <div className="message-images-preview">
+            <MessageImages
+              images={msgImages}
+              onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
+              compact={false}
+            />
+          </div>
         )}
 
         {isExpanded && msg.content && (
@@ -1011,7 +1072,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                             {img.url.startsWith('data:image') ? (
                               <img
                                 src={img.url}
-                                alt={`LLM msg ${i} image ${imgIdx + 1}`}
+                                alt={`LLM message ${i} attachment ${imgIdx + 1}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedImage({ url: img.url, phase: msg.phase_name, index: globalIndex, direction: 'in' });

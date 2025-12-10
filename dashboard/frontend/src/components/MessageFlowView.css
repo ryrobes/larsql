@@ -1197,6 +1197,7 @@
 
 /* Message Cards */
 .message {
+  position: relative;
   background: #16202A;
   border: 2px solid #2C3B4B;
   border-radius: 12px;
@@ -1240,6 +1241,30 @@
 .message.system .message-role {
   background: rgba(167, 139, 250, 0.2);
   color: #a78bfa;
+}
+
+/* Selected for detail view - shown in cross-panel mode */
+.message.selected-for-detail {
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3), 0 4px 16px rgba(167, 139, 250, 0.15);
+  transform: translateY(-2px);
+}
+
+.message.selected-for-detail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #a78bfa, #60a5fa);
+  border-radius: 12px 0 0 12px;
+}
+
+.message.selected-for-detail:hover {
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
 }
 
 .message-header {
@@ -1406,20 +1431,6 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
-/* Expand Icon */
-.expand-icon {
-  display: inline-flex;
-  align-items: center;
-  color: #6B7280;
-  padding: 2px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-}
-
-.message:hover .expand-icon {
-  color: #2DD4BF;
-}
-
 .message-label {
   font-weight: 700;
   color: #6B7280;
@@ -1534,6 +1545,32 @@
   line-height: 1.5;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
+}
+
+/* Image preview in message - shown prominently when images present */
+.message-images-preview {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.message-images-preview .message-images-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.message-images-preview .message-images-container img {
+  max-height: 120px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.message-images-preview .message-images-container img:hover {
+  transform: scale(1.05);
 }
 
 /* Full Request Expansion */

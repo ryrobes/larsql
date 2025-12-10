@@ -336,6 +336,7 @@ function App() {
 
           case 'phase_start':
           case 'phase_complete':
+          case 'turn_start':
           case 'tool_call':
           case 'tool_result':
           case 'cost_update':

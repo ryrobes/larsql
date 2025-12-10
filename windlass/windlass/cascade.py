@@ -349,6 +349,40 @@ class AudibleConfig(BaseModel):
     timeout_seconds: Optional[int] = 120  # Feedback collection timeout
 
 
+class CalloutsConfig(BaseModel):
+    """
+    Configuration for semantic callouts - marking messages as important.
+
+    Callouts tag specific messages with a name/label for easy retrieval,
+    useful for surfacing key insights in UIs or when querying large histories.
+
+    Uses same query primitives as selective context system for consistency.
+
+    Usage (tag final output):
+    {
+        "callouts": {
+            "output": "Research Summary for {{input.topic}}"
+        }
+    }
+
+    Usage (tag all assistant messages):
+    {
+        "callouts": {
+            "messages": "Finding {{turn}}",
+            "messages_filter": "assistant_only"
+        }
+    }
+
+    Usage (shorthand - string = tag output only):
+    {
+        "callouts": "Key Result"
+    }
+    """
+    output: Optional[str] = None  # Jinja2 template for final output message
+    messages: Optional[str] = None  # Jinja2 template for assistant messages
+    messages_filter: Literal["all", "assistant_only", "last_turn"] = "assistant_only"
+
+
 class ContextSourceConfig(BaseModel):
     """
     Configuration for pulling context from a specific phase.
@@ -458,6 +492,11 @@ class PhaseConfig(BaseModel):
     # Audible configuration for real-time feedback injection
     # Allows users to steer cascades mid-phase by injecting feedback
     audibles: Optional[AudibleConfig] = None
+
+    # Callouts configuration for semantic message tagging
+    # Marks important messages with names for easy retrieval in UIs/queries
+    # Supports string shorthand: callouts="Result" → callouts.output="Result"
+    callouts: Optional[Union[str, CalloutsConfig]] = None
 
 class CascadeConfig(BaseModel):
     cascade_id: str

@@ -2,6 +2,15 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Icon } from '@iconify/react';
 import './ContextMatrixView.css';
 
+// Role colors for cells (defined outside component to avoid dependency issues)
+const ROLE_COLORS = {
+  'system': '#a78bfa',
+  'user': '#60a5fa',
+  'assistant': '#34d399',
+  'tool': '#fbbf24',
+  'default': '#666666'
+};
+
 /**
  * ContextMatrixView - Heatmap visualization of context relationships
  *
@@ -25,15 +34,6 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
   const [selectedColumn, setSelectedColumn] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
   const [colorMode, setColorMode] = useState('role'); // 'role' or 'tokens'
-
-  // Role colors for cells
-  const roleColors = {
-    'system': '#a78bfa',
-    'user': '#60a5fa',
-    'assistant': '#34d399',
-    'tool': '#fbbf24',
-    'default': '#666666'
-  };
 
   // Token heatmap color scale (blue -> yellow -> red for low -> medium -> high)
   const getTokenColor = useCallback((tokens, maxTokens) => {
@@ -184,7 +184,7 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
         const tokens = matrixData.hashInfo[hash]?.estimated_tokens || 0;
         ctx.fillStyle = getTokenColor(tokens, matrixData.maxTokens);
       } else {
-        ctx.fillStyle = roleColors[role] || roleColors.default;
+        ctx.fillStyle = ROLE_COLORS[role] || ROLE_COLORS.default;
       }
       ctx.globalAlpha = 0.85;
       ctx.fillRect(x, y, cellSize - 1, cellSize - 1);
@@ -443,19 +443,19 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
         {colorMode === 'role' ? (
           <>
             <span className="legend-item">
-              <span className="legend-color" style={{ background: roleColors.system }}></span>
+              <span className="legend-color" style={{ background: ROLE_COLORS.system }}></span>
               System
             </span>
             <span className="legend-item">
-              <span className="legend-color" style={{ background: roleColors.user }}></span>
+              <span className="legend-color" style={{ background: ROLE_COLORS.user }}></span>
               User
             </span>
             <span className="legend-item">
-              <span className="legend-color" style={{ background: roleColors.assistant }}></span>
+              <span className="legend-color" style={{ background: ROLE_COLORS.assistant }}></span>
               Assistant
             </span>
             <span className="legend-item">
-              <span className="legend-color" style={{ background: roleColors.tool }}></span>
+              <span className="legend-color" style={{ background: ROLE_COLORS.tool }}></span>
               Tool
             </span>
           </>

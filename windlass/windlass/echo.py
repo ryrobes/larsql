@@ -112,6 +112,10 @@ class Echo:
             semantic_actor = meta.get("semantic_actor")    # WHO: main_agent, evaluator, validator, etc.
             semantic_purpose = meta.get("semantic_purpose") # WHAT: instructions, tool_response, etc.
 
+            # Callouts (semantic message tagging)
+            is_callout = meta.get("is_callout", False)
+            callout_name = meta.get("callout_name")
+
             # Generate mermaid diagram content (includes the newly added entry)
             # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
             # The mermaid chart is monotonically growing, so previous state is always a valid subset
@@ -159,6 +163,8 @@ class Echo:
                 mutation_applied=mutation_applied,  # Pass mutation for soundings
                 mutation_type=mutation_type,
                 mutation_template=mutation_template,
+                is_callout=is_callout,  # Pass callout info
+                callout_name=callout_name,
             )
 
             # Emit SSE events for sounding-related entries so LiveStore can receive real-time data

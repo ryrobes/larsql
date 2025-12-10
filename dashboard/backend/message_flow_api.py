@@ -517,10 +517,12 @@ def get_running_sessions():
     Returns session IDs with their cascade_id and age for quick selection.
     """
     try:
+        print("[API] get_running_sessions called")
         db = get_db()
         current_time = time.time()
 
         # Query recent sessions from ClickHouse (last 10 minutes, most recent first)
+        # Use subtractMinutes for ClickHouse compatibility
         query = """
         SELECT
             session_id,
@@ -530,13 +532,15 @@ def get_running_sessions():
             MAX(timestamp) as last_activity,
             COUNT(*) as message_count
         FROM unified_logs
-        WHERE timestamp > now() - INTERVAL 10 MINUTE
+        WHERE timestamp > subtractMinutes(now64(), 10)
         GROUP BY session_id, cascade_id, cascade_file
         ORDER BY start_time DESC
         LIMIT 20
         """
 
-        results = db.execute_query(query)
+        print(f"[API] Executing query: {query}")
+        results = db.query(query, output_format="raw")
+        print(f"[API] Query returned {len(results) if results else 0} rows")
         sessions_info = []
 
         for row in results:
@@ -573,8 +577,11 @@ def get_running_sessions():
 
     except Exception as e:
         import traceback
+        tb = traceback.format_exc()
+        print(f"[ERROR] get_running_sessions failed: {e}")
+        print(f"[ERROR] Traceback:\n{tb}")
         return jsonify({
             'error': str(e),
-            'traceback': traceback.format_exc(),
+            'traceback': tb,
             'sessions': []
         }), 500

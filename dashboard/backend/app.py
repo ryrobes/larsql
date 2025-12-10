@@ -74,6 +74,35 @@ def to_iso_string(ts):
     return None
 
 
+def timestamp_to_float(ts):
+    """Convert a timestamp to float (Unix timestamp).
+
+    Handles:
+    - pandas Timestamp objects (from ClickHouse queries)
+    - datetime objects
+    - numeric values (int/float)
+    - None
+
+    Returns Unix timestamp as float, or None if conversion fails.
+    """
+    if ts is None or pd.isna(ts):
+        return None
+
+    # Already a number
+    if isinstance(ts, (int, float)):
+        return float(ts)
+
+    # pandas Timestamp or datetime
+    if hasattr(ts, 'timestamp'):
+        return ts.timestamp()
+
+    # Fallback: try direct conversion
+    try:
+        return float(ts)
+    except (TypeError, ValueError):
+        return None
+
+
 # Configuration - reads from environment or uses defaults
 # WINDLASS_ROOT-based configuration (single source of truth)
 # Calculate default root relative to this file's location (dashboard/backend/app.py -> repo root)
@@ -1511,11 +1540,12 @@ def get_soundings_tree(session_id):
 
                 # Track timestamps
                 if pd.notna(row['timestamp']):
-                    timestamp = float(row['timestamp'])
-                    if refinement['start_time'] is None or timestamp < refinement['start_time']:
-                        refinement['start_time'] = timestamp
-                    if refinement['end_time'] is None or timestamp > refinement['end_time']:
-                        refinement['end_time'] = timestamp
+                    timestamp = timestamp_to_float(row['timestamp'])
+                    if timestamp is not None:
+                        if refinement['start_time'] is None or timestamp < refinement['start_time']:
+                            refinement['start_time'] = timestamp
+                        if refinement['end_time'] is None or timestamp > refinement['end_time']:
+                            refinement['end_time'] = timestamp
 
                 # Accumulate data
                 refinement['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
@@ -1664,11 +1694,12 @@ def get_soundings_tree(session_id):
 
             # Track timestamps for duration calculation
             if pd.notna(row['timestamp']):
-                timestamp = float(row['timestamp'])
-                if sounding['start_time'] is None or timestamp < sounding['start_time']:
-                    sounding['start_time'] = timestamp
-                if sounding['end_time'] is None or timestamp > sounding['end_time']:
-                    sounding['end_time'] = timestamp
+                timestamp = timestamp_to_float(row['timestamp'])
+                if timestamp is not None:
+                    if sounding['start_time'] is None or timestamp < sounding['start_time']:
+                        sounding['start_time'] = timestamp
+                    if sounding['end_time'] is None or timestamp > sounding['end_time']:
+                        sounding['end_time'] = timestamp
 
             # Accumulate data
             sounding['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
@@ -2850,7 +2881,7 @@ def get_session_images(session_id):
                         step_list = []
                         for _, row in step_df.iterrows():
                             step = int(row['reforge_step']) if pd.notna(row['reforge_step']) else None
-                            ts = float(row['timestamp']) if pd.notna(row['timestamp']) else None
+                            ts = timestamp_to_float(row['timestamp'])
                             if step is not None and ts is not None:
                                 step_list.append({'step': step, 'start': ts})
 
@@ -2859,7 +2890,7 @@ def get_session_images(session_id):
                         if not winner_df.empty:
                             for _, row in winner_df.iterrows():
                                 step = int(row['reforge_step']) if pd.notna(row['reforge_step']) else None
-                                ts = float(row['timestamp']) if pd.notna(row['timestamp']) else None
+                                ts = timestamp_to_float(row['timestamp'])
                                 if step is not None and ts is not None:
                                     step_end_times[step] = ts
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import ReactMarkdown from 'react-markdown';
 import PhaseBar from './PhaseBar';
@@ -8,9 +9,522 @@ import ImageGallery from './ImageGallery';
 import AudioGallery from './AudioGallery';
 import HumanInputDisplay from './HumanInputDisplay';
 import TokenSparkline from './TokenSparkline';
-import ModelCostBar, { ModelTags } from './ModelCostBar';
+import ModelCostBar from './ModelCostBar';
 import VideoSpinner from './VideoSpinner';
 import './InstanceCard.css';
+
+/**
+ * Extract image URL from various formats
+ */
+function extractImageUrl(imageData) {
+  if (typeof imageData === 'string') return imageData;
+  if (imageData?.url) return imageData.url;
+  return null;
+}
+
+/**
+ * Strip base64 image data from strings
+ */
+function stripBase64(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[IMAGE DATA]');
+}
+
+/**
+ * Extract all base64 images from an object and return cleaned object + images array
+ */
+function extractAndCleanImages(obj) {
+  const images = [];
+
+  const clean = (value) => {
+    if (typeof value === 'string') {
+      // Check if it's a base64 image
+      if (value.startsWith('data:image')) {
+        images.push(value);
+        return '[IMAGE DATA]';
+      }
+      // Check if it contains embedded base64
+      const matches = value.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g);
+      if (matches) {
+        matches.forEach(m => images.push(m));
+        return stripBase64(value);
+      }
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => {
+        if (item?.type === 'image_url') {
+          const url = extractImageUrl(item.image_url);
+          if (url) images.push(url);
+          return { type: 'image_url', image_url: '[IMAGE DATA]' };
+        }
+        return clean(item);
+      });
+    }
+    if (typeof value === 'object' && value !== null) {
+      const cleaned = {};
+      for (const [key, val] of Object.entries(value)) {
+        if (key === 'image_url') {
+          const url = extractImageUrl(val);
+          if (url) images.push(url);
+          cleaned[key] = '[IMAGE DATA]';
+        } else {
+          cleaned[key] = clean(val);
+        }
+      }
+      return cleaned;
+    }
+    return value;
+  };
+
+  const cleaned = clean(obj);
+  return { cleaned, images };
+}
+
+/**
+ * Render LLM message content with proper handling of multimodal content
+ */
+function LLMContentRenderer({ content, onImageClick }) {
+  // Handle array content (multimodal - text + images)
+  if (Array.isArray(content)) {
+    return (
+      <div className="llm-multimodal-content">
+        {content.map((part, i) => {
+          if (part.type === 'text') {
+            // Check for embedded base64 in text
+            const { cleaned, images } = extractAndCleanImages(part.text || '');
+            return (
+              <div key={i} className="llm-text-part">
+                {images.length > 0 && (
+                  <div className="extracted-images">
+                    {images.map((img, imgIdx) => (
+                      <div key={imgIdx} className="llm-image-part">
+                        <img
+                          src={img}
+                          alt={`Embedded ${imgIdx + 1}`}
+                          className="detail-inline-image"
+                          onClick={() => onImageClick && onImageClick(img)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+              </div>
+            );
+          }
+          if (part.type === 'image_url') {
+            const imgUrl = extractImageUrl(part.image_url);
+            if (imgUrl) {
+              return (
+                <div key={i} className="llm-image-part">
+                  <img
+                    src={imgUrl}
+                    alt={`Content ${i + 1}`}
+                    className="detail-inline-image"
+                    onClick={() => onImageClick && onImageClick(imgUrl)}
+                  />
+                  <span className="image-label">Image {i + 1}</span>
+                </div>
+              );
+            }
+          }
+          // Other types - render as JSON with images extracted
+          const { cleaned, images } = extractAndCleanImages(part);
+          return (
+            <div key={i}>
+              {images.length > 0 && (
+                <div className="extracted-images">
+                  {images.map((img, imgIdx) => (
+                    <div key={imgIdx} className="llm-image-part">
+                      <img
+                        src={img}
+                        alt={`Extracted ${imgIdx + 1}`}
+                        className="detail-inline-image"
+                        onClick={() => onImageClick && onImageClick(img)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <pre className="llm-json-part">
+                {JSON.stringify(cleaned, null, 2)}
+              </pre>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Handle string content
+  if (typeof content === 'string') {
+    // Check for embedded base64 images first
+    const { cleaned, images } = extractAndCleanImages(content);
+
+    // Check if it looks like JSON
+    if (typeof cleaned === 'string' && (cleaned.trim().startsWith('{') || cleaned.trim().startsWith('['))) {
+      try {
+        const parsed = JSON.parse(cleaned);
+        const { cleaned: cleanedParsed, images: parsedImages } = extractAndCleanImages(parsed);
+        const allImages = [...images, ...parsedImages];
+        return (
+          <div>
+            {allImages.length > 0 && (
+              <div className="extracted-images">
+                {allImages.map((img, imgIdx) => (
+                  <div key={imgIdx} className="llm-image-part">
+                    <img
+                      src={img}
+                      alt={`Extracted ${imgIdx + 1}`}
+                      className="detail-inline-image"
+                      onClick={() => onImageClick && onImageClick(img)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <pre className="llm-json-content">
+              {JSON.stringify(cleanedParsed, null, 2)}
+            </pre>
+          </div>
+        );
+      } catch {
+        // Not valid JSON, render as markdown
+      }
+    }
+    return (
+      <div>
+        {images.length > 0 && (
+          <div className="extracted-images">
+            {images.map((img, imgIdx) => (
+              <div key={imgIdx} className="llm-image-part">
+                <img
+                  src={img}
+                  alt={`Extracted ${imgIdx + 1}`}
+                  className="detail-inline-image"
+                  onClick={() => onImageClick && onImageClick(img)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+      </div>
+    );
+  }
+
+  // Handle object content
+  if (typeof content === 'object' && content !== null) {
+    const { cleaned, images } = extractAndCleanImages(content);
+    return (
+      <div>
+        {images.length > 0 && (
+          <div className="extracted-images">
+            {images.map((img, imgIdx) => (
+              <div key={imgIdx} className="llm-image-part">
+                <img
+                  src={img}
+                  alt={`Extracted ${imgIdx + 1}`}
+                  className="detail-inline-image"
+                  onClick={() => onImageClick && onImageClick(img)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <pre className="llm-json-content">
+          {JSON.stringify(cleaned, null, 2)}
+        </pre>
+      </div>
+    );
+  }
+
+  return <span>{String(content)}</span>;
+}
+
+/**
+ * Render response content with markdown and image detection
+ */
+function ResponseContentRenderer({ content, onImageClick }) {
+  // Handle string content
+  if (typeof content === 'string') {
+    // Extract any embedded base64 images
+    const { cleaned, images } = extractAndCleanImages(content);
+
+    // Check if it looks like JSON
+    if (typeof cleaned === 'string' && (cleaned.trim().startsWith('{') || cleaned.trim().startsWith('['))) {
+      try {
+        const parsed = JSON.parse(cleaned);
+        const { cleaned: cleanedParsed, images: parsedImages } = extractAndCleanImages(parsed);
+        const allImages = [...images, ...parsedImages];
+        return (
+          <div>
+            {allImages.length > 0 && (
+              <div className="extracted-images">
+                {allImages.map((img, imgIdx) => (
+                  <div key={imgIdx} className="response-image-part">
+                    <img
+                      src={img}
+                      alt={`Extracted ${imgIdx + 1}`}
+                      className="detail-inline-image"
+                      onClick={() => onImageClick && onImageClick(img)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <pre className="response-json-content">
+              {JSON.stringify(cleanedParsed, null, 2)}
+            </pre>
+          </div>
+        );
+      } catch {
+        // Not valid JSON, render as markdown
+      }
+    }
+    return (
+      <div>
+        {images.length > 0 && (
+          <div className="extracted-images">
+            {images.map((img, imgIdx) => (
+              <div key={imgIdx} className="response-image-part">
+                <img
+                  src={img}
+                  alt={`Extracted ${imgIdx + 1}`}
+                  className="detail-inline-image"
+                  onClick={() => onImageClick && onImageClick(img)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="response-markdown">
+          <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle object content
+  if (typeof content === 'object' && content !== null) {
+    // Check for images array (tool result protocol)
+    if (Array.isArray(content.images) && content.images.length > 0) {
+      const { cleaned: cleanedContent } = content.content
+        ? extractAndCleanImages(content.content)
+        : { cleaned: null };
+
+      return (
+        <div>
+          <div className="response-images-gallery">
+            {content.images.map((img, i) => (
+              <div key={i} className="response-image-part">
+                {(typeof img === 'string' && (img.startsWith('data:image') || img.startsWith('http'))) ? (
+                  <img
+                    src={img}
+                    alt={`Result ${i + 1}`}
+                    className="detail-inline-image"
+                    onClick={() => onImageClick && onImageClick(img)}
+                  />
+                ) : (
+                  <span className="image-path">{typeof img === 'string' ? img : JSON.stringify(img)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {cleanedContent && (
+            <div className="response-markdown">
+              <ReactMarkdown>{String(cleanedContent)}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // General object - extract and clean images
+    const { cleaned, images } = extractAndCleanImages(content);
+    return (
+      <div>
+        {images.length > 0 && (
+          <div className="extracted-images">
+            {images.map((img, imgIdx) => (
+              <div key={imgIdx} className="response-image-part">
+                <img
+                  src={img}
+                  alt={`Extracted ${imgIdx + 1}`}
+                  className="detail-inline-image"
+                  onClick={() => onImageClick && onImageClick(img)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <pre className="response-json-content">
+          {JSON.stringify(cleaned, null, 2)}
+        </pre>
+      </div>
+    );
+  }
+
+  return <span>{String(content)}</span>;
+}
+
+/**
+ * MessageDetailPanel - Shows expanded message content from MessageFlowView
+ * Renders in the left panel's scrollable area for better viewing
+ */
+function MessageDetailPanel({ selectedMessage, onCloseMessage }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [modalImage, setModalImage] = useState(null);
+
+  // Get context hashes for highlighting
+  const contextHashes = selectedMessage.context_hashes || [];
+
+  // Handle image click - open in modal
+  const handleImageClick = (imgUrl) => {
+    setModalImage(imgUrl);
+  };
+
+  return (
+    <div className="message-detail-panel">
+      <div className="message-detail-header">
+        <div className="message-detail-title">
+          <Icon icon="mdi:message-text" width="18" />
+          <span>Message M{selectedMessage.index}</span>
+          {selectedMessage.phase_name && (
+            <span className="message-detail-phase">{selectedMessage.phase_name}</span>
+          )}
+        </div>
+        <div className="message-detail-badges">
+          <span className={`detail-role-badge role-${selectedMessage.role}`}>{selectedMessage.role}</span>
+          {selectedMessage.node_type && selectedMessage.node_type !== selectedMessage.role && (
+            <span className="detail-type-badge">{selectedMessage.node_type}</span>
+          )}
+          {selectedMessage.sounding_index !== null && (
+            <span className="detail-sounding-badge">S{selectedMessage.sounding_index}</span>
+          )}
+          {selectedMessage.reforge_step !== null && (
+            <span className="detail-reforge-badge">R{selectedMessage.reforge_step}</span>
+          )}
+          {selectedMessage.is_winner && (
+            <span className="detail-winner-badge"><Icon icon="mdi:trophy" width="14" /></span>
+          )}
+        </div>
+        {onCloseMessage && (
+          <button className="message-detail-close" onClick={onCloseMessage} title="Close detail view">
+            <Icon icon="mdi:close" width="18" />
+          </button>
+        )}
+      </div>
+
+      {/* Meta information */}
+      {(selectedMessage.model || selectedMessage.cost > 0 || selectedMessage.tokens_in > 0) && (
+        <div className="message-detail-meta">
+          {selectedMessage.model && (
+            <span className="detail-model">{selectedMessage.model}</span>
+          )}
+          {selectedMessage.turn_number !== null && (
+            <span className="detail-turn">Turn {selectedMessage.turn_number}</span>
+          )}
+          {selectedMessage.tokens_in > 0 && (
+            <span className="detail-tokens">{selectedMessage.tokens_in.toLocaleString()} tokens in</span>
+          )}
+          {selectedMessage.tokens_out > 0 && (
+            <span className="detail-tokens">{selectedMessage.tokens_out.toLocaleString()} tokens out</span>
+          )}
+          {selectedMessage.cost > 0 && (
+            <span className="detail-cost">${selectedMessage.cost.toFixed(4)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Context info */}
+      {contextHashes.length > 0 && (
+        <div className="message-detail-context-info">
+          <Icon icon="mdi:source-branch" width="14" />
+          <span>Context includes {contextHashes.length} previous messages</span>
+          <span className="context-hint">(hover messages below to highlight)</span>
+        </div>
+      )}
+
+      {/* Full Request Messages (if available) */}
+      {selectedMessage.full_request?.messages && (
+        <div className="message-detail-section">
+          <h4 className="detail-section-title">
+            <Icon icon="mdi:email-outline" width="16" />
+            Request Messages ({selectedMessage.full_request.messages.length})
+          </h4>
+          <div className="detail-llm-messages">
+            {selectedMessage.full_request.messages.map((llmMsg, i) => {
+              // Check if this message's hash matches one of the context hashes
+              const contextHash = contextHashes[i];
+              const isHighlighted = hoveredIndex !== null && hoveredIndex === i;
+              const isHoverable = contextHash !== undefined;
+
+              return (
+                <div
+                  key={i}
+                  className={`detail-llm-message ${llmMsg.role} ${isHighlighted ? 'highlighted' : ''} ${isHoverable ? 'hoverable' : ''}`}
+                  onMouseEnter={() => isHoverable && setHoveredIndex(i)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                >
+                  <div className="detail-llm-header">
+                    <span className="detail-llm-index">[{i}]</span>
+                    <span className={`detail-llm-role role-${llmMsg.role}`}>{llmMsg.role}</span>
+                    {contextHash && (
+                      <span className="detail-llm-hash" title={`Hash: ${contextHash}`}>
+                        #{contextHash.slice(0, 6)}
+                      </span>
+                    )}
+                    {llmMsg.tool_calls && (
+                      <span className="detail-llm-tools">
+                        <Icon icon="mdi:wrench" width="12" /> tools
+                      </span>
+                    )}
+                    {llmMsg.tool_call_id && (
+                      <span className="detail-llm-tool-id">
+                        <Icon icon="mdi:link" width="12" /> tool result
+                      </span>
+                    )}
+                  </div>
+                  <div className="detail-llm-content">
+                    <LLMContentRenderer content={llmMsg.content} onImageClick={handleImageClick} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      {selectedMessage.content && (
+        <div className="message-detail-section">
+          <h4 className="detail-section-title">
+            <Icon icon="mdi:text" width="16" />
+            Response Content
+          </h4>
+          <div className="detail-content">
+            <ResponseContentRenderer content={selectedMessage.content} onImageClick={handleImageClick} />
+          </div>
+        </div>
+      )}
+
+      {/* Image Modal - rendered via portal */}
+      {modalImage && createPortal(
+        <div className="detail-image-modal-overlay" onClick={() => setModalImage(null)}>
+          <div className="detail-image-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="detail-image-modal-close" onClick={() => setModalImage(null)}>
+              <Icon icon="mdi:close" width="24" />
+            </button>
+            <img src={modalImage} alt="Full size" />
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
 
 // Animated cost display that smoothly transitions when value changes
 function AnimatedCost({ value, formatFn }) {
@@ -59,7 +573,8 @@ function AnimatedCost({ value, formatFn }) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [value]); // Only depend on value, not displayValue
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]); // Intentionally only depend on value, not displayValue (animation start point)
 
   return <span>{formatFn(displayValue)}</span>;
 }
@@ -146,7 +661,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, compact = false, hideOutput = false }) {
+function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null }) {
   const [instance, setInstance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -657,6 +1172,14 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
           {/* Scrollable phase bars container */}
           <div className="phase-bars-scroll">
+            {/* Selected Message Detail Panel */}
+            {selectedMessage && (
+              <MessageDetailPanel
+                selectedMessage={selectedMessage}
+                onCloseMessage={onCloseMessage}
+              />
+            )}
+
             {/* Phase bars with images */}
             {(() => {
               const costs = (instance.phases || []).map(p => p.avg_cost || 0);

@@ -33,7 +33,7 @@ class SoundingAnalyzer:
         Analyze a cascade's sounding patterns and suggest improvements.
 
         Args:
-            cascade_file: Path to cascade JSON
+            cascade_file: Path to cascade JSON (can also be cascade_id)
             min_runs: Minimum number of runs before suggesting (default: 10)
             min_confidence: Minimum win rate for dominant sounding (default: 60%)
 
@@ -44,13 +44,19 @@ class SoundingAnalyzer:
         print(f"Minimum runs: {min_runs}, Confidence threshold: {min_confidence*100}%")
         print()
 
+        # Extract cascade_id from the file path (e.g., "examples/foo.json" -> "foo")
+        # This handles both full paths and just cascade_ids
+        cascade_id = Path(cascade_file).stem if '/' in cascade_file or '\\' in cascade_file else cascade_file
+
         # Query unified_logs table directly (pure ClickHouse)
-        # Use position() instead of LIKE to avoid % escaping issues with clickhouse_driver
+        # Search by both cascade_file (full path) AND cascade_id (logical name)
+        # Most sounding logs only have cascade_id, not cascade_file
         sessions_query = f"""
             SELECT DISTINCT session_id
             FROM unified_logs
             WHERE cascade_file = '{cascade_file}'
                OR position(cascade_file, '{cascade_file}') > 0
+               OR cascade_id = '{cascade_id}'
         """
 
         try:
@@ -70,11 +76,13 @@ class SoundingAnalyzer:
         suggestions = []
 
         # Get phases with soundings (use phase_name column directly)
-        # Use position() instead of LIKE to avoid % escaping issues
+        # Search by both cascade_file and cascade_id
         phases_query = f"""
             SELECT DISTINCT phase_name
             FROM unified_logs
-            WHERE (cascade_file = '{cascade_file}' OR position(cascade_file, '{cascade_file}') > 0)
+            WHERE (cascade_file = '{cascade_file}'
+               OR position(cascade_file, '{cascade_file}') > 0
+               OR cascade_id = '{cascade_id}')
               AND phase_name IS NOT NULL
               AND sounding_index IS NOT NULL
         """
@@ -92,6 +100,7 @@ class SoundingAnalyzer:
         for phase_name in phases:
             suggestion = self._analyze_phase(
                 cascade_file,
+                cascade_id,
                 phase_name,
                 min_confidence
             )
@@ -109,13 +118,14 @@ class SoundingAnalyzer:
     def _analyze_phase(
         self,
         cascade_file: str,
+        cascade_id: str,
         phase_name: str,
         min_confidence: float
     ) -> Optional[Dict[str, Any]]:
         """Analyze a single phase's sounding patterns."""
 
         # Query unified_logs table directly for sounding data
-        # Use position() instead of LIKE to avoid % escaping issues
+        # Search by both cascade_file and cascade_id
         query = f"""
             SELECT
                 sounding_index,
@@ -124,7 +134,9 @@ class SoundingAnalyzer:
                 role,
                 content_json
             FROM unified_logs
-            WHERE (cascade_file = '{cascade_file}' OR position(cascade_file, '{cascade_file}') > 0)
+            WHERE (cascade_file = '{cascade_file}'
+               OR position(cascade_file, '{cascade_file}') > 0
+               OR cascade_id = '{cascade_id}')
               AND phase_name = '{phase_name}'
               AND sounding_index IS NOT NULL
             ORDER BY timestamp DESC
@@ -200,8 +212,13 @@ class SoundingAnalyzer:
             return None
 
         dominant_index, dominant_data = dominant
-        total_attempts = sum(d["total"] for d in sounding_attempts.values())
-        win_rate = dominant_data["wins"] / total_attempts if total_attempts > 0 else 0
+
+        # Calculate win rate correctly:
+        # - total_competitions = number of times ANY sounding was selected as winner
+        # - win_rate = this sounding's wins / total competitions
+        total_competitions = sum(d["wins"] for d in sounding_attempts.values())
+        total_rows = sum(d["total"] for d in sounding_attempts.values())
+        win_rate = dominant_data["wins"] / total_competitions if total_competitions > 0 else 0
 
         if win_rate < min_confidence:
             return None  # Not confident enough
@@ -224,7 +241,8 @@ class SoundingAnalyzer:
             "phase": phase_name,
             "dominant_sounding": dominant_index,
             "win_rate": win_rate,
-            "total_attempts": total_attempts,
+            "total_attempts": total_competitions,  # Number of competitions (sessions with winners)
+            "total_rows": total_rows,  # Total log rows analyzed
             "wins": dominant_data["wins"],
             "metrics": {
                 "avg_cost": avg_cost,
@@ -310,7 +328,7 @@ Return ONLY the improved instruction, no explanation.
 """
 
         agent = Agent(
-            model=config.model,
+            model=config.default_model,
             system_prompt="You are a concise prompt optimization expert.",
             base_url=config.provider_base_url,
             api_key=config.provider_api_key

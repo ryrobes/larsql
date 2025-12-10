@@ -21,6 +21,7 @@ function SplitDetailView({
   const [isDragging, setIsDragging] = useState(false);
   const [chartMessages, setChartMessages] = useState([]);
   const [scrollToIndex, setScrollToIndex] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null); // For cross-panel message expansion
   const containerRef = useRef(null);
   const dragStartX = useRef(0);
   const dragStartSplit = useRef(40);
@@ -30,6 +31,17 @@ function SplitDetailView({
     setScrollToIndex(messageIndex);
     // Reset after a short delay to allow re-clicking same bar
     setTimeout(() => setScrollToIndex(null), 100);
+  }, []);
+
+  // Handle message selection from MessageFlowView - show in left panel
+  const handleMessageSelect = useCallback((message, index) => {
+    // Toggle selection: if same message, deselect; otherwise select new
+    setSelectedMessage(prev => {
+      if (prev && prev.index === index) {
+        return null; // Deselect
+      }
+      return { ...message, index };
+    });
   }, []);
 
   // Check if session is currently running
@@ -140,6 +152,8 @@ function SplitDetailView({
             sessionUpdates={sessionUpdates}
             sessionStartTimes={sessionStartTimes}
             hideOutput={true}
+            selectedMessage={selectedMessage}
+            onCloseMessage={() => setSelectedMessage(null)}
           />
         </div>
 
@@ -174,6 +188,10 @@ function SplitDetailView({
               onBack={null}
               onSessionChange={() => {}}
               scrollToIndex={scrollToIndex}
+              onMessageSelect={handleMessageSelect}
+              selectedMessageIndex={selectedMessage?.index}
+              runningSessions={runningSessions}
+              sessionUpdates={sessionUpdates}
             />
           </div>
         </div>
