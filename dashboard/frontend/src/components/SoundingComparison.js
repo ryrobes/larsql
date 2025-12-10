@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Icon } from '@iconify/react';
@@ -380,7 +380,7 @@ function AttemptCard({
             </SyntaxHighlighter>
           ) : (
             <div className="attempt-markdown">
-              <ReactMarkdown>{output}</ReactMarkdown>
+              <RichMarkdown>{output}</RichMarkdown>
             </div>
           )
         )}

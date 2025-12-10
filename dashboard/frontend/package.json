@@ -7,6 +7,7 @@
     "ag-grid-community": "^34.3.1",
     "ag-grid-react": "^34.3.1",
     "axios": "^1.6.2",
+    "katex": "^0.16.27",
     "mermaid": "^10.6.1",
     "potpack": "^2.1.0",
     "react": "^18.2.0",
@@ -15,7 +16,11 @@
     "react-scripts": "5.0.1",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^2.12.7",
-    "remark-gfm": "^4.0.1"
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "remark-emoji": "^5.0.2",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^10.6.1"

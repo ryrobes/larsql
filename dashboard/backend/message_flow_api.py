@@ -517,7 +517,7 @@ def get_running_sessions():
     Returns session IDs with their cascade_id and age for quick selection.
     """
     try:
-        print("[API] get_running_sessions called")
+        #print("[API] get_running_sessions called")
         db = get_db()
         current_time = time.time()
 
@@ -538,9 +538,9 @@ def get_running_sessions():
         LIMIT 20
         """
 
-        print(f"[API] Executing query: {query}")
+        #print(f"[API] Executing query: {query}")
         results = db.query(query, output_format="raw")
-        print(f"[API] Query returned {len(results) if results else 0} rows")
+        #print(f"[API] Query returned {len(results) if results else 0} rows")
         sessions_info = []
 
         for row in results:

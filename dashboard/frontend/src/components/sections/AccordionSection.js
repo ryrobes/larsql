@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from '../RichMarkdown';
 import './AccordionSection.css';
 
 /**
@@ -68,7 +68,7 @@ function AccordionSection({ spec }) {
 
           {isOpen(panel.id) && (
             <div className="accordion-content">
-              <ReactMarkdown>{panel.content}</ReactMarkdown>
+              <RichMarkdown>{panel.content}</RichMarkdown>
             </div>
           )}
         </div>

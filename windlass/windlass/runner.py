@@ -3002,7 +3002,18 @@ Use only numbers 0-100 for scores."""
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
         indent = "  " * self.depth
-        factor = phase.soundings.factor
+
+        # Assign models first to determine actual factor
+        assigned_models = self._assign_models(phase.soundings)
+
+        # When using dict-based models with per-model factors, the actual number of soundings
+        # is determined by the model assignments, not the top-level factor
+        if isinstance(phase.soundings.models, dict):
+            factor = len(assigned_models)
+            if phase.soundings.factor != factor:
+                console.print(f"{indent}[yellow]Note: Using {factor} soundings from per-model factors (top-level factor: {phase.soundings.factor} ignored)[/yellow]")
+        else:
+            factor = phase.soundings.factor
 
         console.print(f"{indent}[bold blue]🔱 Taking {factor} Soundings (Parallel Attempts)...[/bold blue]")
 
@@ -3084,8 +3095,7 @@ Use only numbers 0-100 for scores."""
                     "Challenge the obvious interpretation - what's the deeper layer?"
                 ]
 
-        # Assign models to soundings (Phase 1: Multi-Model Soundings)
-        assigned_models = self._assign_models(phase.soundings)
+        # Show which models will be used (already assigned earlier)
         console.print(f"{indent}  [dim]Models: {', '.join(set(assigned_models))}[/dim]")
 
         # Execute each sounding in sequence (to avoid threading complexity with Rich output)
@@ -3369,9 +3379,11 @@ Use only numbers 0-100 for scores."""
                     import random
                     winner_index = random.randint(0, len(eval_candidates) - 1)
                     eval_content = f"[Timeout: Random selection] Selected attempt {winner_index + 1}"
+                    eval_prompt = f"[Human Evaluation Timeout] Random selection fallback"
                 elif on_timeout == "first":
                     winner_index = 0
                     eval_content = f"[Timeout: First selection] Selected attempt 1"
+                    eval_prompt = f"[Human Evaluation Timeout] First selection fallback"
                 else:  # llm_fallback
                     console.print(f"{indent}[cyan]Falling back to LLM evaluation...[/cyan]")
                     # Fall through to LLM evaluation (handled below)
@@ -3394,11 +3406,12 @@ Use only numbers 0-100 for scores."""
                     if sr["index"] == winner_candidate["index"]
                 )
 
-                # Build eval_content for logging
+                # Build eval_content and eval_prompt for logging
                 reasoning = response.get("reasoning", "")
                 eval_content = f"[Human selection] Selected attempt {winner_candidate['index'] + 1}"
                 if reasoning:
                     eval_content += f"\nReasoning: {reasoning}"
+                eval_prompt = f"[Human Evaluation] {len(eval_candidates)} soundings presented to human evaluator"
 
                 console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_candidate['index'] + 1}[/bold green]")
                 if reasoning:
@@ -3431,6 +3444,7 @@ Use only numbers 0-100 for scores."""
         frontier_indices = None
         dominated_map = None
         pareto_ranks = None
+        eval_prompt = None  # Initialize for all paths (used in metadata logging)
         use_cost_aware = phase.soundings.cost_aware_evaluation and phase.soundings.cost_aware_evaluation.enabled
         use_pareto = phase.soundings.pareto_frontier and phase.soundings.pareto_frontier.enabled
 
@@ -3441,6 +3455,9 @@ Use only numbers 0-100 for scores."""
             # Phase 3: Pareto Frontier Analysis
             if use_pareto:
                 console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
+
+                # Initialize eval_prompt for metadata logging (Pareto uses quality scoring, not traditional eval)
+                eval_prompt = f"{phase.soundings.evaluator_instructions}\n\nPareto Frontier Analysis: Quality scoring + cost-based frontier computation."
 
                 # Get costs
                 console.print(f"{indent}  [dim]Gathering cost data...[/dim]")

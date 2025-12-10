@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './DynamicUI.css';
@@ -335,7 +335,7 @@ function PreviewSection({ spec, phaseOutput }) {
       case 'markdown':
         return (
           <div className="preview-markdown">
-            <ReactMarkdown
+            <RichMarkdown
               components={{
                 code({ node, inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '');
@@ -357,7 +357,7 @@ function PreviewSection({ spec, phaseOutput }) {
               }}
             >
               {content}
-            </ReactMarkdown>
+            </RichMarkdown>
           </div>
         );
       case 'code':

@@ -352,7 +352,17 @@ class ClickHouseAdapter:
                 # Escape single quotes
                 escaped = val.replace("'", "''")
                 set_parts.append(f"{col} = '{escaped}'")
-            elif isinstance(val, (list, dict)):
+            elif isinstance(val, list):
+                # Check if it's a numeric array (for embeddings)
+                if val and all(isinstance(x, (int, float)) for x in val):
+                    # Format as ClickHouse array literal: [1.0, 2.0, 3.0]
+                    array_str = '[' + ', '.join(str(x) for x in val) + ']'
+                    set_parts.append(f"{col} = {array_str}")
+                else:
+                    # Non-numeric array - store as JSON string
+                    json_str = json.dumps(val, default=str, ensure_ascii=False).replace("'", "''")
+                    set_parts.append(f"{col} = '{json_str}'")
+            elif isinstance(val, dict):
                 json_str = json.dumps(val, default=str, ensure_ascii=False).replace("'", "''")
                 set_parts.append(f"{col} = '{json_str}'")
             else:

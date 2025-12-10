@@ -30,9 +30,11 @@ app = Flask(__name__)
 CORS(app)
 from message_flow_api import message_flow_bp
 from checkpoint_api import checkpoint_bp
+from sextant_api import sextant_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
+app.register_blueprint(sextant_bp)
 # Track query statistics
 import threading
 _query_lock = threading.Lock()

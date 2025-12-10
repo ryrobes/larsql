@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './ParametersCard.css';
@@ -66,9 +65,9 @@ function ParametersCard({ instance }) {
             <div className="parameter-content">
               {/* Try to render as markdown first */}
               <div className="output-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <RichMarkdown>
                   {instance.final_output}
-                </ReactMarkdown>
+                </RichMarkdown>
               </div>
             </div>
           )}

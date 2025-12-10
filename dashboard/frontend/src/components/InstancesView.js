@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 // PhaseBar removed - now only shown in SplitDetailView
 import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';

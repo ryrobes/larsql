@@ -4,6 +4,7 @@ import InstancesView from './components/InstancesView';
 import HotOrNotView from './components/HotOrNotView';
 import SplitDetailView from './components/SplitDetailView';
 import MessageFlowView from './components/MessageFlowView';
+import SextantView from './components/SextantView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -13,7 +14,7 @@ import Toast from './components/Toast';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint' | 'sextant'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [activeCheckpointId, setActiveCheckpointId] = useState(null);  // Currently viewing checkpoint
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
@@ -60,6 +61,10 @@ function App() {
         // /#/message_flow → message flow view
         return { view: 'messageflow', cascadeId: null, sessionId: null, checkpointId: null };
       }
+      if (parts[0] === 'sextant') {
+        // /#/sextant → sextant prompt observatory
+        return { view: 'sextant', cascadeId: null, sessionId: null, checkpointId: null };
+      }
       // /#/cascade_id → instances view
       return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null };
     } else if (parts.length === 2) {
@@ -82,6 +87,8 @@ function App() {
   const updateHash = useCallback((view, cascadeId = null, sessionId = null, checkpointId = null) => {
     if (view === 'cascades') {
       window.location.hash = '';
+    } else if (view === 'sextant') {
+      window.location.hash = '#/sextant';
     } else if (view === 'messageflow') {
       if (sessionId) {
         window.location.hash = `#/message_flow/${sessionId}`;
@@ -197,6 +204,10 @@ function App() {
 
       if (route.view === 'cascades') {
         setCurrentView('cascades');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'sextant') {
+        setCurrentView('sextant');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'messageflow') {
@@ -578,6 +589,10 @@ function App() {
             setCurrentView('messageflow');
             updateHash('messageflow');
           }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -629,6 +644,15 @@ function App() {
             setMessageFlowSessionId(sessionId);
             updateHash('messageflow', null, sessionId);
           }}
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+        />
+      )}
+
+      {currentView === 'sextant' && (
+        <SextantView
           onBack={() => {
             setCurrentView('cascades');
             updateHash('cascades');

@@ -6,7 +6,7 @@ import VideoSpinner from './VideoSpinner';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -336,6 +336,17 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
                 <polyline points="22,6 12,13 2,6"/>
               </svg>
               Message Flow
+            </button>
+          )}
+          {onSextant && (
+            <button className="sextant-btn" onClick={onSextant} title="Sextant - Prompt Observatory">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 2 L12 12 L18 18"/>
+                <path d="M2 12 L22 12"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              Sextant
             </button>
           )}
           <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />

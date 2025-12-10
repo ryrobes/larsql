@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 import VideoSpinner from './VideoSpinner';
 import ParetoChart from './ParetoChart';
 import './SoundingsExplorer.css';
@@ -81,7 +81,7 @@ function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate 
       {expanded ? (
         <div className="prompt-content-full">
           {/* Main prompt content - for rewrite this is the rewritten version */}
-          <ReactMarkdown>{mainPrompt}</ReactMarkdown>
+          <RichMarkdown>{mainPrompt}</RichMarkdown>
 
           {/* For rewrite mutations, show the rewrite instruction */}
           {isRewrite && mutationTemplate && (
@@ -111,7 +111,7 @@ function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate 
               </div>
               {showOriginal && (
                 <div className="original-prompt-content">
-                  <ReactMarkdown>{prompt}</ReactMarkdown>
+                  <RichMarkdown>{prompt}</RichMarkdown>
                 </div>
               )}
             </div>
@@ -493,7 +493,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                             <div className="detail-section">
                               <h4>Output</h4>
                               <div className="output-content">
-                                <ReactMarkdown>{sounding.output || 'No output'}</ReactMarkdown>
+                                <RichMarkdown>{sounding.output || 'No output'}</RichMarkdown>
                               </div>
                             </div>
                             {sounding.tool_calls && sounding.tool_calls.length > 0 && (
@@ -527,7 +527,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                       <span>Evaluator Reasoning</span>
                     </div>
                     <div className="eval-content">
-                      <ReactMarkdown>{phase.eval_reasoning}</ReactMarkdown>
+                      <RichMarkdown>{phase.eval_reasoning}</RichMarkdown>
                     </div>
                   </div>
                 )}
@@ -702,7 +702,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                           <div className="detail-section">
                                             <h4>Output</h4>
                                             <div className="output-content">
-                                              <ReactMarkdown>{refinement.output || 'No output'}</ReactMarkdown>
+                                              <RichMarkdown>{refinement.output || 'No output'}</RichMarkdown>
                                             </div>
                                           </div>
                                           {refinement.tool_calls && refinement.tool_calls.length > 0 && (
@@ -733,7 +733,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                 <div className="step-eval">
                                   <Icon icon="mdi:gavel" width="14" />
                                   <div className="step-eval-content">
-                                    <ReactMarkdown>{step.eval_reasoning}</ReactMarkdown>
+                                    <RichMarkdown>{step.eval_reasoning}</RichMarkdown>
                                   </div>
                                 </div>
                               )}

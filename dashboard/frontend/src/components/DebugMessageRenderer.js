@@ -1,7 +1,6 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { formatCost } from '../utils/debugUtils';
@@ -137,11 +136,9 @@ function DebugMessageRenderer({ entry, sessionId }) {
           {audioResult.audioPlayers}
         </div>
         {imageResult.text && imageResult.text.trim() && (
-          <div className="markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {String(imageResult.text)}
-            </ReactMarkdown>
-          </div>
+          <RichMarkdown>
+            {imageResult.text}
+          </RichMarkdown>
         )}
       </div>
     );
@@ -155,11 +152,9 @@ function DebugMessageRenderer({ entry, sessionId }) {
           {audioResult.audioPlayers}
         </div>
         {content && String(content).trim() && (
-          <div className="markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {String(content)}
-            </ReactMarkdown>
-          </div>
+          <RichMarkdown>
+            {content}
+          </RichMarkdown>
         )}
       </div>
     );
@@ -173,11 +168,9 @@ function DebugMessageRenderer({ entry, sessionId }) {
           {imageResult.images}
         </div>
         {imageResult.text && imageResult.text.trim() && (
-          <div className="markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {String(imageResult.text)}
-            </ReactMarkdown>
-          </div>
+          <RichMarkdown>
+            {imageResult.text}
+          </RichMarkdown>
         )}
       </div>
     );
@@ -441,37 +434,11 @@ function DebugMessageRenderer({ entry, sessionId }) {
       contentStr = modifiedContent;
     }
 
-    // Render as markdown with code syntax highlighting
+    // Render as markdown with comprehensive support
     return (
-      <div className="markdown-content">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            code({node, inline, className, children, ...props}) {
-              const match = /language-(\w+)/.exec(className || '');
-              const language = match ? match[1] : '';
-
-              return !inline && language ? (
-                <SyntaxHighlighter
-                  style={vscDarkPlus}
-                  language={language}
-                  PreTag="div"
-                  customStyle={{margin: 0, borderRadius: '4px'}}
-                  {...props}
-                >
-                  {String(children).replace(/\n$/, '')}
-                </SyntaxHighlighter>
-              ) : (
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              );
-            }
-          }}
-        >
-          {contentStr}
-        </ReactMarkdown>
-      </div>
+      <RichMarkdown>
+        {contentStr}
+      </RichMarkdown>
     );
   }
 

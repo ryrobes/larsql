@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 import './AudibleModal.css';
 
 const API_BASE_URL = 'http://localhost:5001/api';
@@ -122,7 +122,7 @@ function AudibleModal({ isOpen, checkpoint, onClose, onSubmit }) {
             <h3>Current Output</h3>
             <div className="current-output-box">
               {currentOutput ? (
-                <ReactMarkdown>{currentOutput.slice(0, 2000)}</ReactMarkdown>
+                <RichMarkdown>{currentOutput.slice(0, 2000)}</RichMarkdown>
               ) : (
                 <p className="no-output">(No output yet)</p>
               )}

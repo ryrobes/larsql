@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import RichMarkdown from './RichMarkdown';
 import VideoSpinner from './VideoSpinner';
 import './HotOrNotView.css';
 
@@ -420,9 +419,9 @@ function HotOrNotView({ onBack }) {
                             </div>
                             <div className="card-content">
                               <div className="markdown-content">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                <RichMarkdown>
                                   {instructions}
-                                </ReactMarkdown>
+                                </RichMarkdown>
                               </div>
                             </div>
                           </div>
@@ -453,9 +452,9 @@ function HotOrNotView({ onBack }) {
                             {renderPhaseImages(currentSounding?.images)}
 
                             <div className="markdown-content">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              <RichMarkdown>
                                 {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
-                              </ReactMarkdown>
+                              </RichMarkdown>
                             </div>
                           </div>
                         </div>
@@ -491,11 +490,11 @@ function HotOrNotView({ onBack }) {
                         {renderPhaseImages(sounding.images)}
 
                         <div className="markdown-content">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <RichMarkdown>
                             {typeof sounding.content === 'string'
                               ? sounding.content
                               : JSON.stringify(sounding.content, null, 2)}
-                          </ReactMarkdown>
+                          </RichMarkdown>
                         </div>
                       </div>
                       <div className="comparison-footer">

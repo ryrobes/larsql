@@ -1,0 +1,282 @@
+/**
+ * RichMarkdown Styles - Optimized for dark theme, LLM content
+ */
+
+.rich-markdown {
+  line-height: 1.6;
+  color: #e0e0e0;
+  font-size: 0.95em;
+}
+
+/* ===== Typography ===== */
+
+.rich-markdown h1,
+.rich-markdown h2,
+.rich-markdown h3,
+.rich-markdown h4,
+.rich-markdown h5,
+.rich-markdown h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #60a5fa;
+}
+
+.rich-markdown h1 { font-size: 1.8em; border-bottom: 2px solid #333; padding-bottom: 0.3em; }
+.rich-markdown h2 { font-size: 1.5em; border-bottom: 1px solid #333; padding-bottom: 0.3em; }
+.rich-markdown h3 { font-size: 1.3em; }
+.rich-markdown h4 { font-size: 1.1em; }
+.rich-markdown h5 { font-size: 1.0em; }
+.rich-markdown h6 { font-size: 0.95em; color: #888; }
+
+.rich-markdown p {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+/* ===== Lists ===== */
+
+.rich-markdown ul,
+.rich-markdown ol {
+  margin: 0.5em 0 1em 0;
+  padding-left: 2em;
+}
+
+.rich-markdown li {
+  margin: 0.3em 0;
+}
+
+.rich-markdown ul ul,
+.rich-markdown ol ol,
+.rich-markdown ul ol,
+.rich-markdown ol ul {
+  margin: 0.3em 0;
+}
+
+/* Task lists (GFM) */
+.rich-markdown input[type="checkbox"] {
+  margin-right: 0.5em;
+  vertical-align: middle;
+}
+
+/* ===== Code ===== */
+
+/* Inline code */
+.rich-markdown code {
+  background: rgba(110, 118, 129, 0.2);
+  border: 1px solid rgba(110, 118, 129, 0.3);
+  border-radius: 3px;
+  padding: 0.15em 0.4em;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+  color: #fbbf24;
+}
+
+/* Code blocks (handled by SyntaxHighlighter, but provide fallback) */
+.rich-markdown pre {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.rich-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* ===== Tables ===== */
+
+.markdown-table-wrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.rich-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  background: #1a1a1a;
+}
+
+.rich-markdown th,
+.rich-markdown td {
+  border: 1px solid #333;
+  padding: 0.6em 1em;
+  text-align: left;
+}
+
+.rich-markdown th {
+  background: #252525;
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.rich-markdown tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rich-markdown tr:hover {
+  background: rgba(96, 165, 250, 0.05);
+}
+
+/* ===== Blockquotes ===== */
+
+.markdown-blockquote {
+  border-left: 4px solid #a78bfa;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #b0b0b0;
+  font-style: italic;
+  background: rgba(167, 139, 250, 0.05);
+  padding: 0.5em 0 0.5em 1em;
+  border-radius: 0 4px 4px 0;
+}
+
+.markdown-blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ===== Links ===== */
+
+.rich-markdown a {
+  color: #60a5fa;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.rich-markdown a:hover {
+  color: #93c5fd;
+  border-bottom-color: #60a5fa;
+}
+
+.external-link {
+  position: relative;
+}
+
+.external-icon {
+  display: inline-block;
+  margin-left: 0.2em;
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+/* ===== Math (KaTeX) ===== */
+
+/* Inline math */
+.rich-markdown .katex {
+  font-size: 1.05em;
+}
+
+/* Display/block math */
+.rich-markdown .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+/* Make KaTeX work on dark background */
+.rich-markdown .katex {
+  color: #e0e0e0;
+}
+
+.rich-markdown .katex .base {
+  color: #e0e0e0;
+}
+
+/* ===== Horizontal Rules ===== */
+
+.rich-markdown hr {
+  border: none;
+  border-top: 2px solid #333;
+  margin: 2em 0;
+}
+
+/* ===== Images ===== */
+
+.rich-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 1em 0;
+  border: 1px solid #333;
+}
+
+/* ===== Strikethrough (GFM) ===== */
+
+.rich-markdown del {
+  color: #888;
+  text-decoration: line-through;
+}
+
+/* ===== Emphasis ===== */
+
+.rich-markdown em {
+  font-style: italic;
+  color: #a78bfa;
+}
+
+.rich-markdown strong {
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+/* ===== Footnotes (if supported) ===== */
+
+.rich-markdown .footnotes {
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 1px solid #333;
+  font-size: 0.9em;
+  color: #888;
+}
+
+.rich-markdown .footnotes ol {
+  padding-left: 1.5em;
+}
+
+/* ===== Details/Summary (HTML5) ===== */
+
+.rich-markdown details {
+  background: rgba(96, 165, 250, 0.05);
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.5em 1em;
+  margin: 1em 0;
+}
+
+.rich-markdown summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #60a5fa;
+  user-select: none;
+}
+
+.rich-markdown summary:hover {
+  color: #93c5fd;
+}
+
+.rich-markdown details[open] summary {
+  margin-bottom: 0.5em;
+}
+
+/* ===== Responsive Tweaks ===== */
+
+@media (max-width: 768px) {
+  .rich-markdown {
+    font-size: 0.9em;
+  }
+
+  .markdown-table-wrapper {
+    font-size: 0.85em;
+  }
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from '../RichMarkdown';
 import './CardGridSection.css';
 
 /**
@@ -80,7 +80,7 @@ function CardGridSection({ spec, value, onChange }) {
 
               {card.content && (
                 <div className="card-content">
-                  <ReactMarkdown>{card.content}</ReactMarkdown>
+                  <RichMarkdown>{card.content}</RichMarkdown>
                 </div>
               )}
 

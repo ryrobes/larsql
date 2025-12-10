@@ -151,6 +151,32 @@
   color: #a78bfa;
 }
 
+.sextant-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(52, 211, 153, 0.15));
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  border-radius: 8px;
+  color: #2DD4BF;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sextant-btn:hover {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(52, 211, 153, 0.25));
+  border-color: rgba(45, 212, 191, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+}
+
+.sextant-btn svg {
+  color: #34d399;
+}
+
 .connection-indicator {
   width: 10px;
   height: 10px;

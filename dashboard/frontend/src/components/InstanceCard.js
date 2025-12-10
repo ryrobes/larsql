@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from './RichMarkdown';
 import PhaseBar from './PhaseBar';
 import CascadeBar from './CascadeBar';
 import MermaidPreview from './MermaidPreview';
@@ -109,7 +109,7 @@ function LLMContentRenderer({ content, onImageClick }) {
                     ))}
                   </div>
                 )}
-                <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+                <RichMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</RichMarkdown>
               </div>
             );
           }
@@ -209,7 +209,7 @@ function LLMContentRenderer({ content, onImageClick }) {
             ))}
           </div>
         )}
-        <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+        <RichMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</RichMarkdown>
       </div>
     );
   }
@@ -300,7 +300,7 @@ function ResponseContentRenderer({ content, onImageClick }) {
           </div>
         )}
         <div className="response-markdown">
-          <ReactMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</ReactMarkdown>
+          <RichMarkdown>{typeof cleaned === 'string' ? cleaned : String(cleaned)}</RichMarkdown>
         </div>
       </div>
     );
@@ -334,7 +334,7 @@ function ResponseContentRenderer({ content, onImageClick }) {
           </div>
           {cleanedContent && (
             <div className="response-markdown">
-              <ReactMarkdown>{String(cleanedContent)}</ReactMarkdown>
+              <RichMarkdown>{String(cleanedContent)}</RichMarkdown>
             </div>
           )}
         </div>
@@ -1221,7 +1221,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             {!hideOutput && instance.final_output && (
               <div className="final-output">
                 <div className="final-output-content">
-                  <ReactMarkdown>{instance.final_output}</ReactMarkdown>
+                  <RichMarkdown>{instance.final_output}</RichMarkdown>
                 </div>
               </div>
             )}

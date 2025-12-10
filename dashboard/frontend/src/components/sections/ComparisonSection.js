@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import RichMarkdown from '../RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './ComparisonSection.css';
@@ -63,7 +63,7 @@ function ComparisonSection({ spec, value, onChange }) {
       case 'markdown':
         return (
           <div className="comparison-markdown">
-            <ReactMarkdown>{item.content}</ReactMarkdown>
+            <RichMarkdown>{item.content}</RichMarkdown>
           </div>
         );
       case 'code':

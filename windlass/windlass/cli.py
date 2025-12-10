@@ -160,6 +160,30 @@ def main():
     sql_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
     sql_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
 
+    # Embedding command group
+    embed_parser = subparsers.add_parser('embed', help='Embedding system management')
+    embed_subparsers = embed_parser.add_subparsers(dest='embed_command', help='Embedding subcommands')
+
+    # embed status
+    embed_status_parser = embed_subparsers.add_parser(
+        'status',
+        help='Show embedding worker status and statistics'
+    )
+
+    # embed run - manually run embedding on recent messages
+    embed_run_parser = embed_subparsers.add_parser(
+        'run',
+        help='Run embedding on un-embedded messages'
+    )
+    embed_run_parser.add_argument('--batch-size', type=int, default=50, help='Number of messages to embed (default: 50)')
+    embed_run_parser.add_argument('--dry-run', action='store_true', help='Show what would be embedded without making API calls')
+
+    # embed costs
+    embed_costs_parser = embed_subparsers.add_parser(
+        'costs',
+        help='Show embedding API costs'
+    )
+
     # Hot or Not command group
     hotornot_parser = subparsers.add_parser('hotornot', help='Human evaluation system', aliases=['hon'])
     hotornot_subparsers = hotornot_parser.add_subparsers(dest='hotornot_command', help='Hot or Not subcommands')
@@ -262,6 +286,16 @@ def main():
             sys.exit(1)
     elif args.command == 'sql':
         cmd_sql(args)
+    elif args.command == 'embed':
+        if args.embed_command == 'status':
+            cmd_embed_status(args)
+        elif args.embed_command == 'run':
+            cmd_embed_run(args)
+        elif args.embed_command == 'costs':
+            cmd_embed_costs(args)
+        else:
+            embed_parser.print_help()
+            sys.exit(1)
     elif args.command in ['hotornot', 'hon']:
         if args.hotornot_command == 'rate':
             cmd_hotornot_rate(args)
@@ -855,6 +889,333 @@ def cmd_db_init(args):
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+# ========== EMBEDDING COMMANDS ==========
+
+def cmd_embed_status(args):
+    """Show embedding worker status and statistics."""
+    from windlass.db_adapter import get_db_adapter
+    from windlass.config import get_config
+    from windlass.embedding_worker import get_embedding_worker, get_embedding_costs
+
+    config = get_config()
+    db = get_db_adapter()
+
+    print()
+    print("="*60)
+    print("EMBEDDING SYSTEM STATUS")
+    print("="*60)
+    print()
+
+    # Configuration
+    print(f"Embed Model: {config.default_embed_model}")
+    print(f"Provider: {config.provider_base_url}")
+    print()
+
+    # Worker status
+    worker = get_embedding_worker()
+    stats = worker.get_stats()
+    print("Background Worker:")
+    print(f"  Enabled: {stats['enabled']}")
+    print(f"  Running: {stats['running']}")
+    print(f"  Processed: {stats['processed_count']}")
+    print(f"  Errors: {stats['error_count']}")
+    if stats['last_run']:
+        print(f"  Last Run: {stats['last_run']}")
+    print()
+
+    # Database stats
+    # Count embeddable rows: assistant/user roles OR sounding_attempt/evaluator node types
+    try:
+        result = db.query("""
+            SELECT
+                countIf(length(content_embedding) > 0) as embedded,
+                countIf(
+                    length(content_embedding) = 0
+                    AND length(content_json) > 10
+                    AND (role IN ('assistant', 'user') OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up'))
+                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'phase', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+                ) as unembedded,
+                COUNT(*) as total
+            FROM unified_logs
+        """, output_format='dict')
+
+        if result:
+            r = result[0]
+            embedded = r.get('embedded', 0)
+            unembedded = r.get('unembedded', 0)
+            total = r.get('total', 0)
+
+            print("Message Embeddings:")
+            print(f"  Embedded: {embedded}")
+            print(f"  Pending: {unembedded}")
+            print(f"  Total Messages: {total}")
+            if embedded + unembedded > 0:
+                pct = (embedded / (embedded + unembedded)) * 100
+                print(f"  Coverage: {pct:.1f}%")
+            print()
+    except Exception as e:
+        print(f"  Error querying stats: {e}")
+        print()
+
+    # Embedding costs
+    costs = get_embedding_costs()
+    print("Embedding API Costs:")
+    print(f"  Total Cost: ${costs['total_cost']:.6f}")
+    print(f"  Total Tokens: {costs['total_tokens']}")
+    print(f"  API Calls: {costs['call_count']}")
+    print()
+
+    print("To enable background embedding:")
+    print("  export WINDLASS_ENABLE_EMBEDDINGS=true")
+    print()
+    print("To manually embed recent messages:")
+    print("  windlass embed run --batch-size 100")
+    print()
+
+
+def cmd_embed_run(args):
+    """Manually run embedding on un-embedded messages."""
+    from windlass.db_adapter import get_db_adapter
+    from windlass.config import get_config
+    from windlass.agent import Agent
+    from windlass.embedding_worker import EMBEDDING_SESSION_ID, EMBEDDING_CASCADE_ID, EMBEDDING_PHASE_NAME
+    import uuid
+    import json as json_lib
+
+    config = get_config()
+    db = get_db_adapter()
+    batch_size = args.batch_size
+
+    print()
+    print("="*60)
+    print("EMBEDDING RUN")
+    print("="*60)
+    print()
+    print(f"Model: {config.default_embed_model}")
+    print(f"Batch Size: {batch_size}")
+    print(f"Dry Run: {args.dry_run}")
+    print()
+
+    # Query for un-embedded messages
+    # Include: assistant/user roles AND sounding_attempt/evaluator node types
+    # (sounding_attempt is where is_winner is set - critical for analysis!)
+    query = f"""
+        SELECT
+            message_id,
+            trace_id,
+            role,
+            content_json,
+            session_id,
+            phase_name,
+            cascade_id
+        FROM unified_logs
+        WHERE length(content_embedding) = 0
+          AND content_json IS NOT NULL
+          AND length(content_json) > 10
+          AND (
+              role IN ('assistant', 'user')
+              OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up')
+          )
+          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'phase', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+        ORDER BY timestamp DESC
+        LIMIT {batch_size}
+    """
+
+    try:
+        rows = db.query(query, output_format='dict')
+    except Exception as e:
+        print(f"Error querying messages: {e}")
+        sys.exit(1)
+
+    if not rows:
+        print("No un-embedded messages found.")
+        print()
+        return
+
+    print(f"Found {len(rows)} messages to embed")
+    print()
+
+    if args.dry_run:
+        print("DRY RUN - Would embed:")
+        for i, row in enumerate(rows[:10]):
+            content = row.get('content_json', '')[:50]
+            print(f"  {i+1}. [{row['role']}] {row['trace_id'][:12]}... {content}...")
+        if len(rows) > 10:
+            print(f"  ... and {len(rows) - 10} more")
+        print()
+        return
+
+    # Extract texts
+    texts = []
+    valid_rows = []
+    for row in rows:
+        content = row.get('content_json')
+        if isinstance(content, str):
+            try:
+                parsed = json_lib.loads(content)
+                if isinstance(parsed, str):
+                    text = parsed
+                elif isinstance(parsed, dict):
+                    text = parsed.get('content', str(parsed))
+                else:
+                    text = str(parsed)
+            except:
+                text = content
+        else:
+            text = str(content)
+
+        if len(text.strip()) < 10:
+            continue
+
+        # Truncate long content
+        if len(text) > 8000:
+            text = text[:8000] + "..."
+
+        texts.append(text)
+        valid_rows.append(row)
+
+    if not texts:
+        print("No valid text content to embed.")
+        return
+
+    print(f"Embedding {len(texts)} texts...")
+
+    trace_id = f"embed_cli_{uuid.uuid4().hex[:12]}"
+
+    try:
+        result = Agent.embed(
+            texts=texts,
+            model=config.default_embed_model,
+            session_id=EMBEDDING_SESSION_ID,
+            trace_id=trace_id,
+            cascade_id=EMBEDDING_CASCADE_ID,
+            phase_name=EMBEDDING_PHASE_NAME,
+        )
+    except Exception as e:
+        print(f"Embedding API error: {e}")
+        sys.exit(1)
+
+    vectors = result.get('embeddings', [])
+    dim = result.get('dim', 0)
+    model_used = result.get('model', config.default_embed_model)
+
+    print(f"  Model: {model_used}")
+    print(f"  Dimensions: {dim}")
+    print(f"  Vectors: {len(vectors)}")
+    print()
+
+    # Update database
+    print("Updating database...")
+    updated = 0
+    for row, vector in zip(valid_rows, vectors):
+        try:
+            db.update_row(
+                table='unified_logs',
+                updates={
+                    'content_embedding': vector,
+                    'embedding_model': model_used,
+                    'embedding_dim': dim,
+                },
+                where=f"trace_id = '{row['trace_id']}'",
+                sync=False
+            )
+            updated += 1
+        except Exception as e:
+            print(f"  Error updating {row['trace_id']}: {e}")
+
+    print(f"  Updated {updated} rows")
+    print()
+    print("Done!")
+    print()
+
+
+def cmd_embed_costs(args):
+    """Show embedding API costs."""
+    from windlass.db_adapter import get_db_adapter
+    from windlass.embedding_worker import EMBEDDING_CASCADE_ID
+    from rich.console import Console
+    from rich.table import Table
+
+    db = get_db_adapter()
+    console = Console()
+
+    print()
+    print("="*60)
+    print("EMBEDDING API COSTS")
+    print("="*60)
+    print()
+
+    # Overall costs
+    try:
+        result = db.query(f"""
+            SELECT
+                SUM(cost) as total_cost,
+                SUM(tokens_in) as total_tokens,
+                COUNT(*) as call_count,
+                MIN(timestamp) as first_call,
+                MAX(timestamp) as last_call
+            FROM unified_logs
+            WHERE cascade_id = '{EMBEDDING_CASCADE_ID}'
+              AND node_type = 'embedding'
+        """, output_format='dict')
+
+        if result and result[0].get('call_count', 0) > 0:
+            r = result[0]
+            print(f"Total Cost: ${r['total_cost']:.6f}")
+            print(f"Total Tokens: {r['total_tokens']}")
+            print(f"API Calls: {r['call_count']}")
+            print(f"First Call: {r['first_call']}")
+            print(f"Last Call: {r['last_call']}")
+            print()
+        else:
+            print("No embedding API calls recorded yet.")
+            print()
+            return
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return
+
+    # Breakdown by day
+    try:
+        result = db.query(f"""
+            SELECT
+                toDate(timestamp) as day,
+                SUM(cost) as cost,
+                SUM(tokens_in) as tokens,
+                COUNT(*) as calls
+            FROM unified_logs
+            WHERE cascade_id = '{EMBEDDING_CASCADE_ID}'
+              AND node_type = 'embedding'
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT 10
+        """, output_format='dict')
+
+        if result:
+            print("Daily Breakdown (Last 10 Days):")
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Date")
+            table.add_column("Cost", justify="right")
+            table.add_column("Tokens", justify="right")
+            table.add_column("Calls", justify="right")
+
+            for r in result:
+                table.add_row(
+                    str(r['day']),
+                    f"${r['cost']:.6f}",
+                    str(r['tokens']),
+                    str(r['calls'])
+                )
+
+            console.print(table)
+            print()
+
+    except Exception as e:
+        print(f"Error getting daily breakdown: {e}")
+        print()
 
 
 # ========== HOT OR NOT COMMANDS ==========
