@@ -13,38 +13,50 @@ inputs_schema:
 
 memory: sql_rag_search
 
-# Inline validators
+# Inline validators - now with multi-modal image support!
+# The validator will receive actual images from the conversation context
 validators:
   chart_image_ready:
+    model: google/gemini-2.5-flash  # Vision-capable model to see the chart
     instructions: |
-      Check if a chart image was successfully created and is ready for presentation.
+      You are validating whether a chart was successfully created.
 
-      Output to check:
+      **You will be shown:**
+      1. Any chart images that were generated (displayed visually above)
+      2. The agent's text output (below)
+
+      **Image Status:** {{ input.image_count }} image(s) available
+      {% if input.has_images %}
+      ⬆️ LOOK ABOVE: You should see the actual chart image(s). Examine them carefully!
+      {% else %}
+      ⚠️ NO IMAGES DETECTED - This should fail validation.
+      {% endif %}
+
+      **Agent's Text Output:**
       {{ input.content }}
 
-      A VALID output must have ALL of the following:
-      1. A chart was successfully rendered (mentions of image created, chart generated, visualization ready)
-      2. The chart actually displays data relevant to the question being answered
-      3. The agent has SEEN and ANALYZED the chart image (describes what it shows)
-      4. NO rendering errors, spec errors, or validation failures
-      5. The chart is reasonably complete (has labels, title, legend if needed)
+      ---
 
-      Signs of SUCCESS:
-      - "Chart created successfully"
-      - Agent describes specific visual elements they can see in the chart
-      - Discussion of what the data visualization reveals
-      - Specific observations about colors, bars, lines, or data points visible
+      ## Validation Criteria
 
-      Signs of FAILURE:
-      - "Error", "Failed", "Invalid spec", "Could not render"
-      - Vega-Lite or Plotly schema validation errors
-      - Agent says they will create a chart but hasn't yet
-      - No evidence the agent has actually seen the rendered image
-      - Chart was created but agent hasn't analyzed what it shows
+      For validation to PASS, ALL of the following must be true:
+      1. **Image exists** - You can actually SEE a chart image (not just text claiming one exists)
+      2. **Real data visualization** - The chart has bars, lines, points, or other visual data elements
+      3. **Readable and complete** - Has title, axis labels, legend as appropriate
+      4. **No errors** - Image isn't blank, corrupted, or showing error messages
+      5. **Agent analyzed it** - The text describes what the chart shows
 
-      Return JSON only:
-      - If valid: {"valid": true, "reason": "Chart rendered and analyzed: [brief description of what chart shows]"}
-      - If not valid: {"valid": false, "reason": "[specific issue: no chart yet / rendering error / not analyzed]"}
+      ## Your Task
+
+      LOOK AT THE IMAGE and verify:
+      - Can you see an actual rendered chart? (not placeholder/error)
+      - Does it contain data visualization? (bars, lines, scatter, pie, etc.)
+      - Is it properly labeled and readable?
+      - Does the agent's description match what you see?
+
+      **Return JSON only:**
+      - If valid: {"valid": true, "reason": "Chart verified: [describe what you see]"}
+      - If not valid: {"valid": false, "reason": "[no image visible / blank / error / incomplete]"}
 
 phases:
   - name: build_chart
@@ -105,7 +117,7 @@ phases:
       - create_plotly
 
     soundings:
-      factor: 3
+      factor: 10
       evaluator_instructions: |
         Evaluate chart building attempts based on:
 
@@ -124,32 +136,51 @@ phases:
       models:
         - x-ai/grok-4.1-fast
         - openai/gpt-5.2
+        - mistralai/devstral-2512:free
+        - nex-agi/deepseek-v3.1-nex-n1:free
+        - essentialai/rnj-1-instruct
+        - mistralai/ministral-14b-2512
+        - arcee-ai/trinity-mini:free
+        - deepseek/deepseek-v3.2-speciale
+        - prime-intellect/intellect-3
+        - amazon/nova-2-lite-v1:free
+        - openai/gpt-5.1-codex-mini
+        - anthropic/claude-haiku-4.5
+        - allenai/olmo-3-32b-think:free
         - google/gemini-3-pro-preview
       mutate: false
-      model_strategy: round-robin
+      model_strategy: random
       reforge:
         steps: 2
         honing_prompt: |
-          You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:
+          Look at the previous chart image. Your job is to CREATE AN IMPROVED VERSION using the chart tools.
 
-          - Exact color codes for better contrast (hex values)
-          - Precise font sizes for labels
-          - Specific axis range adjustments
-          - Data point annotation placement
-          - Are things being overlapped or clipped?
-          - Legend positioning coordinates
+          Analyze what could be better:
+          - Color contrast and visual appeal
+          - Label clarity and font sizes
+          - Axis ranges and data presentation
+          - Legend positioning
+          - Any overlapping or clipped elements
 
-          Be EXTREMELY specific and actionable. Reference exact elements you see in the image.
+          Then USE THE TOOLS (`create_vega_lite` or `create_plotly`) to generate a NEW, IMPROVED chart.
+
+          DO NOT just describe improvements - actually implement them by creating a new visualization!
+          You have access to all the same tools. Create a better chart now.
         factor_per_step: 2
         mutate: false
         evaluator_override: |
-          Evaluate refinements on:
-          1. Specificity (exact values, not vague suggestions)
-          2. Visual awareness (referencing actual chart elements)
-          3. Implementation feasibility
-          4. Completeness of improvements
+          Compare the ACTUAL CHART IMAGES produced by each refinement attempt.
 
-          Pick the most production-ready, implementable analysis.
+          Evaluate based on:
+          1. **Visual Quality** (40%): Is the new chart cleaner, more readable, more polished?
+          2. **Improvement Over Original** (30%): Did they actually make meaningful improvements?
+          3. **Data Clarity** (20%): Is the data easier to understand visually?
+          4. **Professional Polish** (10%): Does it look production-ready?
+
+          CRITICAL: Only consider attempts that actually generated a NEW chart image.
+          Attempts that only described improvements without creating a chart should lose.
+
+          Pick the refinement with the BEST ACTUAL CHART OUTPUT.
 
     rules:
       max_turns: 8

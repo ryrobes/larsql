@@ -2690,10 +2690,16 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         if self.config.validators and validator_name in self.config.validators:
             inline_config = self.config.validators[validator_name]
 
+            # Extract recent images from conversation context for multi-modal validation
+            from .utils import extract_images_from_messages
+            context_images = extract_images_from_messages(self.context_messages) if self.context_messages else []
+
             # Build validator input
             validator_input = {
                 "content": content,
-                "original_input": input_data
+                "original_input": input_data,
+                "has_images": len(context_images) > 0,
+                "image_count": len(context_images)
             }
 
             # Generate unique validator session ID
@@ -2749,6 +2755,22 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
                     parent_session_id=self.session_id,
                     sounding_index=validator_sounding_index
                 )
+
+                # Inject images into validator context if available (multi-modal validation)
+                if context_images:
+                    # Build multi-modal context message with images
+                    image_content = [{"type": "text", "text": f"[{len(context_images)} image(s) from the phase output to validate]:"}]
+                    for img_data, desc in context_images[-3:]:  # Last 3 images max
+                        image_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_data}
+                        })
+                    # Pre-populate validator's context with images
+                    validator_runner.context_messages = [{
+                        "role": "user",
+                        "content": image_content
+                    }]
+
                 validator_result_echo = validator_runner.run(validator_input)
 
                 # Extract the result - look in lineage for last phase output
@@ -3656,22 +3678,18 @@ Use only numbers 0-100 for scores."""
         # Show which models will be used (already assigned earlier)
         console.print(f"{indent}  [dim]Models: {', '.join(set(assigned_models))}[/dim]")
 
-        # Execute each sounding in sequence (to avoid threading complexity with Rich output)
-        # Each sounding gets the same starting context
+        # Pre-create traces for all soundings (must be done sequentially for proper hierarchy)
+        sounding_traces = []
         for i in range(factor):
-            # Update phase progress for sounding visualization
-            update_phase_progress(
-                self.session_id, self.config.cascade_id, phase.name, self.depth,
-                stage="soundings",
-                sounding_index=i + 1,
-                sounding_factor=factor,
-                sounding_stage="executing"
-            )
+            trace_node = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
+            sounding_traces.append(trace_node)
 
-            # Determine mutation for this sounding
-            mutation_template = None  # The template/instruction used (for rewrite mode)
-            mutation_applied = None   # The actual mutation (rewritten prompt or augment text)
-            mutation_type = None      # 'rewrite', 'augment', 'approach', or None for baseline
+        # Pre-compute mutations for all soundings (some need LLM calls)
+        sounding_mutations = []
+        for i in range(factor):
+            mutation_template = None
+            mutation_applied = None
+            mutation_type = None
 
             if mutations_to_use and i > 0:  # First sounding (i=0) uses original prompt (baseline)
                 mutation_template = mutations_to_use[(i - 1) % len(mutations_to_use)]
@@ -3679,95 +3697,99 @@ Use only numbers 0-100 for scores."""
 
                 if mutation_mode in ("rewrite", "rewrite_free"):
                     # For rewrite modes: use LLM to rewrite the prompt
-                    # "rewrite" learns from winners, "rewrite_free" is pure exploration
-                    console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan] [yellow]🧬 Rewriting prompt...[/yellow]")
+                    console.print(f"{indent}  [dim]Pre-computing mutation {i+1}: rewriting prompt...[/dim]")
                     mutation_applied = self._rewrite_prompt_with_llm(
                         phase, input_data, mutation_template, soundings_trace,
                         mutation_mode=mutation_mode, species_hash=phase_species_hash
                     )
-                    console.print(f"{indent}    [dim]Rewritten: {mutation_applied[:80]}...[/dim]")
                 else:
-                    # For augment/approach: use the template directly
                     mutation_applied = mutation_template
-                    console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan] [yellow]🧬 {mutation_applied[:50]}...[/yellow]")
-            else:
-                console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" + (" [dim](baseline)[/dim]" if mutations_to_use else ""))
 
-            # Set current sounding index for this attempt
-            self.current_phase_sounding_index = i
-            self.current_mutation_applied = mutation_applied  # Track for logging
-            self.current_mutation_type = mutation_type  # Track type: rewrite, augment, approach
-            self.current_mutation_template = mutation_template  # Track template/instruction used
+            sounding_mutations.append({
+                "template": mutation_template,
+                "applied": mutation_applied,
+                "type": mutation_type
+            })
 
-            # Get model for this sounding (Phase 1: Multi-Model Soundings)
+        # Execute soundings sequentially - all logs go to the same session
+        # Each sounding resets state from snapshot, executes, then captures results
+        sounding_results = []
+        for i in range(factor):
+            mutation_info = sounding_mutations[i]
+            sounding_trace = sounding_traces[i]
             sounding_model = assigned_models[i]
-            original_model = self.model  # Save original model to restore later
-            self.model = sounding_model  # Temporarily override model for this sounding
-            console.print(f"{indent}    [dim]Using model: {sounding_model}[/dim]")
 
-            # Create trace for this sounding
-            sounding_trace = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
+            console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" +
+                         (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
+                         f" [dim]({sounding_model})[/dim]")
 
-            # Reset context to snapshot for this attempt
-            self.context_messages = context_snapshot.copy()
-            self.echo.state = echo_state_snapshot.copy()
-            self.echo.history = echo_history_snapshot.copy()
-            self.echo.lineage = echo_lineage_snapshot.copy()
-
-            # Execute the phase with optional mutation
             try:
+                # Reset to snapshot for this sounding
+                self.context_messages = context_snapshot.copy()
+                self.echo.state = echo_state_snapshot.copy()
+                self.echo.history = echo_history_snapshot.copy()
+                self.echo.lineage = echo_lineage_snapshot.copy()
+                self.model = sounding_model
+
+                # Set sounding tracking state
+                self.current_phase_sounding_index = i
+                self.current_mutation_applied = mutation_info['applied']
+                self.current_mutation_type = mutation_info['type']
+                self.current_mutation_template = mutation_info['template']
+
+                # Execute the phase
                 result = self._execute_phase_internal(
                     phase, input_data, sounding_trace,
                     initial_injection=initial_injection,
-                    mutation=mutation_applied,
+                    mutation=mutation_info['applied'],
                     mutation_mode=mutation_mode
                 )
 
-                # Capture the context that was generated during this sounding
-                sounding_context = self.context_messages[len(context_snapshot):]  # New messages added
+                # Capture context generated during this sounding
+                sounding_context = self.context_messages[len(context_snapshot):]
 
-                # Extract images from this sounding's context for evaluator
+                # Extract images for evaluator
                 from .utils import extract_images_from_messages
                 sounding_images = extract_images_from_messages(sounding_context)
+
+                console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
                 sounding_results.append({
                     "index": i,
                     "result": result,
                     "context": sounding_context,
-                    "images": sounding_images,  # List of (base64_data, description) tuples
+                    "images": sounding_images,
                     "trace_id": sounding_trace.id,
                     "final_state": self.echo.state.copy(),
-                    "mutation_applied": mutation_applied,
-                    "mutation_type": mutation_type,
-                    "mutation_template": mutation_template,
-                    "model": sounding_model  # Track which model was used (Phase 1: Multi-Model)
+                    "mutation_applied": mutation_info['applied'],
+                    "mutation_type": mutation_info['type'],
+                    "mutation_template": mutation_info['template'],
+                    "model": sounding_model
                 })
-
-                console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
-                log_message(self.session_id, "sounding_error", str(e),
-                           trace_id=sounding_trace.id, parent_id=soundings_trace.id, node_type="sounding_error", depth=self.depth,
-                           sounding_index=i, metadata={"phase_name": phase.name, "error": str(e), "model": sounding_model})
                 sounding_results.append({
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
-                    "images": [],  # No images for failed soundings
+                    "images": [],
                     "trace_id": sounding_trace.id,
                     "final_state": {},
-                    "mutation_applied": mutation_applied,
-                    "mutation_type": mutation_type,
-                    "mutation_template": mutation_template,
-                    "model": sounding_model,  # Track which model was used (Phase 1: Multi-Model)
-                    "failed": True,  # Mark as failed for evaluator
-                    "error": str(e)  # Store error message
+                    "mutation_applied": mutation_info['applied'],
+                    "mutation_type": mutation_info['type'],
+                    "mutation_template": mutation_info['template'],
+                    "model": sounding_model,
+                    "failed": True,
+                    "error": str(e)
                 })
 
-            finally:
-                # Restore original model after sounding execution (Phase 1: Multi-Model)
-                self.model = original_model
+        # Log errors after parallel completion
+        for sr in sounding_results:
+            if sr.get('failed'):
+                log_message(self.session_id, "sounding_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=soundings_trace.id, node_type="sounding_error", depth=self.depth,
+                           sounding_index=sr['index'], metadata={"phase_name": phase.name, "error": sr.get('error'), "model": sr.get('model')})
 
         # Clear mutation tracking
         self.current_mutation_applied = None
@@ -4633,7 +4655,10 @@ Refinement directive: {reforge_config.honing_prompt}
             # Build context with images if present
             refinement_context_messages = self._build_context_with_images(winner['context'], refinement_instructions)
 
-            # Run mini-soundings for this reforge step
+            # Build full reforge context (shared across all refinements)
+            full_reforge_context = context_snapshot.copy() + refinement_context_messages
+
+            # Run mini-soundings for this reforge step - all logs go to same session
             reforge_results = []
             for i in range(reforge_config.factor_per_step):
                 console.print(f"{indent}    [cyan]🔨 Refinement {i+1}/{reforge_config.factor_per_step}[/cyan]")
@@ -4649,9 +4674,6 @@ Refinement directive: {reforge_config.honing_prompt}
                 self.echo.state = echo_state_snapshot.copy()
                 self.echo.history = echo_history_snapshot.copy()
                 self.echo.lineage = echo_lineage_snapshot.copy()
-
-                # Build full reforge context with images from previous winner
-                full_reforge_context = context_snapshot.copy() + refinement_context_messages
 
                 try:
                     # Pass context with images via pre_built_context to avoid it being cleared
