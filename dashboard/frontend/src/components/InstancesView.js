@@ -426,6 +426,26 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return date.toLocaleString();
   };
 
+  const formatTimeAgo = (isoString) => {
+    if (!isoString) return '';
+    // Parse timestamp as UTC
+    const normalized = isoString.includes('Z') || isoString.includes('+')
+      ? isoString
+      : isoString.replace(' ', 'T') + 'Z';
+
+    const timestamp = new Date(normalized).getTime();
+    const now = Date.now();
+    const diffMs = now - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
   const getPhaseStatusColor = (status) => {
     switch (status) {
       case 'completed':
@@ -758,7 +778,9 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   </span>
                 )}
               </h3>
-              <span className="timestamp-compact">{formatTimestamp(instance.start_time)}</span>
+              <span className="timestamp-compact" title={formatTimestamp(instance.start_time)}>
+                {formatTimeAgo(instance.start_time)}
+              </span>
               <PhaseSpeciesBadges sessionId={instance.session_id} />
             </div>
 
@@ -989,10 +1011,13 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 return new Date(normalized).getTime();
               };
 
-              // Group instances by species_hash
+              // Group instances by compound species signature
+              // Multi-phase cascades have multiple species_hashes (one per phase with soundings)
               const groups = new Map();
               instances.forEach((instance) => {
-                const key = instance.species_hash || 'no_species';
+                // Create compound key from sorted species_hashes array
+                const hashes = instance.species_hashes || [];
+                const key = hashes.length > 0 ? hashes.sort().join('+') : 'no_species';
                 if (!groups.has(key)) {
                   groups.set(key, []);
                 }
@@ -1003,7 +1028,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               const sortedGroups = Array.from(groups.entries())
                 .map(([speciesHash, instances]) => ({
                   speciesHash,
-                  instances: instances.sort((a, b) => parseUTC(a.start_time) - parseUTC(b.start_time)), // Oldest first (evolution order)
+                  instances: instances.sort((a, b) => parseUTC(b.start_time) - parseUTC(a.start_time)), // Newest first (DESC)
                   latestTime: Math.max(...instances.map(i => parseUTC(i.start_time)))
                 }))
                 .sort((a, b) => b.latestTime - a.latestTime); // Groups by most recent activity
@@ -1016,10 +1041,18 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                     {!isNoSpecies && (
                       <div className="species-group-header">
                         <div className="species-info">
-                          <Icon icon="mdi:dna" width="14" className="species-icon" />
-                          <span className="species-hash" title={speciesHash}>
-                            {speciesHash.substring(0, 8)}...
-                          </span>
+                          {/* Show multiple DNA icons for multi-phase cascades */}
+                          {speciesHash.split('+').map((hash, idx) => (
+                            <React.Fragment key={hash}>
+                              <Icon icon="mdi:dna" width="14" className="species-icon" />
+                              <span className="species-hash" title={hash}>
+                                {hash.substring(0, 8)}...
+                              </span>
+                              {idx < speciesHash.split('+').length - 1 && (
+                                <span className="species-separator">+</span>
+                              )}
+                            </React.Fragment>
+                          ))}
                           <span className="species-count">
                             {groupInstances.length} generation{groupInstances.length !== 1 ? 's' : ''}
                           </span>

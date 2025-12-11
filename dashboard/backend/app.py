@@ -614,7 +614,9 @@ def get_cascade_instances(cascade_id):
             SELECT
                 session_id,
                 cascade_id,
-                any(species_hash) as species_hash,
+                -- Collect ALL species hashes (multi-phase cascade support)
+                -- Sorted array of unique non-null species hashes = compound species signature
+                arraySort(arrayFilter(x -> x IS NOT NULL AND x != '', groupArray(DISTINCT species_hash))) as species_hashes,
                 MIN(timestamp) as start_time,
                 MAX(timestamp) as end_time,
                 MAX(timestamp) - MIN(timestamp) as duration_seconds
@@ -627,7 +629,8 @@ def get_cascade_instances(cascade_id):
             SELECT
                 l.session_id,
                 MAX(l.cascade_id) as cascade_id,  -- Take non-null cascade_id
-                any(l.species_hash) as species_hash,
+                -- Collect ALL species hashes (multi-phase cascade support)
+                arraySort(arrayFilter(x -> x IS NOT NULL AND x != '', groupArray(DISTINCT l.species_hash))) as species_hashes,
                 l.parent_session_id,
                 MIN(l.timestamp) as start_time,
                 MAX(l.timestamp) as end_time,
@@ -638,12 +641,12 @@ def get_cascade_instances(cascade_id):
             GROUP BY l.session_id, l.parent_session_id
         ),
         all_sessions AS (
-            SELECT session_id, cascade_id, species_hash, NULL as parent_session_id, start_time, end_time, duration_seconds, 0 as depth
+            SELECT session_id, cascade_id, species_hashes, NULL as parent_session_id, start_time, end_time, duration_seconds, 0 as depth
             FROM parent_sessions
 
             UNION ALL
 
-            SELECT session_id, cascade_id, species_hash, parent_session_id, start_time, end_time, duration_seconds, 1 as depth
+            SELECT session_id, cascade_id, species_hashes, parent_session_id, start_time, end_time, duration_seconds, 1 as depth
             FROM child_sessions
         ),
         session_costs AS (
@@ -657,7 +660,7 @@ def get_cascade_instances(cascade_id):
         SELECT
             a.session_id,
             a.cascade_id,
-            a.species_hash,
+            a.species_hashes,
             a.parent_session_id,
             a.depth,
             a.start_time,
@@ -935,7 +938,7 @@ def get_cascade_instances(cascade_id):
 
         instances = []
         for session_row in session_results:
-            session_id, session_cascade_id, species_hash, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
+            session_id, session_cascade_id, species_hashes, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
 
             # Get models from batch query
             models_used = models_by_session.get(session_id, [])
@@ -1270,7 +1273,7 @@ def get_cascade_instances(cascade_id):
             instances.append({
                 'session_id': session_id,
                 'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
-                'species_hash': species_hash,  # Hash of cascade config (instructions, soundings, rules)
+                'species_hashes': list(species_hashes) if species_hashes else [],  # Array of species hashes (multi-phase support)
                 'parent_session_id': parent_session_id,
                 'depth': int(depth) if depth is not None else 0,
                 'start_time': to_iso_string(start_time),

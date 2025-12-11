@@ -1701,6 +1701,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .species-icon {
@@ -1715,9 +1716,17 @@
   letter-spacing: 0.02em;
 }
 
+.species-separator {
+  color: #4A9EDD;
+  font-weight: bold;
+  margin: 0 0.25rem;
+  opacity: 0.6;
+}
+
 .species-count {
   color: #6B7280;
   font-size: 0.75rem;
+  margin-left: 0.25rem;
 }
 
 .species-age {
