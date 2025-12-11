@@ -163,13 +163,13 @@ phases:
       Format it as: "**Question:** [Your specific analytical question here]"
 
     tackle:
-      - sql_search
-      - list_sql_connections
+      #- sql_search
+      #- list_sql_connections
       - sql_rag_search
-      - sql_query
+      #- sql_query
 
     soundings:
-      factor: 7
+      factor: 6
       evaluator_instructions: |
         Evaluate question discovery attempts based on:
 
@@ -186,12 +186,13 @@ phases:
 
         Prefer questions about trends, comparisons, distributions, or anomalies over simple counts or lists.
       models:
-        - anthropic/claude-sonnet-4.5
+        #- anthropic/claude-sonnet-4.5
         - x-ai/grok-4.1-fast
-        - amazon/nova-premier-v1
-        - openai/gpt-5.1
-        - openai/gpt-4.1
-        - anthropic/claude-opus-4.5
+        #- amazon/nova-premier-v1
+        #- openai/gpt-5.1
+        #- openai/gpt-4.1
+        - openai/gpt-5.2
+        #- anthropic/claude-opus-4.5
         - google/gemini-3-pro-preview
       mutate: false
       model_strategy: round-robin
@@ -234,7 +235,7 @@ phases:
       - sql_rag_search
 
     soundings:
-      factor: 7
+      factor: 6
       evaluator_instructions: |
         Evaluate schema discovery attempts based on:
 
@@ -251,12 +252,13 @@ phases:
 
         Prefer attempts that balance breadth (checking multiple options) with depth (understanding what's useful).
       models:
-        - anthropic/claude-sonnet-4.5
+        #- anthropic/claude-sonnet-4.5
         - x-ai/grok-4.1-fast
-        - amazon/nova-premier-v1
-        - openai/gpt-5.1
-        - openai/gpt-4.1
-        - anthropic/claude-opus-4.5
+        #- amazon/nova-premier-v1
+        #- openai/gpt-5.1
+        #- openai/gpt-4.1
+        - openai/gpt-5.2
+        #- anthropic/claude-opus-4.5
         - google/gemini-3-pro-preview
       mutate: false
       model_strategy: round-robin
@@ -300,7 +302,7 @@ phases:
       - sql_rag_search
 
     soundings:
-      factor: 7
+      factor: 6
       evaluator_instructions: |
         Evaluate SQL query attempts based on:
 
@@ -320,12 +322,13 @@ phases:
 
         Prefer queries that demonstrate understanding of the schema and make smart decisions about what columns/rows to include.
       models:
-        - anthropic/claude-sonnet-4.5
+        #- anthropic/claude-sonnet-4.5
         - x-ai/grok-4.1-fast
-        - amazon/nova-premier-v1
-        - openai/gpt-5.1
-        - openai/gpt-4.1
-        - anthropic/claude-opus-4.5
+        #- amazon/nova-premier-v1
+        #- openai/gpt-5.1
+        #- openai/gpt-4.1
+        - openai/gpt-5.2
+        #- anthropic/claude-opus-4.5
         - google/gemini-3-pro-preview
       mutate: false
       model_strategy: round-robin
@@ -359,7 +362,7 @@ phases:
     tackle: []
 
     soundings:
-      factor: 7
+      factor: 6
       evaluator_instructions: |
         Evaluate data analysis attempts based on:
 
@@ -386,12 +389,13 @@ phases:
         - Don't directly answer the question
         - Don't include enough context for chart creation
       models:
-        - anthropic/claude-sonnet-4.5
+        #- anthropic/claude-sonnet-4.5
         - x-ai/grok-4.1-fast
-        - amazon/nova-premier-v1
-        - openai/gpt-5.1
-        - openai/gpt-4.1
-        - anthropic/claude-opus-4.5
+        #- amazon/nova-premier-v1
+        #- openai/gpt-5.1
+        #- openai/gpt-4.1
+        - openai/gpt-5.2
+        #- anthropic/claude-opus-4.5
         - google/gemini-3-pro-preview
       mutate: false
       model_strategy: round-robin
@@ -429,7 +433,7 @@ phases:
       - create_plotly
 
     soundings:
-      factor: 7
+      factor: 6
       evaluator_instructions: |
         Evaluate based on:
         1. Accuracy of visual observations about the chart
@@ -438,12 +442,13 @@ phases:
 
         Select the analysis that is most detailed and actionable. Must have successfully generated chart images to be valid.
       models:
-        - anthropic/claude-sonnet-4.5
+        #- anthropic/claude-sonnet-4.5
         - x-ai/grok-4.1-fast
-        - amazon/nova-premier-v1
-        - openai/gpt-5.1
-        - openai/gpt-4.1
-        - anthropic/claude-opus-4.5
+        #- amazon/nova-premier-v1
+        #- openai/gpt-5.1
+        #- openai/gpt-4.1
+        - openai/gpt-5.2
+        #- anthropic/claude-opus-4.5
         - google/gemini-3-pro-preview
       mutate: false
       model_strategy: round-robin

@@ -1,0 +1,157 @@
+# SQL Chart Builder - Single Phase
+# Discovers data, runs queries, and creates charts in one unified phase.
+# Uses an image validator to break the loop once a good chart is rendered.
+
+cascade_id: sql_chart_builder
+
+description: >
+  Single-phase SQL chart builder that discovers schema, queries data,
+  and creates visualizations in a multi-turn conversation.
+
+inputs_schema:
+  question: "(Optional) The analytical question to answer and visualize"
+
+memory: sql_rag_search
+
+# Inline validators
+validators:
+  chart_image_ready:
+    instructions: |
+      Check if a chart image was successfully created and is ready for presentation.
+
+      Output to check:
+      {{ input.content }}
+
+      A VALID output must have ALL of the following:
+      1. A chart was successfully rendered (mentions of image created, chart generated, visualization ready)
+      2. The chart actually displays data relevant to the question being answered
+      3. The agent has SEEN and ANALYZED the chart image (describes what it shows)
+      4. NO rendering errors, spec errors, or validation failures
+      5. The chart is reasonably complete (has labels, title, legend if needed)
+
+      Signs of SUCCESS:
+      - "Chart created successfully"
+      - Agent describes specific visual elements they can see in the chart
+      - Discussion of what the data visualization reveals
+      - Specific observations about colors, bars, lines, or data points visible
+
+      Signs of FAILURE:
+      - "Error", "Failed", "Invalid spec", "Could not render"
+      - Vega-Lite or Plotly schema validation errors
+      - Agent says they will create a chart but hasn't yet
+      - No evidence the agent has actually seen the rendered image
+      - Chart was created but agent hasn't analyzed what it shows
+
+      Return JSON only:
+      - If valid: {"valid": true, "reason": "Chart rendered and analyzed: [brief description of what chart shows]"}
+      - If not valid: {"valid": false, "reason": "[specific issue: no chart yet / rendering error / not analyzed]"}
+
+phases:
+  - name: build_chart
+    instructions: |
+      You are an expert data analyst and visualization specialist. Your task is to answer the following question with a beautiful, insightful chart:
+
+      **Question:** {% if input.question %}{{ input.question }}{% else %}Superstore sales Overview on the East Coast{% endif %}
+
+      You have access to SQL databases with various data. Work through these steps:
+
+      ## Step 1: Discover the Data
+      Use `sql_search` or `sql_rag_search` to find tables relevant to the question.
+      Use `list_sql_connections` to see available data sources.
+
+      The search tools use semantic search - describe what you're looking for in natural language.
+
+      ## Step 2: Explore and Query
+      Once you find relevant tables, use `sql_query` to:
+      - Sample the data: `SELECT * FROM connection.table LIMIT 5`
+      - Check distributions: `SELECT column, COUNT(*) FROM connection.table GROUP BY column`
+      - Get the data you need to answer the question
+
+      IMPORTANT Query Syntax:
+      - CSV folders: `SELECT * FROM connection_name.table_name`
+      - PostgreSQL: `SELECT * FROM connection_name.schema.table`
+      - Example: `SELECT Region, SUM(Sales) FROM csv_files.superstore GROUP BY Region`
+
+      ## Step 3: Create the Visualization
+      Use `create_vega_lite` or `create_plotly` to create a chart. The chart image will be automatically shown to you.
+
+      Design guidelines:
+      - Use dark mode styling (dark background, light text)
+      - Choose the right chart type for the data (bar, line, scatter, etc.)
+      - Include clear title, axis labels, and legend if needed
+      - Make it visually appealing with good color choices
+      - Consider using multiple views or compound charts if it helps tell the story
+
+      ## Step 4: Analyze Your Chart
+      After the chart is rendered, you'll see the image. Describe:
+      - What the visualization shows
+      - Key insights visible in the chart
+      - How it answers the original question
+
+      If the chart has issues (wrong data, bad layout, rendering errors), fix it and try again.
+
+      Keep iterating until you have a polished, insightful visualization that clearly answers the question.
+
+    context:
+      from:
+        - previous
+
+    tackle:
+      - sql_search
+      - sql_rag_search
+      - list_sql_connections
+      - sql_query
+      - create_vega_lite
+      - create_plotly
+
+    soundings:
+      factor: 3
+      evaluator_instructions: |
+        Evaluate chart building attempts based on:
+
+        1. **Chart Quality** (40%): Is the visualization clear, well-designed, and insightful?
+        2. **Data Accuracy** (30%): Does the chart correctly represent the data and answer the question?
+        3. **Visual Design** (20%): Is it aesthetically pleasing with good colors, labels, and layout?
+        4. **Efficiency** (10%): Did they find and query the right data without unnecessary steps?
+
+        Select the attempt that:
+        - Successfully rendered a chart (no errors)
+        - Best answers the original question visually
+        - Has the most polished, professional appearance
+        - Demonstrates clear analysis of what the chart shows
+
+        CRITICAL: Attempts without a successfully rendered chart image should be heavily penalized.
+      models:
+        - x-ai/grok-4.1-fast
+        - openai/gpt-5.2
+        - google/gemini-3-pro-preview
+      mutate: false
+      model_strategy: round-robin
+      reforge:
+        steps: 2
+        honing_prompt: |
+          You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:
+
+          - Exact color codes for better contrast (hex values)
+          - Precise font sizes for labels
+          - Specific axis range adjustments
+          - Data point annotation placement
+          - Are things being overlapped or clipped?
+          - Legend positioning coordinates
+
+          Be EXTREMELY specific and actionable. Reference exact elements you see in the image.
+        factor_per_step: 2
+        mutate: false
+        evaluator_override: |
+          Evaluate refinements on:
+          1. Specificity (exact values, not vague suggestions)
+          2. Visual awareness (referencing actual chart elements)
+          3. Implementation feasibility
+          4. Completeness of improvements
+
+          Pick the most production-ready, implementable analysis.
+
+    rules:
+      max_turns: 8
+      loop_until: chart_image_ready
+      loop_until_silent: true

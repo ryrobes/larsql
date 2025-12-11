@@ -35,12 +35,13 @@ function App() {
   const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
   const [pendingCheckpoints, setPendingCheckpoints] = useState([]); // HITL checkpoints waiting for human input
 
-  const showToast = (message, type = 'success', duration = null) => {
+  const showToast = (message, type = 'success', duration = null, cascadeData = null) => {
     const id = Date.now();
-    // Default durations by type: info=3s, success=4s, warning=5s, error=8s
-    const defaultDurations = { info: 3000, success: 4000, warning: 5000, error: 8000 };
-    const finalDuration = duration ?? defaultDurations[type] ?? 4000;
-    setToasts(prev => [...prev, { id, message, type, duration: finalDuration }]);
+    // Default durations by type: info=3s, success=4s, warning=5s, error=8s, subcascade=6s
+    const defaultDurations = { info: 3000, success: 6000, warning: 5000, error: 8000, subcascade: 5000 };
+    const effectiveType = cascadeData?.isSubCascade ? 'subcascade' : type;
+    const finalDuration = duration ?? defaultDurations[effectiveType] ?? 6000;
+    setToasts(prev => [...prev, { id, message, type, duration: finalDuration, cascadeData }]);
   };
 
   const removeToast = (id) => {
@@ -384,13 +385,41 @@ function App() {
               });
               setFinalizingSessions(prev => new Set([...prev, completeSessionId]));
 
-              // Show completion toast immediately - with ClickHouse, data is available instantly
-              // (only cost data has ~5s delay from OpenRouter API)
+              // Show completion toast immediately with rich cascade data
               setCompletedSessions(prev => {
                 if (prev.has(completeSessionId)) {
                   return prev; // Already showed toast
                 }
-                showToast(`Cascade completed: ${completeSessionId.substring(0, 16)}...`, 'success');
+
+                // Get metadata for this session
+                const metadata = sessionMetadata[completeSessionId] || {};
+                const startTime = sessionStartTimes[completeSessionId];
+                const isSubCascade = metadata.depth > 0;
+
+                // Calculate duration in seconds
+                let durationSeconds = null;
+                if (startTime) {
+                  const startMs = new Date(startTime).getTime();
+                  durationSeconds = (Date.now() - startMs) / 1000;
+                }
+
+                // Get parent cascade name if this is a sub-cascade
+                let parentCascadeName = null;
+                if (isSubCascade && metadata.parent_session_id) {
+                  const parentMeta = sessionMetadata[metadata.parent_session_id];
+                  parentCascadeName = parentMeta?.cascade_id || null;
+                }
+
+                const cascadeData = {
+                  cascadeName: completeCascadeId || metadata.cascade_id || 'Unknown',
+                  sessionId: completeSessionId,
+                  durationSeconds,
+                  isSubCascade,
+                  parentCascadeName,
+                  // cost will be fetched by Toast component after delay
+                };
+
+                showToast(null, 'success', null, cascadeData);
                 return new Set([...prev, completeSessionId]);
               });
 
@@ -715,6 +744,7 @@ function App() {
             message={toast.message}
             type={toast.type}
             duration={toast.duration}
+            cascadeData={toast.cascadeData}
             onClose={() => removeToast(toast.id)}
           />
         ))}

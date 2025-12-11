@@ -57,25 +57,22 @@ def sql_search(
     cfg = get_config()
     samples_dir = os.path.join(cfg.root_dir, "sql_connections", "samples")
 
-    # Build RAG context manually
-    rag_base = os.path.join(cfg.data_dir, "rag", meta.rag_id)
-    manifest_path = os.path.join(rag_base, "manifest.parquet")
-    chunks_path = os.path.join(rag_base, "chunks.parquet")
-    meta_path = os.path.join(rag_base, "meta.json")
-
-    if not os.path.exists(manifest_path):
+    # Verify RAG index exists in ClickHouse
+    from ..db_adapter import get_db
+    db = get_db()
+    chunk_count = db.query(
+        f"SELECT count() as cnt FROM rag_chunks WHERE rag_id = '{meta.rag_id}'"
+    )
+    if not chunk_count or chunk_count[0]['cnt'] == 0:
         return json.dumps({
-            "error": f"RAG index files not found for rag_id: {meta.rag_id}",
+            "error": f"RAG index not found in database for rag_id: {meta.rag_id}",
             "hint": "Run: windlass sql chart"
         })
 
-    # Create RagContext
+    # Create RagContext (ClickHouse-based, no file paths needed)
     rag_ctx = RagContext(
         rag_id=meta.rag_id,
         directory=samples_dir,
-        manifest_path=manifest_path,
-        chunks_path=chunks_path,
-        meta_path=meta_path,
         embed_model=meta.embed_model,
         stats={},
         session_id=None,

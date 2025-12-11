@@ -683,10 +683,8 @@ def get_cascade_instances(cascade_id):
         session_results = conn.execute(sessions_query, [cascade_id]).fetchall()
 
         # BATCH QUERIES: Get all data for all sessions at once to avoid N+1 problem
-        # TODO: This endpoint currently does ~142 queries (10-15 per session × ~10 sessions)
-        # Batching all queries would reduce it to ~10-12 total queries
-        # Current optimizations: models, outputs, errors, phase_costs, token_timeseries batched (saves ~50 queries)
-        # Still needed: input_data, turn_costs, tool_usage, soundings, messages, phases
+        # All 12 queries are now batched - reduced from ~100+ queries (6 per session × ~10-100 sessions)
+        # to just 12 total queries regardless of session count
         session_ids = [row[0] for row in session_results]
 
         # Batch 1: Get models for all sessions
@@ -944,24 +942,21 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch model costs query: {e}")
 
-        instances = []
-        for session_row in session_results:
-            session_id, session_cascade_id, species_hashes, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
-
-            # Get models from batch query
-            models_used = models_by_session.get(session_id, [])
-
-            # Get input data from first user message with "## Input Data:"
-            input_data = {}
+        # Batch 7: Get input data for all sessions (from first user message with "## Input Data:")
+        input_data_by_session = {}
+        if session_ids:
             try:
                 input_query = """
-                SELECT content_json FROM unified_logs
-                WHERE session_id = ? AND node_type = 'user' AND content_json IS NOT NULL
-                ORDER BY timestamp
-                LIMIT 10
-                """
-                input_results = conn.execute(input_query, [session_id]).fetchall()
-                for (content_json,) in input_results:
+                SELECT session_id, content_json FROM unified_logs
+                WHERE session_id IN ({})
+                  AND node_type = 'user' AND content_json IS NOT NULL
+                ORDER BY session_id, timestamp
+                """.format(','.join('?' * len(session_ids)))
+                input_results = conn.execute(input_query, session_ids).fetchall()
+
+                for sid, content_json in input_results:
+                    if sid in input_data_by_session:
+                        continue  # Already found input for this session
                     if content_json:
                         try:
                             content = json.loads(content_json) if isinstance(content_json, str) else content_json
@@ -973,78 +968,83 @@ def get_cascade_instances(cascade_id):
                                         if json_str and json_str != '{}':
                                             parsed = json.loads(json_str)
                                             if isinstance(parsed, dict) and parsed:
-                                                input_data = parsed
+                                                input_data_by_session[sid] = parsed
                                                 break
-                                if input_data:
-                                    break
                         except:
                             pass
             except Exception as e:
-                print(f"[ERROR] Getting input data: {e}")
+                print(f"[ERROR] Batch input data query: {e}")
 
-            # Get phase costs from batch query
-            phase_costs_map = phase_costs_by_session.get(session_id, {})
-
-            # Get turn-level costs grouped by phase and sounding
-            turn_costs_map = {}
+        # Batch 8: Get turn-level costs for all sessions
+        turn_costs_by_session = {}
+        if session_ids:
             try:
                 if has_turn_number:
                     turn_query = """
                     SELECT
+                        session_id,
                         phase_name,
                         sounding_index,
                         turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
-                    WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                    GROUP BY phase_name, sounding_index, turn_number
-                    ORDER BY phase_name, sounding_index, turn_number
-                    """
+                    WHERE session_id IN ({})
+                      AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                    GROUP BY session_id, phase_name, sounding_index, turn_number
+                    ORDER BY session_id, phase_name, sounding_index, turn_number
+                    """.format(','.join('?' * len(session_ids)))
                 else:
-                    # Fallback: group costs without turn_number
                     turn_query = """
                     SELECT
+                        session_id,
                         phase_name,
                         sounding_index,
                         0 as turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
-                    WHERE session_id = ? AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
-                    GROUP BY phase_name, sounding_index
-                    ORDER BY phase_name, sounding_index
-                    """
-                turn_results = conn.execute(turn_query, [session_id]).fetchall()
+                    WHERE session_id IN ({})
+                      AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                    GROUP BY session_id, phase_name, sounding_index
+                    ORDER BY session_id, phase_name, sounding_index
+                    """.format(','.join('?' * len(session_ids)))
+                turn_results = conn.execute(turn_query, session_ids).fetchall()
 
-                for t_phase, t_sounding, t_turn, t_cost in turn_results:
+                for sid, t_phase, t_sounding, t_turn, t_cost in turn_results:
+                    if sid not in turn_costs_by_session:
+                        turn_costs_by_session[sid] = {}
                     key = (t_phase, t_sounding)
-                    if key not in turn_costs_map:
-                        turn_costs_map[key] = []
-                    turn_costs_map[key].append({
-                        'turn': int(t_turn) if t_turn is not None else len(turn_costs_map[key]),
+                    if key not in turn_costs_by_session[sid]:
+                        turn_costs_by_session[sid][key] = []
+                    turn_costs_by_session[sid][key].append({
+                        'turn': int(t_turn) if t_turn is not None else len(turn_costs_by_session[sid][key]),
                         'cost': float(t_cost) if t_cost else 0.0
                     })
             except Exception as e:
-                print(f"[ERROR] Turn costs query: {e}")
+                print(f"[ERROR] Batch turn costs query: {e}")
 
-            # Get tool calls per phase
-            tool_calls_map = {}
+        # Batch 9: Get tool calls for all sessions
+        tool_calls_by_session = {}
+        if session_ids:
             try:
                 tool_query = """
                 SELECT
+                    session_id,
                     phase_name,
                     tool_calls_json,
                     metadata_json
                 FROM unified_logs
-                WHERE session_id = ? AND phase_name IS NOT NULL
-                    AND (tool_calls_json IS NOT NULL OR node_type = 'tool_result')
-                """
-                tool_results = conn.execute(tool_query, [session_id]).fetchall()
+                WHERE session_id IN ({})
+                  AND phase_name IS NOT NULL
+                  AND (tool_calls_json IS NOT NULL OR node_type = 'tool_result')
+                """.format(','.join('?' * len(session_ids)))
+                tool_results = conn.execute(tool_query, session_ids).fetchall()
 
-                for t_phase, tool_calls_json, metadata_json in tool_results:
-                    if t_phase not in tool_calls_map:
-                        tool_calls_map[t_phase] = []
+                for sid, t_phase, tool_calls_json, metadata_json in tool_results:
+                    if sid not in tool_calls_by_session:
+                        tool_calls_by_session[sid] = {}
+                    if t_phase not in tool_calls_by_session[sid]:
+                        tool_calls_by_session[sid][t_phase] = []
 
-                    # Try to extract tool names from tool_calls_json
                     if tool_calls_json:
                         try:
                             tool_calls = json.loads(tool_calls_json) if isinstance(tool_calls_json, str) else tool_calls_json
@@ -1052,44 +1052,46 @@ def get_cascade_instances(cascade_id):
                                 for tc in tool_calls:
                                     if isinstance(tc, dict):
                                         tool_name = tc.get('function', {}).get('name') or tc.get('name') or 'unknown'
-                                        tool_calls_map[t_phase].append(tool_name)
+                                        tool_calls_by_session[sid][t_phase].append(tool_name)
                         except:
                             pass
 
-                    # Also check metadata for tool_name
                     if metadata_json:
                         try:
                             meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
                             if isinstance(meta, dict) and meta.get('tool_name'):
-                                tool_calls_map[t_phase].append(meta['tool_name'])
+                                tool_calls_by_session[sid][t_phase].append(meta['tool_name'])
                         except:
                             pass
             except Exception as e:
-                print(f"[ERROR] Tool calls query: {e}")
+                print(f"[ERROR] Batch tool calls query: {e}")
 
-            # Get sounding data
-            soundings_map = {}
+        # Batch 10: Get sounding data for all sessions
+        soundings_by_session = {}
+        if session_ids:
             try:
-                # Include model in the query - use model_requested when available for cleaner display
-                # Use MAX since typically one model per sounding
                 model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as sounding_model" if has_model else "NULL as sounding_model"
                 soundings_query = f"""
                 SELECT
+                    session_id,
                     phase_name,
                     sounding_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
                     SUM(cost) as total_cost,
                     {model_select}
                 FROM unified_logs
-                WHERE session_id = ? AND sounding_index IS NOT NULL
-                GROUP BY phase_name, sounding_index
-                ORDER BY phase_name, sounding_index
+                WHERE session_id IN ({','.join('?' * len(session_ids))})
+                  AND sounding_index IS NOT NULL
+                GROUP BY session_id, phase_name, sounding_index
+                ORDER BY session_id, phase_name, sounding_index
                 """
-                sounding_results = conn.execute(soundings_query, [session_id]).fetchall()
+                sounding_results = conn.execute(soundings_query, session_ids).fetchall()
 
-                for s_phase, s_idx, s_winner, s_cost, s_model in sounding_results:
-                    if s_phase not in soundings_map:
-                        soundings_map[s_phase] = {
+                for sid, s_phase, s_idx, s_winner, s_cost, s_model in sounding_results:
+                    if sid not in soundings_by_session:
+                        soundings_by_session[sid] = {}
+                    if s_phase not in soundings_by_session[sid]:
+                        soundings_by_session[sid][s_phase] = {
                             'total': 0,
                             'winner_index': None,
                             'attempts': [],
@@ -1097,17 +1099,17 @@ def get_cascade_instances(cascade_id):
                         }
 
                     s_idx_int = int(s_idx) if s_idx is not None else 0
-                    soundings_map[s_phase]['total'] = max(soundings_map[s_phase]['total'], s_idx_int + 1)
+                    soundings_by_session[sid][s_phase]['total'] = max(soundings_by_session[sid][s_phase]['total'], s_idx_int + 1)
 
                     if s_winner:
-                        soundings_map[s_phase]['winner_index'] = s_idx_int
+                        soundings_by_session[sid][s_phase]['winner_index'] = s_idx_int
 
-                    # Get turn breakdown for this sounding
+                    # Get turn breakdown for this sounding (from batch 8)
                     turn_key = (s_phase, s_idx_int)
-                    turns = turn_costs_map.get(turn_key, [])
-                    soundings_map[s_phase]['max_turns'] = max(soundings_map[s_phase]['max_turns'], len(turns))
+                    turns = turn_costs_by_session.get(sid, {}).get(turn_key, [])
+                    soundings_by_session[sid][s_phase]['max_turns'] = max(soundings_by_session[sid][s_phase]['max_turns'], len(turns))
 
-                    soundings_map[s_phase]['attempts'].append({
+                    soundings_by_session[sid][s_phase]['attempts'].append({
                         'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
@@ -1115,145 +1117,200 @@ def get_cascade_instances(cascade_id):
                         'model': s_model
                     })
             except Exception as e:
-                print(f"[ERROR] Soundings query: {e}")
+                print(f"[ERROR] Batch soundings query: {e}")
 
-            # Get message counts per phase
-            message_counts = {}
+        # Batch 11: Get message counts for all sessions
+        message_counts_by_session = {}
+        if session_ids:
             try:
                 msg_query = """
                 SELECT
+                    session_id,
                     phase_name,
                     COUNT(*) as msg_count
                 FROM unified_logs
-                WHERE session_id = ? AND phase_name IS NOT NULL
-                    AND node_type IN ('agent', 'tool_result', 'user', 'system')
-                GROUP BY phase_name
-                """
-                msg_results = conn.execute(msg_query, [session_id]).fetchall()
-                for m_phase, m_count in msg_results:
-                    message_counts[m_phase] = int(m_count)
+                WHERE session_id IN ({})
+                  AND phase_name IS NOT NULL
+                  AND node_type IN ('agent', 'tool_result', 'user', 'system')
+                GROUP BY session_id, phase_name
+                """.format(','.join('?' * len(session_ids)))
+                msg_results = conn.execute(msg_query, session_ids).fetchall()
+                for sid, m_phase, m_count in msg_results:
+                    if sid not in message_counts_by_session:
+                        message_counts_by_session[sid] = {}
+                    message_counts_by_session[sid][m_phase] = int(m_count)
             except Exception as e:
-                print(f"[ERROR] Message counts query: {e}")
+                print(f"[ERROR] Batch message counts query: {e}")
 
-            # Get phase-level data (need both role and node_type for status detection)
-            phases_query = """
-            SELECT
-                phase_name,
-                node_type,
-                role,
-                content_json,
-                model,
-                sounding_index,
-                is_winner
-            FROM unified_logs
-            WHERE session_id = ? AND phase_name IS NOT NULL
-            ORDER BY timestamp
-            """
-            phase_results = conn.execute(phases_query, [session_id]).fetchall()
+        # Batch 12: Get phase-level data for all sessions (LIMITED to prevent huge result sets)
+        phases_data_by_session = {}
+        if session_ids:
+            try:
+                # Get aggregated phase data instead of all rows
+                # IMPORTANT: Use argMax for node_type/role to get the MOST RECENT value,
+                # not MAX which does lexicographic sorting (would return 'user' > 'agent')
+                phases_query = """
+                SELECT
+                    session_id,
+                    phase_name,
+                    argMax(node_type, timestamp) as last_node_type,
+                    argMax(role, timestamp) as last_role,
+                    argMax(content_json, timestamp) as last_content,
+                    argMax(model, timestamp) as last_model,
+                    MAX(sounding_index) as max_sounding_index,
+                    MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as has_winner,
+                    MIN(timestamp) as phase_start,
+                    MAX(timestamp) as phase_end
+                FROM unified_logs
+                WHERE session_id IN ({})
+                  AND phase_name IS NOT NULL
+                GROUP BY session_id, phase_name
+                ORDER BY session_id, phase_start
+                """.format(','.join('?' * len(session_ids)))
+                phase_results = conn.execute(phases_query, session_ids).fetchall()
 
-            # Group by phase to determine status and output
-            phases_map = {}
-            for p_row in phase_results:
-                p_name, p_node_type, p_role, p_content, p_model, sounding_idx, is_winner = p_row
-
-                if p_name not in phases_map:
-                    sounding_data = soundings_map.get(p_name, {})
-
-                    # Get turn data for non-sounding phases
-                    turn_key = (p_name, None)
-                    turns = turn_costs_map.get(turn_key, [])
-
-                    # Find phase config to get max_turns
-                    phase_config = None
-                    cascade_file = find_cascade_file(cascade_id)
-                    if cascade_file:
-                        try:
-                            with open(cascade_file) as f:
-                                config = json.load(f)
-                                for p in config.get('phases', []):
-                                    if p.get('name') == p_name:
-                                        phase_config = p
-                                        break
-                        except:
-                            pass
-
-                    max_turns_config = phase_config.get('rules', {}).get('max_turns', 1) if phase_config else 1
-
-                    phases_map[p_name] = {
-                        "name": p_name,
-                        "status": "pending",
-                        "output_snippet": "",
-                        "phase_output": "",  # Full output content for display
-                        "error_message": None,
-                        "model": None,
-                        "has_soundings": p_name in soundings_map,
-                        "sounding_total": sounding_data.get('total', 0),
-                        "sounding_winner": sounding_data.get('winner_index'),
-                        "sounding_attempts": sounding_data.get('attempts', []),
-                        "max_turns_actual": sounding_data.get('max_turns', len(turns)),
-                        "max_turns": max_turns_config,
-                        "turn_costs": turns,
-                        "tool_calls": tool_calls_map.get(p_name, []),
-                        "message_count": message_counts.get(p_name, 0),
-                        "avg_cost": phase_costs_map.get(p_name, 0.0),
-                        "avg_duration": 0.0
+                for p_row in phase_results:
+                    sid, p_name, p_node_type, p_role, p_content, p_model, max_sounding, has_winner, phase_start, phase_end = p_row
+                    if sid not in phases_data_by_session:
+                        phases_data_by_session[sid] = {}
+                    phases_data_by_session[sid][p_name] = {
+                        'last_node_type': p_node_type,
+                        'last_role': p_role,
+                        'last_content': p_content,
+                        'last_model': p_model,
+                        'max_sounding_index': max_sounding,
+                        'has_winner': has_winner
                     }
+            except Exception as e:
+                print(f"[ERROR] Batch phases query: {e}")
 
-                # Update status based on node_type AND role
-                # After unified logging refactor:
-                # - node_type="phase" with role="phase_start" → phase starting
-                # - node_type="agent" with role="assistant" → agent output
-                # - node_type="phase" with role="phase_complete" → phase done
+        instances = []
+        for session_row in session_results:
+            session_id, session_cascade_id, species_hashes, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
 
-                is_phase_start = (p_node_type == "phase_start") or (p_node_type == "phase" and p_role == "phase_start")
+            # Get models from batch query
+            models_used = models_by_session.get(session_id, [])
+
+            # Get input data from batch query (Batch 7)
+            input_data = input_data_by_session.get(session_id, {})
+
+            # Get phase costs from batch query
+            phase_costs_map = phase_costs_by_session.get(session_id, {})
+
+            # Get turn-level costs from batch query (Batch 8)
+            turn_costs_map = turn_costs_by_session.get(session_id, {})
+
+            # Get tool calls from batch query (Batch 9)
+            tool_calls_map = tool_calls_by_session.get(session_id, {})
+
+            # Get sounding data from batch query (Batch 10)
+            soundings_map = soundings_by_session.get(session_id, {})
+
+            # Get message counts from batch query (Batch 11)
+            message_counts = message_counts_by_session.get(session_id, {})
+
+            # Get phase-level data from batch query (Batch 12)
+            phases_data = phases_data_by_session.get(session_id, {})
+
+            # Load cascade config once for phase max_turns (moved outside the loop)
+            cascade_config = None
+            cascade_file = find_cascade_file(cascade_id)
+            if cascade_file:
+                try:
+                    with open(cascade_file) as f:
+                        cascade_config = json.load(f)
+                except:
+                    pass
+
+            # Build phases_map from batched data
+            phases_map = {}
+            for p_name, p_data in phases_data.items():
+                sounding_data = soundings_map.get(p_name, {})
+
+                # Get turn data for non-sounding phases
+                turn_key = (p_name, None)
+                turns = turn_costs_map.get(turn_key, [])
+
+                # Find phase config to get max_turns
+                phase_config = None
+                if cascade_config:
+                    for p in cascade_config.get('phases', []):
+                        if p.get('name') == p_name:
+                            phase_config = p
+                            break
+
+                max_turns_config = phase_config.get('rules', {}).get('max_turns', 1) if phase_config else 1
+
+                # Determine status from the last node_type/role
+                p_node_type = p_data.get('last_node_type')
+                p_role = p_data.get('last_role')
+                p_content = p_data.get('last_content')
+                p_model = p_data.get('last_model')
+
+                # Default status
+                status = "pending"
+                output_snippet = ""
+                phase_output = ""
+                error_message = None
+
+                # Determine status based on node_type AND role
                 is_phase_complete = (p_node_type == "phase_complete") or (p_node_type == "phase" and p_role == "phase_complete")
                 is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
+                is_error = p_node_type == "error" or (p_node_type and "error" in str(p_node_type).lower())
 
-                if is_phase_start:
-                    phases_map[p_name]["status"] = "running"
-                    phases_map[p_name]["model"] = p_model
-
-                elif is_phase_complete:
-                    # Phase complete - just mark as completed, don't overwrite agent output
-                    phases_map[p_name]["status"] = "completed"
-
-                elif is_agent_output:
-                    # Agent output - this is the actual LLM response we want to capture
-                    phases_map[p_name]["status"] = "completed"
+                if is_phase_complete or is_agent_output:
+                    status = "completed"
                     if p_content and isinstance(p_content, str):
                         try:
                             content_obj = json.loads(p_content)
                             if isinstance(content_obj, str):
-                                phases_map[p_name]["output_snippet"] = content_obj[:200]
-                                phases_map[p_name]["phase_output"] = content_obj  # Full output
+                                output_snippet = content_obj[:200]
+                                phase_output = content_obj
                             elif isinstance(content_obj, dict):
-                                # Check for common content patterns
                                 if 'content' in content_obj:
                                     full_output = str(content_obj['content'])
                                 elif 'result' in content_obj:
                                     full_output = str(content_obj['result'])
                                 else:
                                     full_output = str(content_obj)
-                                phases_map[p_name]["output_snippet"] = full_output[:200]
-                                phases_map[p_name]["phase_output"] = full_output  # Full output
+                                output_snippet = full_output[:200]
+                                phase_output = full_output
                         except:
-                            phases_map[p_name]["output_snippet"] = str(p_content)[:200]
-                            phases_map[p_name]["phase_output"] = str(p_content)  # Full output
-
-                elif p_node_type == "error" or (p_node_type and "error" in p_node_type.lower()):
-                    phases_map[p_name]["status"] = "error"
+                            output_snippet = str(p_content)[:200]
+                            phase_output = str(p_content)
+                elif is_error:
+                    status = "error"
                     if p_content:
                         try:
-                            if isinstance(p_content, str):
-                                content_obj = json.loads(p_content)
-                                error_msg = str(content_obj)[:200] if content_obj else str(p_content)[:200]
-                            else:
-                                error_msg = str(p_content)[:200]
-                            phases_map[p_name]["error_message"] = error_msg
+                            content_obj = json.loads(p_content) if isinstance(p_content, str) else p_content
+                            error_message = str(content_obj)[:200]
                         except:
-                            phases_map[p_name]["error_message"] = str(p_content)[:200]
+                            error_message = str(p_content)[:200]
+                elif p_node_type:  # Has activity but not complete
+                    status = "running"
 
-                if sounding_idx is not None:
+                phases_map[p_name] = {
+                    "name": p_name,
+                    "status": status,
+                    "output_snippet": output_snippet,
+                    "phase_output": phase_output,
+                    "error_message": error_message,
+                    "model": p_model,
+                    "has_soundings": p_name in soundings_map,
+                    "sounding_total": sounding_data.get('total', 0),
+                    "sounding_winner": sounding_data.get('winner_index'),
+                    "sounding_attempts": sounding_data.get('attempts', []),
+                    "max_turns_actual": sounding_data.get('max_turns', len(turns)),
+                    "max_turns": max_turns_config,
+                    "turn_costs": turns,
+                    "tool_calls": tool_calls_map.get(p_name, []),
+                    "message_count": message_counts.get(p_name, 0),
+                    "avg_cost": phase_costs_map.get(p_name, 0.0),
+                    "avg_duration": 0.0
+                }
+
+                # Handle soundings winner model (still need this for multi-model phases)
+                if sounding_data and sounding_data.get('winner_index') is not None:
                     phases_map[p_name]["has_soundings"] = True
 
             # Get final output from batch query
@@ -1262,7 +1319,15 @@ def get_cascade_instances(cascade_id):
             # Get errors from batch query
             error_list = errors_by_session.get(session_id, [])
             error_count = len(error_list)
-            cascade_status = "failed" if error_count > 0 else "success"
+
+            # Determine cascade status: failed > running > success
+            has_running_phase = any(p.get("status") == "running" for p in phases_map.values())
+            if error_count > 0:
+                cascade_status = "failed"
+            elif has_running_phase:
+                cascade_status = "running"
+            else:
+                cascade_status = "success"
 
             # Check state file for status
             try:
@@ -1409,6 +1474,35 @@ def get_session_detail(session_id):
             'session_id': session_id,
             'entries': entries,
             'source': 'clickhouse'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/session-cost/<session_id>', methods=['GET'])
+def get_session_cost(session_id):
+    """Get the total cost for a specific session. Used by completion toasts."""
+    try:
+        conn = get_db_connection()
+
+        query = """
+            SELECT SUM(cost) as total_cost
+            FROM unified_logs
+            WHERE session_id = ?
+              AND cost IS NOT NULL
+              AND cost > 0
+        """
+        result = conn.execute(query, [session_id]).fetchone()
+        conn.close()
+
+        cost = result[0] if result and result[0] else None
+
+        return jsonify({
+            'session_id': session_id,
+            'cost': float(cost) if cost else None
         })
 
     except Exception as e:

@@ -12,11 +12,6 @@
       "instructions": "Calling child cascade with context inheritance.",
       "tackle": [],
       "context": {"from": ["previous"]},
-      "soundings": {
-        "factor": 3,
-        "mutate": false,
-        "evaluator_instructions": "Does this look correct?"
-      },
       "sub_cascades": [
         {
           "ref": "context_demo_child.json",
