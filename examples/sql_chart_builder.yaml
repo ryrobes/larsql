@@ -134,20 +134,20 @@ phases:
 
         CRITICAL: Attempts without a successfully rendered chart image should be heavily penalized.
       models:
-        - x-ai/grok-4.1-fast
-        - openai/gpt-5.2
+        #- x-ai/grok-4.1-fast
+        #- openai/gpt-5.2
         - mistralai/devstral-2512:free
         - nex-agi/deepseek-v3.1-nex-n1:free
         - essentialai/rnj-1-instruct
         - mistralai/ministral-14b-2512
-        - arcee-ai/trinity-mini:free
+        #- arcee-ai/trinity-mini:free
         - deepseek/deepseek-v3.2-speciale
         - prime-intellect/intellect-3
         - amazon/nova-2-lite-v1:free
-        - openai/gpt-5.1-codex-mini
+        #- openai/gpt-5.1-codex-mini
         - anthropic/claude-haiku-4.5
         - allenai/olmo-3-32b-think:free
-        - google/gemini-3-pro-preview
+        #- google/gemini-3-pro-preview
       mutate: false
       model_strategy: random
       reforge:

@@ -1329,7 +1329,10 @@ To use: Output JSON in this format:
         """
         Parse prompt-based tool calls from agent response.
         Looks for JSON structures like: {"tool": "name", "arguments": {...}}
-        Handles both raw JSON and markdown code-fenced JSON (```json ... ```)
+        Handles multiple formats:
+          - Markdown code-fenced JSON: ```json ... ```
+          - XML-style tags: <tool_call> ... </tool_call>
+          - Function call tags: <function_call> ... </function_call>
 
         Returns:
             tuple: (tool_calls, error_message)
@@ -1343,17 +1346,28 @@ To use: Output JSON in this format:
         tool_calls = []
         parse_errors = []
 
-        # ONLY extract JSON from markdown code fences (```json ... ```)
-        # This is the ONLY reliable way to find tool calls
-        # DO NOT try to parse arbitrary {...} patterns - they could be:
-        #   - Python dicts: {'key': 'value'}
-        #   - Python f-strings: {variable}
-        #   - JSON examples in text
-        #   - Formatted output examples
+        # Pattern 1: Markdown code fences (```json ... ```)
+        # This is the preferred/instructed format
         code_fence_pattern = r'```json\s*(\{[^`]*\})\s*```'
         all_json_blocks = re.findall(code_fence_pattern, content, re.DOTALL | re.IGNORECASE)
 
-        # If no ```json blocks found, agent isn't trying to call tools
+        # Pattern 2: XML-style <tool_call> tags (some models are hardcoded to use this)
+        # Matches: <tool_call> {...} </tool_call> or <tool_call>{...}</tool_call>
+        tool_call_tag_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
+        xml_tool_calls = re.findall(tool_call_tag_pattern, content, re.DOTALL | re.IGNORECASE)
+        all_json_blocks.extend(xml_tool_calls)
+
+        # Pattern 3: <function_call> tags (another common variant)
+        function_call_tag_pattern = r'<function_call>\s*(\{.*?\})\s*</function_call>'
+        function_calls = re.findall(function_call_tag_pattern, content, re.DOTALL | re.IGNORECASE)
+        all_json_blocks.extend(function_calls)
+
+        # Pattern 4: <tools> or <tool> tags (yet another variant some models use)
+        tools_tag_pattern = r'<tools?>\s*(\{.*?\})\s*</tools?>'
+        tools_calls = re.findall(tools_tag_pattern, content, re.DOTALL | re.IGNORECASE)
+        all_json_blocks.extend(tools_calls)
+
+        # If no blocks found, agent isn't trying to call tools
         # This is fine - phase might not have tools, or agent is just responding
 
         for block_idx, block in enumerate(all_json_blocks):
@@ -3711,10 +3725,16 @@ Use only numbers 0-100 for scores."""
                 "type": mutation_type
             })
 
-        # Execute soundings sequentially - all logs go to the same session
-        # Each sounding resets state from snapshot, executes, then captures results
-        sounding_results = []
-        for i in range(factor):
+        # Parallel execution setup
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from .echo import Echo
+        max_parallel = phase.soundings.max_parallel or 3
+        max_workers = min(factor, max_parallel)
+        console.print(f"{indent}  [dim]Parallel workers: {max_workers}[/dim]")
+
+        # Define worker function that creates isolated runner with SAME session_id
+        def run_single_sounding(i: int) -> dict:
+            """Execute a single sounding with isolated state but same session for logging."""
             mutation_info = sounding_mutations[i]
             sounding_trace = sounding_traces[i]
             sounding_model = assigned_models[i]
@@ -3724,21 +3744,37 @@ Use only numbers 0-100 for scores."""
                          f" [dim]({sounding_model})[/dim]")
 
             try:
-                # Reset to snapshot for this sounding
-                self.context_messages = context_snapshot.copy()
-                self.echo.state = echo_state_snapshot.copy()
-                self.echo.history = echo_history_snapshot.copy()
-                self.echo.lineage = echo_lineage_snapshot.copy()
-                self.model = sounding_model
+                # Create isolated runner with SAME session_id (logs go to same session)
+                sounding_runner = WindlassRunner(
+                    config_path=self.config_path,
+                    session_id=self.session_id,  # SAME session_id - all logs go here
+                    overrides=self.overrides,
+                    depth=self.depth,
+                    parent_trace=sounding_trace,
+                    hooks=self.hooks,
+                    sounding_index=i,
+                    parent_session_id=self.parent_session_id
+                )
+
+                # Replace echo with fresh ISOLATED instance (bypasses SessionManager singleton)
+                # Same session_id means logs still go to the same session in DB
+                sounding_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
+                sounding_runner.echo.state = echo_state_snapshot.copy()
+                sounding_runner.echo.history = echo_history_snapshot.copy()
+                sounding_runner.echo.lineage = echo_lineage_snapshot.copy()
+
+                # Copy context and model
+                sounding_runner.context_messages = context_snapshot.copy()
+                sounding_runner.model = sounding_model
 
                 # Set sounding tracking state
-                self.current_phase_sounding_index = i
-                self.current_mutation_applied = mutation_info['applied']
-                self.current_mutation_type = mutation_info['type']
-                self.current_mutation_template = mutation_info['template']
+                sounding_runner.current_phase_sounding_index = i
+                sounding_runner.current_mutation_applied = mutation_info['applied']
+                sounding_runner.current_mutation_type = mutation_info['type']
+                sounding_runner.current_mutation_template = mutation_info['template']
 
-                # Execute the phase
-                result = self._execute_phase_internal(
+                # Execute the phase on isolated runner
+                result = sounding_runner._execute_phase_internal(
                     phase, input_data, sounding_trace,
                     initial_injection=initial_injection,
                     mutation=mutation_info['applied'],
@@ -3746,7 +3782,7 @@ Use only numbers 0-100 for scores."""
                 )
 
                 # Capture context generated during this sounding
-                sounding_context = self.context_messages[len(context_snapshot):]
+                sounding_context = sounding_runner.context_messages[len(context_snapshot):]
 
                 # Extract images for evaluator
                 from .utils import extract_images_from_messages
@@ -3754,22 +3790,22 @@ Use only numbers 0-100 for scores."""
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
-                sounding_results.append({
+                return {
                     "index": i,
                     "result": result,
                     "context": sounding_context,
                     "images": sounding_images,
                     "trace_id": sounding_trace.id,
-                    "final_state": self.echo.state.copy(),
+                    "final_state": sounding_runner.echo.state.copy(),
                     "mutation_applied": mutation_info['applied'],
                     "mutation_type": mutation_info['type'],
                     "mutation_template": mutation_info['template'],
                     "model": sounding_model
-                })
+                }
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
-                sounding_results.append({
+                return {
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
@@ -3782,7 +3818,19 @@ Use only numbers 0-100 for scores."""
                     "model": sounding_model,
                     "failed": True,
                     "error": str(e)
-                })
+                }
+
+        # Execute soundings in parallel - all logs go to same session
+        sounding_results = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(run_single_sounding, i): i for i in range(factor)}
+
+            for future in as_completed(futures):
+                result = future.result()
+                sounding_results.append(result)
+
+        # Sort results by index to maintain consistent ordering for evaluator
+        sounding_results.sort(key=lambda x: x['index'])
 
         # Log errors after parallel completion
         for sr in sounding_results:
@@ -4658,75 +4706,104 @@ Refinement directive: {reforge_config.honing_prompt}
             # Build full reforge context (shared across all refinements)
             full_reforge_context = context_snapshot.copy() + refinement_context_messages
 
-            # Run mini-soundings for this reforge step - all logs go to same session
-            reforge_results = []
-            for i in range(reforge_config.factor_per_step):
-                console.print(f"{indent}    [cyan]🔨 Refinement {i+1}/{reforge_config.factor_per_step}[/cyan]")
+            # Parallel execution setup for reforge
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from .echo import Echo
+            factor_per_step = reforge_config.factor_per_step
+            max_parallel = phase.soundings.max_parallel or 3
+            max_workers = min(factor_per_step, max_parallel)
+            console.print(f"{indent}    [dim]Parallel workers: {max_workers}[/dim]")
 
-                # Set current sounding index for this refinement attempt
-                # This ensures all messages logged during reforge have sounding_index
-                self.current_phase_sounding_index = i
-
-                # Create trace for this refinement attempt
+            # Pre-create traces for all refinements
+            refinement_traces = []
+            for i in range(factor_per_step):
                 refinement_trace = reforge_trace.create_child("refinement_attempt", f"attempt_{i+1}")
+                refinement_traces.append(refinement_trace)
 
-                # Reset state to snapshot (context will be passed via pre_built_context)
-                self.echo.state = echo_state_snapshot.copy()
-                self.echo.history = echo_history_snapshot.copy()
-                self.echo.lineage = echo_lineage_snapshot.copy()
+            # Define worker function that creates isolated runner with SAME session_id
+            def run_single_refinement(i: int) -> dict:
+                """Execute a single refinement with isolated state but same session for logging."""
+                refinement_trace = refinement_traces[i]
+
+                console.print(f"{indent}    [cyan]🔨 Refinement {i+1}/{factor_per_step}[/cyan]")
 
                 try:
-                    # Pass context with images via pre_built_context to avoid it being cleared
-                    result = self._execute_phase_internal(
+                    # Create isolated runner with SAME session_id (logs go to same session)
+                    refinement_runner = WindlassRunner(
+                        config_path=self.config_path,
+                        session_id=self.session_id,  # SAME session_id - all logs go here
+                        overrides=self.overrides,
+                        depth=self.depth,
+                        parent_trace=refinement_trace,
+                        hooks=self.hooks,
+                        sounding_index=i,
+                        parent_session_id=self.parent_session_id
+                    )
+
+                    # Replace echo with fresh ISOLATED instance (bypasses SessionManager singleton)
+                    refinement_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
+                    refinement_runner.echo.state = echo_state_snapshot.copy()
+                    refinement_runner.echo.history = echo_history_snapshot.copy()
+                    refinement_runner.echo.lineage = echo_lineage_snapshot.copy()
+
+                    # Copy context
+                    refinement_runner.context_messages = context_snapshot.copy()
+
+                    # Set tracking state
+                    refinement_runner.current_phase_sounding_index = i
+                    refinement_runner.current_reforge_step = step
+
+                    # Execute the phase on isolated runner
+                    result = refinement_runner._execute_phase_internal(
                         refine_phase, input_data, refinement_trace,
                         pre_built_context=full_reforge_context
                     )
 
                     # Capture refined context
-                    refinement_context = self.context_messages[len(context_snapshot):]
+                    refinement_context = refinement_runner.context_messages[len(context_snapshot):]
 
-                    # Extract images from this reforge attempt for evaluator (like soundings)
+                    # Extract images from this reforge attempt for evaluator
                     from .utils import extract_images_from_messages
                     reforge_images = extract_images_from_messages(refinement_context)
 
-                    reforge_results.append({
+                    console.print(f"{indent}      [green]✓ Refinement {i+1} complete[/green]")
+
+                    return {
                         "index": i,
                         "result": result,
                         "context": refinement_context,
-                        "images": reforge_images,  # List of (base64_data, description) tuples for evaluator
+                        "images": reforge_images,
                         "trace_id": refinement_trace.id,
-                        "final_state": self.echo.state.copy()
-                    })
-
-                    console.print(f"{indent}      [green]✓ Refinement {i+1} complete[/green]")
-
-                    # Add refinement attempt to echo history for visualization
-                    self.echo.add_history({
-                        "role": "reforge_attempt",
-                        "content": str(result)[:150] if result else "Completed",
-                        "node_type": "reforge_attempt"
-                    }, trace_id=refinement_trace.id, parent_id=reforge_trace.id, node_type="reforge_attempt",
-                       metadata={
-                           "phase_name": phase.name,
-                           "reforge_step": step,
-                           "attempt_index": i,
-                           "is_winner": False,  # Updated later
-                           "semantic_actor": "reforge_agent",
-                           "semantic_purpose": "generation"
-                       })
+                        "final_state": refinement_runner.echo.state.copy()
+                    }
 
                 except Exception as e:
                     console.print(f"{indent}      [red]✗ Refinement {i+1} failed: {e}[/red]")
                     log_message(self.session_id, "refinement_error", str(e),
                                trace_id=refinement_trace.id, parent_id=reforge_trace.id,
                                node_type="error", depth=self.depth, reforge_step=step)
-                    reforge_results.append({
+                    return {
                         "index": i,
                         "result": f"[ERROR: {str(e)}]",
                         "context": [],
+                        "images": [],
                         "trace_id": refinement_trace.id,
-                        "final_state": {}
-                    })
+                        "final_state": {},
+                        "failed": True,
+                        "error": str(e)
+                    }
+
+            # Execute refinements in parallel - all logs go to same session
+            reforge_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(run_single_refinement, i): i for i in range(factor_per_step)}
+
+                for future in as_completed(futures):
+                    result = future.result()
+                    reforge_results.append(result)
+
+            # Sort results by index to maintain consistent ordering for evaluator
+            reforge_results.sort(key=lambda x: x['index'])
 
             # Reset to snapshot before evaluation
             self.context_messages = context_snapshot.copy()

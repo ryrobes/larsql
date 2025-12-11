@@ -60,7 +60,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
         if (!graphData) {
           setLoading(true);
         }
-        console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1}, lastUpdate=${lastUpdate})`);
+        //console.log(`[MermaidPreview] Fetching graph for ${sessionId} (attempt ${attempt + 1}/${maxRetries + 1}, lastUpdate=${lastUpdate})`);
 
         const response = await fetch(`http://localhost:5001/api/mermaid/${sessionId}`, {
           signal: abortController.signal
@@ -99,14 +99,14 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
           !graphData || lastRawContent !== rawContent;
 
         if (!contentChanged) {
-          console.log(`[MermaidPreview] No changes detected for ${sessionId} (mtime=${newMtime})`);
+          //console.log(`[MermaidPreview] No changes detected for ${sessionId} (mtime=${newMtime})`);
           setLoading(false);
           return;
         }
 
         // Mutate mermaid colors to match UI theme
         const mutatedMermaid = mutateMermaidColors(data.mermaid);
-        console.log(`[MermaidPreview] Loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars, source=${data.source}, mtime=${newMtime})`);
+        //console.log(`[MermaidPreview] Loaded graph for ${sessionId} (${data.mermaid?.length || 0} chars, source=${data.source}, mtime=${newMtime})`);
 
         setLastMtime(newMtime);
         setLastRawContent(rawContent); // Store raw content for accurate comparison
@@ -119,15 +119,15 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
       } catch (err) {
         // Ignore abort errors (expected when effect re-runs)
         if (err.name === 'AbortError') {
-          console.log(`[MermaidPreview] Fetch aborted for ${sessionId} (superseded by newer request)`);
+          //console.log(`[MermaidPreview] Fetch aborted for ${sessionId} (superseded by newer request)`);
           return;
         }
 
-        console.error(`[MermaidPreview] Fetch error for ${sessionId}:`, err);
+        //console.error(`[MermaidPreview] Fetch error for ${sessionId}:`, err);
 
         // Retry on network errors too (but not if aborted)
         if (attempt < maxRetries && !abortController.signal.aborted) {
-          console.log(`[MermaidPreview] Retrying in ${retryDelayMs}ms...`);
+          //console.log(`[MermaidPreview] Retrying in ${retryDelayMs}ms...`);
           setTimeout(() => {
             if (!abortController.signal.aborted) {
               setRetryCount(attempt + 1);
@@ -145,7 +145,7 @@ function MermaidPreview({ sessionId, size = 'small', showMetadata = true, lastUp
     // Reset state only when sessionId actually changes (not on lastUpdate triggers)
     const sessionChanged = prevSessionIdRef.current !== sessionId;
     if (sessionChanged) {
-      console.log(`[MermaidPreview] Session changed from ${prevSessionIdRef.current} to ${sessionId}`);
+      //console.log(`[MermaidPreview] Session changed from ${prevSessionIdRef.current} to ${sessionId}`);
       setGraphData(null);
       setError(null);
       setRetryCount(0);

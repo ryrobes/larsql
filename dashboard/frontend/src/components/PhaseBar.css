@@ -243,3 +243,141 @@
 .individual-sounding-row:hover .sounding-model-label.on-winner-bar {
   color: #0a0a0a;
 }
+
+/* Phase message count in header */
+.phase-message-count {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #6B7280;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  padding: 1px 4px;
+  background: rgba(107, 114, 128, 0.15);
+  border-radius: 3px;
+}
+
+/* Container for sounding row + activity detail */
+.individual-sounding-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Prevent layout recalculation from propagating */
+  contain: layout style;
+}
+
+/* Activity row under each sounding bar */
+.sounding-activity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 50px; /* Align with sounding track (past index label) */
+  height: 16px; /* Fixed height to prevent jumping */
+  min-height: 16px;
+  max-height: 16px;
+  gap: 8px;
+  overflow: hidden; /* Clip any overflow */
+}
+
+.sounding-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0; /* Don't shrink stats */
+  height: 14px;
+}
+
+.sounding-msg-count,
+.sounding-turn-count {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6B7280;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  line-height: 14px; /* Match container height */
+}
+
+.sounding-turn-count {
+  color: #9CA3AF;
+  padding: 0 3px;
+  background: rgba(156, 163, 175, 0.1);
+  border-radius: 2px;
+}
+
+/* Snippet container - holds prefix badge and content */
+.sounding-snippet {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0; /* Critical for flex truncation */
+  flex: 1;
+  overflow: hidden;
+  height: 14px; /* Fixed height */
+}
+
+.sounding-snippet.running {
+  animation: snippetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes snippetPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Snippet prefix badge */
+.snippet-prefix {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: lowercase;
+  line-height: 12px; /* Consistent height */
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.snippet-tool {
+  background: rgba(217, 165, 83, 0.25);
+  color: #D9A553;
+}
+
+.snippet-result {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.snippet-assistant {
+  background: rgba(74, 158, 221, 0.2);
+  color: #4A9EDD;
+}
+
+.snippet-ward {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.snippet-default {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9CA3AF;
+}
+
+/* Snippet content - truncates with ellipsis */
+.snippet-content {
+  font-size: 9px;
+  font-weight: 400;
+  color: #6B7280;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0; /* Critical for flex truncation */
+  line-height: 14px; /* Match container height */
+}
+
+.sounding-snippet.running .snippet-content {
+  color: #9CA3AF;
+}

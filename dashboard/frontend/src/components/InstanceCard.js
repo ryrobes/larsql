@@ -5,9 +5,7 @@ import RichMarkdown from './RichMarkdown';
 import PhaseBar from './PhaseBar';
 import CascadeBar from './CascadeBar';
 import MermaidPreview from './MermaidPreview';
-import ImageGallery from './ImageGallery';
-import AudioGallery from './AudioGallery';
-import HumanInputDisplay from './HumanInputDisplay';
+import MediaGalleryFooter from './MediaGalleryFooter';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar from './ModelCostBar';
 import VideoSpinner from './VideoSpinner';
@@ -666,6 +664,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [wideChart, setWideChart] = useState(false);
+  const [chartCollapsed, setChartCollapsed] = useState(false);
   const [waitingForData, setWaitingForData] = useState(false); // Running but no data yet
   const [historicalInstances, setHistoricalInstances] = useState([]); // For progress bar comparison
   const [, setTick] = useState(0); // Force re-render for progress bar animation
@@ -734,8 +733,25 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       // Group entries by phase
       const phaseMap = {};
+      // Track which phases have "real" content (not just structural entries)
+      const phasesWithRealContent = new Set();
+
       entries.forEach(entry => {
-        const phaseName = entry.phase_name || 'Initialization';
+        // Normalize phase name - trim whitespace, handle empty strings
+        let phaseName = entry.phase_name;
+        if (!phaseName || (typeof phaseName === 'string' && phaseName.trim() === '')) {
+          phaseName = 'Initialization';
+        } else {
+          phaseName = phaseName.trim();
+        }
+
+        // Track if this entry represents real content (not just structural)
+        const isRealContent = entry.node_type &&
+          !['cascade', 'phase_start', 'session_start'].includes(entry.node_type);
+        if (isRealContent) {
+          phasesWithRealContent.add(phaseName);
+        }
+
         if (!phaseMap[phaseName]) {
           phaseMap[phaseName] = {
             name: phaseName,
@@ -771,19 +787,90 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               index: idx,
               cost: 0,
               is_winner: false,
-              model: null
+              model: null,
+              message_count: 0,
+              last_activity: null,
+              last_tool: null,
+              turn_count: 0,
+              last_snippet: null
             });
           }
-          phaseMap[phaseName].soundingAttempts.get(idx).cost += entryCost;
+          const soundingData = phaseMap[phaseName].soundingAttempts.get(idx);
+          soundingData.cost += entryCost;
+          soundingData.message_count++;
+
+          // Track turn count per sounding
+          if (entry.turn_number !== null && entry.turn_number !== undefined) {
+            soundingData.turn_count = Math.max(soundingData.turn_count, entry.turn_number + 1);
+          }
+
+          // Track last activity for this sounding
+          if (entry.node_type) {
+            soundingData.last_activity = entry.node_type;
+          }
+
+          // Track last tool called and build snippet
+          if (entry.node_type === 'tool_call') {
+            try {
+              const toolMeta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
+              if (toolMeta?.tool_name) {
+                soundingData.last_tool = toolMeta.tool_name;
+                // Build snippet from tool call args
+                const args = toolMeta.arguments || toolMeta.args;
+                let argSnippet = '';
+                if (args) {
+                  if (typeof args === 'string') {
+                    argSnippet = args;
+                  } else if (typeof args === 'object') {
+                    // Get first meaningful arg value
+                    const vals = Object.values(args).filter(v => v && typeof v === 'string');
+                    argSnippet = vals[0] || JSON.stringify(args);
+                  }
+                }
+                soundingData.last_snippet = {
+                  type: 'tool',
+                  tool: toolMeta.tool_name,
+                  content: argSnippet
+                };
+              }
+            } catch (e) {}
+          } else if (entry.node_type === 'tool_result') {
+            // Keep last_tool but update snippet with result preview
+            try {
+              const content = entry.content;
+              if (content && typeof content === 'string') {
+                soundingData.last_snippet = {
+                  type: 'result',
+                  tool: soundingData.last_tool,
+                  content: content
+                };
+              }
+            } catch (e) {}
+          } else if (entry.role === 'assistant' && entry.content) {
+            // Assistant message - show content preview
+            const content = typeof entry.content === 'string'
+              ? entry.content
+              : (entry.content?.content || JSON.stringify(entry.content));
+            soundingData.last_snippet = {
+              type: 'assistant',
+              content: content
+            };
+          } else if (entry.node_type === 'ward_check' || entry.node_type === 'ward_result') {
+            soundingData.last_snippet = {
+              type: 'ward',
+              content: entry.content || 'validation'
+            };
+          }
+
           // Track winner status - if ANY entry has is_winner: true, mark as winner
           if (entry.is_winner === true) {
-            phaseMap[phaseName].soundingAttempts.get(idx).is_winner = true;
+            soundingData.is_winner = true;
           }
           // Track model for this sounding (use first non-null model found)
           // Use lookup to get consistent display name even when model_requested is null
           const entryModel = getDisplayModelEarly(entry);
-          if (entryModel && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
-            phaseMap[phaseName].soundingAttempts.get(idx).model = entryModel;
+          if (entryModel && !soundingData.model) {
+            soundingData.model = entryModel;
           }
         }
         // Track max turns
@@ -797,10 +884,15 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       // Find the last phase with entries - if session is running, this is the active phase
       const phaseNames = Object.keys(phaseMap);
-      const phasesWithEntries = phaseNames.filter(name => phaseMap[name].entries.length > 0);
+      const phasesWithEntries = phaseNames.filter(name =>
+        phaseMap[name].entries.length > 0 && phasesWithRealContent.has(name)
+      );
       const lastActivePhase = phasesWithEntries.length > 0 ? phasesWithEntries[phasesWithEntries.length - 1] : null;
 
-      const phases = Object.values(phaseMap).map(phase => {
+      // Only process phases that have real content (not just structural entries)
+      const phases = Object.values(phaseMap)
+        .filter(phase => phasesWithRealContent.has(phase.name))
+        .map(phase => {
         const lastEntryInPhase = phase.entries[phase.entries.length - 1];
         const hasError = phase.entries.some(e => e.node_type === 'error');
         const hasPhaseComplete = phase.entries.some(e => e.node_type === 'phase_complete');
@@ -1273,14 +1365,30 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       {/* Wide Mermaid Chart - at top when wide */}
       {wideChart && (
-        <div className="mermaid-wrapper-top">
-          <MermaidPreview
-            sessionId={instance.session_id}
-            size="small"
-            showMetadata={false}
-            lastUpdate={sessionUpdates?.[instance.session_id]}
-            onLayoutDetected={handleLayoutDetected}
-          />
+        <div className={`mermaid-collapsible ${chartCollapsed ? 'collapsed' : ''}`}>
+          <div
+            className="mermaid-collapse-handle"
+            onClick={() => setChartCollapsed(!chartCollapsed)}
+          >
+            <Icon icon="mdi:graph" width="14" />
+            <span>Execution Graph</span>
+            <Icon
+              icon="mdi:chevron-down"
+              width="16"
+              className={`collapse-chevron ${chartCollapsed ? 'collapsed' : ''}`}
+            />
+          </div>
+          <div className="mermaid-collapse-content">
+            <div className="mermaid-wrapper-top">
+              <MermaidPreview
+                sessionId={instance.session_id}
+                size="small"
+                showMetadata={false}
+                lastUpdate={sessionUpdates?.[instance.session_id]}
+                onLayoutDetected={handleLayoutDetected}
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -1357,14 +1465,30 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
           {/* Mermaid Graph - under inputs (when not wide) */}
           {!wideChart && (
-            <div className="mermaid-wrapper">
-              <MermaidPreview
-                sessionId={instance.session_id}
-                size="small"
-                showMetadata={false}
-                lastUpdate={sessionUpdates?.[instance.session_id]}
-                onLayoutDetected={handleLayoutDetected}
-              />
+            <div className={`mermaid-collapsible ${chartCollapsed ? 'collapsed' : ''}`}>
+              <div
+                className="mermaid-collapse-handle"
+                onClick={() => setChartCollapsed(!chartCollapsed)}
+              >
+                <Icon icon="mdi:graph" width="14" />
+                <span>Execution Graph</span>
+                <Icon
+                  icon="mdi:chevron-down"
+                  width="16"
+                  className={`collapse-chevron ${chartCollapsed ? 'collapsed' : ''}`}
+                />
+              </div>
+              <div className="mermaid-collapse-content">
+                <div className="mermaid-wrapper">
+                  <MermaidPreview
+                    sessionId={instance.session_id}
+                    size="small"
+                    showMetadata={false}
+                    lastUpdate={sessionUpdates?.[instance.session_id]}
+                    onLayoutDetected={handleLayoutDetected}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1392,28 +1516,25 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               />
             )}
 
-            {/* Phase bars with images */}
+            {/* Phase bars */}
             {(() => {
-              const costs = (instance.phases || []).map(p => p.avg_cost || 0);
+              // Filter to only phases with content to prevent layout jumping
+              const phasesWithContent = (instance.phases || []).filter(p => p.message_count > 0);
+              const costs = phasesWithContent.map(p => p.avg_cost || 0);
               const maxCost = Math.max(...costs, 0.01);
               const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
               const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
 
-              return (instance.phases || []).map((phase, idx) => (
-                <React.Fragment key={idx}>
+              return phasesWithContent.map((phase, idx) => (
+                <div key={phase.name} className="phase-container" style={{ contain: 'layout style' }}>
                   <PhaseBar
                     phase={phase}
                     maxCost={normalizedMax}
                     status={phase.status}
                     phaseIndex={idx}
                   />
-                  <ImageGallery
-                    sessionId={instance.session_id}
-                    phaseName={phase.name}
-                    isRunning={isSessionRunning || isFinalizing}
-                    sessionUpdate={sessionUpdates?.[instance.session_id]}
-                  />
-                  <AudioGallery
+                  {/* DEBUG: Commenting out to test if these cause jumping */}
+                  {/* <AudioGallery
                     sessionId={instance.session_id}
                     phaseName={phase.name}
                     isRunning={isSessionRunning || isFinalizing}
@@ -1424,8 +1545,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
                     phaseName={phase.name}
                     isRunning={isSessionRunning || isFinalizing}
                     sessionUpdate={sessionUpdates?.[instance.session_id]}
-                  />
-                </React.Fragment>
+                  /> */}
+                </div>
               ));
             })()}
 
@@ -1438,6 +1559,14 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               </div>
             )}
           </div>
+
+          {/* Media Gallery Footer - Fixed at bottom, shows all images with phase attribution */}
+          <MediaGalleryFooter
+            sessionId={instance.session_id}
+            isRunning={isSessionRunning || isFinalizing}
+            sessionUpdate={sessionUpdates?.[instance.session_id]}
+            phases={instance.phases}
+          />
         </div>
       </div>
     </div>

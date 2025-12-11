@@ -46,6 +46,11 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
           <span className="phase-name">{phase.name}</span>
         </div>
         <div className="phase-metrics">
+          {phase.message_count > 0 && (
+            <span className="phase-message-count" title={`${phase.message_count} messages`}>
+              {phase.message_count} msg
+            </span>
+          )}
           <span className="phase-cost">{formatCost(phase.avg_cost)}</span>
           {status && <StatusIndicator status={status} />}
         </div>
@@ -81,6 +86,53 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
               return parts[parts.length - 1];
             };
 
+            // Helper to format snippet for display
+            const formatSnippet = (attempt) => {
+              const snippet = attempt.last_snippet;
+              if (!snippet) return null;
+
+              // Clean content - remove newlines, collapse whitespace
+              const cleanContent = (str) => {
+                if (!str) return '';
+                return str.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+              };
+
+              const content = cleanContent(snippet.content);
+
+              switch (snippet.type) {
+                case 'tool':
+                  return {
+                    prefix: snippet.tool,
+                    prefixClass: 'snippet-tool',
+                    content: content
+                  };
+                case 'result':
+                  return {
+                    prefix: `${snippet.tool}→`,
+                    prefixClass: 'snippet-result',
+                    content: content
+                  };
+                case 'assistant':
+                  return {
+                    prefix: 'llm',
+                    prefixClass: 'snippet-assistant',
+                    content: content
+                  };
+                case 'ward':
+                  return {
+                    prefix: 'ward',
+                    prefixClass: 'snippet-ward',
+                    content: content
+                  };
+                default:
+                  return {
+                    prefix: snippet.type,
+                    prefixClass: 'snippet-default',
+                    content: content
+                  };
+              }
+            };
+
             return uniqueAttempts.map((attempt) => {
               const isWinner = attempt.is_winner;
               // Sounding is running if phase is running and no winner has been determined yet
@@ -107,29 +159,51 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
               const barOverlapsText = soundingBarWidth > 70;
               const needsDarkText = isWinner && barOverlapsText;
 
+              // Get snippet for display
+              const snippetData = formatSnippet(attempt);
+
               return (
-                <div key={attempt.index} className="individual-sounding-row">
-                  <span className="sounding-index-label">
-                    <span className="source-badge" style={{background: isRunning ? '#D9A553' : '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
-                      S{attempt.index}
+                <div key={attempt.index} className="individual-sounding-container">
+                  <div className="individual-sounding-row">
+                    <span className="sounding-index-label">
+                      <span className="source-badge" style={{background: isRunning ? '#D9A553' : '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
+                        S{attempt.index}
+                      </span>
+                      {isWinner && <span className="winner-icon" title="Winner"><Icon icon="mdi:trophy" width="14" style={{ color: '#fbbf24' }} /></span>}
+                      {isRunning && <span className="running-icon" title="Running"><Icon icon="mdi:progress-clock" width="14" style={{ color: '#fbbf24' }} /></span>}
                     </span>
-                    {isWinner && <span className="winner-icon" title="Winner"><Icon icon="mdi:trophy" width="14" style={{ color: '#fbbf24' }} /></span>}
-                    {isRunning && <span className="running-icon" title="Running"><Icon icon="mdi:progress-clock" width="14" style={{ color: '#fbbf24' }} /></span>}
-                  </span>
-                  <div className="individual-sounding-track">
-                    <div
-                      className={soundingBarClass}
-                      style={{ width: `${soundingBarWidth}%` }}
-                      title={`Sounding ${attempt.index}: ${isRunning ? 'Running...' : formatCost(attempt.cost)}${attempt.model ? ` (${attempt.model})` : ''}`}
-                    >
-                      <span className="sounding-cost-label">{isRunning ? '...' : formatCost(attempt.cost)}</span>
-                    </div>
-                    {shortModel && (
-                      <span
-                        className={`sounding-model-label ${needsDarkText ? 'on-winner-bar' : ''}`}
-                        title={attempt.model}
+                    <div className="individual-sounding-track">
+                      <div
+                        className={soundingBarClass}
+                        style={{ width: `${soundingBarWidth}%` }}
+                        title={`Sounding ${attempt.index}: ${isRunning ? 'Running...' : formatCost(attempt.cost)}${attempt.model ? ` (${attempt.model})` : ''}`}
                       >
-                        {shortModel}
+                        <span className="sounding-cost-label">{isRunning ? '...' : formatCost(attempt.cost)}</span>
+                      </div>
+                      {shortModel && (
+                        <span
+                          className={`sounding-model-label ${needsDarkText ? 'on-winner-bar' : ''}`}
+                          title={attempt.model}
+                        >
+                          {shortModel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Activity detail row under sounding bar */}
+                  <div className="sounding-activity-row">
+                    <span className="sounding-stats">
+                      {attempt.message_count > 0 && (
+                        <span className="sounding-msg-count">{attempt.message_count} msg</span>
+                      )}
+                      {attempt.turn_count > 0 && (
+                        <span className="sounding-turn-count">T{attempt.turn_count}</span>
+                      )}
+                    </span>
+                    {snippetData && (
+                      <span className={`sounding-snippet ${isRunning ? 'running' : ''}`} title={snippetData.content}>
+                        <span className={`snippet-prefix ${snippetData.prefixClass}`}>{snippetData.prefix}</span>
+                        <span className="snippet-content">{snippetData.content}</span>
                       </span>
                     )}
                   </div>
