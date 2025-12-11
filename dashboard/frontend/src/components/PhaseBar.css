@@ -53,7 +53,7 @@
 .phase-cost {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -69,14 +69,14 @@
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.6));
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.3), rgba(74, 158, 221, 0.6));
   /* Hint browser to optimize for width changes */
   will-change: width;
 }
 
 /* Status-based colors (for instances) */
 .phase-bar-fill.status-completed {
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.3), rgba(45, 212, 191, 0.7));
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.3), rgba(74, 158, 221, 0.7));
 }
 
 .phase-bar-fill.status-running {
@@ -170,13 +170,13 @@
 }
 
 .individual-sounding-bar.winner {
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.4), rgba(45, 212, 191, 0.7));
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.4), rgba(74, 158, 221, 0.7));
   filter: brightness(1.2);
-  box-shadow: 0 0 8px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 0 8px rgba(74, 158, 221, 0.4);
 }
 
 .individual-sounding-bar.loser {
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.15), rgba(45, 212, 191, 0.3));
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.15), rgba(74, 158, 221, 0.3));
   opacity: 0.6;
   filter: saturate(0.5);
 }
@@ -205,7 +205,7 @@
 .sounding-cost-label {
   font-size: 9px;
   font-weight: 700;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
@@ -235,7 +235,7 @@
 /* Dark text for model labels overlapping bright winner bars */
 .sounding-model-label.on-winner-bar {
   color: #0a0a0a;
-  text-shadow: 0 0 2px rgba(45, 212, 191, 0.5);
+  text-shadow: 0 0 2px rgba(74, 158, 221, 0.5);
   font-weight: 600;
   opacity: 1;
 }

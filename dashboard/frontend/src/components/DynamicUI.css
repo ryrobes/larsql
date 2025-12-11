@@ -39,7 +39,7 @@
 .dynamic-ui-submit {
   width: 100%;
   padding: 14px 24px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border: none;
   border-radius: 8px;
   color: white;
@@ -51,7 +51,7 @@
 
 .dynamic-ui-submit:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(167, 139, 250, 0.4);
+  box-shadow: 0 6px 20px rgba(107, 127, 187, 0.4);
 }
 
 .dynamic-ui-submit:disabled {
@@ -70,7 +70,7 @@
 
 .section-label {
   display: block;
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 500;
   margin-bottom: 12px;
   font-size: 0.95em;
@@ -137,7 +137,7 @@
 }
 
 .preview-markdown h1, .preview-markdown h2, .preview-markdown h3 {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin-top: 0;
 }
 
@@ -175,13 +175,13 @@
 }
 
 .confirm-btn.yes {
-  background: rgba(52, 211, 153, 0.1);
-  border-color: #34d399;
-  color: #34d399;
+  background: rgba(94, 234, 212, 0.1);
+  border-color: #5EEAD4;
+  color: #5EEAD4;
 }
 
 .confirm-btn.yes:hover, .confirm-btn.yes.selected {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
   color: white;
 }
 
@@ -216,13 +216,13 @@
 }
 
 .choice-option:hover, .multi-choice-option:hover {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   background: #1a1a2e;
 }
 
 .choice-option.selected, .multi-choice-option.selected {
-  border-color: #a78bfa;
-  background: rgba(167, 139, 250, 0.15);
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.15);
 }
 
 .choice-option.disabled {
@@ -232,7 +232,7 @@
 
 .choice-option input, .multi-choice-option input {
   margin-top: 3px;
-  accent-color: #a78bfa;
+  accent-color: #6B7FBB;
   flex-shrink: 0;
 }
 
@@ -336,7 +336,7 @@
 
 .text-input:focus {
   outline: none;
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 .text-input.multiline {
@@ -385,7 +385,7 @@
   appearance: none;
   width: 20px;
   height: 20px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border-radius: 50%;
   cursor: pointer;
   transition: transform 0.15s;
@@ -398,14 +398,14 @@
 .slider-input::-moz-range-thumb {
   width: 20px;
   height: 20px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border-radius: 50%;
   cursor: pointer;
   border: none;
 }
 
 .slider-value {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 600;
   margin-left: auto;
   font-size: 0.95em;
@@ -413,7 +413,7 @@
 
 /* Form Section */
 .form-title {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin: 0 0 16px 0;
   font-size: 1.1em;
 }
@@ -452,7 +452,7 @@
 
 .field-input:focus, .field-textarea:focus, .field-select:focus {
   outline: none;
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 .field-textarea {
@@ -473,7 +473,7 @@
 }
 
 .field-checkbox-label input {
-  accent-color: #a78bfa;
+  accent-color: #6B7FBB;
 }
 
 /* Group Section */
@@ -499,7 +499,7 @@
 }
 
 .group-title {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin: 0;
   font-size: 1em;
 }

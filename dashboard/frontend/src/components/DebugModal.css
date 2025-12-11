@@ -41,7 +41,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #5A8DC4 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -67,14 +67,14 @@
 }
 
 .view-mode-select:hover {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   background: #222;
 }
 
 .view-mode-select:focus {
   outline: none;
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+  border-color: #6B7FBB;
+  box-shadow: 0 0 0 3px rgba(107, 127, 187, 0.1);
 }
 
 .toggle-structural {
@@ -99,19 +99,19 @@
 }
 
 .toggle-structural.active {
-  background: rgba(167, 139, 250, 0.1);
-  border-color: #a78bfa;
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.1);
+  border-color: #6B7FBB;
+  color: #6B7FBB;
 }
 
 .toggle-structural.active:hover {
-  background: rgba(167, 139, 250, 0.2);
+  background: rgba(107, 127, 187, 0.2);
 }
 
 .dump-button {
-  background: rgba(52, 211, 153, 0.1);
-  border: 2px solid #34d399;
-  color: #34d399;
+  background: rgba(94, 234, 212, 0.1);
+  border: 2px solid #5EEAD4;
+  color: #5EEAD4;
   cursor: pointer;
   padding: 0.5rem 1rem;
   display: flex;
@@ -124,7 +124,7 @@
 }
 
 .dump-button:hover {
-  background: rgba(52, 211, 153, 0.2);
+  background: rgba(94, 234, 212, 0.2);
   transform: translateY(-1px);
 }
 
@@ -207,7 +207,7 @@
 .phase-cost {
   font-size: 1rem;
   font-weight: 700;
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 /* Entries */
@@ -262,7 +262,7 @@
   margin-left: auto;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #34d399;
+  color: #5EEAD4;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -277,15 +277,15 @@
 }
 
 .direction-badge.sent {
-  background: rgba(96, 165, 250, 0.15);
-  color: #60a5fa;
-  border: 1px solid #60a5fa;
+  background: rgba(90, 141, 196, 0.15);
+  color: #5A8DC4;
+  border: 1px solid #5A8DC4;
 }
 
 .direction-badge.received {
-  background: rgba(167, 139, 250, 0.15);
-  color: #a78bfa;
-  border: 1px solid #a78bfa;
+  background: rgba(107, 127, 187, 0.15);
+  color: #6B7FBB;
+  border: 1px solid #6B7FBB;
 }
 
 .time-gap-indicator {
@@ -341,7 +341,7 @@
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
@@ -370,7 +370,7 @@
   border-radius: 3px;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .markdown-content pre {
@@ -389,7 +389,7 @@
 }
 
 .markdown-content blockquote {
-  border-left: 3px solid #a78bfa;
+  border-left: 3px solid #6B7FBB;
   padding-left: 1rem;
   margin: 0.5rem 0;
   color: #aaa;
@@ -397,7 +397,7 @@
 }
 
 .markdown-content a {
-  color: #60a5fa;
+  color: #5A8DC4;
   text-decoration: none;
 }
 
@@ -420,7 +420,7 @@
 
 .markdown-content th {
   background: #1a1a1a;
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 600;
 }
 
@@ -443,7 +443,7 @@
 .cost-amount {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #34d399;
+  color: #5EEAD4;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -505,7 +505,7 @@
 .validator-name {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #60a5fa;
+  color: #5A8DC4;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -518,9 +518,9 @@
 }
 
 .validation-status.passed {
-  background: rgba(52, 211, 153, 0.2);
-  color: #34d399;
-  border: 1px solid #34d399;
+  background: rgba(94, 234, 212, 0.2);
+  color: #5EEAD4;
+  border: 1px solid #5EEAD4;
 }
 
 .validation-status.failed {
@@ -553,8 +553,8 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem;
-  background: rgba(167, 139, 250, 0.05);
-  border: 1px dashed #a78bfa;
+  background: rgba(107, 127, 187, 0.05);
+  border: 1px dashed #6B7FBB;
   border-radius: 6px;
 }
 
@@ -562,13 +562,13 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .sub-cascade-name {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #a78bfa;
+  color: #6B7FBB;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -625,7 +625,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid #222;
-  border-top-color: #a78bfa;
+  border-top-color: #6B7FBB;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 1rem;
@@ -720,8 +720,8 @@
 
 /* Soundings Result Styles */
 .soundings-result-content {
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.15) 0%, rgba(52, 211, 153, 0.05) 100%);
-  border-left: 4px solid #34d399;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.15) 0%, rgba(94, 234, 212, 0.05) 100%);
+  border-left: 4px solid #5EEAD4;
   padding: 1rem;
   border-radius: 8px;
 }
@@ -732,7 +732,7 @@
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   font-weight: 600;
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .result-title {
@@ -740,7 +740,7 @@
 }
 
 .winner-info {
-  color: #34d399;
+  color: #5EEAD4;
   font-weight: 500;
   margin-top: 0.5rem;
   font-size: 0.95rem;
@@ -761,8 +761,8 @@
 }
 
 .sounding-attempt-content.winner {
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.15) 0%, rgba(52, 211, 153, 0.08) 100%);
-  border-left: 4px solid #34d399;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.15) 0%, rgba(94, 234, 212, 0.08) 100%);
+  border-left: 4px solid #5EEAD4;
 }
 
 .attempt-header {
@@ -775,7 +775,7 @@
 }
 
 .sounding-attempt-content.winner .attempt-header {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .attempt-title {
@@ -812,7 +812,7 @@
 
 .inline-image-container:hover {
   transform: scale(1.02);
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   cursor: pointer;
 }
 
@@ -968,11 +968,11 @@
 }
 
 .history-role-user {
-  border-left: 4px solid #60a5fa;
+  border-left: 4px solid #5A8DC4;
 }
 
 .history-role-assistant {
-  border-left: 4px solid #a78bfa;
+  border-left: 4px solid #6B7FBB;
 }
 
 .history-role-system {
@@ -1004,11 +1004,11 @@
 }
 
 .history-role-user .history-message-role {
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .history-role-assistant .history-message-role {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .history-role-system .history-message-role {
@@ -1047,22 +1047,22 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
-  background: rgba(96, 165, 250, 0.1);
-  border: 1px dashed #60a5fa;
+  background: rgba(90, 141, 196, 0.1);
+  border: 1px dashed #5A8DC4;
   border-radius: 6px;
-  color: #60a5fa;
+  color: #5A8DC4;
   font-size: 0.9rem;
 }
 
 .tool-result-part {
-  background: rgba(52, 211, 153, 0.05);
-  border: 1px solid #34d399;
+  background: rgba(94, 234, 212, 0.05);
+  border: 1px solid #5EEAD4;
   border-radius: 6px;
   padding: 0.75rem;
 }
 
 .tool-result-part strong {
-  color: #34d399;
+  color: #5EEAD4;
   display: block;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
@@ -1089,14 +1089,14 @@
   background: rgba(255, 255, 255, 0.02);
   cursor: pointer;
   font-weight: 600;
-  color: #a78bfa;
+  color: #6B7FBB;
   font-size: 0.9rem;
   user-select: none;
   transition: all 0.2s;
 }
 
 .full-request-details summary:hover {
-  background: rgba(167, 139, 250, 0.1);
+  background: rgba(107, 127, 187, 0.1);
 }
 
 .full-request-details pre {

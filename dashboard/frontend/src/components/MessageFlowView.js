@@ -6,6 +6,8 @@ import VideoSpinner from './VideoSpinner';
 import AudioGallery from './AudioGallery';
 import ContextMatrixView from './ContextMatrixView';
 import ContextCrossRefPanel from './ContextCrossRefPanel';
+import SpeciesWidget from './SpeciesWidget';
+import PhaseSpeciesBadges from './PhaseSpeciesBadges';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
@@ -1176,7 +1178,10 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
         <div className="message-flow">
           <div className="flow-header">
             <div className="flow-header-top">
-              <h2>Session: {data.session_id}</h2>
+              <div className="session-title-row">
+                <h2>Session: {data.session_id}</h2>
+                <SpeciesWidget sessionId={data.session_id} />
+              </div>
               {isCurrentSessionRunning() && (
                 <div className="live-indicator">
                   <span className="live-dot"></span>
@@ -1195,6 +1200,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
               <span>Total Messages: {data.total_messages}</span>
               <span>Soundings: {data.soundings.length}</span>
               <span>Reforge Steps: {data.reforge_steps.length}</span>
+              <PhaseSpeciesBadges sessionId={data.session_id} />
             </div>
             {data.cost_summary && (
               <div className="cost-summary">

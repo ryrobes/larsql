@@ -37,7 +37,7 @@
   border-radius: 8px 8px 0 0;
   font-size: 0.8rem;
   font-weight: 500;
-  color: #a78bfa;
+  color: #6B7FBB;
   border: 1px solid #333;
   border-bottom: none;
 }
@@ -63,7 +63,7 @@
 }
 
 .added-label {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .arrow {
@@ -84,7 +84,7 @@
 }
 
 .diff-line.added {
-  background: rgba(52, 211, 153, 0.15);
+  background: rgba(94, 234, 212, 0.15);
 }
 
 .diff-line.removed {
@@ -99,7 +99,7 @@
 }
 
 .diff-line.added .diff-indicator {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .diff-line.removed .diff-indicator {
@@ -111,7 +111,7 @@
 }
 
 .diff-line.added .diff-content {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .diff-line.removed .diff-content {

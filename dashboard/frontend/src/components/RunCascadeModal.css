@@ -54,7 +54,7 @@
 .modal-header h2 {
   margin: 0;
   font-size: 1.5rem;
-  background: linear-gradient(135deg, #2DD4BF 0%, #60E6CE 100%);
+  background: linear-gradient(135deg, #4A9EDD 0%, #60E6CE 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -113,8 +113,8 @@
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #2DD4BF;
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1);
+  border-color: #4A9EDD;
+  box-shadow: 0 0 0 3px rgba(74, 158, 221, 0.1);
 }
 
 .form-group textarea {
@@ -166,8 +166,8 @@
 }
 
 .cascade-file-item:hover {
-  border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.05);
+  border-color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.05);
   transform: translateY(-1px);
 }
 
@@ -179,7 +179,7 @@
 
 .cascade-file-id {
   font-size: 0.85rem;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-family: 'Monaco', 'Courier New', monospace;
   margin-bottom: 0.25rem;
 }
@@ -193,7 +193,7 @@
 /* Selected cascade */
 .cascade-selected {
   background: #0B1219;
-  border: 2px solid #2DD4BF;
+  border: 2px solid #4A9EDD;
   border-radius: 8px;
   padding: 1rem;
   margin-bottom: 1.5rem;
@@ -201,7 +201,7 @@
 
 .cascade-selected h3 {
   margin: 0 0 0.5rem 0;
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .cascade-selected p {
@@ -213,7 +213,7 @@
 .back-button {
   background: #16202A;
   border: 1px solid #2C3B4B;
-  color: #2DD4BF;
+  color: #4A9EDD;
   padding: 0.5rem 1rem;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -223,7 +223,7 @@
 
 .back-button:hover {
   background: #2C3B4B;
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 /* Input fields */
@@ -278,15 +278,15 @@
 }
 
 .button-primary {
-  background: #2DD4BF;
-  border-color: #2DD4BF;
+  background: #4A9EDD;
+  border-color: #4A9EDD;
   color: #0B1219;
 }
 
 .button-primary:hover:not(:disabled) {
   background: #60E6CE;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.3);
+  box-shadow: 0 4px 12px rgba(74, 158, 221, 0.3);
 }
 
 .button-primary:disabled {
@@ -301,6 +301,6 @@
 }
 
 .button-secondary:hover:not(:disabled) {
-  border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
+  border-color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
 }

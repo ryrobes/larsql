@@ -12,7 +12,7 @@
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  border: 1px solid rgba(45, 212, 191, 0.3); /* Glacial Ice border */
+  border: 1px solid rgba(74, 158, 221, 0.3); /* Glacial Ice border */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   /* Fill the wrapper */
   width: 100%;
@@ -21,8 +21,8 @@
 
 .cascade-tile:hover {
   transform: translateY(-4px);
-  border-color: #2DD4BF; /* Glacial Ice */
-  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+  border-color: #4A9EDD; /* Glacial Ice */
+  box-shadow: 0 8px 24px rgba(74, 158, 221, 0.4);
 }
 
 .cascade-tile.no-runs {
@@ -46,8 +46,8 @@
     box-shadow: 0 4px 12px rgba(217, 165, 83, 0.4);
   }
   50% {
-    border-color: #2DD4BF; /* Glacial Ice */
-    box-shadow: 0 8px 24px rgba(45, 212, 191, 0.6);
+    border-color: #4A9EDD; /* Glacial Ice */
+    box-shadow: 0 8px 24px rgba(74, 158, 221, 0.6);
   }
 }
 
@@ -170,7 +170,7 @@
 /* Metric divider for visual separation */
 .metric-divider {
   height: 1px;
-  background: rgba(45, 212, 191, 0.2);
+  background: rgba(74, 158, 221, 0.2);
   margin: 4px 0;
 }
 
@@ -191,7 +191,7 @@
 
 .metric-item .iconify {
   opacity: 0.8;
-  color: #2DD4BF; /* Glacial Ice */
+  color: #4A9EDD; /* Glacial Ice */
 }
 
 /* Special metric colors */
@@ -204,7 +204,7 @@
 }
 
 .metric-item.wards .iconify {
-  color: #2DD4BF; /* Glacial Ice */
+  color: #4A9EDD; /* Glacial Ice */
 }
 
 /* Cost Display - Fixed bottom right corner */
@@ -223,7 +223,7 @@
 .cost-total {
   font-size: 1rem;
   font-weight: 700;
-  color: #2DD4BF; /* Glacial Ice */
+  color: #4A9EDD; /* Glacial Ice */
   text-shadow:
     0 0 8px rgba(0, 0, 0, 0.9),
     0 0 16px rgba(0, 0, 0, 0.7),
@@ -233,7 +233,7 @@
 .cost-avg {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #2DD4BF; /* Glacial Ice */
+  color: #4A9EDD; /* Glacial Ice */
   opacity: 0.6;
   text-shadow:
     0 0 8px rgba(0, 0, 0, 0.9),

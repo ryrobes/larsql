@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     species_hash Nullable(String),  -- Hash of phase template DNA for prompt evolution tracking
 
     -- LLM Provider
-    model Nullable(String),
+    model Nullable(String),                        -- Resolved model name (from API response, e.g. "openai/gpt-4.1-2025-04-14")
+    model_requested Nullable(String),              -- Originally requested model (from config, e.g. "openai/gpt-4.1")
     request_id Nullable(String),
     provider LowCardinality(Nullable(String)),
 

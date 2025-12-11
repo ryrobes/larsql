@@ -38,11 +38,11 @@
 
 /* Reforge header styling */
 .reforge-header {
-  color: #c586c0;
+  color: #8B9FCC;
 }
 
 .reforge-header svg {
-  color: #c586c0;
+  color: #8B9FCC;
 }
 
 .refined-from {
@@ -69,9 +69,9 @@
 .reforges-row {
   gap: 12px;
   padding: 8px;
-  background: rgba(197, 134, 192, 0.08);
+  background: rgba(139, 159, 204, 0.08);
   border-radius: 8px;
-  border: 1px solid rgba(197, 134, 192, 0.2);
+  border: 1px solid rgba(139, 159, 204, 0.2);
 }
 
 /* Individual sounding item */
@@ -140,8 +140,8 @@
   gap: 4px;
   font-size: 0.65rem;
   font-weight: 700;
-  color: #c586c0;
-  background: rgba(197, 134, 192, 0.2);
+  color: #8B9FCC;
+  background: rgba(139, 159, 204, 0.2);
   padding: 2px 8px;
   border-radius: 10px;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
@@ -212,11 +212,11 @@
 
 /* Reforge image styling (non-winner) */
 .image-thumbnail-container.reforge-image {
-  border-color: rgba(197, 134, 192, 0.4);
+  border-color: rgba(139, 159, 204, 0.4);
 }
 
 .image-thumbnail-container.reforge-image:hover {
-  border-color: rgba(197, 134, 192, 0.6);
+  border-color: rgba(139, 159, 204, 0.6);
 }
 
 /* Ultimate winner badge overlay */
@@ -334,17 +334,17 @@
 
 .image-modal-phase {
   font-size: 0.8rem;
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .image-modal-sounding {
   font-size: 0.8rem;
-  color: #4ec9b0;
+  color: #4A9EDD;
   font-weight: 600;
 }
 
 .image-modal-reforge {
   font-size: 0.8rem;
-  color: #c586c0;
+  color: #8B9FCC;
   font-weight: 600;
 }

@@ -77,12 +77,30 @@
 }
 
 .model-cost-value {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-weight: 600;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.65rem;
   margin-left: auto;
   text-align: right;
+  flex-shrink: 0;
+}
+
+/* Duration column - shown when duration data is available */
+.model-cost-duration {
+  color: #9AA5B1;
+  font-weight: 500;
+  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 0.65rem;
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+/* When duration is shown, adjust layout */
+.model-cost-legend-item.with-duration .model-cost-value {
+  margin-left: 0;
+  min-width: 55px;
 }
 
 /* Hover state for legend items */
@@ -97,31 +115,31 @@
 
 /* Winner highlighting */
 .model-cost-legend-item.winner {
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(94, 234, 212, 0.1);
   border-radius: 4px;
   padding: 2px 4px;
   margin: -2px -4px;
 }
 
 .model-cost-legend-item.winner .model-cost-name {
-  color: #22c55e;
+  color: #5EEAD4;
   font-weight: 600;
 }
 
 .model-cost-legend-item.winner .model-cost-dot {
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.6);
 }
 
 .model-cost-legend-item .winner-badge {
   font-size: 0.55rem;
-  color: #22c55e;
+  color: #5EEAD4;
   font-weight: 600;
   margin-left: 4px;
   flex-shrink: 0;
 }
 
 .model-cost-segment.winner {
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  box-shadow: 0 0 8px rgba(94, 234, 212, 0.6);
   position: relative;
 }
 
@@ -132,7 +150,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #22c55e;
+  background: #5EEAD4;
   border-radius: 1px;
 }
 

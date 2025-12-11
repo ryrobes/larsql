@@ -667,6 +667,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
   const [error, setError] = useState(null);
   const [wideChart, setWideChart] = useState(false);
   const [waitingForData, setWaitingForData] = useState(false); // Running but no data yet
+  const [historicalInstances, setHistoricalInstances] = useState([]); // For progress bar comparison
+  const [, setTick] = useState(0); // Force re-render for progress bar animation
 
   const isSessionRunning = runningSessions.has(sessionId);
   const isFinalizing = finalizingSessions.has(sessionId);
@@ -713,6 +715,22 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       const cascadeEntry = entries.find(e => e.node_type === 'cascade');
       const firstEntry = entries[0];
       const lastEntry = entries[entries.length - 1];
+
+      // Build lookup of resolved model -> requested model (early pass)
+      // This handles rows where model_requested is NULL by looking it up from other rows
+      const modelLookupEarly = new Map(); // resolved_model -> requested_model
+      entries.forEach(e => {
+        if (e.model && e.model_requested) {
+          modelLookupEarly.set(e.model, e.model_requested);
+        }
+      });
+
+      // Helper to get display model name (prefers requested over resolved)
+      const getDisplayModelEarly = (entry) => {
+        if (entry.model_requested) return entry.model_requested;
+        if (entry.model && modelLookupEarly.has(entry.model)) return modelLookupEarly.get(entry.model);
+        return entry.model;
+      };
 
       // Group entries by phase
       const phaseMap = {};
@@ -762,8 +780,10 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             phaseMap[phaseName].soundingAttempts.get(idx).is_winner = true;
           }
           // Track model for this sounding (use first non-null model found)
-          if (entry.model && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
-            phaseMap[phaseName].soundingAttempts.get(idx).model = entry.model;
+          // Use lookup to get consistent display name even when model_requested is null
+          const entryModel = getDisplayModelEarly(entry);
+          if (entryModel && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
+            phaseMap[phaseName].soundingAttempts.get(idx).model = entryModel;
           }
         }
         // Track max turns
@@ -845,6 +865,23 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       const modelsSet = new Set();
       const modelCostsMap = new Map();
+      const modelTimestampsMap = new Map(); // Track min/max timestamps per model for duration
+
+      // Helper to parse timestamps for duration calculation
+      const parseTs = (ts) => {
+        if (!ts) return null;
+        if (typeof ts === 'number') {
+          return ts < 32503680000 ? ts * 1000 : ts;
+        }
+        if (typeof ts === 'string') {
+          if (/^\d+$/.test(ts)) {
+            const num = parseInt(ts, 10);
+            return num < 32503680000 ? num * 1000 : num;
+          }
+          return new Date(ts).getTime();
+        }
+        return null;
+      };
 
       // First pass: find winning sounding indices per phase
       // is_winner is only set to true on specific entries, so we need to find which indices won
@@ -859,15 +896,27 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         }
       });
 
-      // Second pass: calculate costs
+      // Second pass: calculate costs and track timestamps per model
+      // (Reuse modelLookupEarly and getDisplayModelEarly from above)
       let usedCost = 0;
       let explorationCost = 0;
 
       entries.forEach(e => {
-        if (e.model) {
-          modelsSet.add(e.model);
-          const currentCost = modelCostsMap.get(e.model) || 0;
-          modelCostsMap.set(e.model, currentCost + safeNum(e.cost));
+        // Use lookup to get consistent display name even when model_requested is null
+        const displayModel = getDisplayModelEarly(e);
+        if (displayModel) {
+          modelsSet.add(displayModel);
+          const currentCost = modelCostsMap.get(displayModel) || 0;
+          modelCostsMap.set(displayModel, currentCost + safeNum(e.cost));
+
+          // Track timestamps for duration calculation
+          const tsMs = parseTs(e.timestamp);
+          if (tsMs) {
+            const current = modelTimestampsMap.get(displayModel) || { min: Infinity, max: -Infinity };
+            current.min = Math.min(current.min, tsMs);
+            current.max = Math.max(current.max, tsMs);
+            modelTimestampsMap.set(displayModel, current);
+          }
         }
 
         // Track used vs exploration costs for soundings
@@ -890,7 +939,13 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         }
       });
 
-      const modelCosts = Array.from(modelCostsMap.entries()).map(([model, cost]) => ({ model, cost }));
+      const modelCosts = Array.from(modelCostsMap.entries()).map(([model, cost]) => {
+        const timestamps = modelTimestampsMap.get(model);
+        const duration = timestamps && timestamps.max > timestamps.min
+          ? (timestamps.max - timestamps.min) / 1000 // Convert ms to seconds
+          : 0;
+        return { model, cost, duration };
+      });
 
       // Build token timeseries for sparkline
       const tokenTimeseries = entries
@@ -984,6 +1039,48 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
     }
   }, [isSessionRunning, isFinalizing, waitingForData, fetchInstance]);
 
+  // Fetch historical instances for progress bar comparison
+  const fetchHistoricalInstances = useCallback(async () => {
+    if (!instance?.cascade_id || instance.cascade_id === 'unknown') return;
+
+    try {
+      const response = await fetch(`http://localhost:5001/api/cascade-instances/${instance.cascade_id}`);
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        // Flatten to include children
+        const allInstances = [];
+        data.forEach(inst => {
+          allInstances.push(inst);
+          if (inst.children && inst.children.length > 0) {
+            allInstances.push(...inst.children);
+          }
+        });
+        setHistoricalInstances(allInstances);
+      }
+    } catch (err) {
+      console.debug('Failed to fetch historical instances for progress bar:', err.message);
+    }
+  }, [instance?.cascade_id]);
+
+  useEffect(() => {
+    if (instance?.cascade_id && (isSessionRunning || isFinalizing)) {
+      fetchHistoricalInstances();
+      // Refresh historical data periodically while running
+      const interval = setInterval(fetchHistoricalInstances, 10000); // Every 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [instance?.cascade_id, isSessionRunning, isFinalizing, fetchHistoricalInstances]);
+
+  // Force re-render frequently for smooth progress bar animation
+  useEffect(() => {
+    if (isSessionRunning || isFinalizing) {
+      const interval = setInterval(() => {
+        setTick(t => t + 1);
+      }, 100); // Update every 100ms
+      return () => clearInterval(interval);
+    }
+  }, [isSessionRunning, isFinalizing]);
+
   const handleLayoutDetected = useCallback(({ isWide }) => {
     setWideChart(isWide);
   }, []);
@@ -997,10 +1094,59 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
     return `$${cost.toFixed(2)}`;
   };
 
+  const formatDuration = (seconds) => {
+    if (!seconds) return '0s';
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}m ${secs}s`;
+  };
+
   const formatTimestamp = (isoString) => {
     const date = new Date(isoString);
     return date.toLocaleString();
   };
+
+  // Create run signature from cascade + inputs for matching historical runs
+  const getRunSignature = useCallback((cascadeId, inputData) => {
+    if (!cascadeId) return null;
+    const inputStr = inputData && Object.keys(inputData).length > 0
+      ? JSON.stringify(inputData, Object.keys(inputData).sort())
+      : 'no_inputs';
+    return `${cascadeId}::${inputStr}`;
+  }, []);
+
+  // Calculate historical average for progress bar
+  const getHistoricalAverage = useCallback(() => {
+    if (!instance || !historicalInstances || historicalInstances.length === 0) {
+      return null;
+    }
+
+    const signature = getRunSignature(instance.cascade_id, instance.input_data);
+    if (!signature) return null;
+
+    // Find completed runs with same cascade + inputs
+    const matchingRuns = historicalInstances.filter(inst => {
+      if (inst.session_id === instance.session_id) return false;
+      if (inst.status === 'failed') return false;
+      if (inst.duration_seconds <= 0) return false;
+      if (runningSessions.has(inst.session_id)) return false;
+      if (finalizingSessions.has(inst.session_id)) return false;
+
+      const instSignature = getRunSignature(inst.cascade_id, inst.input_data);
+      return instSignature === signature;
+    });
+
+    if (matchingRuns.length === 0) return null;
+
+    const totalDuration = matchingRuns.reduce((sum, inst) => sum + inst.duration_seconds, 0);
+    const avgDuration = totalDuration / matchingRuns.length;
+
+    return {
+      avgDuration,
+      sampleSize: matchingRuns.length
+    };
+  }, [instance, historicalInstances, runningSessions, finalizingSessions, getRunSignature]);
 
   if (loading) {
     return (
@@ -1134,6 +1280,46 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               winnerModel={instance.winner_models}
             />
           )}
+
+          {/* Historical progress bar for running cascades */}
+          {(isSessionRunning && !isFinalizing) && (() => {
+            const historicalAvg = getHistoricalAverage();
+            if (!historicalAvg) return null;
+
+            // Calculate current duration
+            let currentDuration = instance.duration_seconds || 0;
+            const sseStart = sessionStartTimes?.[instance.session_id];
+            const dbStart = instance.start_time;
+            const startTime = sseStart || dbStart;
+
+            if (startTime) {
+              const startMs = typeof startTime === 'number'
+                ? (startTime < 10000000000 ? startTime * 1000 : startTime)
+                : new Date(startTime).getTime();
+
+              if (!isNaN(startMs) && startMs > 0) {
+                const now = Date.now();
+                currentDuration = Math.max((now - startMs) / 1000, 0);
+              }
+            }
+
+            const progress = Math.min((currentDuration / historicalAvg.avgDuration) * 100, 100);
+
+            return (
+              <div className="species-progress-container">
+                <div className="species-progress-bar">
+                  <div
+                    className="species-progress-fill"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="species-progress-info">
+                  <span className="species-progress-percent">{Math.round(progress)}%</span>
+                  <span className="species-progress-stats">avg: {formatDuration(historicalAvg.avgDuration)} ({historicalAvg.sampleSize} runs)</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Input params */}
           {instance.input_data && Object.keys(instance.input_data).length > 0 && (

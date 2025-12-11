@@ -67,13 +67,13 @@
 }
 
 .turn-badge {
-  background: rgba(96, 165, 250, 0.2);
-  color: #60a5fa;
+  background: rgba(90, 141, 196, 0.2);
+  color: #5A8DC4;
 }
 
 .audibles-badge {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
 }
 
 .audible-close {
@@ -187,7 +187,7 @@
 }
 
 .recent-image-item:hover {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   transform: scale(1.02);
 }
 
@@ -217,8 +217,8 @@
 
 .audible-body textarea:focus {
   outline: none;
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+  border-color: #6B7FBB;
+  box-shadow: 0 0 0 2px rgba(107, 127, 187, 0.2);
 }
 
 /* Mode Options */
@@ -246,8 +246,8 @@
 }
 
 .mode-option.selected {
-  border-color: #a78bfa;
-  background: rgba(167, 139, 250, 0.1);
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.1);
 }
 
 .mode-option input[type="radio"] {
@@ -297,7 +297,7 @@
 }
 
 .audible-footer .button-primary {
-  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  background: linear-gradient(135deg, #6B7FBB, #8b5cf6);
   color: white;
   border: none;
   padding: 0.5rem 1.25rem;

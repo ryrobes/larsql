@@ -55,6 +55,26 @@ function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0
     return `$${cost.toFixed(2)}`;
   };
 
+  // Format duration in human-readable form (e.g., "1m 45s", "2h 30m", "45s")
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return null;
+
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.round(seconds % 60);
+
+    if (hrs > 0) {
+      return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+    }
+    if (mins > 0) {
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    return `${secs}s`;
+  };
+
+  // Check if any model has duration data
+  const hasDurationData = modelCosts.some(mc => mc.duration && mc.duration > 0);
+
   // Calculate efficiency percentage
   const efficiencyPercent = totalCost > 0 ? Math.round((usedCost / totalCost) * 100) : 100;
   const hasExploration = explorationCost > 0;
@@ -79,13 +99,18 @@ function ModelCostBar({ modelCosts, totalCost, usedCost = 0, explorationCost = 0
       {/* Legend items */}
       <div className="model-cost-legend">
         {modelsWithPercentage.map((mc, idx) => (
-          <div key={idx} className={`model-cost-legend-item${mc.isWinner ? ' winner' : ''}`}>
+          <div key={idx} className={`model-cost-legend-item${mc.isWinner ? ' winner' : ''}${hasDurationData ? ' with-duration' : ''}`}>
             <span
               className="model-cost-dot"
               style={{ backgroundColor: mc.color }}
             />
             <span className="model-cost-name">{mc.shortName}</span>
             {mc.isWinner && <span className="winner-badge">★</span>}
+            {hasDurationData && (
+              <span className="model-cost-duration">
+                {formatDuration(mc.duration) || '—'}
+              </span>
+            )}
             <span className="model-cost-value">{formatCost(mc.cost)}</span>
           </div>
         ))}

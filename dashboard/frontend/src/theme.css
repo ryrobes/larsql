@@ -1,0 +1,67 @@
+/* Windlass UI Theme Variables - Ocean Blue Color System */
+
+:root {
+  /* ============================================
+     ORIGINAL THEME - Midnight Fjord Base
+     ============================================ */
+  --midnight-fjord: #0B1219;      /* Main Background */
+  --abyssal-slate: #16202A;       /* Secondary Surface / Cards */
+  --storm-cloud: #2C3B4B;         /* Borders / Dividers */
+
+  /* ============================================
+     NEW OCEAN BLUE ACCENTS (replacing teal)
+     Primary color shift from green-teal to true blue
+     ============================================ */
+  --ocean-primary: #4A9EDD;       /* Primary CTAs, headers, main accents */
+  --ocean-primary-hover: #60A9E8; /* Hover state for primary */
+  --ocean-secondary: #3B82C4;     /* Secondary elements, scrollbars */
+  --ocean-deep: #2563EB;          /* Subtle accents, borders */
+  --ocean-muted: #1E3A5F;         /* Very subtle backgrounds */
+
+  /* ============================================
+     MUTED SUCCESS (reducing green prominence)
+     Green reserved ONLY for success states
+     ============================================ */
+  --ocean-teal: #5EEAD4;          /* Success states, winners (muted teal) */
+  --ocean-teal-dim: #14B8A6;      /* Deeper teal for secondary success */
+  --success-green: #4ADE80;       /* Critical success only (original Aurora Green) */
+
+  /* ============================================
+     HARMONIZED ACCENTS
+     Purple/violet tones shifted to blue-slate
+     ============================================ */
+  --slate-blue: #6B7FBB;          /* Reforge/mutations (was purple) */
+  --slate-blue-light: #8B9FCC;    /* Lighter slate for backgrounds */
+  --storm-blue: #4A709E;          /* Current markers (was bright blue) */
+  --storm-blue-light: #5A8DC4;    /* Lighter storm blue */
+
+  /* ============================================
+     ORIGINAL THEME - Keep as-is
+     ============================================ */
+  --compass-brass: #D9A553;       /* Secondary Accent / Warn */
+  --frosted-white: #F0F4F8;       /* Primary Text */
+  --mist-gray: #9AA5B1;           /* Secondary / Supporting Text */
+  --bloodaxe-red: #CF6679;        /* Error / Danger */
+
+  /* ============================================
+     SEMANTIC ALIASES
+     Use these in components for clarity
+     ============================================ */
+  --bg-main: var(--midnight-fjord);
+  --bg-card: var(--abyssal-slate);
+  --border-default: var(--storm-cloud);
+
+  --text-primary: var(--frosted-white);
+  --text-secondary: var(--mist-gray);
+
+  --accent-primary: var(--ocean-primary);
+  --accent-secondary: var(--compass-brass);
+
+  --status-success: var(--success-green);
+  --status-error: var(--bloodaxe-red);
+  --status-warning: var(--compass-brass);
+  --status-running: var(--compass-brass);
+
+  --cost-color: var(--ocean-teal);
+  --winner-color: var(--ocean-teal);
+}

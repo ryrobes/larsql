@@ -32,7 +32,7 @@
 /* Fallback CSS spinner if video fails to load */
 .spinner-fallback {
   border: 3px solid #16202A;
-  border-top-color: #2DD4BF;
+  border-top-color: #4A9EDD;
   border-radius: 50%;
   animation: spin-fallback 1s linear infinite;
 }

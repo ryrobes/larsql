@@ -25,11 +25,11 @@
 }
 
 .variant-line .tab-button:hover {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .variant-line .tab-button.active {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .variant-line .tab-button.active::after {
@@ -39,7 +39,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #a78bfa;
+  background: #6B7FBB;
 }
 
 /* Enclosed variant */
@@ -70,7 +70,7 @@
 }
 
 .variant-enclosed .tab-button.active {
-  background: #a78bfa;
+  background: #6B7FBB;
   color: white;
 }
 
@@ -95,13 +95,13 @@
 }
 
 .variant-pills .tab-button:hover {
-  border-color: #a78bfa;
-  color: #a78bfa;
+  border-color: #6B7FBB;
+  color: #6B7FBB;
 }
 
 .variant-pills .tab-button.active {
-  background: #a78bfa;
-  border-color: #a78bfa;
+  background: #6B7FBB;
+  border-color: #6B7FBB;
   color: white;
 }
 
@@ -139,8 +139,8 @@
 
 /* Tab badge */
 .tab-badge {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 0.7rem;

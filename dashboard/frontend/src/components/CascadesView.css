@@ -14,7 +14,7 @@
   padding: 1rem 2rem;
   margin: -2rem -2rem 2rem -2rem;
   background: linear-gradient(180deg, rgba(22, 32, 42, 0.95) 0%, rgba(11, 18, 25, 0.98) 100%);
-  border-bottom: 1px solid rgba(45, 212, 191, 0.15);
+  border-bottom: 1px solid rgba(74, 158, 221, 0.15);
   backdrop-filter: blur(8px);
 }
 
@@ -44,7 +44,7 @@
 }
 
 .header-stat.cost {
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .stat-dim {
@@ -71,7 +71,7 @@
   background: rgba(22, 32, 42, 0.6);
   padding: 4px;
   border-radius: 8px;
-  border: 1px solid rgba(45, 212, 191, 0.15);
+  border: 1px solid rgba(74, 158, 221, 0.15);
 }
 
 .view-mode-btn {
@@ -88,14 +88,14 @@
 }
 
 .view-mode-btn:hover {
-  background: rgba(45, 212, 191, 0.1);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  color: #4A9EDD;
 }
 
 .view-mode-btn.active {
-  background: rgba(45, 212, 191, 0.2);
-  color: #2DD4BF;
-  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
+  background: rgba(74, 158, 221, 0.2);
+  color: #4A9EDD;
+  box-shadow: 0 2px 8px rgba(74, 158, 221, 0.15);
 }
 
 .view-mode-btn svg {
@@ -130,10 +130,10 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.15), rgba(167, 139, 250, 0.15));
-  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: linear-gradient(135deg, rgba(90, 141, 196, 0.15), rgba(107, 127, 187, 0.15));
+  border: 1px solid rgba(90, 141, 196, 0.3);
   border-radius: 8px;
-  color: #60a5fa;
+  color: #5A8DC4;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -141,14 +141,14 @@
 }
 
 .messageflow-btn:hover {
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.25), rgba(167, 139, 250, 0.25));
-  border-color: rgba(96, 165, 250, 0.5);
+  background: linear-gradient(135deg, rgba(90, 141, 196, 0.25), rgba(107, 127, 187, 0.25));
+  border-color: rgba(90, 141, 196, 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 4px 12px rgba(90, 141, 196, 0.2);
 }
 
 .messageflow-btn svg {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .sextant-btn {
@@ -156,10 +156,10 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(52, 211, 153, 0.15));
-  border: 1px solid rgba(45, 212, 191, 0.3);
+  background: linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(94, 234, 212, 0.15));
+  border: 1px solid rgba(74, 158, 221, 0.3);
   border-radius: 8px;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -167,14 +167,14 @@
 }
 
 .sextant-btn:hover {
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(52, 211, 153, 0.25));
-  border-color: rgba(45, 212, 191, 0.5);
+  background: linear-gradient(135deg, rgba(74, 158, 221, 0.25), rgba(94, 234, 212, 0.25));
+  border-color: rgba(74, 158, 221, 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+  box-shadow: 0 4px 12px rgba(74, 158, 221, 0.2);
 }
 
 .sextant-btn svg {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .connection-indicator {
@@ -185,8 +185,8 @@
 }
 
 .connection-indicator.connected {
-  background: #2DD4BF;
-  box-shadow: 0 0 8px rgba(45, 212, 191, 0.6);
+  background: #4A9EDD;
+  box-shadow: 0 0 8px rgba(74, 158, 221, 0.6);
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
@@ -197,10 +197,10 @@
 
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 8px rgba(45, 212, 191, 0.6);
+    box-shadow: 0 0 8px rgba(74, 158, 221, 0.6);
   }
   50% {
-    box-shadow: 0 0 12px rgba(45, 212, 191, 0.8);
+    box-shadow: 0 0 12px rgba(74, 158, 221, 0.8);
   }
 }
 
@@ -235,7 +235,7 @@
   width: 100%;
   padding: 12px 44px 12px 48px;
   background: rgba(22, 32, 42, 0.8);
-  border: 1px solid rgba(45, 212, 191, 0.2);
+  border: 1px solid rgba(74, 158, 221, 0.2);
   border-radius: 12px;
   color: #F0F4F8;
   font-size: 0.95rem;
@@ -250,20 +250,20 @@
 }
 
 .search-input:hover {
-  border-color: rgba(45, 212, 191, 0.35);
+  border-color: rgba(74, 158, 221, 0.35);
   background: rgba(22, 32, 42, 0.9);
 }
 
 .search-input:focus {
-  border-color: rgba(45, 212, 191, 0.6);
+  border-color: rgba(74, 158, 221, 0.6);
   background: rgba(22, 32, 42, 0.95);
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1),
+  box-shadow: 0 0 0 3px rgba(74, 158, 221, 0.1),
               0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .search-input:focus + .search-icon,
 .search-container:focus-within .search-icon {
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .search-clear {
@@ -274,7 +274,7 @@
   width: 24px;
   height: 24px;
   padding: 4px;
-  background: rgba(45, 212, 191, 0.1);
+  background: rgba(74, 158, 221, 0.1);
   border: none;
   border-radius: 6px;
   color: #9AA5B1;
@@ -286,8 +286,8 @@
 }
 
 .search-clear:hover {
-  background: rgba(45, 212, 191, 0.2);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.2);
+  color: #4A9EDD;
 }
 
 .search-clear svg {
@@ -302,7 +302,7 @@
   padding: 6px 12px;
   background: rgba(22, 32, 42, 0.6);
   border-radius: 8px;
-  border: 1px solid rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(74, 158, 221, 0.1);
 }
 
 /* Cascades Content Area */
@@ -338,7 +338,7 @@
   width: 50px;
   height: 50px;
   border: 3px solid #16202A;
-  border-top-color: #2DD4BF;
+  border-top-color: #4A9EDD;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;

@@ -28,12 +28,12 @@
 
 /* Toast types with bright pastels */
 .toast-success {
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 .toast-success .toast-icon {
-  color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
+  color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
 }
 
 .toast-error {
@@ -46,12 +46,12 @@
 }
 
 .toast-info {
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 .toast-info .toast-icon {
-  color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
+  color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
 }
 
 .toast-warning {

@@ -21,14 +21,14 @@
 }
 
 .grid-card.selectable:hover {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2);
+  box-shadow: 0 4px 12px rgba(107, 127, 187, 0.2);
 }
 
 .grid-card.selected {
-  border-color: #a78bfa;
-  background: rgba(167, 139, 250, 0.1);
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.1);
 }
 
 .grid-card.disabled {
@@ -42,7 +42,7 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #5A8DC4 100%);
   color: white;
   padding: 4px 10px;
   border-radius: 12px;
@@ -101,8 +101,8 @@
 }
 
 .grid-card.selected .selection-indicator {
-  background: #a78bfa;
-  border-color: #a78bfa;
+  background: #6B7FBB;
+  border-color: #6B7FBB;
   color: white;
 }
 
@@ -129,7 +129,7 @@
   border-radius: 6px;
   font-family: 'Fira Code', monospace;
   font-size: 0.75rem;
-  color: #60a5fa;
+  color: #5A8DC4;
   overflow-x: auto;
   margin-bottom: 12px;
 }
@@ -156,7 +156,7 @@
 }
 
 .metadata-value {
-  color: #34d399;
+  color: #5EEAD4;
   font-weight: 500;
 }
 
@@ -169,8 +169,8 @@
 }
 
 .tag-pill {
-  background: rgba(96, 165, 250, 0.2);
-  color: #60a5fa;
+  background: rgba(90, 141, 196, 0.2);
+  color: #5A8DC4;
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 0.7rem;

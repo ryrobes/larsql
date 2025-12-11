@@ -41,10 +41,10 @@
 
 @keyframes finalizing-pulse-grid {
   0%, 100% {
-    background-color: rgba(45, 212, 191, 0.08);
+    background-color: rgba(74, 158, 221, 0.08);
   }
   50% {
-    background-color: rgba(45, 212, 191, 0.15);
+    background-color: rgba(74, 158, 221, 0.15);
   }
 }
 
@@ -91,7 +91,7 @@
 }
 
 .status-badge.finalizing {
-  background: rgba(45, 212, 191, 0.2);
+  background: rgba(74, 158, 221, 0.2);
   color: #2dd4bf;
 }
 
@@ -126,7 +126,7 @@
 }
 
 .status-text.completed {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .status-text.failed {
@@ -196,7 +196,7 @@
 .cost-cell {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
-  color: #34d399 !important;
+  color: #5EEAD4 !important;
 }
 
 /* Sparkline Cell */
@@ -229,7 +229,7 @@
 }
 
 .input-tag {
-  background: rgba(45, 212, 191, 0.15);
+  background: rgba(74, 158, 221, 0.15);
   color: #2dd4bf;
   padding: 2px 6px;
   border-radius: 4px;
@@ -284,21 +284,21 @@
 }
 
 .action-btn.soundings {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .action-btn.soundings:hover {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
 }
 
 .action-btn.rerun {
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .action-btn.rerun:hover {
-  background: rgba(96, 165, 250, 0.2);
-  color: #60a5fa;
+  background: rgba(90, 141, 196, 0.2);
+  color: #5A8DC4;
 }
 
 .action-btn.audible {

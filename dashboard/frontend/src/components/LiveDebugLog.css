@@ -22,7 +22,7 @@
 }
 
 .live-debug-log::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 /* Empty state */
@@ -52,9 +52,9 @@
 }
 
 .live-debug-log .phase-group.active {
-  border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
-  box-shadow: 0 0 16px rgba(45, 212, 191, 0.2);
+  border-color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
+  box-shadow: 0 0 16px rgba(74, 158, 221, 0.2);
 }
 
 .live-debug-log .phase-header {
@@ -72,7 +72,7 @@
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .live-debug-log .phase-name {
@@ -92,7 +92,7 @@
 .live-debug-log .phase-cost {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 14px;
-  color: #34d399;
+  color: #5EEAD4;
   font-weight: 600;
 }
 
@@ -134,8 +134,8 @@
 }
 
 .live-debug-log .entry-row:hover {
-  background: rgba(45, 212, 191, 0.05);
-  border-color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.05);
+  border-color: #4A9EDD;
 }
 
 .live-debug-log .entry-meta {
@@ -179,7 +179,7 @@
 .live-debug-log .entry-cost {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  color: #34d399;
+  color: #5EEAD4;
   font-weight: 600;
 }
 
@@ -193,15 +193,15 @@
 }
 
 .live-debug-log .direction-badge.sent {
-  background: rgba(96, 165, 250, 0.2);
-  color: #60a5fa;
-  border: 1px solid #60a5fa;
+  background: rgba(90, 141, 196, 0.2);
+  color: #5A8DC4;
+  border: 1px solid #5A8DC4;
 }
 
 .live-debug-log .direction-badge.received {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
-  border: 1px solid #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
+  border: 1px solid #6B7FBB;
 }
 
 .live-debug-log .entry-content {
@@ -215,7 +215,7 @@
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background: linear-gradient(135deg, #2DD4BF 0%, #34d399 100%);
+  background: linear-gradient(135deg, #4A9EDD 0%, #5EEAD4 100%);
   color: #0A0F14;
   border: none;
   padding: 12px 20px;
@@ -226,14 +226,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 4px 12px rgba(74, 158, 221, 0.4);
   transition: all 0.3s ease;
   z-index: 1000;
 }
 
 .scroll-to-bottom:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(45, 212, 191, 0.6);
+  box-shadow: 0 6px 16px rgba(74, 158, 221, 0.6);
 }
 
 .scroll-to-bottom:active {

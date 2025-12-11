@@ -13,7 +13,7 @@ html, body {
 body {
   background: #0B1219;
   color: #F0F4F8;
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -49,12 +49,12 @@ code, pre, .monospace {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 /* Selection color */
 ::selection {
-  background: #2DD4BF;  /* Glacial Ice */
+  background: #4A9EDD;  /* Glacial Ice */
   color: #0B1219;
 }
 

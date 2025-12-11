@@ -14,7 +14,7 @@
 }
 
 .comparison-title {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin: 0;
   font-size: 1.4em;
 }
@@ -73,14 +73,14 @@
 
 .tab.active {
   background: #2a2a3e;
-  border-color: #a78bfa;
-  color: #a78bfa;
+  border-color: #6B7FBB;
+  color: #6B7FBB;
 }
 
 .tab.selected {
-  background: rgba(52, 211, 153, 0.15);
-  border-color: #34d399;
-  color: #34d399;
+  background: rgba(94, 234, 212, 0.15);
+  border-color: #5EEAD4;
+  color: #5EEAD4;
 }
 
 .selected-badge {
@@ -118,8 +118,8 @@
 
 .carousel-nav:hover {
   background: #2a2a3e;
-  border-color: #a78bfa;
-  color: #a78bfa;
+  border-color: #6B7FBB;
+  color: #6B7FBB;
 }
 
 .carousel-content {
@@ -152,12 +152,12 @@
 }
 
 .dot.active {
-  background: #a78bfa;
+  background: #6B7FBB;
   transform: scale(1.2);
 }
 
 .dot.selected {
-  background: #34d399;
+  background: #5EEAD4;
 }
 
 /* Attempt Card */
@@ -174,15 +174,15 @@
 }
 
 .attempt-card.clickable:hover {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.15);
+  box-shadow: 0 8px 24px rgba(107, 127, 187, 0.15);
 }
 
 .attempt-card.selected {
-  border-color: #34d399;
-  background: rgba(52, 211, 153, 0.05);
-  box-shadow: 0 0 20px rgba(52, 211, 153, 0.2);
+  border-color: #5EEAD4;
+  background: rgba(94, 234, 212, 0.05);
+  box-shadow: 0 0 20px rgba(94, 234, 212, 0.2);
 }
 
 .attempt-card.full-width {
@@ -206,7 +206,7 @@
 
 .rank-badge {
   padding: 4px 10px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border-radius: 12px;
   color: white;
   font-size: 0.8em;
@@ -216,7 +216,7 @@
 .selected-label {
   margin-left: auto;
   padding: 4px 10px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
   border-radius: 12px;
   color: white;
   font-size: 0.8em;
@@ -248,8 +248,8 @@
 }
 
 .attempt-image:hover {
-  border-color: #a78bfa;
-  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.3);
+  border-color: #6B7FBB;
+  box-shadow: 0 4px 16px rgba(107, 127, 187, 0.3);
 }
 
 .attempt-text {
@@ -268,7 +268,7 @@
 }
 
 .attempt-markdown h1, .attempt-markdown h2, .attempt-markdown h3 {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin-top: 0;
 }
 
@@ -290,11 +290,11 @@
 }
 
 .meta-icon {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .meta-item.model {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin-left: auto;
 }
 
@@ -352,7 +352,7 @@
   display: block;
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border: none;
   color: white;
   font-weight: 500;
@@ -373,7 +373,7 @@
 }
 
 .ranking-display h4 {
-  color: #a78bfa;
+  color: #6B7FBB;
   margin: 0 0 12px 0;
   font-size: 1em;
 }
@@ -389,15 +389,15 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(167, 139, 250, 0.15);
-  border: 1px solid #a78bfa;
+  background: rgba(107, 127, 187, 0.15);
+  border: 1px solid #6B7FBB;
   border-radius: 20px;
 }
 
 .rank-number {
   width: 24px;
   height: 24px;
-  background: #a78bfa;
+  background: #6B7FBB;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -442,7 +442,7 @@
 
 .reasoning-label {
   display: block;
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 500;
   margin-bottom: 10px;
   font-size: 0.95em;
@@ -467,7 +467,7 @@
 
 .reasoning-input:focus {
   outline: none;
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 /* Actions */
@@ -500,7 +500,7 @@
 
 .submit-btn {
   padding: 14px 32px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
   border: none;
   border-radius: 8px;
   color: white;
@@ -512,7 +512,7 @@
 
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(52, 211, 153, 0.4);
+  box-shadow: 0 6px 20px rgba(94, 234, 212, 0.4);
 }
 
 .submit-btn:disabled {

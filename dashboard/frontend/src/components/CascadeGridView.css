@@ -114,8 +114,8 @@
 }
 
 .phase-badge.soundings {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
 }
 
 .phase-badge.reforges {
@@ -124,7 +124,7 @@
 }
 
 .phase-badge.wards {
-  background: rgba(45, 212, 191, 0.2);
+  background: rgba(74, 158, 221, 0.2);
   color: #2dd4bf;
 }
 

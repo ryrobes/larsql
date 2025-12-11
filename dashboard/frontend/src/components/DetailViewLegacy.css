@@ -14,7 +14,7 @@
     rgba(11, 18, 25, 0.95) 0%,
     rgba(16, 32, 42, 0.95) 100%);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid #2DD4BF;
+  border-bottom: 1px solid #4A9EDD;
   padding: 16px 24px;
   display: flex;
   align-items: center;
@@ -38,8 +38,8 @@
 
 .back-button {
   background: transparent;
-  border: 1px solid #2DD4BF;
-  color: #2DD4BF;
+  border: 1px solid #4A9EDD;
+  color: #4A9EDD;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -52,9 +52,9 @@
 }
 
 .back-button:hover {
-  background: rgba(45, 212, 191, 0.1);
-  border-color: #34d399;
-  color: #34d399;
+  background: rgba(74, 158, 221, 0.1);
+  border-color: #5EEAD4;
+  color: #5EEAD4;
 }
 
 .session-info {
@@ -70,7 +70,7 @@
 }
 
 .session-id {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-size: 14px;
   font-weight: 600;
 }
@@ -93,9 +93,9 @@
 }
 
 .status-badge.completed {
-  background: rgba(52, 211, 153, 0.2);
-  color: #34d399;
-  border: 1px solid #34d399;
+  background: rgba(94, 234, 212, 0.2);
+  color: #5EEAD4;
+  border: 1px solid #5EEAD4;
 }
 
 .status-badge.error {
@@ -108,9 +108,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(45, 212, 191, 0.1);
-  border: 1px solid #2DD4BF;
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  border: 1px solid #4A9EDD;
+  color: #4A9EDD;
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 13px;
@@ -131,14 +131,14 @@
 }
 
 .view-mode-select:hover {
-  border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
+  border-color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
 }
 
 .view-mode-select:focus {
   outline: none;
-  border-color: #2DD4BF;
-  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.2);
+  border-color: #4A9EDD;
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
 }
 
 /* Main Panes */
@@ -195,7 +195,7 @@
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #2DD4BF;
+  color: #4A9EDD;
   margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -222,14 +222,14 @@
 }
 
 .phase-timeline-item:hover {
-  background: rgba(45, 212, 191, 0.1);
-  border-color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  border-color: #4A9EDD;
 }
 
 .phase-timeline-item.active {
-  background: rgba(45, 212, 191, 0.15);
-  border-color: #2DD4BF;
-  box-shadow: 0 0 12px rgba(45, 212, 191, 0.3);
+  background: rgba(74, 158, 221, 0.15);
+  border-color: #4A9EDD;
+  box-shadow: 0 0 12px rgba(74, 158, 221, 0.3);
 }
 
 /* Spinning animation */
@@ -257,7 +257,7 @@
 }
 
 .left-pane::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 /* Audible Button */
@@ -278,9 +278,9 @@
 }
 
 .audible-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  background: linear-gradient(135deg, #6B7FBB, #8b5cf6);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(107, 127, 187, 0.3);
 }
 
 .audible-button:active:not(:disabled) {

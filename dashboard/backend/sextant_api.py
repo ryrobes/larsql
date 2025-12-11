@@ -9,6 +9,7 @@ Endpoints:
 - POST /api/sextant/apply - Apply a suggestion to a cascade file
 - GET /api/sextant/patterns/<cascade_id>/<phase_name> - Token-level pattern analysis
 - GET /api/sextant/evolution/<session_id> - Prompt evolution/phylogeny visualization data
+- GET /api/sextant/species/<session_id> - Species hash and related training sessions
 """
 
 import os
@@ -2551,21 +2552,43 @@ def get_prompt_evolution(session_id):
         nodes = []
         edges = []
 
+        # Track all winners across generations (gene pool)
+        gene_pool = []  # List of (gen_idx, session_id, sounding)
+
         for gen_idx, generation in enumerate(gen_list):
             is_current_session = generation['session_id'] == session_id
             is_future = generation.get('is_future', False)
 
             # Horizontal position (x) based on generation
-            x = gen_idx * 450
+            # Increased from 450 to 700 for better spacing with edge labels
+            x = gen_idx * 700
 
             # Get winner(s) from this generation for connections
             winners = [s for s in generation['soundings'] if s['is_winner']]
 
+            # Get immediate parents (previous generation winners)
+            immediate_parents = []
+            if gen_idx > 0:
+                prev_generation = gen_list[gen_idx - 1]
+                immediate_parents = [(gen_idx - 1, prev_generation['session_id'], s)
+                                    for s in prev_generation['soundings'] if s['is_winner']]
+
             for sound_idx, sounding in enumerate(generation['soundings']):
                 # Vertical position (y) based on sounding index within generation
-                y = sound_idx * 180
+                # Increased from 180 to 250 to accommodate taller nodes
+                y = sound_idx * 250
 
                 node_id = f"{generation['session_id']}_{sounding['sounding_index']}"
+
+                # Build parent winners list for DNA inheritance bar
+                parent_winners = []
+                for parent_gen_idx, parent_session_id, parent_sounding in gene_pool:
+                    parent_winners.append({
+                        'generation': parent_gen_idx + 1,
+                        'session_id': parent_session_id,
+                        'sounding_index': parent_sounding['sounding_index'],
+                        'prompt_snippet': (parent_sounding['prompt'] or '')[:30]
+                    })
 
                 nodes.append({
                     'id': node_id,
@@ -2582,32 +2605,93 @@ def get_prompt_evolution(session_id):
                         'is_current_session': is_current_session,
                         'is_future': is_future,
                         'session_id': generation['session_id'],
-                        'timestamp': str(generation['timestamp'])
+                        'timestamp': str(generation['timestamp']),
+                        'parent_winners': parent_winners,  # For DNA bar
+                        'gene_pool_size': len(gene_pool)   # Show gene pool growth
                     }
                 })
 
-                # Connect to previous generation's winners
+                # GENETIC LINEAGE EDGES: Connect to ALL previous winners (gene pool)
                 if gen_idx > 0:
-                    prev_generation = gen_list[gen_idx - 1]
-                    prev_winners = [s for s in prev_generation['soundings'] if s['is_winner']]
+                    for parent_gen_idx, parent_session_id, parent_sounding in gene_pool:
+                        source_id = f"{parent_session_id}_{parent_sounding['sounding_index']}"
 
-                    for prev_winner in prev_winners:
-                        source_id = f"{prev_generation['session_id']}_{prev_winner['sounding_index']}"
+                        # Check if this is an immediate parent (last generation)
+                        is_immediate_parent = parent_gen_idx == gen_idx - 1
 
-                        edges.append({
+                        edge_data = {
                             'id': f"{source_id}->{node_id}",
                             'source': source_id,
                             'target': node_id,
-                            'type': 'smoothstep',
-                            'animated': sounding['is_winner'],  # Animate winner paths
-                            'style': {
-                                'stroke': '#22c55e' if sounding['is_winner'] else '#9ca3af',
-                                'strokeWidth': 3 if sounding['is_winner'] else 1,
-                                'opacity': 0.3 if is_future else 1.0
+                            'type': 'default',  # Bezier curves
+                            'data': {
+                                'is_immediate_parent': is_immediate_parent,
+                                'parent_generation': parent_gen_idx + 1
                             }
-                        })
+                        }
 
-        # 7. Return response
+                        if is_immediate_parent:
+                            # Immediate parents: Thicker, no labels, prominent
+                            edge_data.update({
+                                'animated': sounding['is_winner'],
+                                'style': {
+                                    'stroke': '#22c55e' if sounding['is_winner'] else '#9ca3af',
+                                    'strokeWidth': 4 if sounding['is_winner'] else 2.5,
+                                    'opacity': 0.3 if is_future else 0.9
+                                },
+                                'className': 'immediate-parent-edge'
+                            })
+                        else:
+                            # Gene pool ancestors: Visible but distinct from immediate parents
+                            # Color by "age" - how many generations back
+                            generations_back = gen_idx - parent_gen_idx
+
+                            # Fade color based on age (older = more faded)
+                            base_opacity = 0.5 if generations_back == 1 else (0.35 if generations_back == 2 else 0.25)
+
+                            # Use purple/blue tint for gene pool (vs green for immediate)
+                            gene_pool_color = '#8b5cf6'  # Purple for gene pool ancestry
+
+                            edge_data.update({
+                                'style': {
+                                    'stroke': gene_pool_color,
+                                    'strokeWidth': 2,  # Increased from 1 to 2
+                                    'opacity': base_opacity if not is_future else 0.08
+                                },
+                                'className': 'gene-pool-edge',
+                                'data': {
+                                    'generations_back': generations_back
+                                }
+                            })
+
+                        edges.append(edge_data)
+
+            # Add this generation's winners to gene pool for next generation
+            for winner in winners:
+                gene_pool.append((gen_idx, generation['session_id'], winner))
+
+        # 7. Mark the "active training set" (last 5 winners by timestamp)
+        # This shows which winners would be used for training the NEXT generation
+        winner_limit = int(os.environ.get("WINDLASS_WINNER_HISTORY_LIMIT", "5"))
+
+        # Collect all winner nodes with their timestamps
+        winner_nodes = []
+        for node in nodes:
+            if node['data']['is_winner'] and not node['data']['is_future']:
+                winner_nodes.append({
+                    'node': node,
+                    'timestamp': node['data']['timestamp']
+                })
+
+        # Sort by timestamp DESC (most recent first) and take the limit
+        winner_nodes.sort(key=lambda x: x['timestamp'], reverse=True)
+        active_training_set = set(n['node']['id'] for n in winner_nodes[:winner_limit])
+
+        # Mark nodes that are in the active training set
+        for node in nodes:
+            node['data']['in_training_set'] = node['id'] in active_training_set
+
+        # 8. Return response
         return jsonify({
             'nodes': nodes,
             'edges': edges,
@@ -2621,6 +2705,113 @@ def get_prompt_evolution(session_id):
                 'total_soundings': len(nodes),
                 'winner_count': sum(1 for n in nodes if n['data']['is_winner'])
             }
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@sextant_bp.route('/species/<session_id>', methods=['GET'])
+def get_species_info(session_id):
+    """
+    Get species hash and related sessions for a given session.
+
+    Returns:
+    - species_hash: The species hash for this session's phases
+    - related_sessions: List of other sessions with the same species
+    - evolution_depth: How many generations of this species exist
+    """
+    db = get_db()
+
+    try:
+        # First, get the species hash(es) for this session
+        species_query = f"""
+            SELECT DISTINCT
+                cascade_id,
+                phase_name,
+                species_hash
+            FROM unified_logs
+            WHERE session_id = '{session_id}'
+            AND species_hash IS NOT NULL
+        """
+
+        species_rows = db.query(species_query, output_format='dict')
+
+        if not species_rows:
+            return jsonify({
+                'error': 'No species hash found for this session',
+                'session_id': session_id
+            }), 404
+
+        # Group by phase (sessions can have multiple phases with different species)
+        phases_info = []
+
+        for row in species_rows:
+            cascade_id = row['cascade_id']
+            phase_name = row['phase_name']
+            species_hash = row['species_hash']
+
+            # Find all related sessions with this species hash
+            related_query = f"""
+                SELECT
+                    session_id,
+                    MIN(timestamp) as first_seen,
+                    MAX(timestamp) as last_seen,
+                    COUNT(DISTINCT sounding_index) as sounding_count,
+                    SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
+                    SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE cascade_id = '{cascade_id}'
+                AND phase_name = '{phase_name}'
+                AND species_hash = '{species_hash}'
+                AND sounding_index IS NOT NULL
+                GROUP BY session_id
+                ORDER BY MIN(timestamp) ASC
+            """
+
+            related_rows = db.query(related_query, output_format='dict')
+
+            related_sessions = []
+            current_session_index = -1
+
+            for idx, rel_row in enumerate(related_rows):
+                rel_session_id = rel_row['session_id']
+                first_seen = rel_row['first_seen']
+                last_seen = rel_row['last_seen']
+                sounding_count = rel_row['sounding_count']
+                winner_count = rel_row['winner_count']
+                total_cost = rel_row['total_cost'] or 0.0
+
+                if rel_session_id == session_id:
+                    current_session_index = idx
+
+                related_sessions.append({
+                    'session_id': rel_session_id,
+                    'generation': idx + 1,  # 1-indexed generation number
+                    'is_current': rel_session_id == session_id,
+                    'first_seen': str(first_seen),
+                    'last_seen': str(last_seen),
+                    'sounding_count': sounding_count,
+                    'winner_count': winner_count,
+                    'total_cost': float(total_cost)
+                })
+
+            phases_info.append({
+                'cascade_id': cascade_id,
+                'phase_name': phase_name,
+                'species_hash': species_hash,
+                'evolution_depth': len(related_sessions),
+                'current_generation': current_session_index + 1 if current_session_index >= 0 else None,
+                'related_sessions': related_sessions
+            })
+
+        return jsonify({
+            'session_id': session_id,
+            'phases': phases_info
         })
 
     except Exception as e:

@@ -614,6 +614,7 @@ def get_cascade_instances(cascade_id):
             SELECT
                 session_id,
                 cascade_id,
+                any(species_hash) as species_hash,
                 MIN(timestamp) as start_time,
                 MAX(timestamp) as end_time,
                 MAX(timestamp) - MIN(timestamp) as duration_seconds
@@ -626,6 +627,7 @@ def get_cascade_instances(cascade_id):
             SELECT
                 l.session_id,
                 MAX(l.cascade_id) as cascade_id,  -- Take non-null cascade_id
+                any(l.species_hash) as species_hash,
                 l.parent_session_id,
                 MIN(l.timestamp) as start_time,
                 MAX(l.timestamp) as end_time,
@@ -636,12 +638,12 @@ def get_cascade_instances(cascade_id):
             GROUP BY l.session_id, l.parent_session_id
         ),
         all_sessions AS (
-            SELECT session_id, cascade_id, NULL as parent_session_id, start_time, end_time, duration_seconds, 0 as depth
+            SELECT session_id, cascade_id, species_hash, NULL as parent_session_id, start_time, end_time, duration_seconds, 0 as depth
             FROM parent_sessions
 
             UNION ALL
 
-            SELECT session_id, cascade_id, parent_session_id, start_time, end_time, duration_seconds, 1 as depth
+            SELECT session_id, cascade_id, species_hash, parent_session_id, start_time, end_time, duration_seconds, 1 as depth
             FROM child_sessions
         ),
         session_costs AS (
@@ -655,6 +657,7 @@ def get_cascade_instances(cascade_id):
         SELECT
             a.session_id,
             a.cascade_id,
+            a.species_hash,
             a.parent_session_id,
             a.depth,
             a.start_time,
@@ -679,12 +682,13 @@ def get_cascade_instances(cascade_id):
         models_by_session = {}
         if has_model and session_ids:
             try:
+                # Use model_requested when available (cleaner) over model (resolved)
                 models_query = """
-                SELECT session_id, model
+                SELECT session_id, IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model) as display_model
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND model IS NOT NULL AND model != ''
-                GROUP BY session_id, model
+                GROUP BY session_id, IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)
                 """.format(','.join('?' * len(session_ids)))
                 model_results = conn.execute(models_query, session_ids).fetchall()
                 for sid, model in model_results:
@@ -844,36 +848,94 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch token timeseries query: {e}")
 
-        # Batch 6: Get model costs for all sessions (for multi-model cost breakdown)
+        # Batch 6: Get model costs and durations for all sessions (for multi-model cost breakdown)
         model_costs_by_session = {}
         if has_model and session_ids:
             try:
+                # Calculate cost and duration (time span) per model
+                # Duration is MAX(timestamp) - MIN(timestamp) in seconds
+                #
+                # Strategy: First get a mapping of resolved model -> requested model for each session,
+                # then use that mapping to aggregate costs by requested model name.
+                # This handles rows where model_requested is NULL by looking up from other rows
+                # with the same resolved model.
+
+                # Step 1: Build lookup of resolved model -> requested model per session
+                model_lookup_query = """
+                SELECT DISTINCT
+                    session_id,
+                    model,
+                    model_requested
+                FROM unified_logs
+                WHERE session_id IN ({})
+                  AND model IS NOT NULL AND model != ''
+                  AND model_requested IS NOT NULL AND model_requested != ''
+                """.format(','.join('?' * len(session_ids)))
+                model_lookup_results = conn.execute(model_lookup_query, session_ids).fetchall()
+
+                # Build mapping: {session_id: {resolved_model: requested_model}}
+                model_mapping = {}
+                for sid, resolved_model, requested_model in model_lookup_results:
+                    if sid not in model_mapping:
+                        model_mapping[sid] = {}
+                    # Store the requested model for this resolved model
+                    if resolved_model and requested_model:
+                        model_mapping[sid][resolved_model] = requested_model
+
+                # Step 2: Get aggregated costs by resolved model
                 model_costs_query = """
                 SELECT
                     session_id,
                     model,
-                    SUM(cost) as total_cost
+                    SUM(cost) as total_cost,
+                    (MAX(timestamp) - MIN(timestamp)) as duration_seconds
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND model IS NOT NULL AND model != ''
-                  AND cost IS NOT NULL AND cost > 0
                 GROUP BY session_id, model
                 ORDER BY session_id, total_cost DESC
                 """.format(','.join('?' * len(session_ids)))
                 model_cost_results = conn.execute(model_costs_query, session_ids).fetchall()
-                for sid, model, cost in model_cost_results:
+
+                # Step 3: Merge using requested model names as display keys
+                for sid, resolved_model, cost, duration_sec in model_cost_results:
                     if sid not in model_costs_by_session:
-                        model_costs_by_session[sid] = []
-                    model_costs_by_session[sid].append({
-                        'model': model,
-                        'cost': float(cost) if cost else 0.0
-                    })
+                        model_costs_by_session[sid] = {}
+
+                    # Look up the requested model name; fall back to resolved if not found
+                    display_model = model_mapping.get(sid, {}).get(resolved_model, resolved_model)
+
+                    # Convert duration to float seconds
+                    dur_float = 0.0
+                    if duration_sec is not None:
+                        if hasattr(duration_sec, 'total_seconds'):
+                            dur_float = duration_sec.total_seconds()
+                        elif isinstance(duration_sec, (int, float)):
+                            dur_float = float(duration_sec)
+
+                    # Merge costs for same display_model
+                    if display_model in model_costs_by_session[sid]:
+                        model_costs_by_session[sid][display_model]['cost'] += float(cost) if cost else 0.0
+                        model_costs_by_session[sid][display_model]['duration'] = max(
+                            model_costs_by_session[sid][display_model]['duration'], dur_float
+                        )
+                    else:
+                        model_costs_by_session[sid][display_model] = {
+                            'model': display_model,
+                            'cost': float(cost) if cost else 0.0,
+                            'duration': dur_float
+                        }
+
+                # Convert dict to list format
+                for sid in model_costs_by_session:
+                    model_costs_by_session[sid] = list(model_costs_by_session[sid].values())
+
             except Exception as e:
                 print(f"[ERROR] Batch model costs query: {e}")
 
         instances = []
         for session_row in session_results:
-            session_id, session_cascade_id, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
+            session_id, session_cascade_id, species_hash, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
 
             # Get models from batch query
             models_used = models_by_session.get(session_id, [])
@@ -997,8 +1059,9 @@ def get_cascade_instances(cascade_id):
             # Get sounding data
             soundings_map = {}
             try:
-                # Include model in the query - use MAX since typically one model per sounding
-                model_select = "MAX(model) as sounding_model" if has_model else "NULL as sounding_model"
+                # Include model in the query - use model_requested when available for cleaner display
+                # Use MAX since typically one model per sounding
+                model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as sounding_model" if has_model else "NULL as sounding_model"
                 soundings_query = f"""
                 SELECT
                     phase_name,
@@ -1191,6 +1254,7 @@ def get_cascade_instances(cascade_id):
             instances.append({
                 'session_id': session_id,
                 'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
+                'species_hash': species_hash,  # Hash of cascade config (instructions, soundings, rules)
                 'parent_session_id': parent_session_id,
                 'depth': int(depth) if depth is not None else 0,
                 'start_time': to_iso_string(start_time),

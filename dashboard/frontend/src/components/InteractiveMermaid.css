@@ -28,7 +28,7 @@
 }
 
 .interactive-mermaid-container::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 /* Loading State */
@@ -42,7 +42,7 @@
 }
 
 .mermaid-loading .spinning {
-  color: #2DD4BF;
+  color: #4A9EDD;
   animation: spin 1s linear infinite;
 }
 
@@ -81,10 +81,10 @@
 
 @keyframes pulse-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 12px #2DD4BF) brightness(1.5);
+    filter: drop-shadow(0 0 12px #4A9EDD) brightness(1.5);
   }
   50% {
-    filter: drop-shadow(0 0 20px #2DD4BF) brightness(1.8);
+    filter: drop-shadow(0 0 20px #4A9EDD) brightness(1.8);
   }
 }
 

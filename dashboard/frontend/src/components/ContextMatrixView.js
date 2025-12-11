@@ -262,7 +262,7 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
 
     // Draw axis labels
     ctx.fillStyle = '#6B7280';
-    ctx.font = '10px Space Grotesk, sans-serif';
+    ctx.font = '10px Manrope, sans-serif';
     ctx.save();
     ctx.translate(12, height / 2);
     ctx.rotate(-Math.PI / 2);

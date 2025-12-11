@@ -4,6 +4,7 @@ import RichMarkdown from './RichMarkdown';
 import VideoSpinner from './VideoSpinner';
 import ParetoChart from './ParetoChart';
 import ModelFilterBanner from './ModelFilterBanner';
+import PromptPhylogeny from './PromptPhylogeny';
 import './SoundingsExplorer.css';
 
 /**
@@ -143,6 +144,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
   const [paretoData, setParetoData] = useState(null); // Pareto frontier data for multi-model soundings
   const [paretoExpanded, setParetoExpanded] = useState(true); // Pareto section expanded by default
   const [modelFilters, setModelFilters] = useState([]); // Model filter events
+  const [phylogenyExpanded, setPhylogenyExpanded] = useState(false); // Prompt phylogeny panel
 
   useEffect(() => {
     fetchSoundingsData();
@@ -308,6 +310,14 @@ function SoundingsExplorer({ sessionId, onClose }) {
             </div>
           </div>
           <div className="header-right">
+            <button
+              className="phylogeny-toggle-button"
+              onClick={() => setPhylogenyExpanded(!phylogenyExpanded)}
+              title="View prompt evolution across runs"
+            >
+              <Icon icon="mdi:family-tree" width="20" />
+              <span>Evolution</span>
+            </button>
             <span className="total-cost">Total: {formatCost(totalCost)}</span>
             <button className="close-button" onClick={onClose}>
               <Icon icon="mdi:close" width="24" />
@@ -801,6 +811,25 @@ function SoundingsExplorer({ sessionId, onClose }) {
               ))}
             </div>
             <span className="path-cost">{formatCost(totalCost)}</span>
+          </div>
+        )}
+
+        {/* Prompt Phylogeny Panel */}
+        {phylogenyExpanded && (
+          <div className="phylogeny-panel">
+            <div className="phylogeny-panel-header">
+              <h3>🧬 Prompt Evolution</h3>
+              <button
+                className="collapse-button"
+                onClick={() => setPhylogenyExpanded(false)}
+                title="Collapse"
+              >
+                <Icon icon="mdi:chevron-down" width="20" />
+              </button>
+            </div>
+            <div className="phylogeny-panel-content">
+              <PromptPhylogeny sessionId={sessionId} />
+            </div>
           </div>
         )}
       </div>

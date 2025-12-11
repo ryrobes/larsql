@@ -6,7 +6,7 @@
   padding: 0.75rem;
   background: linear-gradient(135deg, rgba(22, 32, 42, 0.6) 0%, rgba(11, 18, 25, 0.8) 100%);
   border-radius: 12px;
-  border: 1px solid rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(74, 158, 221, 0.1);
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   /* Prevent layout shift during updates */
   contain: layout style;
@@ -17,7 +17,7 @@
 }
 
 .cascade-bar-container:hover {
-  border-color: rgba(45, 212, 191, 0.25);
+  border-color: rgba(74, 158, 221, 0.25);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -167,7 +167,7 @@
 .cascade-bar-tooltip {
   position: absolute;
   background: rgba(22, 32, 42, 0.95);
-  border: 1px solid rgba(45, 212, 191, 0.3);
+  border: 1px solid rgba(74, 158, 221, 0.3);
   border-radius: 8px;
   padding: 8px 12px;
   pointer-events: none;
@@ -214,7 +214,7 @@
 }
 
 .tooltip-cost {
-  color: #34d399;
+  color: #5EEAD4;
   font-weight: 600;
   font-family: 'IBM Plex Mono', monospace;
 }
@@ -254,7 +254,7 @@
 
 .legend-item:hover,
 .legend-item.hovered {
-  background: rgba(45, 212, 191, 0.1);
+  background: rgba(74, 158, 221, 0.1);
 }
 
 .legend-item.running {
@@ -313,7 +313,7 @@
 }
 
 .legend-status.completed {
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .legend-status.error {
@@ -327,9 +327,9 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: rgba(45, 212, 191, 0.1);
+  background: rgba(74, 158, 221, 0.1);
   border-radius: 6px;
-  border: 1px solid rgba(45, 212, 191, 0.2);
+  border: 1px solid rgba(74, 158, 221, 0.2);
 }
 
 .total-label {
@@ -342,7 +342,7 @@
 .total-value {
   font-size: 0.85rem;
   font-weight: 700;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-family: 'IBM Plex Mono', monospace;
 }
 

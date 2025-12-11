@@ -8,7 +8,7 @@
   padding: 0.5rem;
   background: rgba(11, 18, 25, 0.5);
   border-radius: 6px;
-  border: 1px solid rgba(96, 165, 250, 0.15);
+  border: 1px solid rgba(90, 141, 196, 0.15);
   /* Prevent layout shift during updates */
   contain: layout style;
 }
@@ -25,12 +25,12 @@
 }
 
 .audio-player-container:hover {
-  border-color: rgba(96, 165, 250, 0.3);
+  border-color: rgba(90, 141, 196, 0.3);
 }
 
 .audio-player-container.playing {
-  border-color: rgba(96, 165, 250, 0.5);
-  background: rgba(96, 165, 250, 0.08);
+  border-color: rgba(90, 141, 196, 0.5);
+  background: rgba(90, 141, 196, 0.08);
 }
 
 .audio-player-info {
@@ -40,7 +40,7 @@
 }
 
 .audio-player-info .audio-icon {
-  color: #60a5fa;
+  color: #5A8DC4;
   flex-shrink: 0;
 }
 
@@ -66,7 +66,7 @@
 }
 
 .audio-element::-webkit-media-controls-play-button {
-  background-color: #60a5fa;
+  background-color: #5A8DC4;
   border-radius: 50%;
 }
 
@@ -94,9 +94,9 @@
 .message-audio-container {
   margin-top: 0.5rem;
   padding: 0.5rem;
-  background: rgba(96, 165, 250, 0.05);
+  background: rgba(90, 141, 196, 0.05);
   border-radius: 6px;
-  border: 1px solid rgba(96, 165, 250, 0.2);
+  border: 1px solid rgba(90, 141, 196, 0.2);
 }
 
 .message-audio-header {
@@ -105,7 +105,7 @@
   gap: 0.5rem;
   margin-bottom: 0.35rem;
   font-size: 0.7rem;
-  color: #60a5fa;
+  color: #5A8DC4;
   font-weight: 600;
 }
 

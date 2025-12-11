@@ -321,7 +321,8 @@ class UnifiedLogger:
         species_hash: str = None,  # Hash of phase template DNA for prompt evolution tracking
 
         # LLM provider data
-        model: str = None,
+        model: str = None,              # Resolved model name (from API response)
+        model_requested: str = None,    # Originally requested model (from config)
         request_id: str = None,
         provider: str = None,
 
@@ -434,6 +435,7 @@ class UnifiedLogger:
 
             # LLM provider data
             "model": model,
+            "model_requested": model_requested,
             "request_id": request_id,
             "provider": provider,
 
@@ -586,6 +588,7 @@ def log_unified(
     phase_config: dict = None,
     species_hash: str = None,
     model: str = None,
+    model_requested: str = None,
     request_id: str = None,
     provider: str = None,
     duration_ms: float = None,
@@ -637,6 +640,7 @@ def log_unified(
         phase_config=phase_config,
         species_hash=species_hash,
         model=model,
+        model_requested=model_requested,
         request_id=request_id,
         provider=provider,
         duration_ms=duration_ms,

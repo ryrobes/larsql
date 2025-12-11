@@ -22,7 +22,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   border: none;
   border-radius: 24px;
   color: white;
@@ -30,12 +30,12 @@
   font-size: 0.95em;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.4);
+  box-shadow: 0 4px 16px rgba(107, 127, 187, 0.4);
 }
 
 .checkpoint-badge:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(167, 139, 250, 0.5);
+  box-shadow: 0 6px 20px rgba(107, 127, 187, 0.5);
 }
 
 .checkpoint-badge.expanded {
@@ -95,7 +95,7 @@
 }
 
 .dropdown-title {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 600;
   font-size: 0.9em;
 }
@@ -136,7 +136,7 @@
 }
 
 .checkpoint-item:hover {
-  background: rgba(167, 139, 250, 0.1);
+  background: rgba(107, 127, 187, 0.1);
 }
 
 .checkpoint-item.urgent {
@@ -187,7 +187,7 @@
 }
 
 .item-phase {
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .item-cascade {

@@ -51,7 +51,7 @@
 }
 
 .matrix-title svg {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .matrix-stats {
@@ -87,9 +87,9 @@
 }
 
 .matrix-controls button:hover {
-  background: rgba(45, 212, 191, 0.1);
-  border-color: rgba(45, 212, 191, 0.4);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  border-color: rgba(74, 158, 221, 0.4);
+  color: #4A9EDD;
 }
 
 .matrix-controls button.close-btn:hover {
@@ -161,8 +161,8 @@
 }
 
 .color-mode-toggle .mode-btn.active {
-  background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
 }
 
 .legend-item.token-max {
@@ -189,12 +189,12 @@
   top: 10px;
   right: 10px;
   background: rgba(11, 18, 25, 0.97);
-  border: 1px solid rgba(167, 139, 250, 0.4);
+  border: 1px solid rgba(107, 127, 187, 0.4);
   border-radius: 8px;
   padding: 0.75rem;
   min-width: 200px;
   max-width: 280px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(167, 139, 250, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(107, 127, 187, 0.1);
   z-index: 100;
   pointer-events: none;
   backdrop-filter: blur(4px);
@@ -207,7 +207,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, #a78bfa, #60a5fa);
+  background: linear-gradient(90deg, #6B7FBB, #5A8DC4);
   border-radius: 8px 8px 0 0;
 }
 
@@ -217,7 +217,7 @@
   gap: 0.35rem;
   font-size: 0.7rem;
   font-weight: 600;
-  color: #a78bfa;
+  color: #6B7FBB;
   margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -241,8 +241,8 @@
 }
 
 .tooltip-status.in-context {
-  background: rgba(52, 211, 153, 0.2);
-  color: #34d399;
+  background: rgba(94, 234, 212, 0.2);
+  color: #5EEAD4;
 }
 
 .tooltip-status.not-in-context {

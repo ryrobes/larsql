@@ -47,7 +47,7 @@
   justify-content: space-between;
   padding: 1rem 2rem;
   background: linear-gradient(180deg, rgba(22, 32, 42, 0.95) 0%, rgba(11, 18, 25, 0.98) 100%);
-  border-bottom: 1px solid rgba(45, 212, 191, 0.15);
+  border-bottom: 1px solid rgba(74, 158, 221, 0.15);
   backdrop-filter: blur(8px);
   z-index: 100;
 }
@@ -69,7 +69,7 @@
 }
 
 .brand-logo:hover {
-  background: rgba(45, 212, 191, 0.1);
+  background: rgba(74, 158, 221, 0.1);
   transform: scale(1.05);
 }
 
@@ -83,7 +83,7 @@
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #f472b6 0%, #fb923c 50%, #2DD4BF 100%);
+  background: linear-gradient(135deg, #f472b6 0%, #fb923c 50%, #4A9EDD 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -115,17 +115,17 @@
   gap: 5px;
   padding: 6px 12px;
   background: rgba(22, 32, 42, 0.8);
-  border: 1px solid rgba(45, 212, 191, 0.15);
+  border: 1px solid rgba(74, 158, 221, 0.15);
   border-radius: 20px;
   transition: all 0.2s ease;
 }
 
 .stats-bar .stat:hover {
-  border-color: rgba(45, 212, 191, 0.3);
+  border-color: rgba(74, 158, 221, 0.3);
 }
 
 .stats-bar .stat.good {
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .stats-bar .stat.bad {
@@ -133,7 +133,7 @@
 }
 
 .stats-bar .stat.agreement {
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .stats-bar .stat.total {
@@ -148,7 +148,7 @@
   gap: 12px;
   padding: 0.75rem 2rem;
   background: rgba(22, 32, 42, 0.6);
-  border-bottom: 1px solid rgba(45, 212, 191, 0.1);
+  border-bottom: 1px solid rgba(74, 158, 221, 0.1);
 }
 
 .context-bar .cascade-id {
@@ -162,23 +162,23 @@
 }
 
 .context-bar .phase-name {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-size: 0.85rem;
   padding: 4px 12px;
-  background: rgba(45, 212, 191, 0.1);
-  border: 1px solid rgba(45, 212, 191, 0.3);
+  background: rgba(74, 158, 221, 0.1);
+  border: 1px solid rgba(74, 158, 221, 0.3);
   border-radius: 6px;
 }
 
 .context-bar .queue-indicator {
   padding: 4px 14px;
-  background: rgba(45, 212, 191, 0.15);
-  border: 1px solid rgba(45, 212, 191, 0.4);
+  background: rgba(74, 158, 221, 0.15);
+  border: 1px solid rgba(74, 158, 221, 0.4);
   border-radius: 20px;
 }
 
 .context-bar .queue-indicator .position {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-weight: 700;
   font-size: 0.9rem;
 }
@@ -277,16 +277,16 @@
   position: absolute;
   inset: -20px;
   background: linear-gradient(135deg,
-    rgba(96, 165, 250, 0.6) 0%,
+    rgba(90, 141, 196, 0.6) 0%,
     rgba(147, 197, 253, 0.5) 25%,
-    rgba(59, 130, 246, 0.4) 50%,
-    rgba(96, 165, 250, 0.3) 100%);
+    rgba(74, 112, 158, 0.4) 50%,
+    rgba(90, 141, 196, 0.3) 100%);
   border-radius: 20px;
   pointer-events: none;
   z-index: 10;
   animation: coldOverlay 0.5s ease-out forwards;
   box-shadow: inset 0 0 80px rgba(147, 197, 253, 0.5),
-              0 0 40px rgba(96, 165, 250, 0.4);
+              0 0 40px rgba(90, 141, 196, 0.4);
 }
 
 /* Hot overlay for right/good swipe - warm orange/pink */
@@ -368,7 +368,7 @@
 }
 
 .evaluation-card:hover {
-  border-color: rgba(45, 212, 191, 0.4);
+  border-color: rgba(74, 158, 221, 0.4);
 }
 
 /* Prompt card specific */
@@ -390,9 +390,9 @@
 
 /* Rating feedback states */
 .evaluation-card.output-card.rated-good {
-  border-color: #2DD4BF;
-  box-shadow: 0 0 30px rgba(45, 212, 191, 0.3),
-              inset 0 0 60px rgba(45, 212, 191, 0.05);
+  border-color: #4A9EDD;
+  box-shadow: 0 0 30px rgba(74, 158, 221, 0.3),
+              inset 0 0 60px rgba(74, 158, 221, 0.05);
 }
 
 .evaluation-card.output-card.rated-bad {
@@ -430,7 +430,7 @@
 }
 
 .output-card .card-label {
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 /* Info badges */
@@ -473,7 +473,7 @@
   gap: 12px;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(45, 212, 191, 0.15);
+  border-bottom: 1px solid rgba(74, 158, 221, 0.15);
 }
 
 .phase-image {
@@ -531,13 +531,13 @@
 }
 
 .markdown-content code {
-  background: rgba(45, 212, 191, 0.1);
-  border: 1px solid rgba(45, 212, 191, 0.2);
+  background: rgba(74, 158, 221, 0.1);
+  border: 1px solid rgba(74, 158, 221, 0.2);
   padding: 2px 8px;
   border-radius: 6px;
   font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .markdown-content pre {
@@ -565,7 +565,7 @@
 }
 
 .markdown-content a {
-  color: #2DD4BF;
+  color: #4A9EDD;
   text-decoration: none;
 }
 
@@ -627,7 +627,7 @@
 }
 
 .comparison-card:hover {
-  border-color: rgba(45, 212, 191, 0.5);
+  border-color: rgba(74, 158, 221, 0.5);
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
@@ -638,8 +638,8 @@
 }
 
 .comparison-card.selected {
-  border-color: #2DD4BF;
-  box-shadow: 0 0 20px rgba(45, 212, 191, 0.3);
+  border-color: #4A9EDD;
+  box-shadow: 0 0 20px rgba(74, 158, 221, 0.3);
   transform: translateY(-4px) scale(1.02);
 }
 
@@ -656,7 +656,7 @@
 .sounding-number {
   font-size: 1.4rem;
   font-weight: 700;
-  color: #2DD4BF;
+  color: #4A9EDD;
   min-width: 28px;
 }
 
@@ -694,7 +694,7 @@
 }
 
 .comparison-footer .cost {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-weight: 500;
 }
 
@@ -772,14 +772,14 @@
 }
 
 .action-btn.good {
-  background: linear-gradient(135deg, #2DD4BF 0%, #14b8a6 100%);
+  background: linear-gradient(135deg, #4A9EDD 0%, #14b8a6 100%);
   color: #0B1219;
-  box-shadow: 0 6px 20px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 6px 20px rgba(74, 158, 221, 0.4);
 }
 
 .action-btn.good:hover {
   transform: scale(1.15) rotate(5deg);
-  box-shadow: 0 8px 30px rgba(45, 212, 191, 0.5);
+  box-shadow: 0 8px 30px rgba(74, 158, 221, 0.5);
 }
 
 /* Keyboard-triggered bump animation for good button */
@@ -795,7 +795,7 @@
 
 @keyframes bumpGood {
   0% { transform: scale(1) rotate(0deg); }
-  40% { transform: scale(1.4) rotate(10deg); box-shadow: 0 15px 50px rgba(45, 212, 191, 0.8); }
+  40% { transform: scale(1.4) rotate(10deg); box-shadow: 0 15px 50px rgba(74, 158, 221, 0.8); }
   100% { transform: scale(1) rotate(0deg); }
 }
 
@@ -862,16 +862,16 @@
 }
 
 .secondary-btn:hover {
-  background: rgba(45, 212, 191, 0.1);
-  border-color: rgba(45, 212, 191, 0.5);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  border-color: rgba(74, 158, 221, 0.5);
+  color: #4A9EDD;
   transform: scale(1.1);
 }
 
 .secondary-btn.active {
-  background: rgba(45, 212, 191, 0.15);
-  border-color: #2DD4BF;
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.15);
+  border-color: #4A9EDD;
+  color: #4A9EDD;
 }
 
 .secondary-btn:disabled {
@@ -922,7 +922,7 @@
   border-radius: 4px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
-  color: #2DD4BF;
+  color: #4A9EDD;
   margin: 0 2px;
 }
 
@@ -963,7 +963,7 @@
   width: 50px;
   height: 50px;
   border: 3px solid #16202A;
-  border-top-color: #2DD4BF;
+  border-top-color: #4A9EDD;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -984,7 +984,7 @@
 }
 
 .empty-state .empty-icon {
-  color: #2DD4BF;
+  color: #4A9EDD;
   opacity: 0.5;
 }
 
@@ -1023,7 +1023,7 @@
 .card-content::-webkit-scrollbar-thumb:hover,
 .comparison-content::-webkit-scrollbar-thumb:hover,
 .comparison-grid::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 /* ==================== RESPONSIVE ==================== */

@@ -35,7 +35,7 @@
 
 .data-table th {
   font-weight: 600;
-  color: #a78bfa;
+  color: #6B7FBB;
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
@@ -51,7 +51,7 @@
 }
 
 .data-table th.sorted {
-  background: rgba(167, 139, 250, 0.1);
+  background: rgba(107, 127, 187, 0.1);
 }
 
 .th-content {
@@ -61,7 +61,7 @@
 }
 
 .sort-indicator {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-size: 0.8rem;
 }
 
@@ -102,7 +102,7 @@
 }
 
 .data-table tbody tr.selected {
-  background: rgba(167, 139, 250, 0.15) !important;
+  background: rgba(107, 127, 187, 0.15) !important;
 }
 
 .data-table tbody tr.selected td {
@@ -127,7 +127,7 @@
 .select-cell input {
   width: 16px;
   height: 16px;
-  accent-color: #a78bfa;
+  accent-color: #6B7FBB;
   cursor: pointer;
 }
 

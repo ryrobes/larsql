@@ -62,15 +62,15 @@
 }
 
 .cost-timeline-chart .stat.cost .stat-value {
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .cost-timeline-chart .stat.tokens .stat-value {
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .cost-timeline-chart .stat.time .stat-value {
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .cost-timeline-chart .running-indicator {
@@ -182,11 +182,11 @@
 }
 
 .cost-chart-tooltip .tooltip-row.highlight span:last-child {
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-weight: 600;
 }
 
 .cost-chart-tooltip .model-name {
   font-size: 0.65rem;
-  color: #a78bfa !important;
+  color: #6B7FBB !important;
 }

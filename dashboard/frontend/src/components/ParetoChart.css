@@ -17,7 +17,7 @@
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(52, 211, 153, 0.2);
+  border-bottom: 1px solid rgba(94, 234, 212, 0.2);
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -28,7 +28,7 @@
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #34d399;
+  color: #5EEAD4;
 }
 
 .pareto-title svg {
@@ -47,14 +47,14 @@
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #8b92a0;
+  color: #9AA5B1;
   padding: 4px 10px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
 .pareto-stats .stat svg {
-  color: #4ec9b0;
+  color: #4A9EDD;
 }
 
 .pareto-stats .winner-stat {
@@ -68,7 +68,7 @@
 
 /* Chart Wrapper */
 .pareto-chart-wrapper {
-  background: #1a1d24;
+  background: #0B1219;
   border-radius: 8px;
   padding: 12px 8px 8px 0;
 }
@@ -76,7 +76,7 @@
 /* Recharts overrides */
 .pareto-chart-wrapper .recharts-cartesian-grid-horizontal line,
 .pareto-chart-wrapper .recharts-cartesian-grid-vertical line {
-  stroke: #2d3139;
+  stroke: #2C3B4B;
   stroke-opacity: 0.5;
 }
 
@@ -93,8 +93,8 @@
 
 /* Custom Tooltip */
 .pareto-tooltip {
-  background: #252931;
-  border: 1px solid #3a3f4b;
+  background: #16202A;
+  border: 1px solid #2C3B4B;
   border-radius: 8px;
   padding: 12px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -107,7 +107,7 @@
   gap: 6px;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #3a3f4b;
+  border-bottom: 1px solid #2C3B4B;
 }
 
 .tooltip-model {
@@ -125,12 +125,12 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #d4d7dd;
+  color: #F0F4F8;
   margin-bottom: 4px;
 }
 
 .tooltip-row svg {
-  color: #8b92a0;
+  color: #9AA5B1;
   flex-shrink: 0;
 }
 
@@ -145,14 +145,14 @@
 }
 
 .tooltip-badge.frontier {
-  background: rgba(52, 211, 153, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.4);
+  background: rgba(94, 234, 212, 0.2);
+  color: #5EEAD4;
+  border: 1px solid rgba(94, 234, 212, 0.4);
 }
 
 .tooltip-badge.dominated {
   background: rgba(139, 146, 160, 0.15);
-  color: #8b92a0;
+  color: #9AA5B1;
   border: 1px solid rgba(139, 146, 160, 0.3);
 }
 
@@ -163,14 +163,14 @@
   gap: 12px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(52, 211, 153, 0.15);
+  border-top: 1px solid rgba(94, 234, 212, 0.15);
   flex-wrap: wrap;
 }
 
 .legend-title {
   font-size: 11px;
   font-weight: 600;
-  color: #8b92a0;
+  color: #9AA5B1;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -182,7 +182,7 @@
   padding: 4px 10px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 4px;
-  border: 1px solid #2d3139;
+  border: 1px solid #2C3B4B;
 }
 
 .legend-dot {
@@ -194,7 +194,7 @@
 
 .legend-model {
   font-size: 11px;
-  color: #d4d7dd;
+  color: #F0F4F8;
   font-family: 'Courier New', monospace;
 }
 
@@ -209,7 +209,7 @@
   border: 1px solid rgba(251, 191, 36, 0.25);
   border-radius: 6px;
   font-size: 13px;
-  color: #d4d7dd;
+  color: #F0F4F8;
 }
 
 .winner-info svg {
@@ -230,9 +230,9 @@
   justify-content: center;
   gap: 12px;
   padding: 40px 20px;
-  color: #8b92a0;
+  color: #9AA5B1;
   background: rgba(255, 255, 255, 0.02);
-  border: 1px dashed #3a3f4b;
+  border: 1px dashed #2C3B4B;
   border-radius: 8px;
 }
 
@@ -247,7 +247,7 @@
   justify-content: center;
   gap: 10px;
   padding: 30px 20px;
-  color: #8b92a0;
+  color: #9AA5B1;
   font-size: 13px;
 }
 

@@ -4,6 +4,8 @@
 
 Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
 
+**NEW: Automatic prompt optimization!** Rewrite mutations now learn from previous winners automatically. Each run builds on the last 5 winning prompts (same config). View the full genetic lineage in the Web UI's Evolution Tree (🧬). Zero configuration required. [See Passive Prompt Optimization →](#passive-prompt-optimization-winner-learning)
+
 **NEW: Visual browser automation with Rabbitize!** Give your agents eyes and hands for the web. [See RABBITIZE_INTEGRATION.md →](RABBITIZE_INTEGRATION.md)
 
 ## The Retry Loop Problem Everyone Faces
@@ -206,7 +208,15 @@ Add `mutate: true` to explore **different formulations** of the same task:
 
 Each mutation is a **different approach** to the same problem. Evaluator picks winner. All logged for analysis.
 
-**This is how passive optimization works:** After 10-20 runs, system analyzes which approaches win most often → suggests improved prompts with impact estimates (-32% cost, +25% quality).
+**Automatic Winner Learning:** When using `mutation_mode: "rewrite"`, each new run learns from the last 5 winning rewrites (same species hash = identical config). Run 1 explores randomly. Run 2 builds on Run 1's winner. Run 10 builds on 5 accumulated winners. Zero configuration required.
+
+```bash
+# Run 1: "🔬 No previous winners - exploratory rewrite"
+# Run 2: "📚 Learning from 1 previous winning rewrite"
+# Run 10: "📚 Learning from 5 previous winning rewrites"
+```
+
+**Passive optimization in action:** Prompts improve automatically across runs. View the full genetic lineage in the Web UI's Evolution Tree (🧬) - see how each sounding was trained by ALL previous winners, with active training set highlighted in gold.
 
 **Prompt engineering becomes data science, not dark art.**
 
@@ -747,6 +757,76 @@ For **approach** mode:
 - Content: Creative brainstorming → Refined copy
 - Design: Initial mockup → Accessibility-polished final
 - Strategy: Multiple approaches → Actionable plan
+
+#### Passive Prompt Optimization (Winner Learning)
+
+**The `rewrite` mutation mode learns from previous winners automatically.**
+
+When you use `mutation_mode: "rewrite"`, each rewrite is inspired by the last 5 winning rewrites from previous runs with the **same species hash** (identical phase configuration). This creates a self-optimizing evolutionary flywheel:
+
+```bash
+# Run 1: Random exploratory rewrites
+python -m windlass.cli run my_cascade.json --session run_001
+# Console: "🔬 No previous winners - exploratory rewrite"
+
+# Run 2: Learns from Run 1 winner
+python -m windlass.cli run my_cascade.json --session run_002
+# Console: "📚 Learning from 1 previous winning rewrite"
+
+# Run 10: Builds on accumulated winners
+python -m windlass.cli run my_cascade.json --session run_010
+# Console: "📚 Learning from 5 previous winning rewrites"
+```
+
+**How it works:**
+1. **Species Hash Isolation**: Only learns from runs with identical phase config (apples-to-apples)
+2. **Recency Bias**: Uses last 5 winners (most recent = most relevant)
+3. **Zero Configuration**: Enabled by default for `"rewrite"` mode
+4. **Opt-Out**: Use `"rewrite_free"` to disable learning for A/B testing
+
+**Configuration:**
+```bash
+# Change winner limit (default: 5)
+export WINDLASS_WINNER_HISTORY_LIMIT=3  # More aggressive exploration
+export WINDLASS_WINNER_HISTORY_LIMIT=10 # Mature optimization (50+ generations)
+```
+
+**Why this works:**
+- Early runs explore randomly → find initial winners
+- Later runs build on winners → refine what worked
+- Species hash prevents cross-contamination (changing config = fresh evolution)
+- Recency bias allows "forgetting" dead ends
+
+**Prompt Phylogeny Visualization:**
+
+Open the Web UI and click the Evolution button (🧬) in the Soundings Explorer to see:
+- **Genetic lineage tree**: How prompts evolved across runs
+- **Gene pool breeding**: Each sounding trained by ALL previous winners, not just last gen
+- **Active training set**: Last 5 winners highlighted with 🎓 golden glow
+- **DNA inheritance bars**: Visual representation of parent count growth
+- **Winners-only filter**: Focus on successful evolutionary path
+
+**Visual indicators:**
+- 🎓 Golden glow = In active training set (teaching next gen)
+- 👑 Teal border = Winner (enters gene pool)
+- 📍 Blue border = Current session (you are here)
+- Green thick edges = Immediate parents (last generation)
+- Purple thin edges = Gene pool ancestors (older generations)
+
+**Query training data:**
+```bash
+# See all winners for a species
+windlass sql "SELECT mutation_applied, timestamp FROM unified_logs
+  WHERE species_hash = 'abc123' AND is_winner = true
+  ORDER BY timestamp DESC LIMIT 5"
+
+# Track evolution over time
+windlass sql "SELECT session_id, COUNT(*) as soundings,
+  SUM(is_winner) as winners
+  FROM unified_logs
+  WHERE species_hash = 'abc123'
+  GROUP BY session_id ORDER BY MIN(timestamp)"
+```
 
 ### Wards (Validation & Guardrails)
 
@@ -1532,6 +1612,52 @@ graph = build_react_flow_nodes(tree)
 ```
 
 See `extras/debug_ui/VISUALIZATION_GUIDE.md` for complete React Flow patterns.
+
+### Web UI (Sextant Dashboard)
+
+Windlass includes a production-ready web dashboard for exploring execution history, analyzing soundings, and visualizing prompt evolution:
+
+```bash
+cd dashboard && ./start.sh
+# Opens on http://localhost:5550
+```
+
+**Key Features:**
+
+**1. Instance Grid View**
+- Browse all cascade executions with filtering and search
+- DNA badges (🧬) on each card show species evolution status per phase
+- Click badges to open evolution tree (see Prompt Phylogeny below)
+
+**2. Message Flow View**
+- Detailed execution timeline for any session
+- Interactive phase navigation with context visualization
+- Soundings explorer shows parallel attempts with winner selection
+
+**3. Prompt Phylogeny (Evolution Tree)**
+- **Genetic lineage visualization**: See how prompts evolved across runs
+- **Gene pool breeding**: Each sounding trained by ALL previous winners, not just last gen
+- **Active training set**: Last 5 winners highlighted with 🎓 golden glow
+- **DNA inheritance bars**: Visual representation of parent count growth
+- **Winners-only toggle**: Filter to focus on successful evolutionary path
+- **Auto-layout**: Dagre hierarchical layout prevents edge crossing chaos
+
+**Visual Indicators:**
+- 🎓 Golden glow + pulsing = In active training set (teaching next gen)
+- 👑 Teal border = Winner (enters gene pool)
+- 📍 Blue border = Current session (you are here)
+- Green thick edges = Immediate parents (last generation)
+- Purple thin edges = Gene pool ancestors (older generations, fading by age)
+
+**Access Evolution Tree:**
+- Click DNA badges on instance cards (🧬 Gen X/Y)
+- Or open Soundings Explorer and click "Evolution" button
+
+**4. Species Hash Tracking**
+- Per-phase species badges show training generation (Gen X/Y)
+- Orange badges = New species (Gen 1/1, config just changed)
+- Purple badges = Trained species (Gen 2+, learning from winners)
+- Clickable badges open full evolution visualization
 
 ### Cost Tracking
 

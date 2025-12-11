@@ -20,10 +20,10 @@
 }
 
 .metric-card:hover {
-  border-color: #2DD4BF;
-  background: rgba(45, 212, 191, 0.1);
+  border-color: #4A9EDD;
+  background: rgba(74, 158, 221, 0.1);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+  box-shadow: 0 4px 12px rgba(74, 158, 221, 0.2);
 }
 
 .metric-icon {

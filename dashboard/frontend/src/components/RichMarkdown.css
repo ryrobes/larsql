@@ -20,7 +20,7 @@
   margin-bottom: 0.5em;
   font-weight: 600;
   line-height: 1.3;
-  color: #60a5fa;
+  color: #5A8DC4;
 }
 
 .rich-markdown h1 { font-size: 1.8em; border-bottom: 2px solid #333; padding-bottom: 0.3em; }
@@ -115,7 +115,7 @@
 
 .rich-markdown th {
   background: #252525;
-  color: #60a5fa;
+  color: #5A8DC4;
   font-weight: 600;
 }
 
@@ -124,18 +124,18 @@
 }
 
 .rich-markdown tr:hover {
-  background: rgba(96, 165, 250, 0.05);
+  background: rgba(90, 141, 196, 0.05);
 }
 
 /* ===== Blockquotes ===== */
 
 .markdown-blockquote {
-  border-left: 4px solid #a78bfa;
+  border-left: 4px solid #6B7FBB;
   padding-left: 1em;
   margin: 1em 0;
   color: #b0b0b0;
   font-style: italic;
-  background: rgba(167, 139, 250, 0.05);
+  background: rgba(107, 127, 187, 0.05);
   padding: 0.5em 0 0.5em 1em;
   border-radius: 0 4px 4px 0;
 }
@@ -147,7 +147,7 @@
 /* ===== Links ===== */
 
 .rich-markdown a {
-  color: #60a5fa;
+  color: #5A8DC4;
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: all 0.2s;
@@ -155,7 +155,7 @@
 
 .rich-markdown a:hover {
   color: #93c5fd;
-  border-bottom-color: #60a5fa;
+  border-bottom-color: #5A8DC4;
 }
 
 .external-link {
@@ -222,7 +222,7 @@
 
 .rich-markdown em {
   font-style: italic;
-  color: #a78bfa;
+  color: #6B7FBB;
 }
 
 .rich-markdown strong {
@@ -247,7 +247,7 @@
 /* ===== Details/Summary (HTML5) ===== */
 
 .rich-markdown details {
-  background: rgba(96, 165, 250, 0.05);
+  background: rgba(90, 141, 196, 0.05);
   border: 1px solid #333;
   border-radius: 6px;
   padding: 0.5em 1em;
@@ -257,7 +257,7 @@
 .rich-markdown summary {
   cursor: pointer;
   font-weight: 600;
-  color: #60a5fa;
+  color: #5A8DC4;
   user-select: none;
 }
 

@@ -1,3 +1,5 @@
+@import './theme.css';
+
 * {
   margin: 0;
   padding: 0;
@@ -70,7 +72,7 @@ code {
 
 .header h1 {
   font-size: 1.5rem;
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .cascade-item {
@@ -88,14 +90,14 @@ code {
 }
 
 .cascade-item.selected {
-  background-color: rgba(45, 212, 191, 0.1);
-  border-color: #2DD4BF;
+  background-color: rgba(74, 158, 221, 0.1);
+  border-color: #4A9EDD;
 }
 
 .cascade-item h3 {
   font-size: 0.9rem;
   margin-bottom: 0.25rem;
-  color: #2DD4BF;
+  color: #4A9EDD;
 }
 
 .cascade-item p {
@@ -141,7 +143,7 @@ code {
 }
 
 .log-event-type {
-  color: #2DD4BF;
+  color: #4A9EDD;
   min-width: 150px;
 }
 
@@ -174,7 +176,7 @@ code {
 }
 
 .controls button {
-  background-color: #2DD4BF;
+  background-color: #4A9EDD;
   color: #0B1219;
   border: none;
   padding: 0.5rem 1rem;
@@ -184,7 +186,7 @@ code {
 }
 
 .controls button:hover {
-  background-color: #60E6CE;
+  background-color: #60A9E8;
 }
 
 .controls button:disabled {
@@ -206,7 +208,7 @@ code {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-size: 1.2rem;
 }
 
@@ -245,7 +247,7 @@ code {
 
 .modal-header h2 {
   margin: 0;
-  color: #2DD4BF;
+  color: #4A9EDD;
   font-size: 1.5rem;
 }
 
@@ -280,7 +282,7 @@ code {
 }
 
 .button-primary {
-  background-color: #2DD4BF;
+  background-color: #4A9EDD;
   color: #0B1219;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -290,7 +292,7 @@ code {
 }
 
 .button-primary:hover {
-  background-color: #60E6CE;
+  background-color: #60A9E8;
 }
 
 .button-primary:disabled {
@@ -309,7 +311,7 @@ code {
 }
 
 .button-secondary:hover {
-  background-color: rgba(45, 212, 191, 0.2);
+  background-color: rgba(74, 158, 221, 0.2);
 }
 
 .error-message {
@@ -337,13 +339,13 @@ code {
 }
 
 .cascade-file-item:hover {
-  border-color: #2DD4BF;
-  background-color: rgba(45, 212, 191, 0.1);
+  border-color: #4A9EDD;
+  background-color: rgba(74, 158, 221, 0.1);
 }
 
 .cascade-file-name {
   font-weight: bold;
-  color: #2DD4BF;
+  color: #4A9EDD;
   margin-bottom: 0.25rem;
 }
 
@@ -366,7 +368,7 @@ code {
 }
 
 .cascade-selected h3 {
-  color: #2DD4BF;
+  color: #4A9EDD;
   margin-bottom: 0.5rem;
 }
 
@@ -386,7 +388,7 @@ code {
 }
 
 .back-button:hover {
-  background-color: rgba(45, 212, 191, 0.2);
+  background-color: rgba(74, 158, 221, 0.2);
 }
 
 .no-inputs {
@@ -433,7 +435,7 @@ code {
 
 .input-field input:focus {
   outline: none;
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 /* Modal Styles */
@@ -504,7 +506,7 @@ code {
   padding: 12px;
   background-color: #16202A;
   border-radius: 4px;
-  border-left: 3px solid #2DD4BF;
+  border-left: 3px solid #4A9EDD;
 }
 
 .form-group {
@@ -533,7 +535,7 @@ code {
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 .form-group small {
@@ -552,7 +554,7 @@ code {
 
 .btn-primary {
   padding: 8px 16px;
-  background-color: #2DD4BF;
+  background-color: #4A9EDD;
   color: #0B1219;
   border: none;
   border-radius: 4px;
@@ -562,7 +564,7 @@ code {
 }
 
 .btn-primary:hover {
-  background-color: #60E6CE;
+  background-color: #60A9E8;
 }
 
 .btn-primary:disabled {
@@ -594,5 +596,5 @@ code {
 }
 
 .freeze-test-button:hover {
-  background: #2DD4BF !important;
+  background: #4A9EDD !important;
 }

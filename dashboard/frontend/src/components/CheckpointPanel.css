@@ -5,9 +5,9 @@
   width: 850px;
   max-height: 90vh;
   background: #121212;
-  border: 2px solid #a78bfa;
+  border: 2px solid #6B7FBB;
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(167, 139, 250, 0.3);
+  box-shadow: 0 8px 32px rgba(107, 127, 187, 0.3);
   z-index: 1000;
   overflow: hidden;
   animation: slideIn 0.3s ease-out;
@@ -29,7 +29,7 @@
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   color: white;
   font-weight: 600;
 }
@@ -72,7 +72,7 @@
 }
 
 .checkpoint-item.expanded {
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 .checkpoint-summary {
@@ -90,7 +90,7 @@
 }
 
 .checkpoint-cascade {
-  color: #60a5fa;
+  color: #5A8DC4;
   font-weight: 500;
   font-size: 0.95em;
 }
@@ -101,7 +101,7 @@
 }
 
 .checkpoint-expand {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-size: 0.8em;
 }
 
@@ -209,7 +209,7 @@
 }
 
 .section-data-table .data-table-title {
-  color: #60a5fa;
+  color: #5A8DC4;
   font-weight: 600;
   font-size: 0.95em;
   margin-bottom: 10px;
@@ -227,7 +227,7 @@
 
 .section-data-table th {
   background: #1a1a2e;
-  color: #a78bfa;
+  color: #6B7FBB;
   padding: 10px 12px;
   text-align: left;
   font-weight: 600;
@@ -288,7 +288,7 @@
 }
 
 .section-preview .markdown-content h2 {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-size: 1.2em;
   margin: 16px 0 8px 0;
   border-bottom: 1px solid #333;
@@ -296,7 +296,7 @@
 }
 
 .section-preview .markdown-content h3 {
-  color: #60a5fa;
+  color: #5A8DC4;
   font-size: 1.1em;
   margin: 12px 0 6px 0;
 }
@@ -367,9 +367,9 @@
 }
 
 .card-grid .card.selected {
-  border-color: #a78bfa;
-  background: rgba(167, 139, 250, 0.15);
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3);
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.15);
+  box-shadow: 0 0 0 2px rgba(107, 127, 187, 0.3);
 }
 
 .card-grid .card.disabled {
@@ -381,7 +381,7 @@
   position: absolute;
   top: -6px;
   right: 6px;
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
   color: white;
   font-size: 0.65em;
   font-weight: 600;
@@ -410,7 +410,7 @@
 }
 
 .card-grid .card-title {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 600;
   font-size: 0.95em;
 }
@@ -477,13 +477,13 @@
 }
 
 .checkpoint-btn.approve {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
   color: white;
 }
 
 .checkpoint-btn.approve:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
+  box-shadow: 0 4px 12px rgba(94, 234, 212, 0.4);
 }
 
 .checkpoint-btn.reject {
@@ -531,14 +531,14 @@
 }
 
 .choice-option.selected {
-  border-color: #a78bfa;
-  background: rgba(167, 139, 250, 0.15);
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.15);
 }
 
 .choice-option input[type="radio"],
 .choice-option input[type="checkbox"] {
   margin-top: 4px;
-  accent-color: #a78bfa;
+  accent-color: #6B7FBB;
   flex-shrink: 0;
 }
 
@@ -551,7 +551,7 @@
 }
 
 .choice-label {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-weight: 600;
   font-size: 0.9em;
   text-transform: uppercase;
@@ -603,7 +603,7 @@
 }
 
 .rating-label {
-  color: #60a5fa;
+  color: #5A8DC4;
   font-size: 0.9em;
   margin-bottom: 12px;
 }
@@ -625,7 +625,7 @@
 
 .section-input.text textarea:focus {
   outline: none;
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 /* ===========================================================================
@@ -633,7 +633,7 @@
    =========================================================================== */
 
 .checkpoint-title-text {
-  color: #60a5fa;
+  color: #5A8DC4;
   font-weight: 600;
   font-size: 1.1em;
   margin: 12px 0;
@@ -703,7 +703,7 @@
 
 .checkpoint-reasoning textarea:focus {
   outline: none;
-  border-color: #a78bfa;
+  border-color: #6B7FBB;
 }
 
 /* ===========================================================================
@@ -769,13 +769,13 @@
 }
 
 .sounding-eval-message {
-  color: #a78bfa;
+  color: #6B7FBB;
   font-size: 1.1em;
   margin-bottom: 16px;
 }
 
 .open-comparison-btn {
-  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
   color: white;
   border: none;
   padding: 12px 24px;
@@ -788,7 +788,7 @@
 
 .open-comparison-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.4);
+  box-shadow: 0 4px 12px rgba(107, 127, 187, 0.4);
 }
 
 /* ===========================================================================

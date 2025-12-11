@@ -14,7 +14,7 @@
 }
 
 .parameter-card:hover {
-  border-color: #2DD4BF;
+  border-color: #4A9EDD;
 }
 
 .parameter-header {
@@ -29,7 +29,7 @@
 }
 
 .parameter-header:hover {
-  background: rgba(45, 212, 191, 0.05);
+  background: rgba(74, 158, 221, 0.05);
 }
 
 .header-left {
@@ -47,7 +47,7 @@
 .toggle-button {
   background: transparent;
   border: none;
-  color: #2DD4BF;
+  color: #4A9EDD;
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -56,7 +56,7 @@
 }
 
 .toggle-button:hover {
-  color: #34d399;
+  color: #5EEAD4;
   transform: scale(1.1);
 }
 
@@ -80,7 +80,7 @@
 }
 
 .parameter-content::-webkit-scrollbar-thumb:hover {
-  background: #2DD4BF;
+  background: #4A9EDD;
 }
 
 .output-markdown {
@@ -93,7 +93,7 @@
 .output-markdown h2,
 .output-markdown h3,
 .output-markdown h4 {
-  color: #2DD4BF;
+  color: #4A9EDD;
   margin-top: 16px;
   margin-bottom: 8px;
 }
@@ -131,8 +131,8 @@
 }
 
 .output-markdown code {
-  background: rgba(45, 212, 191, 0.1);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  color: #4A9EDD;
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'IBM Plex Mono', monospace;
@@ -153,7 +153,7 @@
 }
 
 .output-markdown blockquote {
-  border-left: 3px solid #2DD4BF;
+  border-left: 3px solid #4A9EDD;
   padding-left: 16px;
   color: #9AA5B1;
   font-style: italic;
@@ -161,13 +161,13 @@
 }
 
 .output-markdown a {
-  color: #60a5fa;
+  color: #5A8DC4;
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .output-markdown a:hover {
-  color: #2DD4BF;
+  color: #4A9EDD;
   text-decoration: underline;
 }
 
@@ -185,8 +185,8 @@
 }
 
 .output-markdown th {
-  background: rgba(45, 212, 191, 0.1);
-  color: #2DD4BF;
+  background: rgba(74, 158, 221, 0.1);
+  color: #4A9EDD;
   font-weight: 600;
 }
 

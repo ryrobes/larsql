@@ -4164,6 +4164,7 @@ Use only numbers 0-100 for scores."""
            metadata=evaluator_metadata)
 
         # Add winning result to history
+        # IMPORTANT: Include sounding_index and is_winner so UI can identify winning model
         self.echo.add_history({
             "role": "soundings_result",
             "content": f"Selected best of {factor} attempts",
@@ -4171,6 +4172,8 @@ Use only numbers 0-100 for scores."""
             "evaluation": eval_content
         }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
            metadata={"phase_name": phase.name, "winner_index": winner_index, "factor": factor,
+                     "sounding_index": original_winner_index, "is_winner": True,
+                     "model": winner.get('model'),  # Track winning model for UI highlighting
                      "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
         self._update_graph()
@@ -5551,7 +5554,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         cascade_config=cascade_config_dict,
                         phase_name=phase.name,
                         phase_config=phase_config_dict,
-                        model=model_used,
+                        model=model_used,              # Resolved model from API response
+                        model_requested=phase_model,  # Originally requested model from config
                         request_id=request_id,
                         provider=provider,
                         duration_ms=None,  # Not tracking per-message duration yet

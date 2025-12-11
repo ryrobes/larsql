@@ -11,6 +11,7 @@ import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
 import RunPercentile from './RunPercentile';
+import PhaseSpeciesBadges from './PhaseSpeciesBadges';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
@@ -162,43 +163,10 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
   const [audibleSending, setAudibleSending] = useState({});    // { sessionId: boolean }
 
+  // Latest messages for running sessions - track per session
+  const [latestMessages, setLatestMessages] = useState({});    // { sessionId: { text, metadata } }
 
-  useEffect(() => {
-    if (cascadeId) {
-      fetchInstances();
-    }
-  }, [cascadeId, refreshTrigger]);
-
-  // Fallback polling ONLY when SSE is disconnected (SSE events trigger refreshTrigger for real-time updates)
-  useEffect(() => {
-    // If SSE is connected, rely on events (no polling needed!)
-    // if (sseConnected) {
-    //   console.log('[POLL] SSE connected - relying on events, no polling');
-    //   return;
-    // }
-
-    // SSE disconnected - use slow fallback polling
-    const activeSessions = new Set([
-      ...(runningSessions || []),
-      ...(finalizingSessions || [])
-    ]);
-
-    if (activeSessions.size === 0) {
-      console.log('[POLL] No active sessions and SSE disconnected - no polling needed');
-      return;
-    }
-
-    //console.log('[POLL] SSE DISCONNECTED - using fallback polling for', activeSessions.size, 'active sessions');
-
-    const interval = setInterval(() => {
-      console.log('[POLL] Fallback poll (SSE disconnected)');
-      fetchInstances();
-    }, 5000); // Slow fallback: 5 seconds when SSE down
-
-    return () => clearInterval(interval);
-  }, [runningSessions, finalizingSessions, sseConnected]);
-
-  const fetchInstances = async () => {
+  const fetchInstances = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:5001/api/cascade-instances/${cascadeId}`);
       const data = await response.json();
@@ -280,7 +248,148 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       setInstances([]);
       setLoading(false);
     }
-  };
+  }, [cascadeId, runningSessions, finalizingSessions, onInstanceComplete]);
+
+  useEffect(() => {
+    if (cascadeId) {
+      fetchInstances();
+    }
+  }, [cascadeId, refreshTrigger, fetchInstances]);
+
+  // Fast polling for running sessions to pick up species_hash and other metadata
+  useEffect(() => {
+    const activeSessions = new Set([
+      ...(runningSessions || []),
+      ...(finalizingSessions || [])
+    ]);
+
+    if (activeSessions.size === 0) {
+      return;
+    }
+
+    // Fast polling: 2 seconds when sessions are active
+    const interval = setInterval(() => {
+      fetchInstances();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [runningSessions, finalizingSessions, fetchInstances]);
+
+  // Fetch latest message for running sessions
+  const fetchLatestMessages = useCallback(async () => {
+    if (!runningSessions || runningSessions.size === 0) {
+      return;
+    }
+
+    const sessionIds = Array.from(runningSessions);
+    const newMessages = {};
+
+    // Fetch session details for each running session to get latest message
+    await Promise.all(
+      sessionIds.map(async (sessionId) => {
+        try {
+          const response = await fetch(`http://localhost:5001/api/session/${sessionId}`);
+          const data = await response.json();
+
+          if (data.error || !data.entries || data.entries.length === 0) {
+            return;
+          }
+
+          // Find the latest message (non-structural entry with content)
+          const entries = data.entries;
+          // Reverse to get latest first
+          for (let i = entries.length - 1; i >= 0; i--) {
+            const entry = entries[i];
+
+            // Skip structural entries
+            const structuralTypes = [
+              'cascade', 'cascade_start', 'cascade_complete', 'cascade_completed',
+              'cascade_error', 'cascade_failed', 'cascade_killed',
+              'phase', 'phase_start', 'phase_complete',
+              'turn', 'turn_start', 'turn_input',
+              'cost_update', 'checkpoint_start', 'checkpoint_complete'
+            ];
+
+            if (structuralTypes.includes(entry.node_type)) {
+              continue;
+            }
+
+            // Skip entries without content
+            if (!entry.content) {
+              continue;
+            }
+
+            // Extract text from content (could be string or object)
+            let messageText = '';
+            if (typeof entry.content === 'string') {
+              messageText = entry.content;
+            } else if (typeof entry.content === 'object') {
+              // Handle various content formats
+              if (entry.content.content) {
+                messageText = typeof entry.content.content === 'string'
+                  ? entry.content.content
+                  : JSON.stringify(entry.content.content);
+              } else {
+                messageText = JSON.stringify(entry.content);
+              }
+            }
+
+            // Clean up and truncate
+            if (messageText) {
+              // Remove excessive whitespace
+              messageText = messageText.replace(/\s+/g, ' ').trim();
+              // Get first line only (up to first newline or max length)
+              const firstLine = messageText.split('\n')[0];
+
+              // Build metadata string
+              const metaParts = [];
+
+              // Add role/type info
+              if (entry.role) {
+                metaParts.push(entry.role);
+              }
+              if (entry.node_type && entry.node_type !== entry.role) {
+                metaParts.push(entry.node_type);
+              }
+
+              // Add model info if it's an LLM call
+              if (entry.model || entry.model_requested) {
+                const modelName = entry.model_requested || entry.model;
+                metaParts.push(`model: ${modelName}`);
+              }
+
+              // Add token info if available
+              if (entry.tokens_in > 0 || entry.tokens_out > 0) {
+                const tokensIn = entry.tokens_in || 0;
+                const tokensOut = entry.tokens_out || 0;
+                metaParts.push(`${tokensIn.toLocaleString()} → ${tokensOut.toLocaleString()} tokens`);
+              }
+
+              // Add cost if available
+              if (entry.cost > 0) {
+                metaParts.push(`$${entry.cost.toFixed(6)}`);
+              }
+
+              // Add phase name if available
+              if (entry.phase_name) {
+                metaParts.push(`phase: ${entry.phase_name}`);
+              }
+
+              newMessages[sessionId] = {
+                text: firstLine,
+                metadata: metaParts.length > 0 ? metaParts.join(' • ') : null
+              };
+              break; // Found the latest message
+            }
+          }
+        } catch (err) {
+          console.error(`Error fetching latest message for ${sessionId}:`, err);
+        }
+      })
+    );
+
+    setLatestMessages(prev => ({ ...prev, ...newMessages }));
+  }, [runningSessions]);
 
   const formatCost = (cost) => {
     if (!cost || cost === 0) return '$0';
@@ -388,6 +497,105 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     });
   }, [runningSessions]);
 
+  // Fetch latest messages for running sessions
+  useEffect(() => {
+    if (runningSessions && runningSessions.size > 0) {
+      fetchLatestMessages();
+      // Poll for updates while sessions are running
+      const interval = setInterval(fetchLatestMessages, 2000);
+      return () => clearInterval(interval);
+    } else {
+      // Clear messages when no sessions are running
+      setLatestMessages({});
+    }
+  }, [runningSessions, fetchLatestMessages]);
+
+  // Force re-render frequently for running sessions to update progress bar smoothly
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (runningSessions && runningSessions.size > 0) {
+      const interval = setInterval(() => {
+        setTick(t => t + 1);
+      }, 100); // Update every 100ms for smooth animation
+      return () => clearInterval(interval);
+    }
+  }, [runningSessions]);
+
+
+  // Outlined progress bar component with Tron aesthetic
+  // Shows progress based on historical runs with same cascade + inputs
+  const HistoricalProgressBar = ({ currentDuration, avgDuration, sampleSize }) => {
+    const progress = Math.min((currentDuration / avgDuration) * 100, 100);
+
+    return (
+      <div className="species-progress-container">
+        <div className="species-progress-bar">
+          <div
+            className="species-progress-fill"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="species-progress-info">
+          <span className="species-progress-percent">{Math.round(progress)}%</span>
+          <span className="species-progress-stats">avg: {formatDuration(avgDuration)} ({sampleSize} runs)</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Create a hash from cascade_id + inputs for matching similar runs
+  const getRunSignature = useCallback((cascadeId, inputData) => {
+    if (!cascadeId) return null;
+    // Create signature from cascade_id + sorted input keys/values
+    const inputStr = inputData && Object.keys(inputData).length > 0
+      ? JSON.stringify(inputData, Object.keys(inputData).sort())
+      : 'no_inputs';
+    return `${cascadeId}::${inputStr}`;
+  }, []);
+
+  // Calculate average duration for completed runs with same cascade + inputs
+  const getHistoricalAverage = useCallback((cascadeId, inputData, currentSessionId) => {
+    if (!cascadeId || !instances || instances.length < 1) {
+      return null;
+    }
+
+    const signature = getRunSignature(cascadeId, inputData);
+    if (!signature) return null;
+
+    // Collect all instances (including children)
+    const allInstances = [];
+    instances.forEach(inst => {
+      allInstances.push(inst);
+      if (inst.children && inst.children.length > 0) {
+        allInstances.push(...inst.children);
+      }
+    });
+
+    // Find completed instances with matching cascade_id and inputs
+    const matchingRuns = allInstances.filter(inst => {
+      if (inst.session_id === currentSessionId) return false; // Don't include current run
+      if (inst.status === 'failed') return false;
+      if (inst.duration_seconds <= 0) return false;
+      if (runningSessions?.has(inst.session_id)) return false;
+      if (finalizingSessions?.has(inst.session_id)) return false;
+
+      const instSignature = getRunSignature(inst.cascade_id, inst.input_data);
+      return instSignature === signature;
+    });
+
+    if (matchingRuns.length === 0) {
+      return null;
+    }
+
+    // Calculate average duration
+    const totalDuration = matchingRuns.reduce((sum, inst) => sum + inst.duration_seconds, 0);
+    const avgDuration = totalDuration / matchingRuns.length;
+
+    return {
+      avgDuration,
+      sampleSize: matchingRuns.length
+    };
+  }, [instances, runningSessions, finalizingSessions, getRunSignature]);
 
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
@@ -395,6 +603,39 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     const hasRunning = instance.phases?.some(p => p.status === 'running');
     const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
     const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
+
+    // Calculate historical average for running sessions based on cascade + inputs
+    const historicalAvg = getHistoricalAverage(instance.cascade_id, instance.input_data, instance.session_id);
+    const showProgress = (isSessionRunning || hasRunning) && historicalAvg && !isFinalizing;
+
+    // Debug: log when historical data is found
+    if ((isSessionRunning || hasRunning) && !isFinalizing) {
+      const signature = getRunSignature(instance.cascade_id, instance.input_data);
+      if (!historicalAvg) {
+        console.log(`[PROGRESS] ${instance.session_id}: No historical data for ${signature}`);
+      } else {
+        console.log(`[PROGRESS] ${instance.session_id}: Progress bar active - avg ${historicalAvg.avgDuration.toFixed(1)}s from ${historicalAvg.sampleSize} runs`);
+      }
+    }
+
+    // Calculate current duration for running sessions
+    let currentDuration = instance.duration_seconds || 0;
+    if (isSessionRunning || hasRunning) {
+      const sseStart = sessionStartTimes?.[instance.session_id];
+      const dbStart = instance.start_time;
+      const startTime = sseStart || dbStart;
+
+      if (startTime) {
+        const startMs = typeof startTime === 'number'
+          ? (startTime < 10000000000 ? startTime * 1000 : startTime)
+          : new Date(startTime).getTime();
+
+        if (!isNaN(startMs) && startMs > 0) {
+          const now = Date.now();
+          currentDuration = Math.max((now - startMs) / 1000, 0);
+        }
+      }
+    }
 
     // Debug: log sessionStartTimes for running sessions
     // if (isSessionRunning || isFinalizing) {
@@ -498,6 +739,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 )}
               </h3>
               <span className="timestamp-compact">{formatTimestamp(instance.start_time)}</span>
+              <PhaseSpeciesBadges sessionId={instance.session_id} />
             </div>
 
             {/* Sparkline positioned to align with cascade bar */}
@@ -553,6 +795,14 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   isRunning={isSessionRunning || hasRunning}
                 />
               )}
+              {/* Historical progress bar for running cascades */}
+              {showProgress && (
+                <HistoricalProgressBar
+                  currentDuration={currentDuration}
+                  avgDuration={historicalAvg.avgDuration}
+                  sampleSize={historicalAvg.sampleSize}
+                />
+              )}
               {/* Input params below cascade bar */}
               {instance.input_data && Object.keys(instance.input_data).length > 0 ? (
                 <div className="input-params-under-cascade">
@@ -569,6 +819,19 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 <div className="input-params-under-cascade no-inputs">
                   <span className="no-inputs-text">no inputs</span>
                 </div>
+              )}
+              {/* Latest message for running cascades */}
+              {(isSessionRunning || hasRunning) && latestMessages[instance.session_id] && (
+                <>
+                  <div className="latest-message-display">
+                    <span className="latest-message-text">{latestMessages[instance.session_id].text}</span>
+                  </div>
+                  {latestMessages[instance.session_id].metadata && (
+                    <div className="latest-message-metadata">
+                      {latestMessages[instance.session_id].metadata}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
