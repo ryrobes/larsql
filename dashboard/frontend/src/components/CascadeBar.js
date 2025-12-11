@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from '@iconify/react';
+import RichMarkdown from './RichMarkdown';
 import './CascadeBar.css';
 
 // Curated color palette - vibrant pastels that work on dark backgrounds
@@ -40,6 +41,7 @@ export function getSequentialColor(index) {
 function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
   const [hoveredPhase, setHoveredPhase] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [selectedPhase, setSelectedPhase] = useState(null);  // Phase whose output is being displayed
 
   // Calculate phase data with colors and percentages
   const phaseData = useMemo(() => {
@@ -168,13 +170,25 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
           const isPhaseRunning = phase.status === 'running';
           const isCompleted = phase.status === 'completed';
           const isError = phase.status === 'error';
+          const hasOutput = isCompleted && phase.phase_output;
+          const isSelected = selectedPhase?.index === phase.index;
+
+          const handlePillClick = (e) => {
+            e.stopPropagation();
+            if (hasOutput) {
+              // Toggle selection - if already selected, deselect; otherwise select this phase
+              setSelectedPhase(isSelected ? null : phase);
+            }
+          };
 
           return (
             <div
               key={phase.index}
-              className={`legend-item ${isPhaseRunning ? 'running' : ''} ${hoveredPhase?.index === phase.index ? 'hovered' : ''}`}
+              className={`legend-item ${isPhaseRunning ? 'running' : ''} ${hoveredPhase?.index === phase.index ? 'hovered' : ''} ${hasOutput ? 'clickable' : ''} ${isSelected ? 'selected' : ''}`}
               onMouseEnter={() => setHoveredPhase(phase)}
               onMouseLeave={() => setHoveredPhase(null)}
+              onClick={handlePillClick}
+              title={hasOutput ? 'Click to view phase output' : undefined}
             >
               <span
                 className="legend-color"
@@ -184,8 +198,11 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
               {isPhaseRunning && (
                 <Icon icon="mdi:loading" width="12" className="spinning legend-status" />
               )}
-              {isCompleted && (
+              {isCompleted && !isSelected && (
                 <Icon icon="mdi:check" width="12" className="legend-status completed" />
+              )}
+              {isSelected && (
+                <Icon icon="mdi:chevron-up" width="14" className="legend-status selected" />
               )}
               {isError && (
                 <Icon icon="mdi:alert-circle" width="12" height="12" className="legend-status error" />
@@ -194,6 +211,29 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
           );
         })}
       </div>
+
+      {/* Phase output panel */}
+      {selectedPhase && selectedPhase.phase_output && (
+        <div className="phase-output-panel" style={{ '--phase-color': selectedPhase.color }}>
+          <div className="phase-output-header">
+            <div className="phase-output-title">
+              <span className="phase-output-color" style={{ backgroundColor: selectedPhase.color }} />
+              <span className="phase-output-name">{selectedPhase.name}</span>
+              <span className="phase-output-label">output</span>
+            </div>
+            <button
+              className="phase-output-close"
+              onClick={() => setSelectedPhase(null)}
+              title="Close"
+            >
+              <Icon icon="mdi:close" width="16" />
+            </button>
+          </div>
+          <div className="phase-output-content">
+            <RichMarkdown>{selectedPhase.phase_output}</RichMarkdown>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

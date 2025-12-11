@@ -805,13 +805,30 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         const hasError = phase.entries.some(e => e.node_type === 'error');
         const hasPhaseComplete = phase.entries.some(e => e.node_type === 'phase_complete');
 
+        // Find the last agent/assistant output (not structural messages like phase_complete)
+        const agentEntries = phase.entries.filter(e =>
+          e.node_type === 'agent' || e.node_type === 'turn_output' ||
+          (e.role === 'assistant' && e.node_type !== 'phase_complete')
+        );
+        const lastAgentEntry = agentEntries.length > 0 ? agentEntries[agentEntries.length - 1] : null;
+
         let outputSnippet = '';
-        if (lastEntryInPhase?.content) {
-          const content = lastEntryInPhase.content;
+        let phaseOutput = '';  // Full output for phase output panel
+
+        if (lastAgentEntry?.content) {
+          const content = lastAgentEntry.content;
           if (typeof content === 'string') {
             outputSnippet = content.substring(0, 100);
+            phaseOutput = content;
+          } else if (typeof content === 'object' && content.content) {
+            // Handle nested content structure
+            const innerContent = typeof content.content === 'string' ? content.content : JSON.stringify(content.content);
+            outputSnippet = innerContent.substring(0, 100);
+            phaseOutput = innerContent;
           } else {
-            outputSnippet = JSON.stringify(content).substring(0, 100);
+            const jsonContent = JSON.stringify(content);
+            outputSnippet = jsonContent.substring(0, 100);
+            phaseOutput = jsonContent;
           }
         }
 
@@ -846,7 +863,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           max_turns: phase.maxTurnSeen || 1,
           tool_calls: Array.from(phase.toolCalls),
           ward_count: phase.wardCount,
-          output_snippet: outputSnippet
+          output_snippet: outputSnippet,
+          phase_output: phaseOutput  // Full output for phase output panel
         };
       });
 

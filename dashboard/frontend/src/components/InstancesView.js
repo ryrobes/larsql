@@ -99,7 +99,11 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
         if (typeof timeSource === 'number') {
           parsed = timeSource < 10000000000 ? timeSource * 1000 : timeSource;
         } else {
-          parsed = new Date(timeSource).getTime();
+          // Parse timestamp as UTC (ClickHouse returns timestamps without timezone info)
+          const normalized = timeSource.includes('Z') || timeSource.includes('+')
+            ? timeSource
+            : timeSource.replace(' ', 'T') + 'Z';
+          parsed = new Date(normalized).getTime();
         }
 
         if (!isNaN(parsed) && parsed > 0) {
@@ -409,7 +413,16 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   };
 
   const formatTimestamp = (isoString) => {
-    const date = new Date(isoString);
+    if (!isoString) return 'N/A';
+    // Parse timestamp as UTC by normalizing to ISO 8601 format
+    // ClickHouse returns: "2025-12-11 04:12:56.055490" (no timezone)
+    // We need to treat this as UTC, not local time
+    const normalized = isoString.includes('Z') || isoString.includes('+')
+      ? isoString  // Already has timezone info
+      : isoString.replace(' ', 'T') + 'Z';  // Convert to ISO 8601 UTC format
+
+    const date = new Date(normalized);
+    // toLocaleString() will display in user's local timezone
     return date.toLocaleString();
   };
 
@@ -611,11 +624,11 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     // Debug: log when historical data is found
     if ((isSessionRunning || hasRunning) && !isFinalizing) {
       const signature = getRunSignature(instance.cascade_id, instance.input_data);
-      if (!historicalAvg) {
-        console.log(`[PROGRESS] ${instance.session_id}: No historical data for ${signature}`);
-      } else {
-        console.log(`[PROGRESS] ${instance.session_id}: Progress bar active - avg ${historicalAvg.avgDuration.toFixed(1)}s from ${historicalAvg.sampleSize} runs`);
-      }
+      // if (!historicalAvg) {
+      //   console.log(`[PROGRESS] ${instance.session_id}: No historical data for ${signature}`);
+      // } else {
+      //   console.log(`[PROGRESS] ${instance.session_id}: Progress bar active - avg ${historicalAvg.avgDuration.toFixed(1)}s from ${historicalAvg.sampleSize} runs`);
+      // }
     }
 
     // Calculate current duration for running sessions
@@ -626,9 +639,16 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       const startTime = sseStart || dbStart;
 
       if (startTime) {
-        const startMs = typeof startTime === 'number'
-          ? (startTime < 10000000000 ? startTime * 1000 : startTime)
-          : new Date(startTime).getTime();
+        let startMs;
+        if (typeof startTime === 'number') {
+          startMs = startTime < 10000000000 ? startTime * 1000 : startTime;
+        } else {
+          // Parse timestamp as UTC (ClickHouse returns timestamps without timezone info)
+          const normalized = startTime.includes('Z') || startTime.includes('+')
+            ? startTime
+            : startTime.replace(' ', 'T') + 'Z';
+          startMs = new Date(normalized).getTime();
+        }
 
         if (!isNaN(startMs) && startMs > 0) {
           const now = Date.now();
@@ -958,22 +978,102 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       {viewMode === 'card' ? (
         <>
           <div className="instances-list">
-            {instances.map((instance) => {
-              const isExpanded = expandedParents.has(instance.session_id);
-              const hasChildren = instance.children && instance.children.length > 0;
+            {(() => {
+              // Parse timestamps as UTC by appending 'Z' if not already present
+              const parseUTC = (timeStr) => {
+                if (!timeStr) return 0;
+                // If timestamp doesn't have timezone info, treat as UTC
+                const normalized = timeStr.includes('Z') || timeStr.includes('+')
+                  ? timeStr
+                  : timeStr.replace(' ', 'T') + 'Z';
+                return new Date(normalized).getTime();
+              };
 
-              return (
-                <React.Fragment key={instance.session_id}>
-                  {/* Render parent instance */}
-                  {renderInstanceRow(instance, false)}
+              // Group instances by species_hash
+              const groups = new Map();
+              instances.forEach((instance) => {
+                const key = instance.species_hash || 'no_species';
+                if (!groups.has(key)) {
+                  groups.set(key, []);
+                }
+                groups.get(key).push(instance);
+              });
 
-                  {/* Render child instances (only if expanded) */}
-                  {hasChildren && isExpanded && (
-                    instance.children.map(child => renderInstanceRow(child, true))
-                  )}
-                </React.Fragment>
-              );
-            })}
+              // Convert to array and sort by most recent activity (latest run in group)
+              const sortedGroups = Array.from(groups.entries())
+                .map(([speciesHash, instances]) => ({
+                  speciesHash,
+                  instances: instances.sort((a, b) => parseUTC(a.start_time) - parseUTC(b.start_time)), // Oldest first (evolution order)
+                  latestTime: Math.max(...instances.map(i => parseUTC(i.start_time)))
+                }))
+                .sort((a, b) => b.latestTime - a.latestTime); // Groups by most recent activity
+
+              return sortedGroups.map(({ speciesHash, instances: groupInstances }) => {
+                const isNoSpecies = speciesHash === 'no_species';
+
+                return (
+                  <div key={speciesHash} className={`species-group ${isNoSpecies ? 'no-species' : ''}`}>
+                    {!isNoSpecies && (
+                      <div className="species-group-header">
+                        <div className="species-info">
+                          <Icon icon="mdi:dna" width="14" className="species-icon" />
+                          <span className="species-hash" title={speciesHash}>
+                            {speciesHash.substring(0, 8)}...
+                          </span>
+                          <span className="species-count">
+                            {groupInstances.length} generation{groupInstances.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="species-age">
+                          {(() => {
+                            // Parse timestamps as UTC by appending 'Z' if not already present
+                            const parseUTC = (timeStr) => {
+                              if (!timeStr) return 0;
+                              // If timestamp doesn't have timezone info, treat as UTC
+                              const normalized = timeStr.includes('Z') || timeStr.includes('+')
+                                ? timeStr
+                                : timeStr.replace(' ', 'T') + 'Z';
+                              return new Date(normalized).getTime();
+                            };
+
+                            const latest = Math.max(...groupInstances.map(i => parseUTC(i.start_time)));
+                            const now = Date.now();
+                            const diffMs = now - latest;
+                            const diffMins = Math.floor(diffMs / 60000);
+                            const diffHours = Math.floor(diffMs / 3600000);
+                            const diffDays = Math.floor(diffMs / 86400000);
+
+                            if (diffMins < 1) return 'Just now';
+                            if (diffMins < 60) return `${diffMins}m ago`;
+                            if (diffHours < 24) return `${diffHours}h ago`;
+                            return `${diffDays}d ago`;
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="species-group-content">
+                      {groupInstances.map((instance) => {
+                        const isExpanded = expandedParents.has(instance.session_id);
+                        const hasChildren = instance.children && instance.children.length > 0;
+
+                        return (
+                          <React.Fragment key={instance.session_id}>
+                            {/* Render parent instance */}
+                            {renderInstanceRow(instance, false)}
+
+                            {/* Render child instances (only if expanded) */}
+                            {hasChildren && isExpanded && (
+                              instance.children.map(child => renderInstanceRow(child, true))
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {instances.length === 0 && (

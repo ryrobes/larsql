@@ -1673,3 +1673,58 @@
     margin-top: 0.25rem;
   }
 }
+
+/* Species Grouping */
+.species-group {
+  margin-bottom: 2rem;
+}
+
+.species-group.no-species {
+  /* No header for non-species runs, just a subtle separator */
+  padding-top: 1rem;
+  border-top: 1px solid rgba(74, 158, 221, 0.08);
+}
+
+.species-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: rgba(22, 32, 42, 0.3);
+  border: 1px solid rgba(74, 158, 221, 0.15);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
+.species-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.species-icon {
+  color: #4A9EDD;
+  opacity: 0.8;
+}
+
+.species-hash {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: #9AA5B1;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.species-count {
+  color: #6B7280;
+  font-size: 0.75rem;
+}
+
+.species-age {
+  color: #6B7280;
+  font-size: 0.75rem;
+}
+
+.species-group-content {
+  /* Cards are rendered inside here */
+}

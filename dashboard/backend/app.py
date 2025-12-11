@@ -1172,6 +1172,7 @@ def get_cascade_instances(cascade_id):
                         "name": p_name,
                         "status": "pending",
                         "output_snippet": "",
+                        "phase_output": "",  # Full output content for display
                         "error_message": None,
                         "model": None,
                         "has_soundings": p_name in soundings_map,
@@ -1201,17 +1202,32 @@ def get_cascade_instances(cascade_id):
                     phases_map[p_name]["status"] = "running"
                     phases_map[p_name]["model"] = p_model
 
-                elif is_phase_complete or is_agent_output:
+                elif is_phase_complete:
+                    # Phase complete - just mark as completed, don't overwrite agent output
+                    phases_map[p_name]["status"] = "completed"
+
+                elif is_agent_output:
+                    # Agent output - this is the actual LLM response we want to capture
                     phases_map[p_name]["status"] = "completed"
                     if p_content and isinstance(p_content, str):
                         try:
                             content_obj = json.loads(p_content)
                             if isinstance(content_obj, str):
                                 phases_map[p_name]["output_snippet"] = content_obj[:200]
+                                phases_map[p_name]["phase_output"] = content_obj  # Full output
                             elif isinstance(content_obj, dict):
-                                phases_map[p_name]["output_snippet"] = str(content_obj)[:200]
+                                # Check for common content patterns
+                                if 'content' in content_obj:
+                                    full_output = str(content_obj['content'])
+                                elif 'result' in content_obj:
+                                    full_output = str(content_obj['result'])
+                                else:
+                                    full_output = str(content_obj)
+                                phases_map[p_name]["output_snippet"] = full_output[:200]
+                                phases_map[p_name]["phase_output"] = full_output  # Full output
                         except:
                             phases_map[p_name]["output_snippet"] = str(p_content)[:200]
+                            phases_map[p_name]["phase_output"] = str(p_content)  # Full output
 
                 elif p_node_type == "error" or (p_node_type and "error" in p_node_type.lower()):
                     phases_map[p_name]["status"] = "error"

@@ -2441,16 +2441,20 @@ def get_prompt_evolution(session_id):
         phase_filter = request.args.get('phase_name')
 
         # 1. Get metadata for the current session (cascade_id, phase_name, species_hash, timestamp)
+        # IMPORTANT: Use MAX(timestamp) to get the latest timestamp from this session
+        # This ensures we include all sounding_attempt rows which are logged AFTER agent responses
         session_query = f"""
             SELECT
                 cascade_id,
                 phase_name,
                 species_hash,
-                timestamp
+                MAX(timestamp) as timestamp
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND species_hash IS NOT NULL
               AND species_hash != ''
+              AND phase_name IS NOT NULL
+            GROUP BY cascade_id, phase_name, species_hash
             LIMIT 1
         """
 
@@ -2483,6 +2487,8 @@ def get_prompt_evolution(session_id):
             future_filter = f", (timestamp > '{session_timestamp}') as is_future"
 
         # 3. Query all soundings for this species
+        # NOTE: Include ALL soundings (baseline with mutation_applied=NULL and mutated ones)
+        # Use sounding_attempt rows which have the best metadata
         evolution_query = f"""
             SELECT
                 session_id,
@@ -2499,8 +2505,7 @@ def get_prompt_evolution(session_id):
               AND phase_name = '{phase_name}'
               AND species_hash = '{species_hash}'
               AND sounding_index IS NOT NULL
-              AND mutation_applied IS NOT NULL
-              AND mutation_applied != ''
+              AND node_type = 'sounding_attempt'
               {time_filter}
             ORDER BY timestamp ASC, sounding_index ASC
         """
@@ -2533,9 +2538,12 @@ def get_prompt_evolution(session_id):
                     'is_future': row.get('is_future', False) if 'is_future' in row else False
                 }
 
+            # For baseline soundings (mutation_applied is NULL), show a placeholder
+            prompt_text = row['mutation_applied'] if row['mutation_applied'] else '[Baseline - Original Phase Instructions]'
+
             generations[sess_id]['soundings'].append({
                 'sounding_index': row['sounding_index'],
-                'prompt': row['mutation_applied'],
+                'prompt': prompt_text,
                 'type': row['mutation_type'],
                 'template': row['mutation_template'],
                 'is_winner': row['is_winner'],
@@ -2737,6 +2745,7 @@ def get_species_info(session_id):
             FROM unified_logs
             WHERE session_id = '{session_id}'
             AND species_hash IS NOT NULL
+            AND phase_name IS NOT NULL
         """
 
         species_rows = db.query(species_query, output_format='dict')

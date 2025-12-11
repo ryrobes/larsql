@@ -1527,10 +1527,6 @@ To use: Output JSON in this format:
         # Sort results by index to maintain consistent ordering
         sounding_results.sort(key=lambda x: x['index'])
 
-        # Compute species hash for cascade-level soundings (uses cascade soundings config as DNA)
-        cascade_soundings_config = self.config.soundings.model_dump() if hasattr(self.config.soundings, 'model_dump') else None
-        cascade_species_hash = compute_species_hash({"soundings": cascade_soundings_config, "cascade_id": self.config.cascade_id})
-
         # Log results to echo history (must be done sequentially after parallel execution)
         for sr in sounding_results:
             i = sr['index']
@@ -1539,7 +1535,7 @@ To use: Output JSON in this format:
                            trace_id=sr['trace_id'], parent_id=soundings_trace.id,
                            node_type="sounding_error", depth=self.depth,
                            sounding_index=i, is_winner=False,
-                           metadata={"phase_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True, "species_hash": cascade_species_hash})
+                           metadata={"phase_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True})
             else:
                 self.echo.add_history({
                     "role": "cascade_sounding_attempt",
@@ -1554,8 +1550,7 @@ To use: Output JSON in this format:
                        "is_winner": False,  # Updated later when winner is selected
                        "result_preview": str(sr['result'])[:200],
                        "semantic_actor": "sounding_agent",
-                       "semantic_purpose": "generation",
-                       "species_hash": cascade_species_hash,  # Track cascade DNA for evolution analysis
+                       "semantic_purpose": "generation"
                    })
 
         # Now evaluate all soundings
@@ -2263,7 +2258,7 @@ If no tools are needed, return an empty array: []
         if mutation_mode == "rewrite":
             # Get species hash for this exact phase config
             if not species_hash:
-                species_hash = compute_species_hash(phase.dict())
+                species_hash = compute_species_hash(phase.dict(), input_data)
 
             # Fetch previous winners with same species (apples-to-apples)
             limit = int(os.environ.get("WINDLASS_WINNER_HISTORY_LIMIT", "5"))
@@ -3368,13 +3363,15 @@ Use only numbers 0-100 for scores."""
         # Store all sounding results
         sounding_results = []
 
-        # Compute species hash once for this phase (for winner learning)
-        # Convert PhaseConfig to dict for compute_species_hash
-        phase_species_hash = compute_species_hash(phase.dict())
-
         # Determine mutations to apply
         mutations_to_use = []
         mutation_mode = phase.soundings.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
+
+        # Compute species hash ONLY for rewrite mode (for winner learning)
+        # Species hash is used to compare similar prompt rewrites, not needed for other mutation modes
+        phase_species_hash = None
+        if mutation_mode == 'rewrite':
+            phase_species_hash = compute_species_hash(phase.dict(), input_data)
 
         if phase.soundings.mutate:
             if phase.soundings.mutations:
@@ -4044,8 +4041,10 @@ Use only numbers 0-100 for scores."""
         original_winner_index = winner['index']
 
         # Compute species hash for prompt evolution tracking (once for all soundings in this phase)
+        # NOTE: This should match the species_hash computed at the start of soundings (line 3374)
+        # We re-compute here instead of passing it through to avoid coupling
         phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
-        phase_species_hash = compute_species_hash(phase_config_dict)
+        phase_species_hash = compute_species_hash(phase_config_dict, input_data)
 
         # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
@@ -4175,6 +4174,12 @@ Use only numbers 0-100 for scores."""
                      "sounding_index": original_winner_index, "is_winner": True,
                      "model": winner.get('model'),  # Track winning model for UI highlighting
                      "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
+
+        # Mark winning sounding in database for prompt evolution learning
+        # This updates all rows in the winning sounding thread with is_winner=True
+        # so _fetch_winning_mutations() can find them for rewrite mode learning
+        from .unified_logs import mark_sounding_winner
+        mark_sounding_winner(self.session_id, phase.name, original_winner_index)
 
         self._update_graph()
 
@@ -4642,6 +4647,10 @@ Refinement directive: {reforge_config.honing_prompt}
                    "semantic_purpose": "lifecycle"
                })
 
+            # Mark reforge winner in database for prompt evolution learning
+            from .unified_logs import mark_sounding_winner
+            mark_sounding_winner(self.session_id, phase.name, winner_index)
+
             # Check threshold ward if configured
             if reforge_config.threshold:
                 console.print(f"{indent}    [cyan]🛡️  Checking reforge threshold...[/cyan]")
@@ -4694,6 +4703,12 @@ Refinement directive: {reforge_config.honing_prompt}
         rag_context = None
         rag_prompt = ""
         rag_tool_names: List[str] = []
+
+        # Compute species hash for this phase execution (ONLY for soundings with rewrite mutations)
+        # This will be used when logging agent responses for winner learning
+        phase_species_hash = None
+        if self.current_phase_sounding_index is not None and mutation_mode == 'rewrite':
+            phase_species_hash = compute_species_hash(phase.dict(), input_data)
 
         # Set current phase name for tools like ask_human to use
         set_current_phase_name(phase.name)
@@ -4886,7 +4901,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
         log_message(self.session_id, "phase_start", phase.name,
                    trace_id=trace.id, parent_id=trace.parent_id, node_type="phase", depth=trace.depth,
-                   model=phase_model, parent_session_id=self.parent_session_id)
+                   model=phase_model, parent_session_id=self.parent_session_id,
+                   phase_name=phase.name, cascade_id=self.config.cascade_id,
+                   species_hash=phase_species_hash, phase_config=phase.dict() if phase_species_hash else None)
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
@@ -5554,6 +5571,7 @@ Refinement directive: {reforge_config.honing_prompt}
                         cascade_config=cascade_config_dict,
                         phase_name=phase.name,
                         phase_config=phase_config_dict,
+                        species_hash=phase_species_hash,  # Species hash for winner learning (rewrite mode only)
                         model=model_used,              # Resolved model from API response
                         model_requested=phase_model,  # Originally requested model from config
                         request_id=request_id,

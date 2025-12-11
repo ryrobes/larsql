@@ -9,32 +9,33 @@ import json
 import hashlib
 
 
-def compute_species_hash(phase_config: Optional[Dict[str, Any]]) -> Optional[str]:
+def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
     Compute a deterministic hash ("species hash") for a phase configuration.
 
-    The species hash captures the "DNA" of a prompt - the template and config
-    that defines how prompts are generated, NOT the rendered prompt itself.
-    This allows comparing prompts across runs that use the same template.
+    The species hash captures the "DNA" of a prompt - the template, config,
+    and input parameters that define the effective prompt sent to the model.
+    This allows comparing prompts across runs that use the same template AND inputs.
 
     Species identity includes:
     - instructions: The Jinja2 template (pre-rendering)
+    - input_data: Template parameters that affect the rendered prompt
     - soundings: Full config (factor, evaluator_instructions, mutations, reforge)
     - rules: max_turns, loop_until, etc.
 
     Species identity EXCLUDES (these are filterable attributes):
     - model: Allows "which model wins with this template?" analysis
-    - rendered values: Template variables are NOT in the hash
 
     Args:
         phase_config: Dict from PhaseConfig.model_dump() or phase JSON
+        input_data: Input parameters that get rendered into the template
 
     Returns:
         16-character hex hash, or None if phase_config is None/empty
 
     Example:
         >>> config = {"instructions": "Write a poem about {{topic}}", "soundings": {"factor": 3}}
-        >>> compute_species_hash(config)
+        >>> compute_species_hash(config, {"topic": "cats"})
         'a1b2c3d4e5f6g7h8'
     """
     if not phase_config:
@@ -44,6 +45,10 @@ def compute_species_hash(phase_config: Optional[Dict[str, Any]]) -> Optional[str
     spec_parts = {
         # The template itself - the core DNA
         'instructions': phase_config.get('instructions', ''),
+
+        # Input data - template parameters that affect rendered prompt
+        # Include this because different inputs = different effective prompts
+        'input_data': input_data or {},
 
         # Soundings config affects prompt generation strategy
         'soundings': phase_config.get('soundings'),
