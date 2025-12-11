@@ -210,8 +210,25 @@ class SnapshotCapture:
 class SnapshotValidator:
     """Validates snapshot integrity without full replay."""
 
-    def __init__(self):
-        self.snapshot_dir = Path("tests/cascade_snapshots")
+    def __init__(self, snapshot_dir: str | Path = None):
+        """
+        Initialize validator.
+
+        Args:
+            snapshot_dir: Path to snapshot directory. If None, uses default
+                         relative to the windlass package.
+        """
+        from windlass.config import get_config
+        config = get_config()
+        self.root_dir = Path(config.root_dir)
+
+        if snapshot_dir is not None:
+            self.snapshot_dir = Path(snapshot_dir)
+        else:
+            # Default: relative to this module's package
+            # This works regardless of where pytest is run from
+            module_dir = Path(__file__).parent.parent  # windlass package root
+            self.snapshot_dir = module_dir / "tests" / "cascade_snapshots"
 
     def validate(self, snapshot_name: str, verbose: bool = False) -> Dict[str, Any]:
         """
@@ -230,10 +247,29 @@ class SnapshotValidator:
         snapshot_file = self.snapshot_dir / f"{snapshot_name}.json"
 
         if not snapshot_file.exists():
-            raise ValueError(f"Snapshot not found: {snapshot_file}")
+            return {
+                "snapshot_name": snapshot_name,
+                "passed": False,
+                "failures": [{
+                    "type": "snapshot_not_found",
+                    "message": f"Snapshot file not found: {snapshot_file}"
+                }],
+                "checks": []
+            }
 
-        with open(snapshot_file) as f:
-            snapshot = json.load(f)
+        try:
+            with open(snapshot_file) as f:
+                snapshot = json.load(f)
+        except json.JSONDecodeError as e:
+            return {
+                "snapshot_name": snapshot_name,
+                "passed": False,
+                "failures": [{
+                    "type": "invalid_json",
+                    "message": f"Failed to parse snapshot JSON: {e}"
+                }],
+                "checks": []
+            }
 
         if verbose:
             print(f"\nValidating snapshot: {snapshot_name}")
@@ -298,13 +334,19 @@ class SnapshotValidator:
             result["checks"].append(f"✓ Expectations match execution ({len(expected_phases)} phases)")
 
         # Check 5: Cascade file exists
+        # Resolve relative paths against WINDLASS_ROOT
         cascade_file = snapshot.get("cascade_file")
         if cascade_file:
-            if not Path(cascade_file).exists():
+            cascade_path = Path(cascade_file)
+            # If path is relative, resolve against root_dir
+            if not cascade_path.is_absolute():
+                cascade_path = self.root_dir / cascade_path
+
+            if not cascade_path.exists():
                 result["passed"] = False
                 result["failures"].append({
                     "type": "cascade_not_found",
-                    "message": f"Cascade file not found: {cascade_file}"
+                    "message": f"Cascade file not found: {cascade_file} (resolved to: {cascade_path})"
                 })
             else:
                 result["checks"].append(f"✓ Cascade file exists: {cascade_file}")

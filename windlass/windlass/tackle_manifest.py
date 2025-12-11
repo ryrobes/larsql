@@ -86,32 +86,33 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
         if not os.path.exists(search_path):
             continue
 
-        # Find all JSON files
-        pattern = os.path.join(search_path, "**/*.json")
-        for cascade_path in glob.glob(pattern, recursive=True):
-            try:
-                cascade_config = load_cascade_config(cascade_path)
+        # Find all JSON and YAML cascade files
+        for ext in ('json', 'yaml', 'yml'):
+            pattern = os.path.join(search_path, f"**/*.{ext}")
+            for cascade_path in glob.glob(pattern, recursive=True):
+                try:
+                    cascade_config = load_cascade_config(cascade_path)
 
-                # Only include cascades with inputs_schema (usable as tools)
-                if cascade_config.inputs_schema:
-                    # Build parameter description from inputs_schema
-                    params_desc = []
-                    for param_name, param_desc in cascade_config.inputs_schema.items():
-                        params_desc.append(f"  - {param_name}: {param_desc}")
+                    # Only include cascades with inputs_schema (usable as tools)
+                    if cascade_config.inputs_schema:
+                        # Build parameter description from inputs_schema
+                        params_desc = []
+                        for param_name, param_desc in cascade_config.inputs_schema.items():
+                            params_desc.append(f"  - {param_name}: {param_desc}")
 
-                    full_description = cascade_config.description or f"Cascade tool: {cascade_config.cascade_id}"
-                    if params_desc:
-                        full_description += f"\n\nParameters:\n" + "\n".join(params_desc)
+                        full_description = cascade_config.description or f"Cascade tool: {cascade_config.cascade_id}"
+                        if params_desc:
+                            full_description += f"\n\nParameters:\n" + "\n".join(params_desc)
 
-                    manifest[cascade_config.cascade_id] = {
-                        "type": "cascade",
-                        "description": full_description,
-                        "inputs": cascade_config.inputs_schema,
-                        "path": cascade_path
-                    }
-            except Exception as e:
-                # Skip invalid cascade files
-                continue
+                        manifest[cascade_config.cascade_id] = {
+                            "type": "cascade",
+                            "description": full_description,
+                            "inputs": cascade_config.inputs_schema,
+                            "path": cascade_path
+                        }
+                except Exception as e:
+                    # Skip invalid cascade files
+                    continue
 
     # 3. Scan memory banks
     from .memory import get_memory_system

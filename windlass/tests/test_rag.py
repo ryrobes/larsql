@@ -1,3 +1,11 @@
+"""
+RAG (Retrieval Augmented Generation) indexer tests.
+
+This test requires:
+- ClickHouse database (WINDLASS_CLICKHOUSE_HOST)
+
+Skip with: pytest -m "not integration"
+"""
 import os
 import sys
 
@@ -17,6 +25,8 @@ def deterministic_embeddings(monkeypatch):
     yield
 
 
+@pytest.mark.integration
+@pytest.mark.requires_clickhouse
 def test_rag_index_and_search(tmp_path):
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -32,8 +42,11 @@ def test_rag_index_and_search(tmp_path):
 
     # Initial index build
     ctx = ensure_rag_index(rag_conf, cascade_path=None, session_id="rag_test")
-    assert os.path.exists(ctx.manifest_path)
-    assert os.path.exists(ctx.chunks_path)
+
+    # Note: manifest_path/chunks_path are deprecated in ClickHouse implementation
+    # (data is stored in tables, not files). Check rag_id and stats instead.
+    assert ctx.rag_id is not None, "Expected valid rag_id"
+    assert ctx.directory == str(docs_dir), "Expected directory to match"
     assert ctx.stats["indexed_files"] == 2
 
     # Search

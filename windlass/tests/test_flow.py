@@ -1,3 +1,12 @@
+"""
+Integration test for full cascade execution.
+
+This test requires:
+- LLM API access (OPENROUTER_API_KEY environment variable)
+- Network connectivity to OpenRouter
+
+Skip with: pytest -m "not integration"
+"""
 import os
 import sys
 import json
@@ -14,6 +23,9 @@ def reverse_string(s: str) -> str:
 
 register_tackle("reverse_string", reverse_string)
 
+
+@pytest.mark.integration
+@pytest.mark.requires_llm
 def test_full_flow():
     # Set provider defaults for test
     # We assume OPENROUTER_API_KEY is set in env

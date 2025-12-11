@@ -2646,6 +2646,238 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
             "sounding_index": sounding_index
         }
 
+    def _run_loop_until_validator(
+        self,
+        validator_name: str,
+        content: str,
+        input_data: dict,
+        trace: TraceNode,
+        attempt: int = 0,
+        turn: int = 0,
+        is_per_turn: bool = False
+    ) -> dict:
+        """
+        Run a loop_until validator to check if phase output satisfies requirements.
+
+        This method supports per-turn validation (early exit from turn loop) as well as
+        post-turn-loop validation. When is_per_turn=True, validation passes will allow
+        breaking out of the turn loop early, preventing unnecessary context snowballing.
+
+        Args:
+            validator_name: Name of the validator (function or cascade)
+            content: The content to validate (agent response + tool outputs)
+            input_data: Original cascade input (passed to cascade validators)
+            trace: Parent trace node for logging
+            attempt: Current attempt number (for session ID generation)
+            turn: Current turn number (for logging)
+            is_per_turn: Whether this is a per-turn check (vs post-loop)
+
+        Returns:
+            dict with:
+            - valid: bool
+            - reason: str
+            - validator: str
+        """
+        indent = "  " * self.depth
+        check_type = "per-turn" if is_per_turn else "post-loop"
+
+        # Create validation trace
+        validation_trace = trace.create_child("loop_until_validation", f"{validator_name}_t{turn}")
+
+        validator_result = None
+
+        # === PRIORITY 1: Check inline validators first ===
+        if self.config.validators and validator_name in self.config.validators:
+            inline_config = self.config.validators[validator_name]
+
+            # Build validator input
+            validator_input = {
+                "content": content,
+                "original_input": input_data
+            }
+
+            # Generate unique validator session ID
+            validator_sounding_index = None
+            if self.current_phase_sounding_index is not None:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.current_phase_sounding_index}"
+                validator_sounding_index = self.current_phase_sounding_index
+            elif self.sounding_index is not None:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.sounding_index}"
+                validator_sounding_index = self.sounding_index
+            else:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}"
+
+            try:
+                # Build a mini-cascade config from inline validator
+                from .cascade import CascadeConfig, PhaseConfig, RuleConfig
+
+                # Use configured model or default to a cheap/fast model
+                validator_model = inline_config.model or "google/gemini-2.5-flash-lite"
+
+                # Render instructions with input context
+                from .prompts import render_instruction
+                rendered_instructions = render_instruction(
+                    inline_config.instructions,
+                    {"input": validator_input}
+                )
+
+                mini_cascade = CascadeConfig(
+                    cascade_id=f"{self.config.cascade_id}_validator_{validator_name}",
+                    description=f"Inline validator: {validator_name}",
+                    inputs_schema={
+                        "content": "The content to validate",
+                        "original_input": "The original cascade input"
+                    },
+                    phases=[
+                        PhaseConfig(
+                            name="validate",
+                            model=validator_model,
+                            instructions=rendered_instructions,
+                            rules=RuleConfig(max_turns=inline_config.max_turns)
+                        )
+                    ]
+                )
+
+                # Run the inline validator as a sub-cascade
+                validator_runner = WindlassRunner(
+                    mini_cascade,
+                    validator_session_id,
+                    self.overrides,
+                    self.depth + 1,
+                    parent_trace=validation_trace,
+                    hooks=self.hooks,
+                    parent_session_id=self.session_id,
+                    sounding_index=validator_sounding_index
+                )
+                validator_result_echo = validator_runner.run(validator_input)
+
+                # Extract the result - look in lineage for last phase output
+                if validator_result_echo.get("lineage"):
+                    last_output = validator_result_echo["lineage"][-1].get("output", "")
+                    try:
+                        validator_result = json.loads(last_output)
+                    except:
+                        # If not JSON, try to extract from text
+                        import re
+                        json_match = re.search(r'\{[^}]*"valid"[^}]*\}', last_output, re.DOTALL)
+                        if json_match:
+                            try:
+                                validator_result = json.loads(json_match.group(0))
+                            except:
+                                validator_result = {"valid": False, "reason": "Could not parse validator response"}
+                        else:
+                            validator_result = {"valid": False, "reason": last_output}
+                else:
+                    validator_result = {"valid": False, "reason": "No output from inline validator"}
+
+            except Exception as e:
+                validator_result = {"valid": False, "reason": f"Inline validator error: {str(e)}"}
+
+        # === PRIORITY 2: Try to get validator as Python function ===
+        if validator_result is None:
+            validator_tool = get_tackle(validator_name)
+
+            # Handle function validators first
+            if validator_tool and callable(validator_tool):
+                try:
+                    set_current_trace(validation_trace)
+                    result = validator_tool(content=content)
+
+                    if isinstance(result, str):
+                        try:
+                            validator_result = json.loads(result)
+                        except:
+                            validator_result = {"valid": False, "reason": result}
+                    else:
+                        validator_result = result
+
+                except Exception as e:
+                    validator_result = {"valid": False, "reason": f"Validator error: {str(e)}"}
+
+            # === PRIORITY 3: Check if it's a cascade tool ===
+            elif not validator_tool:
+                from .tackle_manifest import get_tackle_manifest
+                manifest = get_tackle_manifest()
+
+                if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
+                    # It's a cascade validator - invoke it as a sub-cascade
+                    cascade_path = manifest[validator_name]["path"]
+                    # Pass both the output AND original input for context
+                    validator_input = {
+                        "content": content,
+                        "original_input": input_data
+                    }
+
+                    # Generate unique validator session ID
+                    validator_sounding_index = None
+                    if self.current_phase_sounding_index is not None:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.current_phase_sounding_index}"
+                        validator_sounding_index = self.current_phase_sounding_index
+                    elif self.sounding_index is not None:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.sounding_index}"
+                        validator_sounding_index = self.sounding_index
+                    else:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}"
+
+                    try:
+                        # Run the validator cascade
+                        validator_result_echo = run_cascade(
+                            cascade_path,
+                            validator_input,
+                            validator_session_id,
+                            self.overrides,
+                            self.depth + 1,
+                            parent_trace=validation_trace,
+                            hooks=self.hooks,
+                            parent_session_id=self.session_id,
+                            sounding_index=validator_sounding_index
+                        )
+
+                        # Extract the result - look in lineage for last phase output
+                        if validator_result_echo.get("lineage"):
+                            last_output = validator_result_echo["lineage"][-1].get("output", "")
+                            try:
+                                validator_result = json.loads(last_output)
+                            except:
+                                # If not JSON, try to extract from text
+                                import re
+                                json_match = re.search(r'\{[^}]*"valid"[^}]*\}', last_output, re.DOTALL)
+                                if json_match:
+                                    try:
+                                        validator_result = json.loads(json_match.group(0))
+                                    except:
+                                        validator_result = {"valid": False, "reason": "Could not parse validator response"}
+                                else:
+                                    validator_result = {"valid": False, "reason": last_output}
+                        else:
+                            validator_result = {"valid": False, "reason": "No output from validator"}
+
+                    except Exception as e:
+                        validator_result = {"valid": False, "reason": f"Validator execution error: {str(e)}"}
+                else:
+                    # Validator not found
+                    console.print(f"{indent}  [yellow]Warning: Validator '{validator_name}' not found[/yellow]")
+                    return {"valid": True, "reason": "Validator not found - skipping", "validator": validator_name}
+
+        # Parse result
+        is_valid = validator_result.get("valid", False) if validator_result else False
+        reason = validator_result.get("reason", "No reason provided") if validator_result else "Validator returned no result"
+
+        # Log result (only show for per-turn if it passes, to reduce noise)
+        if is_per_turn and is_valid:
+            console.print(f"{indent}  [bold green]✓ Early exit: {validator_name} passed on turn {turn + 1}[/bold green]")
+        elif not is_per_turn:
+            if is_valid:
+                console.print(f"{indent}  [bold green]✓ Validator passed: {reason[:100]}[/bold green]")
+            else:
+                console.print(f"{indent}  [bold yellow]✗ Validator failed: {reason[:100]}[/bold yellow]")
+
+        return {
+            "valid": is_valid,
+            "reason": reason,
+            "validator": validator_name
+        }
+
     def _assign_models(self, soundings_config) -> List[str]:
         """
         Assign models to sounding attempts based on configuration.
@@ -6104,6 +6336,27 @@ Refinement directive: {reforge_config.honing_prompt}
                     else:
                         console.print(f"{indent}  [dim yellow][DEBUG] tool_outputs is empty - validator will only see agent response![/dim yellow]")
 
+                    # ========== PER-TURN LOOP_UNTIL VALIDATION ==========
+                    # Check if task is complete after each turn to enable early exit from turn loop.
+                    # This prevents unnecessary context snowballing when the task is done early.
+                    # Only runs if loop_until is configured and we have more turns remaining.
+                    if phase.rules.loop_until and i < max_turns - 1:
+                        per_turn_result = self._run_loop_until_validator(
+                            validator_name=phase.rules.loop_until,
+                            content=response_content,
+                            input_data=input_data,
+                            trace=turn_trace,
+                            attempt=attempt,
+                            turn=i,
+                            is_per_turn=True
+                        )
+
+                        if per_turn_result.get("valid"):
+                            # Task complete! Exit turn loop early to avoid unnecessary snowballing
+                            validation_passed = True
+                            console.print(f"{indent}  [bold cyan]🚀 Early exit: Task complete after turn {i + 1}/{max_turns}[/bold cyan]")
+                            break  # Exit turn loop
+
                 except Exception as e:
                     # Enhanced error logging with detailed information
                     import traceback
@@ -6293,7 +6546,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         continue
 
             # After schema validation: Check if validator is required (loop_until)
-            if phase.rules.loop_until:
+            # Skip if validation already passed from per-turn early exit
+            if phase.rules.loop_until and not validation_passed:
                 validator_name = phase.rules.loop_until
                 console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_name}[/bold cyan]")
 

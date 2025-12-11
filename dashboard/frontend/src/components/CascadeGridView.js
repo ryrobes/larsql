@@ -131,10 +131,12 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     const hasRuns = props.data.metrics?.run_count > 0;
     const cascadeFile = props.data.cascade_file;
     const relativePath = getRelativePath(cascadeFile);
+    const isYaml = cascadeFile?.endsWith('.yaml') || cascadeFile?.endsWith('.yml');
     return (
       <div className="cascade-id-wrapper">
         <div className="cascade-id-row">
           <span className="cascade-id-text">{props.value}</span>
+          {isYaml && <span className="yaml-badge">YAML</span>}
           {!hasRuns && <span className="no-runs-badge">No Runs</span>}
         </div>
         {relativePath && (

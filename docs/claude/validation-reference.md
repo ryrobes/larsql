@@ -174,6 +174,33 @@ For subjective quality checks where you need an impartial third party:
 4. Validation prompt injected BEFORE phase execution (proactive)
 5. Agent knows criteria upfront (unless silent)
 
+### Per-Turn Early Exit (Automatic)
+
+When `loop_until` is configured with `max_turns > 1`, the validator runs **after each turn** (not just at the end). If validation passes early, the turn loop exits immediately:
+
+```
+Turn 1: Agent works → Validator check → PASS? → Exit early ✓
+Turn 2: (skipped - task complete)
+Turn 3: (skipped - task complete)
+```
+
+**Benefits:**
+- Prevents unnecessary context snowballing
+- Fast models can one-shot, slow models get extra turns if needed
+- Works inside soundings - each sounding can exit independently
+- No configuration needed - automatic when `loop_until` is set
+
+**Example:**
+```yaml
+- name: discover_question
+  rules:
+    max_turns: 3          # Up to 3 turns
+    loop_until: question_check  # Validator runs after each turn
+    loop_until_silent: true     # Don't tell agent about validation
+```
+
+If the agent formulates a valid question on turn 1, turns 2-3 are skipped entirely.
+
 ### Example Cascades
 
 - `loop_until_auto_inject.json`: Auto-injection demonstration

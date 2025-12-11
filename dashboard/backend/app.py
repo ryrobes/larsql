@@ -25,6 +25,10 @@ from queue import Empty
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from windlass.db_adapter import get_db
 from windlass.config import get_clickhouse_url
+from windlass.loaders import load_config_file
+
+# Supported cascade file extensions
+CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
 
 app = Flask(__name__)
 CORS(app)
@@ -121,6 +125,8 @@ AUDIO_DIR = os.path.abspath(os.getenv("WINDLASS_AUDIO_DIR", os.path.join(WINDLAS
 EXAMPLES_DIR = os.path.abspath(os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples")))
 TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle")))
 CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
+# Also search inside the windlass package for examples (supports YAML cascade files)
+PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(WINDLASS_ROOT, "windlass", "examples"))
 
 # Orphan cascade detection threshold (seconds since last activity)
 ORPHAN_THRESHOLD_SECONDS = int(os.getenv('WINDLASS_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
@@ -378,16 +384,18 @@ def get_cascade_definitions():
             EXAMPLES_DIR,
             TACKLE_DIR,
             CASCADES_DIR,
+            PACKAGE_EXAMPLES_DIR,
         ]
 
         for search_dir in search_paths:
             if not os.path.exists(search_dir):
                 continue
 
-            for filepath in glob.glob(f"{search_dir}/**/*.json", recursive=True):
-                try:
-                    with open(filepath) as f:
-                        config = json.load(f)
+            # Find all JSON and YAML cascade files
+            for ext in CASCADE_EXTENSIONS:
+                for filepath in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
+                    try:
+                        config = load_config_file(filepath)
                         cascade_id = config.get('cascade_id')
 
                         if cascade_id and cascade_id not in all_cascades:
@@ -421,8 +429,8 @@ def get_cascade_definitions():
                                     'max_duration_seconds': 0.0,
                                 }
                             }
-                except:
-                    continue
+                    except:
+                        continue
 
         # Enrich with metrics from ClickHouse
         conn = get_db_connection()
@@ -2422,48 +2430,50 @@ def event_stream():
 
 
 def find_cascade_file(cascade_id):
-    """Find cascade JSON file by cascade_id"""
+    """Find cascade JSON or YAML file by cascade_id"""
     search_paths = [
         CASCADES_DIR,
         EXAMPLES_DIR,
         TACKLE_DIR,
+        PACKAGE_EXAMPLES_DIR,
     ]
 
     for search_dir in search_paths:
         if not os.path.exists(search_dir):
             continue
 
-        for filepath in glob.glob(f"{search_dir}/**/*.json", recursive=True):
-            try:
-                with open(filepath) as f:
-                    data = json.load(f)
+        for ext in CASCADE_EXTENSIONS:
+            for filepath in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
+                try:
+                    data = load_config_file(filepath)
                     if data.get("cascade_id") == cascade_id:
                         return filepath
-            except:
-                continue
+                except:
+                    continue
 
     return None
 
 
 @app.route('/api/cascade-files', methods=['GET'])
 def get_cascade_files():
-    """Get list of all cascade JSON files for running"""
+    """Get list of all cascade files (JSON and YAML) for running"""
     try:
         cascade_files = []
 
         search_paths = [
             CASCADES_DIR,
             EXAMPLES_DIR,
+            PACKAGE_EXAMPLES_DIR,
         ]
 
         for search_dir in search_paths:
             if not os.path.exists(search_dir):
                 continue
 
-            for filepath in glob.glob(f"{search_dir}/**/*.json", recursive=True):
-                try:
-                    with open(filepath) as f:
-                        config = json.load(f)
+            for ext in CASCADE_EXTENSIONS:
+                for filepath in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
+                    try:
+                        config = load_config_file(filepath)
                         cascade_id = config.get('cascade_id')
 
                         if cascade_id:
@@ -2474,8 +2484,8 @@ def get_cascade_files():
                                 'description': config.get('description', ''),
                                 'inputs_schema': config.get('inputs_schema', {})
                             })
-                except:
-                    continue
+                    except:
+                        continue
 
         # Deduplicate by cascade_id
         seen = set()
@@ -3478,6 +3488,7 @@ if __name__ == '__main__':
     print(f"   Data Dir: {DATA_DIR}")
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
+    print(f"   Package Examples Dir: {PACKAGE_EXAMPLES_DIR}")
     print()
 
     # Start connection stats logger in background

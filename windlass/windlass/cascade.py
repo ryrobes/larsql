@@ -498,6 +498,34 @@ class PhaseConfig(BaseModel):
     # Supports string shorthand: callouts="Result" → callouts.output="Result"
     callouts: Optional[Union[str, CalloutsConfig]] = None
 
+
+# ===== Inline Validator Configuration =====
+
+class InlineValidatorConfig(BaseModel):
+    """
+    Inline validator definition - a simplified single-phase cascade for validation.
+
+    Validators receive {"content": "...", "original_input": {...}} as input
+    and must return {"valid": true/false, "reason": "..."}.
+
+    Usage in cascade:
+        validators:
+          question_formulated:
+            model: google/gemini-2.5-flash-lite
+            instructions: |
+              Check if output contains a clear question.
+              Return {"valid": true, "reason": "..."} or {"valid": false, "reason": "..."}
+
+        phases:
+          - name: discover_question
+            rules:
+              loop_until: question_formulated  # References inline validator
+    """
+    instructions: str  # The validation instructions (required)
+    model: Optional[str] = None  # Model to use, defaults to cheap/fast model
+    max_turns: int = 1  # Usually validators are single-turn
+
+
 class CascadeConfig(BaseModel):
     cascade_id: str
     phases: List[PhaseConfig]
@@ -508,11 +536,17 @@ class CascadeConfig(BaseModel):
     token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
     tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
 
-def load_cascade_config(path_or_dict: Union[str, Dict]) -> CascadeConfig:
+    # Inline validators - cascade-scoped validator definitions
+    # These are checked before global tackle/ directory when resolving validator names
+    validators: Optional[Dict[str, InlineValidatorConfig]] = None
+
+def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
+    # If already a CascadeConfig, return as-is
+    if isinstance(path_or_dict, CascadeConfig):
+        return path_or_dict
     if isinstance(path_or_dict, str):
-        import json
-        with open(path_or_dict, 'r') as f:
-            data = json.load(f)
+        from .loaders import load_config_file
+        data = load_config_file(path_or_dict)
     else:
         data = path_or_dict
     return CascadeConfig(**data)

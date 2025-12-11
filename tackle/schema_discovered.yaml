@@ -1,0 +1,28 @@
+# Validator: Check if relevant schema information was discovered
+cascade_id: schema_discovered
+description: Validates that the output contains relevant table/column schema information
+
+inputs_schema:
+  content: The agent's output to validate
+  original_input: The original cascade input (optional)
+
+phases:
+  - name: validate
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Check if this output contains useful schema discovery information.
+
+      Output to check:
+      {{ input.content }}
+
+      A VALID output must have:
+      1. At least one table name mentioned (e.g., "csv_files.tablename" or similar)
+      2. Column names relevant to the question
+      3. Some indication of data structure (types, sample values, or distributions)
+
+      Return JSON only:
+      - If valid: {"valid": true, "reason": "Found schema for: [table names]"}
+      - If not valid: {"valid": false, "reason": "Missing table or column information"}
+
+    rules:
+      max_turns: 1

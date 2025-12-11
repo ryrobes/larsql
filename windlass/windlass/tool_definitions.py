@@ -1,7 +1,7 @@
 """
-Declarative Tool Definitions (.tool.json)
+Declarative Tool Definitions (.tool.json / .tool.yaml)
 
-Allows users to define tools declaratively in JSON without writing Python code.
+Allows users to define tools declaratively in JSON or YAML without writing Python code.
 Supports shell commands, HTTP APIs, Python imports, and composite pipelines.
 
 Example .tool.json file:
@@ -16,6 +16,16 @@ Example .tool.json file:
   "command": "rg --json '{{ pattern }}' {{ path | default('.') }}",
   "timeout": 30
 }
+
+Example .tool.yaml file:
+tool_id: search_code
+description: Search codebase with ripgrep
+inputs_schema:
+  pattern: Search pattern (regex)
+  path: Directory to search
+type: shell
+command: "rg --json '{{ pattern }}' {{ path | default('.') }}"
+timeout: 30
 """
 
 import os
@@ -436,9 +446,9 @@ _declarative_tools: Dict[str, ToolDefinition] = {}
 
 
 def load_tool_definition(path: str) -> ToolDefinition:
-    """Load a .tool.json file and return a ToolDefinition."""
-    with open(path, 'r') as f:
-        data = json.load(f)
+    """Load a .tool.json or .tool.yaml file and return a ToolDefinition."""
+    from .loaders import load_config_file
+    data = load_config_file(path)
 
     tool = ToolDefinition(**data)
     tool.validate_complete()
@@ -545,15 +555,16 @@ def discover_and_register_declarative_tools(directories: List[str] = None):
         if not os.path.exists(search_path):
             continue
 
-        # Find all .tool.json files
-        pattern = os.path.join(search_path, "**/*.tool.json")
-        for tool_path in glob.glob(pattern, recursive=True):
-            try:
-                tool = load_tool_definition(tool_path)
-                register_declarative_tool(tool, source_path=tool_path)
-                registered.append(tool.tool_id)
-            except Exception as e:
-                # Skip invalid tool files but log warning
-                print(f"[Warning] Failed to load {tool_path}: {e}")
+        # Find all .tool.json, .tool.yaml, and .tool.yml files
+        for ext in ('json', 'yaml', 'yml'):
+            pattern = os.path.join(search_path, f"**/*.tool.{ext}")
+            for tool_path in glob.glob(pattern, recursive=True):
+                try:
+                    tool = load_tool_definition(tool_path)
+                    register_declarative_tool(tool, source_path=tool_path)
+                    registered.append(tool.tool_id)
+                except Exception as e:
+                    # Skip invalid tool files but log warning
+                    print(f"[Warning] Failed to load {tool_path}: {e}")
 
     return registered

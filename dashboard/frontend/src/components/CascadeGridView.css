@@ -65,6 +65,18 @@
   letter-spacing: 0.5px;
 }
 
+.yaml-badge {
+  display: inline-block;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .description-cell {
   color: #94a3b8 !important;
   font-size: 12px;

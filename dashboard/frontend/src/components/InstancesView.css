@@ -1398,11 +1398,11 @@
   min-height: 50px;
 }
 
-/* Left column: Models (~20%) */
+/* Left column: Models - wider to show duration values */
 .models-section-compact {
-  flex: 1 1 0;
-  min-width: 120px;
-  max-width: 200px;
+  flex: 1.5 1 0;
+  min-width: 220px;
+  max-width: 340px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;

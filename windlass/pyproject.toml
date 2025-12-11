@@ -29,6 +29,7 @@ dependencies = [
     "readchar",  # For Hot or Not interactive rating UI
     "miniaudio",  # For ElevenLabs TTS audio playback
     "requests",  # For ElevenLabs API calls and Rabbitize REST API
+    "ruamel.yaml",  # For YAML cascade/tool definition support
 ]
 
 [project.optional-dependencies]
@@ -52,3 +53,11 @@ windlass = "windlass.cli:main"
 filterwarnings = [
     "ignore::DeprecationWarning:litellm.*",
 ]
+markers = [
+    "requires_llm: marks tests that require LLM API access (OpenRouter)",
+    "requires_clickhouse: marks tests that require ClickHouse database",
+    "integration: marks integration tests that need external services",
+]
+# Default: run all tests except those requiring external services
+# Use -m "not integration" to skip integration tests
+# Use -m "" to run all tests
