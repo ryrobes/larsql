@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Callable
 import logging
 import litellm
 from rich.console import Console

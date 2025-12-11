@@ -145,7 +145,7 @@ def sql_search(
     }, indent=2, default=str)
 
 
-def run_sql(sql: str, connection: str, limit: Optional[int] = 1000) -> str:
+def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
     """
     Execute SQL query on a specific database connection.
 
@@ -166,7 +166,7 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 1000) -> str:
     Args:
         sql: SQL query to execute
         connection: Name of the connection to use
-        limit: Maximum rows to return (default: 1000, prevents huge results)
+        limit: Maximum rows to return (default: 200, prevents huge results)
 
     Returns:
         JSON with query results, row count, and any errors
