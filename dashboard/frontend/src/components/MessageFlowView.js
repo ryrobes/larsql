@@ -453,6 +453,130 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   const [showCrossRefPanel, setShowCrossRefPanel] = useState(false);
   const [crossRefMessage, setCrossRefMessage] = useState(null);
 
+  // ===========================================
+  // PERFORMANCE OPTIMIZATION: Memoized Computations
+  // ===========================================
+
+  // Memoize image extraction - this was running on EVERY message on EVERY render
+  // Now we compute once when data changes and cache by global index
+  const imageCache = React.useMemo(() => {
+    const cache = new Map();
+    if (data?.all_messages) {
+      data.all_messages.forEach((msg, idx) => {
+        cache.set(idx, extractImagesFromMessage(msg));
+      });
+    }
+    return cache;
+  }, [data?.all_messages]);
+
+  // Memoize phase grouping computation - this O(n²) algorithm was running inline in JSX on every render!
+  // Now it only recomputes when the underlying data changes
+  const { phaseGroups, soundingsBlockMap, reforgeBlockMap } = React.useMemo(() => {
+    // Build a map of phase_name -> soundings block for quick lookup
+    const soundingsBlockMap = {};
+    if (data?.soundings_by_phase && data.soundings_by_phase.length > 0) {
+      data.soundings_by_phase.forEach(block => {
+        soundingsBlockMap[block.phase_name] = block;
+      });
+    }
+
+    // Build a map of phase_name -> reforge block for quick lookup
+    const reforgeBlockMap = {};
+    if (data?.reforge_by_phase && data.reforge_by_phase.length > 0) {
+      data.reforge_by_phase.forEach(block => {
+        reforgeBlockMap[block.phase_name] = block;
+      });
+    }
+
+    // Group messages by phase while maintaining order
+    const phaseGroups = [];
+    let currentPhase = null;
+    let currentMessages = [];
+
+    (data?.main_flow || []).forEach((msg, i) => {
+      const phaseName = msg.phase_name || '_unknown_';
+
+      if (phaseName !== currentPhase) {
+        // Save the previous phase group
+        if (currentPhase !== null && currentMessages.length > 0) {
+          phaseGroups.push({
+            phase_name: currentPhase,
+            messages: currentMessages,
+            hasSoundings: !!soundingsBlockMap[currentPhase],
+            hasReforge: !!reforgeBlockMap[currentPhase]
+          });
+        }
+        // Start new phase group
+        currentPhase = phaseName;
+        currentMessages = [];
+      }
+
+      currentMessages.push({ msg, index: i });
+    });
+
+    // Don't forget the last phase group
+    if (currentPhase !== null && currentMessages.length > 0) {
+      phaseGroups.push({
+        phase_name: currentPhase,
+        messages: currentMessages,
+        hasSoundings: !!soundingsBlockMap[currentPhase],
+        hasReforge: !!reforgeBlockMap[currentPhase]
+      });
+    }
+
+    // Also check for soundings that might not have messages in main_flow
+    if (data?.soundings_by_phase && data.soundings_by_phase.length > 0) {
+      data.soundings_by_phase.forEach(block => {
+        const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+        if (!existingGroup) {
+          // Find the right position based on first_timestamp
+          let insertIdx = phaseGroups.length;
+          for (let i = 0; i < phaseGroups.length; i++) {
+            const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
+            if (block.first_timestamp < groupFirstTs) {
+              insertIdx = i;
+              break;
+            }
+          }
+          phaseGroups.splice(insertIdx, 0, {
+            phase_name: block.phase_name,
+            messages: [],
+            hasSoundings: true,
+            hasReforge: !!reforgeBlockMap[block.phase_name],
+            soundingsOnly: true
+          });
+        }
+      });
+    }
+
+    // Also check for reforge phases that might not have messages in main_flow
+    if (data?.reforge_by_phase && data.reforge_by_phase.length > 0) {
+      data.reforge_by_phase.forEach(block => {
+        const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+        if (!existingGroup) {
+          // Find the right position based on first_timestamp
+          let insertIdx = phaseGroups.length;
+          for (let i = 0; i < phaseGroups.length; i++) {
+            const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
+            if (block.first_timestamp < groupFirstTs) {
+              insertIdx = i;
+              break;
+            }
+          }
+          phaseGroups.splice(insertIdx, 0, {
+            phase_name: block.phase_name,
+            messages: [],
+            hasSoundings: !!soundingsBlockMap[block.phase_name],
+            hasReforge: true,
+            reforgeOnly: true
+          });
+        }
+      });
+    }
+
+    return { phaseGroups, soundingsBlockMap, reforgeBlockMap };
+  }, [data?.main_flow, data?.soundings_by_phase, data?.reforge_by_phase]);
+
   // Scroll to message when scrollToIndex changes (triggered by chart click)
   useEffect(() => {
     if (scrollToIndex !== null && scrollToIndex !== undefined) {
@@ -764,8 +888,8 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     const category = msg.message_category || 'other';
     const categoryStyle = categoryColors[category] || categoryColors['other'];
 
-    // Extract all images with direction tracking
-    const msgImages = extractImagesFromMessage(msg);
+    // Extract all images with direction tracking (use cached result if available)
+    const msgImages = imageCache.get(globalIndex) ?? extractImagesFromMessage(msg);
     const hasImages = msgImages.total > 0;
     const totalBase64Size = [...msgImages.inputs, ...msgImages.outputs]
       .reduce((sum, img) => sum + (img.sizeKb || 0), 0);
@@ -1304,109 +1428,10 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
               <div className="main-messages">
                 {(() => {
-                  // Build a map of phase_name -> soundings block for quick lookup
-                  const soundingsBlockMap = {};
-                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
-                    data.soundings_by_phase.forEach(block => {
-                      soundingsBlockMap[block.phase_name] = block;
-                    });
-                  }
+                  // NOTE: phaseGroups, soundingsBlockMap, and reforgeBlockMap are now
+                  // computed via useMemo above (PERFORMANCE FIX - was O(n²) inline every render)
 
-                  // Build a map of phase_name -> reforge block for quick lookup
-                  const reforgeBlockMap = {};
-                  if (data.reforge_by_phase && data.reforge_by_phase.length > 0) {
-                    data.reforge_by_phase.forEach(block => {
-                      reforgeBlockMap[block.phase_name] = block;
-                    });
-                  }
-
-                  // Group messages by phase while maintaining order
-                  const phaseGroups = [];
-                  let currentPhase = null;
-                  let currentMessages = [];
-
-                  data.main_flow.forEach((msg, i) => {
-                    const phaseName = msg.phase_name || '_unknown_';
-
-                    if (phaseName !== currentPhase) {
-                      // Save the previous phase group
-                      if (currentPhase !== null && currentMessages.length > 0) {
-                        phaseGroups.push({
-                          phase_name: currentPhase,
-                          messages: currentMessages,
-                          hasSoundings: !!soundingsBlockMap[currentPhase],
-                          hasReforge: !!reforgeBlockMap[currentPhase]
-                        });
-                      }
-                      // Start new phase group
-                      currentPhase = phaseName;
-                      currentMessages = [];
-                    }
-
-                    currentMessages.push({ msg, index: i });
-                  });
-
-                  // Don't forget the last phase group
-                  if (currentPhase !== null && currentMessages.length > 0) {
-                    phaseGroups.push({
-                      phase_name: currentPhase,
-                      messages: currentMessages,
-                      hasSoundings: !!soundingsBlockMap[currentPhase],
-                      hasReforge: !!reforgeBlockMap[currentPhase]
-                    });
-                  }
-
-                  // Also check for soundings that might not have messages in main_flow
-                  if (data.soundings_by_phase && data.soundings_by_phase.length > 0) {
-                    data.soundings_by_phase.forEach(block => {
-                      const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
-                      if (!existingGroup) {
-                        // Find the right position based on first_timestamp
-                        let insertIdx = phaseGroups.length;
-                        for (let i = 0; i < phaseGroups.length; i++) {
-                          const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
-                          if (block.first_timestamp < groupFirstTs) {
-                            insertIdx = i;
-                            break;
-                          }
-                        }
-                        phaseGroups.splice(insertIdx, 0, {
-                          phase_name: block.phase_name,
-                          messages: [],
-                          hasSoundings: true,
-                          hasReforge: !!reforgeBlockMap[block.phase_name],
-                          soundingsOnly: true
-                        });
-                      }
-                    });
-                  }
-
-                  // Also check for reforge phases that might not have messages in main_flow
-                  if (data.reforge_by_phase && data.reforge_by_phase.length > 0) {
-                    data.reforge_by_phase.forEach(block => {
-                      const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
-                      if (!existingGroup) {
-                        // Find the right position based on first_timestamp
-                        let insertIdx = phaseGroups.length;
-                        for (let i = 0; i < phaseGroups.length; i++) {
-                          const groupFirstTs = phaseGroups[i].messages[0]?.msg?.timestamp || 0;
-                          if (block.first_timestamp < groupFirstTs) {
-                            insertIdx = i;
-                            break;
-                          }
-                        }
-                        phaseGroups.splice(insertIdx, 0, {
-                          phase_name: block.phase_name,
-                          messages: [],
-                          hasSoundings: !!soundingsBlockMap[block.phase_name],
-                          hasReforge: true,
-                          reforgeOnly: true
-                        });
-                      }
-                    });
-                  }
-
-                  // Track which phases we've shown soundings/reforge for
+                  // Track which phases we've shown soundings/reforge for (render-time tracking)
                   const shownSoundingsPhases = new Set();
                   const shownReforgePhases = new Set();
 
