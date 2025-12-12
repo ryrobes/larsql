@@ -80,8 +80,12 @@ Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
 ### 3. CLI Commands
 
 ```bash
-# List user's HF Spaces with status
+# Dashboard view - all spaces with cost estimates
+windlass harbor status
+
+# List user's Gradio Spaces with status
 windlass harbor list
+windlass harbor list --all  # Include sleeping spaces
 
 # Introspect a Space's API (show endpoints and parameters)
 windlass harbor introspect user/space-name
@@ -89,8 +93,42 @@ windlass harbor introspect user/space-name
 # Generate .tool.json from a Space
 windlass harbor export user/space-name -o tackle/my_tool.tool.json
 
-# Test call a Space endpoint
-windlass harbor call user/space-name --endpoint /predict --arg image=./test.jpg
+# Show auto-discovered tools for Quartermaster
+windlass harbor manifest
+
+# Space lifecycle management
+windlass harbor wake user/space-name   # Wake sleeping space
+windlass harbor pause user/space-name  # Pause running space (stops billing)
+```
+
+#### Example `harbor status` Output
+
+```
+======================================================================
+HARBOR STATUS - HuggingFace Spaces Overview
+======================================================================
+
+  Total Spaces:     16
+  Running:          2 (billable)
+  Sleeping:         14
+  Harbor-Callable:  2 (Gradio + Running)
+
+  Est. Hourly Cost: $1.20/hr
+  Est. Monthly:     $864.00/mo (if always on)
+
+By SDK:
+  gradio: 16
+
+----------------------------------------------------------------------
+SPACE                               STATUS       SDK        COST/HR
+----------------------------------------------------------------------
+user/my-classifier                  🟢 RUNNING    gradio     $0.60     *
+user/my-generator                   🟢 RUNNING    gradio     $0.60     * 🔒
+user/other-space                    😴 SLEEPING   gradio     -
+...
+
+* = Harbor-callable (can be used as a tool)
+🔒 = Private space
 ```
 
 ### 4. Cascade-Level Harbor Config (Future)

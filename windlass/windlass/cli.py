@@ -261,6 +261,19 @@ def main():
     )
     harbor_wake_parser.add_argument('space', help='HF Space ID to wake')
 
+    # harbor pause - Pause a running Space
+    harbor_pause_parser = harbor_subparsers.add_parser(
+        'pause',
+        help='Pause a running HF Space (stops billing)'
+    )
+    harbor_pause_parser.add_argument('space', help='HF Space ID to pause')
+
+    # harbor status - Show summary of all spaces with costs
+    harbor_status_parser = harbor_subparsers.add_parser(
+        'status',
+        help='Show summary of all your HF Spaces with cost estimates'
+    )
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -361,6 +374,10 @@ def main():
             cmd_harbor_manifest(args)
         elif args.harbor_command == 'wake':
             cmd_harbor_wake(args)
+        elif args.harbor_command == 'pause':
+            cmd_harbor_pause(args)
+        elif args.harbor_command == 'status':
+            cmd_harbor_status(args)
         else:
             harbor_parser.print_help()
             sys.exit(1)
@@ -1935,6 +1952,110 @@ def cmd_harbor_wake(args):
 
     except ImportError as e:
         print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_pause(args):
+    """Pause a running HF Space."""
+    try:
+        from windlass.harbor import pause_space
+
+        print(f"Pausing space: {args.space}...")
+
+        if pause_space(args.space):
+            print("Pause request sent successfully.")
+            print("Space will stop and billing will cease.")
+        else:
+            print("Failed to pause space.")
+            sys.exit(1)
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_status(args):
+    """Show summary of all HF Spaces with cost estimates."""
+    try:
+        from windlass.harbor import get_spaces_summary, HARDWARE_PRICING
+        from windlass.config import get_config
+
+        config = get_config()
+        if not config.hf_token:
+            print("Error: HF_TOKEN environment variable not set")
+            print("Get your token at: https://huggingface.co/settings/tokens")
+            sys.exit(1)
+
+        print("Fetching HuggingFace Spaces status...")
+        print()
+
+        result = get_spaces_summary()
+        spaces = result["spaces"]
+        summary = result["summary"]
+
+        if not spaces:
+            print("No spaces found.")
+            return
+
+        # Summary header
+        print("=" * 70)
+        print("HARBOR STATUS - HuggingFace Spaces Overview")
+        print("=" * 70)
+        print()
+        print(f"  Total Spaces:     {summary['total']}")
+        print(f"  Running:          {summary['running']} (billable)")
+        print(f"  Sleeping:         {summary['sleeping']}")
+        print(f"  Harbor-Callable:  {summary['callable']} (Gradio + Running)")
+        print()
+        if summary['estimated_hourly_cost'] > 0:
+            print(f"  Est. Hourly Cost: ${summary['estimated_hourly_cost']:.2f}/hr")
+            print(f"  Est. Monthly:     ${summary['estimated_hourly_cost'] * 24 * 30:.2f}/mo (if always on)")
+        else:
+            print("  Est. Hourly Cost: $0.00 (all free tier or sleeping)")
+        print()
+
+        # By SDK
+        print("By SDK:")
+        for sdk, count in sorted(summary['by_sdk'].items()):
+            print(f"  {sdk}: {count}")
+        print()
+
+        # Detailed list
+        print("-" * 70)
+        print(f"{'SPACE':<35} {'STATUS':<12} {'SDK':<10} {'COST/HR':<10}")
+        print("-" * 70)
+
+        # Sort: running first, then by name
+        sorted_spaces = sorted(spaces, key=lambda s: (s.status != "RUNNING", s.id))
+
+        for space in sorted_spaces:
+            cost_str = f"${space.hourly_cost:.2f}" if space.hourly_cost > 0 else "Free"
+            if space.status != "RUNNING":
+                cost_str = "-"
+
+            callable_marker = " *" if space.is_callable else ""
+            private_marker = " 🔒" if space.private else ""
+
+            print(f"{space.id:<35} {space.status_emoji} {space.status:<10} {space.sdk or '-':<10} {cost_str:<10}{callable_marker}{private_marker}")
+
+        print()
+        print("* = Harbor-callable (can be used as a tool)")
+        print("🔒 = Private space")
+        print()
+        print("Commands:")
+        print("  windlass harbor wake <space>   - Wake a sleeping space")
+        print("  windlass harbor pause <space>  - Pause a running space (stops billing)")
+        print("  windlass harbor introspect <space> - View API endpoints")
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        print("Install required packages: pip install huggingface_hub")
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
