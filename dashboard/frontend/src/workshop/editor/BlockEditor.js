@@ -35,6 +35,26 @@ function DragOverlayContent({ activeData }) {
     );
   }
 
+  // Tool overlay
+  if (activeData.type === 'palette-tool') {
+    const getToolIcon = (type, name) => {
+      if (name === 'manifest') return 'mdi:auto-fix';
+      const icons = {
+        python: 'mdi:language-python',
+        cascade: 'mdi:sitemap',
+        special: 'mdi:star-four-points',
+      };
+      return icons[type] || 'mdi:wrench';
+    };
+
+    return (
+      <div className={`drag-overlay-tool ${activeData.toolName === 'manifest' ? 'manifest' : ''}`}>
+        <Icon icon={getToolIcon(activeData.toolType, activeData.toolName)} width="14" />
+        <span>{activeData.toolName}</span>
+      </div>
+    );
+  }
+
   // Block overlay
   return (
     <div className={`drag-overlay-block color-${activeData.color}`}>
@@ -74,7 +94,7 @@ function BlockEditor() {
     const { active } = event;
     const dataType = active.data.current?.type;
     console.log('[DnD] Drag start:', { id: active.id, dataType, data: active.data.current });
-    if (dataType === 'palette-block' || dataType === 'palette-model') {
+    if (dataType === 'palette-block' || dataType === 'palette-model' || dataType === 'palette-tool') {
       setActiveData(active.data.current);
     }
   };
@@ -163,6 +183,46 @@ function BlockEditor() {
         console.log('[DnD] Updating phase:', { phaseName, phaseIndex });
         if (phaseIndex >= 0) {
           store.updatePhase(phaseIndex, { model: modelId });
+        }
+      }
+      return;
+    }
+
+    // Handle TOOL drops from tools palette
+    if (activeType === 'palette-tool') {
+      const toolName = active.data.current?.toolName;
+      const store = useWorkshopStore.getState();
+      console.log('[DnD] Tool drop:', { toolName, overId: over.id });
+
+      // Find the target phase - can drop on phase or tackle drop zone
+      let phaseIndex = -1;
+      if (over.id.startsWith('phase-')) {
+        const phaseName = over.id.replace('phase-', '');
+        phaseIndex = store.cascade.phases.findIndex(p => p.name === phaseName);
+      } else if (over.id.startsWith('tackle-zone-')) {
+        phaseIndex = parseInt(over.id.replace('tackle-zone-', ''), 10);
+      }
+
+      if (toolName && phaseIndex >= 0) {
+        const phase = store.cascade.phases[phaseIndex];
+        const currentTackle = phase.tackle || [];
+
+        // Special handling for "manifest" - replaces all other tools
+        if (toolName === 'manifest') {
+          store.updatePhase(phaseIndex, { tackle: ['manifest'] });
+        } else {
+          // If manifest is already there, replace it with the new tool
+          if (currentTackle.includes('manifest')) {
+            store.updatePhase(phaseIndex, { tackle: [toolName] });
+          } else if (!currentTackle.includes(toolName)) {
+            // Add tool if not already present
+            store.updatePhase(phaseIndex, { tackle: [...currentTackle, toolName] });
+          }
+        }
+
+        // Open the execution drawer to show the tools
+        if (!store.expandedDrawers[phaseIndex]?.includes('execution')) {
+          store.toggleDrawer(phaseIndex, 'execution');
         }
       }
       return;

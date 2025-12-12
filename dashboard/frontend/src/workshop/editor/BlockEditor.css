@@ -137,3 +137,27 @@
   cursor: grabbing;
   opacity: 0.95;
 }
+
+/* Tool drag overlay */
+.drag-overlay-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(45, 212, 191, 0.15));
+  border: 2px solid var(--ocean-teal);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+.drag-overlay-tool.manifest {
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(217, 165, 83, 0.2));
+  border-color: var(--compass-brass);
+  color: var(--compass-brass);
+}

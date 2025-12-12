@@ -1943,11 +1943,17 @@ def cmd_harbor_wake(args):
 
         print(f"Waking space: {args.space}...")
 
-        if wake_space(args.space):
+        success, error = wake_space(args.space)
+        if success:
             print("Wake request sent successfully.")
             print("Space may take a few minutes to start up.")
         else:
-            print("Failed to wake space.")
+            print(f"Failed to wake space: {error}")
+            print()
+            print("Common issues:")
+            print("  - Space ID must be in format 'author/space-name'")
+            print("  - Space must exist and you must have permission to restart it")
+            print("  - Check your HF_TOKEN has write permissions")
             sys.exit(1)
 
     except ImportError as e:
@@ -1965,11 +1971,17 @@ def cmd_harbor_pause(args):
 
         print(f"Pausing space: {args.space}...")
 
-        if pause_space(args.space):
+        success, error = pause_space(args.space)
+        if success:
             print("Pause request sent successfully.")
             print("Space will stop and billing will cease.")
         else:
-            print("Failed to pause space.")
+            print(f"Failed to pause space: {error}")
+            print()
+            print("Common issues:")
+            print("  - Space ID must be in format 'author/space-name'")
+            print("  - Space must be running to pause it")
+            print("  - Check your HF_TOKEN has write permissions")
             sys.exit(1)
 
     except ImportError as e:

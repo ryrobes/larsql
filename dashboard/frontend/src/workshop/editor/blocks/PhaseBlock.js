@@ -4,8 +4,10 @@ import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../../stores/workshopStore';
-import TackleChips from '../components/TackleChips';
+import TacklePills from '../components/TacklePills';
 import ModelSelect from '../components/ModelSelect';
+import ContextBuilder from '../components/ContextBuilder';
+import FlowBuilder from '../components/FlowBuilder';
 import './PhaseBlock.css';
 
 /**
@@ -242,24 +244,34 @@ function ExecutionDrawer({ phase, index }) {
   return (
     <div className="drawer-content execution-drawer">
       <div className="drawer-field">
-        <label>Tackle (tools)</label>
-        <TackleChips
+        <label>
+          <Icon icon="mdi:wrench" width="14" />
+          Tackle (tools)
+        </label>
+        <TacklePills
           value={phase.tackle || []}
           onChange={handleTackleChange}
-          placeholder="Search tools or type 'manifest'..."
+          phaseIndex={index}
         />
-        <span className="field-hint">Select tools or use "manifest" for auto-selection</span>
+        <span className="field-hint">
+          Drag tools from the palette, or use "manifest" for Quartermaster auto-selection
+        </span>
       </div>
 
       <div className="drawer-field">
-        <label>Model (optional)</label>
+        <label>
+          <Icon icon="mdi:brain" width="14" />
+          Model (optional)
+        </label>
         <ModelSelect
           value={phase.model || ''}
           onChange={handleModelChange}
           placeholder="Use default model"
           allowClear={true}
         />
-        <span className="field-hint">Override default model for this phase</span>
+        <span className="field-hint">
+          Override default model for this phase - drag from palette or select below
+        </span>
       </div>
     </div>
   );
@@ -388,30 +400,42 @@ function RulesDrawer({ phase, index }) {
 }
 
 /**
- * FlowDrawer - Handoffs configuration
+ * FlowDrawer - Handoffs and sub-cascades configuration using FlowBuilder
  */
 function FlowDrawer({ phase, index }) {
-  const { updatePhase } = useWorkshopStore();
+  const { updatePhase, cascade } = useWorkshopStore();
 
-  const handleHandoffsChange = (e) => {
-    const value = e.target.value;
-    const handoffs = value.split(',').map(h => h.trim()).filter(Boolean);
-    updatePhase(index, { handoffs });
+  // Get all phase names for handoff selection
+  const allPhases = (cascade.phases || []).map(p => p.name);
+
+  const handleFlowChange = (updates) => {
+    // Merge flow-related updates into the phase
+    const phaseUpdates = {};
+    if ('handoffs' in updates) {
+      phaseUpdates.handoffs = updates.handoffs;
+    }
+    if ('sub_cascades' in updates) {
+      phaseUpdates.sub_cascades = updates.sub_cascades;
+    }
+    if ('async_cascades' in updates) {
+      phaseUpdates.async_cascades = updates.async_cascades;
+    }
+    updatePhase(index, phaseUpdates);
   };
 
   return (
     <div className="drawer-content flow-drawer">
-      <div className="drawer-field">
-        <label>Handoffs (next phases)</label>
-        <input
-          type="text"
-          value={(phase.handoffs || []).join(', ')}
-          onChange={handleHandoffsChange}
-          placeholder="next_phase, alternative_phase"
-          spellCheck={false}
-        />
-        <span className="field-hint">Comma-separated phase names. Multiple enables route_to tool.</span>
-      </div>
+      <FlowBuilder
+        value={{
+          handoffs: phase.handoffs,
+          sub_cascades: phase.sub_cascades,
+          async_cascades: phase.async_cascades,
+        }}
+        onChange={handleFlowChange}
+        allPhases={allPhases}
+        currentPhaseName={phase.name}
+        availableCascades={[]} // Could be populated from API
+      />
     </div>
   );
 }
@@ -518,96 +542,28 @@ function ValidationDrawer({ phase, index }) {
 }
 
 /**
- * ContextDrawer - Context.from configuration (selective context from other phases)
+ * ContextDrawer - Selective context configuration using ContextBuilder
  */
 function ContextDrawer({ phase, index }) {
-  const { updatePhaseField, cascade } = useWorkshopStore();
+  const { updatePhase, cascade } = useWorkshopStore();
 
-  const context = phase.context || {};
-  const contextFrom = context.from || [];
-
-  // Get list of other phase names
+  // Get list of other phase names (for the builder to show available sources)
   const otherPhases = (cascade.phases || [])
     .map((p) => p.name)
     .filter((name) => name !== phase.name);
 
-  const handleAddPhase = (phaseName) => {
-    if (!contextFrom.includes(phaseName)) {
-      updatePhaseField(index, 'context.from', [...contextFrom, phaseName]);
-    }
-  };
-
-  const handleRemovePhase = (phaseName) => {
-    updatePhaseField(index, 'context.from', contextFrom.filter((p) => p !== phaseName));
-  };
-
-  const handleDirectChange = (checked) => {
-    updatePhaseField(index, 'context.direct', checked);
+  const handleContextChange = (newContext) => {
+    updatePhase(index, { context: newContext });
   };
 
   return (
     <div className="drawer-content context-drawer">
-      <div className="drawer-field">
-        <label>Include context from phases</label>
-        <div className="context-phases">
-          {contextFrom.map((phaseName) => (
-            <div key={phaseName} className="context-phase-chip">
-              <Icon icon="mdi:view-sequential" width="12" />
-              <span>{phaseName}</span>
-              <button
-                className="chip-remove"
-                onClick={() => handleRemovePhase(phaseName)}
-                type="button"
-              >
-                <Icon icon="mdi:close" width="12" />
-              </button>
-            </div>
-          ))}
-
-          {otherPhases.length > contextFrom.length && (
-            <select
-              className="context-add-select"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleAddPhase(e.target.value);
-                }
-              }}
-            >
-              <option value="">Add phase...</option>
-              {otherPhases
-                .filter((name) => !contextFrom.includes(name))
-                .map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-            </select>
-          )}
-        </div>
-        <span className="field-hint">
-          Select phases whose output/context should be available to this phase
-        </span>
-      </div>
-
-      <div className="drawer-field checkbox">
-        <label>
-          <input
-            type="checkbox"
-            checked={context.direct || false}
-            onChange={(e) => handleDirectChange(e.target.checked)}
-          />
-          <span>Direct context (pass full message history, not just output)</span>
-        </label>
-      </div>
-
-      {contextFrom.length === 0 && (
-        <div className="context-hint">
-          <Icon icon="mdi:information" width="16" />
-          <span>
-            By default, phases only receive context from the immediate previous phase.
-            Use this to pull context from other specific phases.
-          </span>
-        </div>
-      )}
+      <ContextBuilder
+        value={phase.context}
+        onChange={handleContextChange}
+        otherPhases={otherPhases}
+        phaseName={phase.name}
+      />
     </div>
   );
 }

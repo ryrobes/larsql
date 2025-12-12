@@ -1528,6 +1528,111 @@ Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. T
 - ✅ Auto-discovered by Manifest system
 - ✅ Composable with conditional logic
 
+## Harbor (HuggingFace Spaces Integration)
+
+**Harbor** integrates HuggingFace Spaces (Gradio endpoints) as first-class tools in Windlass. Rather than introducing a special phase type, Spaces are exposed as **dynamic tools** that flow naturally through the existing cascade system.
+
+### Setup
+
+```bash
+# Required
+export HF_TOKEN="hf_..."
+
+# Optional: disable auto-discovery
+export WINDLASS_HARBOR_AUTO_DISCOVER="false"
+```
+
+### Gradio Tool Definition
+
+Create a `.tool.json` file with type `gradio`:
+
+```json
+{
+  "tool_id": "llama_chat",
+  "description": "Chat with Llama 2 7B model via HuggingFace Space",
+  "type": "gradio",
+  "space": "huggingface-projects/llama-2-7b-chat",
+  "api_name": "/chat",
+  "inputs_schema": {
+    "message": "The message to send to the model",
+    "system_prompt": "System prompt to set the model's behavior"
+  },
+  "timeout": 120
+}
+```
+
+**Fields:**
+- `space`: HF Space ID (e.g., "user/space-name")
+- `gradio_url`: Direct Gradio URL (alternative to `space`)
+- `api_name`: Endpoint name (default: "/predict")
+- `inputs_schema`: Parameter descriptions (optional - can auto-introspect)
+- `timeout`: Request timeout in seconds (default: 60)
+
+### CLI Commands
+
+```bash
+# Dashboard view - all spaces with cost estimates
+windlass harbor status
+
+# List user's Gradio Spaces with status
+windlass harbor list
+windlass harbor list --all  # Include sleeping spaces
+
+# Introspect a Space's API (show endpoints and parameters)
+windlass harbor introspect user/space-name
+
+# Generate .tool.json from a Space
+windlass harbor export user/space-name -o tackle/my_tool.tool.json
+
+# Show auto-discovered tools for Quartermaster
+windlass harbor manifest
+
+# Space lifecycle management
+windlass harbor wake user/space-name   # Wake sleeping space
+windlass harbor pause user/space-name  # Pause running space (stops billing)
+```
+
+### Example: Using HF Spaces in Cascades
+
+```json
+{
+  "cascade_id": "image_analysis",
+  "phases": [
+    {
+      "name": "analyze",
+      "instructions": "Use the blip2_caption tool to caption the image, then use object_detector to find objects.",
+      "tackle": ["blip2_caption", "object_detector"]
+    },
+    {
+      "name": "summarize",
+      "instructions": "Based on the analysis, provide a comprehensive description.",
+      "context": {"from": ["analyze"]}
+    }
+  ]
+}
+```
+
+### Auto-Discovery
+
+When `HF_TOKEN` is set, Windlass automatically discovers your running Gradio Spaces and makes them available as tools via the Manifest system. Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
+
+### Cost Monitoring
+
+The `harbor status` command shows estimated costs for all your spaces:
+
+```
+HARBOR STATUS - HuggingFace Spaces Overview
+======================================================================
+
+  Total Spaces:     16
+  Running:          2 (billable)
+  Sleeping:         14
+  Harbor-Callable:  2 (Gradio + Running)
+
+  Est. Hourly Cost: $1.20/hr
+  Est. Monthly:     $864.00/mo (if always on)
+```
+
 ## Observability
 
 ### DuckDB Logs

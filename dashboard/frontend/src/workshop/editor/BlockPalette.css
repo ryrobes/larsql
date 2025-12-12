@@ -342,3 +342,172 @@
 .palette-model.tier-slate:hover {
   color: var(--slate-blue-light);
 }
+
+/* ============================================
+   TOOL BLOCKS
+   ============================================ */
+
+.tools-section .tool-count {
+  margin-left: auto;
+  padding: 2px 6px;
+  background: rgba(45, 212, 191, 0.2);
+  border-radius: 8px;
+  font-size: 10px;
+  color: var(--ocean-teal);
+}
+
+.tool-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.tool-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.tool-search input::placeholder {
+  color: var(--mist-gray);
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tools-loading,
+.tools-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--mist-gray);
+}
+
+.tools-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  font-size: 10px;
+  color: var(--mist-gray);
+}
+
+.palette-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+
+.palette-tool:hover {
+  background: var(--storm-cloud);
+  transform: translateX(2px);
+}
+
+.palette-tool:active {
+  cursor: grabbing;
+}
+
+.palette-tool.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+.tool-icon {
+  color: var(--mist-gray);
+  flex-shrink: 0;
+}
+
+.tool-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* Tool type colors */
+.palette-tool.tool-teal {
+  border-left: 3px solid var(--ocean-teal);
+}
+
+.palette-tool.tool-teal:hover {
+  color: var(--ocean-teal);
+}
+
+.palette-tool.tool-teal .tool-icon {
+  color: var(--ocean-teal);
+}
+
+.palette-tool.tool-ocean {
+  border-left: 3px solid var(--ocean-primary);
+}
+
+.palette-tool.tool-ocean:hover {
+  color: var(--ocean-primary);
+}
+
+.palette-tool.tool-ocean .tool-icon {
+  color: var(--ocean-primary);
+}
+
+.palette-tool.tool-brass {
+  border-left: 3px solid var(--compass-brass);
+}
+
+.palette-tool.tool-brass:hover {
+  color: var(--compass-brass);
+}
+
+.palette-tool.tool-brass .tool-icon {
+  color: var(--compass-brass);
+}
+
+/* Manifest special styling */
+.palette-tool.manifest {
+  background: linear-gradient(135deg, rgba(217, 165, 83, 0.15) 0%, var(--midnight-fjord) 100%);
+  border: 1px solid rgba(217, 165, 83, 0.4);
+  border-left: 3px solid var(--compass-brass);
+}
+
+.palette-tool.manifest:hover {
+  background: linear-gradient(135deg, rgba(217, 165, 83, 0.25) 0%, var(--storm-cloud) 100%);
+  border-color: var(--compass-brass);
+}
+
+.palette-tool.manifest .tool-name {
+  font-weight: 600;
+  color: var(--compass-brass);
+}
+
+.manifest-star {
+  color: var(--compass-brass);
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}

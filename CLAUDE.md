@@ -22,6 +22,9 @@ pip install .
 **Required Environment Variables**:
 - `OPENROUTER_API_KEY`: API key for OpenRouter (default provider)
 
+**Optional Environment Variables**:
+- `HF_TOKEN`: HuggingFace API token for Harbor (HF Spaces integration)
+
 **Workspace Configuration**:
 - `WINDLASS_ROOT`: Workspace root (default: current directory) - all paths derived from this
 
@@ -121,9 +124,10 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 
 ### Tool System ("Tackle")
 
-**Two Types**:
+**Three Types**:
 1. **Python Functions**: Registered via `register_tackle("name", func)`
 2. **Cascade Tools**: JSON cascades with `inputs_schema` in `tackle/` directory
+3. **Gradio Tools (Harbor)**: HuggingFace Spaces as tools via `.tool.json` with `type: "gradio"`
 
 **Built-in Tools**: `linux_shell`, `run_code`, `smart_sql_run`, `take_screenshot`, `ask_human`, `ask_human_custom`, `set_state`, `spawn_cascade`, `create_chart`, `rabbitize_*`
 
@@ -166,6 +170,7 @@ The core engine is `WindlassRunner` in `runner.py`.
 | **Manifest** | Quartermaster auto-selects tools | `docs/claude/tools-reference.md` |
 | **Rabbitize** | Visual browser automation | `docs/claude/tools-reference.md` |
 | **Generative UI** | Rich human-in-the-loop interfaces | `docs/claude/tools-reference.md` |
+| **Harbor** | HuggingFace Spaces as tools | `docs/harbor-design.md` |
 
 ## Module Structure
 
@@ -178,6 +183,8 @@ windlass/
 ├── echo.py              # Echo class (state/history container)
 ├── tackle.py            # ToolRegistry for tool management
 ├── tackle_manifest.py   # Dynamic tool discovery for Quartermaster
+├── tool_definitions.py  # Declarative tools (shell, http, python, composite, gradio)
+├── harbor.py            # HuggingFace Spaces discovery and integration
 ├── config.py            # Global configuration (WINDLASS_ROOT-based)
 ├── unified_logs.py      # Unified logging (chDB/ClickHouse)
 ├── visualizer.py        # Mermaid graph generation
@@ -255,6 +262,8 @@ The `examples/` directory contains reference implementations:
 - **Wards**: Protective validation barriers
 - **Manifest**: List of available tackle
 - **Quartermaster**: Agent that selects appropriate tackle
+- **Harbor**: Registry/system for HuggingFace Spaces connections
+- **Berth**: A specific HF Space connection (tool definition)
 
 ## Extended Documentation
 

@@ -33,6 +33,55 @@ function DraggablePaletteBlock({ block }) {
 }
 
 /**
+ * DraggableToolBlock - Draggable tool from Windlass
+ */
+function DraggableToolBlock({ tool }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `tool-${tool.name}`,
+    data: {
+      type: 'palette-tool',
+      toolName: tool.name,
+      toolDescription: tool.description,
+      toolType: tool.type,
+    },
+  });
+
+  const getToolIcon = (type, name) => {
+    if (name === 'manifest') return 'mdi:auto-fix';
+    const icons = {
+      python: 'mdi:language-python',
+      cascade: 'mdi:sitemap',
+      special: 'mdi:star-four-points',
+    };
+    return icons[type] || 'mdi:wrench';
+  };
+
+  const getToolColor = (type, name) => {
+    if (name === 'manifest') return 'brass';
+    const colors = {
+      python: 'teal',
+      cascade: 'ocean',
+      special: 'brass',
+    };
+    return colors[type] || 'gray';
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`palette-tool tool-${getToolColor(tool.type, tool.name)} ${isDragging ? 'dragging' : ''} ${tool.name === 'manifest' ? 'manifest' : ''}`}
+      title={tool.description || tool.name}
+      {...attributes}
+      {...listeners}
+    >
+      <Icon icon={getToolIcon(tool.type, tool.name)} width="14" className="tool-icon" />
+      <span className="tool-name">{tool.name}</span>
+      {tool.name === 'manifest' && <Icon icon="mdi:auto-fix" width="10" className="manifest-star" />}
+    </div>
+  );
+}
+
+/**
  * DraggableModelBlock - Draggable model from OpenRouter
  */
 function DraggableModelBlock({ model }) {
@@ -97,11 +146,50 @@ function DraggableModelBlock({ model }) {
  * - Models: Searchable list from OpenRouter
  */
 function BlockPalette() {
+  const [tools, setTools] = useState([]);
+  const [toolsLoading, setToolsLoading] = useState(true);
+  const [toolSearch, setToolSearch] = useState('');
+  const [toolsExpanded, setToolsExpanded] = useState(true);
+
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelSearch, setModelSearch] = useState('');
   const [modelsExpanded, setModelsExpanded] = useState(true);
   const [blocksExpanded, setBlocksExpanded] = useState(true);
+
+  // Fetch tools from backend
+  useEffect(() => {
+    const fetchTools = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/available-tools');
+        if (response.ok) {
+          const data = await response.json();
+          // Add manifest as first tool if not already present
+          const toolList = data.tools || [];
+          if (!toolList.find(t => t.name === 'manifest')) {
+            toolList.unshift({
+              name: 'manifest',
+              description: 'Auto-select tools based on context (Quartermaster)',
+              type: 'special'
+            });
+          }
+          setTools(toolList);
+        }
+      } catch (error) {
+        console.error('Failed to fetch tools:', error);
+        // Fallback tools
+        setTools([
+          { name: 'manifest', description: 'Auto-select tools based on context', type: 'special' },
+          { name: 'linux_shell', description: 'Execute shell commands', type: 'python' },
+          { name: 'run_code', description: 'Execute Python code', type: 'python' },
+        ]);
+      } finally {
+        setToolsLoading(false);
+      }
+    };
+
+    fetchTools();
+  }, []);
 
   // Fetch models from backend
   useEffect(() => {
@@ -121,6 +209,28 @@ function BlockPalette() {
 
     fetchModels();
   }, []);
+
+  // Filter tools by search
+  const filteredTools = useMemo(() => {
+    // Always show manifest first
+    const manifest = tools.find(t => t.name === 'manifest');
+    const otherTools = tools.filter(t => t.name !== 'manifest');
+
+    if (!toolSearch.trim()) {
+      // Show manifest + first 10 tools when not searching
+      return manifest ? [manifest, ...otherTools.slice(0, 10)] : otherTools.slice(0, 10);
+    }
+    const search = toolSearch.toLowerCase();
+    const filtered = otherTools.filter(t =>
+      t.name.toLowerCase().includes(search) ||
+      (t.description && t.description.toLowerCase().includes(search))
+    ).slice(0, 15);
+    // Always include manifest if it matches or search is empty
+    if (manifest && (manifest.name.includes(search) || manifest.description?.toLowerCase().includes(search))) {
+      return [manifest, ...filtered];
+    }
+    return filtered;
+  }, [tools, toolSearch]);
 
   // Filter models by search
   const filteredModels = useMemo(() => {
@@ -198,6 +308,71 @@ function BlockPalette() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Tools Section */}
+        <div className="palette-section tools-section">
+          <div
+            className="section-header"
+            onClick={() => setToolsExpanded(!toolsExpanded)}
+          >
+            <Icon
+              icon={toolsExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+              width="16"
+            />
+            <Icon icon="mdi:wrench" width="14" />
+            <span>Tools</span>
+            <span className="tool-count">{tools.length}</span>
+          </div>
+
+          {toolsExpanded && (
+            <div className="section-content">
+              {/* Search input */}
+              <div className="tool-search">
+                <Icon icon="mdi:magnify" width="14" />
+                <input
+                  type="text"
+                  placeholder="Search tools..."
+                  value={toolSearch}
+                  onChange={(e) => setToolSearch(e.target.value)}
+                  spellCheck={false}
+                />
+                {toolSearch && (
+                  <button
+                    className="search-clear"
+                    onClick={() => setToolSearch('')}
+                  >
+                    <Icon icon="mdi:close" width="12" />
+                  </button>
+                )}
+              </div>
+
+              {/* Tools list */}
+              <div className="tools-list">
+                {toolsLoading ? (
+                  <div className="tools-loading">
+                    <Icon icon="mdi:loading" width="16" className="spin" />
+                    <span>Loading tools...</span>
+                  </div>
+                ) : filteredTools.length === 0 ? (
+                  <div className="tools-empty">
+                    {toolSearch ? 'No tools found' : 'No tools available'}
+                  </div>
+                ) : (
+                  filteredTools.map((tool) => (
+                    <DraggableToolBlock key={tool.name} tool={tool} />
+                  ))
+                )}
+              </div>
+
+              {!toolSearch && tools.length > 10 && (
+                <div className="tools-hint">
+                  <Icon icon="mdi:lightbulb-on-outline" width="12" />
+                  <span>Search to see all {tools.length} tools</span>
+                </div>
+              )}
             </div>
           )}
         </div>

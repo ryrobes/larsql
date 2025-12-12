@@ -357,7 +357,7 @@ def get_spaces_summary(author: str = None) -> Dict[str, Any]:
     }
 
 
-def pause_space(space_id: str) -> bool:
+def pause_space(space_id: str) -> tuple[bool, str]:
     """
     Pause a running HF Space (stops billing).
 
@@ -365,14 +365,14 @@ def pause_space(space_id: str) -> bool:
         space_id: HF Space ID
 
     Returns:
-        True if pause request was sent successfully.
+        Tuple of (success, error_message). error_message is empty on success.
     """
     try:
         api = _get_hf_api()
         api.pause_space(space_id)
-        return True
+        return True, ""
     except Exception as e:
-        return False
+        return False, str(e)
 
 
 def set_space_sleep_time(space_id: str, sleep_time: int) -> bool:
@@ -620,7 +620,7 @@ def export_tool_definition(space_id: str, api_name: str = None, tool_id: str = N
     }
 
 
-def wake_space(space_id: str) -> bool:
+def wake_space(space_id: str) -> tuple[bool, str]:
     """
     Wake up a sleeping HF Space.
 
@@ -628,12 +628,12 @@ def wake_space(space_id: str) -> bool:
         space_id: HF Space ID
 
     Returns:
-        True if wake request was sent successfully.
+        Tuple of (success, error_message). error_message is empty on success.
     """
     try:
         api = _get_hf_api()
         # Restart the space to wake it up
         api.restart_space(space_id)
-        return True
+        return True, ""
     except Exception as e:
-        return False
+        return False, str(e)
