@@ -1,0 +1,12 @@
+{
+  "tool_id": "llama_chat",
+  "description": "Chat with Llama 2 7B model via HuggingFace Space. Send a message and get a response.",
+  "type": "gradio",
+  "space": "huggingface-projects/llama-2-7b-chat",
+  "api_name": "/chat",
+  "inputs_schema": {
+    "message": "The message to send to the model",
+    "system_prompt": "System prompt to set the model's behavior"
+  },
+  "timeout": 120
+}

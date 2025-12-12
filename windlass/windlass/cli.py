@@ -219,6 +219,48 @@ def main():
     quick_parser.add_argument('--phase', help='Specific phase', default=None)
     quick_parser.add_argument('--notes', help='Optional notes', default='')
 
+    # Harbor (HuggingFace Spaces) command group
+    harbor_parser = subparsers.add_parser('harbor', help='HuggingFace Spaces discovery and management')
+    harbor_subparsers = harbor_parser.add_subparsers(dest='harbor_command', help='Harbor subcommands')
+
+    # harbor list - List user's HF Spaces
+    harbor_list_parser = harbor_subparsers.add_parser(
+        'list',
+        help='List your HuggingFace Spaces'
+    )
+    harbor_list_parser.add_argument('--author', help='Filter by author (default: current user)', default=None)
+    harbor_list_parser.add_argument('--all', action='store_true', help='Include sleeping/paused spaces')
+
+    # harbor introspect - Introspect a Space's API
+    harbor_introspect_parser = harbor_subparsers.add_parser(
+        'introspect',
+        help='Introspect a Space to see its API endpoints and parameters'
+    )
+    harbor_introspect_parser.add_argument('space', help='HF Space ID (e.g., user/space-name)')
+
+    # harbor export - Export a Space as a .tool.json
+    harbor_export_parser = harbor_subparsers.add_parser(
+        'export',
+        help='Export a Space as a .tool.json definition'
+    )
+    harbor_export_parser.add_argument('space', help='HF Space ID (e.g., user/space-name)')
+    harbor_export_parser.add_argument('--endpoint', help='Specific endpoint (default: first)', default=None)
+    harbor_export_parser.add_argument('--tool-id', help='Custom tool ID', default=None)
+    harbor_export_parser.add_argument('-o', '--output', help='Output file path', default=None)
+
+    # harbor manifest - Show discovered Spaces as tools
+    harbor_manifest_parser = harbor_subparsers.add_parser(
+        'manifest',
+        help='Show auto-discovered Spaces as tools'
+    )
+
+    # harbor wake - Wake a sleeping Space
+    harbor_wake_parser = harbor_subparsers.add_parser(
+        'wake',
+        help='Wake up a sleeping HF Space'
+    )
+    harbor_wake_parser.add_argument('space', help='HF Space ID to wake')
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -308,6 +350,20 @@ def main():
         else:
             hotornot_parser.print_help()
             sys.exit(1)
+    elif args.command == 'harbor':
+        if args.harbor_command == 'list':
+            cmd_harbor_list(args)
+        elif args.harbor_command == 'introspect':
+            cmd_harbor_introspect(args)
+        elif args.harbor_command == 'export':
+            cmd_harbor_export(args)
+        elif args.harbor_command == 'manifest':
+            cmd_harbor_manifest(args)
+        elif args.harbor_command == 'wake':
+            cmd_harbor_wake(args)
+        else:
+            harbor_parser.print_help()
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
@@ -389,6 +445,13 @@ def _maybe_render_startup_splash():
 
 def cmd_run(args):
     """Run a cascade."""
+    # Ensure declarative tools are discovered and registered
+    try:
+        from .tool_definitions import discover_and_register_declarative_tools
+        discover_and_register_declarative_tools()
+    except Exception:
+        pass  # Non-fatal if tool discovery fails
+
     # Generate session ID if not provided
     if args.session is None:
         import time
@@ -1695,6 +1758,187 @@ def cmd_check(args):
     print("  - Rabbitize: See RABBITIZE_INTEGRATION.md")
     print("  - Docker: See CLAUDE.md section 2.9")
     print()
+
+
+# ============================================================================
+# Harbor Commands (HuggingFace Spaces)
+# ============================================================================
+
+def cmd_harbor_list(args):
+    """List user's HuggingFace Spaces."""
+    try:
+        from windlass.harbor import list_user_spaces
+        from windlass.config import get_config
+
+        config = get_config()
+        if not config.hf_token:
+            print("Error: HF_TOKEN environment variable not set")
+            print("Get your token at: https://huggingface.co/settings/tokens")
+            sys.exit(1)
+
+        spaces = list_user_spaces(
+            author=args.author,
+            include_sleeping=getattr(args, 'all', False)
+        )
+
+        if not spaces:
+            print("No Gradio spaces found.")
+            if not getattr(args, 'all', False):
+                print("(Use --all to include sleeping/paused spaces)")
+            return
+
+        # Print header
+        print(f"{'SPACE':<40} {'STATUS':<12} {'HARDWARE':<15}")
+        print("-" * 70)
+
+        for space in spaces:
+            status_icon = {
+                "RUNNING": "🟢",
+                "SLEEPING": "😴",
+                "BUILDING": "🔨",
+                "PAUSED": "⏸️",
+            }.get(space.status, "❓")
+
+            hardware = space.hardware or "—"
+            print(f"{space.id:<40} {status_icon} {space.status:<10} {hardware:<15}")
+
+        print()
+        print(f"Total: {len(spaces)} space(s)")
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        print("Install required packages: pip install huggingface_hub")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_introspect(args):
+    """Introspect a Space's API."""
+    try:
+        from windlass.harbor import get_space_endpoints
+        from windlass.config import get_config
+
+        config = get_config()
+        if not config.hf_token:
+            print("Error: HF_TOKEN environment variable not set")
+            sys.exit(1)
+
+        print(f"Introspecting: {args.space}")
+        print("-" * 50)
+
+        endpoints = get_space_endpoints(args.space)
+
+        if not endpoints:
+            print("No endpoints found (Space may not be a Gradio app)")
+            return
+
+        for endpoint in endpoints:
+            print(f"\nEndpoint: {endpoint.name}")
+            print("  Parameters:")
+            if endpoint.parameters:
+                for param_name, param_info in endpoint.parameters.items():
+                    ptype = param_info.get("type", "Any")
+                    component = param_info.get("component", "")
+                    desc = param_info.get("description", "")
+                    print(f"    - {param_name}: {ptype}")
+                    if component:
+                        print(f"        Component: {component}")
+            else:
+                print("    (none)")
+
+            print("  Returns:")
+            if endpoint.returns:
+                for ret_name, ret_info in endpoint.returns.items():
+                    rtype = ret_info.get("type", "Any")
+                    print(f"    - {ret_name}: {rtype}")
+            else:
+                print("    (none)")
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        print("Install required packages: pip install gradio_client huggingface_hub")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_export(args):
+    """Export a Space as a .tool.json definition."""
+    try:
+        from windlass.harbor import export_tool_definition
+
+        tool_def = export_tool_definition(
+            space_id=args.space,
+            api_name=args.endpoint,
+            tool_id=args.tool_id
+        )
+
+        json_output = json.dumps(tool_def, indent=2)
+
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(json_output)
+            print(f"Exported to: {args.output}")
+        else:
+            print(json_output)
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_manifest(args):
+    """Show auto-discovered Spaces as tools."""
+    try:
+        from windlass.harbor import get_harbor_manifest, format_harbor_manifest
+        from windlass.config import get_config
+
+        config = get_config()
+        if not config.hf_token:
+            print("Error: HF_TOKEN environment variable not set")
+            sys.exit(1)
+
+        print("Discovering HuggingFace Spaces...")
+        print()
+
+        manifest = get_harbor_manifest()
+        formatted = format_harbor_manifest(manifest)
+        print(formatted)
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_harbor_wake(args):
+    """Wake up a sleeping HF Space."""
+    try:
+        from windlass.harbor import wake_space
+
+        print(f"Waking space: {args.space}...")
+
+        if wake_space(args.space):
+            print("Wake request sent successfully.")
+            print("Space may take a few minutes to start up.")
+        else:
+            print("Failed to wake space.")
+            sys.exit(1)
+
+    except ImportError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

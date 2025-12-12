@@ -6,6 +6,7 @@ Discovers:
 - Cascade files with inputs_schema (usable as tools)
 - Declarative tools (.tool.json files)
 - Memory banks (conversational memory with RAG search)
+- Harbor tools (HuggingFace Spaces via Gradio)
 """
 import os
 import glob
@@ -155,6 +156,38 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
             }
     except Exception as e:
         # Memory system not available or error occurred
+        pass
+
+    # 4. Scan Harbor (HuggingFace Spaces)
+    try:
+        from .harbor import get_harbor_manifest
+        harbor_manifest = get_harbor_manifest()
+
+        for tool_name, tool_info in harbor_manifest.items():
+            # Build inputs schema for quartermaster
+            inputs = tool_info.get("inputs", {})
+            params_desc = []
+            for param_name, param_desc in inputs.items():
+                params_desc.append(f"  - {param_name}: {param_desc}")
+
+            space = tool_info.get("space", "unknown")
+            endpoint = tool_info.get("api_name", "/predict")
+            base_desc = f"HuggingFace Space: {space} ({endpoint})"
+
+            if params_desc:
+                full_description = base_desc + "\n\nParameters:\n" + "\n".join(params_desc)
+            else:
+                full_description = base_desc
+
+            manifest[tool_name] = {
+                "type": "harbor",
+                "description": full_description,
+                "space": space,
+                "api_name": endpoint,
+                "inputs": inputs,
+            }
+    except Exception as e:
+        # Harbor not available or error occurred
         pass
 
     _tackle_manifest_cache = manifest

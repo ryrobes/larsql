@@ -54,17 +54,18 @@ class ToolDefinition(BaseModel):
     """
     Schema for .tool.json declarative tool definitions.
 
-    Supports four tool types:
+    Supports five tool types:
     - shell: Execute a shell command
     - http: Make an HTTP request
     - python: Call a Python function by import path
     - composite: Chain multiple tools together
+    - gradio: Call a Gradio endpoint (HuggingFace Spaces or direct URL)
     """
     tool_id: str = Field(..., description="Unique identifier for the tool")
     description: str = Field(..., description="Description shown to LLM")
     inputs_schema: Dict[str, str] = Field(default_factory=dict, description="Parameter name -> description mapping")
 
-    type: Literal["shell", "http", "python", "composite"] = Field(..., description="Tool execution type")
+    type: Literal["shell", "http", "python", "composite", "gradio"] = Field(..., description="Tool execution type")
 
     # Shell options
     command: Optional[str] = Field(None, description="Shell command (Jinja2 template)")
@@ -85,6 +86,12 @@ class ToolDefinition(BaseModel):
     # Composite options
     steps: Optional[List[CompositeStep]] = Field(None, description="Pipeline steps")
 
+    # Gradio options (HuggingFace Spaces)
+    space: Optional[str] = Field(None, description="HuggingFace Space ID (e.g., 'user/space-name')")
+    gradio_url: Optional[str] = Field(None, description="Direct Gradio app URL (alternative to space)")
+    api_name: Optional[str] = Field(None, description="Gradio endpoint name (e.g., '/predict')")
+    introspect: bool = Field(False, description="Auto-fetch inputs_schema from Gradio API if not provided")
+
     # Output processing
     output_transform: Optional[Literal["json", "text", "lines"]] = Field(None, description="How to transform output")
     error_pattern: Optional[str] = Field(None, description="Regex pattern to detect errors in output")
@@ -104,6 +111,8 @@ class ToolDefinition(BaseModel):
             raise ValueError(f"Tool '{self.tool_id}': python type requires 'import_path' field")
         if self.type == "composite" and not self.steps:
             raise ValueError(f"Tool '{self.tool_id}': composite type requires 'steps' field")
+        if self.type == "gradio" and not self.space and not self.gradio_url:
+            raise ValueError(f"Tool '{self.tool_id}': gradio type requires 'space' or 'gradio_url' field")
 
 
 # ============================================================================
@@ -437,6 +446,151 @@ def execute_composite_tool(tool: ToolDefinition, inputs: Dict[str, Any], context
     return "\n\n".join(results)
 
 
+def execute_gradio_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str, Any]) -> str:
+    """
+    Execute a gradio-type tool by calling a HuggingFace Space or direct Gradio URL.
+
+    Supports:
+    - HuggingFace Spaces (public and private with HF_TOKEN)
+    - Direct Gradio app URLs
+    - Multi-modal outputs (images, audio files)
+    """
+    try:
+        from gradio_client import Client
+    except ImportError:
+        return "[ERROR] gradio_client package not installed. Run: pip install gradio_client"
+
+    from .config import get_config
+
+    config = get_config()
+    hf_token = config.hf_token
+
+    # Build template context for Jinja2 rendering
+    ctx = {
+        "input": inputs,
+        "env": dict(os.environ),
+        **context
+    }
+
+    # Determine connection target
+    if tool.space:
+        space_id = render_template(tool.space, ctx) if "{{" in tool.space else tool.space
+        try:
+            client = Client(space_id, token=hf_token)
+        except Exception as e:
+            return f"[ERROR] Failed to connect to HuggingFace Space '{space_id}': {str(e)}"
+    elif tool.gradio_url:
+        gradio_url = render_template(tool.gradio_url, ctx) if "{{" in tool.gradio_url else tool.gradio_url
+        try:
+            client = Client(gradio_url)
+        except Exception as e:
+            return f"[ERROR] Failed to connect to Gradio URL '{gradio_url}': {str(e)}"
+    else:
+        return "[ERROR] gradio tool requires 'space' or 'gradio_url'"
+
+    # Render any templated input values
+    rendered_inputs = {}
+    for key, value in inputs.items():
+        if isinstance(value, str) and "{{" in value:
+            rendered_inputs[key] = render_template(value, ctx)
+        else:
+            rendered_inputs[key] = value
+
+    # Determine API endpoint
+    api_name = tool.api_name or "/predict"
+
+    try:
+        # Call the Gradio endpoint
+        # Pass inputs as positional args in the order they appear
+        result = client.predict(
+            *rendered_inputs.values(),
+            api_name=api_name
+        )
+
+        # Handle the result based on type
+        return _process_gradio_result(result, tool)
+
+    except Exception as e:
+        return f"[ERROR] Gradio call failed: {str(e)}"
+
+
+def _process_gradio_result(result: Any, tool: ToolDefinition) -> Any:
+    """
+    Process Gradio result, handling files (images, audio) specially.
+
+    Returns either a string or a dict with content/images/audio for multi-modal.
+    """
+    from .config import get_config
+    import shutil
+
+    config = get_config()
+
+    # Handle tuple results (multiple outputs)
+    if isinstance(result, tuple):
+        # Process each element and combine
+        processed = []
+        images = []
+        for item in result:
+            proc = _process_single_gradio_result(item, config)
+            if isinstance(proc, dict):
+                if "content" in proc:
+                    processed.append(proc["content"])
+                if "images" in proc:
+                    images.extend(proc["images"])
+            else:
+                processed.append(str(proc))
+
+        if images:
+            return {"content": "\n".join(processed), "images": images}
+        return "\n".join(processed)
+
+    return _process_single_gradio_result(result, config)
+
+
+def _process_single_gradio_result(result: Any, config) -> Any:
+    """Process a single Gradio result value."""
+    import shutil
+    import uuid
+
+    # Check if it's a file path
+    if isinstance(result, str) and os.path.isfile(result):
+        ext = os.path.splitext(result)[1].lower()
+
+        # Image files
+        if ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'):
+            # Copy to Windlass image directory
+            filename = f"gradio_{uuid.uuid4().hex[:8]}{ext}"
+            dest = os.path.join(config.image_dir, filename)
+            os.makedirs(config.image_dir, exist_ok=True)
+            shutil.copy2(result, dest)
+            return {"content": f"Generated image: {dest}", "images": [dest]}
+
+        # Audio files
+        elif ext in ('.mp3', '.wav', '.ogg', '.flac', '.m4a'):
+            filename = f"gradio_{uuid.uuid4().hex[:8]}{ext}"
+            dest = os.path.join(config.audio_dir, filename)
+            os.makedirs(config.audio_dir, exist_ok=True)
+            shutil.copy2(result, dest)
+            return {"content": f"Generated audio: {dest}", "audio": [dest]}
+
+        # Other files - read content if text-like, otherwise return path
+        elif ext in ('.txt', '.json', '.csv', '.md', '.xml', '.html'):
+            try:
+                with open(result, 'r') as f:
+                    return f.read()
+            except:
+                return f"File output: {result}"
+        else:
+            return f"File output: {result}"
+
+    # Dict/list results - JSON serialize
+    if isinstance(result, (dict, list)):
+        return json.dumps(result, indent=2)
+
+    # Everything else - string
+    return str(result) if result is not None else ""
+
+
 # ============================================================================
 # Tool Loading and Registration
 # ============================================================================
@@ -481,6 +635,8 @@ def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str
         return execute_python_tool(tool, inputs, context)
     elif tool.type == "composite":
         return execute_composite_tool(tool, inputs, context)
+    elif tool.type == "gradio":
+        return execute_gradio_tool(tool, inputs, context)
     else:
         return f"[ERROR] Unknown tool type: {tool.type}"
 

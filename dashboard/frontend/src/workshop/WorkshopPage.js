@@ -1,9 +1,10 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from './stores/workshopStore';
 import BlockEditor from './editor/BlockEditor';
 import ExecutionNotebook from './notebook/ExecutionNotebook';
+import InputDialog from './components/InputDialog';
 import './WorkshopPage.css';
 
 /**
@@ -15,6 +16,7 @@ import './WorkshopPage.css';
  */
 function WorkshopPage() {
   const fileInputRef = useRef(null);
+  const [showInputDialog, setShowInputDialog] = useState(false);
 
   const {
     cascade,
@@ -82,9 +84,13 @@ function WorkshopPage() {
     });
   }, [exportToYaml]);
 
-  const handleRun = useCallback(async () => {
-    // For now, run with empty input - later we'll add input modal
-    const result = await runCascade({});
+  const handleRun = useCallback(() => {
+    setShowInputDialog(true);
+  }, []);
+
+  const handleConfirmRun = useCallback(async (inputs) => {
+    setShowInputDialog(false);
+    const result = await runCascade(inputs);
     if (!result.success) {
       alert(`Failed to run cascade: ${result.error}`);
     }
@@ -182,6 +188,15 @@ function WorkshopPage() {
           <ExecutionNotebook />
         </div>
       </Split>
+
+      {/* Input Dialog */}
+      <InputDialog
+        isOpen={showInputDialog}
+        onClose={() => setShowInputDialog(false)}
+        onRun={handleConfirmRun}
+        inputsSchema={cascade.inputs_schema}
+        cascadeId={cascade.cascade_id}
+      />
     </div>
   );
 }

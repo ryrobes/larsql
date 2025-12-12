@@ -106,6 +106,22 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Harbor (HuggingFace Spaces) Configuration
+    # =========================================================================
+    hf_token: Optional[str] = Field(
+        default_factory=lambda: os.getenv("HF_TOKEN")
+    )
+    harbor_enabled: bool = Field(
+        default_factory=lambda: os.getenv("WINDLASS_HARBOR_ENABLED", "true").lower() == "true"
+    )
+    harbor_auto_discover: bool = Field(
+        default_factory=lambda: os.getenv("WINDLASS_HARBOR_AUTO_DISCOVER", "true").lower() == "true"
+    )
+    harbor_cache_ttl: int = Field(
+        default_factory=lambda: int(os.getenv("WINDLASS_HARBOR_CACHE_TTL", "300"))
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them
