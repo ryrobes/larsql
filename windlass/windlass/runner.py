@@ -1333,6 +1333,8 @@ To use: Output JSON in this format:
           - Markdown code-fenced JSON: ```json ... ```
           - XML-style tags: <tool_call> ... </tool_call>
           - Function call tags: <function_call> ... </function_call>
+          - Array formats: <function_calls>[{...}, {...}]</function_calls>
+          - Array formats: <tool_calls>[{...}, {...}]</tool_calls>
 
         Returns:
             tuple: (tool_calls, error_message)
@@ -1366,6 +1368,32 @@ To use: Output JSON in this format:
         tools_tag_pattern = r'<tools?>\s*(\{.*?\})\s*</tools?>'
         tools_calls = re.findall(tools_tag_pattern, content, re.DOTALL | re.IGNORECASE)
         all_json_blocks.extend(tools_calls)
+
+        # Pattern 5: <function_calls> with array of tool calls (plural form for multiple calls)
+        # Matches: <function_calls>[{...}, {...}]</function_calls>
+        function_calls_array_pattern = r'<function_calls>\s*(\[.*?\])\s*</function_calls>'
+        function_calls_arrays = re.findall(function_calls_array_pattern, content, re.DOTALL | re.IGNORECASE)
+
+        # Also check <tool_calls> plural form
+        tool_calls_array_pattern = r'<tool_calls>\s*(\[.*?\])\s*</tool_calls>'
+        tool_calls_arrays = re.findall(tool_calls_array_pattern, content, re.DOTALL | re.IGNORECASE)
+
+        # Process array-based tool calls (extract individual objects from arrays)
+        for array_block in function_calls_arrays + tool_calls_arrays:
+            try:
+                array_data = json.loads(array_block.strip())
+                if isinstance(array_data, list):
+                    # Convert each object in the array to JSON string and add to blocks
+                    for item in array_data:
+                        if isinstance(item, dict):
+                            all_json_blocks.append(json.dumps(item))
+            except json.JSONDecodeError as e:
+                # Report error for malformed arrays
+                if '"tool"' in array_block:
+                    error_detail = f"Tool calls array JSON is malformed:\n"
+                    error_detail += f"  Error: {e.msg} at position {e.pos}\n"
+                    error_detail += f"  Your JSON: {array_block[:200]}{'...' if len(array_block) > 200 else ''}\n"
+                    parse_errors.append(error_detail)
 
         # If no blocks found, agent isn't trying to call tools
         # This is fine - phase might not have tools, or agent is just responding
@@ -3959,6 +3987,9 @@ Use only numbers 0-100 for scores."""
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
+                # Create a preview of the result for UI display
+                result_preview = str(result)[:500] if result else None
+
                 # Emit sounding_complete event for real-time UI tracking
                 event_bus.publish(Event(
                     type="sounding_complete",
@@ -3970,7 +4001,8 @@ Use only numbers 0-100 for scores."""
                         "trace_id": sounding_trace.id,
                         "model": sounding_model,
                         "factor": factor,
-                        "success": True
+                        "success": True,
+                        "output": result_preview
                     }
                 ))
 
@@ -4654,6 +4686,25 @@ Use only numbers 0-100 for scores."""
         else:
             original_winner_index = winner['index']
             aggregated_indices = set()
+
+        # Emit sounding_winner event for real-time UI tracking
+        from .events import get_event_bus, Event as WinnerEvent
+        from datetime import datetime as dt_winner
+        winner_event_bus = get_event_bus()
+        winner_output = str(winner.get('result', ''))[:500] if winner.get('result') else None
+        winner_event_bus.publish(WinnerEvent(
+            type="sounding_winner",
+            session_id=self.session_id,
+            timestamp=dt_winner.now().isoformat(),
+            data={
+                "phase_name": phase.name,
+                "winner_index": original_winner_index,
+                "is_aggregated": is_aggregated,
+                "aggregated_indices": list(aggregated_indices) if is_aggregated else None,
+                "factor": factor,
+                "output": winner_output
+            }
+        ))
 
         # Compute species hash for prompt evolution tracking (once for all soundings in this phase)
         # NOTE: This should match the species_hash computed at the start of soundings (line 3374)
@@ -5992,12 +6043,15 @@ Refinement directive: {reforge_config.honing_prompt}
                 turn_trace = trace.create_child("turn", f"turn_{i+1}")
 
                 # Add turn structure to Echo for visualization
+                # Include sounding_index so turn messages group correctly with their sounding branch
+                current_sounding = self.current_phase_sounding_index or self.sounding_index
                 self.echo.add_history({
                     "role": "structure",
                     "content": f"Turn {i+1}",
                     "node_type": "turn"
                 }, trace_id=turn_trace.id, parent_id=trace.id, node_type="turn",
                    metadata={"phase_name": phase.name, "turn_number": i+1, "max_turns": max_turns,
+                             "sounding_index": current_sounding,  # Tag with sounding for correct grouping
                              "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
                 if max_turns > 1:

@@ -381,3 +381,37 @@
 .sounding-snippet.running .snippet-content {
   color: #9CA3AF;
 }
+
+/* Clickable phase header for scroll navigation */
+.phase-bar-header.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s ease;
+}
+
+.phase-bar-header.clickable:hover {
+  background-color: rgba(96, 165, 250, 0.15);
+}
+
+.phase-bar-header.clickable:active {
+  background-color: rgba(96, 165, 250, 0.25);
+}
+
+/* Clickable sounding rows for scroll navigation */
+.individual-sounding-row.clickable {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s ease;
+}
+
+.individual-sounding-row.clickable:hover {
+  background-color: rgba(78, 201, 176, 0.15);
+}
+
+.individual-sounding-row.clickable:active {
+  background-color: rgba(78, 201, 176, 0.25);
+}

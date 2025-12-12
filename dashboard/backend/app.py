@@ -2599,24 +2599,46 @@ def get_cascade_files():
 
 @app.route('/api/run-cascade', methods=['POST'])
 def run_cascade():
-    """Run a cascade with given inputs"""
+    """Run a cascade with given inputs.
+
+    Accepts either:
+    - cascade_path: Path to a cascade YAML file
+    - cascade_yaml: Raw YAML content (will be written to temp file)
+
+    Also accepts 'input' or 'inputs' for the input values.
+    """
     try:
         data = request.json
         cascade_path = data.get('cascade_path')
-        inputs = data.get('inputs', {})
+        cascade_yaml = data.get('cascade_yaml')
+        # Accept both 'inputs' and 'input' for flexibility
+        inputs = data.get('inputs') or data.get('input', {})
         session_id = data.get('session_id')
 
-        if not cascade_path:
-            return jsonify({'error': 'cascade_path required'}), 400
+        if not cascade_path and not cascade_yaml:
+            return jsonify({'error': 'cascade_path or cascade_yaml required'}), 400
 
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
 
         from windlass import run_cascade as execute_cascade
         import uuid
+        import tempfile
 
         if not session_id:
-            session_id = f"ui_run_{uuid.uuid4().hex[:12]}"
+            session_id = f"workshop_{uuid.uuid4().hex[:12]}"
+
+        # If cascade_yaml provided, write to temp file
+        temp_file = None
+        if cascade_yaml and not cascade_path:
+            # Create temp file in the workshop temp directory
+            workshop_temp_dir = os.path.join(os.path.dirname(__file__), 'workshop_temp')
+            os.makedirs(workshop_temp_dir, exist_ok=True)
+
+            temp_file = os.path.join(workshop_temp_dir, f"{session_id}.yaml")
+            with open(temp_file, 'w') as f:
+                f.write(cascade_yaml)
+            cascade_path = temp_file
 
         import threading
         from windlass.event_hooks import EventPublishingHooks
@@ -2629,6 +2651,8 @@ def run_cascade():
                 execute_cascade(cascade_path, inputs, session_id, hooks=hooks)
             except Exception as e:
                 print(f"Cascade execution error: {e}")
+                import traceback
+                traceback.print_exc()
 
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -3561,6 +3585,180 @@ def get_session_human_inputs(session_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+# ==============================================================================
+# WORKSHOP API - Tools and Models
+# ==============================================================================
+
+@app.route('/api/available-tools', methods=['GET'])
+def get_available_tools():
+    """
+    Get list of available tools (tackle) from Windlass.
+    Returns both registered Python tools and cascade tools.
+    """
+    try:
+        from windlass.tackle import get_available_tools as windlass_tools
+
+        tools = []
+        for name, func in windlass_tools().items():
+            # Get docstring for description
+            doc = func.__doc__ or ''
+            description = doc.strip().split('\n')[0] if doc else ''
+
+            tools.append({
+                'name': name,
+                'description': description,
+                'type': 'python'
+            })
+
+        # Add cascade tools from tackle directory
+        tackle_dir = os.path.join(WINDLASS_ROOT, 'tackle')
+        if os.path.exists(tackle_dir):
+            for ext in CASCADE_EXTENSIONS:
+                for path in glob.glob(os.path.join(tackle_dir, f'**/*.{ext}'), recursive=True):
+                    try:
+                        config = load_config_file(path)
+                        name = config.get('cascade_id', os.path.basename(path).rsplit('.', 1)[0])
+                        desc = config.get('description', '')
+                        tools.append({
+                            'name': name,
+                            'description': desc,
+                            'type': 'cascade'
+                        })
+                    except:
+                        pass
+
+        return jsonify({'tools': tools})
+
+    except Exception as e:
+        # Fallback to common tools if windlass import fails
+        fallback_tools = [
+            {'name': 'manifest', 'description': 'Auto-select tools based on context (Quartermaster)', 'type': 'special'},
+            {'name': 'linux_shell', 'description': 'Execute shell commands', 'type': 'python'},
+            {'name': 'run_code', 'description': 'Execute Python code', 'type': 'python'},
+            {'name': 'smart_sql_run', 'description': 'Execute SQL queries', 'type': 'python'},
+            {'name': 'take_screenshot', 'description': 'Capture screenshot', 'type': 'python'},
+            {'name': 'ask_human', 'description': 'Request human input', 'type': 'python'},
+            {'name': 'ask_human_custom', 'description': 'Request human input with custom UI', 'type': 'python'},
+            {'name': 'set_state', 'description': 'Set session state variable', 'type': 'python'},
+            {'name': 'spawn_cascade', 'description': 'Launch sub-cascade', 'type': 'python'},
+            {'name': 'create_chart', 'description': 'Create data visualization', 'type': 'python'},
+        ]
+        return jsonify({'tools': fallback_tools, 'error': str(e)})
+
+
+@app.route('/api/available-models', methods=['GET'])
+def get_available_models():
+    """
+    Get list of available models from OpenRouter.
+    Fetches from OpenRouter API and caches results.
+    """
+    import requests
+
+    # Check for cached models (cache for 1 hour)
+    cache_file = os.path.join(DATA_DIR, '.openrouter_models_cache.json')
+    cache_max_age = 3600  # 1 hour
+
+    if os.path.exists(cache_file):
+        try:
+            cache_mtime = os.path.getmtime(cache_file)
+            if time.time() - cache_mtime < cache_max_age:
+                with open(cache_file, 'r') as f:
+                    cached_data = json.load(f)
+                    return jsonify(cached_data)
+        except:
+            pass
+
+    try:
+        # Fetch from OpenRouter
+        api_key = os.environ.get('OPENROUTER_API_KEY', '')
+        headers = {}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+
+        response = requests.get(
+            'https://openrouter.ai/api/v1/models',
+            headers=headers,
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Process models into our format
+        models = []
+        popular_models = {
+            'anthropic/claude-sonnet-4', 'anthropic/claude-opus-4', 'anthropic/claude-haiku',
+            'openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o1', 'openai/o1-mini',
+            'google/gemini-2.5-flash', 'google/gemini-2.5-pro',
+            'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat',
+        }
+
+        for model in data.get('data', []):
+            model_id = model.get('id', '')
+            name = model.get('name', model_id)
+            provider = model_id.split('/')[0] if '/' in model_id else 'other'
+
+            # Determine tier based on pricing and capabilities
+            pricing = model.get('pricing', {})
+            prompt_price = float(pricing.get('prompt', 0))
+            context_length = model.get('context_length', 0)
+
+            if prompt_price > 0.01:  # > $10/M tokens
+                tier = 'flagship'
+            elif prompt_price > 0.0001:  # > $0.10/M tokens
+                tier = 'standard'
+            else:
+                tier = 'fast'
+
+            # Check if it's an open model
+            if 'llama' in model_id.lower() or 'mixtral' in model_id.lower() or 'mistral' in model_id.lower():
+                tier = 'open'
+
+            models.append({
+                'id': model_id,
+                'name': name,
+                'provider': provider,
+                'tier': tier,
+                'popular': model_id in popular_models,
+                'context_length': context_length,
+                'pricing': {
+                    'prompt': prompt_price,
+                    'completion': float(pricing.get('completion', 0))
+                }
+            })
+
+        # Sort by popularity first, then by name
+        models.sort(key=lambda m: (not m['popular'], m['id']))
+
+        result = {'models': models}
+
+        # Cache the results
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(cache_file, 'w') as f:
+                json.dump(result, f)
+        except:
+            pass
+
+        return jsonify(result)
+
+    except Exception as e:
+        # Return fallback models if API fails
+        fallback_models = [
+            {'id': 'anthropic/claude-sonnet-4', 'name': 'Claude Sonnet 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': True},
+            {'id': 'anthropic/claude-opus-4', 'name': 'Claude Opus 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': False},
+            {'id': 'anthropic/claude-haiku', 'name': 'Claude Haiku', 'provider': 'anthropic', 'tier': 'fast', 'popular': True},
+            {'id': 'openai/gpt-4o', 'name': 'GPT-4o', 'provider': 'openai', 'tier': 'flagship', 'popular': True},
+            {'id': 'openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'provider': 'openai', 'tier': 'fast', 'popular': True},
+            {'id': 'openai/o1', 'name': 'o1', 'provider': 'openai', 'tier': 'flagship', 'popular': True},
+            {'id': 'openai/o1-mini', 'name': 'o1-mini', 'provider': 'openai', 'tier': 'fast', 'popular': True},
+            {'id': 'google/gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'provider': 'google', 'tier': 'fast', 'popular': True},
+            {'id': 'google/gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'provider': 'google', 'tier': 'flagship', 'popular': False},
+            {'id': 'meta-llama/llama-3.3-70b-instruct', 'name': 'Llama 3.3 70B', 'provider': 'meta-llama', 'tier': 'open', 'popular': True},
+            {'id': 'deepseek/deepseek-chat', 'name': 'DeepSeek Chat', 'provider': 'deepseek', 'tier': 'fast', 'popular': True},
+        ]
+        return jsonify({'models': fallback_models, 'error': str(e), 'cached': False})
 
 
 def log_connection_stats():

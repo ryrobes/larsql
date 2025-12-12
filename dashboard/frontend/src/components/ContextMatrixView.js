@@ -118,10 +118,12 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
       const sourceMsg = data.all_messages.find(m => m.content_hash === h);
       const tokens = sourceMsg?.estimated_tokens || 0;
       if (tokens > maxTokens) maxTokens = tokens;
+      // Prefer _index from backend to avoid indexOf lookup issues
+      const msgIndex = sourceMsg?._index !== undefined ? sourceMsg._index : data.all_messages.indexOf(sourceMsg);
       hashInfo[h] = {
         role: sourceMsg?.role || 'unknown',
         phase: sourceMsg?.phase_name || 'unknown',
-        index: data.all_messages.indexOf(sourceMsg),
+        index: msgIndex,
         estimated_tokens: tokens,
         preview: typeof sourceMsg?.content === 'string'
           ? sourceMsg.content.slice(0, 300)

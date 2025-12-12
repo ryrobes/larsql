@@ -1,0 +1,226 @@
+/* ModelSelect - Searchable model dropdown */
+
+.model-select {
+  position: relative;
+  width: 100%;
+}
+
+/* ============================================
+   SELECT CONTROL
+   ============================================ */
+
+.select-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 0 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.select-control:hover {
+  border-color: var(--border-hover);
+}
+
+.select-control.focused {
+  border-color: var(--ocean-primary);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.15);
+}
+
+.select-input {
+  flex: 1;
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.select-input::placeholder {
+  color: var(--mist-gray);
+}
+
+.select-value {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-value.placeholder {
+  color: var(--mist-gray);
+}
+
+.select-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.select-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.select-clear:hover {
+  background: var(--danger-red);
+  color: white;
+}
+
+.select-arrow {
+  color: var(--mist-gray);
+}
+
+/* ============================================
+   DROPDOWN
+   ============================================ */
+
+.select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.dropdown-loading,
+.dropdown-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--mist-gray);
+}
+
+.dropdown-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================
+   MODEL GROUPS
+   ============================================ */
+
+.dropdown-groups {
+  padding: 4px;
+}
+
+.model-group {
+  margin-bottom: 8px;
+}
+
+.model-group:last-child {
+  margin-bottom: 0;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--mist-gray);
+}
+
+.group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.model-item:hover {
+  background: var(--storm-cloud);
+}
+
+.model-item.selected {
+  background: rgba(74, 158, 221, 0.15);
+}
+
+.model-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* ============================================
+   BADGES
+   ============================================ */
+
+.popular-badge {
+  display: flex;
+  align-items: center;
+  color: var(--compass-brass);
+}
+
+.tier-badge {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 3px;
+  background: var(--storm-cloud);
+  color: var(--mist-gray);
+}
+
+.tier-badge.tier-flagship {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+}
+
+.tier-badge.tier-fast {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.tier-badge.tier-open {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+/* Item tier coloring */
+.model-item.tier-flagship {
+  border-left: 2px solid transparent;
+}
+
+.model-item.tier-flagship:hover {
+  border-left-color: #a855f7;
+}

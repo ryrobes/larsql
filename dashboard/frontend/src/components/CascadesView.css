@@ -177,6 +177,32 @@
   color: #5EEAD4;
 }
 
+.workshop-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(107, 127, 187, 0.15), rgba(139, 159, 204, 0.15));
+  border: 1px solid rgba(107, 127, 187, 0.3);
+  border-radius: 8px;
+  color: #8B9FCC;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.workshop-btn:hover {
+  background: linear-gradient(135deg, rgba(107, 127, 187, 0.25), rgba(139, 159, 204, 0.25));
+  border-color: rgba(107, 127, 187, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(107, 127, 187, 0.2);
+}
+
+.workshop-btn svg {
+  color: #6B7FBB;
+}
+
 .connection-indicator {
   width: 10px;
   height: 10px;

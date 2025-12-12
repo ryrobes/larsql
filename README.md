@@ -685,6 +685,86 @@ Filter soundings **before** they reach the evaluator. Saves evaluator LLM calls 
 
 Pre-filter across multiple models, then compute Pareto frontier on valid results only.
 
+### Aggregate Mode (Fan-Out Pattern)
+
+Instead of picking one winner, **combine all sounding outputs** into a single result. Perfect for map-reduce patterns and parallel research.
+
+**Simple Concatenation:**
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "mode": "aggregate",
+    "mutate": false
+  }
+}
+```
+
+All outputs are concatenated with headers like `## Output 1`, `## Output 2`, etc.
+
+**LLM Aggregation (Synthesis):**
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "mode": "aggregate",
+    "aggregator_instructions": "Synthesize these outputs into a unified report. Remove duplicates, organize by theme, and provide an executive summary.",
+    "aggregator_model": "anthropic/claude-sonnet-4.5"
+  }
+}
+```
+
+The aggregator LLM receives all outputs and creates a coherent synthesis.
+
+**Fan-Out Pattern (Process Array Items in Parallel):**
+
+Use `sounding_index` in Jinja2 templates to process different items from an array:
+
+```json
+{
+  "name": "research_topics",
+  "instructions": "Research the topic: {{ input.topics[sounding_index] }}",
+  "soundings": {
+    "factor": 3,
+    "mode": "aggregate",
+    "mutate": false,
+    "aggregator_instructions": "Create a unified research report from these individual topic summaries."
+  }
+}
+```
+
+With input `{"topics": ["AI", "Quantum", "Biotech"]}`:
+- Sounding 0 researches "AI"
+- Sounding 1 researches "Quantum"
+- Sounding 2 researches "Biotech"
+- Aggregator combines all three into one report
+
+**Available Template Variables:**
+- `{{ sounding_index }}` - Current sounding index (0, 1, 2, ...)
+- `{{ sounding_factor }}` - Total number of soundings
+- `{{ is_sounding }}` - True when running as a sounding
+
+**Multi-Modal Aggregation:**
+
+Images from all soundings are collected and passed to the aggregator for vision-capable models:
+
+```json
+{
+  "soundings": {
+    "factor": 3,
+    "mode": "aggregate",
+    "aggregator_instructions": "Compare these chart images and create a summary of what each shows.",
+    "aggregator_model": "google/gemini-2.5-flash"
+  }
+}
+```
+
+**Use cases:**
+- **Parallel research**: Each sounding researches a different topic, aggregator synthesizes
+- **Multi-perspective analysis**: Same question from different angles, combined into comprehensive view
+- **Batch processing**: Process items from a list in parallel
+- **Chart comparison**: Generate multiple visualizations, aggregator compares them
+
 ### Mutation Modes (Prompt Variation Strategies)
 
 Soundings support three mutation modes for generating prompt variations:

@@ -69,11 +69,19 @@ function CostTimelineChart({ messages = [], isRunning = false, onBarClick = null
       const isDimmed = msg.sounding_index !== null && !msg.is_winner;
 
       // Find the original index in all_messages for scrolling
-      const originalIndex = messages.findIndex(m =>
-        m.timestamp === msg.timestamp &&
-        m.phase_name === msg.phase_name &&
-        m.node_type === msg.node_type
-      );
+      // Prefer _index from backend (avoids timestamp collision issues)
+      let originalIndex = msg._index;
+      if (originalIndex === undefined || originalIndex === null) {
+        // Fallback: Match by multiple fields for uniqueness
+        originalIndex = messages.findIndex(m =>
+          m.timestamp === msg.timestamp &&
+          m.phase_name === msg.phase_name &&
+          m.node_type === msg.node_type &&
+          m.turn_number === msg.turn_number &&
+          m.sounding_index === msg.sounding_index &&
+          m.role === msg.role
+        );
+      }
 
       return {
         index,

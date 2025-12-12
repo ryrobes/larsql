@@ -5,6 +5,7 @@ import HotOrNotView from './components/HotOrNotView';
 import SplitDetailView from './components/SplitDetailView';
 import MessageFlowView from './components/MessageFlowView';
 import SextantView from './components/SextantView';
+import WorkshopPage from './workshop/WorkshopPage';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -67,6 +68,10 @@ function App() {
         // /#/sextant → sextant prompt observatory
         return { view: 'sextant', cascadeId: null, sessionId: null, checkpointId: null };
       }
+      if (parts[0] === 'workshop') {
+        // /#/workshop → workshop cascade editor
+        return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null };
+      }
       // /#/cascade_id → instances view
       return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null };
     } else if (parts.length === 2) {
@@ -91,6 +96,8 @@ function App() {
       window.location.hash = '';
     } else if (view === 'sextant') {
       window.location.hash = '#/sextant';
+    } else if (view === 'workshop') {
+      window.location.hash = '#/workshop';
     } else if (view === 'messageflow') {
       if (sessionId) {
         window.location.hash = `#/message_flow/${sessionId}`;
@@ -210,6 +217,10 @@ function App() {
         setDetailSessionId(null);
       } else if (route.view === 'sextant') {
         setCurrentView('sextant');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'workshop') {
+        setCurrentView('workshop');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'messageflow') {
@@ -674,6 +685,10 @@ function App() {
             setCurrentView('sextant');
             updateHash('sextant');
           }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -740,6 +755,10 @@ function App() {
             updateHash('cascades');
           }}
         />
+      )}
+
+      {currentView === 'workshop' && (
+        <WorkshopPage />
       )}
 
       {currentView === 'checkpoint' && activeCheckpointId && (

@@ -210,10 +210,20 @@ def get_message_flow(session_id):
             # Categories help with visual styling in the debug UI
             message_category, is_internal = _classify_message(node_type, role, full_request)
 
+            # Skip lifecycle turn markers - they add visual noise and confuse DOM indexing
+            # These are framework-internal "Turn N" markers with no LLM content
+            if node_type == 'turn' and role == 'structure':
+                continue
+
             # Ensure context_hashes is a list (ClickHouse Array type)
             ctx_hashes = context_hashes if isinstance(context_hashes, list) else []
 
+            # Track the index in all_messages for direct DOM ID mapping
+            # This avoids the findGlobalIndex lookup which can have collisions
+            msg_index = len(messages)
+
             msg = {
+                '_index': msg_index,  # Direct index for DOM ID - avoids lookup collisions
                 'timestamp': timestamp,
                 'role': role,
                 'node_type': node_type,
@@ -450,14 +460,15 @@ def get_message_flow(session_id):
 
         # Build hash_index: map of content_hash -> list of message indices/metadata
         # This enables O(1) lookup for context lineage and cross-referencing
+        # Uses _index field for consistency with frontend DOM IDs
         hash_index = {}
-        for i, msg in enumerate(messages):
+        for msg in messages:
             h = msg.get('content_hash')
             if h:
                 if h not in hash_index:
                     hash_index[h] = []
                 hash_index[h].append({
-                    'index': i,
+                    'index': msg['_index'],  # Use _index for consistency
                     'timestamp': msg['timestamp'],
                     'role': msg['role'],
                     'node_type': msg['node_type'],

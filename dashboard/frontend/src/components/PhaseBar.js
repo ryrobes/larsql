@@ -3,7 +3,7 @@ import { Icon } from '@iconify/react';
 import { getSequentialColor } from './CascadeBar';
 import './PhaseBar.css';
 
-function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, runningSoundingsSet = new Set() }) {
+function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, runningSoundingsSet = new Set(), onPhaseClick = null, onSoundingClick = null }) {
   // Calculate bar width based on cost (relative to max)
   // Apply logarithmic scaling to prevent extreme ratios
   const costPercent = maxCost > 0 ? (phase.avg_cost / maxCost) * 100 : 10;
@@ -32,9 +32,31 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, r
   // Get phase color for the legend indicator
   const phaseColor = phaseIndex !== null ? getSequentialColor(phaseIndex) : null;
 
+  // Handle phase header click - scroll to phase start
+  const handlePhaseHeaderClick = (e) => {
+    e.stopPropagation();
+    if (onPhaseClick) {
+      onPhaseClick(phase.name);
+    } else if (onClick) {
+      onClick();
+    }
+  };
+
+  // Handle sounding click - scroll to sounding start
+  const handleSoundingClick = (e, soundingIndex) => {
+    e.stopPropagation();
+    if (onSoundingClick) {
+      onSoundingClick(phase.name, soundingIndex);
+    }
+  };
+
   return (
     <div className="phase-bar-container" onClick={onClick}>
-      <div className="phase-bar-header">
+      <div
+        className={`phase-bar-header ${onPhaseClick ? 'clickable' : ''}`}
+        onClick={handlePhaseHeaderClick}
+        title={onPhaseClick ? `Click to scroll to ${phase.name}` : undefined}
+      >
         <div className="phase-title">
           {phaseColor && (
             <span
@@ -168,7 +190,11 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, r
 
               return (
                 <div key={attempt.index} className="individual-sounding-container">
-                  <div className="individual-sounding-row">
+                  <div
+                    className={`individual-sounding-row ${onSoundingClick ? 'clickable' : ''}`}
+                    onClick={(e) => handleSoundingClick(e, attempt.index)}
+                    title={onSoundingClick ? `Click to scroll to Sounding ${attempt.index}` : undefined}
+                  >
                     <span className="sounding-index-label">
                       <span className="source-badge" style={{background: isRunning ? '#D9A553' : '#4ec9b0', color: '#1e1e1e', padding: '1px 5px', borderRadius: '3px', fontSize: '10px'}}>
                         S{attempt.index}

@@ -659,7 +659,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, runningSoundings = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null }) {
+function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, runningSoundings = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null, onPhaseClick = null, onSoundingClick = null }) {
   const [instance, setInstance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1545,6 +1545,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
                     status={phase.status}
                     phaseIndex={idx}
                     runningSoundingsSet={runningSoundingsForPhase}
+                    onPhaseClick={onPhaseClick}
+                    onSoundingClick={onSoundingClick}
                   />
                   {/* DEBUG: Commenting out to test if these cause jumping */}
                   {/* <AudioGallery

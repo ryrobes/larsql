@@ -1,0 +1,344 @@
+/* BlockPalette - Draggable Block Templates */
+
+.block-palette {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.palette-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-default);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.palette-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.palette-category {
+  margin-bottom: 16px;
+}
+
+.category-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--mist-gray);
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.category-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.palette-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+
+.palette-block:hover {
+  background: var(--storm-cloud);
+  transform: translateX(2px);
+}
+
+.palette-block:active {
+  cursor: grabbing;
+}
+
+.palette-block.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+/* Block colors */
+.palette-block.color-ocean {
+  border-left: 3px solid var(--ocean-primary);
+}
+
+.palette-block.color-ocean:hover {
+  color: var(--ocean-primary);
+}
+
+.palette-block.color-teal {
+  border-left: 3px solid var(--ocean-teal);
+}
+
+.palette-block.color-teal:hover {
+  color: var(--ocean-teal);
+}
+
+.palette-block.color-slate {
+  border-left: 3px solid var(--slate-blue);
+}
+
+.palette-block.color-slate:hover {
+  color: var(--slate-blue-light);
+}
+
+.palette-block.color-brass {
+  border-left: 3px solid var(--compass-brass);
+}
+
+.palette-block.color-brass:hover {
+  color: var(--compass-brass);
+}
+
+.palette-block.color-gray {
+  border-left: 3px solid var(--mist-gray);
+}
+
+.palette-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-default);
+}
+
+.palette-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--mist-gray);
+}
+
+/* ============================================
+   PALETTE SECTIONS
+   ============================================ */
+
+.palette-section {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: 8px;
+}
+
+.palette-section:last-child {
+  border-bottom: none;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.section-header:hover {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+}
+
+.section-content {
+  padding-top: 4px;
+}
+
+/* ============================================
+   MODELS SECTION
+   ============================================ */
+
+.model-count {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--storm-cloud);
+  border-radius: 8px;
+  color: var(--mist-gray);
+}
+
+.model-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 8px 8px;
+  padding: 6px 10px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.model-search:focus-within {
+  border-color: var(--ocean-primary);
+}
+
+.model-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.model-search input::placeholder {
+  color: var(--mist-gray);
+}
+
+.search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.search-clear:hover {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+}
+
+.models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.models-loading,
+.models-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 11px;
+  color: var(--mist-gray);
+}
+
+.models-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.models-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--mist-gray);
+}
+
+/* ============================================
+   MODEL BLOCKS
+   ============================================ */
+
+.palette-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+
+.palette-model:hover {
+  background: var(--storm-cloud);
+  transform: translateX(2px);
+}
+
+.palette-model:active {
+  cursor: grabbing;
+}
+
+.palette-model.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+.model-provider-icon {
+  color: var(--mist-gray);
+  flex-shrink: 0;
+}
+
+.model-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popular-star {
+  color: var(--compass-brass);
+  flex-shrink: 0;
+}
+
+/* Model tier colors */
+.palette-model.tier-purple {
+  border-left: 3px solid #a855f7;
+}
+
+.palette-model.tier-purple:hover {
+  color: #a855f7;
+}
+
+.palette-model.tier-ocean {
+  border-left: 3px solid var(--ocean-primary);
+}
+
+.palette-model.tier-ocean:hover {
+  color: var(--ocean-primary);
+}
+
+.palette-model.tier-teal {
+  border-left: 3px solid var(--ocean-teal);
+}
+
+.palette-model.tier-teal:hover {
+  color: var(--ocean-teal);
+}
+
+.palette-model.tier-slate {
+  border-left: 3px solid var(--slate-blue);
+}
+
+.palette-model.tier-slate:hover {
+  color: var(--slate-blue-light);
+}

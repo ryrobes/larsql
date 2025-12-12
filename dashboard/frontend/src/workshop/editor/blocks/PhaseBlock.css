@@ -1,0 +1,540 @@
+/* PhaseBlock - Individual Phase Container */
+
+.phase-block {
+  background: var(--bg-card);
+  border: 2px solid var(--storm-cloud);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  overflow: visible;
+}
+
+.phase-block:hover {
+  border-color: var(--ocean-secondary);
+}
+
+.phase-block.selected {
+  border-color: var(--ocean-primary);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
+}
+
+.phase-block.dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: grabbing;
+}
+
+.phase-block.drop-over {
+  border-color: #a855f7;
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.1) 0%, var(--bg-card) 100%);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3), inset 0 0 20px rgba(168, 85, 247, 0.05);
+}
+
+/* ============================================
+   PHASE HEADER
+   ============================================ */
+
+.phase-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--storm-cloud);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--mist-gray);
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.drag-handle:hover {
+  background: var(--midnight-fjord);
+  color: var(--ocean-primary);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.phase-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--ocean-muted);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ocean-primary);
+}
+
+.phase-name-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.phase-name {
+  font-weight: 600;
+  font-size: 14px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-primary);
+  cursor: text;
+}
+
+.phase-name-input {
+  width: 100%;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--ocean-primary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-primary);
+}
+
+.phase-name-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
+}
+
+/* Config Indicators */
+.config-indicators {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: var(--midnight-fjord);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.indicator.soundings {
+  color: var(--slate-blue-light);
+}
+
+.indicator.rules {
+  color: var(--ocean-teal);
+}
+
+.indicator.handoffs {
+  color: var(--compass-brass);
+}
+
+.phase-delete-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.phase-block:hover .phase-delete-btn {
+  opacity: 1;
+}
+
+.phase-delete-btn:hover {
+  background: rgba(207, 102, 121, 0.2);
+  color: var(--bloodaxe-red);
+}
+
+/* ============================================
+   INSTRUCTIONS FIELD
+   ============================================ */
+
+.phase-instructions {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.instructions-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--mist-gray);
+  margin-bottom: 6px;
+}
+
+.instructions-textarea {
+  width: 100%;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 10px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.15s ease;
+}
+
+.instructions-textarea:focus {
+  outline: none;
+  border-color: var(--ocean-primary);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.1);
+}
+
+.instructions-textarea::placeholder {
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+/* ============================================
+   DRAWER TOGGLES
+   ============================================ */
+
+.drawer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(44, 59, 75, 0.3);
+}
+
+.drawer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.drawer-toggle:hover {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+}
+
+.drawer-toggle.open {
+  background: var(--storm-cloud);
+  border-color: var(--ocean-secondary);
+  color: var(--ocean-primary);
+}
+
+.drawer-toggle.has-content::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background: var(--ocean-teal);
+  border-radius: 50%;
+}
+
+.content-dot {
+  display: none;
+}
+
+/* ============================================
+   DRAWER CONTENTS
+   ============================================ */
+
+.drawer-contents {
+  border-top: 1px solid var(--border-default);
+}
+
+.drawer-content {
+  padding: 12px;
+  background: rgba(11, 18, 25, 0.5);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.drawer-content:last-child {
+  border-bottom: none;
+}
+
+.drawer-field {
+  margin-bottom: 12px;
+}
+
+.drawer-field:last-child {
+  margin-bottom: 0;
+}
+
+.drawer-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.drawer-field input[type="text"],
+.drawer-field input[type="number"],
+.drawer-field select,
+.drawer-field textarea {
+  width: 100%;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-primary);
+  transition: border-color 0.15s ease;
+}
+
+.drawer-field input:focus,
+.drawer-field select:focus,
+.drawer-field textarea:focus {
+  outline: none;
+  border-color: var(--ocean-primary);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.1);
+}
+
+.drawer-field select {
+  cursor: pointer;
+}
+
+.drawer-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--mist-gray);
+  margin-top: 4px;
+}
+
+/* Checkbox fields */
+.drawer-field.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.drawer-field.checkbox input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--ocean-primary);
+}
+
+/* Drawer subsections */
+.drawer-subsection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-top: 12px;
+  background: var(--storm-cloud);
+  border-radius: 4px;
+}
+
+.subsection-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.coming-soon {
+  font-size: 11px;
+  color: var(--mist-gray);
+  font-style: italic;
+}
+
+/* ============================================
+   VALIDATION DRAWER
+   ============================================ */
+
+.validation-drawer .validation-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: rgba(74, 158, 221, 0.1);
+  border: 1px solid var(--ocean-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ocean-primary);
+}
+
+.ward-section {
+  margin-bottom: 16px;
+}
+
+.ward-section:last-child {
+  margin-bottom: 0;
+}
+
+.ward-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ward-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ward-desc {
+  font-size: 11px;
+  color: var(--mist-gray);
+}
+
+.ward-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ward-validator {
+  flex: 1;
+  min-width: 0;
+}
+
+.ward-mode {
+  width: 100px;
+}
+
+.ward-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ward-remove:hover {
+  background: rgba(207, 102, 121, 0.2);
+  color: var(--bloodaxe-red);
+}
+
+.ward-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px dashed var(--storm-cloud);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ward-add:hover {
+  background: rgba(74, 158, 221, 0.1);
+  border-color: var(--ocean-secondary);
+  color: var(--ocean-primary);
+}
+
+/* ============================================
+   CONTEXT DRAWER
+   ============================================ */
+
+.context-drawer .context-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  min-height: 40px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.context-phase-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 8px;
+  background: var(--storm-cloud);
+  border: 1px solid var(--ocean-secondary);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ocean-primary);
+}
+
+.context-phase-chip .chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.context-phase-chip .chip-remove:hover {
+  background: var(--danger-red);
+  color: white;
+}
+
+.context-add-select {
+  flex: 1;
+  min-width: 100px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px dashed var(--storm-cloud);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--mist-gray);
+  cursor: pointer;
+}
+
+.context-add-select:focus {
+  border-color: var(--ocean-secondary);
+  outline: none;
+}
+
+.context-drawer .context-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  background: rgba(140, 156, 172, 0.1);
+  border: 1px solid var(--storm-cloud);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--mist-gray);
+}

@@ -45,6 +45,40 @@ function SplitDetailView({
     });
   }, []);
 
+  // Handle phase click from PhaseBar - scroll to first message in phase
+  const handlePhaseClick = useCallback((phaseName) => {
+    if (!messageFlowData?.all_messages) return;
+
+    // Find the first message in this phase
+    const firstMessageIndex = messageFlowData.all_messages.findIndex(
+      msg => msg.phase_name === phaseName
+    );
+
+    if (firstMessageIndex >= 0) {
+      // Use the message's _index for scrolling (consistent with DOM IDs)
+      const targetIndex = messageFlowData.all_messages[firstMessageIndex]._index ?? firstMessageIndex;
+      setScrollToIndex(targetIndex);
+      setTimeout(() => setScrollToIndex(null), 100);
+    }
+  }, [messageFlowData?.all_messages]);
+
+  // Handle sounding click from PhaseBar - scroll to first message in sounding
+  const handleSoundingClick = useCallback((phaseName, soundingIndex) => {
+    if (!messageFlowData?.all_messages) return;
+
+    // Find the first message in this phase+sounding combination
+    const firstMessageIndex = messageFlowData.all_messages.findIndex(
+      msg => msg.phase_name === phaseName && msg.sounding_index === soundingIndex
+    );
+
+    if (firstMessageIndex >= 0) {
+      // Use the message's _index for scrolling (consistent with DOM IDs)
+      const targetIndex = messageFlowData.all_messages[firstMessageIndex]._index ?? firstMessageIndex;
+      setScrollToIndex(targetIndex);
+      setTimeout(() => setScrollToIndex(null), 100);
+    }
+  }, [messageFlowData?.all_messages]);
+
   // Check if session is currently running
   const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
 
@@ -156,6 +190,8 @@ function SplitDetailView({
             hideOutput={true}
             selectedMessage={selectedMessage}
             onCloseMessage={() => setSelectedMessage(null)}
+            onPhaseClick={handlePhaseClick}
+            onSoundingClick={handleSoundingClick}
           />
         </div>
 

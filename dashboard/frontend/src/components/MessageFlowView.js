@@ -595,13 +595,22 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   }, [data?.cost_summary?.most_expensive]);
 
   // Helper to find global index of a message
+  // Uses _index field directly if available (added by backend to avoid lookup collisions)
+  // Falls back to composite key lookup for backward compatibility
   const findGlobalIndex = useCallback((msg) => {
     if (!data?.all_messages) return -1;
-    // Match by timestamp and role as unique identifier
+    // Prefer direct _index from backend (avoids timestamp collision issues)
+    if (msg._index !== undefined && msg._index !== null) {
+      return msg._index;
+    }
+    // Fallback: Match by multiple fields for uniqueness
     return data.all_messages.findIndex(m =>
       m.timestamp === msg.timestamp &&
       m.role === msg.role &&
-      m.node_type === msg.node_type
+      m.node_type === msg.node_type &&
+      m.turn_number === msg.turn_number &&
+      m.sounding_index === msg.sounding_index &&
+      m.phase_name === msg.phase_name
     );
   }, [data?.all_messages]);
 
@@ -665,7 +674,8 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   // Handle message selection from matrix view
   const handleMatrixMessageSelect = useCallback((msg) => {
     if (!msg || !data?.all_messages) return;
-    const index = data.all_messages.indexOf(msg);
+    // Prefer _index from backend, fallback to indexOf (works for same object reference)
+    const index = msg._index !== undefined ? msg._index : data.all_messages.indexOf(msg);
     if (index >= 0) {
       // Scroll to and highlight the message
       const messageEl = document.getElementById(`message-${index}`);

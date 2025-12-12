@@ -114,7 +114,7 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 - `model`: Optional model override (e.g., `"anthropic/claude-opus-4.5"`)
 - `handoffs`: Next-phase targets (enables dynamic `route_to` tool)
 - `rules`: Contains `max_turns`, `max_attempts`, `loop_until`, `turn_prompt`
-- `soundings`: Tree of Thought config (`factor`, `evaluator_instructions`)
+- `soundings`: Tree of Thought config (`factor`, `evaluator_instructions`, `mode`, `aggregator_instructions`)
 - `wards`: Pre/post validation (`blocking`, `retry`, `advisory` modes)
 - `context`: Selective context from other phases
 - `output_schema`: JSON schema for output validation
@@ -151,13 +151,14 @@ The core engine is `WindlassRunner` in `runner.py`.
 - **Selective Context**: Between phases, context is explicit (`context: {from: ["previous"]}`)
 - **State Persistence**: `Echo` object maintains `state`, `history`, `lineage`
 - **Sub-Cascades**: `context_in`/`context_out` for state inheritance
-- **Soundings**: Run phase/cascade N times, evaluator picks best
+- **Soundings**: Run phase/cascade N times, evaluator picks best (or aggregate all with `mode: "aggregate"`)
 
 ### Key Features Summary
 
 | Feature | Purpose | Reference |
 |---------|---------|-----------|
-| **Soundings** | Parallel attempts, evaluator picks winner | `docs/claude/soundings-reference.md` |
+| **Soundings** | Parallel attempts, evaluator picks winner OR aggregate all | `docs/claude/soundings-reference.md` |
+| **Aggregate Mode** | Fan-out pattern: combine all outputs instead of picking one | `docs/claude/soundings-reference.md` |
 | **Reforge** | Iterative refinement of soundings winner | `docs/claude/soundings-reference.md` |
 | **Wards** | Pre/post validation (blocking/retry/advisory) | `docs/claude/validation-reference.md` |
 | **loop_until** | Retry until validator passes | `docs/claude/validation-reference.md` |
@@ -205,6 +206,9 @@ Phase instructions support:
 - `{{ state.variable_name }}`: Persistent session state
 - `{{ outputs.phase_name }}`: Previous phase outputs
 - `{{ lineage }}`, `{{ history }}`: Execution context
+- `{{ sounding_index }}`: Current sounding index (0, 1, 2...) for fan-out patterns
+- `{{ sounding_factor }}`: Total number of soundings
+- `{{ is_sounding }}`: True when running as a sounding
 - Rendered in `prompts.py:render_instruction()`
 
 ### Tool Return Protocol
@@ -234,6 +238,7 @@ The `examples/` directory contains reference implementations:
 **Basic**: `simple_flow.json`, `loop_flow.json`, `template_flow.json`
 **Routing**: `nested_parent.json`, `context_demo_parent.json`
 **Soundings**: `soundings_flow.json`, `cascade_soundings_test.json`, `reforge_*.json`
+**Aggregate Mode**: `soundings_aggregate_demo.json`, `soundings_fanout_demo.json`
 **Validation**: `ward_*.json`, `loop_until_*.json`
 **Context**: `context_selective_demo.json`, `context_sugar_demo.json`
 **Tools**: `manifest_flow.json`, `rabbitize_*.json`, `hitl_flow.json`
