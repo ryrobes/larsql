@@ -8,202 +8,12 @@ import ContextMatrixView from './ContextMatrixView';
 import ContextCrossRefPanel from './ContextCrossRefPanel';
 import SpeciesWidget from './SpeciesWidget';
 import PhaseSpeciesBadges from './PhaseSpeciesBadges';
+import MessageItem from './MessageItem';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
 
-/**
- * Extract all images from a message, tracking direction (input vs output)
- * Returns: { inputs: [{url, size, index}], outputs: [{url, size, index}], total: number }
- */
-function extractImagesFromMessage(msg) {
-  const images = {
-    inputs: [],   // Images sent TO the LLM (in full_request)
-    outputs: [],  // Images FROM the LLM or tools (in content/response)
-    total: 0
-  };
-
-  let inputIndex = 0;
-  let outputIndex = 0;
-
-  // 1. Extract INPUT images from full_request.messages (what was sent to LLM)
-  if (msg.full_request?.messages) {
-    msg.full_request.messages.forEach((m, msgIdx) => {
-      if (Array.isArray(m.content)) {
-        m.content.forEach((part, partIdx) => {
-          if (part.type === 'image_url') {
-            const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
-            if (url) {
-              const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
-              images.inputs.push({
-                url,
-                sizeKb,
-                index: inputIndex++,
-                sourceMsg: msgIdx,
-                role: m.role || 'unknown'
-              });
-            }
-          }
-        });
-      } else if (typeof m.content === 'string' && m.content.includes('data:image')) {
-        // Embedded base64 in string content
-        const matches = m.content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
-        matches.forEach(match => {
-          const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
-          images.inputs.push({
-            url: match,
-            sizeKb,
-            index: inputIndex++,
-            sourceMsg: msgIdx,
-            role: m.role || 'unknown'
-          });
-        });
-      }
-    });
-  }
-
-  // 2. Extract OUTPUT images from content (tool results, assistant responses)
-  const content = msg.content;
-  if (content) {
-    // Content might be a string with embedded images
-    if (typeof content === 'string' && content.includes('data:image')) {
-      const matches = content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
-      matches.forEach(match => {
-        const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
-        images.outputs.push({
-          url: match,
-          sizeKb,
-          index: outputIndex++,
-          source: 'content'
-        });
-      });
-    }
-    // Content might be an object with images array (tool result protocol)
-    if (typeof content === 'object') {
-      // Check for images array
-      if (Array.isArray(content.images)) {
-        content.images.forEach(imgPath => {
-          // These are typically file paths, not base64
-          images.outputs.push({
-            url: imgPath,
-            sizeKb: 0,
-            index: outputIndex++,
-            source: 'tool_result',
-            isPath: true
-          });
-        });
-      }
-      // Check for nested content string with images
-      if (typeof content.content === 'string' && content.content.includes('data:image')) {
-        const matches = content.content.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g) || [];
-        matches.forEach(match => {
-          const sizeKb = Math.round((match.split(',')[1]?.length || 0) / 1024);
-          images.outputs.push({
-            url: match,
-            sizeKb,
-            index: outputIndex++,
-            source: 'content'
-          });
-        });
-      }
-    }
-    // Content might be an array (multimodal response)
-    if (Array.isArray(content)) {
-      content.forEach((part, idx) => {
-        if (part.type === 'image_url') {
-          const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
-          if (url) {
-            const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
-            images.outputs.push({
-              url,
-              sizeKb,
-              index: outputIndex++,
-              source: 'response'
-            });
-          }
-        }
-      });
-    }
-  }
-
-  images.total = images.inputs.length + images.outputs.length;
-  return images;
-}
-
-/**
- * MessageImages - Inline gallery showing all images in a message with direction
- */
-function MessageImages({ images, onImageClick, compact = false }) {
-  if (images.total === 0) return null;
-
-  const renderImage = (img, direction) => (
-    <div
-      key={`${direction}-${img.index}`}
-      className={`msg-image-item ${compact ? 'compact' : ''}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (img.url.startsWith('data:image') || img.url.startsWith('http')) {
-          onImageClick({ url: img.url, direction, index: img.index });
-        }
-      }}
-    >
-      {img.url.startsWith('data:image') ? (
-        <img src={img.url} alt={`${direction} ${img.index + 1}`} className="msg-image-thumb" />
-      ) : img.url.startsWith('http') ? (
-        <img src={img.url} alt={`${direction} ${img.index + 1}`} className="msg-image-thumb" />
-      ) : (
-        <div className="msg-image-path" title={img.url}>
-          <Icon icon="mdi:file-image" width="24" />
-          <span>{img.url.split('/').pop()}</span>
-        </div>
-      )}
-      <div className={`msg-image-badge ${direction}`}>
-        <Icon icon={direction === 'in' ? 'mdi:arrow-right' : 'mdi:arrow-left'} width="10" />
-        {direction.toUpperCase()}
-      </div>
-      {img.sizeKb > 0 && <span className="msg-image-size">{img.sizeKb}kb</span>}
-    </div>
-  );
-
-  if (compact) {
-    // Compact mode: just show first image with count
-    const firstImg = images.inputs[0] || images.outputs[0];
-    if (!firstImg) return null;
-    return (
-      <div className="msg-images-compact">
-        {renderImage(firstImg, images.inputs[0] ? 'in' : 'out')}
-        {images.total > 1 && <span className="msg-images-more">+{images.total - 1}</span>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="msg-images-gallery">
-      {images.inputs.length > 0 && (
-        <div className="msg-images-group">
-          <div className="msg-images-group-header">
-            <Icon icon="mdi:arrow-right-bold" width="14" />
-            <span>Input ({images.inputs.length})</span>
-          </div>
-          <div className="msg-images-row">
-            {images.inputs.map(img => renderImage(img, 'in'))}
-          </div>
-        </div>
-      )}
-      {images.outputs.length > 0 && (
-        <div className="msg-images-group">
-          <div className="msg-images-group-header">
-            <Icon icon="mdi:arrow-left-bold" width="14" />
-            <span>Output ({images.outputs.length})</span>
-          </div>
-          <div className="msg-images-row">
-            {images.outputs.map(img => renderImage(img, 'out'))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// extractImagesFromMessage and MessageImages are now imported from MessageItem.js
 
 /**
  * EvaluatorSection - Shows detailed evaluator input observability
@@ -428,7 +238,7 @@ function EvaluatorSection({ evaluator, winnerIndex }) {
   );
 }
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null, externalData = null }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -454,20 +264,25 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   const [crossRefMessage, setCrossRefMessage] = useState(null);
 
   // ===========================================
+  // EXTERNAL DATA SUPPORT: Skip fetching when data provided
+  // ===========================================
+
+  // Use external data when provided (from SplitDetailView to avoid duplicate fetches)
+  useEffect(() => {
+    if (externalData) {
+      setData(externalData);
+      setLoading(false);
+      setError(null);
+      setWaitingForData(false);
+    }
+  }, [externalData]);
+
+  // ===========================================
   // PERFORMANCE OPTIMIZATION: Memoized Computations
   // ===========================================
 
-  // Memoize image extraction - this was running on EVERY message on EVERY render
-  // Now we compute once when data changes and cache by global index
-  const imageCache = React.useMemo(() => {
-    const cache = new Map();
-    if (data?.all_messages) {
-      data.all_messages.forEach((msg, idx) => {
-        cache.set(idx, extractImagesFromMessage(msg));
-      });
-    }
-    return cache;
-  }, [data?.all_messages]);
+  // NOTE: imageCache removed - MessageItem now handles image extraction
+  // lazily via IntersectionObserver (only when message scrolls into view)
 
   // Memoize phase grouping computation - this O(n²) algorithm was running inline in JSX on every render!
   // Now it only recomputes when the underlying data changes
@@ -604,6 +419,9 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   }, [parentRunningSessions, localRunningSessions]);
 
   const fetchMessages = useCallback(async (targetSessionId = null, silent = false) => {
+    // Skip fetching if using external data (data provided by parent)
+    if (externalData) return;
+
     const sid = targetSessionId || currentSessionIdRef.current || sessionId;
     if (!sid.trim()) return;
 
@@ -652,7 +470,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, isSessionRunning]); // onSessionChange intentionally excluded - it's stable from parent
+  }, [sessionId, isSessionRunning, externalData]); // onSessionChange intentionally excluded - it's stable from parent
 
   const fetchRunningSessions = useCallback(async () => {
     try {
@@ -747,17 +565,19 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     });
   };
 
-  const toggleMessage = (index) => {
-    const newExpanded = new Set(expandedMessages);
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index);
-    } else {
-      newExpanded.add(index);
-    }
-    setExpandedMessages(newExpanded);
-  };
+  const toggleMessage = useCallback((index) => {
+    setExpandedMessages(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(index)) {
+        newExpanded.delete(index);
+      } else {
+        newExpanded.add(index);
+      }
+      return newExpanded;
+    });
+  }, []);
 
-  const scrollToMostExpensive = () => {
+  const scrollToMostExpensive = useCallback(() => {
     if (!data?.cost_summary?.most_expensive) return;
 
     const expensiveInfo = data.cost_summary.most_expensive;
@@ -772,10 +592,10 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
       // Smooth scroll
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  };
+  }, [data?.cost_summary?.most_expensive]);
 
   // Helper to find global index of a message
-  const findGlobalIndex = (msg) => {
+  const findGlobalIndex = useCallback((msg) => {
     if (!data?.all_messages) return -1;
     // Match by timestamp and role as unique identifier
     return data.all_messages.findIndex(m =>
@@ -783,20 +603,9 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
       m.role === msg.role &&
       m.node_type === msg.node_type
     );
-  };
+  }, [data?.all_messages]);
 
-  // Category colors for badges
-  const categoryColors = {
-    'llm_call': { bg: '#4ec9b0', color: '#1e1e1e', label: 'LLM' },
-    'conversation': { bg: '#60a5fa', color: '#1e1e1e', label: 'Conv' },
-    'evaluator': { bg: '#c586c0', color: '#1e1e1e', label: 'Eval' },
-    'quartermaster': { bg: '#dcdcaa', color: '#1e1e1e', label: 'QM' },
-    'ward': { bg: '#ce9178', color: '#1e1e1e', label: 'Ward' },
-    'lifecycle': { bg: '#6a9955', color: '#1e1e1e', label: 'Life' },
-    'metadata': { bg: '#808080', color: '#1e1e1e', label: 'Meta' },
-    'error': { bg: '#f87171', color: '#1e1e1e', label: 'Err' },
-    'other': { bg: '#666666', color: '#1e1e1e', label: '?' }
-  };
+  // categoryColors moved to MessageItem.js
 
   // Context highlighting handlers
   const handleMessageHover = useCallback((msg, isEntering) => {
@@ -868,367 +677,55 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     }
   }, [data]);
 
-  const renderMessage = (msg, index, label) => {
+  // Render a message using the memoized MessageItem component
+  // This wrapper provides the necessary props and callbacks
+  const renderMessage = useCallback((msg, index, label) => {
     const globalIndex = findGlobalIndex(msg);
-    // When onMessageSelect is provided (embedded mode), use external selection state
-    // Otherwise use local expansion state
     const isExternalMode = !!onMessageSelect;
-    const isExpanded = isExternalMode ? false : expandedMessages.has(index); // Never expand inline when external mode
+    const isExpanded = isExternalMode ? false : expandedMessages.has(index);
     const isSelected = isExternalMode && selectedMessageIndex === globalIndex;
-    const hasFullRequest = msg.full_request && msg.full_request.messages;
-    const hasContent = msg.content && (typeof msg.content === 'string' ? msg.content.length > 200 : true);
-    const isExpandable = hasFullRequest || hasContent;
-    const messageCount = hasFullRequest ? msg.full_request.messages.length : 0;
-    const fromSounding = msg.sounding_index !== null;
-    const fromReforge = msg.reforge_step !== null;
-    const isFollowUp = msg.node_type === 'follow_up';
     const isHighlighted = highlightedMessage === globalIndex;
     const isMostExpensive = data?.cost_summary?.most_expensive?.index === globalIndex;
-    const isInternal = msg.is_internal;
-    const category = msg.message_category || 'other';
-    const categoryStyle = categoryColors[category] || categoryColors['other'];
-
-    // Extract all images with direction tracking (use cached result if available)
-    const msgImages = imageCache.get(globalIndex) ?? extractImagesFromMessage(msg);
-    const hasImages = msgImages.total > 0;
-    const totalBase64Size = [...msgImages.inputs, ...msgImages.outputs]
-      .reduce((sum, img) => sum + (img.sizeKb || 0), 0);
-
-    // Get first image for thumbnail
-    const firstImage = msgImages.inputs[0] || msgImages.outputs[0];
-    const firstImageUrl = firstImage?.url;
-
-    const contextHighlight = isContextHighlighted(msg);
-
-    // Click handler - either external selection or local expansion
-    const handleClick = () => {
-      if (!isExpandable) return;
-      if (isExternalMode) {
-        onMessageSelect(msg, globalIndex);
-      } else {
-        toggleMessage(index);
-      }
-    };
 
     return (
-      <div
-        key={index}
-        id={`message-${globalIndex}`}
-        className={`message ${msg.role} ${msg.is_winner ? 'winner' : ''} ${isFollowUp ? 'follow-up' : ''} ${isHighlighted ? 'highlighted' : ''} ${isMostExpensive ? 'most-expensive' : ''} ${isInternal ? 'is-internal' : ''} ${hasImages ? 'has-images' : ''} ${contextHighlight ? 'context-highlighted' : ''} ${isSelected ? 'selected-for-detail' : ''}`}
-        onClick={handleClick}
-        onMouseEnter={() => handleMessageHover(msg, true)}
-        onMouseLeave={() => handleMessageHover(msg, false)}
-        style={{ cursor: isExpandable ? 'pointer' : 'default' }}
-      >
-        <div className="message-header">
-          {/* Row 1: Primary Identity */}
-          <div className="header-row header-primary">
-            <span className="message-label">{label}</span>
-            <span
-              className={`category-badge category-${category}`}
-              style={{ background: categoryStyle.bg, color: categoryStyle.color }}
-              title={`Category: ${category}${isInternal ? ' (internal - not sent to LLM)' : ''}`}
-            >
-              {categoryStyle.label}
-            </span>
-            {fromSounding && <span className="sounding-badge">S{msg.sounding_index}</span>}
-            {fromReforge && <span className="reforge-badge">R{msg.reforge_step}</span>}
-            <span className="role-badge" data-role={msg.role}>{msg.role}</span>
-            {msg.node_type !== msg.role && (
-              <span className="node-type-badge">{msg.node_type}</span>
-            )}
-            {/* Spacer to push right-side items */}
-            <span className="header-spacer"></span>
-            {/* Winner/Special badges on the right */}
-            {msg.is_winner && (
-              <span className="winner-badge">
-                <Icon icon="mdi:trophy" width="12" />
-              </span>
-            )}
-            {isMostExpensive && (
-              <span className="most-expensive-badge" title="Most expensive message">
-                <Icon icon="mdi:currency-usd" width="12" />
-              </span>
-            )}
-          </div>
-
-          {/* Row 2: Model & Cost (only if present) */}
-          {(msg.model || msg.tokens_in > 0 || msg.cost > 0 || msg.turn_number !== null) && (
-            <div className="header-row header-meta">
-              {msg.model && (
-                <span className="model-badge" title={msg.model}>
-                  {msg.model.split('/').pop()}
-                </span>
-              )}
-              {msg.turn_number !== null && (
-                <span className="turn-badge">T{msg.turn_number}</span>
-              )}
-              {msg.tokens_in > 0 && (
-                <span className="tokens-badge">{msg.tokens_in.toLocaleString()} tok</span>
-              )}
-              {msg.cost > 0 && (
-                <span className="cost-badge">${msg.cost.toFixed(4)}</span>
-              )}
-            </div>
-          )}
-
-          {/* Row 3: Context & Media (only if present) */}
-          {(msg.content_hash || hasFullRequest || hasImages) && (
-            <div className="header-row header-context">
-              {/* Hash badge */}
-              {msg.content_hash && (
-                <span
-                  className="content-hash-badge"
-                  title={`Hash: ${msg.content_hash}\nContext: ${msg.context_hashes?.length || 0} messages\nClick for cross-ref`}
-                  onClick={(e) => showCrossRef(msg, e)}
-                  onDoubleClick={(e) => copyHashToClipboard(msg.content_hash, e)}
-                >
-                  <Icon icon="mdi:pound" width="10" />
-                  {msg.content_hash.slice(0, 6)}
-                  {msg.context_hashes?.length > 0 && (
-                    <span className="context-count">{msg.context_hashes.length}</span>
-                  )}
-                </span>
-              )}
-              {/* Full request badge */}
-              {hasFullRequest && (
-                <span className="full-request-badge">
-                  <Icon icon="mdi:email-outline" width="12" />
-                  {messageCount}
-                </span>
-              )}
-              {/* Image badges */}
-              {msgImages.inputs.length > 0 && (
-                <span className="image-badge image-in" title={`${msgImages.inputs.length} image(s) sent TO LLM`}>
-                  <Icon icon="mdi:image" width="12" />
-                  <Icon icon="mdi:arrow-right" width="10" />
-                  {msgImages.inputs.length}
-                </span>
-              )}
-              {msgImages.outputs.length > 0 && (
-                <span className="image-badge image-out" title={`${msgImages.outputs.length} image(s) FROM tool`}>
-                  <Icon icon="mdi:image" width="12" />
-                  <Icon icon="mdi:arrow-left" width="10" />
-                  {msgImages.outputs.length}
-                </span>
-              )}
-              {/* Thumbnail preview */}
-              {firstImageUrl && firstImageUrl.startsWith('data:image') && (
-                <img
-                  src={firstImageUrl}
-                  alt="Preview"
-                  className="message-thumbnail"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedImage({ url: firstImageUrl, phase: msg.phase_name, index: globalIndex });
-                  }}
-                  title="Click to enlarge"
-                />
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Text preview - only show if no images (images speak for themselves) */}
-        {msg.content && !isExpanded && !hasImages && (
-          <div className="message-content-preview">
-            {(() => {
-              // Helper to strip base64 data from content for preview
-              const stripBase64 = (str) => {
-                return str.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[IMAGE]');
-              };
-
-              if (typeof msg.content === 'string') {
-                const cleaned = stripBase64(msg.content);
-                return cleaned.substring(0, 200) + (cleaned.length > 200 ? '...' : '');
-              }
-
-              // For objects, create a cleaned copy for display
-              const cleanForPreview = (obj) => {
-                if (typeof obj === 'string') return stripBase64(obj);
-                if (Array.isArray(obj)) {
-                  return obj.map(item => {
-                    if (item?.type === 'image_url') return { type: 'image_url', image_url: '[IMAGE DATA]' };
-                    if (typeof item === 'string') return stripBase64(item);
-                    return cleanForPreview(item);
-                  });
-                }
-                if (typeof obj === 'object' && obj !== null) {
-                  const cleaned = {};
-                  for (const [key, value] of Object.entries(obj)) {
-                    if (key === 'image_url' || (typeof value === 'string' && value.startsWith('data:image'))) {
-                      cleaned[key] = '[IMAGE DATA]';
-                    } else {
-                      cleaned[key] = cleanForPreview(value);
-                    }
-                  }
-                  return cleaned;
-                }
-                return obj;
-              };
-
-              const cleaned = cleanForPreview(msg.content);
-              const str = JSON.stringify(cleaned);
-              return str.substring(0, 200) + (str.length > 200 ? '...' : '');
-            })()}
-          </div>
-        )}
-
-        {/* Inline image gallery when NOT expanded - shown prominently below badges */}
-        {!isExpanded && hasImages && (
-          <div className="message-images-preview">
-            <MessageImages
-              images={msgImages}
-              onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
-              compact={false}
-            />
-          </div>
-        )}
-
-        {isExpanded && msg.content && (
-          <div className="message-content-full" onClick={(e) => e.stopPropagation()}>
-            <h4>Full Response Content:</h4>
-            <div className="content-text">
-              {typeof msg.content === 'string'
-                ? msg.content
-                : JSON.stringify(msg.content, null, 2)}
-            </div>
-          </div>
-        )}
-
-        {/* Full image gallery when expanded */}
-        {isExpanded && hasImages && (
-          <div className="message-images-expanded" onClick={(e) => e.stopPropagation()}>
-            <h4>
-              <Icon icon="mdi:image-multiple" width="18" style={{ marginRight: '8px' }} />
-              Images ({msgImages.total})
-              {totalBase64Size > 0 && <span className="images-size-note">~{totalBase64Size}kb total</span>}
-            </h4>
-            <MessageImages
-              images={msgImages}
-              onImageClick={(img) => setSelectedImage({ ...img, phase: msg.phase_name, messageIndex: globalIndex })}
-              compact={false}
-            />
-          </div>
-        )}
-
-        {isExpanded && hasFullRequest && (
-          <div className="full-request" onClick={(e) => e.stopPropagation()}>
-            <h4>Actual Messages Sent to LLM ({messageCount} total):</h4>
-            <div className="llm-messages">
-              {msg.full_request.messages.map((llmMsg, i) => {
-                // Extract images from this specific LLM message
-                const llmMsgImages = [];
-                let textContent = '';
-
-                if (Array.isArray(llmMsg.content)) {
-                  // Multi-modal content (array of parts)
-                  llmMsg.content.forEach((part, partIdx) => {
-                    if (part.type === 'text') {
-                      textContent += part.text || '';
-                    } else if (part.type === 'image_url') {
-                      const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || '';
-                      const sizeKb = url.startsWith('data:image') ? Math.round((url.split(',')[1]?.length || 0) / 1024) : 0;
-                      llmMsgImages.push({ url, sizeKb, index: partIdx });
-                      textContent += `\n[📷 IMAGE ${llmMsgImages.length}]\n`;
-                    }
-                  });
-                } else if (typeof llmMsg.content === 'string') {
-                  textContent = llmMsg.content;
-                  // Don't extract embedded images in text for inline rendering (too complex)
-                } else {
-                  textContent = JSON.stringify(llmMsg.content, null, 2);
-                }
-
-                // Get the context hash for this message position (if available)
-                const contextHash = msg.context_hashes?.[i];
-                // Look up the linked message from hash_index
-                const linkedMsgs = contextHash && data?.hash_index?.[contextHash];
-                const linkedMsg = linkedMsgs?.[0]; // First match
-                const hasLink = linkedMsg && linkedMsg.index !== undefined;
-
-                // Handler to navigate to the linked message
-                const navigateToLinked = (e) => {
-                  e.stopPropagation();
-                  if (hasLink) {
-                    const messageEl = document.getElementById(`message-${linkedMsg.index}`);
-                    if (messageEl) {
-                      messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      setHighlightedMessage(linkedMsg.index);
-                      setTimeout(() => setHighlightedMessage(null), 3000);
-                    }
-                  }
-                };
-
-                return (
-                  <div key={i} className={`llm-message ${llmMsg.role} ${hasLink ? 'has-link' : ''}`}>
-                    <div className="llm-message-header">
-                      <span className="llm-role">[{i}] {llmMsg.role}</span>
-                      {/* Linked message badge */}
-                      {hasLink ? (
-                        <span
-                          className="linked-badge"
-                          onClick={navigateToLinked}
-                          title={`Navigate to source message M${linkedMsg.index}`}
-                        >
-                          <Icon icon="mdi:link" width="12" /> M{linkedMsg.index}
-                        </span>
-                      ) : contextHash ? (
-                        <span className="hash-badge" title={`Hash: ${contextHash}`}>
-                          #{contextHash.slice(0, 6)}
-                        </span>
-                      ) : null}
-                      {llmMsgImages.length > 0 && (
-                        <span className="msg-image-badge">
-                          <Icon icon="mdi:image" width="14" style={{ marginRight: '2px' }} />
-                          {llmMsgImages.length}
-                        </span>
-                      )}
-                      {llmMsg.tool_calls && <span className="has-tools"><Icon icon="mdi:wrench" width="14" style={{ marginRight: '4px' }} />Has tools</span>}
-                      {llmMsg.tool_call_id && <span className="has-tool-id"><Icon icon="mdi:link" width="14" style={{ marginRight: '4px' }} />Tool ID</span>}
-                    </div>
-                    <div className="llm-message-content">
-                      {textContent}
-                    </div>
-                    {/* Render actual images inline */}
-                    {llmMsgImages.length > 0 && (
-                      <div className="llm-message-images">
-                        {llmMsgImages.map((img, imgIdx) => (
-                          <div key={imgIdx} className="llm-inline-image">
-                            {img.url.startsWith('data:image') ? (
-                              <img
-                                src={img.url}
-                                alt={`LLM message ${i} attachment ${imgIdx + 1}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedImage({ url: img.url, phase: msg.phase_name, index: globalIndex, direction: 'in' });
-                                }}
-                              />
-                            ) : (
-                              <span className="llm-image-url">{img.url}</span>
-                            )}
-                            <span className="llm-image-label">
-                              <Icon icon="mdi:arrow-right" width="10" /> IN #{imgIdx + 1}
-                              {img.sizeKb > 0 && <span className="llm-image-size">{img.sizeKb}kb</span>}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="full-request-meta">
-              <div>Model: {msg.full_request.model}</div>
-              <div>Total tokens: {msg.tokens_in.toLocaleString()}</div>
-              {msg.cost > 0 && <div>Cost: ${msg.cost.toFixed(4)}</div>}
-            </div>
-          </div>
-        )}
-      </div>
+      <MessageItem
+        key={`msg-${globalIndex}-${index}`}
+        msg={msg}
+        index={index}
+        label={label}
+        globalIndex={globalIndex}
+        isExpanded={isExpanded}
+        isSelected={isSelected}
+        isHighlighted={isHighlighted}
+        isMostExpensive={isMostExpensive}
+        isContextHighlighted={isContextHighlighted(msg)}
+        onToggle={toggleMessage}
+        onSelect={onMessageSelect}
+        onHover={handleMessageHover}
+        onShowCrossRef={showCrossRef}
+        onCopyHash={copyHashToClipboard}
+        onImageClick={(img) => setSelectedImage(img)}
+        hashIndex={data?.hash_index}
+        setHighlightedMessage={setHighlightedMessage}
+        isExternalMode={isExternalMode}
+      />
     );
-  };
+  }, [
+    findGlobalIndex,
+    onMessageSelect,
+    expandedMessages,
+    selectedMessageIndex,
+    highlightedMessage,
+    data?.cost_summary?.most_expensive?.index,
+    data?.hash_index,
+    isContextHighlighted,
+    toggleMessage,
+    handleMessageHover,
+    showCrossRef,
+    copyHashToClipboard,
+    setSelectedImage,
+    setHighlightedMessage
+  ]);
 
   return (
     <div className={`message-flow-view ${hideControls ? 'embedded' : ''}`}>

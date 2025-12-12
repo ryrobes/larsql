@@ -19,7 +19,7 @@ function SplitDetailView({
 }) {
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
-  const [chartMessages, setChartMessages] = useState([]);
+  const [messageFlowData, setMessageFlowData] = useState(null); // Full data shared with MessageFlowView
   const [scrollToIndex, setScrollToIndex] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null); // For cross-panel message expansion
   const containerRef = useRef(null);
@@ -47,13 +47,13 @@ function SplitDetailView({
   // Check if session is currently running
   const isRunning = runningSessions.has(sessionId) || finalizingSessions.has(sessionId);
 
-  // Fetch message data for the cost chart
+  // Fetch message data - shared between CostTimelineChart and MessageFlowView
   const fetchChartData = useCallback(async () => {
     if (!sessionId) return;
     try {
       const response = await axios.get(`${API_BASE_URL}/api/message-flow/${sessionId}`);
-      if (response.data && response.data.all_messages) {
-        setChartMessages(response.data.all_messages);
+      if (response.data) {
+        setMessageFlowData(response.data); // Store full response for MessageFlowView
       }
     } catch (err) {
       // Silently ignore errors - chart just won't show data
@@ -177,7 +177,7 @@ function SplitDetailView({
           style={{ width: `${100 - splitPosition}%` }}
         >
           <CostTimelineChart
-            messages={chartMessages}
+            messages={messageFlowData?.all_messages || []}
             isRunning={isRunning}
             onBarClick={handleBarClick}
           />
@@ -192,6 +192,7 @@ function SplitDetailView({
               selectedMessageIndex={selectedMessage?.index}
               runningSessions={runningSessions}
               sessionUpdates={sessionUpdates}
+              externalData={messageFlowData}
             />
           </div>
         </div>

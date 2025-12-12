@@ -141,7 +141,8 @@ phases:
         - essentialai/rnj-1-instruct
         - mistralai/ministral-14b-2512
         #- arcee-ai/trinity-mini:free
-        - deepseek/deepseek-v3.2-speciale
+        #- deepseek/deepseek-v3.2-speciale
+        - z-ai/glm-4.6v
         - prime-intellect/intellect-3
         - amazon/nova-2-lite-v1:free
         #- openai/gpt-5.1-codex-mini

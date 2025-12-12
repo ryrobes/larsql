@@ -2630,3 +2630,92 @@
     opacity: 1;
   }
 }
+
+/* ==============================================
+   VIRTUALIZATION: content-visibility for performance
+
+   These rules tell the browser to skip rendering of
+   off-screen elements while preserving scroll height.
+   Works with nested structures - parent visibility
+   doesn't affect child calculations.
+   ============================================== */
+
+/* Individual messages - most numerous, biggest win */
+.message {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100px;
+}
+
+/* Phase groups - can be large containers */
+.phase-group {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* Sounding branches - often many in parallel */
+.sounding-branch {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/* Reforge branches */
+.reforge-branch {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/* Soundings block container */
+.inline-soundings-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
+/* Reforge block container */
+.inline-reforge-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+
+/* Expanded message content - can be very tall */
+.message-content-full,
+.full-request {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* LLM messages inside expanded view */
+.llm-message {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px;
+}
+
+/* Evaluator section - can have large tables */
+.evaluator-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+}
+
+/* Placeholder for deferred rendering */
+.message-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1rem 1.25rem;
+  background: #16202A;
+  border: 2px solid #2C3B4B;
+  border-radius: 12px;
+  color: #6B7280;
+  font-size: 0.8rem;
+}
+
+.message-placeholder .placeholder-label {
+  font-weight: 600;
+  color: #4A9EDD;
+}
+
+.message-placeholder .placeholder-role {
+  padding: 2px 6px;
+  background: rgba(74, 158, 221, 0.15);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
