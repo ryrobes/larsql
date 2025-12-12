@@ -212,11 +212,16 @@ class ParetoFrontier(BaseModel):
 class SoundingsConfig(BaseModel):
     factor: int = 1
     max_parallel: int = 3  # Max concurrent sounding executions (default: 3, set to 1 for sequential)
-    evaluator_instructions: Optional[str] = None  # Required unless evaluator="human"
+    evaluator_instructions: Optional[str] = None  # Required unless evaluator="human" or mode="aggregate"
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop
     mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)
     mutation_mode: Literal["rewrite", "augment", "approach"] = "rewrite"  # How to mutate: rewrite (LLM rewrites prompt), augment (prepend text), approach (append thinking strategy)
     mutations: Optional[List[str]] = None  # Custom mutations/templates, or use built-in if None
+
+    # Aggregate mode - combine all outputs instead of picking one winner
+    mode: Literal["evaluate", "aggregate"] = "evaluate"  # "evaluate" picks best, "aggregate" combines all
+    aggregator_instructions: Optional[str] = None  # LLM instructions for combining outputs (if None, simple concatenation)
+    aggregator_model: Optional[str] = None  # Model to use for aggregation (defaults to phase model)
 
     # Pre-evaluation validator - filters soundings before evaluator sees them
     # Useful for code execution (only evaluate code that runs) or format validation

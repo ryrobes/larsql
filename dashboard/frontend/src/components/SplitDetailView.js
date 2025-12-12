@@ -15,7 +15,8 @@ function SplitDetailView({
   runningSessions = new Set(),
   finalizingSessions = new Set(),
   sessionUpdates = {},
-  sessionStartTimes = {}
+  sessionStartTimes = {},
+  runningSoundings = {}
 }) {
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
@@ -151,6 +152,7 @@ function SplitDetailView({
             finalizingSessions={finalizingSessions}
             sessionUpdates={sessionUpdates}
             sessionStartTimes={sessionStartTimes}
+            runningSoundings={runningSoundings}
             hideOutput={true}
             selectedMessage={selectedMessage}
             onCloseMessage={() => setSelectedMessage(null)}

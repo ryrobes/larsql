@@ -1479,12 +1479,30 @@ To use: Output JSON in this format:
         def run_single_cascade_sounding(i: int) -> dict:
             """Execute a single cascade sounding. Returns result dict."""
             from .echo import Echo
+            from .events import get_event_bus, Event
+            from datetime import datetime
 
             sounding_trace = sounding_traces[i]
             sounding_session_id = f"{self.session_id}_sounding_{i}"
             sounding_echo = Echo(sounding_session_id, parent_session_id=self.session_id)
 
             console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
+
+            # Emit sounding_start event for real-time UI tracking
+            event_bus = get_event_bus()
+            event_bus.publish(Event(
+                type="sounding_start",
+                session_id=self.session_id,
+                timestamp=datetime.now().isoformat(),
+                data={
+                    "phase_name": "_orchestration",
+                    "sounding_index": i,
+                    "trace_id": sounding_trace.id,
+                    "factor": factor,
+                    "cascade_sounding": True,
+                    "sub_session_id": sounding_session_id
+                }
+            ))
 
             try:
                 # Create a new runner for this sounding with sounding_index set
@@ -1507,6 +1525,22 @@ To use: Output JSON in this format:
 
                 console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
 
+                # Emit sounding_complete event for real-time UI tracking
+                event_bus.publish(Event(
+                    type="sounding_complete",
+                    session_id=self.session_id,
+                    timestamp=datetime.now().isoformat(),
+                    data={
+                        "phase_name": "_orchestration",
+                        "sounding_index": i,
+                        "trace_id": sounding_trace.id,
+                        "factor": factor,
+                        "cascade_sounding": True,
+                        "sub_session_id": sounding_session_id,
+                        "success": True
+                    }
+                ))
+
                 return {
                     "index": i,
                     "result": final_output,
@@ -1518,6 +1552,24 @@ To use: Output JSON in this format:
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Cascade Sounding {i+1} failed: {e}[/red]")
+
+                # Emit sounding_complete event for real-time UI tracking (error case)
+                event_bus.publish(Event(
+                    type="sounding_complete",
+                    session_id=self.session_id,
+                    timestamp=datetime.now().isoformat(),
+                    data={
+                        "phase_name": "_orchestration",
+                        "sounding_index": i,
+                        "trace_id": sounding_trace.id,
+                        "factor": factor,
+                        "cascade_sounding": True,
+                        "sub_session_id": sounding_session_id,
+                        "success": False,
+                        "error": str(e)
+                    }
+                ))
+
                 return {
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
@@ -3075,6 +3127,104 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
                 "required_tokens": estimated_tokens
             }
 
+    def _aggregate_with_llm(self, outputs: List[Dict], instructions: str, model: str, trace: TraceNode) -> str:
+        """
+        Use an LLM to aggregate/merge multiple sounding outputs into a single coherent output.
+
+        Args:
+            outputs: List of output dicts with "index", "output", "model", "mutation_applied", "images"
+            instructions: Instructions for how to aggregate the outputs
+            model: Model to use for aggregation
+            trace: Parent trace node for tracking
+
+        Returns:
+            str: The aggregated output
+        """
+        indent = "  " * self.depth
+        aggregator_trace = trace.create_child("llm_aggregator", "aggregate_outputs")
+
+        # Check if any outputs have images (for multi-modal aggregation)
+        any_images = any(o.get('images') for o in outputs)
+        total_images = sum(len(o.get('images', [])) for o in outputs)
+
+        # Build the aggregation prompt
+        outputs_text = ""
+        for i, o in enumerate(outputs):
+            outputs_text += f"\n\n## Output {o['index']+1}"
+            if o.get('model'):
+                outputs_text += f" (Model: {o['model']})"
+            outputs_text += f"\n{o['output']}"
+            if o.get('images'):
+                outputs_text += f"\n(📸 {len(o['images'])} image(s) attached below)"
+
+        prompt = f"""{instructions}
+
+Here are the {len(outputs)} outputs to aggregate:
+{outputs_text}
+
+Please combine/synthesize these outputs according to the instructions above. Produce a single coherent output that captures the best aspects of each."""
+
+        # Build context messages with images for multi-modal aggregation
+        context_messages = []
+        if any_images:
+            # Add images with clear labeling for which output they belong to
+            for o in outputs:
+                output_images = o.get('images', [])
+                if output_images:
+                    content_parts = [{
+                        "type": "text",
+                        "text": f"═══ Images from Output {o['index']+1} ({len(output_images)} image{'s' if len(output_images) > 1 else ''}) ═══"
+                    }]
+                    for img_idx, img_data in enumerate(output_images):
+                        # Handle tuple format (base64_url, description) or plain string
+                        if isinstance(img_data, tuple) and len(img_data) >= 1:
+                            img_url = img_data[0]
+                        else:
+                            img_url = img_data
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url}
+                        })
+                        content_parts.append({
+                            "type": "text",
+                            "text": f"↑ Output {o['index']+1}, Image {img_idx+1}/{len(output_images)}"
+                        })
+                    context_messages.append({
+                        "role": "user",
+                        "content": content_parts
+                    })
+            console.print(f"{indent}  [cyan]📸 Multi-modal aggregation: {total_images} total images[/cyan]")
+
+        # Create aggregator agent
+        from .agent import Agent
+        aggregator_agent = Agent(
+            model=model,
+            system_prompt="You are an expert at synthesizing and combining multiple outputs into a coherent whole. Your task is to merge the given outputs according to the user's instructions. If images are provided, consider them when synthesizing.",
+            tools=[],
+            base_url=self.base_url,
+            api_key=self.api_key
+        )
+
+        console.print(f"{indent}  [dim]Aggregating with {model}...[/dim]")
+        response = aggregator_agent.run(prompt, context_messages=context_messages if context_messages else None)
+        aggregated_content = response.get("content", "")
+
+        # Log to echo
+        self.echo.add_history({
+            "role": "assistant",
+            "content": aggregated_content[:200] + "..." if len(aggregated_content) > 200 else aggregated_content
+        }, trace_id=aggregator_trace.id, parent_id=trace.id, node_type="aggregator_response",
+           metadata={
+               "model": model,
+               "input_count": len(outputs),
+               "total_images": total_images,
+               "is_multimodal": any_images,
+               "semantic_actor": "aggregator",
+               "semantic_purpose": "aggregation",
+           })
+
+        return aggregated_content
+
     def _get_sounding_costs(self, sounding_results: List[Dict], timeout: float = 5.0) -> List[float]:
         """
         Get costs for each sounding attempt from unified logs.
@@ -3743,6 +3893,24 @@ Use only numbers 0-100 for scores."""
                          (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
                          f" [dim]({sounding_model})[/dim]")
 
+            # Emit sounding_start event for real-time UI tracking
+            from .events import get_event_bus, Event
+            from datetime import datetime
+            event_bus = get_event_bus()
+            event_bus.publish(Event(
+                type="sounding_start",
+                session_id=self.session_id,
+                timestamp=datetime.now().isoformat(),
+                data={
+                    "phase_name": phase.name,
+                    "sounding_index": i,
+                    "trace_id": sounding_trace.id,
+                    "model": sounding_model,
+                    "factor": factor,
+                    "mutation_type": mutation_info['type']
+                }
+            ))
+
             try:
                 # Create isolated runner with SAME session_id (logs go to same session)
                 sounding_runner = WindlassRunner(
@@ -3769,6 +3937,7 @@ Use only numbers 0-100 for scores."""
 
                 # Set sounding tracking state
                 sounding_runner.current_phase_sounding_index = i
+                sounding_runner._current_sounding_factor = factor  # For Jinja2 templates
                 sounding_runner.current_mutation_applied = mutation_info['applied']
                 sounding_runner.current_mutation_type = mutation_info['type']
                 sounding_runner.current_mutation_template = mutation_info['template']
@@ -3790,6 +3959,21 @@ Use only numbers 0-100 for scores."""
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
+                # Emit sounding_complete event for real-time UI tracking
+                event_bus.publish(Event(
+                    type="sounding_complete",
+                    session_id=self.session_id,
+                    timestamp=datetime.now().isoformat(),
+                    data={
+                        "phase_name": phase.name,
+                        "sounding_index": i,
+                        "trace_id": sounding_trace.id,
+                        "model": sounding_model,
+                        "factor": factor,
+                        "success": True
+                    }
+                ))
+
                 return {
                     "index": i,
                     "result": result,
@@ -3805,6 +3989,23 @@ Use only numbers 0-100 for scores."""
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
+
+                # Emit sounding_complete event for real-time UI tracking (error case)
+                event_bus.publish(Event(
+                    type="sounding_complete",
+                    session_id=self.session_id,
+                    timestamp=datetime.now().isoformat(),
+                    data={
+                        "phase_name": phase.name,
+                        "sounding_index": i,
+                        "trace_id": sounding_trace.id,
+                        "model": sounding_model,
+                        "factor": factor,
+                        "success": False,
+                        "error": str(e)
+                    }
+                ))
+
                 return {
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
@@ -3886,19 +4087,118 @@ Use only numbers 0-100 for scores."""
             else:
                 console.print(f"{indent}[bold green]✓ {len(valid_sounding_results)}/{len(sounding_results)} soundings passed validation[/bold green]")
 
-        # Now evaluate soundings (only valid ones, unless all failed)
-        # Update phase progress for evaluation stage
-        update_phase_progress(
-            self.session_id, self.config.cascade_id, phase.name, self.depth,
-            sounding_stage="evaluating"
-        )
+        # AGGREGATE MODE: Combine all outputs instead of picking one winner
+        if phase.soundings.mode == "aggregate":
+            console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_sounding_results)} outputs...[/bold cyan]")
 
-        # Create evaluator trace
-        evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
+            # Update phase progress
+            update_phase_progress(
+                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                sounding_stage="aggregating"
+            )
 
-        # Check for human evaluation mode
-        use_human_eval = phase.soundings.evaluator == "human"
-        use_hybrid_eval = phase.soundings.evaluator == "hybrid"
+            # Gather all successful outputs
+            all_outputs = []
+            for sr in valid_sounding_results:
+                output = str(sr.get("result", ""))
+                if output.strip():
+                    all_outputs.append({
+                        "index": sr["index"],
+                        "output": output,
+                        "model": sr.get("model"),
+                        "mutation_applied": sr.get("mutation_applied"),
+                        "images": sr.get("images", []),
+                    })
+
+            if not all_outputs:
+                raise ValueError("All sounding outputs were empty or failed")
+
+            # Create aggregator trace
+            aggregator_trace = soundings_trace.create_child("aggregator", "sounding_aggregation")
+
+            # Aggregate the outputs
+            if phase.soundings.aggregator_instructions:
+                # Use LLM to aggregate/merge outputs
+                console.print(f"{indent}  [dim]Using LLM aggregator...[/dim]")
+                aggregated_output = self._aggregate_with_llm(
+                    all_outputs,
+                    phase.soundings.aggregator_instructions,
+                    phase.soundings.aggregator_model or self.model,
+                    aggregator_trace
+                )
+            else:
+                # Simple concatenation
+                console.print(f"{indent}  [dim]Simple concatenation of {len(all_outputs)} outputs[/dim]")
+                aggregated_parts = []
+                for o in all_outputs:
+                    header = f"## Output {o['index']+1}"
+                    if o.get('model'):
+                        header += f" (Model: {o['model']})"
+                    aggregated_parts.append(f"{header}\n{o['output']}")
+                aggregated_output = "\n\n---\n\n".join(aggregated_parts)
+
+            # Collect all images from all outputs
+            all_images = []
+            for o in all_outputs:
+                all_images.extend(o.get("images", []))
+
+            # Create synthetic "winner" with aggregated output
+            # Use the first valid result's context as the base
+            winner = valid_sounding_results[0].copy()
+            winner["result"] = aggregated_output
+            winner["is_aggregated"] = True
+            winner["aggregated_count"] = len(all_outputs)
+            winner["aggregated_indices"] = [o["index"] for o in all_outputs]  # Store which soundings contributed
+            winner["images"] = all_images  # Combine all images
+            winner_index = 0  # synthetic index
+
+            console.print(f"{indent}[bold green]✓ Aggregated {len(all_outputs)} outputs[/bold green]")
+
+            # Log aggregation to echo (for visualization)
+            self.echo.add_history({
+                "role": "aggregator",
+                "content": f"Aggregated {len(all_outputs)} sounding outputs"
+            }, trace_id=aggregator_trace.id, parent_id=soundings_trace.id, node_type="aggregator",
+               metadata={
+                   "phase_name": phase.name,
+                   "aggregated_count": len(all_outputs),
+                   "output_indices": [o["index"] for o in all_outputs],
+                   "used_llm": phase.soundings.aggregator_instructions is not None,
+                   "semantic_actor": "aggregator",
+                   "semantic_purpose": "aggregation",
+               })
+
+            # Skip evaluation and jump to winner processing
+            # Set variables needed by post-evaluation code
+            eval_prompt = None
+            eval_content = f"[Aggregate mode] Combined {len(all_outputs)} outputs"
+            sounding_costs = None
+            quality_scores = None
+            frontier_indices = None
+            dominated_map = None
+            pareto_ranks = None
+            use_cost_aware = False
+            use_pareto = False
+            use_human_eval = False
+            use_hybrid_eval = False
+            winner_already_set = True  # Flag to skip winner assignment below
+
+            # Skip directly to winner processing (below)
+        else:
+            # Now evaluate soundings (only valid ones, unless all failed)
+            # Update phase progress for evaluation stage
+            update_phase_progress(
+                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                sounding_stage="evaluating"
+            )
+
+            # Create evaluator trace
+            evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
+
+            # Check for human evaluation mode
+            use_human_eval = phase.soundings.evaluator == "human"
+            use_hybrid_eval = phase.soundings.evaluator == "hybrid"
+            winner_already_set = False  # Evaluation will determine winner
 
         # Human evaluation: block for human to pick winner via UI
         if use_human_eval or use_hybrid_eval:
@@ -4079,7 +4379,8 @@ Use only numbers 0-100 for scores."""
         use_pareto = phase.soundings.pareto_frontier and phase.soundings.pareto_frontier.enabled
 
         # Only run LLM evaluation if we didn't do human eval (or fell back from timeout)
-        if not (use_human_eval or use_hybrid_eval):
+        # Also skip if winner_already_set (aggregate mode)
+        if not (use_human_eval or use_hybrid_eval or winner_already_set):
             console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
 
             # Phase 3: Pareto Frontier Analysis
@@ -4327,10 +4628,15 @@ Use only numbers 0-100 for scores."""
                         winner_index = 0
 
         # Get winner from valid_sounding_results (winner_index is relative to this filtered list)
-        winner = valid_sounding_results[winner_index]
+        # Skip if winner was already set by aggregate mode
+        if not winner_already_set:
+            winner = valid_sounding_results[winner_index]
 
         # Display winner with original index for clarity
-        console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner['index'] + 1}[/bold green]")
+        if winner.get("is_aggregated"):
+            console.print(f"{indent}[bold green]📦 Aggregated: {winner.get('aggregated_count', 0)} outputs combined[/bold green]")
+        else:
+            console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner['index'] + 1}[/bold green]")
 
         # Now apply ONLY the winner's context to the main snowball
         self.context_messages = context_snapshot + winner['context']
@@ -4340,7 +4646,14 @@ Use only numbers 0-100 for scores."""
         self.current_phase_sounding_index = None
 
         # Track original winner index for metadata logging
-        original_winner_index = winner['index']
+        # In aggregate mode, all valid soundings contribute (no single winner)
+        is_aggregated = winner.get("is_aggregated", False)
+        if is_aggregated:
+            original_winner_index = -1  # Sentinel value for aggregate mode
+            aggregated_indices = set(winner.get("aggregated_indices", []))
+        else:
+            original_winner_index = winner['index']
+            aggregated_indices = set()
 
         # Compute species hash for prompt evolution tracking (once for all soundings in this phase)
         # NOTE: This should match the species_hash computed at the start of soundings (line 3374)
@@ -4350,7 +4663,11 @@ Use only numbers 0-100 for scores."""
 
         # Add all sounding attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
-            is_winner = sr["index"] == original_winner_index
+            # In aggregate mode, all contributing soundings are "winners"
+            if is_aggregated:
+                is_winner = sr["index"] in aggregated_indices
+            else:
+                is_winner = sr["index"] == original_winner_index
             sounding_metadata = {
                 "phase_name": phase.name,
                 "sounding_index": sr["index"],
@@ -4386,121 +4703,148 @@ Use only numbers 0-100 for scores."""
             }, trace_id=sr["trace_id"], parent_id=soundings_trace.id, node_type="sounding_attempt",
                metadata=sounding_metadata)
 
-        # Build evaluator input summary for observability
-        # This captures exactly what the evaluator received for debugging
-        evaluator_system_prompt = "You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well."
+        # Log evaluator entry (skip in aggregate mode - there's no evaluator)
+        if not is_aggregated:
+            # Build evaluator input summary for observability
+            # This captures exactly what the evaluator received for debugging
+            evaluator_system_prompt = "You are an expert evaluator. Your job is to compare multiple attempts and select the best one. If attempts include images, consider the visual quality and correctness as well."
 
-        # Build per-attempt summary
-        attempt_summaries = []
-        total_images_evaluated = 0
-        for i, sounding in enumerate(valid_sounding_results):
-            sounding_images = sounding.get('images', [])
-            num_images = len(sounding_images)
-            total_images_evaluated += num_images
-            attempt_summaries.append({
-                "attempt_number": i + 1,
-                "original_sounding_index": sounding.get('index', i),
-                "has_images": num_images > 0,
-                "image_count": num_images,
-                "result_length": len(str(sounding.get('result', ''))) if sounding.get('result') else 0,
-                "model": sounding.get('model'),
-                "mutation_applied": sounding.get('mutation_applied'),
-                "validation": sounding.get('validation'),
-                "cost": sounding.get('cost'),
-            })
+            # Build per-attempt summary
+            attempt_summaries = []
+            total_images_evaluated = 0
+            for i, sounding in enumerate(valid_sounding_results):
+                sounding_images = sounding.get('images', [])
+                num_images = len(sounding_images)
+                total_images_evaluated += num_images
+                attempt_summaries.append({
+                    "attempt_number": i + 1,
+                    "original_sounding_index": sounding.get('index', i),
+                    "has_images": num_images > 0,
+                    "image_count": num_images,
+                    "result_length": len(str(sounding.get('result', ''))) if sounding.get('result') else 0,
+                    "model": sounding.get('model'),
+                    "mutation_applied": sounding.get('mutation_applied'),
+                    "validation": sounding.get('validation'),
+                    "cost": sounding.get('cost'),
+                })
 
-        evaluator_input_summary = {
-            "is_multimodal": total_images_evaluated > 0,
-            "total_attempts_shown": len(valid_sounding_results),
-            "total_soundings_run": len(sounding_results),
-            "filtered_count": len(sounding_results) - len(valid_sounding_results),
-            "total_images": total_images_evaluated,
-            "attempts": attempt_summaries,
-            "evaluation_mode": "cost_aware" if use_cost_aware else ("pareto" if use_pareto else "quality_only"),
-        }
+            evaluator_input_summary = {
+                "is_multimodal": total_images_evaluated > 0,
+                "total_attempts_shown": len(valid_sounding_results),
+                "total_soundings_run": len(sounding_results),
+                "filtered_count": len(sounding_results) - len(valid_sounding_results),
+                "total_images": total_images_evaluated,
+                "attempts": attempt_summaries,
+                "evaluation_mode": "cost_aware" if use_cost_aware else ("pareto" if use_pareto else "quality_only"),
+            }
 
-        # Add evaluator entry (auto-logs via unified_logs)
-        evaluator_metadata = {
-            "phase_name": phase.name,
-            "winner_index": original_winner_index,  # Use original index for consistency
-            "winner_trace_id": winner['trace_id'],
-            "evaluation": eval_content,
-            "model": self.model,
-            "total_soundings": len(sounding_results),
-            "valid_soundings": len(valid_sounding_results),
-            # NEW: Full evaluator input observability
-            "evaluator_prompt": eval_prompt,  # The full text prompt sent to evaluator
-            "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
-            "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
-        }
-        # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
-        if use_cost_aware:
-            evaluator_metadata["cost_aware"] = True
-            evaluator_metadata["quality_weight"] = phase.soundings.cost_aware_evaluation.quality_weight
-            evaluator_metadata["cost_weight"] = phase.soundings.cost_aware_evaluation.cost_weight
-            if sounding_costs:
-                evaluator_metadata["sounding_costs"] = sounding_costs
-                evaluator_metadata["winner_cost"] = winner.get("cost")
-        # Add Pareto frontier info (Phase 3: Pareto Frontier Analysis)
-        if use_pareto:
-            evaluator_metadata["pareto_enabled"] = True
-            evaluator_metadata["pareto_policy"] = phase.soundings.pareto_frontier.policy
-            evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
-            if quality_scores:
-                evaluator_metadata["quality_scores"] = quality_scores
-                evaluator_metadata["winner_quality"] = winner.get("quality_score")
-            if sounding_costs:
-                evaluator_metadata["sounding_costs"] = sounding_costs
-                evaluator_metadata["winner_cost"] = winner.get("cost")
+            # Add evaluator entry (auto-logs via unified_logs)
+            evaluator_metadata = {
+                "phase_name": phase.name,
+                "winner_index": original_winner_index,  # Use original index for consistency
+                "winner_trace_id": winner['trace_id'],
+                "evaluation": eval_content,
+                "model": self.model,
+                "total_soundings": len(sounding_results),
+                "valid_soundings": len(valid_sounding_results),
+                # NEW: Full evaluator input observability
+                "evaluator_prompt": eval_prompt,  # The full text prompt sent to evaluator
+                "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
+                "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
+            }
+            # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
+            if use_cost_aware:
+                evaluator_metadata["cost_aware"] = True
+                evaluator_metadata["quality_weight"] = phase.soundings.cost_aware_evaluation.quality_weight
+                evaluator_metadata["cost_weight"] = phase.soundings.cost_aware_evaluation.cost_weight
+                if sounding_costs:
+                    evaluator_metadata["sounding_costs"] = sounding_costs
+                    evaluator_metadata["winner_cost"] = winner.get("cost")
+            # Add Pareto frontier info (Phase 3: Pareto Frontier Analysis)
+            if use_pareto:
+                evaluator_metadata["pareto_enabled"] = True
+                evaluator_metadata["pareto_policy"] = phase.soundings.pareto_frontier.policy
+                evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
+                if quality_scores:
+                    evaluator_metadata["quality_scores"] = quality_scores
+                    evaluator_metadata["winner_quality"] = winner.get("quality_score")
+                if sounding_costs:
+                    evaluator_metadata["sounding_costs"] = sounding_costs
+                    evaluator_metadata["winner_cost"] = winner.get("cost")
 
-        # Add semantic classification to evaluator metadata
-        evaluator_metadata["semantic_actor"] = "evaluator"
-        evaluator_metadata["semantic_purpose"] = "evaluation_output"
+            # Add semantic classification to evaluator metadata
+            evaluator_metadata["semantic_actor"] = "evaluator"
+            evaluator_metadata["semantic_purpose"] = "evaluation_output"
 
-        self.echo.add_history({
-            "role": "evaluator",
-            "content": eval_content,  # Full content, no truncation
-            "node_type": "evaluator"
-        }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
-           metadata=evaluator_metadata)
+            self.echo.add_history({
+                "role": "evaluator",
+                "content": eval_content,  # Full content, no truncation
+                "node_type": "evaluator"
+            }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
+               metadata=evaluator_metadata)
 
         # Add winning result to history
         # IMPORTANT: Include sounding_index and is_winner so UI can identify winning model
-        self.echo.add_history({
-            "role": "soundings_result",
-            "content": f"Selected best of {factor} attempts",
-            "winner_index": winner_index + 1,
-            "evaluation": eval_content
-        }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
-           metadata={"phase_name": phase.name, "winner_index": winner_index, "factor": factor,
-                     "sounding_index": original_winner_index, "is_winner": True,
-                     "model": winner.get('model'),  # Track winning model for UI highlighting
-                     "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
+        if is_aggregated:
+            # Aggregate mode: all contributing soundings are "winners"
+            self.echo.add_history({
+                "role": "soundings_result",
+                "content": f"Aggregated {winner.get('aggregated_count', 0)} of {factor} attempts",
+                "winner_index": -1,  # No single winner
+                "evaluation": eval_content,
+                "is_aggregated": True,
+                "aggregated_indices": list(aggregated_indices)
+            }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
+               metadata={"phase_name": phase.name, "winner_index": -1, "factor": factor,
+                         "is_aggregated": True, "aggregated_count": winner.get('aggregated_count', 0),
+                         "aggregated_indices": list(aggregated_indices),
+                         "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
-        # Mark winning sounding in database for prompt evolution learning
-        # This updates all rows in the winning sounding thread with is_winner=True
-        # so _fetch_winning_mutations() can find them for rewrite mode learning
-        from .unified_logs import mark_sounding_winner
-        mark_sounding_winner(self.session_id, phase.name, original_winner_index)
+            # Mark all contributing soundings as winners in database
+            from .unified_logs import mark_sounding_winner
+            for idx in aggregated_indices:
+                mark_sounding_winner(self.session_id, phase.name, idx)
+        else:
+            # Single winner mode
+            self.echo.add_history({
+                "role": "soundings_result",
+                "content": f"Selected best of {factor} attempts",
+                "winner_index": winner_index + 1,
+                "evaluation": eval_content
+            }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
+               metadata={"phase_name": phase.name, "winner_index": winner_index, "factor": factor,
+                         "sounding_index": original_winner_index, "is_winner": True,
+                         "model": winner.get('model'),  # Track winning model for UI highlighting
+                         "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
+
+            # Mark winning sounding in database for prompt evolution learning
+            # This updates all rows in the winning sounding thread with is_winner=True
+            # so _fetch_winning_mutations() can find them for rewrite mode learning
+            from .unified_logs import mark_sounding_winner
+            mark_sounding_winner(self.session_id, phase.name, original_winner_index)
 
         self._update_graph()
 
         # Check if reforge is configured
         if phase.soundings.reforge:
-            # Track which sounding won so reforge messages can reference it
-            self.current_winning_sounding_index = original_winner_index
+            # Reforge doesn't make sense in aggregate mode (no single winner to refine)
+            if is_aggregated:
+                console.print(f"{indent}[yellow]⚠️  Reforge skipped: Not compatible with aggregate mode[/yellow]")
+            else:
+                # Track which sounding won so reforge messages can reference it
+                self.current_winning_sounding_index = original_winner_index
 
-            winner = self._reforge_winner(
-                winner=winner,
-                phase=phase,
-                input_data=input_data,
-                trace=soundings_trace,
-                context_snapshot=context_snapshot,
-                reforge_step=0  # Initial soundings = step 0
-            )
+                winner = self._reforge_winner(
+                    winner=winner,
+                    phase=phase,
+                    input_data=input_data,
+                    trace=soundings_trace,
+                    context_snapshot=context_snapshot,
+                    reforge_step=0  # Initial soundings = step 0
+                )
 
-            # Reset after reforge completes
-            self.current_winning_sounding_index = None
+                # Reset after reforge completes
+                self.current_winning_sounding_index = None
 
         return winner['result']
 
@@ -4751,6 +5095,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     # Set tracking state
                     refinement_runner.current_phase_sounding_index = i
+                    refinement_runner._current_sounding_factor = factor_per_step  # For Jinja2 templates
                     refinement_runner.current_reforge_step = step
 
                     # Execute the phase on isolated runner
@@ -5057,7 +5402,11 @@ Refinement directive: {reforge_config.honing_prompt}
             "state": self.echo.state,
             "history": self.echo.history,
             "outputs": outputs,
-            "lineage": self.echo.lineage
+            "lineage": self.echo.lineage,
+            # Sounding context - enables fan-out patterns like {{ state.items[sounding_index] }}
+            "sounding_index": self.current_phase_sounding_index if self.current_phase_sounding_index is not None else 0,
+            "sounding_factor": getattr(self, '_current_sounding_factor', 1),  # Total soundings in this phase
+            "is_sounding": self.current_phase_sounding_index is not None,
         }
 
         # Build/update RAG index if configured for this phase

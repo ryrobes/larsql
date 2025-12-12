@@ -659,7 +659,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null }) {
+function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, runningSoundings = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null }) {
   const [instance, setInstance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -787,6 +787,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               index: idx,
               cost: 0,
               is_winner: false,
+              is_complete: false,  // Track if sounding_attempt row was seen
               model: null,
               message_count: 0,
               last_activity: null,
@@ -798,6 +799,12 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           const soundingData = phaseMap[phaseName].soundingAttempts.get(idx);
           soundingData.cost += entryCost;
           soundingData.message_count++;
+
+          // Mark sounding as complete when we see the sounding_attempt row
+          // This is the row logged when a sounding finishes execution
+          if (entry.node_type === 'sounding_attempt') {
+            soundingData.is_complete = true;
+          }
 
           // Track turn count per sounding
           if (entry.turn_number !== null && entry.turn_number !== undefined) {
@@ -1525,13 +1532,19 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
               const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
 
-              return phasesWithContent.map((phase, idx) => (
+              return phasesWithContent.map((phase, idx) => {
+                // Get running soundings for this phase from SSE events
+                const sessionSoundings = runningSoundings[sessionId] || {};
+                const runningSoundingsForPhase = sessionSoundings[phase.name] || new Set();
+
+                return (
                 <div key={phase.name} className="phase-container" style={{ contain: 'layout style' }}>
                   <PhaseBar
                     phase={phase}
                     maxCost={normalizedMax}
                     status={phase.status}
                     phaseIndex={idx}
+                    runningSoundingsSet={runningSoundingsForPhase}
                   />
                   {/* DEBUG: Commenting out to test if these cause jumping */}
                   {/* <AudioGallery
@@ -1547,7 +1560,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
                     sessionUpdate={sessionUpdates?.[instance.session_id]}
                   /> */}
                 </div>
-              ));
+              );
+              });
             })()}
 
             {/* Final Output */}

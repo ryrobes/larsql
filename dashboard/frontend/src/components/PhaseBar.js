@@ -3,7 +3,7 @@ import { Icon } from '@iconify/react';
 import { getSequentialColor } from './CascadeBar';
 import './PhaseBar.css';
 
-function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null }) {
+function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, runningSoundingsSet = new Set() }) {
   // Calculate bar width based on cost (relative to max)
   // Apply logarithmic scaling to prevent extreme ratios
   const costPercent = maxCost > 0 ? (phase.avg_cost / maxCost) * 100 : 10;
@@ -135,8 +135,12 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null })
 
             return uniqueAttempts.map((attempt) => {
               const isWinner = attempt.is_winner;
-              // Sounding is running if phase is running and no winner has been determined yet
-              const isRunning = status === 'running' && (isWinner === null || isWinner === undefined);
+              // Sounding is running if:
+              // 1. SSE event says it's running (runningSoundingsSet from App.js) - most reliable
+              // 2. OR fallback: phase is running AND no sounding_attempt row seen yet
+              const isRunningFromSSE = runningSoundingsSet.has(attempt.index);
+              const isComplete = attempt.is_complete === true;
+              const isRunning = isRunningFromSSE || (status === 'running' && !isComplete && !isWinner);
               const widthPercent = maxSoundingCost > 0 ? ((attempt.cost || 0) / maxSoundingCost) * 100 : 10;
               const soundingBarWidth = Math.max(widthPercent, isRunning ? 30 : 5);
 

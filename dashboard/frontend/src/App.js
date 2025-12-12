@@ -34,6 +34,7 @@ function App() {
   const [sessionStartTimes, setSessionStartTimes] = useState({}); // Track cascade start times for live duration (session_id -> ISO timestamp)
   const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
   const [pendingCheckpoints, setPendingCheckpoints] = useState([]); // HITL checkpoints waiting for human input
+  const [runningSoundings, setRunningSoundings] = useState({}); // Track running soundings: { sessionId: { phaseName: Set([index]) } }
 
   const showToast = (message, type = 'success', duration = null, cascadeData = null) => {
     const id = Date.now();
@@ -509,6 +510,57 @@ function App() {
             showToast(`Checkpoint timed out: ${event.data.action_taken}`, 'warning');
             break;
 
+          // Sounding lifecycle events for real-time tracking
+          case 'sounding_start':
+            {
+              const { phase_name, sounding_index } = event.data;
+              const sessionId = event.session_id;
+              // console.log('[SSE] Sounding start:', sessionId, phase_name, sounding_index);
+              setRunningSoundings(prev => {
+                const sessionSoundings = prev[sessionId] || {};
+                const phaseSoundings = new Set(sessionSoundings[phase_name] || []);
+                phaseSoundings.add(sounding_index);
+                return {
+                  ...prev,
+                  [sessionId]: {
+                    ...sessionSoundings,
+                    [phase_name]: phaseSoundings
+                  }
+                };
+              });
+              // Also trigger session update for UI refresh
+              setSessionUpdates(prev => ({
+                ...prev,
+                [sessionId]: Date.now()
+              }));
+            }
+            break;
+
+          case 'sounding_complete':
+            {
+              const { phase_name, sounding_index } = event.data;
+              const sessionId = event.session_id;
+              // console.log('[SSE] Sounding complete:', sessionId, phase_name, sounding_index);
+              setRunningSoundings(prev => {
+                const sessionSoundings = prev[sessionId] || {};
+                const phaseSoundings = new Set(sessionSoundings[phase_name] || []);
+                phaseSoundings.delete(sounding_index);
+                return {
+                  ...prev,
+                  [sessionId]: {
+                    ...sessionSoundings,
+                    [phase_name]: phaseSoundings
+                  }
+                };
+              });
+              // Also trigger session update for UI refresh
+              setSessionUpdates(prev => ({
+                ...prev,
+                [sessionId]: Date.now()
+              }));
+            }
+            break;
+
           default:
             console.log('Unknown SSE event:', event.type);
         }
@@ -658,6 +710,7 @@ function App() {
           finalizingSessions={finalizingSessions}
           sessionUpdates={sessionUpdates}
           sessionStartTimes={sessionStartTimes}
+          runningSoundings={runningSoundings}
         />
       )}
 
