@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -8,6 +8,7 @@ import TacklePills from '../components/TacklePills';
 import ModelSelect from '../components/ModelSelect';
 import ContextBuilder from '../components/ContextBuilder';
 import FlowBuilder from '../components/FlowBuilder';
+import { JinjaEditor, getAvailableVariables } from '../jinja-editor';
 import './PhaseBlock.css';
 
 /**
@@ -26,9 +27,16 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     removePhase,
     expandedDrawers,
     toggleDrawer,
+    cascade,
   } = useWorkshopStore();
 
   const [isEditing, setIsEditing] = useState(false);
+
+  // Get available variables for the Jinja editor
+  const availableVariables = useMemo(
+    () => getAvailableVariables(cascade, index),
+    [cascade, index]
+  );
 
   // Sortable setup for reordering phases
   const {
@@ -193,12 +201,13 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       {/* Instructions Field */}
       <div className="phase-instructions">
         <label className="instructions-label">Instructions</label>
-        <textarea
-          className="instructions-textarea"
+        <JinjaEditor
           value={phase.instructions || ''}
-          onChange={handleInstructionsChange}
-          placeholder="Enter phase instructions (Jinja2 supported)..."
-          rows={4}
+          onChange={(text) => updatePhase(index, { instructions: text })}
+          availableVariables={availableVariables}
+          placeholder="Enter phase instructions..."
+          showPalette={true}
+          className="compact"
         />
       </div>
 
