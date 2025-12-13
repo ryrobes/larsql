@@ -176,10 +176,21 @@
 .timeline-track {
   display: flex;
   align-items: flex-start;
-  gap: 80px; /* Increased for handoff arrows */
+  gap: 60px;
   min-height: 100%;
   padding-bottom: 24px;
-  position: relative; /* For SVG overlay positioning */
+  position: relative;
+}
+
+/* Wrapped timeline layout */
+.timeline-track.timeline-track-wrapped {
+  display: block;
+  position: relative;
+}
+
+.phase-position-wrapper {
+  z-index: 1;
+  overflow: visible;
 }
 
 /* ============================================
@@ -286,8 +297,8 @@
 
 /* Column body */
 .column-body {
-  padding: 16px 12px;
-  min-height: 80px;
+  padding: 12px;
+  min-height: 50px;
 }
 
 .column-pending,
@@ -316,16 +327,22 @@
 }
 
 .column-completed {
-  align-items: flex-start;
-  gap: 6px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .result-stat {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11px;
   color: var(--text-secondary);
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
 }
 
 .column-error {
@@ -591,6 +608,7 @@
 
 /* ============================================
    GHOST SOUNDING BLOCKS - "Depth Soundings"
+   Stacked VERTICALLY below the phase like depth soundings
    ============================================ */
 
 .soundings-depth {
@@ -599,7 +617,7 @@
   flex-direction: column;
   align-items: center;
   padding-top: 8px;
-  min-width: 200px;
+  width: 100%;
 }
 
 /* Vertical depth line - like a sounding line dropped into water */
@@ -627,28 +645,27 @@
   z-index: 1;
 }
 
-/* Individual ghost block */
+/* Individual ghost block - compact card */
 .ghost-block {
-  width: 160px;
-  background: rgba(30, 41, 59, 0.6);
+  width: 180px;
+  background: rgba(30, 41, 59, 0.7);
   border: 1px dashed rgba(107, 114, 142, 0.4);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   backdrop-filter: blur(4px);
   position: relative;
-
-  /* Stagger depth effect - each block slightly smaller and more transparent */
-  opacity: calc(0.9 - (var(--depth) * 0.08));
-  transform: scale(calc(1 - (var(--depth) * 0.02)));
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .ghost-block:hover {
   background: rgba(44, 59, 75, 0.8);
   border-color: var(--slate-blue);
-  transform: scale(1) translateX(4px);
+  transform: translateY(-2px);
   opacity: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .ghost-block.selected {
@@ -659,12 +676,12 @@
   width: 200px;
 }
 
-/* Ghost header */
+/* Ghost header - single row with all info */
 .ghost-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .ghost-index {
@@ -672,7 +689,7 @@
   font-weight: 600;
   font-family: monospace;
   color: var(--mist-gray);
-  padding: 1px 4px;
+  padding: 2px 5px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 3px;
 }
@@ -682,20 +699,16 @@
   filter: drop-shadow(0 0 4px var(--compass-brass));
 }
 
-/* Ghost body */
-.ghost-body {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
+/* Inline stats in header */
 .ghost-stat {
   display: flex;
   align-items: center;
   gap: 3px;
   font-size: 10px;
   color: var(--mist-gray);
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
 }
 
 /* Ghost output preview */
@@ -800,7 +813,7 @@
 }
 
 .ghost-block.ghost-winner:hover {
-  transform: scale(1.08) translateX(4px);
+  transform: scale(1.05) translateY(-3px);
 }
 
 /* Winner glow effect */

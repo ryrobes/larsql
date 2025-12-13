@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
 import { useExecutionSSE } from '../hooks/useExecutionSSE';
@@ -7,8 +7,15 @@ import './ExecutionNotebook.css';
 // Constants for layout calculations
 const PHASE_COLUMN_WIDTH = 220;
 const PHASE_COLUMN_WIDTH_EXPANDED = 400;
-const PHASE_COLUMN_GAP = 80; // Increased for handoff arrows
+const PHASE_COLUMN_GAP = 60; // Horizontal gap between phases
+const PHASE_ROW_GAP = 60; // Minimum vertical gap between rows
 const PHASE_HEADER_HEIGHT = 44;
+const PHASE_BASE_HEIGHT = 140; // Base height of a phase column (compact stats row)
+const PHASE_EXPANDED_EXTRA = 200; // Extra height when phase output is expanded
+const SOUNDING_BLOCK_HEIGHT = 85; // Height per sounding block (vertical stack)
+const SOUNDING_DEPTH_PADDING = 30; // Extra padding for soundings area
+const TIMELINE_PADDING = 16;
+const LEFT_MARGIN = 50; // Space on left for row wrap connectors
 
 /**
  * ExecutionNotebook - Real-time cascade execution visualization
@@ -40,20 +47,128 @@ function ExecutionNotebook() {
   // Connect to SSE for real-time updates
   useExecutionSSE();
 
-  // Track which phases are expanded (for arrow positioning)
-  const [expandedPhases, setExpandedPhases] = useState(new Set());
+  // Track which phases are COLLAPSED (default is expanded to show output)
+  const [collapsedPhases, setCollapsedPhases] = useState(new Set());
 
   const togglePhaseExpanded = (phaseName) => {
-    setExpandedPhases((prev) => {
+    setCollapsedPhases((prev) => {
       const next = new Set(prev);
       if (next.has(phaseName)) {
-        next.delete(phaseName);
+        next.delete(phaseName); // Uncollapse = expand
       } else {
-        next.add(phaseName);
+        next.add(phaseName); // Collapse
       }
       return next;
     });
   };
+
+  // Helper: is phase expanded? (default true unless collapsed)
+  const isPhaseExpanded = (phaseName) => !collapsedPhases.has(phaseName);
+
+  // Track container width for row wrapping
+  const containerRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(800);
+
+  // Get phases early so we can use them in layout calculation
+  const phases = cascade.phases || [];
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width - TIMELINE_PADDING * 2);
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Calculate phase layout with row wrapping and dynamic row heights
+  const phaseLayout = useMemo(() => {
+    const layout = [];
+    let currentX = 0;
+    let currentRow = 0;
+    let maxRowWidth = 0;
+
+    // Account for left margin in available width
+    const availableWidth = containerWidth - LEFT_MARGIN;
+
+    // Helper to calculate phase height including soundings and expansion
+    const getPhaseHeight = (phase, isExpanded) => {
+      let height = PHASE_BASE_HEIGHT;
+
+      // Add extra height if phase output is expanded
+      if (isExpanded) {
+        height += PHASE_EXPANDED_EXTRA;
+      }
+
+      // Add height for soundings (vertical stack - each sounding adds height)
+      const soundingsFactor = phase.soundings?.factor || 0;
+      if (soundingsFactor > 1) {
+        height += (soundingsFactor * SOUNDING_BLOCK_HEIGHT) + SOUNDING_DEPTH_PADDING;
+      }
+
+      return height;
+    };
+
+    // First pass: assign phases to rows
+    const rowAssignments = [];
+    phases.forEach((phase, idx) => {
+      const isExpanded = isPhaseExpanded(phase.name);
+      const width = isExpanded ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH;
+      const totalWidth = width + PHASE_COLUMN_GAP;
+
+      // Check if we need to wrap to next row
+      if (currentX + width > availableWidth && idx > 0) {
+        currentRow++;
+        currentX = 0;
+      }
+
+      rowAssignments.push({
+        phase,
+        index: idx,
+        row: currentRow,
+        x: currentX + LEFT_MARGIN,
+        width,
+        isExpanded,
+        height: getPhaseHeight(phase, isExpanded),
+      });
+
+      currentX += totalWidth;
+      maxRowWidth = Math.max(maxRowWidth, currentX + LEFT_MARGIN);
+    });
+
+    // Second pass: calculate row heights (max height of phases in each row)
+    const rowHeights = {};
+    rowAssignments.forEach((item) => {
+      const currentMax = rowHeights[item.row] || PHASE_BASE_HEIGHT;
+      rowHeights[item.row] = Math.max(currentMax, item.height);
+    });
+
+    // Third pass: calculate cumulative Y positions
+    const rowYPositions = {};
+    let cumulativeY = 0;
+    const totalRows = currentRow + 1;
+    for (let r = 0; r < totalRows; r++) {
+      rowYPositions[r] = cumulativeY;
+      cumulativeY += (rowHeights[r] || PHASE_BASE_HEIGHT) + PHASE_ROW_GAP;
+    }
+
+    // Final pass: assign Y positions to phases
+    rowAssignments.forEach((item) => {
+      layout.push({
+        ...item,
+        y: rowYPositions[item.row],
+        rowHeight: rowHeights[item.row],
+      });
+    });
+
+    const totalHeight = cumulativeY;
+
+    return { positions: layout, totalRows, totalHeight, maxRowWidth, rowHeights, rowYPositions };
+  }, [phases, collapsedPhases, containerWidth, isPhaseExpanded]);
 
   // Live duration counter
   const [liveDuration, setLiveDuration] = useState(0);
@@ -68,8 +183,6 @@ function ExecutionNotebook() {
       setLiveDuration((executionEndTime - executionStartTime) / 1000);
     }
   }, [executionStatus, executionStartTime, executionEndTime]);
-
-  const phases = cascade.phases || [];
 
   // Count recent log entries for activity indicator
   const recentLogCount = executionLog.filter(
@@ -151,7 +264,7 @@ function ExecutionNotebook() {
       )}
 
       {/* Timeline Content */}
-      <div className="notebook-content">
+      <div className="notebook-content" ref={containerRef}>
         {phases.length === 0 ? (
           <div className="notebook-empty">
             <Icon icon="mdi:chart-timeline-variant" width="64" />
@@ -160,37 +273,65 @@ function ExecutionNotebook() {
           </div>
         ) : (
           <div className="timeline-scroll">
-            <div className="timeline-track">
+            <div
+              className="timeline-track timeline-track-wrapped"
+              style={{
+                width: Math.max(phaseLayout.maxRowWidth, containerWidth),
+                height: phaseLayout.totalHeight,
+              }}
+            >
               {/* Handoff arrows SVG overlay */}
               <HandoffArrows
                 phases={phases}
                 phaseResults={phaseResults}
                 lastExecutedHandoffs={lastExecutedHandoffs}
                 sessionId={sessionId}
-                expandedPhases={expandedPhases}
+                phaseLayout={phaseLayout}
               />
 
-              {phases.map((phase, idx) => {
+              {/* Row connectors for wrapped rows (only for sequential phases without handoffs) */}
+              {phaseLayout.totalRows > 1 && (
+                <RowConnectors phaseLayout={phaseLayout} phases={phases} />
+              )}
+
+              {phaseLayout.positions.map((pos, idx) => {
+                const { phase, x, y, width, row } = pos;
                 const hasExecutionData = sessionId && phaseResults[phase.name];
-                return hasExecutionData ? (
-                  <PhaseColumn
+                const isLastInRow = !phaseLayout.positions[idx + 1] || phaseLayout.positions[idx + 1].row !== row;
+                const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
+
+                return (
+                  <div
                     key={phase.name}
-                    phase={phase}
-                    index={idx}
-                    result={phaseResults[phase.name]}
-                    activeSoundingsSet={activeSoundings[phase.name]}
-                    isLast={idx === phases.length - 1}
-                    isExpanded={expandedPhases.has(phase.name)}
-                    onToggleExpand={() => togglePhaseExpanded(phase.name)}
-                  />
-                ) : (
-                  <GhostPhaseColumn
-                    key={phase.name}
-                    phase={phase}
-                    index={idx}
-                    allPhases={phases}
-                    isLast={idx === phases.length - 1}
-                  />
+                    className="phase-position-wrapper"
+                    style={{
+                      position: 'absolute',
+                      left: x,
+                      top: y,
+                      width: width,
+                    }}
+                  >
+                    {hasExecutionData ? (
+                      <PhaseColumn
+                        phase={phase}
+                        index={idx}
+                        result={phaseResults[phase.name]}
+                        activeSoundingsSet={activeSoundings[phase.name]}
+                        isLast={isLastInRow}
+                        hasHandoffs={hasHandoffs}
+                        isExpanded={isPhaseExpanded(phase.name)}
+                        onToggleExpand={() => togglePhaseExpanded(phase.name)}
+                      />
+                    ) : (
+                      <GhostPhaseColumn
+                        phase={phase}
+                        index={idx}
+                        allPhases={phases}
+                        isLast={isLastInRow}
+                        hasHandoffs={hasHandoffs}
+                      />
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -212,14 +353,13 @@ function ExecutionNotebook() {
  * When soundings are active, shows ghost blocks descending below the main phase
  * like nautical depth soundings. The winner "rises" back up to the main block.
  */
-function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, isExpanded, onToggleExpand }) {
+function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHandoffs, isExpanded, onToggleExpand }) {
   const [selectedSounding, setSelectedSounding] = useState(null);
   const status = result?.status || 'pending';
   const soundingsConfig = phase.soundings;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasOutput = result?.output !== undefined;
-  const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
 
   // Get sounding statuses from result
   const soundings = result?.soundings || {};
@@ -374,19 +514,16 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, isExpan
                 <div
                   key={i}
                   className={`ghost-block ghost-${ghostStatus} ${isSelected ? 'selected' : ''}`}
-                  style={{ '--depth': i, '--total': soundingsCount }}
                   onClick={(e) => handleGhostClick(e, i)}
                   title={`Sounding ${i}${isWinner ? ' (winner)' : ''}`}
                 >
+                  {/* Compact single-row header with all info */}
                   <div className="ghost-header">
                     <span className="ghost-index">S{i}</span>
                     {isWinner && <Icon icon="mdi:crown" width="12" className="crown" />}
                     {isActive && <Icon icon="mdi:loading" width="10" className="spinning" />}
                     {isCompleted && !isWinner && <Icon icon="mdi:check" width="10" />}
-                  </div>
-
-                  {/* Ghost body with live stats */}
-                  <div className="ghost-body">
+                    {/* Inline stats */}
                     {sounding?.turnCount > 0 && (
                       <span className="ghost-stat">
                         <Icon icon="mdi:message-reply" width="10" />
@@ -394,18 +531,16 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, isExpan
                       </span>
                     )}
                     {sounding?.cost > 0 && (
-                      <span className="ghost-stat">
-                        ${sounding.cost.toFixed(3)}
-                      </span>
+                      <span className="ghost-stat">${sounding.cost.toFixed(3)}</span>
                     )}
                   </div>
 
-                  {/* Output preview - always show brief, expand on click */}
+                  {/* Output preview - only show if has output */}
                   {sounding?.output && (
                     <div className={`ghost-output ${isSelected ? 'expanded' : ''}`}>
                       <pre>{typeof sounding.output === 'string'
-                        ? sounding.output.slice(0, isSelected ? 500 : 80) + (sounding.output.length > (isSelected ? 500 : 80) ? '...' : '')
-                        : JSON.stringify(sounding.output, null, 2).slice(0, isSelected ? 500 : 80)
+                        ? sounding.output.slice(0, isSelected ? 500 : 60) + (sounding.output.length > (isSelected ? 500 : 60) ? '...' : '')
+                        : JSON.stringify(sounding.output, null, 2).slice(0, isSelected ? 500 : 60)
                       }</pre>
                     </div>
                   )}
@@ -425,13 +560,129 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, isExpan
 }
 
 /**
+ * RowConnectors - Visual connectors between rows when timeline wraps
+ *
+ * Only shows for SEQUENTIAL phases (no handoffs) that wrap to a new row.
+ * Phases with handoffs are handled by HandoffArrows instead.
+ */
+function RowConnectors({ phaseLayout, phases }) {
+  const { positions, totalRows } = phaseLayout;
+
+  if (totalRows <= 1) return null;
+
+  // Find row transitions - only for sequential phases WITHOUT handoffs
+  const transitions = [];
+  for (let i = 0; i < positions.length - 1; i++) {
+    const currentPhase = phases[i];
+    const hasHandoffs = currentPhase?.handoffs && currentPhase.handoffs.length > 0;
+
+    // Only show row connector for sequential phases (no handoffs)
+    if (positions[i].row !== positions[i + 1].row && !hasHandoffs) {
+      transitions.push({
+        from: positions[i],
+        to: positions[i + 1],
+        fromIdx: i,
+        toIdx: i + 1,
+      });
+    }
+  }
+
+  if (transitions.length === 0) return null;
+
+  return (
+    <svg
+      className="row-connectors-svg"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+    >
+      <defs>
+        <marker
+          id="arrow-row"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ocean-primary)" />
+        </marker>
+        <marker
+          id="arrow-row-ghost"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--storm-cloud)" />
+        </marker>
+      </defs>
+      {transitions.map((trans, idx) => {
+        const fromX = trans.from.x + trans.from.width;
+        const fromY = trans.from.y + PHASE_HEADER_HEIGHT + 40;
+        const toX = trans.to.x;
+        const toY = trans.to.y + PHASE_HEADER_HEIGHT + 40;
+
+        // "Carriage return" style path:
+        // 1. Exit right edge of last phase on row 1
+        // 2. Go down to below row 1 (accounting for soundings)
+        // 3. Go left to the left margin area
+        // 4. Go down to row 2
+        // 5. Enter first phase on row 2
+        const r = 12; // Consistent curve radius for all corners
+        const wrapMargin = 20; // Position in the LEFT_MARGIN area (left of phases)
+        // Use the actual row height to position the connector below any soundings
+        const fromRowHeight = phaseLayout.rowHeights?.[trans.from.row] || PHASE_BASE_HEIGHT;
+        const rowBottomY = trans.from.y + fromRowHeight + 20; // Just below the row (including soundings)
+
+        // All curves use the same radius for consistency
+        const path = `
+          M ${fromX} ${fromY}
+          L ${fromX + r} ${fromY}
+          A ${r} ${r} 0 0 1 ${fromX + r + r} ${fromY + r}
+          L ${fromX + r + r} ${rowBottomY - r}
+          A ${r} ${r} 0 0 1 ${fromX + r} ${rowBottomY}
+          L ${wrapMargin + r} ${rowBottomY}
+          A ${r} ${r} 0 0 0 ${wrapMargin} ${rowBottomY + r}
+          L ${wrapMargin} ${toY - r}
+          A ${r} ${r} 0 0 0 ${wrapMargin + r} ${toY}
+          L ${toX} ${toY}
+        `;
+
+        return (
+          <path
+            key={idx}
+            d={path}
+            fill="none"
+            stroke="var(--ocean-secondary)"
+            strokeWidth="2"
+            strokeDasharray="6,4"
+            opacity="0.5"
+            markerEnd="url(#arrow-row)"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
  * HandoffArrows - SVG overlay showing routing between phases
  *
  * Draws arrows from phases to their handoff targets.
  * Ghost mode: dashed lines to all possible targets
  * Realized mode: solid line to executed target, dashed for others
  */
-function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, expandedPhases }) {
+function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, phaseLayout }) {
   // Build list of all handoff connections
   const connections = useMemo(() => {
     const conns = [];
@@ -470,75 +721,104 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
     return conns;
   }, [phases, phaseResults, lastExecutedHandoffs, sessionId]);
 
-  // Calculate X position for a phase index, accounting for expanded phases
-  const getPhaseX = (idx) => {
-    let x = 0;
-    for (let i = 0; i < idx; i++) {
-      const phaseName = phases[i]?.name;
-      const isExp = expandedPhases?.has(phaseName);
-      x += (isExp ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH) + PHASE_COLUMN_GAP;
-    }
-    return x;
-  };
+  const { positions, maxRowWidth, totalHeight } = phaseLayout;
 
-  // Get width of a specific phase
-  const getPhaseWidth = (idx) => {
-    const phaseName = phases[idx]?.name;
-    return expandedPhases?.has(phaseName) ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH;
-  };
+  // Get position info for a phase by index
+  const getPhasePos = (idx) => positions[idx] || { x: 0, y: 0, width: PHASE_COLUMN_WIDTH };
 
   if (connections.length === 0) return null;
 
-  // Calculate SVG dimensions based on expanded states
-  let totalWidth = 0;
-  phases.forEach((phase) => {
-    const isExp = expandedPhases?.has(phase.name);
-    totalWidth += (isExp ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH) + PHASE_COLUMN_GAP;
-  });
-  const svgWidth = totalWidth;
-  const svgHeight = 300; // Enough height for curved paths
+  const svgWidth = maxRowWidth || 800;
+  const svgHeight = totalHeight || 300;
 
-  // Calculate path for a connection
+  // Calculate path for a connection (handles cross-row connections)
   const getPath = (sourceIdx, targetIdx) => {
-    const sourceX = getPhaseX(sourceIdx) + getPhaseWidth(sourceIdx);
-    const targetX = getPhaseX(targetIdx);
-    const y = PHASE_HEADER_HEIGHT + 40; // Middle of phase body
+    const sourcePos = getPhasePos(sourceIdx);
+    const targetPos = getPhasePos(targetIdx);
 
+    const sourceX = sourcePos.x + sourcePos.width;
+    const sourceY = sourcePos.y + PHASE_HEADER_HEIGHT + 40;
+    const targetX = targetPos.x;
+    const targetY = targetPos.y + PHASE_HEADER_HEIGHT + 40;
+
+    const sameRow = sourcePos.row === targetPos.row;
     const distance = targetIdx - sourceIdx;
 
-    if (distance === 1) {
-      // Adjacent: simple horizontal line
-      return `M ${sourceX} ${y} L ${targetX} ${y}`;
-    } else if (distance > 1) {
-      // Forward skip: curve above
-      const midX = (sourceX + targetX) / 2;
-      const curveHeight = Math.min(30 + distance * 15, 80);
-      return `M ${sourceX} ${y} Q ${midX} ${y - curveHeight} ${targetX} ${y}`;
+    if (sameRow) {
+      if (distance === 1) {
+        // Adjacent on same row: simple horizontal line
+        return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+      } else if (distance > 1) {
+        // Forward skip on same row: curve above
+        const midX = (sourceX + targetX) / 2;
+        const curveHeight = Math.min(30 + distance * 15, 80);
+        return `M ${sourceX} ${sourceY} Q ${midX} ${sourceY - curveHeight} ${targetX} ${targetY}`;
+      } else {
+        // Backward on same row: curve below
+        const midX = (sourceX + targetX) / 2;
+        const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
+        return `M ${sourceX} ${sourceY} Q ${midX} ${sourceY + curveHeight} ${targetX} ${targetY}`;
+      }
     } else {
-      // Backward: curve below
-      const midX = (sourceX + targetX) / 2;
-      const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
-      return `M ${sourceX} ${y} Q ${midX} ${y + curveHeight} ${targetX} ${y}`;
+      // Cross-row connection: use a more complex path
+      const midY = (sourceY + targetY) / 2;
+
+      if (targetPos.row > sourcePos.row) {
+        // Going to a lower row
+        if (targetX >= sourceX) {
+          // Target is to the right or same column
+          return `M ${sourceX} ${sourceY}
+                  Q ${sourceX + 40} ${sourceY} ${sourceX + 40} ${sourceY + 40}
+                  L ${sourceX + 40} ${midY}
+                  Q ${sourceX + 40} ${targetY} ${targetX} ${targetY}`;
+        } else {
+          // Target is to the left
+          return `M ${sourceX} ${sourceY}
+                  Q ${sourceX + 40} ${sourceY} ${sourceX + 40} ${sourceY + 40}
+                  L ${sourceX + 40} ${midY}
+                  L ${targetX - 40} ${midY}
+                  Q ${targetX - 40} ${targetY} ${targetX} ${targetY}`;
+        }
+      } else {
+        // Going to an upper row (backward jump)
+        return `M ${sourceX} ${sourceY}
+                Q ${sourceX + 60} ${sourceY} ${sourceX + 60} ${sourceY - 40}
+                L ${sourceX + 60} ${midY}
+                L ${targetX - 40} ${midY}
+                Q ${targetX - 40} ${targetY} ${targetX} ${targetY}`;
+      }
     }
   };
 
   // Calculate label position
   const getLabelPos = (sourceIdx, targetIdx) => {
-    const sourceX = getPhaseX(sourceIdx) + getPhaseWidth(sourceIdx);
-    const targetX = getPhaseX(targetIdx);
-    const y = PHASE_HEADER_HEIGHT + 40;
+    const sourcePos = getPhasePos(sourceIdx);
+    const targetPos = getPhasePos(targetIdx);
 
-    const midX = (sourceX + targetX) / 2;
+    const sourceX = sourcePos.x + sourcePos.width;
+    const sourceY = sourcePos.y + PHASE_HEADER_HEIGHT + 40;
+    const targetX = targetPos.x;
+    const targetY = targetPos.y + PHASE_HEADER_HEIGHT + 40;
+
+    const sameRow = sourcePos.row === targetPos.row;
     const distance = targetIdx - sourceIdx;
 
-    if (distance === 1) {
-      return { x: midX, y: y - 12 };
-    } else if (distance > 1) {
-      const curveHeight = Math.min(30 + distance * 15, 80);
-      return { x: midX, y: y - curveHeight - 8 };
+    if (sameRow) {
+      const midX = (sourceX + targetX) / 2;
+      if (distance === 1) {
+        return { x: midX, y: sourceY - 12 };
+      } else if (distance > 1) {
+        const curveHeight = Math.min(30 + distance * 15, 80);
+        return { x: midX, y: sourceY - curveHeight - 8 };
+      } else {
+        const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
+        return { x: midX, y: sourceY + curveHeight + 14 };
+      }
     } else {
-      const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
-      return { x: midX, y: y + curveHeight + 14 };
+      // Cross-row: place label at midpoint
+      const midX = (sourceX + targetX) / 2;
+      const midY = (sourceY + targetY) / 2;
+      return { x: Math.max(midX, sourceX + 60), y: midY };
     }
   };
 
@@ -659,11 +939,10 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
  * Shows a ghost representation of what this phase will look like when run.
  * Includes ghost soundings lanes, handoff indicators, etc.
  */
-function GhostPhaseColumn({ phase, index, allPhases, isLast }) {
+function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
   const soundingsConfig = phase.soundings;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
-  const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
   const hasReforge = soundingsConfig?.reforge?.steps > 0;
   const mode = soundingsConfig?.mode || 'evaluate';
 
