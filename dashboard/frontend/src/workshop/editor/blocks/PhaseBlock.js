@@ -103,11 +103,19 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     { id: 'flow', label: 'Flow', icon: 'mdi:arrow-decision', hasContent: hasHandoffs },
   ];
 
+  // Build class names
+  const classNames = [
+    'phase-block',
+    isSelected && 'selected',
+    isDragging && 'dragging',
+    isOver && 'drop-over',
+  ].filter(Boolean).join(' ');
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`phase-block ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${isOver ? 'drop-over' : ''}`}
+      className={classNames}
       onClick={onSelect}
     >
       {/* Phase Header */}
@@ -118,7 +126,9 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
         </div>
 
         {/* Phase Number */}
-        <div className="phase-number">{index + 1}</div>
+        <div className="phase-number">
+          {index + 1}
+        </div>
 
         {/* Phase Name */}
         <div className="phase-name-container">

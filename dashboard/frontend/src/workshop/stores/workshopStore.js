@@ -43,6 +43,18 @@ const useWorkshopStore = create(
     setCascade: (cascade) => set((state) => {
       state.cascade = cascade;
       state.isDirty = true;
+      // Reset execution state for new cascade - all phases start as ghosts
+      state.executionStatus = 'idle';
+      state.sessionId = null;
+      state.executionError = null;
+      state.executionStartTime = null;
+      state.executionEndTime = null;
+      state.totalCost = 0;
+      state.phaseResults = {};
+      state.activeSoundings = {};
+      state.executionLog = [];
+      state.lastExecutedPhases = [];
+      state.lastExecutedHandoffs = {};
     }),
 
     // Reset to empty cascade
@@ -50,6 +62,18 @@ const useWorkshopStore = create(
       state.cascade = createEmptyCascade();
       state.isDirty = false;
       state.selectedPhaseIndex = null;
+      // Reset execution state - all phases start as ghosts
+      state.executionStatus = 'idle';
+      state.sessionId = null;
+      state.executionError = null;
+      state.executionStartTime = null;
+      state.executionEndTime = null;
+      state.totalCost = 0;
+      state.phaseResults = {};
+      state.activeSoundings = {};
+      state.executionLog = [];
+      state.lastExecutedPhases = [];
+      state.lastExecutedHandoffs = {};
     }),
 
     // Update cascade header fields
@@ -284,6 +308,45 @@ const useWorkshopStore = create(
     executionLog: [], // [{ type, timestamp, phaseName, data }]
 
     // ============================================
+    // GHOST PHASE TRACKING
+    // ============================================
+
+    // Snapshot of phase names from the last successful execution
+    // Used to determine which phases are "real" vs "ghost" (preview)
+    lastExecutedPhases: [], // ['phase_1', 'phase_2', ...]
+
+    // Executed handoffs from last run: { sourcePhaseName: targetPhaseName }
+    lastExecutedHandoffs: {},
+
+    // Check if a phase is a ghost (wasn't in the last execution)
+    // This returns a function that can be called with state for reactivity
+    isPhaseGhost: (phaseName) => {
+      const {
+        lastExecutedPhases,
+        executionStatus,
+        phaseResults,
+      } = get();
+
+      // If no execution has happened, all phases are ghosts (preview mode)
+      if (lastExecutedPhases.length === 0 && executionStatus === 'idle') {
+        return true;
+      }
+      // During execution, phases that haven't started yet are ghosts
+      if (executionStatus === 'running') {
+        const result = phaseResults[phaseName];
+        return !result || result.status === 'pending';
+      }
+      // After execution, phases not in lastExecutedPhases are ghosts
+      return !lastExecutedPhases.includes(phaseName);
+    },
+
+    // Get the executed handoff for a phase (if any)
+    getExecutedHandoff: (phaseName) => {
+      const state = get();
+      return state.lastExecutedHandoffs[phaseName] || null;
+    },
+
+    // ============================================
     // EXECUTION EVENT HANDLERS (for SSE)
     // ============================================
 
@@ -516,6 +579,18 @@ const useWorkshopStore = create(
       });
     }),
 
+    handleHandoff: (fromPhase, toPhase) => set((state) => {
+      // Track handoffs as they happen during execution
+      state.lastExecutedHandoffs[fromPhase] = toPhase;
+
+      state.executionLog.push({
+        type: 'handoff',
+        timestamp: Date.now(),
+        fromPhase,
+        toPhase,
+      });
+    }),
+
     handleCostUpdate: (cost, phaseName = null, soundingIndex = null) => set((state) => {
       state.totalCost += cost;
 
@@ -544,6 +619,25 @@ const useWorkshopStore = create(
           state.phaseResults[phaseName].endTime = Date.now();
         }
       });
+
+      // Save executed phases for ghost tracking
+      // Only include phases that actually ran (completed status)
+      state.lastExecutedPhases = Object.keys(state.phaseResults).filter(
+        (name) => state.phaseResults[name].status === 'completed'
+      );
+
+      // Extract executed handoffs from the result or lineage if available
+      if (result.lineage && Array.isArray(result.lineage)) {
+        const handoffs = {};
+        for (let i = 0; i < result.lineage.length - 1; i++) {
+          const current = result.lineage[i];
+          const next = result.lineage[i + 1];
+          if (current.phase && next.phase) {
+            handoffs[current.phase] = next.phase;
+          }
+        }
+        state.lastExecutedHandoffs = handoffs;
+      }
 
       state.executionLog.push({
         type: 'cascade_complete',
@@ -595,6 +689,23 @@ const useWorkshopStore = create(
       state.phaseResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
+      // Note: We keep lastExecutedPhases and lastExecutedHandoffs for ghost tracking
+      // They represent the last successful run and help show what's "real" vs "preview"
+    }),
+
+    // Clear all execution history including ghost tracking
+    clearExecutionHistory: () => set((state) => {
+      state.sessionId = null;
+      state.executionStatus = 'idle';
+      state.executionError = null;
+      state.executionStartTime = null;
+      state.executionEndTime = null;
+      state.totalCost = 0;
+      state.phaseResults = {};
+      state.activeSoundings = {};
+      state.executionLog = [];
+      state.lastExecutedPhases = [];
+      state.lastExecutedHandoffs = {};
     }),
 
     // ============================================

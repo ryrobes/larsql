@@ -10,13 +10,16 @@ import PhaseBlock from './blocks/PhaseBlock';
 import './PhasesRail.css';
 
 /**
- * PhasesRail - Sortable vertical list of phases
+ * PhasesRail - Sortable vertical list of phases in the editor
  *
  * Features:
  * - Drag to reorder phases
  * - Drop zone for new phases from palette
  * - Add new phase button
  * - Visual connection lines between phases
+ *
+ * Note: Ghost visualization (preview of execution) is shown in ExecutionNotebook,
+ * not here. This is purely the editor view for configuring phases.
  */
 function PhasesRail() {
   const {
@@ -35,10 +38,6 @@ function PhasesRail() {
       accepts: ['phase'],
     },
   });
-
-  // Handle reordering within the sortable context
-  // Note: DndContext is now in BlockEditor, so reordering is handled there
-  // This component just provides the sortable context for the phases
 
   const handleAddPhase = () => {
     addPhase();

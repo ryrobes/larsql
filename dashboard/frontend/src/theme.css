@@ -5,6 +5,8 @@
      ORIGINAL THEME - Midnight Fjord Base
      ============================================ */
   --midnight-fjord: #0B1219;      /* Main Background */
+  --midnight: #0a0a0a;            /* Darker variant for badges/accents */
+  --deep-ocean: #070D12;          /* Deepest background for ghost/preview states */
   --abyssal-slate: #16202A;       /* Secondary Surface / Cards */
   --storm-cloud: #2C3B4B;         /* Borders / Dividers */
 
@@ -32,13 +34,29 @@
      ============================================ */
   --slate-blue: #6B7FBB;          /* Reforge/mutations (was purple) */
   --slate-blue-light: #8B9FCC;    /* Lighter slate for backgrounds */
+  --slate-primary: #8B9FCC;       /* Alias for slate accent */
   --storm-blue: #4A709E;          /* Current markers (was bright blue) */
   --storm-blue-light: #5A8DC4;    /* Lighter storm blue */
+
+  /* ============================================
+     BRASS/GOLD ACCENT VARIANTS
+     For running/warning states
+     ============================================ */
+  --brass-primary: #D4AF37;       /* Running state, soundings */
+  --brass-secondary: #E8C860;     /* Lighter brass for hover/active */
+
+  /* ============================================
+     TEAL ACCENT VARIANTS
+     For success/completed states
+     ============================================ */
+  --teal-primary: #2DD4BF;        /* Completed phases, winners */
+  --teal-secondary: #5EEAD4;      /* Lighter teal for accents */
 
   /* ============================================
      ORIGINAL THEME - Keep as-is
      ============================================ */
   --compass-brass: #D9A553;       /* Secondary Accent / Warn */
+  --danger-red: #EF4444;          /* Danger/remove actions */
   --frosted-white: #F0F4F8;       /* Primary Text */
   --mist-gray: #9AA5B1;           /* Secondary / Supporting Text */
   --bloodaxe-red: #CF6679;        /* Error / Danger */

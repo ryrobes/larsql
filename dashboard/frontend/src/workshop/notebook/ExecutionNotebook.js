@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
 import { useExecutionSSE } from '../hooks/useExecutionSSE';
 import './ExecutionNotebook.css';
+
+// Constants for layout calculations
+const PHASE_COLUMN_WIDTH = 220;
+const PHASE_COLUMN_WIDTH_EXPANDED = 400;
+const PHASE_COLUMN_GAP = 80; // Increased for handoff arrows
+const PHASE_HEADER_HEIGHT = 44;
 
 /**
  * ExecutionNotebook - Real-time cascade execution visualization
@@ -13,6 +19,7 @@ import './ExecutionNotebook.css';
  * - Turn count and cost accumulation
  * - Soundings progress with parallel indicators
  * - Live updates via SSE
+ * - Handoff arrows showing routing between phases
  */
 function ExecutionNotebook() {
   const {
@@ -27,10 +34,26 @@ function ExecutionNotebook() {
     activeSoundings,
     executionLog,
     clearExecution,
+    lastExecutedHandoffs,
   } = useWorkshopStore();
 
   // Connect to SSE for real-time updates
   useExecutionSSE();
+
+  // Track which phases are expanded (for arrow positioning)
+  const [expandedPhases, setExpandedPhases] = useState(new Set());
+
+  const togglePhaseExpanded = (phaseName) => {
+    setExpandedPhases((prev) => {
+      const next = new Set(prev);
+      if (next.has(phaseName)) {
+        next.delete(phaseName);
+      } else {
+        next.add(phaseName);
+      }
+      return next;
+    });
+  };
 
   // Live duration counter
   const [liveDuration, setLiveDuration] = useState(0);
@@ -135,27 +158,42 @@ function ExecutionNotebook() {
             <h3>No Phases Yet</h3>
             <p>Add phases to your cascade to see the execution timeline</p>
           </div>
-        ) : sessionId ? (
+        ) : (
           <div className="timeline-scroll">
             <div className="timeline-track">
-              {phases.map((phase, idx) => (
-                <PhaseColumn
-                  key={phase.name}
-                  phase={phase}
-                  index={idx}
-                  result={phaseResults[phase.name]}
-                  activeSoundingsSet={activeSoundings[phase.name]}
-                  isLast={idx === phases.length - 1}
-                />
-              ))}
+              {/* Handoff arrows SVG overlay */}
+              <HandoffArrows
+                phases={phases}
+                phaseResults={phaseResults}
+                lastExecutedHandoffs={lastExecutedHandoffs}
+                sessionId={sessionId}
+                expandedPhases={expandedPhases}
+              />
+
+              {phases.map((phase, idx) => {
+                const hasExecutionData = sessionId && phaseResults[phase.name];
+                return hasExecutionData ? (
+                  <PhaseColumn
+                    key={phase.name}
+                    phase={phase}
+                    index={idx}
+                    result={phaseResults[phase.name]}
+                    activeSoundingsSet={activeSoundings[phase.name]}
+                    isLast={idx === phases.length - 1}
+                    isExpanded={expandedPhases.has(phase.name)}
+                    onToggleExpand={() => togglePhaseExpanded(phase.name)}
+                  />
+                ) : (
+                  <GhostPhaseColumn
+                    key={phase.name}
+                    phase={phase}
+                    index={idx}
+                    allPhases={phases}
+                    isLast={idx === phases.length - 1}
+                  />
+                );
+              })}
             </div>
-          </div>
-        ) : (
-          <div className="notebook-ready">
-            <Icon icon="mdi:rocket-launch" width="64" />
-            <h3>Ready to Run</h3>
-            <p>{phases.length} phase{phases.length !== 1 ? 's' : ''} configured</p>
-            <p className="ready-hint">Click "Run" to execute your cascade</p>
           </div>
         )}
       </div>
@@ -174,14 +212,14 @@ function ExecutionNotebook() {
  * When soundings are active, shows ghost blocks descending below the main phase
  * like nautical depth soundings. The winner "rises" back up to the main block.
  */
-function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
-  const [expanded, setExpanded] = useState(false);
+function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, isExpanded, onToggleExpand }) {
   const [selectedSounding, setSelectedSounding] = useState(null);
   const status = result?.status || 'pending';
   const soundingsConfig = phase.soundings;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasOutput = result?.output !== undefined;
+  const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
 
   // Get sounding statuses from result
   const soundings = result?.soundings || {};
@@ -193,8 +231,8 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
   const handleClick = (e) => {
     // Don't toggle if clicking on a ghost block
     if (e.target.closest('.ghost-block')) return;
-    if (hasOutput) {
-      setExpanded(!expanded);
+    if (hasOutput && onToggleExpand) {
+      onToggleExpand();
     }
   };
 
@@ -207,11 +245,11 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
     <div className="phase-column-wrapper">
       {/* Main Phase Block */}
       <div
-        className={`phase-column status-${status} ${hasOutput ? 'has-output' : ''} ${expanded ? 'expanded' : ''} ${hasSoundings ? 'has-soundings' : ''}`}
+        className={`phase-column status-${status} ${hasOutput ? 'has-output' : ''} ${isExpanded ? 'expanded' : ''} ${hasSoundings ? 'has-soundings' : ''}`}
         onClick={handleClick}
       >
-        {/* Connector to next phase */}
-        {!isLast && (
+        {/* Connector to next phase (only if no handoffs - handoffs use SVG arrows) */}
+        {!isLast && !hasHandoffs && (
           <div className="column-connector">
             <div className="connector-line-h" />
             <Icon icon="mdi:chevron-right" width="16" className="connector-arrow-h" />
@@ -293,7 +331,7 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
         </div>
 
         {/* Output preview/expand indicator */}
-        {hasOutput && !expanded && (
+        {hasOutput && !isExpanded && (
           <div className="output-hint">
             <Icon icon="mdi:chevron-down" width="14" />
             <span>Click to view output</span>
@@ -301,7 +339,7 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
         )}
 
         {/* Expanded output view */}
-        {expanded && hasOutput && (
+        {isExpanded && hasOutput && (
           <div className="phase-output">
             <div className="output-header">
               <Icon icon="mdi:text-box-outline" width="14" />
@@ -380,6 +418,356 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast }) {
               );
             })}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * HandoffArrows - SVG overlay showing routing between phases
+ *
+ * Draws arrows from phases to their handoff targets.
+ * Ghost mode: dashed lines to all possible targets
+ * Realized mode: solid line to executed target, dashed for others
+ */
+function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, expandedPhases }) {
+  // Build list of all handoff connections
+  const connections = useMemo(() => {
+    const conns = [];
+
+    phases.forEach((phase, sourceIdx) => {
+      if (!phase.handoffs || phase.handoffs.length === 0) return;
+
+      const isPhaseExecuted = sessionId && phaseResults[phase.name]?.status === 'completed';
+      const executedTarget = lastExecutedHandoffs?.[phase.name];
+
+      phase.handoffs.forEach((handoff) => {
+        const targetName = typeof handoff === 'string' ? handoff : handoff.target;
+        const description = typeof handoff === 'object' ? handoff.description : null;
+        const targetIdx = phases.findIndex((p) => p.name === targetName);
+
+        if (targetIdx === -1) return; // Target not found
+
+        // Get context info from source phase
+        const contextInfo = phase.context?.from
+          ? `ctx: ${phase.context.from.join(', ')}`
+          : null;
+
+        conns.push({
+          sourceIdx,
+          targetIdx,
+          sourceName: phase.name,
+          targetName,
+          description,
+          contextInfo,
+          isExecuted: isPhaseExecuted && executedTarget === targetName,
+          isGhost: !isPhaseExecuted,
+        });
+      });
+    });
+
+    return conns;
+  }, [phases, phaseResults, lastExecutedHandoffs, sessionId]);
+
+  // Calculate X position for a phase index, accounting for expanded phases
+  const getPhaseX = (idx) => {
+    let x = 0;
+    for (let i = 0; i < idx; i++) {
+      const phaseName = phases[i]?.name;
+      const isExp = expandedPhases?.has(phaseName);
+      x += (isExp ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH) + PHASE_COLUMN_GAP;
+    }
+    return x;
+  };
+
+  // Get width of a specific phase
+  const getPhaseWidth = (idx) => {
+    const phaseName = phases[idx]?.name;
+    return expandedPhases?.has(phaseName) ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH;
+  };
+
+  if (connections.length === 0) return null;
+
+  // Calculate SVG dimensions based on expanded states
+  let totalWidth = 0;
+  phases.forEach((phase) => {
+    const isExp = expandedPhases?.has(phase.name);
+    totalWidth += (isExp ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH) + PHASE_COLUMN_GAP;
+  });
+  const svgWidth = totalWidth;
+  const svgHeight = 300; // Enough height for curved paths
+
+  // Calculate path for a connection
+  const getPath = (sourceIdx, targetIdx) => {
+    const sourceX = getPhaseX(sourceIdx) + getPhaseWidth(sourceIdx);
+    const targetX = getPhaseX(targetIdx);
+    const y = PHASE_HEADER_HEIGHT + 40; // Middle of phase body
+
+    const distance = targetIdx - sourceIdx;
+
+    if (distance === 1) {
+      // Adjacent: simple horizontal line
+      return `M ${sourceX} ${y} L ${targetX} ${y}`;
+    } else if (distance > 1) {
+      // Forward skip: curve above
+      const midX = (sourceX + targetX) / 2;
+      const curveHeight = Math.min(30 + distance * 15, 80);
+      return `M ${sourceX} ${y} Q ${midX} ${y - curveHeight} ${targetX} ${y}`;
+    } else {
+      // Backward: curve below
+      const midX = (sourceX + targetX) / 2;
+      const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
+      return `M ${sourceX} ${y} Q ${midX} ${y + curveHeight} ${targetX} ${y}`;
+    }
+  };
+
+  // Calculate label position
+  const getLabelPos = (sourceIdx, targetIdx) => {
+    const sourceX = getPhaseX(sourceIdx) + getPhaseWidth(sourceIdx);
+    const targetX = getPhaseX(targetIdx);
+    const y = PHASE_HEADER_HEIGHT + 40;
+
+    const midX = (sourceX + targetX) / 2;
+    const distance = targetIdx - sourceIdx;
+
+    if (distance === 1) {
+      return { x: midX, y: y - 12 };
+    } else if (distance > 1) {
+      const curveHeight = Math.min(30 + distance * 15, 80);
+      return { x: midX, y: y - curveHeight - 8 };
+    } else {
+      const curveHeight = Math.min(30 + Math.abs(distance) * 15, 80);
+      return { x: midX, y: y + curveHeight + 14 };
+    }
+  };
+
+  return (
+    <svg
+      className="handoff-arrows-svg"
+      width={svgWidth}
+      height={svgHeight}
+      style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+    >
+      <defs>
+        {/* Arrow markers */}
+        <marker
+          id="arrow-ghost"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--storm-cloud)" />
+        </marker>
+        <marker
+          id="arrow-executed"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--teal-primary)" />
+        </marker>
+        <marker
+          id="arrow-potential"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--compass-brass)" />
+        </marker>
+      </defs>
+
+      {connections.map((conn, idx) => {
+        const path = getPath(conn.sourceIdx, conn.targetIdx);
+        const labelPos = getLabelPos(conn.sourceIdx, conn.targetIdx);
+        const label = conn.description || conn.contextInfo;
+
+        let strokeColor, markerEnd, strokeDasharray, opacity;
+        if (conn.isExecuted) {
+          strokeColor = 'var(--teal-primary)';
+          markerEnd = 'url(#arrow-executed)';
+          strokeDasharray = 'none';
+          opacity = 1;
+        } else if (conn.isGhost) {
+          strokeColor = 'var(--storm-cloud)';
+          markerEnd = 'url(#arrow-ghost)';
+          strokeDasharray = '6,4';
+          opacity = 0.6;
+        } else {
+          // Not executed but phase was run (alternative path)
+          strokeColor = 'var(--compass-brass)';
+          markerEnd = 'url(#arrow-potential)';
+          strokeDasharray = '4,4';
+          opacity = 0.4;
+        }
+
+        return (
+          <g key={`${conn.sourceName}-${conn.targetName}-${idx}`}>
+            <path
+              d={path}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={conn.isExecuted ? 2.5 : 2}
+              strokeDasharray={strokeDasharray}
+              opacity={opacity}
+              markerEnd={markerEnd}
+              className={conn.isExecuted ? 'handoff-path executed' : 'handoff-path'}
+            />
+            {label && (
+              <g transform={`translate(${labelPos.x}, ${labelPos.y})`}>
+                <rect
+                  x={-label.length * 3.5 - 6}
+                  y={-9}
+                  width={label.length * 7 + 12}
+                  height={18}
+                  rx={4}
+                  fill="var(--bg-card)"
+                  stroke={conn.isExecuted ? 'var(--teal-primary)' : 'var(--storm-cloud)'}
+                  strokeWidth={1}
+                  opacity={conn.isGhost ? 0.7 : 0.9}
+                />
+                <text
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="9"
+                  fontFamily="Monaco, Menlo, monospace"
+                  fill={conn.isExecuted ? 'var(--teal-primary)' : 'var(--mist-gray)'}
+                >
+                  {label.length > 20 ? label.slice(0, 20) + '...' : label}
+                </text>
+              </g>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
+ * GhostPhaseColumn - Preview of a phase before execution
+ *
+ * Shows a ghost representation of what this phase will look like when run.
+ * Includes ghost soundings lanes, handoff indicators, etc.
+ */
+function GhostPhaseColumn({ phase, index, allPhases, isLast }) {
+  const soundingsConfig = phase.soundings;
+  const hasSoundings = soundingsConfig?.factor > 1;
+  const soundingsCount = soundingsConfig?.factor || 1;
+  const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
+  const hasReforge = soundingsConfig?.reforge?.steps > 0;
+  const mode = soundingsConfig?.mode || 'evaluate';
+
+  return (
+    <div className="phase-column-wrapper ghost-wrapper">
+      {/* Main Ghost Phase Block */}
+      <div className={`phase-column ghost-phase ${hasSoundings ? 'has-soundings' : ''}`}>
+        {/* Connector to next phase (only if no handoffs - handoffs use SVG arrows) */}
+        {!isLast && !hasHandoffs && (
+          <div className="column-connector ghost-connector">
+            <div className="connector-line-h" />
+            <Icon icon="mdi:chevron-right" width="16" className="connector-arrow-h" />
+          </div>
+        )}
+
+        <div className="column-header">
+          <span className="column-number ghost-number">
+            {index + 1}
+            <span className="ghost-indicator">?</span>
+          </span>
+          <span className="column-name">{phase.name}</span>
+          {hasSoundings && (
+            <span className="soundings-badge ghost-badge" title={`${soundingsCount} soundings configured`}>
+              <Icon icon="mdi:source-branch" width="12" />
+              {soundingsCount}
+              {hasReforge && (
+                <Icon icon="mdi:hammer-wrench" width="10" className="reforge-icon" />
+              )}
+            </span>
+          )}
+          <Icon icon="mdi:eye-outline" width="14" className="ghost-eye" title="Preview - not yet executed" />
+        </div>
+
+        <div className="column-body ghost-body">
+          <div className="ghost-preview-content">
+            <Icon icon="mdi:ghost-outline" width="20" className="ghost-icon" />
+            <span className="ghost-label">Preview</span>
+          </div>
+          {phase.model && (
+            <div className="ghost-model" title={phase.model}>
+              <Icon icon="mdi:brain" width="10" />
+              {phase.model.split('/').pop()}
+            </div>
+          )}
+          {phase.instructions && (
+            <div className="ghost-instructions" title={phase.instructions}>
+              <Icon icon="mdi:text" width="10" />
+              <span>{phase.instructions.slice(0, 60)}{phase.instructions.length > 60 ? '...' : ''}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Tackle preview */}
+        {phase.tackle && phase.tackle.length > 0 && (
+          <div className="ghost-tackle">
+            <Icon icon="mdi:wrench" width="10" />
+            <span>{phase.tackle.length} tool{phase.tackle.length !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Ghost Soundings Preview */}
+      {hasSoundings && (
+        <div className="soundings-depth ghost-soundings-depth">
+          <div className="depth-line ghost-depth-line" />
+          <div className="ghost-blocks">
+            {Array.from({ length: soundingsCount }).map((_, i) => (
+              <div
+                key={i}
+                className="ghost-block ghost-preview-block"
+                style={{ '--depth': i, '--total': soundingsCount }}
+                title={`Sounding ${i + 1} (preview)`}
+              >
+                <div className="ghost-header">
+                  <span className="ghost-index">S{i}</span>
+                </div>
+                <div className="ghost-body">
+                  <Icon icon="mdi:help" width="12" className="ghost-question" />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Mode indicator */}
+          <div className="ghost-mode-indicator">
+            {mode === 'evaluate' ? (
+              <>
+                <Icon icon="mdi:trophy-outline" width="12" />
+                <span>Pick best</span>
+              </>
+            ) : (
+              <>
+                <Icon icon="mdi:merge" width="12" />
+                <span>Combine all</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Handoffs indicator - arrows are shown via SVG overlay */}
+      {hasHandoffs && (
+        <div className="ghost-handoffs-indicator">
+          <Icon icon="mdi:arrow-decision" width="12" />
+          <span>{phase.handoffs.length} route{phase.handoffs.length !== 1 ? 's' : ''}</span>
         </div>
       )}
     </div>

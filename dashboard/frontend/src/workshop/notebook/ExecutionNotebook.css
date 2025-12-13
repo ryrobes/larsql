@@ -176,9 +176,10 @@
 .timeline-track {
   display: flex;
   align-items: flex-start;
-  gap: 32px;
+  gap: 80px; /* Increased for handoff arrows */
   min-height: 100%;
   padding-bottom: 24px;
+  position: relative; /* For SVG overlay positioning */
 }
 
 /* ============================================
@@ -187,13 +188,14 @@
 
 .phase-column {
   flex-shrink: 0;
-  width: 200px;
+  width: 220px;
   background: var(--bg-card);
   border: 2px solid var(--storm-cloud);
   border-radius: 8px;
   overflow: hidden;
   position: relative;
   transition: all 0.15s ease;
+  z-index: 1; /* Above SVG arrows */
 }
 
 .phase-column.status-pending {
@@ -227,17 +229,18 @@
 }
 
 /* Column connector - positioned between phase-column-wrappers */
+/* Only shown for adjacent phases without handoffs */
 .column-connector {
   position: absolute;
-  right: -32px;
+  right: -56px; /* Center in the 80px gap */
   top: 40px; /* Align with header */
   display: flex;
   align-items: center;
-  z-index: 1;
+  z-index: 2;
 }
 
 .connector-line-h {
-  width: 24px;
+  width: 48px;
   height: 2px;
   background: linear-gradient(to right, var(--ocean-secondary), var(--ocean-primary));
 }
@@ -874,4 +877,280 @@
 @keyframes glow-breathe {
   0%, 100% { opacity: 0.6; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* ============================================
+   GHOST PHASE COLUMN - Preview before execution
+   Shows what the timeline will look like
+   ============================================ */
+
+.ghost-wrapper {
+  position: relative;
+}
+
+.phase-column.ghost-phase {
+  opacity: 0.7;
+  border: 2px dashed var(--storm-cloud);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--bg-card),
+    var(--bg-card) 10px,
+    rgba(44, 59, 75, 0.5) 10px,
+    rgba(44, 59, 75, 0.5) 20px
+  );
+  position: relative;
+}
+
+.phase-column.ghost-phase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(74, 158, 221, 0.05) 0%,
+    transparent 50%,
+    rgba(74, 158, 221, 0.05) 100%
+  );
+  animation: ghost-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes ghost-shimmer {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.phase-column.ghost-phase .column-header {
+  background: rgba(44, 59, 75, 0.6);
+}
+
+.ghost-number {
+  position: relative;
+}
+
+.ghost-indicator {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ocean-secondary);
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: bold;
+  color: var(--midnight-fjord);
+}
+
+.ghost-eye {
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+.ghost-badge {
+  opacity: 0.7;
+  border: 1px dashed var(--slate-blue);
+  background: transparent;
+}
+
+.ghost-badge .reforge-icon {
+  margin-left: 2px;
+  color: var(--compass-brass);
+  opacity: 0.7;
+}
+
+/* Ghost connector */
+.ghost-connector .connector-line-h {
+  width: 48px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--storm-cloud) 0px,
+    var(--storm-cloud) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.ghost-connector .connector-arrow-h {
+  color: var(--storm-cloud);
+}
+
+.ghost-connector {
+  right: -56px;
+}
+
+/* Ghost body content */
+.phase-column.ghost-phase .column-body.ghost-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ghost-preview-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--mist-gray);
+}
+
+.ghost-icon {
+  opacity: 0.5;
+  animation: ghost-float 3s ease-in-out infinite;
+}
+
+@keyframes ghost-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.ghost-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.ghost-model {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  color: var(--slate-blue-light);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-instructions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border-left: 2px solid var(--ocean-secondary);
+  font-size: 10px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+.ghost-instructions span {
+  flex: 1;
+  word-break: break-word;
+}
+
+.ghost-instructions svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+/* Ghost tackle indicator */
+.ghost-tackle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-top: 1px dashed var(--storm-cloud);
+  font-size: 10px;
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+/* Ghost soundings depth - preview version */
+.ghost-soundings-depth {
+  opacity: 0.6;
+}
+
+.ghost-depth-line {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--storm-cloud) 0px,
+    var(--storm-cloud) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.ghost-preview-block {
+  background: rgba(30, 41, 59, 0.4) !important;
+  border-color: var(--storm-cloud) !important;
+}
+
+.ghost-preview-block .ghost-header {
+  opacity: 0.6;
+}
+
+.ghost-preview-block .ghost-question {
+  color: var(--mist-gray);
+  opacity: 0.5;
+}
+
+/* Ghost mode indicator */
+.ghost-mode-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+/* Ghost handoffs indicator - small badge showing route count */
+.ghost-handoffs-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(217, 165, 83, 0.1);
+  border: 1px dashed var(--compass-brass);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--compass-brass);
+  opacity: 0.7;
+}
+
+/* ============================================
+   HANDOFF ARROWS SVG
+   ============================================ */
+
+.handoff-arrows-svg {
+  z-index: 0;
+  overflow: visible;
+}
+
+.handoff-path {
+  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+}
+
+.handoff-path.executed {
+  filter: drop-shadow(0 0 4px var(--teal-primary));
+}
+
+/* Animation for executed paths */
+@keyframes path-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
 }
