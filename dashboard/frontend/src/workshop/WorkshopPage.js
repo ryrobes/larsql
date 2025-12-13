@@ -1,8 +1,9 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from './stores/workshopStore';
 import BlockEditor from './editor/BlockEditor';
+import MonacoYamlEditor from './editor/MonacoYamlEditor';
 import ExecutionNotebook from './notebook/ExecutionNotebook';
 import InputDialog from './components/InputDialog';
 import './WorkshopPage.css';
@@ -21,16 +22,27 @@ function WorkshopPage() {
   const {
     cascade,
     isDirty,
-    yamlPanelOpen,
+    editorMode,
+    setEditorMode,
+    yamlContent,
+    setYamlContent,
+    syncToYaml,
+    syncFromYaml,
     executionStatus,
     sessionId,
     loadFromYaml,
     exportToYaml,
     resetCascade,
-    toggleYamlPanel,
     runCascade,
     clearExecution,
   } = useWorkshopStore();
+
+  // Keep YAML content in sync when in visual mode
+  useEffect(() => {
+    if (editorMode === 'visual') {
+      syncToYaml();
+    }
+  }, [cascade, editorMode, syncToYaml]);
 
   // File operations
   const handleNew = useCallback(() => {
@@ -96,6 +108,29 @@ function WorkshopPage() {
     }
   }, [runCascade]);
 
+  // Handle mode switch between Visual and YAML editor
+  const handleModeSwitch = useCallback((newMode) => {
+    if (newMode === editorMode) return;
+
+    if (newMode === 'yaml') {
+      // Switching TO yaml mode - sync current state to YAML
+      syncToYaml();
+    } else {
+      // Switching TO visual mode - parse YAML and update state
+      const result = syncFromYaml();
+      if (!result.success) {
+        alert(`YAML has errors:\n${result.error}\n\nFix the YAML before switching to Visual mode.`);
+        return;
+      }
+    }
+    setEditorMode(newMode);
+  }, [editorMode, syncToYaml, syncFromYaml, setEditorMode]);
+
+  // Handle YAML changes in Monaco editor
+  const handleYamlChange = useCallback((newYaml) => {
+    setYamlContent(newYaml);
+  }, [setYamlContent]);
+
   return (
     <div className="workshop-page">
       {/* Hidden file input for open */}
@@ -129,14 +164,27 @@ function WorkshopPage() {
             <span>Save</span>
           </button>
           <div className="toolbar-divider" />
-          <button
-            className={`toolbar-btn ${yamlPanelOpen ? 'active' : ''}`}
-            onClick={toggleYamlPanel}
-            title="Toggle YAML Preview"
-          >
-            <Icon icon="mdi:code-braces" width="18" />
-            <span>YAML</span>
-          </button>
+
+          {/* Editor Mode Toggle */}
+          <div className="editor-mode-toggle">
+            <button
+              className={`mode-btn ${editorMode === 'visual' ? 'active' : ''}`}
+              onClick={() => handleModeSwitch('visual')}
+              title="Visual Editor"
+            >
+              <Icon icon="mdi:puzzle" width="16" />
+              <span>Visual</span>
+            </button>
+            <button
+              className={`mode-btn ${editorMode === 'yaml' ? 'active' : ''}`}
+              onClick={() => handleModeSwitch('yaml')}
+              title="YAML Editor"
+            >
+              <Icon icon="mdi:code-braces" width="16" />
+              <span>YAML</span>
+            </button>
+          </div>
+
           <button className="toolbar-btn" onClick={handleCopyYaml} title="Copy YAML">
             <Icon icon="mdi:content-copy" width="18" />
           </button>
@@ -152,7 +200,7 @@ function WorkshopPage() {
             <button
               className="toolbar-btn primary"
               onClick={handleRun}
-              disabled={cascade.phases.length === 0}
+              disabled={!cascade.phases || cascade.phases.length === 0}
               title="Run Cascade"
             >
               <Icon icon="mdi:play" width="18" />
@@ -178,9 +226,16 @@ function WorkshopPage() {
         gutterAlign="center"
         direction="horizontal"
       >
-        {/* Left Pane: Block Editor */}
+        {/* Left Pane: Block Editor or YAML Editor */}
         <div className="workshop-pane editor-pane">
-          <BlockEditor />
+          {editorMode === 'visual' ? (
+            <BlockEditor />
+          ) : (
+            <MonacoYamlEditor
+              value={yamlContent}
+              onChange={handleYamlChange}
+            />
+          )}
         </div>
 
         {/* Right Pane: Execution Notebook */}

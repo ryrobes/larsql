@@ -227,7 +227,32 @@ const useWorkshopStore = create(
       return state.expandedDrawers[phaseIndex]?.includes(drawerName) || false;
     },
 
-    // YAML panel visibility
+    // Editor mode: 'visual' or 'yaml'
+    editorMode: 'visual',
+    setEditorMode: (mode) => set((state) => {
+      state.editorMode = mode;
+    }),
+
+    // YAML content for Monaco (synced with cascade state)
+    yamlContent: '',
+    setYamlContent: (content) => set((state) => {
+      state.yamlContent = content;
+    }),
+
+    // Sync visual state TO yaml content
+    syncToYaml: () => set((state) => {
+      const yamlStr = get().exportToYaml();
+      state.yamlContent = yamlStr;
+    }),
+
+    // Sync yaml content TO visual state (returns error if invalid)
+    syncFromYaml: () => {
+      const state = get();
+      const result = state.loadFromYaml(state.yamlContent);
+      return result;
+    },
+
+    // YAML panel visibility (legacy - keeping for now)
     yamlPanelOpen: false,
     toggleYamlPanel: () => set((state) => {
       state.yamlPanelOpen = !state.yamlPanelOpen;
@@ -670,17 +695,27 @@ const useWorkshopStore = create(
 // YAML NORMALIZATION HELPERS
 // ============================================
 
-function normalizeFromYaml(obj) {
+function normalizeFromYaml(obj, isRoot = true) {
   if (Array.isArray(obj)) {
-    return obj.map(normalizeFromYaml);
+    return obj.map((item) => normalizeFromYaml(item, false));
   }
   if (obj && typeof obj === 'object') {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       // Handle 'from' in context (reserved word in Python/Pydantic)
       // In YAML it's 'from', in our state we keep it as 'from' too
-      result[key] = normalizeFromYaml(value);
+      result[key] = normalizeFromYaml(value, false);
     }
+
+    // Ensure root cascade object has required fields with defaults
+    if (isRoot) {
+      result.cascade_id = result.cascade_id || 'new_cascade';
+      result.description = result.description || '';
+      result.phases = result.phases || [];
+      result.inputs_schema = result.inputs_schema || {};
+      result.validators = result.validators || {};
+    }
+
     return result;
   }
   return obj;

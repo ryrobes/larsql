@@ -15,6 +15,7 @@ function ModelSelect({ value, onChange, placeholder = 'Select model...', allowCl
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
+  const [defaultModel, setDefaultModel] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
@@ -28,6 +29,7 @@ function ModelSelect({ value, onChange, placeholder = 'Select model...', allowCl
         if (response.ok) {
           const data = await response.json();
           setAvailableModels(data.models || []);
+          setDefaultModel(data.default_model || '');
         }
       } catch (error) {
         // Fallback to common models if API fails
@@ -42,6 +44,7 @@ function ModelSelect({ value, onChange, placeholder = 'Select model...', allowCl
           { id: 'meta-llama/llama-3.3-70b-instruct', provider: 'meta', tier: 'open' },
           { id: 'deepseek/deepseek-chat', provider: 'deepseek', tier: 'fast' },
         ]);
+        setDefaultModel('google/gemini-2.5-flash-lite');
       } finally {
         setLoading(false);
       }
@@ -49,6 +52,11 @@ function ModelSelect({ value, onChange, placeholder = 'Select model...', allowCl
 
     fetchModels();
   }, []);
+
+  // Generate placeholder with default model name
+  const displayPlaceholder = defaultModel
+    ? `Use default (${defaultModel.split('/').pop()})`
+    : placeholder;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -133,12 +141,12 @@ function ModelSelect({ value, onChange, placeholder = 'Select model...', allowCl
             className="select-input"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder={value || placeholder}
+            placeholder={value || displayPlaceholder}
             autoFocus
           />
         ) : (
           <span className={`select-value ${value ? '' : 'placeholder'}`}>
-            {value || placeholder}
+            {value || displayPlaceholder}
           </span>
         )}
 

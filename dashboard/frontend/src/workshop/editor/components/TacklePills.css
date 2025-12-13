@@ -146,6 +146,21 @@
   color: var(--compass-brass);
 }
 
+/* Memory - Memory bank recall tools */
+.tool-pill.memory {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.1) 100%);
+  border: 1px solid #a855f7;
+  color: #a855f7;
+}
+
+.tool-pill.memory:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(168, 85, 247, 0.15) 100%);
+}
+
+.tool-pill.memory .pill-name {
+  font-weight: 600;
+}
+
 /* Default */
 .tool-pill.default {
   border-left: 3px solid var(--mist-gray);

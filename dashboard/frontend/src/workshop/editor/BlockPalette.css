@@ -383,7 +383,10 @@
 .tools-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  padding: 0 8px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .tools-loading,
@@ -485,6 +488,18 @@
   color: var(--compass-brass);
 }
 
+.palette-tool.tool-purple {
+  border-left: 3px solid #a855f7;
+}
+
+.palette-tool.tool-purple:hover {
+  color: #a855f7;
+}
+
+.palette-tool.tool-purple .tool-icon {
+  color: #a855f7;
+}
+
 /* Manifest special styling */
 .palette-tool.manifest {
   background: linear-gradient(135deg, rgba(217, 165, 83, 0.15) 0%, var(--midnight-fjord) 100%);
@@ -502,9 +517,34 @@
   color: var(--compass-brass);
 }
 
-.manifest-star {
-  color: var(--compass-brass);
+/* Memory special styling */
+.palette-tool.memory {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, var(--midnight-fjord) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-left: 3px solid #a855f7;
+}
+
+.palette-tool.memory:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, var(--storm-cloud) 100%);
+  border-color: #a855f7;
+}
+
+.palette-tool.memory .tool-name {
+  font-weight: 600;
+  color: #a855f7;
+}
+
+/* Special badge animation (manifest & memory) */
+.special-badge {
   animation: sparkle 2s ease-in-out infinite;
+}
+
+.palette-tool.manifest .special-badge {
+  color: var(--compass-brass);
+}
+
+.palette-tool.memory .special-badge {
+  color: #a855f7;
 }
 
 @keyframes sparkle {

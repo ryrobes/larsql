@@ -48,6 +48,7 @@ function DraggableToolBlock({ tool }) {
 
   const getToolIcon = (type, name) => {
     if (name === 'manifest') return 'mdi:auto-fix';
+    if (name === 'memory') return 'mdi:brain';
     const icons = {
       python: 'mdi:language-python',
       cascade: 'mdi:sitemap',
@@ -58,6 +59,7 @@ function DraggableToolBlock({ tool }) {
 
   const getToolColor = (type, name) => {
     if (name === 'manifest') return 'brass';
+    if (name === 'memory') return 'purple';
     const colors = {
       python: 'teal',
       cascade: 'ocean',
@@ -66,17 +68,20 @@ function DraggableToolBlock({ tool }) {
     return colors[type] || 'gray';
   };
 
+  const isSpecial = tool.name === 'manifest' || tool.name === 'memory';
+
   return (
     <div
       ref={setNodeRef}
-      className={`palette-tool tool-${getToolColor(tool.type, tool.name)} ${isDragging ? 'dragging' : ''} ${tool.name === 'manifest' ? 'manifest' : ''}`}
+      className={`palette-tool tool-${getToolColor(tool.type, tool.name)} ${isDragging ? 'dragging' : ''} ${tool.name === 'manifest' ? 'manifest' : ''} ${tool.name === 'memory' ? 'memory' : ''}`}
       title={tool.description || tool.name}
       {...attributes}
       {...listeners}
     >
       <Icon icon={getToolIcon(tool.type, tool.name)} width="14" className="tool-icon" />
       <span className="tool-name">{tool.name}</span>
-      {tool.name === 'manifest' && <Icon icon="mdi:auto-fix" width="10" className="manifest-star" />}
+      {tool.name === 'manifest' && <Icon icon="mdi:auto-fix" width="10" className="special-badge" />}
+      {tool.name === 'memory' && <Icon icon="mdi:database-search" width="10" className="special-badge" />}
     </div>
   );
 }
@@ -217,15 +222,16 @@ function BlockPalette() {
     const otherTools = tools.filter(t => t.name !== 'manifest');
 
     if (!toolSearch.trim()) {
-      // Show manifest + first 10 tools when not searching
-      return manifest ? [manifest, ...otherTools.slice(0, 10)] : otherTools.slice(0, 10);
+      // Show all tools - manifest first, then alphabetically
+      const sorted = [...otherTools].sort((a, b) => a.name.localeCompare(b.name));
+      return manifest ? [manifest, ...sorted] : sorted;
     }
     const search = toolSearch.toLowerCase();
     const filtered = otherTools.filter(t =>
       t.name.toLowerCase().includes(search) ||
       (t.description && t.description.toLowerCase().includes(search))
-    ).slice(0, 15);
-    // Always include manifest if it matches or search is empty
+    );
+    // Always include manifest if it matches
     if (manifest && (manifest.name.includes(search) || manifest.description?.toLowerCase().includes(search))) {
       return [manifest, ...filtered];
     }
@@ -367,12 +373,6 @@ function BlockPalette() {
                 )}
               </div>
 
-              {!toolSearch && tools.length > 10 && (
-                <div className="tools-hint">
-                  <Icon icon="mdi:lightbulb-on-outline" width="12" />
-                  <span>Search to see all {tools.length} tools</span>
-                </div>
-              )}
             </div>
           )}
         </div>

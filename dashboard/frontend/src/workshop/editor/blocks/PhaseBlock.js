@@ -243,6 +243,15 @@ function ExecutionDrawer({ phase, index }) {
 
   return (
     <div className="drawer-content execution-drawer">
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          <strong>Tackle</strong> are tools the LLM can use during this phase.
+          Drag from the palette or type <code>manifest</code> for auto-selection.
+          Override the <strong>model</strong> for specialized tasks.
+        </p>
+      </div>
+
       <div className="drawer-field">
         <label>
           <Icon icon="mdi:wrench" width="14" />
@@ -289,40 +298,88 @@ function SoundingsDrawer({ phase, index }) {
     updatePhaseField(index, `soundings.${field}`, value);
   };
 
+  const factor = soundings.factor || 3;
+  const mode = soundings.mode || 'evaluate';
+
   return (
     <div className="drawer-content soundings-drawer">
-      <div className="drawer-field">
-        <label>Factor (parallel attempts)</label>
-        <input
-          type="number"
-          min="1"
-          max="20"
-          value={soundings.factor || 1}
-          onChange={(e) => handleChange('factor', parseInt(e.target.value) || 1)}
-        />
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          Run multiple parallel attempts of this phase.
+          An evaluator picks the best result or combines all outputs.
+        </p>
       </div>
 
+      {/* Factor Slider */}
+      <div className="drawer-field slider-field">
+        <label>
+          <span>Parallel Attempts</span>
+          <span className="slider-value">{factor}×</span>
+        </label>
+        <input
+          type="range"
+          min="2"
+          max="12"
+          value={factor}
+          onChange={(e) => handleChange('factor', parseInt(e.target.value))}
+          className="slider"
+        />
+        <div className="slider-labels">
+          <span>2</span>
+          <span>6</span>
+          <span>12</span>
+        </div>
+      </div>
+
+      {/* Mode Toggle */}
       <div className="drawer-field">
         <label>Mode</label>
-        <select
-          value={soundings.mode || 'evaluate'}
-          onChange={(e) => handleChange('mode', e.target.value)}
-        >
-          <option value="evaluate">Evaluate (pick best)</option>
-          <option value="aggregate">Aggregate (combine all)</option>
-        </select>
+        <div className="mode-toggle">
+          <button
+            className={`mode-option ${mode === 'evaluate' ? 'active' : ''}`}
+            onClick={() => handleChange('mode', 'evaluate')}
+          >
+            <Icon icon="mdi:trophy" width="16" />
+            <span>Pick Best</span>
+          </button>
+          <button
+            className={`mode-option ${mode === 'aggregate' ? 'active' : ''}`}
+            onClick={() => handleChange('mode', 'aggregate')}
+          >
+            <Icon icon="mdi:merge" width="16" />
+            <span>Combine All</span>
+          </button>
+        </div>
       </div>
 
-      <div className="drawer-field">
-        <label>Evaluator Instructions</label>
-        <textarea
-          value={soundings.evaluator_instructions || ''}
-          onChange={(e) => handleChange('evaluator_instructions', e.target.value)}
-          placeholder="Instructions for the evaluator to pick the best sounding..."
-          rows={3}
-        />
-      </div>
+      {/* Evaluator Instructions - only show for evaluate mode */}
+      {mode === 'evaluate' && (
+        <div className="drawer-field">
+          <label>Evaluator Instructions</label>
+          <textarea
+            value={soundings.evaluator_instructions || ''}
+            onChange={(e) => handleChange('evaluator_instructions', e.target.value)}
+            placeholder="Optional: How should the evaluator pick the best result?"
+            rows={2}
+          />
+        </div>
+      )}
 
+      {/* Aggregator Instructions - only show for aggregate mode */}
+      {mode === 'aggregate' && (
+        <div className="drawer-field">
+          <label>Aggregator Instructions</label>
+          <textarea
+            value={soundings.aggregator_instructions || ''}
+            onChange={(e) => handleChange('aggregator_instructions', e.target.value)}
+            placeholder="Optional: How should results be combined?"
+            rows={2}
+          />
+        </div>
+      )}
+
+      {/* Mutations toggle */}
       <div className="drawer-field checkbox">
         <label>
           <input
@@ -330,17 +387,9 @@ function SoundingsDrawer({ phase, index }) {
             checked={soundings.mutate !== false}
             onChange={(e) => handleChange('mutate', e.target.checked)}
           />
-          <span>Enable prompt mutations</span>
+          <span>Vary prompts between attempts</span>
         </label>
-      </div>
-
-      {/* Reforge section placeholder - will be expanded in Phase 4 */}
-      <div className="drawer-subsection">
-        <span className="subsection-label">
-          <Icon icon="mdi:hammer-wrench" width="14" />
-          Reforge (iterative refinement)
-        </span>
-        <span className="coming-soon">Configure in Phase 4</span>
+        <span className="field-hint">Adds slight variations to increase diversity</span>
       </div>
     </div>
   );
@@ -358,21 +407,43 @@ function RulesDrawer({ phase, index }) {
     updatePhaseField(index, `rules.${field}`, value);
   };
 
+  const maxTurns = rules.max_turns || 0;
+  const hasMaxTurns = maxTurns > 0;
+
   return (
     <div className="drawer-content rules-drawer">
-      <div className="drawer-field">
-        <label>Max Turns</label>
-        <input
-          type="number"
-          min="1"
-          max="50"
-          value={rules.max_turns || ''}
-          onChange={(e) => handleChange('max_turns', parseInt(e.target.value) || undefined)}
-          placeholder="No limit"
-        />
-        <span className="field-hint">Maximum conversation turns in this phase</span>
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          Constrain phase execution with turn limits or retry validators.
+        </p>
       </div>
 
+      {/* Max Turns Slider */}
+      <div className="drawer-field slider-field">
+        <label>
+          <span>Max Turns</span>
+          <span className="slider-value">{hasMaxTurns ? maxTurns : '1'}</span>
+        </label>
+        <input
+          type="range"
+          min="0"
+          max="20"
+          value={maxTurns}
+          onChange={(e) => {
+            const val = parseInt(e.target.value);
+            handleChange('max_turns', val === 0 ? undefined : val);
+          }}
+          className="slider"
+        />
+        <div className="slider-labels">
+          <span>Default (1)</span>
+          <span>10</span>
+          <span>20</span>
+        </div>
+      </div>
+
+      {/* Loop Until */}
       <div className="drawer-field">
         <label>Loop Until (validator)</label>
         <input
@@ -385,16 +456,19 @@ function RulesDrawer({ phase, index }) {
         <span className="field-hint">Retry until this validator passes</span>
       </div>
 
-      <div className="drawer-field checkbox">
-        <label>
-          <input
-            type="checkbox"
-            checked={rules.loop_until_silent || false}
-            onChange={(e) => handleChange('loop_until_silent', e.target.checked)}
-          />
-          <span>Silent loop (don't show validator to LLM)</span>
-        </label>
-      </div>
+      {rules.loop_until && (
+        <div className="drawer-field checkbox">
+          <label>
+            <input
+              type="checkbox"
+              checked={rules.loop_until_silent || false}
+              onChange={(e) => handleChange('loop_until_silent', e.target.checked)}
+            />
+            <span>Silent loop</span>
+          </label>
+          <span className="field-hint">Don't show validator feedback to LLM</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -488,19 +562,27 @@ function ValidationDrawer({ phase, index }) {
               ))}
             </select>
 
-            <select
-              value={ward.mode || 'blocking'}
-              onChange={(e) => {
-                const newWards = [...wardList];
-                newWards[wardIndex] = { ...ward, mode: e.target.value };
-                updatePhaseField(index, `wards.${wardType}`, newWards);
-              }}
-              className="ward-mode"
-            >
-              <option value="blocking">Blocking</option>
-              <option value="retry">Retry</option>
-              <option value="advisory">Advisory</option>
-            </select>
+            <div className="ward-mode-toggle">
+              {[
+                { value: 'blocking', icon: 'mdi:hand-back-left', label: 'Block' },
+                { value: 'retry', icon: 'mdi:refresh', label: 'Retry' },
+                { value: 'advisory', icon: 'mdi:information-outline', label: 'Warn' },
+              ].map(({ value, icon, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`ward-mode-btn ${(ward.mode || 'blocking') === value ? 'active' : ''}`}
+                  onClick={() => {
+                    const newWards = [...wardList];
+                    newWards[wardIndex] = { ...ward, mode: value };
+                    updatePhaseField(index, `wards.${wardType}`, newWards);
+                  }}
+                  title={label}
+                >
+                  <Icon icon={icon} width="14" />
+                </button>
+              ))}
+            </div>
 
             <button
               className="ward-remove"
@@ -527,6 +609,15 @@ function ValidationDrawer({ phase, index }) {
 
   return (
     <div className="drawer-content validation-drawer">
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          <strong>Wards</strong> are validation checkpoints.
+          <strong>Pre</strong> runs before the phase, <strong>post</strong> after completion, <strong>turn</strong> after each LLM response.
+          Modes: <code>blocking</code> (halt), <code>retry</code> (try again), <code>advisory</code> (warn only).
+        </p>
+      </div>
+
       {validatorNames.length === 0 && (
         <div className="validation-hint">
           <Icon icon="mdi:information" width="16" />

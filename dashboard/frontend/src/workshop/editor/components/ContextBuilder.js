@@ -157,6 +157,15 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
 
   return (
     <div className="context-builder">
+      {/* Intro */}
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          <strong>Context</strong> controls what information flows into this phase from prior phases.
+          By default phases start clean. Use <strong>previous</strong> for linear chains or <strong>custom</strong> for fine-grained control.
+        </p>
+      </div>
+
       {/* Quick Presets */}
       <div className="context-presets">
         <button

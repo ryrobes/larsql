@@ -3629,12 +3629,23 @@ def get_available_tools():
                     except:
                         pass
 
+        # Add special tools that are dynamically generated
+        special_tools = [
+            {
+                'name': 'memory',
+                'description': 'Recall from memory bank (requires memory config on cascade)',
+                'type': 'special'
+            },
+        ]
+        tools.extend(special_tools)
+
         return jsonify({'tools': tools})
 
     except Exception as e:
         # Fallback to common tools if windlass import fails
         fallback_tools = [
             {'name': 'manifest', 'description': 'Auto-select tools based on context (Quartermaster)', 'type': 'special'},
+            {'name': 'memory', 'description': 'Recall from memory bank (requires memory config on cascade)', 'type': 'special'},
             {'name': 'linux_shell', 'description': 'Execute shell commands', 'type': 'python'},
             {'name': 'run_code', 'description': 'Execute Python code', 'type': 'python'},
             {'name': 'smart_sql_run', 'description': 'Execute SQL queries', 'type': 'python'},
@@ -3731,7 +3742,10 @@ def get_available_models():
         # Sort by popularity first, then by name
         models.sort(key=lambda m: (not m['popular'], m['id']))
 
-        result = {'models': models}
+        # Get default model from environment
+        default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+
+        result = {'models': models, 'default_model': default_model}
 
         # Cache the results
         try:
@@ -3758,7 +3772,8 @@ def get_available_models():
             {'id': 'meta-llama/llama-3.3-70b-instruct', 'name': 'Llama 3.3 70B', 'provider': 'meta-llama', 'tier': 'open', 'popular': True},
             {'id': 'deepseek/deepseek-chat', 'name': 'DeepSeek Chat', 'provider': 'deepseek', 'tier': 'fast', 'popular': True},
         ]
-        return jsonify({'models': fallback_models, 'error': str(e), 'cached': False})
+        default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+        return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'cached': False})
 
 
 def log_connection_stats():

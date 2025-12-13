@@ -32,46 +32,49 @@ function YamlPanel() {
   };
 
   // Basic syntax highlighting
+  // Order matters! Process in sequence to avoid regex conflicts
   const highlightedLines = useMemo(() => {
     return yamlContent.split('\n').map((line, idx) => {
-      let highlighted = line;
-
-      // Comments
+      // Comments - escape and return early
       if (line.trim().startsWith('#')) {
         return { num: idx + 1, html: `<span class="yaml-comment">${escapeHtml(line)}</span>` };
       }
 
-      // Key-value pairs
-      highlighted = line.replace(
-        /^(\s*)([a-zA-Z_][a-zA-Z0-9_]*):/,
-        '$1<span class="yaml-key">$2</span>:'
-      );
+      // Escape HTML first for safety
+      let escaped = escapeHtml(line);
 
-      // Strings in quotes
-      highlighted = highlighted.replace(
-        /"([^"]+)"/g,
-        '<span class="yaml-string">"$1"</span>'
-      );
-
-      // Numbers
-      highlighted = highlighted.replace(
-        /:\s*(\d+)(\s*)$/,
-        ': <span class="yaml-number">$1</span>$2'
-      );
-
-      // Booleans
-      highlighted = highlighted.replace(
-        /:\s*(true|false)(\s*)$/i,
-        ': <span class="yaml-boolean">$1</span>$2'
-      );
-
-      // List items
-      highlighted = highlighted.replace(
+      // List items (dash)
+      escaped = escaped.replace(
         /^(\s*)-\s/,
         '$1<span class="yaml-dash">-</span> '
       );
 
-      return { num: idx + 1, html: highlighted };
+      // Key-value pairs - use placeholder to avoid conflicts
+      escaped = escaped.replace(
+        /^(\s*)([a-zA-Z_][a-zA-Z0-9_]*):/,
+        '$1<span class="yaml-key">$2</span>:'
+      );
+
+      // Strings in quotes (only match actual YAML string values, not inside tags)
+      // Match quotes that appear after : or at start of value
+      escaped = escaped.replace(
+        /: (&quot;[^&]*&quot;)/g,
+        ': <span class="yaml-string">$1</span>'
+      );
+
+      // Numbers (at end of line after colon)
+      escaped = escaped.replace(
+        /: (\d+)(\s*)$/,
+        ': <span class="yaml-number">$1</span>$2'
+      );
+
+      // Booleans
+      escaped = escaped.replace(
+        /: (true|false)(\s*)$/i,
+        ': <span class="yaml-boolean">$1</span>$2'
+      );
+
+      return { num: idx + 1, html: escaped };
     });
   }, [yamlContent]);
 

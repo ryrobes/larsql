@@ -6,6 +6,43 @@
   gap: 12px;
 }
 
+/* Drawer intro - matches PhaseBlock.css */
+.context-builder .drawer-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: linear-gradient(135deg, rgba(74, 158, 221, 0.08) 0%, rgba(40, 196, 181, 0.05) 100%);
+  border: 1px solid rgba(74, 158, 221, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.context-builder .drawer-intro svg {
+  flex-shrink: 0;
+  color: var(--ocean-primary);
+  margin-top: 1px;
+}
+
+.context-builder .drawer-intro p {
+  margin: 0;
+}
+
+.context-builder .drawer-intro strong {
+  color: var(--text-primary);
+}
+
+.context-builder .drawer-intro code {
+  padding: 1px 4px;
+  background: var(--midnight-fjord);
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--ocean-teal);
+}
+
 /* ============================================
    PRESETS
    ============================================ */

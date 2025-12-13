@@ -134,6 +134,15 @@ function FlowBuilder({
 
   return (
     <div className="flow-builder">
+      {/* Intro */}
+      <div className="drawer-intro">
+        <Icon icon="mdi:information-outline" width="14" />
+        <p>
+          <strong>Flow</strong> determines where execution goes after this phase.
+          <strong>Terminal</strong> ends the cascade, <strong>linear</strong> auto-proceeds, <strong>branching</strong> lets the LLM choose via <code>route_to</code>.
+        </p>
+      </div>
+
       {/* Flow Mode Selector */}
       <div className="flow-mode-section">
         <div className="section-header">

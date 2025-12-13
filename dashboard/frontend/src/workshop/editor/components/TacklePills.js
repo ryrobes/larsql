@@ -29,8 +29,31 @@ function TacklePills({ value = [], onChange, phaseIndex }) {
     onChange(value.filter((t) => t !== toolName));
   };
 
+  // Known built-in tools for matching
+  const KNOWN_TOOLS = [
+    'manifest', 'linux_shell', 'run_code', 'smart_sql_run', 'take_screenshot',
+    'ask_human', 'ask_human_custom', 'set_state', 'spawn_cascade', 'create_chart',
+    'memory' // memory is special, actual tool names are bank names
+  ];
+
+  const isMemoryTool = (toolName) => {
+    // Memory tools are named after bank names - lowercase with underscores
+    // and don't match known tool patterns
+    if (KNOWN_TOOLS.includes(toolName)) return false;
+    if (toolName.includes('shell') || toolName.includes('code') ||
+        toolName.includes('sql') || toolName.includes('screenshot') ||
+        toolName.includes('human') || toolName.includes('ask') ||
+        toolName.includes('chart') || toolName.includes('state') ||
+        toolName.includes('cascade') || toolName.includes('rabbit')) {
+      return false;
+    }
+    // Likely a memory bank name
+    return /^[a-z][a-z0-9_]*$/.test(toolName);
+  };
+
   const getToolIcon = (toolName) => {
     if (toolName === 'manifest') return 'mdi:auto-fix';
+    if (isMemoryTool(toolName)) return 'mdi:brain';
     // Could extend with more specific icons based on tool name
     if (toolName.includes('shell') || toolName.includes('linux')) return 'mdi:console';
     if (toolName.includes('python') || toolName.includes('code')) return 'mdi:language-python';
@@ -46,6 +69,7 @@ function TacklePills({ value = [], onChange, phaseIndex }) {
 
   const getToolColor = (toolName) => {
     if (toolName === 'manifest') return 'manifest';
+    if (isMemoryTool(toolName)) return 'memory';
     if (toolName.includes('shell') || toolName.includes('linux')) return 'teal';
     if (toolName.includes('python') || toolName.includes('code')) return 'teal';
     if (toolName.includes('sql')) return 'ocean';
@@ -72,7 +96,13 @@ function TacklePills({ value = [], onChange, phaseIndex }) {
             <div
               key={toolName}
               className={`tool-pill ${getToolColor(toolName)}`}
-              title={toolName === 'manifest' ? 'Quartermaster auto-selects tools based on context' : toolName}
+              title={
+                toolName === 'manifest'
+                  ? 'Quartermaster auto-selects tools based on context'
+                  : isMemoryTool(toolName)
+                  ? `Memory recall: "${toolName}" bank`
+                  : toolName
+              }
             >
               <Icon icon={getToolIcon(toolName)} width="14" />
               <span className="pill-name">{toolName}</span>

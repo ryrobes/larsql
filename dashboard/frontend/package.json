@@ -7,6 +7,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@iconify/react": "^6.0.2",
+    "@monaco-editor/react": "^4.7.0",
     "@types/dagre": "^0.7.53",
     "ag-grid-community": "^34.3.1",
     "ag-grid-react": "^34.3.1",

@@ -184,6 +184,49 @@
 }
 
 /* ============================================
+   EDITOR MODE TOGGLE
+   ============================================ */
+
+.editor-mode-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 2px;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-btn:hover:not(.active) {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  background: var(--ocean-primary);
+  color: var(--midnight-fjord);
+}
+
+.mode-btn svg {
+  flex-shrink: 0;
+}
+
+/* ============================================
    RESPONSIVE ADJUSTMENTS
    ============================================ */
 
@@ -194,6 +237,14 @@
 
   .toolbar-btn {
     padding: 8px;
+  }
+
+  .mode-btn span {
+    display: none;
+  }
+
+  .mode-btn {
+    padding: 5px 8px;
   }
 
   .workshop-title {

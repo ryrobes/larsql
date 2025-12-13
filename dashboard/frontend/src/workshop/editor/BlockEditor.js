@@ -210,6 +210,28 @@ function BlockEditor() {
         // Special handling for "manifest" - replaces all other tools
         if (toolName === 'manifest') {
           store.updatePhase(phaseIndex, { tackle: ['manifest'] });
+        }
+        // Special handling for "memory" - prompt for bank name
+        else if (toolName === 'memory') {
+          const bankName = window.prompt(
+            'Enter a name for this memory tool:\n\n' +
+            'This creates a tool that lets the agent query stored memories from\n' +
+            'this session. The name identifies which memory bank to recall from\n' +
+            '(e.g., "research_notes", "decisions", "context").\n\n' +
+            'Note: To enable memory storage, set the "memory" field in the\n' +
+            'Cascade Definition to match this name.',
+            'session_memory'
+          );
+          if (bankName && bankName.trim()) {
+            const sanitizedName = bankName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+            if (!currentTackle.includes(sanitizedName)) {
+              if (currentTackle.includes('manifest')) {
+                store.updatePhase(phaseIndex, { tackle: [sanitizedName] });
+              } else {
+                store.updatePhase(phaseIndex, { tackle: [...currentTackle, sanitizedName] });
+              }
+            }
+          }
         } else {
           // If manifest is already there, replace it with the new tool
           if (currentTackle.includes('manifest')) {

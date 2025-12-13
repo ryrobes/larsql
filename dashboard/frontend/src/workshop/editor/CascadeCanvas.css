@@ -25,10 +25,34 @@
   gap: 8px;
   padding: 10px 14px;
   background: var(--ocean-muted);
-  border-bottom: 1px solid var(--border-default);
   font-weight: 600;
   font-size: 14px;
   color: var(--ocean-primary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cascade-header-block.expanded .cascade-header-title {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.cascade-header-title:hover {
+  background: rgba(74, 158, 221, 0.2);
+}
+
+.cascade-header-title .expand-chevron {
+  color: var(--mist-gray);
+}
+
+.collapsed-summary {
+  margin-left: auto;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  background: var(--midnight-fjord);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .cascade-fields {
@@ -88,6 +112,12 @@
 .field-textarea {
   resize: vertical;
   min-height: 60px;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--mist-gray);
+  margin-top: 4px;
 }
 
 /* ============================================

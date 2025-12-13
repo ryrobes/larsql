@@ -15,6 +15,8 @@ import './CascadeCanvas.css';
  * - Phases rail (sortable list of phases)
  */
 function CascadeCanvas() {
+  const [isHeaderExpanded, setIsHeaderExpanded] = React.useState(false);
+
   const {
     cascade,
     updateCascadeHeader,
@@ -52,51 +54,67 @@ function CascadeCanvas() {
   return (
     <div className="cascade-canvas">
       {/* Cascade Header Block */}
-      <div className="cascade-header-block">
-        <div className="cascade-header-title">
+      <div className={`cascade-header-block ${isHeaderExpanded ? 'expanded' : 'collapsed'}`}>
+        <div
+          className="cascade-header-title"
+          onClick={() => setIsHeaderExpanded(!isHeaderExpanded)}
+        >
+          <Icon
+            icon={isHeaderExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+            width="16"
+            className="expand-chevron"
+          />
           <Icon icon="mdi:anchor" width="20" />
           <span>Cascade Definition</span>
+          {!isHeaderExpanded && (
+            <span className="collapsed-summary">{cascade.cascade_id}</span>
+          )}
         </div>
 
-        <div className="cascade-fields">
-          <div className="field-row">
-            <label className="field-label">
-              <span className="required">*</span>
-              cascade_id
-            </label>
-            <input
-              type="text"
-              className="field-input"
-              value={cascade.cascade_id}
-              onChange={handleIdChange}
-              placeholder="my_cascade_name"
-              spellCheck={false}
-            />
-          </div>
+        {isHeaderExpanded && (
+          <div className="cascade-fields">
+            <div className="field-row">
+              <label className="field-label">
+                <span className="required">*</span>
+                cascade_id
+              </label>
+              <input
+                type="text"
+                className="field-input"
+                value={cascade.cascade_id}
+                onChange={handleIdChange}
+                placeholder="my_cascade_name"
+                spellCheck={false}
+              />
+            </div>
 
-          <div className="field-row">
-            <label className="field-label">description</label>
-            <textarea
-              className="field-textarea"
-              value={cascade.description || ''}
-              onChange={(e) => updateCascadeHeader('description', e.target.value)}
-              placeholder="What does this cascade do?"
-              rows={2}
-            />
-          </div>
+            <div className="field-row">
+              <label className="field-label">description</label>
+              <textarea
+                className="field-textarea"
+                value={cascade.description || ''}
+                onChange={(e) => updateCascadeHeader('description', e.target.value)}
+                placeholder="What does this cascade do?"
+                rows={2}
+              />
+            </div>
 
-          <div className="field-row">
-            <label className="field-label">memory</label>
-            <input
-              type="text"
-              className="field-input"
-              value={cascade.memory || ''}
-              onChange={(e) => updateCascadeHeader('memory', e.target.value)}
-              placeholder="Memory bank name (optional)"
-              spellCheck={false}
-            />
+            <div className="field-row">
+              <label className="field-label">memory</label>
+              <input
+                type="text"
+                className="field-input"
+                value={cascade.memory || ''}
+                onChange={(e) => updateCascadeHeader('memory', e.target.value)}
+                placeholder="Memory bank name (optional)"
+                spellCheck={false}
+              />
+              <span className="field-hint">
+                Creates a memory tool that lets the agent store and recall information across the session
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Inputs Schema Slot */}
