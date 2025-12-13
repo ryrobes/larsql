@@ -419,6 +419,139 @@ ORDER BY cascade_id;
 
 
 # =============================================================================
+# SIGNALS TABLE - Cross-Cascade Communication
+# =============================================================================
+# Stores signals for cascades waiting on external events (webhooks, sensors, etc.)
+# Uses HTTP callbacks for reactive wake-up with ClickHouse as durable store
+
+SIGNALS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS signals (
+    -- Core Identification
+    signal_id String,
+    signal_name String,
+
+    -- Status tracking
+    status Enum8('waiting' = 1, 'fired' = 2, 'timeout' = 3, 'cancelled' = 4),
+    created_at DateTime64(3) DEFAULT now64(3),
+    fired_at Nullable(DateTime64(3)),
+    timeout_at Nullable(DateTime64(3)),
+
+    -- Cascade context (who is waiting)
+    session_id String,
+    cascade_id String,
+    phase_name Nullable(String),
+
+    -- HTTP callback for reactive wake (the waiting cascade's listener)
+    callback_host Nullable(String),
+    callback_port Nullable(UInt16),
+    callback_token Nullable(String),
+
+    -- Signal payload (data passed when signal fires)
+    payload_json Nullable(String),
+
+    -- Routing info (where to go after signal fires)
+    target_phase Nullable(String),
+    inputs_json Nullable(String),
+
+    -- Metadata
+    description Nullable(String),
+    source Nullable(String),
+    metadata_json Nullable(String),
+
+    -- Indexes
+    INDEX idx_signal_name signal_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_status status TYPE set(10) GRANULARITY 1,
+    INDEX idx_created created_at TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(created_at)
+ORDER BY (signal_id)
+PARTITION BY toYYYYMM(created_at);
+"""
+
+
+# =============================================================================
+# SESSION STATE TABLE - Durable Execution Coordination
+# =============================================================================
+# Central source of truth for cascade execution state. Replaces JSON file-based
+# state tracking with ClickHouse-native coordination for:
+# - Cross-process visibility (any CLI can see any session's state)
+# - Zombie detection via heartbeat expiry
+# - Cancellation support
+# - Blocked state surfacing (signal/HITL waits)
+
+SESSION_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS session_state (
+    -- Identity
+    session_id String,
+    cascade_id String,
+    parent_session_id Nullable(String),
+
+    -- Execution status
+    status Enum8(
+        'starting' = 1,
+        'running' = 2,
+        'blocked' = 3,
+        'completed' = 4,
+        'error' = 5,
+        'cancelled' = 6,
+        'orphaned' = 7
+    ),
+    current_phase Nullable(String),
+    depth UInt8 DEFAULT 0,
+
+    -- Blocked state details (populated when status = 'blocked')
+    blocked_type Nullable(Enum8(
+        'signal' = 1,
+        'hitl' = 2,
+        'sensor' = 3,
+        'approval' = 4,
+        'checkpoint' = 5
+    )),
+    blocked_on Nullable(String),           -- signal_name, checkpoint_id, etc.
+    blocked_description Nullable(String),  -- Human-readable description
+    blocked_timeout_at Nullable(DateTime64(3)),
+
+    -- Heartbeat for zombie detection
+    heartbeat_at DateTime64(3) DEFAULT now64(3),
+    heartbeat_lease_seconds UInt16 DEFAULT 60,
+
+    -- Cancellation
+    cancel_requested Bool DEFAULT false,
+    cancel_reason Nullable(String),
+    cancelled_at Nullable(DateTime64(3)),
+
+    -- Error details (populated when status = 'error')
+    error_message Nullable(String),
+    error_phase Nullable(String),
+
+    -- Recovery/Resume
+    last_checkpoint_id Nullable(String),
+    resumable Bool DEFAULT false,
+
+    -- Timing
+    started_at DateTime64(3) DEFAULT now64(3),
+    completed_at Nullable(DateTime64(3)),
+    updated_at DateTime64(3) DEFAULT now64(3),
+
+    -- Extensible metadata
+    metadata_json String DEFAULT '{}',
+
+    -- Indexes for common query patterns
+    INDEX idx_status status TYPE set(10) GRANULARITY 1,
+    INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_parent parent_session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_heartbeat heartbeat_at TYPE minmax GRANULARITY 1,
+    INDEX idx_started started_at TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (session_id)
+PARTITION BY toYYYYMM(started_at);
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -482,6 +615,8 @@ def get_all_schemas() -> dict:
         "evaluations": EVALUATIONS_SCHEMA,
         "tool_manifest_vectors": TOOL_MANIFEST_VECTORS_SCHEMA,
         "cascade_template_vectors": CASCADE_TEMPLATE_VECTORS_SCHEMA,
+        "signals": SIGNALS_SCHEMA,
+        "session_state": SESSION_STATE_SCHEMA,
     }
 
 

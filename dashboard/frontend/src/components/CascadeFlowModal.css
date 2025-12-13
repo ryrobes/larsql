@@ -1,0 +1,440 @@
+/**
+ * CascadeFlowModal Styles
+ *
+ * Two visual modes:
+ * - Spec View: Ghost/translucent appearance for unexecuted phases
+ * - Execution View: Solid appearance for executed phases, with path highlighting
+ */
+
+/* ============================================
+   MODAL OVERLAY & CONTAINER
+   ============================================ */
+
+.cascade-flow-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cascade-flow-modal {
+  width: 90vw;
+  height: 85vh;
+  max-width: 1600px;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slide-up 0.25s ease-out;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   MODAL HEADER
+   ============================================ */
+
+.cascade-flow-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #151515;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.modal-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-header .header-left h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.modal-header .view-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.modal-header .view-badge.spec {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+.modal-header .view-badge.execution {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.modal-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.modal-header .legend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #888;
+}
+
+.modal-header .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-header .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.modal-header .legend-dot.ghost {
+  background: #4a5568;
+  border: 1px dashed #666;
+}
+
+.modal-header .legend-dot.executed {
+  background: #34d399;
+}
+
+.modal-header .close-btn {
+  padding: 6px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.modal-header .close-btn:hover {
+  background: #1a1a1a;
+  border-color: #444;
+  color: #e0e0e0;
+}
+
+/* ============================================
+   FLOW CONTAINER (React Flow)
+   ============================================ */
+
+.flow-container {
+  flex: 1;
+  background: #0a0a0a;
+}
+
+.flow-container .react-flow__background {
+  background: #0a0a0a;
+}
+
+.flow-container .react-flow__controls {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.flow-container .react-flow__controls-button {
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  fill: #888;
+}
+
+.flow-container .react-flow__controls-button:hover {
+  background: #252525;
+  fill: #e0e0e0;
+}
+
+.flow-container .react-flow__minimap {
+  background: #151515;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+/* ============================================
+   PHASE NODE
+   ============================================ */
+
+.flow-phase-node {
+  width: 280px;
+  min-height: 80px;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+/* Ghost (spec-only, not executed) */
+.flow-phase-node.ghost {
+  opacity: 0.6;
+  border-style: dashed;
+  border-color: #4a5568;
+  background: rgba(26, 26, 26, 0.7);
+}
+
+.flow-phase-node.ghost:hover {
+  opacity: 0.8;
+  border-color: #666;
+}
+
+/* Executed */
+.flow-phase-node.executed {
+  opacity: 1;
+  border-color: #4a5568;
+  background: #1a1a1a;
+}
+
+/* On execution path */
+.flow-phase-node.on-path {
+  border-color: #34d399;
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.3);
+}
+
+/* Status states */
+.flow-phase-node.running {
+  border-color: #fbbf24;
+  animation: pulse-running 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-running {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0); }
+}
+
+.flow-phase-node.error {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.flow-phase-node.completed {
+  border-color: #34d399;
+}
+
+.flow-phase-node.selected {
+  box-shadow: 0 0 0 2px #60a5fa;
+}
+
+/* Phase Header */
+.phase-node-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-node-header .phase-index {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #252525;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+}
+
+.flow-phase-node.on-path .phase-index {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.phase-node-header .phase-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phase-node-header .status-icon {
+  font-size: 16px;
+}
+
+.phase-node-header .status-icon.completed {
+  color: #34d399;
+}
+
+.phase-node-header .status-icon.running {
+  color: #fbbf24;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.phase-node-header .status-icon.error {
+  color: #f87171;
+}
+
+/* Feature Badges */
+.phase-node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.phase-node-badges .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.phase-node-badges .badge.soundings {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.phase-node-badges .badge.reforge {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.phase-node-badges .badge.wards {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.phase-node-badges .badge.tackle {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+
+.phase-node-badges .badge.handoffs {
+  background: rgba(244, 114, 182, 0.15);
+  color: #f472b6;
+}
+
+/* Execution Stats */
+.phase-node-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.phase-node-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #888;
+}
+
+.phase-node-stats .stat.cost {
+  color: #34d399;
+}
+
+.phase-node-stats .stat.winner {
+  color: #fbbf24;
+}
+
+/* Model Badge */
+.phase-node-model {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #666;
+  margin-top: auto;
+}
+
+/* React Flow Handles */
+.flow-phase-node .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #4a5568;
+  border: 2px solid #1a1a1a;
+}
+
+.flow-phase-node.on-path .react-flow__handle {
+  background: #34d399;
+}
+
+.flow-phase-node.ghost .react-flow__handle {
+  opacity: 0.5;
+}
+
+/* ============================================
+   MODAL FOOTER
+   ============================================ */
+
+.cascade-flow-modal .modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  background: #151515;
+  border-top: 1px solid #2a2a2a;
+}
+
+.modal-footer .footer-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #888;
+}
+
+.modal-footer .footer-stat svg {
+  color: #666;
+}
+
+/* ============================================
+   EDGE LABELS
+   ============================================ */
+
+.react-flow__edge-textbg {
+  fill: #1a1a1a;
+}
+
+.react-flow__edge-text {
+  fill: #888;
+}

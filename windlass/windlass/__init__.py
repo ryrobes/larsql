@@ -68,6 +68,12 @@ register_tackle("rabbitize_extract", rabbitize_extract)
 register_tackle("rabbitize_close", rabbitize_close)
 register_tackle("rabbitize_status", rabbitize_status)
 
+# Signals - Cross-cascade communication
+from .eddies.signal_tools import await_signal, fire_signal, list_signals as signal_list_signals
+register_tackle("await_signal", await_signal)
+register_tackle("fire_signal", fire_signal)
+register_tackle("list_signals", signal_list_signals)
+
 __all__ = [
     "run_cascade",
     "set_provider",

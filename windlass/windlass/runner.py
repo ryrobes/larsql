@@ -33,8 +33,13 @@ from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
 from .state import update_session_state, update_phase_progress, clear_phase_progress
+from .session_state import (
+    get_session_state_manager, create_session as create_session_state,
+    update_session_status, session_heartbeat, is_session_cancelled,
+    SessionStatus, BlockedType
+)
 from .eddies.system import spawn_cascade
-from .eddies.state_tools import set_current_session_id, set_current_phase_name
+from .eddies.state_tools import set_current_session_id, set_current_phase_name, set_current_cascade_id
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
@@ -163,6 +168,11 @@ class WindlassRunner:
         self._audible_budget_used = {}  # phase_name -> count of audibles used
         self._audible_lock = threading.Lock()
 
+        # Heartbeat system for durable execution
+        self._heartbeat_thread: Optional[threading.Thread] = None
+        self._heartbeat_running = False
+        self._heartbeat_interval = 30  # seconds
+
     def _save_to_memory(self, message: dict):
         """
         Save a message to the configured memory bank.
@@ -209,6 +219,65 @@ class WindlassRunner:
             # Don't crash cascade if memory save fails
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to save message to memory '{self.memory_name}': {e}")
+
+    # =========================================================================
+    # Heartbeat System - Durable Execution
+    # =========================================================================
+
+    def _start_heartbeat(self):
+        """Start the heartbeat thread for zombie detection."""
+        if self._heartbeat_running:
+            return
+
+        self._heartbeat_running = True
+        self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self._heartbeat_thread.start()
+
+    def _stop_heartbeat(self):
+        """Stop the heartbeat thread."""
+        self._heartbeat_running = False
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+            self._heartbeat_thread.join(timeout=2)
+        self._heartbeat_thread = None
+
+    def _heartbeat_loop(self):
+        """Background heartbeat loop - proves session is still alive."""
+        import time
+
+        while self._heartbeat_running:
+            try:
+                session_heartbeat(self.session_id)
+            except Exception as e:
+                # Don't crash on heartbeat failure - just log
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Heartbeat failed for {self.session_id}: {e}")
+
+            # Sleep in small increments to allow quick shutdown
+            for _ in range(self._heartbeat_interval):
+                if not self._heartbeat_running:
+                    break
+                time.sleep(1)
+
+    def _check_cancellation(self) -> bool:
+        """
+        Check if cancellation was requested for this session.
+
+        Called between phases to allow graceful cancellation.
+        Returns True if cascade should stop.
+        """
+        try:
+            if is_session_cancelled(self.session_id):
+                # Update status to cancelled
+                try:
+                    update_session_status(self.session_id, SessionStatus.CANCELLED)
+                except Exception:
+                    pass
+                return True
+        except Exception as e:
+            # Don't fail cascade if cancellation check fails
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Cancellation check failed for {self.session_id}: {e}")
+        return False
 
     def _get_metadata(self, extra: dict = None, semantic_actor: str = None, semantic_purpose: str = None) -> dict:
         """
@@ -2001,6 +2070,7 @@ Refinement directive: {reforge_config.honing_prompt}
         """Internal cascade execution (separated to allow soundings wrapper)."""
         # Set context for tools
         session_context_token = set_current_session_id(self.session_id)
+        cascade_context_token = set_current_cascade_id(self.config.cascade_id)
         trace_context_token = set_current_trace(self.trace)
 
         # Set visualization context
@@ -2055,7 +2125,18 @@ Refinement directive: {reforge_config.honing_prompt}
             if not phase:
                 break
 
+            # Check for cancellation request before starting phase
+            if self._check_cancellation():
+                console.print(f"[bold yellow]⚠ Cascade cancelled before phase '{phase.name}'[/bold yellow]")
+                break
+
             update_session_state(self.session_id, self.config.cascade_id, "running", phase.name, self.depth)
+
+            # Update ClickHouse session state with current phase
+            try:
+                update_session_status(self.session_id, SessionStatus.RUNNING, current_phase=phase.name)
+            except Exception:
+                pass  # Don't fail cascade if ClickHouse update fails
 
             # Set phase context for visualization metadata
             self.echo.set_phase_context(phase.name)
@@ -2104,6 +2185,11 @@ Refinement directive: {reforge_config.honing_prompt}
             else:
                 self.echo.add_lineage(phase.name, output_or_next_phase, trace_id=phase_trace.id)
 
+            # Store phase output in state for access by subsequent phases via {{ state.output_<phase_name> }}
+            # Note: Deterministic phases already do this in _execute_deterministic_phase
+            if not phase.is_deterministic():
+                self.echo.state[f"output_{phase.name}"] = output_or_next_phase
+
             self._update_graph() # After phase
 
             if chosen_next_phase: # If agent decided next phase
@@ -2143,18 +2229,74 @@ Refinement directive: {reforge_config.honing_prompt}
         """
         Main entry point for cascade execution.
         Checks if cascade-level soundings are configured and delegates appropriately.
+
+        Manages durable execution via:
+        - Session state creation in ClickHouse
+        - Heartbeat thread for zombie detection
+        - Status updates on completion/error
         """
+        # Create session state in ClickHouse for durable tracking
         try:
+            create_session_state(
+                session_id=self.session_id,
+                cascade_id=self.config.cascade_id,
+                parent_session_id=self.parent_session_id,
+                depth=self.depth,
+                metadata={"config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline"}
+            )
+        except Exception as e:
+            # Don't fail cascade if session state creation fails (backward compat)
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not create session state: {e}")
+
+        # Start heartbeat thread
+        self._start_heartbeat()
+
+        try:
+            # Update status to running
+            try:
+                update_session_status(self.session_id, SessionStatus.RUNNING)
+            except Exception:
+                pass  # Don't fail if status update fails
+
             # Check if cascade has soundings configured
             if self.config.soundings and self.config.soundings.factor > 1:
-                return self._run_with_cascade_soundings(input_data)
+                result = self._run_with_cascade_soundings(input_data)
+            else:
+                # Normal execution (no cascade soundings)
+                result = self._run_cascade_internal(input_data)
 
-            # Normal execution (no cascade soundings)
-            return self._run_cascade_internal(input_data)
+            # Update final status in ClickHouse
+            try:
+                final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
+                update_session_status(
+                    self.session_id,
+                    final_status,
+                    error_message=str(result.get("errors", [])[:1]) if result.get("has_errors") else None
+                )
+            except Exception:
+                pass  # Don't fail if status update fails
+
+            return result
+
         except Exception as e:
+            # Update status to error
+            try:
+                update_session_status(
+                    self.session_id,
+                    SessionStatus.ERROR,
+                    error_message=str(e)[:500]
+                )
+            except Exception:
+                pass
+
             # Hook: Cascade Error
             self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, e)
             raise
+
+        finally:
+            # Always stop heartbeat thread
+            self._stop_heartbeat()
 
     def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
@@ -5419,11 +5561,161 @@ Refinement directive: {reforge_config.honing_prompt}
         return winner
 
     def execute_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+        # Check if this is a deterministic (tool-based) phase
+        if phase.is_deterministic():
+            return self._execute_deterministic_phase(phase, input_data, trace)
+
         # Check if soundings (Tree of Thought) is enabled
         if phase.soundings and phase.soundings.factor > 1:
             return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
 
         return self._execute_phase_internal(phase, input_data, trace, initial_injection)
+
+    def _execute_deterministic_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
+        """
+        Execute a deterministic (tool-based) phase without LLM mediation.
+
+        This provides direct tool execution for predictable, fast operations
+        while maintaining the same observability as LLM phases.
+        """
+        from .deterministic import (
+            execute_deterministic_phase,
+            DeterministicExecutionError
+        )
+        from .unified_logs import log_unified
+        import time
+
+        indent = "  " * self.depth
+        start_time = time.time()
+
+        # Log phase start
+        log_message(self.session_id, "phase_start", phase.name,
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="deterministic_phase",
+                    depth=self.depth, parent_session_id=self.parent_session_id,
+                    phase_name=phase.name, cascade_id=self.config.cascade_id,
+                    metadata={"phase_type": "deterministic", "tool": phase.tool})
+
+        # Update phase progress
+        update_phase_progress(
+            self.session_id, self.config.cascade_id, phase.name, self.depth,
+            stage="deterministic"
+        )
+
+        try:
+            # Execute the deterministic phase
+            result, next_phase = execute_deterministic_phase(
+                phase=phase,
+                input_data=input_data,
+                echo=self.echo,
+                config_path=self.config_path if isinstance(self.config_path, str) else None,
+                depth=self.depth
+            )
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Update echo state with result
+            self.echo.state[f"output_{phase.name}"] = result
+
+            # Add to lineage
+            self.echo.lineage.append({
+                "phase": phase.name,
+                "output": result,
+                "type": "deterministic",
+                "tool": phase.tool,
+                "duration_ms": duration_ms
+            })
+
+            # Log to unified logs
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                parent_session_id=self.parent_session_id,
+                node_type="deterministic",
+                role="tool",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                cascade_file=self.config_path if isinstance(self.config_path, str) else None,
+                phase_name=phase.name,
+                content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
+                duration_ms=duration_ms,
+                metadata={
+                    "phase_type": "deterministic",
+                    "tool": phase.tool,
+                    "inputs": list((phase.tool_inputs or {}).keys()),
+                    "next_phase": next_phase
+                }
+            )
+
+            # Hook: Phase Complete
+            self.hooks.on_phase_complete(phase.name, self.session_id, {"output": result})
+
+            # Return next phase name or result
+            if next_phase:
+                return next_phase
+            return result
+
+        except DeterministicExecutionError as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log error
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                node_type="error",
+                role="error",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                content=f"Deterministic phase failed: {str(e)}",
+                duration_ms=duration_ms,
+                metadata={
+                    "phase_type": "deterministic",
+                    "tool": phase.tool,
+                    "error": str(e.original_error) if e.original_error else str(e)
+                }
+            )
+
+            # Handle on_error routing
+            if phase.on_error:
+                if isinstance(phase.on_error, str):
+                    # Route to error handler phase
+                    console.print(f"{indent}  [yellow]→ Routing to error handler: {phase.on_error}[/yellow]")
+                    # Store error info in state for error handler to access
+                    self.echo.state["last_deterministic_error"] = {
+                        "phase": phase.name,
+                        "tool": phase.tool,
+                        "error": str(e.original_error) if e.original_error else str(e),
+                        "inputs": e.inputs
+                    }
+                    return phase.on_error
+                elif isinstance(phase.on_error, dict):
+                    # Inline LLM fallback - create temporary phase and execute
+                    console.print(f"{indent}  [yellow]→ Falling back to LLM handler[/yellow]")
+
+                    # Build fallback phase config
+                    fallback_config = {
+                        "name": f"{phase.name}_fallback",
+                        "instructions": phase.on_error.get("instructions", f"Handle error from {phase.name}: {{{{ state.last_deterministic_error }}}}"),
+                        **{k: v for k, v in phase.on_error.items() if k != "instructions"}
+                    }
+
+                    # Store error info
+                    self.echo.state["last_deterministic_error"] = {
+                        "phase": phase.name,
+                        "tool": phase.tool,
+                        "error": str(e.original_error) if e.original_error else str(e),
+                        "inputs": e.inputs
+                    }
+
+                    # Create and execute fallback phase
+                    fallback_phase = PhaseConfig(**fallback_config)
+                    fallback_trace = trace.create_child("phase", f"{phase.name}_fallback")
+                    return self._execute_phase_internal(fallback_phase, input_data, fallback_trace)
+
+            # No error handler - re-raise
+            raise
 
     def _execute_phase_internal(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:
         indent = "  " * self.depth

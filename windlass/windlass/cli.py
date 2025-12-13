@@ -274,6 +274,117 @@ def main():
         help='Show summary of all your HF Spaces with cost estimates'
     )
 
+    # Triggers command group
+    triggers_parser = subparsers.add_parser('triggers', help='Cascade trigger management and scheduling')
+    triggers_subparsers = triggers_parser.add_subparsers(dest='triggers_command', help='Triggers subcommands')
+
+    # triggers list - List triggers in a cascade
+    triggers_list_parser = triggers_subparsers.add_parser(
+        'list',
+        help='List triggers defined in a cascade'
+    )
+    triggers_list_parser.add_argument('cascade', help='Path to cascade JSON file')
+
+    # triggers export - Export triggers to external scheduler format
+    triggers_export_parser = triggers_subparsers.add_parser(
+        'export',
+        help='Export triggers to external scheduler format (cron, systemd, kubernetes, airflow)'
+    )
+    triggers_export_parser.add_argument('cascade', help='Path to cascade JSON file')
+    triggers_export_parser.add_argument(
+        '--format', '-f',
+        choices=['cron', 'systemd', 'kubernetes', 'airflow'],
+        default='cron',
+        help='Output format (default: cron)'
+    )
+    triggers_export_parser.add_argument('--output', '-o', help='Output file path (default: stdout)')
+    triggers_export_parser.add_argument('--namespace', default='default', help='Kubernetes namespace (for k8s format)')
+    triggers_export_parser.add_argument('--image', default='windlass:latest', help='Docker image (for k8s format)')
+    triggers_export_parser.add_argument('--user', help='User to run as (for systemd format)')
+
+    # triggers check - Check if a sensor trigger condition is met
+    triggers_check_parser = triggers_subparsers.add_parser(
+        'check',
+        help='Check if a sensor trigger condition is met (exit 0 if ready, 1 if not)'
+    )
+    triggers_check_parser.add_argument('cascade', help='Path to cascade JSON file')
+    triggers_check_parser.add_argument('trigger_name', help='Name of the sensor trigger to check')
+
+    # Signals command group - cross-cascade communication
+    signals_parser = subparsers.add_parser('signals', help='Signal management for cross-cascade communication')
+    signals_subparsers = signals_parser.add_subparsers(dest='signals_command', help='Signals subcommands')
+
+    # signals list - List waiting signals
+    signals_list_parser = signals_subparsers.add_parser(
+        'list',
+        help='List signals currently waiting'
+    )
+    signals_list_parser.add_argument('--cascade', help='Filter by cascade ID')
+    signals_list_parser.add_argument('--name', help='Filter by signal name')
+    signals_list_parser.add_argument('--all', action='store_true', help='Show all signals (not just waiting)')
+
+    # signals fire - Fire a signal
+    signals_fire_parser = signals_subparsers.add_parser(
+        'fire',
+        help='Fire a signal to wake up waiting cascades'
+    )
+    signals_fire_parser.add_argument('signal_name', help='Name of the signal to fire')
+    signals_fire_parser.add_argument('--payload', default='{}', help='JSON payload to pass to waiting cascades')
+    signals_fire_parser.add_argument('--session', help='Only fire for a specific session ID')
+    signals_fire_parser.add_argument('--source', default='cli', help='Source identifier (default: cli)')
+
+    # signals status - Check signal status
+    signals_status_parser = signals_subparsers.add_parser(
+        'status',
+        help='Check status of a specific signal'
+    )
+    signals_status_parser.add_argument('signal_id', help='Signal ID to check')
+
+    # signals cancel - Cancel a waiting signal
+    signals_cancel_parser = signals_subparsers.add_parser(
+        'cancel',
+        help='Cancel a waiting signal'
+    )
+    signals_cancel_parser.add_argument('signal_id', help='Signal ID to cancel')
+    signals_cancel_parser.add_argument('--reason', help='Cancellation reason')
+
+    # Sessions command group - durable execution coordination
+    sessions_parser = subparsers.add_parser('sessions', help='Session management for durable execution')
+    sessions_subparsers = sessions_parser.add_subparsers(dest='sessions_command', help='Sessions subcommands')
+
+    # sessions list - List sessions
+    sessions_list_parser = sessions_subparsers.add_parser(
+        'list',
+        help='List cascade sessions'
+    )
+    sessions_list_parser.add_argument('--status', choices=['running', 'blocked', 'completed', 'error', 'cancelled', 'orphaned', 'all'], default='all',
+                                      help='Filter by status (default: all)')
+    sessions_list_parser.add_argument('--cascade', help='Filter by cascade ID')
+    sessions_list_parser.add_argument('--limit', type=int, default=50, help='Maximum sessions to show (default: 50)')
+
+    # sessions show - Show session details
+    sessions_show_parser = sessions_subparsers.add_parser(
+        'show',
+        help='Show details for a specific session'
+    )
+    sessions_show_parser.add_argument('session_id', help='Session ID to show')
+
+    # sessions cancel - Request cancellation
+    sessions_cancel_parser = sessions_subparsers.add_parser(
+        'cancel',
+        help='Request cancellation of a running session'
+    )
+    sessions_cancel_parser.add_argument('session_id', help='Session ID to cancel')
+    sessions_cancel_parser.add_argument('--reason', help='Cancellation reason')
+
+    # sessions cleanup - Clean up zombie sessions
+    sessions_cleanup_parser = sessions_subparsers.add_parser(
+        'cleanup',
+        help='Mark zombie sessions (expired heartbeat) as orphaned'
+    )
+    sessions_cleanup_parser.add_argument('--dry-run', action='store_true', help='Show zombies without marking them')
+    sessions_cleanup_parser.add_argument('--grace', type=int, default=30, help='Grace period in seconds beyond heartbeat lease (default: 30)')
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -380,6 +491,40 @@ def main():
             cmd_harbor_status(args)
         else:
             harbor_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'triggers':
+        if args.triggers_command == 'list':
+            cmd_triggers_list(args)
+        elif args.triggers_command == 'export':
+            cmd_triggers_export(args)
+        elif args.triggers_command == 'check':
+            cmd_triggers_check(args)
+        else:
+            triggers_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'signals':
+        if args.signals_command == 'list':
+            cmd_signals_list(args)
+        elif args.signals_command == 'fire':
+            cmd_signals_fire(args)
+        elif args.signals_command == 'status':
+            cmd_signals_status(args)
+        elif args.signals_command == 'cancel':
+            cmd_signals_cancel(args)
+        else:
+            signals_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'sessions':
+        if args.sessions_command == 'list':
+            cmd_sessions_list(args)
+        elif args.sessions_command == 'show':
+            cmd_sessions_show(args)
+        elif args.sessions_command == 'cancel':
+            cmd_sessions_cancel(args)
+        elif args.sessions_command == 'cleanup':
+            cmd_sessions_cleanup(args)
+        else:
+            sessions_parser.print_help()
             sys.exit(1)
     else:
         parser.print_help()
@@ -2071,6 +2216,558 @@ def cmd_harbor_status(args):
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
+        sys.exit(1)
+
+
+# ============================================================================
+# Triggers Commands (Scheduling & Sensors)
+# ============================================================================
+
+def cmd_triggers_list(args):
+    """List triggers defined in a cascade."""
+    from windlass.triggers import list_triggers
+
+    try:
+        triggers = list_triggers(args.cascade)
+
+        if not triggers:
+            print()
+            print("No triggers defined in this cascade.")
+            print()
+            print("Add triggers to your cascade JSON:")
+            print()
+            print('  "triggers": [')
+            print('    {"name": "daily", "type": "cron", "schedule": "0 6 * * *"},')
+            print('    {"name": "on_data", "type": "sensor", "check": "python:sensors.check_fresh"}')
+            print('  ]')
+            print()
+            return
+
+        print()
+        print("="*60)
+        print(f"Triggers in {args.cascade}")
+        print("="*60)
+        print()
+
+        for trigger in triggers:
+            enabled = "✓" if trigger.get("enabled", True) else "✗"
+            print(f"  {enabled} {trigger['name']} ({trigger['type']})")
+
+            if trigger['type'] == 'cron':
+                print(f"      Schedule: {trigger.get('schedule')}")
+                if trigger.get('timezone') != 'UTC':
+                    print(f"      Timezone: {trigger.get('timezone')}")
+            elif trigger['type'] == 'sensor':
+                print(f"      Check: {trigger.get('check')}")
+                print(f"      Poll: {trigger.get('poll_interval')}")
+            elif trigger['type'] == 'webhook':
+                print(f"      Auth: {trigger.get('auth', 'none')}")
+            elif trigger['type'] == 'manual':
+                if trigger.get('inputs_schema'):
+                    print(f"      Inputs: {list(trigger['inputs_schema'].keys())}")
+
+            if trigger.get('description'):
+                print(f"      Description: {trigger['description']}")
+            print()
+
+        print(f"Total: {len(triggers)} trigger(s)")
+        print()
+        print("Export triggers:")
+        print(f"  windlass triggers export {args.cascade} --format cron")
+        print(f"  windlass triggers export {args.cascade} --format kubernetes")
+        print()
+
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_triggers_export(args):
+    """Export triggers to external scheduler format."""
+    from windlass.triggers import export_cron, export_systemd, export_kubernetes, export_airflow
+    import os
+
+    cascade_path = os.path.abspath(args.cascade)
+
+    try:
+        if args.format == 'cron':
+            output = export_cron(args.cascade, cascade_path)
+
+        elif args.format == 'systemd':
+            timer_content, service_content = export_systemd(
+                args.cascade,
+                cascade_path,
+                user=args.user
+            )
+            # For systemd, output both files
+            if args.output:
+                timer_path = args.output.replace('.service', '.timer')
+                if not timer_path.endswith('.timer'):
+                    timer_path += '.timer'
+                service_path = timer_path.replace('.timer', '.service')
+
+                with open(timer_path, 'w') as f:
+                    f.write(timer_content)
+                with open(service_path, 'w') as f:
+                    f.write(service_content)
+
+                print(f"Exported to:")
+                print(f"  {timer_path}")
+                print(f"  {service_path}")
+                print()
+                print("Install with:")
+                print(f"  sudo cp {timer_path} {service_path} /etc/systemd/system/")
+                print("  sudo systemctl daemon-reload")
+                print(f"  sudo systemctl enable --now {os.path.basename(timer_path)}")
+                return
+            else:
+                output = f"# === TIMER FILE ===\n{timer_content}\n\n# === SERVICE FILE ===\n{service_content}"
+
+        elif args.format == 'kubernetes':
+            output = export_kubernetes(
+                args.cascade,
+                cascade_path,
+                namespace=args.namespace,
+                image=args.image
+            )
+
+        elif args.format == 'airflow':
+            output = export_airflow(args.cascade, cascade_path)
+
+        else:
+            print(f"Unknown format: {args.format}")
+            sys.exit(1)
+
+        # Write output
+        if args.output:
+            with open(args.output, 'w') as f:
+                f.write(output)
+            print(f"Exported to: {args.output}")
+        else:
+            print(output)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_triggers_check(args):
+    """Check if a sensor trigger condition is met."""
+    from windlass.triggers import check_sensor, get_trigger
+    from windlass.cascade import SensorTrigger
+
+    try:
+        # Verify trigger exists and is a sensor
+        trigger = get_trigger(args.cascade, args.trigger_name)
+
+        if not trigger:
+            print(f"Trigger '{args.trigger_name}' not found in {args.cascade}")
+            sys.exit(1)
+
+        if not isinstance(trigger, SensorTrigger):
+            print(f"Trigger '{args.trigger_name}' is not a sensor trigger (type: {trigger.type})")
+            sys.exit(1)
+
+        print(f"Checking sensor: {args.trigger_name}")
+        print(f"  Check: {trigger.check}")
+        print(f"  Args: {trigger.args}")
+        print()
+
+        # Run the check
+        is_ready, result = check_sensor(args.cascade, args.trigger_name)
+
+        if is_ready:
+            print("✓ Condition MET - ready to trigger")
+            print()
+            print(f"Result: {json.dumps(result, indent=2)}")
+            sys.exit(0)
+        else:
+            print("✗ Condition NOT MET - not ready")
+            print()
+            print(f"Result: {json.dumps(result, indent=2)}")
+            sys.exit(1)
+
+    except Exception as e:
+        print(f"Error checking sensor: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+# =============================================================================
+# Signals Commands
+# =============================================================================
+
+def cmd_signals_list(args):
+    """List signals currently waiting."""
+    from windlass.signals import get_signal_manager, SignalStatus
+
+    try:
+        manager = get_signal_manager(use_db=True, start_server=False)
+
+        # Determine which status to filter
+        status = None if getattr(args, 'all', False) else SignalStatus.WAITING
+
+        signals = manager.list_signals(
+            status=status,
+            cascade_id=getattr(args, 'cascade', None),
+            signal_name=getattr(args, 'name', None)
+        )
+
+        if not signals:
+            status_desc = "waiting " if status == SignalStatus.WAITING else ""
+            print(f"No {status_desc}signals found.")
+            print()
+            print("To create a signal, use await_signal() in a cascade:")
+            print('  result = await_signal("my_signal", timeout="1h")')
+            return
+
+        print(f"{'Signal ID':<20} {'Name':<20} {'Status':<10} {'Cascade':<25} {'Created'}")
+        print("-" * 100)
+
+        for signal in signals:
+            created = signal.created_at.strftime("%Y-%m-%d %H:%M") if signal.created_at else "?"
+            print(f"{signal.signal_id:<20} {signal.signal_name:<20} {signal.status.value:<10} {signal.cascade_id[:25]:<25} {created}")
+
+        print()
+        print(f"Total: {len(signals)} signal(s)")
+        print()
+        print("To fire a signal:")
+        print("  windlass signals fire <signal_name> --payload '{\"key\": \"value\"}'")
+
+    except Exception as e:
+        print(f"Error listing signals: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_signals_fire(args):
+    """Fire a signal to wake up waiting cascades."""
+    from windlass.signals import fire_signal
+
+    try:
+        # Parse payload JSON
+        payload = json.loads(args.payload)
+
+        count = fire_signal(
+            signal_name=args.signal_name,
+            payload=payload,
+            source=args.source,
+            session_id=getattr(args, 'session', None)
+        )
+
+        if count > 0:
+            print(f"✓ Fired signal '{args.signal_name}' - woke up {count} waiting cascade(s)")
+            if payload:
+                print(f"  Payload: {json.dumps(payload)}")
+        else:
+            print(f"No cascades were waiting for signal '{args.signal_name}'")
+            print()
+            print("To see waiting signals:")
+            print("  windlass signals list")
+
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON payload: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error firing signal: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_signals_status(args):
+    """Check status of a specific signal."""
+    from windlass.signals import get_signal_manager
+
+    try:
+        manager = get_signal_manager(use_db=True, start_server=False)
+        signal = manager.get_signal(args.signal_id)
+
+        if not signal:
+            print(f"Signal '{args.signal_id}' not found")
+            sys.exit(1)
+
+        print(f"Signal: {signal.signal_id}")
+        print(f"  Name: {signal.signal_name}")
+        print(f"  Status: {signal.status.value}")
+        print(f"  Cascade: {signal.cascade_id}")
+        print(f"  Session: {signal.session_id}")
+        print(f"  Phase: {signal.phase_name or 'N/A'}")
+        print(f"  Created: {signal.created_at.isoformat() if signal.created_at else 'N/A'}")
+        print(f"  Timeout: {signal.timeout_at.isoformat() if signal.timeout_at else 'None'}")
+
+        if signal.fired_at:
+            print(f"  Fired At: {signal.fired_at.isoformat()}")
+            print(f"  Source: {signal.source or 'unknown'}")
+
+        if signal.payload:
+            print(f"  Payload: {json.dumps(signal.payload, indent=4)}")
+
+        if signal.description:
+            print(f"  Description: {signal.description}")
+
+        if signal.callback_host and signal.callback_port:
+            print(f"  Callback: http://{signal.callback_host}:{signal.callback_port}/")
+
+    except Exception as e:
+        print(f"Error getting signal status: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_signals_cancel(args):
+    """Cancel a waiting signal."""
+    from windlass.signals import get_signal_manager
+
+    try:
+        manager = get_signal_manager(use_db=True, start_server=False)
+        signal = manager.get_signal(args.signal_id)
+
+        if not signal:
+            print(f"Signal '{args.signal_id}' not found")
+            sys.exit(1)
+
+        if signal.status.value != 'waiting':
+            print(f"Cannot cancel signal '{args.signal_id}' - status is '{signal.status.value}'")
+            sys.exit(1)
+
+        manager.cancel_signal(args.signal_id, getattr(args, 'reason', None))
+        print(f"✓ Cancelled signal '{args.signal_id}'")
+
+        if args.reason:
+            print(f"  Reason: {args.reason}")
+
+    except Exception as e:
+        print(f"Error cancelling signal: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+# =============================================================================
+# Sessions Commands - Durable Execution Coordination
+# =============================================================================
+
+def cmd_sessions_list(args):
+    """List cascade sessions."""
+    from windlass.session_state import get_session_state_manager, SessionStatus
+
+    try:
+        manager = get_session_state_manager(use_db=True)
+
+        # Determine status filter
+        status_filter = None
+        if args.status != 'all':
+            status_filter = SessionStatus(args.status)
+
+        sessions = manager.list_sessions(
+            status=status_filter,
+            cascade_id=getattr(args, 'cascade', None),
+            limit=args.limit
+        )
+
+        if not sessions:
+            status_desc = f"{args.status} " if args.status != 'all' else ""
+            print(f"No {status_desc}sessions found.")
+            return
+
+        # Header
+        print(f"{'SESSION ID':<35} {'CASCADE':<25} {'STATUS':<12} {'PHASE':<20} {'UPDATED':<16}")
+        print("-" * 110)
+
+        for session in sessions:
+            updated = session.updated_at.strftime("%Y-%m-%d %H:%M") if session.updated_at else "?"
+            phase = (session.current_phase or "-")[:20]
+            cascade = (session.cascade_id or "?")[:25]
+            session_id = session.session_id[:35]
+
+            # Color code status
+            status = session.status.value
+            if status == 'running':
+                status = f"\033[32m{status}\033[0m"  # Green
+            elif status == 'blocked':
+                status = f"\033[33m{status}\033[0m"  # Yellow
+            elif status == 'error':
+                status = f"\033[31m{status}\033[0m"  # Red
+            elif status == 'orphaned':
+                status = f"\033[35m{status}\033[0m"  # Magenta
+
+            print(f"{session_id:<35} {cascade:<25} {status:<21} {phase:<20} {updated}")
+
+        print()
+        print(f"Total: {len(sessions)} session(s)")
+
+        # Show commands for common actions
+        running_count = sum(1 for s in sessions if s.status == SessionStatus.RUNNING)
+        blocked_count = sum(1 for s in sessions if s.status == SessionStatus.BLOCKED)
+
+        if running_count > 0:
+            print(f"\n{running_count} running - to cancel: windlass sessions cancel <session_id>")
+        if blocked_count > 0:
+            print(f"{blocked_count} blocked - see details: windlass sessions show <session_id>")
+
+    except Exception as e:
+        print(f"Error listing sessions: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_sessions_show(args):
+    """Show details for a specific session."""
+    from windlass.session_state import get_session_state_manager
+
+    try:
+        manager = get_session_state_manager(use_db=True)
+        session = manager.get_session(args.session_id)
+
+        if not session:
+            print(f"Session '{args.session_id}' not found")
+            sys.exit(1)
+
+        print(f"Session: {session.session_id}")
+        print(f"  Cascade: {session.cascade_id}")
+        print(f"  Status: {session.status.value}")
+        print(f"  Current Phase: {session.current_phase or 'N/A'}")
+        print(f"  Depth: {session.depth}")
+
+        if session.parent_session_id:
+            print(f"  Parent Session: {session.parent_session_id}")
+
+        print()
+        print("Timing:")
+        print(f"  Started: {session.started_at.isoformat() if session.started_at else 'N/A'}")
+        print(f"  Updated: {session.updated_at.isoformat() if session.updated_at else 'N/A'}")
+        if session.completed_at:
+            print(f"  Completed: {session.completed_at.isoformat()}")
+
+        print()
+        print("Heartbeat:")
+        print(f"  Last: {session.heartbeat_at.isoformat() if session.heartbeat_at else 'N/A'}")
+        print(f"  Lease: {session.heartbeat_lease_seconds}s")
+
+        # Blocked state
+        if session.status.value == 'blocked':
+            print()
+            print("Blocked State:")
+            print(f"  Type: {session.blocked_type.value if session.blocked_type else 'unknown'}")
+            print(f"  On: {session.blocked_on or 'N/A'}")
+            print(f"  Description: {session.blocked_description or 'N/A'}")
+            if session.blocked_timeout_at:
+                print(f"  Timeout At: {session.blocked_timeout_at.isoformat()}")
+
+        # Error state
+        if session.status.value == 'error':
+            print()
+            print("Error:")
+            print(f"  Phase: {session.error_phase or 'N/A'}")
+            print(f"  Message: {session.error_message or 'N/A'}")
+
+        # Cancellation
+        if session.cancel_requested:
+            print()
+            print("Cancellation:")
+            print(f"  Requested: Yes")
+            print(f"  Reason: {session.cancel_reason or 'N/A'}")
+            if session.cancelled_at:
+                print(f"  Cancelled At: {session.cancelled_at.isoformat()}")
+
+        # Recovery info
+        if session.last_checkpoint_id:
+            print()
+            print("Recovery:")
+            print(f"  Last Checkpoint: {session.last_checkpoint_id}")
+            print(f"  Resumable: {session.resumable}")
+
+    except Exception as e:
+        print(f"Error getting session: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_sessions_cancel(args):
+    """Request cancellation of a running session."""
+    from windlass.session_state import get_session_state_manager, SessionStatus
+
+    try:
+        manager = get_session_state_manager(use_db=True)
+        session = manager.get_session(args.session_id)
+
+        if not session:
+            print(f"Session '{args.session_id}' not found")
+            sys.exit(1)
+
+        if session.status not in (SessionStatus.RUNNING, SessionStatus.BLOCKED, SessionStatus.STARTING):
+            print(f"Cannot cancel session '{args.session_id}' - status is '{session.status.value}'")
+            print("Only running, blocked, or starting sessions can be cancelled.")
+            sys.exit(1)
+
+        manager.request_cancellation(args.session_id, getattr(args, 'reason', None))
+        print(f"✓ Cancellation requested for session '{args.session_id}'")
+        print()
+        print("The session will stop gracefully at the next phase boundary.")
+        print("Note: If the session is blocked (waiting for signal/input), it may take")
+        print("longer to detect the cancellation request.")
+
+        if args.reason:
+            print(f"\nReason: {args.reason}")
+
+    except Exception as e:
+        print(f"Error cancelling session: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_sessions_cleanup(args):
+    """Mark zombie sessions (expired heartbeat) as orphaned."""
+    from windlass.session_state import get_session_state_manager
+
+    try:
+        manager = get_session_state_manager(use_db=True)
+
+        # Get zombies first
+        zombies = manager.get_zombie_sessions(grace_period_seconds=args.grace)
+
+        if not zombies:
+            print("No zombie sessions found.")
+            print(f"\nZombie criteria: heartbeat expired + {args.grace}s grace period")
+            return
+
+        print(f"Found {len(zombies)} zombie session(s):")
+        print()
+
+        for zombie in zombies:
+            elapsed = "?"
+            if zombie.heartbeat_at:
+                from datetime import datetime, timezone
+                elapsed_secs = (datetime.now(timezone.utc) - zombie.heartbeat_at).total_seconds()
+                elapsed = f"{int(elapsed_secs)}s ago"
+
+            print(f"  {zombie.session_id}")
+            print(f"    Cascade: {zombie.cascade_id}")
+            print(f"    Status: {zombie.status.value}")
+            print(f"    Last Heartbeat: {elapsed}")
+            print()
+
+        if args.dry_run:
+            print("Dry run - no changes made.")
+            print("\nTo mark as orphaned, run without --dry-run:")
+            print("  windlass sessions cleanup")
+        else:
+            count = manager.cleanup_zombies(grace_period_seconds=args.grace)
+            print(f"✓ Marked {count} session(s) as orphaned")
+
+    except Exception as e:
+        print(f"Error cleaning up sessions: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

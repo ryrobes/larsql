@@ -1,0 +1,122 @@
+# Self-Contained Signal Roundtrip with Deterministic Phases
+# This cascade demonstrates the full signal flow in a single run,
+# combining deterministic phases with signal coordination.
+#
+# Run this single cascade to test:
+#   - Deterministic validation (no LLM)
+#   - Async cascade spawning
+#   - Signal wait/receive
+#   - Deterministic data processing
+#   - LLM summarization
+#
+# Flow:
+#   1. [Deterministic] Validate input data
+#   2. [LLM + Async] Spawn producer, announce waiting
+#   3. [Signal] Wait for producer's signal
+#   4. [Deterministic] Process received payload
+#   5. [LLM] Generate final report
+
+cascade_id: signal_roundtrip_hybrid
+description: >
+  Self-contained hybrid demo combining deterministic phases with signals.
+  Spawns an async producer that fires a signal, which this cascade receives.
+  Run this single cascade to test the full flow.
+
+inputs_schema:
+  data_query: "Optional query to validate (defaults to a valid SELECT)"
+
+phases:
+  # Phase 1: Deterministic input validation
+  - name: validate_input
+    tool: "python:windlass.demo_tools.validate_sql"
+    inputs:
+      query: "{{ input.data_query | default('SELECT id, value FROM metrics WHERE value > 0') }}"
+    routing:
+      valid: spawn_and_wait
+      invalid: handle_invalid
+    handoffs:
+      - spawn_and_wait
+      - handle_invalid
+
+  # Phase 2: Handle invalid input
+  - name: handle_invalid
+    instructions: |
+      Input validation failed: {{ state.output_validate_input.error }}
+      Suggest a valid query format.
+    tackle: []
+
+  # Phase 3: Spawn async producer and wait for signal
+  - name: spawn_and_wait
+    instructions: |
+      Input validated successfully!
+
+      Query: {{ state.output_validate_input.cleaned_query }}
+
+      An async producer cascade has been spawned and will fire a signal shortly.
+      Use await_signal to wait for signal 'roundtrip_demo' with timeout '30s'.
+      Description: 'Waiting for async producer to complete processing'
+    tackle:
+      - await_signal
+    async_cascades:
+      - ref: signal_producer_delayed.json
+        trigger: on_start
+    handoffs:
+      - process_signal_data
+      - handle_signal_timeout
+
+  # Phase 4: Handle signal timeout
+  - name: handle_signal_timeout
+    instructions: |
+      Signal wait timed out: {{ state.output_spawn_and_wait }}
+
+      The async producer may have encountered issues. Suggest troubleshooting steps.
+    tackle: []
+
+  # Phase 5: Deterministic processing of received signal data
+  - name: process_signal_data
+    tool: "python:windlass.demo_tools.transform_data"
+    inputs:
+      # Simulate processing data inspired by the signal
+      data: '[{"metric": "latency", "value": 45}, {"metric": "throughput", "value": 1200}, {"metric": "errors", "value": 3}]'
+      operation: "sum_numeric"
+    routing:
+      success: generate_report
+      empty: handle_empty
+      error: handle_process_error
+    handoffs:
+      - generate_report
+      - handle_empty
+      - handle_process_error
+
+  # Phase 6: Handle empty processing
+  - name: handle_empty
+    instructions: No data to process from signal. This is unexpected.
+    tackle: []
+
+  # Phase 7: Handle processing error
+  - name: handle_process_error
+    instructions: |
+      Processing failed: {{ state.last_deterministic_error }}
+      Diagnose the issue.
+    tackle: []
+
+  # Phase 8: LLM generates final report
+  - name: generate_report
+    instructions: |
+      Generate a comprehensive report of this hybrid signal roundtrip:
+
+      == INPUT VALIDATION (Deterministic) ==
+      {{ state.output_validate_input }}
+
+      == SIGNAL RECEIVED ==
+      {{ state.output_spawn_and_wait }}
+
+      == DATA PROCESSING (Deterministic) ==
+      {{ state.output_process_signal_data }}
+
+      Summarize:
+      1. Input validation results
+      2. Signal coordination (what was received from producer)
+      3. Processing results
+      4. Overall workflow status
+    tackle: []

@@ -468,22 +468,61 @@ class ContextConfig(BaseModel):
     exclude: List[str] = Field(default_factory=list)  # Phases to exclude (useful with "all")
     include_input: bool = True  # Include original cascade input
 
+class RetryConfig(BaseModel):
+    """Retry configuration for deterministic phases."""
+    max_attempts: int = 3
+    backoff: Literal["none", "linear", "exponential"] = "linear"
+    backoff_base_seconds: float = 1.0
+
+
 class PhaseConfig(BaseModel):
     name: str
-    instructions: str
+
+    # ===== LLM Phase Fields (existing) =====
+    # For LLM phases, instructions is required and defines the agent's task
+    instructions: Optional[str] = None
     tackle: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
     model: Optional[str] = None  # Override default model for this phase
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)
     rules: RuleConfig = Field(default_factory=RuleConfig)
-    handoffs: List[Union[str, HandoffConfig]] = Field(default_factory=list)
-    sub_cascades: List[SubCascadeRef] = Field(default_factory=list)
-    async_cascades: List[AsyncCascadeRef] = Field(default_factory=list)
     soundings: Optional[SoundingsConfig] = None
     output_schema: Optional[Dict[str, Any]] = None
     wards: Optional[WardsConfig] = None
     rag: Optional[RagConfig] = None
     output_extraction: Optional[OutputExtractionConfig] = None  # Extract structured content from output
+
+    # ===== Deterministic Phase Fields (new) =====
+    # For deterministic phases, tool is required and specifies what to execute directly
+    # Supported formats:
+    #   - "tool_name" - registered tool from tackle registry
+    #   - "python:module.path.function" - direct Python function import
+    #   - "sql:path/to/query.sql" - SQL query file
+    tool: Optional[str] = None
+
+    # Jinja2-templated inputs for the tool call
+    # Available variables: {{ input.* }}, {{ state.* }}, {{ outputs.phase_name.* }}, {{ lineage }}
+    tool_inputs: Optional[Dict[str, str]] = Field(default=None, alias="inputs")
+
+    # Deterministic routing based on return value
+    # Maps result._route or result.status to handoff target
+    # Example: {"success": "next_phase", "error": "error_handler"}
+    routing: Optional[Dict[str, str]] = None
+
+    # Error handling for deterministic phases
+    # Can be a phase name (string) or inline LLM phase config (dict) for hybrid fallback
+    on_error: Optional[Union[str, Dict[str, Any]]] = None
+
+    # Retry configuration for transient errors
+    retry: Optional[RetryConfig] = None
+
+    # Timeout for tool execution (e.g., "30s", "5m", "1h")
+    timeout: Optional[str] = None
+
+    # ===== Common Fields (both phase types) =====
+    handoffs: List[Union[str, HandoffConfig]] = Field(default_factory=list)
+    sub_cascades: List[SubCascadeRef] = Field(default_factory=list)
+    async_cascades: List[AsyncCascadeRef] = Field(default_factory=list)
 
     # Context System - Selective by default
     # Phases without context config get clean slate (no prior context)
@@ -502,6 +541,117 @@ class PhaseConfig(BaseModel):
     # Marks important messages with names for easy retrieval in UIs/queries
     # Supports string shorthand: callouts="Result" → callouts.output="Result"
     callouts: Optional[Union[str, CalloutsConfig]] = None
+
+    def is_deterministic(self) -> bool:
+        """Check if this phase is deterministic (tool-based) vs LLM-based."""
+        return self.tool is not None
+
+    def model_post_init(self, __context) -> None:
+        """Validate phase configuration after initialization."""
+        # Must have either tool (deterministic) or instructions (LLM)
+        if not self.tool and not self.instructions:
+            raise ValueError(f"Phase '{self.name}' must have either 'tool' (deterministic) or 'instructions' (LLM)")
+
+        # If tool is set, instructions should not be (clear separation)
+        # Note: on_error can have embedded instructions for hybrid phases
+        if self.tool and self.instructions:
+            raise ValueError(f"Phase '{self.name}' cannot have both 'tool' and 'instructions'. Use 'on_error' for hybrid fallback.")
+
+
+# ===== Trigger Configuration =====
+
+class CronTrigger(BaseModel):
+    """
+    Cron-based trigger for scheduled cascade execution.
+
+    Usage:
+        triggers:
+          - name: daily_run
+            type: cron
+            schedule: "0 6 * * *"
+            timezone: America/New_York
+            inputs:
+              mode: full
+    """
+    name: str
+    type: Literal["cron"] = "cron"
+    schedule: str  # Cron expression (e.g., "0 6 * * *")
+    timezone: str = "UTC"
+    inputs: Optional[Dict[str, Any]] = None  # Static inputs for this trigger
+    enabled: bool = True  # Whether this trigger is active
+    description: Optional[str] = None
+
+
+class SensorTrigger(BaseModel):
+    """
+    Sensor-based trigger that polls a condition.
+
+    Usage:
+        triggers:
+          - name: on_data_ready
+            type: sensor
+            check: "python:sensors.table_freshness"
+            args:
+              table: raw.events
+              max_age_minutes: 60
+            poll_interval: 5m
+    """
+    name: str
+    type: Literal["sensor"] = "sensor"
+    check: str  # Python function to check condition (e.g., "python:sensors.check_freshness")
+    args: Dict[str, Any] = Field(default_factory=dict)  # Arguments for the check function
+    poll_interval: str = "5m"  # How often to check (e.g., "5m", "1h")
+    poll_jitter: str = "0s"  # Random jitter to add to poll interval
+    timeout: str = "24h"  # Max time to wait before giving up
+    inputs: Optional[Dict[str, Any]] = None  # Inputs to pass when triggered
+    enabled: bool = True
+    description: Optional[str] = None
+
+
+class WebhookTrigger(BaseModel):
+    """
+    Webhook-based trigger that responds to HTTP POST requests.
+
+    Usage:
+        triggers:
+          - name: on_payment
+            type: webhook
+            auth: hmac:${WEBHOOK_SECRET}
+            payload_schema:
+              type: object
+              properties:
+                payment_id: {type: string}
+    """
+    name: str
+    type: Literal["webhook"] = "webhook"
+    auth: Optional[str] = None  # Auth method: "hmac:secret", "bearer:token", "none"
+    payload_schema: Optional[Dict[str, Any]] = Field(default=None, alias="schema")  # JSON Schema for payload validation
+    inputs: Optional[Dict[str, Any]] = None  # Static inputs to merge with webhook payload
+    enabled: bool = True
+    description: Optional[str] = None
+
+
+class ManualTrigger(BaseModel):
+    """
+    Manual trigger for CLI/API invocation.
+
+    Usage:
+        triggers:
+          - name: manual
+            type: manual
+            inputs_schema:
+              mode:
+                type: string
+                enum: [full, incremental]
+    """
+    name: str
+    type: Literal["manual"] = "manual"
+    inputs_schema: Optional[Dict[str, Any]] = None  # JSON Schema for required inputs
+    description: Optional[str] = None
+
+
+# Union type for all trigger types
+Trigger = Union[CronTrigger, SensorTrigger, WebhookTrigger, ManualTrigger]
 
 
 # ===== Inline Validator Configuration =====
@@ -544,6 +694,11 @@ class CascadeConfig(BaseModel):
     # Inline validators - cascade-scoped validator definitions
     # These are checked before global tackle/ directory when resolving validator names
     validators: Optional[Dict[str, InlineValidatorConfig]] = None
+
+    # Triggers - declarative scheduling and event-based execution
+    # Defines how/when this cascade should be executed
+    # Use `windlass triggers export` to generate external scheduler configs
+    triggers: Optional[List[Trigger]] = None
 
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is

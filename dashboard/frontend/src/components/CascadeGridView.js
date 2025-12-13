@@ -30,7 +30,7 @@ const darkTheme = themeQuartz.withParams({
  * Grid view for cascades using AG Grid
  * Features: sorting, filtering, expandable rows, virtualization
  */
-function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
+function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }) {
   const [gridApi, setGridApi] = useState(null);
 
   // Filter cascades based on search query
@@ -173,6 +173,29 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     );
   };
 
+  // Actions cell renderer with Visualize button
+  const ActionsCellRenderer = (props) => {
+    const handleVisualize = (e) => {
+      e.stopPropagation(); // Don't trigger row click
+      if (onVisualize) {
+        onVisualize(props.data);
+      }
+    };
+
+    return (
+      <div className="actions-cell">
+        <button
+          className="action-btn visualize-btn"
+          onClick={handleVisualize}
+          title="Visualize cascade flow"
+        >
+          <Icon icon="ph:tree-structure" width="16" />
+          <span>Flow</span>
+        </button>
+      </div>
+    );
+  };
+
   // Column definitions
   const columnDefs = useMemo(() => [
     {
@@ -248,8 +271,20 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
         return dateA - dateB;
       },
       sort: 'desc'
+    },
+    {
+      field: 'actions',
+      colId: 'actions',
+      headerName: '',
+      width: 90,
+      cellClass: 'actions-cell-container',
+      cellRenderer: ActionsCellRenderer,
+      sortable: false,
+      filter: false,
+      resizable: false,
+      pinned: 'right',
     }
-  ], []);
+  ], [onVisualize]);
 
   // Default column settings
   const defaultColDef = useMemo(() => ({
@@ -265,8 +300,12 @@ function CascadeGridView({ cascades, onSelectCascade, searchQuery }) {
     params.api.sizeColumnsToFit();
   };
 
-  // Handle cell clicks - clicking anywhere on the row opens it
+  // Handle cell clicks - clicking anywhere on the row opens it (except actions column)
   const onCellClicked = (event) => {
+    // Skip navigation if clicking on the actions column
+    if (event.column?.colId === 'actions') {
+      return;
+    }
     if (event.data) {
       onSelectCascade(event.data.cascade_id, event.data);
     }

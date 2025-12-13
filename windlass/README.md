@@ -576,6 +576,231 @@ Launch background processes that don't block main workflow:
 
 Async cascades are fully traced with parent linkage.
 
+### Deterministic Phases (Direct Tool Execution)
+
+Not everything needs an LLM. **Deterministic phases** execute tools directly without LLM mediation - perfect for data operations, validations, and other predictable tasks.
+
+```json
+{
+  "name": "validate_query",
+  "tool": "python:windlass.demo_tools.validate_sql",
+  "inputs": {
+    "query": "{{ input.query }}"
+  },
+  "routing": {
+    "valid": "execute_query",
+    "invalid": "fix_query"
+  },
+  "handoffs": ["execute_query", "fix_query"]
+}
+```
+
+**Key differences from LLM phases:**
+- Uses `tool` instead of `instructions`
+- Uses `inputs` for templated tool arguments
+- Uses `routing` for return-value-based branching
+- No token costs, instant execution, fully predictable
+
+**Return-value routing:**
+Tools return a dict with `_route` key to determine next phase:
+```python
+def validate_sql(query: str) -> dict:
+    if is_valid(query):
+        return {"_route": "valid", "cleaned_query": clean(query)}
+    else:
+        return {"_route": "invalid", "error": "Syntax error"}
+```
+
+**Hybrid error handling:**
+When deterministic phases fail, hand off to an LLM for intelligent recovery:
+```json
+{
+  "name": "execute_query",
+  "tool": "smart_sql_run",
+  "inputs": {"query": "{{ input.query }}"},
+  "on_error": {
+    "instructions": "SQL failed: {{ state.last_deterministic_error.error }}\n\nDiagnose and fix.",
+    "tackle": ["smart_sql_run"],
+    "rules": {"max_turns": 3}
+  }
+}
+```
+
+**Use cases:**
+- Data validation (schema checks, format validation)
+- ETL operations (extract, transform, load)
+- File operations (read, write, copy)
+- API calls (when response handling is predictable)
+- Any operation that doesn't need LLM judgment
+
+### Signals (Cross-Cascade Communication)
+
+**Signals** enable coordination between cascades and external systems - the "wait for condition" primitive.
+
+```json
+{
+  "name": "wait_for_data",
+  "instructions": "Wait for upstream data to be ready",
+  "tackle": ["await_signal"],
+  "handoffs": ["process_data", "handle_timeout"]
+}
+```
+
+**Signal tools:**
+
+`await_signal` - Block until a named signal fires:
+```python
+await_signal(
+    signal_name="daily_data_ready",
+    timeout="4h",
+    description="Wait for ETL pipeline"
+)
+# Returns: {"status": "fired", "payload": {...}, "_route": "fired"}
+# Or: {"status": "timeout", "_route": "timeout"}
+```
+
+`fire_signal` - Wake up all cascades waiting on a signal:
+```python
+fire_signal(
+    signal_name="daily_data_ready",
+    payload={"row_count": 50000, "quality": "verified"}
+)
+# Returns: {"status": "success", "fired_count": 3}
+```
+
+`list_signals` - See waiting signals:
+```python
+list_signals(signal_name="daily_data_ready")
+# Returns: {"signals": [...], "count": 2}
+```
+
+**CLI commands:**
+```bash
+# List all waiting signals
+windlass signals list
+
+# Fire a signal from external script
+windlass signals fire daily_data_ready --payload '{"ready": true}'
+
+# Check signal status
+windlass signals status sig_abc123
+
+# Cancel a waiting signal
+windlass signals cancel sig_abc123 --reason "Pipeline cancelled"
+```
+
+**Use cases:**
+- Wait for upstream ETL pipelines
+- Coordinate multiple parallel cascades
+- Wait for webhook events
+- Human approval gates
+- External system integration
+
+**Architecture:**
+- Signals persist in ClickHouse for durability
+- HTTP callbacks for sub-second wake-up
+- Polling fallback for reliability
+- Works across processes and machines
+
+## Triggers & Scheduling
+
+Define **when** cascades should run, directly in the cascade file:
+
+```json
+{
+  "cascade_id": "daily_etl",
+  "triggers": [
+    {
+      "name": "daily_morning",
+      "type": "cron",
+      "schedule": "0 6 * * *",
+      "timezone": "America/New_York",
+      "description": "Run every day at 6 AM Eastern",
+      "inputs": {"mode": "incremental"}
+    },
+    {
+      "name": "on_source_ready",
+      "type": "sensor",
+      "check": "python:windlass.triggers.sensor_file_exists",
+      "args": {"path": "/data/incoming/feed.csv"},
+      "poll_interval": "5m",
+      "timeout": "4h"
+    },
+    {
+      "name": "manual_run",
+      "type": "manual",
+      "inputs_schema": {
+        "mode": {"type": "string", "enum": ["full", "incremental"]}
+      }
+    }
+  ],
+  "phases": [...]
+}
+```
+
+**Trigger types:**
+
+| Type | Purpose | Key Fields |
+|------|---------|------------|
+| **cron** | Time-based scheduling | `schedule`, `timezone` |
+| **sensor** | Condition-based polling | `check`, `poll_interval`, `timeout` |
+| **webhook** | HTTP-triggered | `auth`, `path` |
+| **manual** | User-initiated | `inputs_schema` |
+
+**Export to schedulers:**
+
+Windlass generates configs for external schedulers:
+
+```bash
+# Export to crontab format
+windlass triggers export examples/scheduled_etl_demo.json --format cron
+
+# Export to systemd timer/service
+windlass triggers export examples/scheduled_etl_demo.json --format systemd
+
+# Export to Kubernetes CronJob
+windlass triggers export examples/scheduled_etl_demo.json --format kubernetes
+
+# Export to Airflow DAG
+windlass triggers export examples/scheduled_etl_demo.json --format airflow
+```
+
+**Example crontab output:**
+```bash
+# Windlass triggers for daily_etl
+# Generated at 2024-01-15T10:30:00
+
+# Run every day at 6 AM Eastern
+# Timezone: America/New_York (cron uses system timezone)
+0 6 * * * windlass run /path/to/daily_etl.json --input '{"mode": "incremental"}' --trigger daily_morning
+```
+
+**Example Kubernetes output:**
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: windlass-daily-etl-daily-morning
+  namespace: default
+spec:
+  schedule: "0 6 * * *"
+  timeZone: "America/New_York"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: windlass
+            image: windlass:latest
+            command: ["windlass"]
+            args: ["run", "/app/daily_etl.json", "--trigger", "daily_morning"]
+```
+
+**List triggers:**
+```bash
+windlass triggers list examples/scheduled_etl_demo.json
+```
+
 ## Built-in Tools (Tackle)
 
 ### `smart_sql_run`
@@ -621,6 +846,27 @@ Capture web pages (requires Playwright):
 ```python
 take_screenshot(url="https://example.com")
 # Returns: {"content": "Screenshot saved", "images": ["/path/to/screenshot.png"]}
+```
+
+### `await_signal`
+Wait for cross-cascade signal:
+```python
+await_signal(signal_name="data_ready", timeout="1h", description="Wait for ETL")
+# Returns: {"status": "fired", "payload": {...}} or {"status": "timeout"}
+```
+
+### `fire_signal`
+Fire a signal to wake waiting cascades:
+```python
+fire_signal(signal_name="data_ready", payload={"rows": 1000})
+# Returns: {"status": "success", "fired_count": N}
+```
+
+### `list_signals`
+List waiting signals:
+```python
+list_signals(signal_name="data_ready")
+# Returns: {"signals": [...], "count": N}
 ```
 
 ## Observability
@@ -1091,6 +1337,17 @@ The `examples/` directory contains reference implementations:
 - `image_flow.json`: Vision protocol demonstration
 - `reforge_feedback_chart.json`: Manual image injection with feedback
 
+**Deterministic & Hybrid:**
+- `deterministic_demo.json`: Tool-based phases mixed with LLM phases
+- `hybrid_etl_demo.json`: ETL pipeline with intelligent error recovery
+- `scheduled_etl_demo.json`: Triggers and scheduling definitions
+
+**Signals & Coordination:**
+- `signal_quick_test.json`: Basic signal wait/fire test
+- `signal_consumer_demo.json`: Cascade that waits for signals
+- `signal_producer_demo.json`: Cascade that fires signals
+- `signal_etl_pipeline.json`: Complete ETL using signals for coordination
+
 **Meta:**
 - `reforge_meta_optimizer.json`: Cascade that optimizes other cascades
 - `manifest_flow.json`: Quartermaster auto-tool-selection
@@ -1142,6 +1399,9 @@ windlass/
 - **Wards**: Protective barriers for validation
 - **Manifest**: Tool library, charted by the Quartermaster
 - **Quartermaster**: Agent that selects appropriate tools
+- **Signals**: Cross-cascade communication - "wait for condition" primitives
+- **Triggers**: Scheduling definitions (cron, sensor, webhook, manual)
+- **Deterministic Phases**: Direct tool execution without LLM mediation
 
 ## License
 

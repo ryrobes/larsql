@@ -418,30 +418,52 @@ class CheckpointManager:
 
         console.print(f"[dim]Waiting for human input on checkpoint {checkpoint_id[:8]}...[/dim]")
 
-        while True:
-            # Refresh checkpoint from cache/db
-            checkpoint = self.get_checkpoint(checkpoint_id)
+        # Update session state to blocked (for durable execution visibility)
+        session_id = checkpoint.session_id
+        try:
+            from .session_state import set_session_blocked, set_session_unblocked, BlockedType
+            set_session_blocked(
+                session_id=session_id,
+                blocked_type=BlockedType.HITL,
+                blocked_on=checkpoint_id,
+                description=f"Waiting for human input ({checkpoint.checkpoint_type.value})",
+                timeout_at=checkpoint.timeout_at
+            )
+        except Exception:
+            pass  # Don't fail if session state update fails
 
-            if checkpoint.status == CheckpointStatus.RESPONDED:
-                console.print(f"[green]✓ Received human response[/green]")
-                return checkpoint.response
+        try:
+            while True:
+                # Refresh checkpoint from cache/db
+                checkpoint = self.get_checkpoint(checkpoint_id)
 
-            if checkpoint.status == CheckpointStatus.CANCELLED:
-                console.print(f"[yellow]⚠ Checkpoint was cancelled[/yellow]")
-                return None
+                if checkpoint.status == CheckpointStatus.RESPONDED:
+                    console.print(f"[green]✓ Received human response[/green]")
+                    return checkpoint.response
 
-            if checkpoint.status == CheckpointStatus.TIMEOUT:
-                console.print(f"[yellow]⚠ Checkpoint timed out[/yellow]")
-                return None
+                if checkpoint.status == CheckpointStatus.CANCELLED:
+                    console.print(f"[yellow]⚠ Checkpoint was cancelled[/yellow]")
+                    return None
 
-            # Check deadline
-            if deadline and time.time() >= deadline:
-                console.print(f"[yellow]⚠ Timeout waiting for human response[/yellow]")
-                # Mark as timed out
-                self.timeout_checkpoint(checkpoint_id, "blocking_wait_timeout")
-                return None
+                if checkpoint.status == CheckpointStatus.TIMEOUT:
+                    console.print(f"[yellow]⚠ Checkpoint timed out[/yellow]")
+                    return None
 
-            time.sleep(poll_interval)
+                # Check deadline
+                if deadline and time.time() >= deadline:
+                    console.print(f"[yellow]⚠ Timeout waiting for human response[/yellow]")
+                    # Mark as timed out
+                    self.timeout_checkpoint(checkpoint_id, "blocking_wait_timeout")
+                    return None
+
+                time.sleep(poll_interval)
+        finally:
+            # Always restore session state to running when done waiting
+            try:
+                from .session_state import set_session_unblocked
+                set_session_unblocked(session_id)
+            except Exception:
+                pass
 
     def cancel_checkpoint(self, checkpoint_id: str, reason: Optional[str] = None) -> Checkpoint:
         """

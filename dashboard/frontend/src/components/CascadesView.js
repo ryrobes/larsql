@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import potpack from 'potpack';
 import CascadeTile, { calculateTileDimensions } from './CascadeTile';
 import CascadeGridView from './CascadeGridView';
+import CascadeFlowModal from './CascadeFlowModal';
 import VideoSpinner from './VideoSpinner';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
@@ -13,6 +14,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
   const [layout, setLayout] = useState({ boxes: [], w: 0, h: 0, fill: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid'); // 'tile' or 'grid'
+  const [flowModalCascade, setFlowModalCascade] = useState(null); // Cascade to visualize in flow modal
 
   // Convert wildcard pattern to regex
   const wildcardToRegex = (pattern) => {
@@ -487,10 +489,19 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
           <CascadeGridView
             cascades={cascades}
             onSelectCascade={onSelectCascade}
+            onVisualize={setFlowModalCascade}
             searchQuery={searchQuery}
           />
         )}
       </div>
+
+      {/* Cascade Flow Modal */}
+      {flowModalCascade && (
+        <CascadeFlowModal
+          cascade={flowModalCascade}
+          onClose={() => setFlowModalCascade(null)}
+        />
+      )}
     </div>
   );
 }

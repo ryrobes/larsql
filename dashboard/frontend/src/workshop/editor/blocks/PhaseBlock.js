@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,6 +7,7 @@ import useWorkshopStore from '../../stores/workshopStore';
 import TacklePills from '../components/TacklePills';
 import ModelSelect from '../components/ModelSelect';
 import ContextBuilder from '../components/ContextBuilder';
+import ContextDropPicker from '../components/ContextDropPicker';
 import FlowBuilder from '../components/FlowBuilder';
 import { JinjaEditor, getAvailableVariables } from '../jinja-editor';
 import './PhaseBlock.css';
@@ -31,6 +32,8 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
   } = useWorkshopStore();
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isContextDragOver, setIsContextDragOver] = useState(false);
+  const [contextDropPicker, setContextDropPicker] = useState(null); // { phaseName, position }
 
   // Get available variables for the Jinja editor
   const availableVariables = useMemo(
@@ -100,6 +103,98 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       removePhase(index);
     }
   };
+
+  // Handle dropping a phase output variable onto the Context drawer toggle
+  const handleContextDragOver = (e) => {
+    // Check if this is a variable we can accept (outputs.*)
+    const types = e.dataTransfer.types;
+    if (types.includes('application/x-variable')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsContextDragOver(true);
+    }
+  };
+
+  const handleContextDragLeave = (e) => {
+    // Only set to false if we're actually leaving (not entering a child)
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsContextDragOver(false);
+    }
+  };
+
+  const handleContextDrop = (e) => {
+    e.preventDefault();
+    setIsContextDragOver(false);
+
+    const variablePath = e.dataTransfer.getData('application/x-variable');
+    if (!variablePath) return;
+
+    // Only accept outputs.* variables
+    if (!variablePath.startsWith('outputs.')) {
+      return;
+    }
+
+    // Extract the phase name from "outputs.phase_name"
+    const sourcePhaseName = variablePath.replace('outputs.', '');
+
+    // Check if already present
+    const currentContext = phase.context || {};
+    const currentFrom = currentContext.from || [];
+    const alreadyPresent = currentFrom.some(
+      (s) => (typeof s === 'string' ? s === sourcePhaseName : s.phase === sourcePhaseName)
+    );
+
+    if (alreadyPresent) {
+      // Already present, just open the drawer
+      if (!isDrawerOpen('context')) {
+        toggleDrawer(index, 'context');
+      }
+      return;
+    }
+
+    // Show the picker at the drop position
+    setContextDropPicker({
+      phaseName: sourcePhaseName,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
+
+  // Handle selection from the context drop picker
+  const handleContextPickerSelect = useCallback((includeOptions) => {
+    if (!contextDropPicker) return;
+
+    const { phaseName: sourcePhaseName } = contextDropPicker;
+    const currentContext = phase.context || {};
+    const currentFrom = currentContext.from || [];
+
+    // Build the source config
+    const sourceConfig = {
+      phase: sourcePhaseName,
+      include: includeOptions,
+    };
+
+    // If currently set to "all", switch to custom mode with the dropped phase
+    let newFrom;
+    if (currentFrom.includes('all')) {
+      newFrom = [sourceConfig];
+    } else {
+      newFrom = [...currentFrom, sourceConfig];
+    }
+
+    updatePhase(index, {
+      context: { ...currentContext, from: newFrom },
+    });
+
+    // Close picker and open drawer
+    setContextDropPicker(null);
+    if (!isDrawerOpen('context')) {
+      toggleDrawer(index, 'context');
+    }
+  }, [contextDropPicker, phase.context, index, updatePhase, isDrawerOpen, toggleDrawer]);
+
+  const handleContextPickerCancel = useCallback(() => {
+    setContextDropPicker(null);
+  }, []);
 
   // Drawer toggle handlers
   const drawerConfigs = [
@@ -213,21 +308,37 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
       {/* Drawer Toggles */}
       <div className="drawer-toggles">
-        {drawerConfigs.map(({ id, label, icon, hasContent }) => (
-          <button
-            key={id}
-            className={`drawer-toggle ${isDrawerOpen(id) ? 'open' : ''} ${hasContent ? 'has-content' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleDrawer(index, id);
-            }}
-          >
-            <Icon icon={isDrawerOpen(id) ? 'mdi:chevron-down' : 'mdi:chevron-right'} width="14" />
-            <Icon icon={icon} width="14" />
-            <span>{label}</span>
-            {hasContent && <span className="content-dot" />}
-          </button>
-        ))}
+        {drawerConfigs.map(({ id, label, icon, hasContent }) => {
+          // Special handling for context drawer - make it a drop target
+          const isContext = id === 'context';
+          const extraProps = isContext
+            ? {
+                onDragOver: handleContextDragOver,
+                onDragLeave: handleContextDragLeave,
+                onDrop: handleContextDrop,
+              }
+            : {};
+
+          return (
+            <button
+              key={id}
+              className={`drawer-toggle ${isDrawerOpen(id) ? 'open' : ''} ${hasContent ? 'has-content' : ''} ${isContext && isContextDragOver ? 'drop-target-active' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleDrawer(index, id);
+              }}
+              {...extraProps}
+            >
+              <Icon icon={isDrawerOpen(id) ? 'mdi:chevron-down' : 'mdi:chevron-right'} width="14" />
+              <Icon icon={icon} width="14" />
+              <span>{label}</span>
+              {hasContent && <span className="content-dot" />}
+              {isContext && isContextDragOver && (
+                <span className="drop-hint">Drop to add</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Drawer Contents */}
@@ -251,6 +362,16 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
           <FlowDrawer phase={phase} index={index} />
         )}
       </div>
+
+      {/* Context Drop Picker (shown when dropping an output variable on Context toggle) */}
+      {contextDropPicker && (
+        <ContextDropPicker
+          phaseName={contextDropPicker.phaseName}
+          position={contextDropPicker.position}
+          onSelect={handleContextPickerSelect}
+          onCancel={handleContextPickerCancel}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,105 @@
+{
+  "cascade_id": "signal_etl_pipeline",
+  "description": "Complete ETL pipeline using signals for coordination. Demonstrates how deterministic phases, signals, and LLM phases work together.",
+
+  "triggers": [
+    {
+      "name": "daily_run",
+      "type": "cron",
+      "schedule": "0 6 * * *",
+      "timezone": "America/New_York",
+      "description": "Run daily at 6 AM Eastern",
+      "inputs": {
+        "mode": "incremental"
+      }
+    },
+    {
+      "name": "on_source_ready",
+      "type": "sensor",
+      "check": "python:windlass.triggers.sensor_file_exists",
+      "args": {
+        "path": "/data/incoming/events.csv",
+        "min_size_bytes": 1000
+      },
+      "poll_interval": "5m",
+      "description": "Trigger when source file appears",
+      "inputs": {
+        "mode": "incremental"
+      }
+    }
+  ],
+
+  "phases": [
+    {
+      "name": "wait_for_source",
+      "tool": "await_signal",
+      "inputs": {
+        "signal_name": "source_data_ready",
+        "timeout": "4h",
+        "description": "Waiting for source data to be available"
+      },
+      "routing": {
+        "fired": "validate_source",
+        "timeout": "handle_timeout"
+      },
+      "handoffs": ["validate_source", "handle_timeout"]
+    },
+    {
+      "name": "handle_timeout",
+      "instructions": "The source data did not arrive within 4 hours.\n\nThis could mean:\n1. Upstream system is delayed\n2. Network connectivity issues\n3. Source system failure\n\nRecommend checking the upstream data provider and consider:\n- Sending an alert to the data team\n- Scheduling a retry for later\n- Using fallback data if available"
+    },
+    {
+      "name": "validate_source",
+      "tool": "python:windlass.demo_tools.validate_sql",
+      "inputs": {
+        "query": "SELECT COUNT(*) FROM source_table WHERE date = '{{ input.date | default(\"today\") }}'"
+      },
+      "routing": {
+        "valid": "extract_data",
+        "invalid": "handle_validation_error"
+      },
+      "handoffs": ["extract_data", "handle_validation_error"]
+    },
+    {
+      "name": "handle_validation_error",
+      "instructions": "Source data validation failed:\n\n{{ state.last_deterministic_error }}\n\nDiagnose the issue and suggest remediation steps."
+    },
+    {
+      "name": "extract_data",
+      "instructions": "Source validation passed. Now extract the data for processing.\n\nExtraction details:\n- Mode: {{ input.mode | default('incremental') }}\n- Source payload: {{ state.output_wait_for_source }}\n\nSimulate data extraction and return the extracted record count.",
+      "handoffs": ["transform_data"]
+    },
+    {
+      "name": "transform_data",
+      "tool": "python:windlass.demo_tools.transform_data",
+      "inputs": {
+        "data": "[{\"id\": 1, \"value\": 100}, {\"id\": 2, \"value\": 200}, {\"id\": 3, \"value\": 300}]",
+        "operation": "sum_numeric"
+      },
+      "routing": {
+        "success": "load_data",
+        "error": "handle_transform_error"
+      },
+      "handoffs": ["load_data", "handle_transform_error"]
+    },
+    {
+      "name": "handle_transform_error",
+      "instructions": "Transform failed:\n\n{{ state.last_deterministic_error }}\n\nDiagnose the transformation issue."
+    },
+    {
+      "name": "load_data",
+      "instructions": "Transformation complete with results:\n\n{{ state.output_transform_data }}\n\nSimulate loading to the destination warehouse. Include:\n- Target table name\n- Row count loaded\n- Load timestamp",
+      "handoffs": ["notify_downstream"]
+    },
+    {
+      "name": "notify_downstream",
+      "instructions": "Use fire_signal to notify downstream systems:\n\n- Signal name: 'etl_complete'\n- Payload: {\"cascade_id\": \"signal_etl_pipeline\", \"status\": \"success\", \"records_processed\": \"{{ state.output_transform_data.count }}\"}",
+      "tackle": ["fire_signal"],
+      "handoffs": ["complete"]
+    },
+    {
+      "name": "complete",
+      "instructions": "ETL pipeline complete!\n\nSummary:\n1. Waited for source data signal\n2. Validated source data\n3. Extracted {{ state.output_extract_data }}\n4. Transformed data\n5. Loaded to destination\n6. Notified downstream systems\n\nSignal result: {{ state.output_notify_downstream }}"
+    }
+  ]
+}

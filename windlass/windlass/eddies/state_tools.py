@@ -8,6 +8,9 @@ current_session_context = ContextVar("current_session_context", default=None)
 # ContextVar to track current phase name
 current_phase_context = ContextVar("current_phase_context", default=None)
 
+# ContextVar to track current cascade ID
+current_cascade_context = ContextVar("current_cascade_context", default=None)
+
 def set_current_session_id(sid):
     return current_session_context.set(sid)
 
@@ -19,6 +22,12 @@ def set_current_phase_name(phase_name):
 
 def get_current_phase_name():
     return current_phase_context.get()
+
+def set_current_cascade_id(cascade_id):
+    return current_cascade_context.set(cascade_id)
+
+def get_current_cascade_id():
+    return current_cascade_context.get()
 
 def set_state_internal(key: str, value) -> None:
     """
