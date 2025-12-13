@@ -47,20 +47,68 @@ function DraggableToolBlock({ tool }) {
   });
 
   const getToolIcon = (type, name) => {
+    // Special tools
     if (name === 'manifest') return 'mdi:auto-fix';
     if (name === 'memory') return 'mdi:brain';
-    const icons = {
+    // Specific tool icons
+    const toolIcons = {
+      'rabbitize_start': 'mdi:web',
+      'rabbitize_execute': 'mdi:cursor-pointer',
+      'rabbitize_extract': 'mdi:file-document-outline',
+      'rabbitize_close': 'mdi:close-circle',
+      'rabbitize_status': 'mdi:information',
+      'ask_human': 'mdi:account-question',
+      'ask_human_custom': 'mdi:form-select',
+      'create_chart': 'mdi:chart-bar',
+      'create_vega_lite': 'mdi:chart-areaspline',
+      'create_plotly': 'mdi:chart-scatter-plot',
+      'smart_sql_run': 'mdi:database-search',
+      'sql_search': 'mdi:database-search',
+      'sql_query': 'mdi:database',
+      'list_sql_connections': 'mdi:database-cog',
+      'read_file': 'mdi:file-eye',
+      'write_file': 'mdi:file-edit',
+      'append_file': 'mdi:file-plus',
+      'list_files': 'mdi:folder-open',
+      'file_info': 'mdi:file-question',
+      'rag_search': 'mdi:book-search',
+      'rag_read_chunk': 'mdi:book-open-page-variant',
+      'rag_list_sources': 'mdi:bookshelf',
+      'say': 'mdi:volume-high',
+      'linux_shell': 'mdi:console',
+      'run_code': 'mdi:code-braces',
+      'take_screenshot': 'mdi:camera',
+      'set_state': 'mdi:variable',
+      'spawn_cascade': 'mdi:sitemap',
+    };
+    if (toolIcons[name]) return toolIcons[name];
+    // Type-based icons
+    const typeIcons = {
+      browser: 'mdi:web',
+      human: 'mdi:account',
+      visualization: 'mdi:chart-bar',
+      sql: 'mdi:database',
+      filesystem: 'mdi:folder',
+      rag: 'mdi:book-search',
+      tts: 'mdi:volume-high',
       python: 'mdi:language-python',
       cascade: 'mdi:sitemap',
       special: 'mdi:star-four-points',
     };
-    return icons[type] || 'mdi:wrench';
+    return typeIcons[type] || 'mdi:wrench';
   };
 
   const getToolColor = (type, name) => {
     if (name === 'manifest') return 'brass';
     if (name === 'memory') return 'purple';
     const colors = {
+      browser: 'purple',
+      human: 'teal',
+      visualization: 'ocean',
+      sql: 'slate',
+      filesystem: 'gray',
+      rag: 'brass',
+      tts: 'purple',
       python: 'teal',
       cascade: 'ocean',
       special: 'brass',

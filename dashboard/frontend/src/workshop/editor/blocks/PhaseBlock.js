@@ -64,6 +64,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
   // Check which configs are present
   const hasSoundings = phase.soundings && phase.soundings.factor > 1;
+  const hasReforge = phase.soundings?.reforge?.steps > 0;
   const hasRules = phase.rules && (phase.rules.max_turns || phase.rules.loop_until);
   const hasContext = phase.context && phase.context.from?.length > 0;
   const hasWards = phase.wards && (phase.wards.pre?.length > 0 || phase.wards.post?.length > 0);
@@ -146,9 +147,18 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
         {/* Config Indicators */}
         <div className="config-indicators">
           {hasSoundings && (
-            <span className="indicator soundings" title={`Soundings: ${phase.soundings.factor}x`}>
+            <span
+              className={`indicator soundings ${hasReforge ? 'with-reforge' : ''}`}
+              title={`Soundings: ${phase.soundings.factor}x${hasReforge ? ` + Reforge: ${phase.soundings.reforge.steps} steps` : ''}`}
+            >
               <Icon icon="mdi:source-branch" width="14" />
               {phase.soundings.factor}
+              {hasReforge && (
+                <>
+                  <Icon icon="mdi:hammer-wrench" width="12" className="reforge-icon" />
+                  {phase.soundings.reforge.steps}
+                </>
+              )}
             </span>
           )}
           {hasRules && phase.rules.loop_until && (
@@ -290,16 +300,41 @@ function ExecutionDrawer({ phase, index }) {
  * SoundingsDrawer - Tree of Thought configuration
  */
 function SoundingsDrawer({ phase, index }) {
-  const { updatePhaseField } = useWorkshopStore();
+  const { updatePhaseField, cascade } = useWorkshopStore();
+  const [isReforgeExpanded, setIsReforgeExpanded] = React.useState(false);
 
   const soundings = phase.soundings || {};
+  const reforge = soundings.reforge || {};
+  const hasReforge = reforge.steps > 0;
 
   const handleChange = (field, value) => {
     updatePhaseField(index, `soundings.${field}`, value);
   };
 
+  const handleReforgeChange = (field, value) => {
+    updatePhaseField(index, `soundings.reforge.${field}`, value);
+  };
+
+  const handleEnableReforge = (enabled) => {
+    if (enabled) {
+      // Initialize with defaults
+      updatePhaseField(index, 'soundings.reforge', {
+        steps: 2,
+        honing_prompt: '',
+        factor_per_step: 2,
+      });
+      setIsReforgeExpanded(true);
+    } else {
+      // Remove reforge config
+      updatePhaseField(index, 'soundings.reforge', undefined);
+    }
+  };
+
   const factor = soundings.factor || 3;
   const mode = soundings.mode || 'evaluate';
+
+  // Get validator names for threshold
+  const validatorNames = Object.keys(cascade.validators || {});
 
   return (
     <div className="drawer-content soundings-drawer">
@@ -391,6 +426,153 @@ function SoundingsDrawer({ phase, index }) {
         </label>
         <span className="field-hint">Adds slight variations to increase diversity</span>
       </div>
+
+      {/* Reforge Section - only for evaluate mode */}
+      {mode === 'evaluate' && (
+        <div className={`reforge-section ${hasReforge ? 'enabled' : ''}`}>
+          <div
+            className="reforge-header"
+            onClick={() => hasReforge && setIsReforgeExpanded(!isReforgeExpanded)}
+          >
+            <div className="reforge-header-left">
+              <Icon
+                icon={hasReforge && isReforgeExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+                width="14"
+                className={`expand-icon ${!hasReforge ? 'hidden' : ''}`}
+              />
+              <Icon icon="mdi:hammer-wrench" width="16" />
+              <span>Reforge</span>
+              {hasReforge && (
+                <span className="reforge-badge">
+                  {reforge.steps} step{reforge.steps > 1 ? 's' : ''} × {reforge.factor_per_step || 2}
+                </span>
+              )}
+            </div>
+            <label className="reforge-toggle" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={hasReforge}
+                onChange={(e) => handleEnableReforge(e.target.checked)}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          {hasReforge && isReforgeExpanded && (
+            <div className="reforge-content">
+              <div className="reforge-intro">
+                <p>
+                  Iteratively refine the winning result. Each step takes the current best
+                  and runs additional attempts with your honing instructions.
+                </p>
+              </div>
+
+              {/* Steps Slider */}
+              <div className="drawer-field slider-field">
+                <label>
+                  <span>Refinement Steps</span>
+                  <span className="slider-value">{reforge.steps || 2}</span>
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={reforge.steps || 2}
+                  onChange={(e) => handleReforgeChange('steps', parseInt(e.target.value))}
+                  className="slider"
+                />
+                <div className="slider-labels">
+                  <span>1</span>
+                  <span>3</span>
+                  <span>5</span>
+                </div>
+              </div>
+
+              {/* Honing Prompt */}
+              <div className="drawer-field">
+                <label>Honing Prompt</label>
+                <textarea
+                  value={reforge.honing_prompt || ''}
+                  onChange={(e) => handleReforgeChange('honing_prompt', e.target.value)}
+                  placeholder="Refine and improve: focus on clarity, correctness, and completeness..."
+                  rows={2}
+                />
+                <span className="field-hint">Instructions for refining the winner at each step</span>
+              </div>
+
+              {/* Factor Per Step Slider */}
+              <div className="drawer-field slider-field">
+                <label>
+                  <span>Attempts Per Step</span>
+                  <span className="slider-value">{reforge.factor_per_step || 2}×</span>
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={reforge.factor_per_step || 2}
+                  onChange={(e) => handleReforgeChange('factor_per_step', parseInt(e.target.value))}
+                  className="slider"
+                />
+                <div className="slider-labels">
+                  <span>1</span>
+                  <span>3</span>
+                  <span>5</span>
+                </div>
+              </div>
+
+              {/* Reforge Mutations */}
+              <div className="drawer-field checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={reforge.mutate || false}
+                    onChange={(e) => handleReforgeChange('mutate', e.target.checked)}
+                  />
+                  <span>Vary prompts during refinement</span>
+                </label>
+              </div>
+
+              {/* Optional: Evaluator Override */}
+              <div className="drawer-field">
+                <label>Evaluator Override (optional)</label>
+                <textarea
+                  value={reforge.evaluator_override || ''}
+                  onChange={(e) => handleReforgeChange('evaluator_override', e.target.value || undefined)}
+                  placeholder="Custom evaluator for refinement steps (uses main evaluator if empty)"
+                  rows={2}
+                />
+              </div>
+
+              {/* Optional: Early Stopping Threshold */}
+              {validatorNames.length > 0 && (
+                <div className="drawer-field">
+                  <label>Early Stop Threshold (optional)</label>
+                  <select
+                    value={reforge.threshold?.validator || ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleReforgeChange('threshold', {
+                          validator: e.target.value,
+                          mode: 'advisory'
+                        });
+                      } else {
+                        handleReforgeChange('threshold', undefined);
+                      }
+                    }}
+                  >
+                    <option value="">None - run all steps</option>
+                    {validatorNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <span className="field-hint">Stop early when validator passes</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -123,6 +123,16 @@
   color: var(--slate-blue-light);
 }
 
+.indicator.soundings.with-reforge {
+  background: linear-gradient(90deg, var(--midnight-fjord) 50%, rgba(217, 165, 83, 0.2) 100%);
+  border: 1px solid var(--compass-brass);
+}
+
+.indicator.soundings .reforge-icon {
+  color: var(--compass-brass);
+  margin-left: 4px;
+}
+
 .indicator.rules {
   color: var(--ocean-teal);
 }
@@ -503,6 +513,130 @@
   font-size: 11px;
   color: var(--mist-gray);
   font-style: italic;
+}
+
+/* ============================================
+   REFORGE SECTION
+   ============================================ */
+
+.reforge-section {
+  margin-top: 16px;
+  background: var(--midnight-fjord);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.reforge-section.enabled {
+  border-color: var(--compass-brass);
+  background: linear-gradient(180deg, rgba(217, 165, 83, 0.05) 0%, var(--midnight-fjord) 100%);
+}
+
+.reforge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.reforge-header:hover {
+  background: rgba(217, 165, 83, 0.1);
+}
+
+.reforge-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.reforge-section.enabled .reforge-header-left {
+  color: var(--compass-brass);
+}
+
+.reforge-header-left .expand-icon {
+  color: var(--mist-gray);
+}
+
+.reforge-header-left .expand-icon.hidden {
+  visibility: hidden;
+}
+
+.reforge-badge {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--midnight-fjord);
+  background: var(--compass-brass);
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+
+/* Toggle Switch */
+.reforge-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.reforge-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--storm-cloud);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--mist-gray);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.reforge-toggle input:checked + .toggle-slider {
+  background: var(--compass-brass);
+}
+
+.reforge-toggle input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: var(--midnight-fjord);
+}
+
+.reforge-content {
+  padding: 0 12px 12px 12px;
+  border-top: 1px solid var(--border-default);
+}
+
+.reforge-intro {
+  padding: 10px 0;
+}
+
+.reforge-intro p {
+  font-size: 12px;
+  color: var(--mist-gray);
+  line-height: 1.4;
+  margin: 0;
 }
 
 /* ============================================

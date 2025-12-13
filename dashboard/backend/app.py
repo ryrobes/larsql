@@ -3596,20 +3596,49 @@ def get_available_tools():
     """
     Get list of available tools (tackle) from Windlass.
     Returns both registered Python tools and cascade tools.
+    Fully introspects all available tools like manifest/Quartermaster does.
     """
     try:
-        from windlass.tackle import get_available_tools as windlass_tools
+        # Import windlass to trigger all tool registrations
+        import windlass
+        from windlass.tackle import get_registry
 
         tools = []
-        for name, func in windlass_tools().items():
+        registry = get_registry()
+
+        # Get all registered Python tools
+        for name, func in registry.get_all_tackle().items():
             # Get docstring for description
             doc = func.__doc__ or ''
-            description = doc.strip().split('\n')[0] if doc else ''
+            # Get first non-empty line of docstring
+            description = ''
+            for line in doc.strip().split('\n'):
+                line = line.strip()
+                if line:
+                    description = line
+                    break
+
+            # Categorize tools by type
+            tool_type = 'python'
+            if name.startswith('rabbitize_'):
+                tool_type = 'browser'
+            elif name.startswith('rag_'):
+                tool_type = 'rag'
+            elif name.startswith('sql_') or name in ['smart_sql_run', 'list_sql_connections']:
+                tool_type = 'sql'
+            elif name in ['read_file', 'write_file', 'append_file', 'list_files', 'file_info']:
+                tool_type = 'filesystem'
+            elif name in ['ask_human', 'ask_human_custom']:
+                tool_type = 'human'
+            elif name in ['create_chart', 'create_vega_lite', 'create_plotly']:
+                tool_type = 'visualization'
+            elif name == 'say':
+                tool_type = 'tts'
 
             tools.append({
                 'name': name,
                 'description': description,
-                'type': 'python'
+                'type': tool_type
             })
 
         # Add cascade tools from tackle directory
@@ -3620,6 +3649,9 @@ def get_available_tools():
                     try:
                         config = load_config_file(path)
                         name = config.get('cascade_id', os.path.basename(path).rsplit('.', 1)[0])
+                        # Skip if already registered as a Python tool
+                        if any(t['name'] == name for t in tools):
+                            continue
                         desc = config.get('description', '')
                         tools.append({
                             'name': name,
@@ -3629,32 +3661,75 @@ def get_available_tools():
                     except:
                         pass
 
-        # Add special tools that are dynamically generated
+        # Add special tools that are dynamically generated or meta-tools
         special_tools = [
+            {
+                'name': 'manifest',
+                'description': 'Auto-select tools based on context (Quartermaster)',
+                'type': 'special'
+            },
             {
                 'name': 'memory',
                 'description': 'Recall from memory bank (requires memory config on cascade)',
                 'type': 'special'
             },
         ]
-        tools.extend(special_tools)
+
+        # Only add special tools if not already in the list
+        for special in special_tools:
+            if not any(t['name'] == special['name'] for t in tools):
+                tools.append(special)
+
+        # Sort tools: special first, then by type, then alphabetically
+        type_order = {'special': 0, 'browser': 1, 'human': 2, 'visualization': 3, 'sql': 4, 'filesystem': 5, 'rag': 6, 'tts': 7, 'python': 8, 'cascade': 9}
+        tools.sort(key=lambda t: (type_order.get(t['type'], 10), t['name']))
 
         return jsonify({'tools': tools})
 
     except Exception as e:
-        # Fallback to common tools if windlass import fails
+        import traceback
+        traceback.print_exc()
+        # Comprehensive fallback list if windlass import fails
         fallback_tools = [
+            # Special
             {'name': 'manifest', 'description': 'Auto-select tools based on context (Quartermaster)', 'type': 'special'},
             {'name': 'memory', 'description': 'Recall from memory bank (requires memory config on cascade)', 'type': 'special'},
-            {'name': 'linux_shell', 'description': 'Execute shell commands', 'type': 'python'},
-            {'name': 'run_code', 'description': 'Execute Python code', 'type': 'python'},
-            {'name': 'smart_sql_run', 'description': 'Execute SQL queries', 'type': 'python'},
-            {'name': 'take_screenshot', 'description': 'Capture screenshot', 'type': 'python'},
-            {'name': 'ask_human', 'description': 'Request human input', 'type': 'python'},
-            {'name': 'ask_human_custom', 'description': 'Request human input with custom UI', 'type': 'python'},
+            # Browser automation
+            {'name': 'rabbitize_start', 'description': 'Start a new browser session and navigate to URL', 'type': 'browser'},
+            {'name': 'rabbitize_execute', 'description': 'Execute a browser action (click, type, scroll, etc.)', 'type': 'browser'},
+            {'name': 'rabbitize_extract', 'description': 'Extract page content as markdown with DOM coordinates', 'type': 'browser'},
+            {'name': 'rabbitize_close', 'description': 'Close the browser session', 'type': 'browser'},
+            {'name': 'rabbitize_status', 'description': 'Get status of current browser session', 'type': 'browser'},
+            # Human interaction
+            {'name': 'ask_human', 'description': 'Pauses execution to ask the human user a question', 'type': 'human'},
+            {'name': 'ask_human_custom', 'description': 'Ask human with rich auto-generated UI', 'type': 'human'},
+            # Visualization
+            {'name': 'create_chart', 'description': 'Create a chart from data using natural language', 'type': 'visualization'},
+            {'name': 'create_vega_lite', 'description': 'Create a Vega-Lite visualization', 'type': 'visualization'},
+            {'name': 'create_plotly', 'description': 'Create a Plotly visualization', 'type': 'visualization'},
+            # SQL
+            {'name': 'smart_sql_run', 'description': 'Execute SQL queries with smart error handling', 'type': 'sql'},
+            {'name': 'sql_search', 'description': 'Search across SQL databases', 'type': 'sql'},
+            {'name': 'sql_query', 'description': 'Execute raw SQL query', 'type': 'sql'},
+            {'name': 'list_sql_connections', 'description': 'List available SQL database connections', 'type': 'sql'},
+            # Filesystem
+            {'name': 'read_file', 'description': 'Read contents of a file', 'type': 'filesystem'},
+            {'name': 'write_file', 'description': 'Write contents to a file', 'type': 'filesystem'},
+            {'name': 'append_file', 'description': 'Append contents to a file', 'type': 'filesystem'},
+            {'name': 'list_files', 'description': 'List files in a directory', 'type': 'filesystem'},
+            {'name': 'file_info', 'description': 'Get information about a file', 'type': 'filesystem'},
+            # RAG
+            {'name': 'rag_search', 'description': 'Search RAG knowledge base', 'type': 'rag'},
+            {'name': 'rag_read_chunk', 'description': 'Read a specific chunk from RAG', 'type': 'rag'},
+            {'name': 'rag_list_sources', 'description': 'List RAG data sources', 'type': 'rag'},
+            # TTS
+            {'name': 'say', 'description': 'Convert text to speech using ElevenLabs', 'type': 'tts'},
+            # General
+            {'name': 'linux_shell', 'description': 'Execute shell commands in sandboxed Docker container', 'type': 'python'},
+            {'name': 'run_code', 'description': 'Execute Python code in sandboxed Docker container', 'type': 'python'},
+            {'name': 'take_screenshot', 'description': 'Capture screenshot of a URL', 'type': 'python'},
             {'name': 'set_state', 'description': 'Set session state variable', 'type': 'python'},
-            {'name': 'spawn_cascade', 'description': 'Launch sub-cascade', 'type': 'python'},
-            {'name': 'create_chart', 'description': 'Create data visualization', 'type': 'python'},
+            {'name': 'spawn_cascade', 'description': 'Launch a sub-cascade', 'type': 'python'},
         ]
         return jsonify({'tools': fallback_tools, 'error': str(e)})
 
