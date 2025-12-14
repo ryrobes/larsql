@@ -1,0 +1,57 @@
+cascade_id: htmx_plotly_demo
+description: |
+  Demonstrates LLM generating interactive Plotly visualizations with HTMX.
+  Shows how to create data-driven charts for analysis and decision-making.
+
+inputs_schema:
+  analysis_topic: "What data to analyze and visualize"
+
+phases:
+  - name: analyze_and_visualize
+    tackle: ["request_decision", "route_to"]
+    handoffs:
+      - final_report
+    rules:
+      max_turns: 5
+    instructions: |
+      Analyze: {{ input.analysis_topic }}
+
+      Your task:
+      1. Generate sample/synthetic data relevant to the topic
+      2. Create an interactive Plotly chart to visualize the data
+      3. Request approval using request_decision with HTMX + Plotly
+
+      Use the html parameter to create a visualization UI that:
+      - Shows your analysis text
+      - Embeds a Plotly chart (use <div id="chart"></div> + Plotly.newPlot)
+      - Has approve/reject buttons
+      - Includes the data inline in the HTML
+
+      IMPORTANT: Plotly is available in the iframe. Use this pattern:
+
+      <div id="myChart"></div>
+      <script>
+        var data = [{
+          x: [1, 2, 3, 4],
+          y: [10, 15, 13, 17],
+          type: 'scatter'
+        }];
+        var layout = {title: 'My Chart', paper_bgcolor: '#1a1a1a', plot_bgcolor: '#0a0a0a'};
+        Plotly.newPlot('myChart', data, layout, {responsive: true});
+      </script>
+
+      Then add approval form below the chart.
+      When approved/rejected, route to final_report.
+
+  - name: final_report
+    instructions: |
+      The user {{ outputs.analyze_and_visualize.selected }} the analysis.
+
+      {% if outputs.analyze_and_visualize.reasoning %}
+      Feedback: {{ outputs.analyze_and_visualize.reasoning }}
+      {% endif %}
+
+      Provide a final summary.
+
+    context:
+      from: [analyze_and_visualize]

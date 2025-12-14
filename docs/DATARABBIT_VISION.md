@@ -158,92 +158,155 @@ Bowl 3 (Implementation Phase):
 
 ---
 
+## Soundings: The Mechanism, Two Purposes
+
+**Soundings** are DataRabbit's parallel execution engine. The same mechanism serves two distinct purposes:
+
+### Cloning (Variance Reduction)
+Run the **same prompt** multiple times, pick the best execution.
+
+```json
+{
+  "soundings": {
+    "mode": "clone",
+    "champion": "session_042_sounding_2",
+    "factor": 3  // Clone champion 3 times
+  }
+}
+```
+
+- **Biology:** Asexual reproduction, exact copies
+- **Purpose:** Filter random errors (hallucinations, JSON parsing fails, context confusion)
+- **When:** Production, when you have a proven champion
+- **Result:** 10x reliability improvement vs single call
+- **Analogy:** Taking the champion racehorse, cloning it 3 times, racing all 3, picking the one that runs best today
+
+### Mutation (Exploration)
+Run **different prompts** (variations), pick the best formulation.
+
+```json
+{
+  "soundings": {
+    "mode": "mutate",
+    "factor": 5,
+    "mutation_mode": "rewrite"  // Different prompt formulations
+  }
+}
+```
+
+- **Biology:** Sexual reproduction, genetic diversity
+- **Purpose:** Explore formulations, find optimal approach
+- **When:** Development, discovering the best prompt
+- **Result:** Natural selection picks winners from diverse variants
+- **Analogy:** Breeding 5 different horses with different traits, racing them, keeping the winner's genes
+
+### The Distinction Is Critical
+
+| Aspect | Cloning | Mutation |
+|--------|---------|----------|
+| **Same prompt?** | Yes (exact copies) | No (variations) |
+| **Purpose** | Reliability | Discovery |
+| **Cost** | Medium (3x calls) | High (5x calls) |
+| **Use case** | Production | Development |
+| **Biology** | Asexual | Sexual |
+| **Output** | Best execution of proven approach | Best formulation from exploration |
+
+**Both use soundings (parallel execution). The intent is different.**
+
+---
+
 ## The Evolutionary Lifecycle
 
 ### The Four Production Modes
 
-#### Mode 1: Full Breeding (Development)
+#### Mode 1: Mutation Mode (Development)
 ```json
 {
   "soundings": {
+    "mode": "mutate",
     "factor": 5,
-    "mutate": true,
+    "mutation_mode": "rewrite",
     "evaluator_instructions": "Pick the best"
   }
 }
 ```
-- **What:** 5 different prompts (mutations)
-- **Why:** Explore formulations, find winner
+- **Type:** MUTATION (different prompts)
+- **What:** 5 prompt variations (sexual reproduction)
+- **Why:** Explore formulations, find winner through natural selection
 - **Cost:** High (5 LLM calls + evaluator)
-- **Reliability:** High (picking best of 5 filters errors)
-- **Use case:** Development, exploration, finding optimal approach
+- **Reliability:** High (best of 5 filters errors + finds optimal approach)
+- **Use case:** Development, exploration, finding optimal formulation
 
-#### Mode 2: Robust Champion (Production Default) ⭐
+#### Mode 2: Cloning Mode - Robust (Production Default) ⭐
 ```json
 {
   "soundings": {
-    "mode": "champion",
+    "mode": "clone",
     "champion": "session_042_sounding_2",
-    "robustness_factor": 3  // Run champion 3 times
+    "factor": 3  // Clone champion 3 times
   }
 }
 ```
-- **What:** Same prompt 3 times (no mutation)
-- **Why:** Filter hallucinations via majority vote
+- **Type:** CLONING (same prompt, multiple executions)
+- **What:** Champion cloned 3 times (asexual reproduction)
+- **Why:** Filter random errors via majority vote selection
 - **Cost:** Medium (3 calls + evaluator)
-- **Reliability:** Very high (non-determinism variance reduction)
-- **Use case:** Production reliability, variance reduction
+- **Reliability:** Very high (variance reduction, 10x better than pure)
+- **Use case:** Production reliability, proven prompt with error filtering
 
-**This is cloning, not breeding.** Perfect metaphor.
-
-**The insight:** Even the best prompt randomly fails ~5-10% of the time (hallucinations, JSON errors, context confusion). Running the champion 3 times and picking the best filters these random errors.
+**The insight:** Even the best prompt randomly fails ~5-10% of the time (hallucinations, JSON errors, context confusion). Cloning the champion 3 times and picking the best execution filters these random errors **without changing the prompt**.
 
 **Math:**
 - Pure champion (1 call): 10% failure rate
-- Robust champion (3 calls): ~1% effective failure rate (0.1³ if all 3 fail)
+- Cloned champion (3 calls): ~1% effective failure rate (0.1³ if all fail)
 - Cost: 3.4x more than pure, but **10x more reliable**
-- Still 60% cheaper than breeding mode
+- Still 60% cheaper than mutation mode
+
+**This is cloning, not breeding.** Exact genetic copies, pick the healthiest.
 
 #### Mode 3: Pure Champion (Production - Optimized)
 ```json
 {
   "soundings": {
-    "mode": "champion",
-    "champion": "session_042_sounding_2",
-    "robustness_factor": 1  // Single call
+    "mode": "pure",
+    "champion": "session_042_sounding_2"
   }
 }
 ```
-- **What:** Champion once
+- **Type:** SINGLE EXECUTION (no cloning or mutation)
+- **What:** Champion runs once
 - **Why:** Maximum cost savings when stability is very high (>95%)
 - **Cost:** Low (1 call, no evaluator)
-- **Reliability:** Depends on champion stability
-- **Use case:** Highly stable champions, cost-sensitive workloads
+- **Reliability:** Depends on champion stability (5-10% random failures)
+- **Use case:** Highly stable champions, cost-sensitive workloads, monitoring required
 
-#### Mode 4: Adaptive Hybrid (Production - Monitoring)
+#### Mode 4: Hybrid Mode (Production - Adaptive)
 ```json
 {
   "soundings": {
     "mode": "hybrid",
-    "champion": "session_042_sounding_2",
-    "robustness_factor": 2,
-    "exploration_rate": 0.1  // 10% still explore mutations
+    "clone_champion": "session_042_sounding_2",
+    "clone_factor": 2,           // Clone 2x for reliability
+    "mutate_factor": 1,          // 1 mutation for drift detection
+    "clone_probability": 0.9     // 90% of runs use cloning
   }
 }
 ```
-- **What:** 90% robust champion, 10% new mutations
-- **Why:** Drift detection while staying efficient
-- **Cost:** Medium-low (mostly 2-3 calls)
-- **Reliability:** High + adaptive
-- **Use case:** Continuous improvement, drift detection
+- **Type:** MIXED (mostly cloning, some mutation)
+- **What:** 90% cloned champion (2x), 10% new mutations (1x)
+- **Why:** Drift detection while maintaining production efficiency
+- **Cost:** Medium-low (mostly 2 calls, occasional 3)
+- **Reliability:** High + adaptive (catches environment changes)
+- **Use case:** Continuous improvement, drift detection, long-running production
 
 ### The Complete Lifecycle
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  1. BREEDING MODE (Development)                     │
-│     • Run with soundings (5 variants per execution) │
-│     • Evaluator picks winners                       │
+│  1. MUTATION MODE (Development)                     │
+│     • Run with mutations (5 variants per execution) │
+│     • Sexual reproduction, genetic diversity        │
+│     • Evaluator picks winners via natural selection │
 │     • Track success rates in DuckDB                 │
 │     • Cost: High (exploration overhead)             │
 └────────────────────┬────────────────────────────────┘
@@ -252,18 +315,20 @@ Bowl 3 (Implementation Phase):
                      ↓
 ┌─────────────────────────────────────────────────────┐
 │  2. CONVERGENCE (Automatic Detection)               │
-│     • Species abc123: 87% win rate (sounding_2)     │
-│     • UI shows: "Ready for champion mode"           │
-│     • Click "Freeze" or auto-switch                 │
+│     • Species abc123: 87% win rate (variant_2)      │
+│     • Winner stability reached threshold            │
+│     • UI shows: "Ready for cloning mode"            │
+│     • Click "Freeze Champion" or auto-switch        │
 └────────────────────┬────────────────────────────────┘
                      │
                      │ User confirms or auto-switches
                      ↓
 ┌─────────────────────────────────────────────────────┐
-│  3. CHAMPION MODE (Production)                      │
-│     • Uses proven winner only                       │
-│     • Robustness cloning (2-3x) for variance        │
-│     • Cost: Low (1-3 calls vs 5)                    │
+│  3. CLONING MODE (Production)                       │
+│     • Clone proven champion (asexual reproduction)  │
+│     • Run 2-3 clones, pick best execution           │
+│     • Variance reduction filters random errors      │
+│     • Cost: Low (2-3 calls vs 5)                    │
 │     • Monitors for drift                            │
 └────────────────────┬────────────────────────────────┘
                      │
@@ -271,9 +336,47 @@ Bowl 3 (Implementation Phase):
                      ↓
 ┌─────────────────────────────────────────────────────┐
 │  4. DRIFT DETECTION (Continuous Monitoring)         │
-│     • Champion failure rate rises (20% → 40%)       │
+│     • Champion failure rate rises (5% → 40%)        │
 │     • Alert: "Re-evolution recommended"             │
-│     • Return to breeding mode                       │
+│     • Return to mutation mode (sexual reproduction) │
+│     • Breed new variants adapted to new environment │
+└─────────────────────────────────────────────────────┘
+```
+
+### UI Examples
+
+**Mutation Mode (Development):**
+```
+┌─────────────────────────────────────────────────────┐
+│ Species: abc123 (generate_report)                  │
+│ Mode: MUTATION 🧬 (Development)                     │
+├─────────────────────────────────────────────────────┤
+│ Mutations per run: 5                               │
+│ Strategy: Rewrite (learning from 3 prev winners)   │
+│ Purpose: Explore formulations, find optimal        │
+│                                                     │
+│ Convergence: 87% (ready for cloning mode)         │
+│ Champion: variant_2 (18/20 wins)                   │
+│                                                     │
+│ [Freeze Champion] [Keep Mutating]                 │
+└─────────────────────────────────────────────────────┘
+```
+
+**Cloning Mode (Production):**
+```
+┌─────────────────────────────────────────────────────┐
+│ Species: abc123 (generate_report)                  │
+│ Mode: CLONING 🧬🧬🧬 (Production)                    │
+├─────────────────────────────────────────────────────┤
+│ Champion: session_042_variant_2                    │
+│ Clones per run: 3                                  │
+│ Purpose: Variance reduction (filters 5% errors)    │
+│                                                     │
+│ Recent Performance:                                │
+│   Success rate: 99.2% (cloning vs 90% pure)        │
+│   Cost savings: $0.12/run vs mutation mode         │
+│                                                     │
+│ [Switch to Pure] [Re-Mutate] [Use Hybrid]         │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -314,9 +417,10 @@ Winner Stability Analysis:
     Error rate: 5%
 
   Production Recommendation:
-    Mode: Robust Champion ✓
-    Robustness: 3x (filters 5% error rate)
-    Estimated savings vs breeding: $0.12/run (64%)
+    Mode: Cloning 3x ✓
+    Type: Asexual reproduction (exact copies)
+    Purpose: Variance reduction (filters 5% error rate)
+    Estimated savings vs mutation: $0.12/run (64%)
     Estimated reliability vs pure: 10x fewer errors
 ```
 
@@ -324,30 +428,30 @@ Winner Stability Analysis:
 
 | Winner Stability | Error Rate | Recommended Mode |
 |-----------------|------------|------------------|
-| <60% | Any | Full Breeding (still exploring) |
-| 60-85% | Any | Hybrid (champion + 10% exploration) |
-| 85-95% | >5% | Robust Champion 3x |
-| 85-95% | <5% | Robust Champion 2x |
-| >95% | <2% | Pure Champion 1x (monitor closely) |
-| >95% | >2% | Robust Champion 2x (errors persist) |
+| <60% | Any | Mutation Mode (still exploring) |
+| 60-85% | Any | Hybrid (clone 2x + mutate 10%) |
+| 85-95% | >5% | Cloning 3x (high variance reduction) |
+| 85-95% | <5% | Cloning 2x (moderate variance reduction) |
+| >95% | <2% | Pure 1x (monitor closely for drift) |
+| >95% | >2% | Cloning 2x (stable but errors persist) |
 
 ### Auto-Selection Logic
 
 ```python
 def select_production_mode(stability, error_rate, generations):
     if stability < 0.60 or generations < 15:
-        return "breeding"  # Still exploring
+        return "mutate"  # Still exploring, sexual reproduction
 
     if stability > 0.95 and error_rate < 0.02:
-        return "pure_champion"  # Very stable, low errors
+        return "pure"  # Very stable, low errors, single execution
 
     if stability > 0.85 and error_rate < 0.05:
-        return "robust_2x"  # Stable, occasional errors
+        return "clone_2x"  # Stable, clone 2x for variance reduction
 
     if stability > 0.85:
-        return "robust_3x"  # Stable, more errors
+        return "clone_3x"  # Stable but higher errors, clone 3x
 
-    return "hybrid"  # Moderately stable, keep exploring
+    return "hybrid"  # Moderately stable, mostly clone + some mutation
 ```
 
 ---
@@ -392,7 +496,7 @@ That's DataRabbit.
 
 3. **Production lifecycle built-in**
    - Others: dev = prod (same complexity/cost)
-   - DataRabbit: breeding → champion modes
+   - DataRabbit: mutation → cloning modes (sexual → asexual)
 
 4. **Passive optimization**
    - Others: manual A/B testing
@@ -435,11 +539,13 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 - Most of the declarative JSON approach
 
 **Rebrand/Emphasize:**
-- ~~Soundings~~ → Can keep as internal term, but emphasize "variants/mutations"
+- **Soundings** → Keep as technical mechanism, clarify two modes: cloning vs mutation
+- **Cloning** → Asexual reproduction (same prompt, variance reduction)
+- **Mutation** → Sexual reproduction (different prompts, exploration)
 - ~~Quartermaster~~ → Tool Selector / Optimizer
 - ~~Harbor~~ → Registry / Connector
 - **Species** ← becomes the hero term
-- Evolution, gene pool, breeding, phylogeny ← lean in HARD
+- Evolution, gene pool, champion, phylogeny ← lean in HARD
 
 **Don't overdo it:**
 - No forced rabbit puns everywhere
@@ -577,14 +683,15 @@ datarabbit analyze species abc123
 | Term | Meaning | Why It Fits |
 |------|---------|-------------|
 | **Species** | Unique cascade configuration (by hash) | Tracks evolutionary lineages |
-| **Breeding** | Running soundings with mutations | Genetic exploration |
+| **Mutation** | Running soundings with different prompts | Sexual reproduction, genetic diversity |
+| **Cloning** | Running soundings with same prompt | Asexual reproduction, exact copies |
 | **Gene Pool** | Set of previous winners that train new mutations | Inheritance mechanism |
-| **Champion** | Proven winner ready for production | Best-of-breed |
-| **Cloning** | Running champion multiple times (no mutation) | Variance reduction |
+| **Champion** | Proven winner ready for production cloning | Best-of-breed |
 | **Evolution** | Improvement across generations | Natural selection |
 | **Phylogeny** | Lineage tree of prompt variations | Genetic history |
 | **Convergence** | Species reaching stable winner | Evolutionary stability |
 | **Drift** | Champion failing in changed environment | Adaptation pressure |
+| **Soundings** | Parallel execution mechanism | Technical substrate for both modes |
 
 ### Keep (Neutral Terms)
 
@@ -593,7 +700,7 @@ datarabbit analyze species abc123
 | **Cascade** | Overall workflow definition |
 | **Phase** | Stage within a cascade (complexity container) |
 | **Tackle** | Tools available to agents |
-| **Soundings** | Parallel attempts (can keep as internal term) |
+| **Soundings** | Parallel execution engine (serves both cloning and mutation) |
 | **Wards** | Validation barriers |
 | **Echo** | State/history container |
 
@@ -616,11 +723,12 @@ datarabbit analyze species abc123
 - Discord/community growth
 
 ### Product Metrics
-- % of cascades using soundings
+- % of cascades using soundings (mutation or cloning)
 - % of species reaching convergence
-- % of production runs using champion mode
-- Average cost savings (breeding → champion)
-- Average reliability improvement (pure → robust)
+- % of production runs using cloning mode
+- Average cost savings (mutation → cloning)
+- Average reliability improvement (pure → cloning)
+- Mutation → Clone transition time (development velocity)
 
 ### Market Differentiation
 - Conference talks accepted
@@ -662,16 +770,18 @@ From → To:
 - Orchestration → Evolution
 - DAG graphs → Complexity containers
 - Manual tuning → Automatic optimization
-- Dev = Prod → Breeding → Champion lifecycle
+- Dev = Prod → Mutation → Cloning lifecycle
 - Hope and pray → Variance reduction through selection
+- Single execution → Sexual reproduction (mutation) → Asexual reproduction (cloning)
 
 **The biological metaphor isn't branding - it's the architecture.**
 
 Phases are organisms (complex internally, simple externally).
 Cascades are ecosystems (clean interactions).
-Prompts evolve through genetic selection.
-Champions run in production with robustness cloning.
+Prompts evolve through genetic selection (mutation mode).
+Champions are cloned in production for reliability (cloning mode).
 Species track lineages across generations.
+Soundings are the execution mechanism serving both reproduction strategies.
 
 **This is genuinely novel.** No competitor has all these pieces together.
 
@@ -679,5 +789,68 @@ Species track lineages across generations.
 
 ---
 
-*Document Version: 1.0*
+---
+
+## Appendix: When to Use Cloning vs Mutation
+
+### Decision Framework
+
+**Use MUTATION mode when:**
+- ✅ You're discovering the optimal prompt formulation
+- ✅ Winner stability < 85% (no clear champion yet)
+- ✅ You're in development/exploration phase
+- ✅ Cost is secondary to finding the best approach
+- ✅ You want genetic diversity and natural selection
+
+**Use CLONING mode when:**
+- ✅ You have a proven champion (stability > 85%)
+- ✅ You're in production and need reliability
+- ✅ The prompt is good, but LLM non-determinism causes random failures
+- ✅ Cost efficiency matters (3x vs 5x calls)
+- ✅ You want variance reduction without changing the prompt
+
+**Use HYBRID mode when:**
+- ✅ You're in production but environment might drift
+- ✅ You want continuous adaptation (90% cloning, 10% mutation)
+- ✅ You need reliability + monitoring for changes
+- ✅ Long-running production systems
+
+**Use PURE mode when:**
+- ✅ Champion is extremely stable (>95% success)
+- ✅ Cost optimization is critical
+- ✅ You have drift detection monitoring
+- ⚠️ Accept 5-10% random failure rate
+
+### Real-World Scenarios
+
+**Scenario 1: Building a new report generator**
+1. Week 1-2: MUTATION mode (explore 5 prompt formulations)
+2. After convergence: CLONING mode 3x (proven champion, filter errors)
+3. Month 3+: Switch to PURE with monitoring (stable, cost-optimized)
+
+**Scenario 2: Production data extraction pipeline**
+1. Start: MUTATION mode (find best extraction prompt)
+2. Production: CLONING mode 2x (reliable, cost-balanced)
+3. If format changes: Return to MUTATION (re-evolve for new data)
+
+**Scenario 3: Interactive chatbot (low-stakes)**
+1. Development: MUTATION mode (find engaging style)
+2. Production: PURE mode (fast, cheap, occasional errors acceptable)
+
+**Scenario 4: Financial compliance system (high-stakes)**
+1. Development: MUTATION mode (find compliant approach)
+2. Production: CLONING mode 3x (never use pure, errors unacceptable)
+3. Forever: HYBRID mode (mostly clone, 10% mutate for monitoring)
+
+### The Biology Makes It Obvious
+
+- **Mutation** = Sexual reproduction = Genetic diversity = Discovery
+- **Cloning** = Asexual reproduction = Exact copies = Reliability
+- **Hybrid** = Controlled breeding program = Best of both
+
+This isn't a forced metaphor - it's literally how biology works, applied to prompts.
+
+---
+
+*Document Version: 2.0 - Cloning/Mutation Refinement*
 *Next Review: After Phase 1 completion*

@@ -24,8 +24,8 @@ function MessageWithInlineCheckpoint({ checkpoint, onSubmit, isLoading, checkpoi
   (ui_spec?.sections || []).forEach(section => {
     if (section.type === 'html') {
       htmlSections.push(section);
-    } else if (section.type !== 'submit') {
-      // Skip submit sections, collect others
+    } else if (section.type !== 'submit' && section.type !== 'header' && section.type !== 'text') {
+      // Skip submit, header, text sections (we render those explicitly above)
       otherSections.push(section);
     }
   });

@@ -646,7 +646,11 @@ def request_decision(
               - For button choice: use ONE hidden input + onclick to change value
               - IMPORTANT: Include all context/analysis in your HTML, as only the question
                 is stored separately. Your HTML should be self-contained.
-              - Example (correct pattern for buttons):
+              - VISUALIZATION LIBRARIES AVAILABLE:
+                * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
+                * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))
+                * Use dark theme: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
+              - Example (basic form):
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
                       hx-ext="json-enc"
                       hx-swap="outerHTML">
@@ -654,6 +658,15 @@ def request_decision(
                   <input type="hidden" name="response[selected]" value="approve" id="decision" />
                   <button type="submit" onclick="document.getElementById('decision').value='approve'">Approve</button>
                   <button type="button" onclick="document.getElementById('decision').value='reject'; this.form.requestSubmit();">Reject</button>
+                </form>
+              - Example (with Plotly chart):
+                <div id="myChart"></div>
+                <script>
+                  Plotly.newPlot('myChart', [{x:[1,2,3], y:[2,4,3], type:'bar'}],
+                    {paper_bgcolor:'#1a1a1a', plot_bgcolor:'#0a0a0a', font:{color:'#e5e7eb'}});
+                </script>
+                <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+                  <button name="response[selected]" value="approve">Approve Chart</button>
                 </form>
         timeout_seconds: Maximum wait time (default 600 = 10 minutes)
 

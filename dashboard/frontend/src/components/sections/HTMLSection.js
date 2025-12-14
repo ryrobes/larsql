@@ -285,16 +285,27 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>${baseCSS}</style>
 
+  <!-- Visualization libraries for LLM-generated charts -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
   <!-- HTMX loaded directly in iframe context -->
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
   <script>
     console.log('[HTMX iframe INIT] htmx loaded:', typeof htmx !== 'undefined');
     console.log('[HTMX iframe INIT] htmx.ext:', typeof htmx !== 'undefined' ? htmx.ext : 'N/A');
+    console.log('[HTMX iframe INIT] Plotly loaded:', typeof Plotly !== 'undefined');
+    console.log('[HTMX iframe INIT] Vega loaded:', typeof vega !== 'undefined');
+    console.log('[HTMX iframe INIT] vegaEmbed loaded:', typeof vegaEmbed !== 'undefined');
 
     // Wait for HTMX to fully initialize
     window.addEventListener('DOMContentLoaded', () => {
       console.log('[HTMX iframe] DOMContentLoaded, htmx available:', typeof htmx !== 'undefined');
+      console.log('[HTMX iframe] Plotly:', typeof Plotly !== 'undefined');
+      console.log('[HTMX iframe] vegaEmbed:', typeof vegaEmbed !== 'undefined');
 
       if (typeof htmx !== 'undefined') {
         // HTMX configuration for iframe

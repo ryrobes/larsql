@@ -1,0 +1,64 @@
+cascade_id: htmx_vegalite_demo
+description: |
+  Demonstrates LLM generating Vega-Lite visualizations with HTMX.
+  Vega-Lite is a high-level grammar for creating declarative visualizations.
+
+inputs_schema:
+  dataset_topic: "What kind of data to visualize"
+
+phases:
+  - name: create_dashboard
+    tackle: ["request_decision", "route_to"]
+    handoffs:
+      - finalize
+    rules:
+      max_turns: 5
+    instructions: |
+      Create a mini data dashboard about: {{ input.dataset_topic }}
+
+      Your task:
+      1. Generate 2-3 small datasets relevant to the topic
+      2. Create Vega-Lite specifications for each chart
+      3. Request approval using request_decision with HTMX + Vega-Lite
+
+      Use the html parameter to create a dashboard UI with:
+      - Title and brief description
+      - 2-3 Vega-Lite charts (bar, line, scatter, etc.)
+      - Approve/reject buttons
+
+      IMPORTANT: Vega-Lite is available in the iframe. Use this pattern:
+
+      <div id="chart1"></div>
+      <script>
+        var spec1 = {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {"values": [
+            {"category": "A", "value": 28},
+            {"category": "B", "value": 55}
+          ]},
+          "mark": "bar",
+          "encoding": {
+            "x": {"field": "category", "type": "nominal"},
+            "y": {"field": "value", "type": "quantitative"}
+          },
+          "background": "#1a1a1a",
+          "config": {"axis": {"labelColor": "#e5e7eb", "titleColor": "#a78bfa"}}
+        };
+        vegaEmbed('#chart1', spec1, {theme: 'dark'});
+      </script>
+
+      Create multiple charts, then add approval form below.
+      When approved/rejected, route to finalize.
+
+  - name: finalize
+    instructions: |
+      Dashboard decision: {{ outputs.create_dashboard.selected }}
+
+      {% if outputs.create_dashboard.reasoning %}
+      User feedback: {{ outputs.create_dashboard.reasoning }}
+      {% endif %}
+
+      Provide final summary of the dashboard and decision.
+
+    context:
+      from: [create_dashboard]
