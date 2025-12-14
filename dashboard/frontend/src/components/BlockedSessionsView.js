@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import VideoSpinner from './VideoSpinner';
 import DynamicUI from './DynamicUI';
+import MessageWithInlineCheckpoint from './MessageWithInlineCheckpoint';
 import './BlockedSessionsView.css';
 
 /**
@@ -279,12 +280,35 @@ function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, o
 
           {checkpoint && checkpoint.ui_spec && (
             <div className="checkpoint-ui-full">
-              <DynamicUI
-                spec={checkpoint.ui_spec}
-                onSubmit={handleSubmitResponse}
-                isLoading={submitting}
-                phaseOutput={checkpoint.phase_output}
-              />
+              {/* Check if UI has HTML sections - render inline with message */}
+              {(() => {
+                const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
+
+                if (hasHTMLSection) {
+                  // Inline rendering: message + HTMX form in natural flow
+                  return (
+                    <MessageWithInlineCheckpoint
+                      checkpoint={checkpoint}
+                      onSubmit={handleSubmitResponse}
+                      isLoading={submitting}
+                      checkpointId={checkpoint.id}
+                      sessionId={session.session_id}
+                    />
+                  );
+                } else {
+                  // Traditional DSL UI (card_grid, choice, text_input, etc.)
+                  return (
+                    <DynamicUI
+                      spec={checkpoint.ui_spec}
+                      onSubmit={handleSubmitResponse}
+                      isLoading={submitting}
+                      phaseOutput={checkpoint.phase_output}
+                      checkpointId={checkpoint.id}
+                      sessionId={session.session_id}
+                    />
+                  );
+                }
+              })()}
             </div>
           )}
 

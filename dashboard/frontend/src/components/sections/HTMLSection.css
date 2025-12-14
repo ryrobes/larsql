@@ -1,0 +1,125 @@
+/* HTMLSection - Styles for HTMX iframe wrapper */
+
+.html-section-wrapper {
+  margin: 1rem 0;
+}
+
+/* Security warning banner */
+.html-section-dev-warning {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  color: #0a0a0a;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 4px rgba(248, 113, 113, 0.3);
+}
+
+/* Iframe container */
+.html-section-iframe {
+  background: #121212;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: height 0.2s ease-out;
+}
+
+/* Error display */
+.html-section-error {
+  background: #1a1a1a;
+  border: 2px solid #f87171;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+}
+
+.html-section-error h3 {
+  color: #f87171;
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.html-section-error p {
+  color: #e5e7eb;
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+}
+
+.html-section-error details {
+  margin-top: 1rem;
+}
+
+.html-section-error summary {
+  color: #a78bfa;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 4px;
+  user-select: none;
+}
+
+.html-section-error summary:hover {
+  background: rgba(167, 139, 250, 0.2);
+}
+
+.html-section-error pre {
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Utility classes for common layouts */
+.html-section .space-y-2 > * + * { margin-top: 0.5rem; }
+.html-section .space-y-4 > * + * { margin-top: 1rem; }
+.html-section .space-y-6 > * + * { margin-top: 1.5rem; }
+
+.html-section .flex {
+  display: flex;
+}
+
+.html-section .flex-col {
+  flex-direction: column;
+}
+
+.html-section .items-center {
+  align-items: center;
+}
+
+.html-section .justify-between {
+  justify-content: space-between;
+}
+
+.html-section .justify-end {
+  justify-content: flex-end;
+}
+
+.html-section .gap-2 { gap: 0.5rem; }
+.html-section .gap-4 { gap: 1rem; }
+.html-section .gap-6 { gap: 1.5rem; }
+
+.html-section .w-full { width: 100%; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .html-section {
+    padding: 1rem;
+  }
+
+  .html-section-dev-warning {
+    font-size: 0.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+}

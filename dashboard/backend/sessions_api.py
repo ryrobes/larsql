@@ -198,11 +198,18 @@ def cancel_session(session_id: str):
             force_reason = reason
             if force and not is_zombie:
                 force_reason = f"{reason} (force cancelled)"
+
+            # Set cancel_reason on the state before updating status
+            session.cancel_reason = force_reason
+            with manager._lock:
+                manager._cache[session_id] = session
+            if manager.use_db:
+                manager._save_state(session)
+
+            # Update status (cancelled_at is set automatically)
             manager.update_status(
                 session_id,
-                SessionStatus.CANCELLED,
-                cancel_reason=force_reason,
-                cancelled_at=datetime.now(timezone.utc)
+                SessionStatus.CANCELLED
             )
             if is_zombie:
                 message = 'Zombie session cancelled directly'

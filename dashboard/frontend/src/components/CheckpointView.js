@@ -236,6 +236,8 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
             phaseOutput={checkpoint?.phase_output}
             onSubmit={handleSubmit}
             isLoading={submitting}
+            checkpointId={checkpointId}
+            sessionId={checkpoint?.session_id}
           />
         )}
 

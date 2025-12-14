@@ -637,7 +637,24 @@ def request_decision(
         context: Background information explaining why this decision matters
         severity: Issue level - "info" (preference), "warning" (concern), "error" (blocking)
         allow_custom: Whether the human can type a custom response instead of picking an option
-        html: Custom HTML for the decision UI (advanced - renders raw HTML form)
+        html: Custom HTML/HTMX for the decision UI (advanced). When provided:
+              - Renders raw HTML with HTMX support for maximum flexibility
+              - Template variables available: {{ checkpoint_id }}, {{ session_id }}
+              - CRITICAL: Forms MUST use hx-ext="json-enc" to send JSON
+              - Forms MUST post to: /api/checkpoints/{{ checkpoint_id }}/respond
+              - Use name="response[key]" for form fields - json-enc converts to nested JSON
+              - For button choice: use ONE hidden input + onclick to change value
+              - IMPORTANT: Include all context/analysis in your HTML, as only the question
+                is stored separately. Your HTML should be self-contained.
+              - Example (correct pattern for buttons):
+                <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
+                      hx-ext="json-enc"
+                      hx-swap="outerHTML">
+                  <div>Your analysis or context here</div>
+                  <input type="hidden" name="response[selected]" value="approve" id="decision" />
+                  <button type="submit" onclick="document.getElementById('decision').value='approve'">Approve</button>
+                  <button type="button" onclick="document.getElementById('decision').value='reject'; this.form.requestSubmit();">Reject</button>
+                </form>
         timeout_seconds: Maximum wait time (default 600 = 10 minutes)
 
     Returns a JSON object with:

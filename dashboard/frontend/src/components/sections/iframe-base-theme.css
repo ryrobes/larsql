@@ -1,0 +1,181 @@
+/* Windlass Lite Theme for HTMX Iframes
+ *
+ * Provides base colors, fonts, and element defaults without layout constraints.
+ * LLM-generated inline styles can override anything here.
+ */
+
+/* ============================================
+   COLOR PALETTE - Windlass Ocean Blue Theme
+   ============================================ */
+:root {
+  /* Backgrounds */
+  --bg-darkest: #0a0a0a;
+  --bg-dark: #121212;
+  --bg-card: #1a1a1a;
+  --bg-surface: #16202A;
+
+  /* Borders */
+  --border-subtle: #222;
+  --border-default: #333;
+  --border-strong: #2C3B4B;
+
+  /* Text */
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  /* Accents */
+  --accent-purple: #a78bfa;
+  --accent-blue: #4A9EDD;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-yellow: #fbbf24;
+  --accent-teal: #5EEAD4;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ============================================
+   TYPOGRAPHY - Base only, no layout
+   ============================================ */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--accent-purple);
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+}
+
+h1 { font-size: 1.875rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.125rem; }
+
+p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+}
+
+code, pre {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  background: var(--bg-darkest);
+  border-radius: 4px;
+}
+
+code {
+  padding: 2px 6px;
+  font-size: 0.875em;
+}
+
+pre {
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+}
+
+/* ============================================
+   FORM ELEMENTS - Minimal defaults
+   ============================================ */
+input, select, textarea {
+  background: var(--bg-darkest);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  /* NO width or layout properties */
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ============================================
+   BUTTONS - Minimal defaults
+   ============================================ */
+button {
+  background: var(--accent-purple);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 0.875rem;
+  /* NO layout properties like display, justify-content */
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   LABELS
+   ============================================ */
+label {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  /* NO display: block - let LLM control */
+}
+
+/* ============================================
+   UTILITY CLASSES (optional helpers)
+   ============================================ */
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.text-success { color: var(--accent-green); }
+.text-danger { color: var(--accent-red); }
+.text-warning { color: var(--accent-yellow); }
+
+.bg-dark { background: var(--bg-dark); }
+.bg-card { background: var(--bg-card); }
+.bg-darkest { background: var(--bg-darkest); }
+
+.border { border: 1px solid var(--border-default); }
+.border-subtle { border: 1px solid var(--border-subtle); }
+
+.rounded { border-radius: 4px; }
+.rounded-lg { border-radius: 8px; }
+
+/* ============================================
+   IMPORTANT: No layout constraints
+   ============================================ */
+/*
+ * This CSS intentionally avoids:
+ * - width: 100% on inputs/buttons (breaks inline layouts)
+ * - display: flex with alignment (LLM controls layout)
+ * - Fixed heights/widths
+ * - Absolute/relative positioning
+ * - Margins on generic elements
+ *
+ * LLM inline styles should handle all layout.
+ */

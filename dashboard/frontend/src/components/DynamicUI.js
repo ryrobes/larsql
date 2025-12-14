@@ -12,6 +12,7 @@ import CardGridSection from './sections/CardGridSection';
 import ComparisonSection from './sections/ComparisonSection';
 import AccordionSection from './sections/AccordionSection';
 import TabsSection from './sections/TabsSection';
+import HTMLSection from './sections/HTMLSection';
 
 // Import layout components
 import TwoColumnLayout from './layouts/TwoColumnLayout';
@@ -41,6 +42,7 @@ import SidebarLayout from './layouts/SidebarLayout';
  * - comparison: Side-by-side comparison
  * - accordion: Collapsible panels
  * - tabs: Tabbed content
+ * - html: Raw HTML with HTMX support (SECURITY WARNING: No sanitization)
  *
  * NEW Layout types:
  * - vertical: Stack sections (default)
@@ -50,7 +52,7 @@ import SidebarLayout from './layouts/SidebarLayout';
  * - sidebar-left: Sidebar on left
  * - sidebar-right: Sidebar on right
  */
-function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
+function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessionId }) {
   const [values, setValues] = useState({});
   const [errors, setErrors] = useState({});
 
@@ -160,11 +162,37 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
         values={values}
         onValueChange={handleChange}
         renderSection={renderSection}
+        checkpointId={checkpointId}
+        sessionId={sessionId}
       />
     );
-  }, [values, errors, phaseOutput, handleChange, evaluateCondition]);
+  }, [values, errors, phaseOutput, handleChange, evaluateCondition, checkpointId, sessionId]);
 
   const layout = spec?.layout || 'vertical';
+
+  // Check if any section has type "html" (HTMX handles its own submission)
+  const hasHTMLSection = React.useMemo(() => {
+    const checkSections = (sections) => {
+      if (!sections) return false;
+      return sections.some(s => {
+        if (s.type === 'html') return true;
+        // Check nested sections in tabs, groups, columns
+        if (s.tabs) return s.tabs.some(tab => checkSections(tab.sections));
+        if (s.sections) return checkSections(s.sections);
+        return false;
+      });
+    };
+
+    // Check main sections
+    if (checkSections(spec?.sections)) return true;
+
+    // Check column sections
+    if (spec?.columns) {
+      return spec.columns.some(col => checkSections(col.sections));
+    }
+
+    return false;
+  }, [spec]);
 
   // Render multi-column layouts
   const renderLayout = () => {
@@ -229,23 +257,26 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
 
       {renderLayout()}
 
-      <div className="dynamic-ui-actions">
-        {spec?.show_cancel && (
+      {/* Only show submit button if no HTMX section (HTMX handles its own submission) */}
+      {!hasHTMLSection && (
+        <div className="dynamic-ui-actions">
+          {spec?.show_cancel && (
+            <button
+              type="button"
+              className="dynamic-ui-cancel"
+            >
+              {spec.cancel_label || 'Cancel'}
+            </button>
+          )}
           <button
-            type="button"
-            className="dynamic-ui-cancel"
+            type="submit"
+            disabled={isLoading}
+            className="dynamic-ui-submit"
           >
-            {spec.cancel_label || 'Cancel'}
+            {isLoading ? 'Submitting...' : (spec?.submit_label || 'Submit')}
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="dynamic-ui-submit"
-        >
-          {isLoading ? 'Submitting...' : (spec?.submit_label || 'Submit')}
-        </button>
-      </div>
+        </div>
+      )}
     </form>
   );
 }
@@ -253,7 +284,7 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput }) {
 /**
  * Renders a single UI section based on its type
  */
-function UISection({ spec, value, error, onChange, phaseOutput, values, onValueChange, renderSection }) {
+function UISection({ spec, value, error, onChange, phaseOutput, values, onValueChange, renderSection, checkpointId, sessionId }) {
   switch (spec.type) {
     // Existing section types
     case 'preview':
@@ -299,6 +330,14 @@ function UISection({ spec, value, error, onChange, phaseOutput, values, onValueC
       return <AccordionSection spec={spec} />;
     case 'tabs':
       return <TabsSection spec={spec} renderSection={renderSection} />;
+
+    // HTMX: Raw HTML with HTMX attributes
+    case 'html':
+      return <HTMLSection spec={spec} checkpointId={checkpointId} sessionId={sessionId} />;
+
+    // Submit section (from backend) - skip rendering, HTMX handles its own submission
+    case 'submit':
+      return null;
 
     default:
       return <div className="ui-section unknown">Unknown section type: {spec.type}</div>;
