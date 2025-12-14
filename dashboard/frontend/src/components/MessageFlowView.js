@@ -718,6 +718,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
         hashIndex={data?.hash_index}
         setHighlightedMessage={setHighlightedMessage}
         isExternalMode={isExternalMode}
+        sessionId={sessionId}
       />
     );
   }, [

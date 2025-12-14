@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import MessageContent from './MessageContent';
 
 /**
  * Extract all images from a message, tracking direction (input vs output)
@@ -224,7 +225,8 @@ const MessageItem = React.memo(function MessageItem({
   hashIndex,
   contextHashes,
   setHighlightedMessage,
-  isExternalMode
+  isExternalMode,
+  sessionId
 }) {
   const ref = useRef(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -484,9 +486,11 @@ const MessageItem = React.memo(function MessageItem({
         <div className="message-content-full" onClick={(e) => e.stopPropagation()}>
           <h4>Full Response Content:</h4>
           <div className="content-text">
-            {typeof msg.content === 'string'
-              ? msg.content
-              : JSON.stringify(msg.content, null, 2)}
+            <MessageContent
+              message={msg}
+              sessionId={sessionId}
+              compact={false}
+            />
           </div>
         </div>
       )}

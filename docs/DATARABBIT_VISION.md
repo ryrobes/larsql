@@ -50,6 +50,7 @@ The biological metaphor is not cute branding - it's **mathematically accurate** 
 | UI tree view | ??? | Evolution tree ✓ |
 | Production optimization | ??? | Best-of-breed ✓ |
 | Variance reduction | ??? | Cloning ✓ |
+| Available capabilities | Tackle | **Traits** ✓ |
 
 **"Species" stops being weird and becomes central.** "Gene pool breeding" isn't a metaphor - it's literally what's happening.
 
@@ -122,7 +123,7 @@ Bowl 3 (Implementation Phase):
    - Prevents token bloat
 
 4. **Evolution is continuous**
-   - Breeding → Champion → Monitor
+   - Mutation → Cloning → Monitor
    - Phases self-optimize
    - No manual tuning
 
@@ -535,15 +536,17 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 **Keep (neutral terms):**
 - Cascades (workflows)
 - Phases (stages)
-- Tackle (tools)
+- Soundings (parallel execution engine)
 - Most of the declarative JSON approach
 
 **Rebrand/Emphasize:**
 - **Soundings** → Keep as technical mechanism, clarify two modes: cloning vs mutation
 - **Cloning** → Asexual reproduction (same prompt, variance reduction)
 - **Mutation** → Sexual reproduction (different prompts, exploration)
-- ~~Quartermaster~~ → Tool Selector / Optimizer
+- **Tackle → Traits** ← Biological capabilities that phases possess
+- ~~Quartermaster~~ → **Blackberry** (intelligent tool selector from Watership Down)
 - ~~Harbor~~ → Registry / Connector
+- ~~Eddies~~ → Rename directory to `traits/` (matches terminology)
 - **Species** ← becomes the hero term
 - Evolution, gene pool, champion, phylogeny ← lean in HARD
 
@@ -563,6 +566,9 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 3. ✅ Add "separate bowls" architecture section
 4. ✅ Emphasize species/evolution terminology
 5. ✅ Update domain, logos, branding assets
+6. ✅ Rename `tackle` → `traits` throughout codebase
+7. ✅ Rename `eddies/` directory → `traits/`
+8. ✅ Update Quartermaster → Blackberry (internal references)
 
 ### Phase 2: Winner Stability (High Priority)
 1. ✅ Add winner stability metric calculation
@@ -592,6 +598,116 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 4. Git integration for prompt versioning
 5. UI for reviewing and applying suggestions
 
+### Phase 6: Meta-Optimization (Future/Experimental)
+1. ✅ Trait description evolution (self-improving traits)
+2. ✅ Per-model trait optimization
+3. ✅ Track trait call fitness (selection accuracy, success rate)
+4. ✅ Mutate trait descriptions, converge to champions
+5. ✅ Self-improving Blackberry (tool selector gets smarter)
+
+---
+
+## Meta-Optimization: Self-Improving Traits
+
+### The Vision
+
+**Current state:** Trait descriptions are static (Python docstrings)
+
+**Future state:** Trait descriptions evolve per-model, learning which phrasings lead to better tool selection.
+
+### Why This Is Powerful
+
+**Different models prefer different description styles:**
+
+- Claude might prefer: "Execute SQL queries. Handles CSV, Parquet, databases."
+- GPT-4 might prefer: "SQL executor (DuckDB). Input: SQL. Returns: results."
+- Gemini might prefer: "Run SQL: SELECT, JOIN, GROUP BY on data files."
+
+**You don't know which works best until you measure it.**
+
+### How It Would Work
+
+#### Step 1: Track Trait Selection Quality
+```python
+trait_call_result = {
+    "trait_name": "smart_sql_run",
+    "model": "anthropic/claude-sonnet-4.5",
+    "description_hash": "abc123",
+    "was_selected": True,
+    "was_successful": True,
+    "was_necessary": True  # Validator judges if right choice
+}
+```
+
+**Metrics:**
+- **Selection rate:** How often Blackberry picks this trait
+- **Success rate:** How often it works when picked
+- **Necessity rate:** How often it was the right choice
+
+#### Step 2: Evolution per Model
+
+**Trait descriptions become species:**
+
+```python
+trait_descriptions = {
+    "trait_name": "smart_sql_run",
+    "model": "anthropic/claude-sonnet-4.5",
+    "description": "Execute SQL queries...",
+    "description_hash": "abc123",
+    "generation": 5,
+    "parent_hash": "def456",
+    "success_rate": 0.87,
+    "is_champion": True
+}
+```
+
+**Species hash:** `trait_name + model`
+
+Different models, different evolution paths.
+
+#### Step 3: Mutation & Convergence
+
+**Development:** Try 5 different descriptions, track which leads to better Blackberry selections
+
+**Production:** Use proven champion description per model
+
+### The Marketing Angle
+
+> "DataRabbit doesn't just optimize your prompts - it optimizes itself.
+>
+> Trait descriptions evolve per-model, learning which phrasings lead to better tool selection. The more you use it, the smarter it gets.
+>
+> **Your agent framework gets better just by running.**"
+
+**No one else can say "my framework optimizes itself."**
+
+### Implementation Approach
+
+**Phase 1 (Now):** Add basic tracking
+```python
+# Log trait calls for future analysis
+log_trait_call(trait, model, description, success)
+```
+
+**Phase 2 (Later):** Build analytics dashboard
+- Which descriptions work best per model?
+- Convergence trends
+
+**Phase 3 (Future):** Add mutation mode
+- Auto-evolve trait descriptions
+- Champion mode for stable descriptions
+
+**Make it opt-in:** Most users use static, power users enable evolution.
+
+### Why This Fits
+
+**Co-evolution in biology:**
+- Organisms evolve their capabilities (phases evolve prompts)
+- Organisms evolve their signaling (traits evolve descriptions)
+- Environment selects both (Blackberry/evaluator judges fitness)
+
+**This is genuinely novel.** No other framework has self-improving tool descriptions.
+
 ---
 
 ## Marketing Messages
@@ -609,7 +725,7 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 > While other frameworks drown you in DAG spaghetti, DataRabbit uses **phases as complexity containers**:
 > - All iteration, retries, and exploration happen INSIDE phases (encapsulated)
 > - Your cascade stays clean and linear (4 phases, not 40 nodes)
-> - Prompts evolve automatically through genetic selection (breeding → champion)
+> - Prompts evolve automatically through genetic selection (mutation → cloning)
 > - Production mode runs proven winners with robustness cloning (reliability)
 >
 > **Stop fighting graph complexity. Start encapsulating it.**
@@ -655,16 +771,16 @@ This is **engaging**, not childish. Gamification of prompt optimization.
 
 DataRabbit isn't just a framework - it's a **self-evolving system**:
 
-### 1. Self-Orchestrating (Manifest/Quartermaster)
-Workflows pick their own tools based on context.
+### 1. Self-Orchestrating (Manifest/Blackberry)
+Workflows pick their own traits based on context.
 ```json
-{"tackle": "manifest"}  // Auto-selects relevant tools
+{"traits": "manifest"}  // Blackberry auto-selects relevant traits
 ```
 
 ### 2. Self-Testing (Snapshot System)
 Tests write themselves from real executions.
 ```bash
-windlass test freeze session_001 --name flow_works
+datarabbit test freeze session_001 --name flow_works
 ```
 
 ### 3. Self-Optimizing (Evolutionary Selection)
@@ -672,6 +788,12 @@ Prompts improve automatically from usage data.
 ```bash
 datarabbit analyze species abc123
 # → "87% win rate for sounding_2, switch to champion?"
+```
+
+### 4. Self-Improving (Future: Meta-Optimization)
+Trait descriptions evolve per-model, tool selector gets smarter.
+```bash
+# Just by running the system, Blackberry learns better trait descriptions
 ```
 
 ---
@@ -692,6 +814,8 @@ datarabbit analyze species abc123
 | **Convergence** | Species reaching stable winner | Evolutionary stability |
 | **Drift** | Champion failing in changed environment | Adaptation pressure |
 | **Soundings** | Parallel execution mechanism | Technical substrate for both modes |
+| **Traits** | Capabilities/tools available to phases | Biological capabilities organisms possess |
+| **Blackberry** | Intelligent tool selector (auto-selects traits) | Character from Watership Down (problem-solver) |
 
 ### Keep (Neutral Terms)
 
@@ -699,17 +823,21 @@ datarabbit analyze species abc123
 |------|---------|
 | **Cascade** | Overall workflow definition |
 | **Phase** | Stage within a cascade (complexity container) |
-| **Tackle** | Tools available to agents |
 | **Soundings** | Parallel execution engine (serves both cloning and mutation) |
+| **Traits** | Capabilities/tools available to phases |
 | **Wards** | Validation barriers |
 | **Echo** | State/history container |
+| **Manifest** | Auto-selection mode for traits (`"traits": "manifest"`) |
+| **Blackberry** | Internal: intelligent agent that selects traits from manifest |
 
 ### Phase Out (Nautical)
 
 | Old Term | New Term |
 |----------|----------|
 | Windlass | DataRabbit |
-| Quartermaster | Tool Selector / Manifest System |
+| Tackle | Traits |
+| Quartermaster | Blackberry (internal tool selector) |
+| Eddies (dir) | traits/ (directory rename) |
 | Harbor | Registry (for HF Spaces) |
 | Wake | Execution trail (generic term) |
 
@@ -852,5 +980,5 @@ This isn't a forced metaphor - it's literally how biology works, applied to prom
 
 ---
 
-*Document Version: 2.0 - Cloning/Mutation Refinement*
+*Document Version: 2.1 - Traits/Blackberry + Meta-Optimization*
 *Next Review: After Phase 1 completion*

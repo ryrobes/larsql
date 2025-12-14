@@ -15,6 +15,7 @@ from .visualizer import (
 from .eddies.sql import run_sql
 from .eddies.extras import run_code, take_screenshot, linux_shell
 from .eddies.human import ask_human, ask_human_custom, request_decision
+from .eddies.display import show_ui
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
@@ -28,6 +29,7 @@ register_tackle("take_screenshot", take_screenshot)
 register_tackle("ask_human", ask_human)
 register_tackle("ask_human_custom", ask_human_custom)
 register_tackle("request_decision", request_decision)
+register_tackle("show_ui", show_ui)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
 register_tackle("create_chart", create_chart)

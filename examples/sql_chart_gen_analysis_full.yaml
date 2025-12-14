@@ -163,9 +163,9 @@ phases:
       Format it as: "**Question:** [Your specific analytical question here]"
 
     tackle:
-      #- sql_search
+      - sql_search
       #- list_sql_connections
-      - sql_rag_search
+      - request_decision
       #- sql_query
 
     soundings:
@@ -232,7 +232,7 @@ phases:
     tackle:
       - sql_search
       - list_sql_connections
-      - sql_rag_search
+      - request_decision
 
     soundings:
       factor: 6
@@ -299,7 +299,7 @@ phases:
 
     tackle:
       - sql_query
-      - sql_rag_search
+      - request_decision
 
     soundings:
       factor: 6
@@ -431,6 +431,7 @@ phases:
       - sql_query
       - create_vega_lite
       - create_plotly
+      - request_decision
 
     soundings:
       factor: 6
