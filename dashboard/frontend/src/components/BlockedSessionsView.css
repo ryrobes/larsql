@@ -664,6 +664,52 @@
   padding: 1.5rem;
 }
 
+/* Sounding badge for parallel sounding decisions */
+.checkpoint-sounding-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.checkpoint-sounding-badge Icon {
+  color: #fbbf24;
+}
+
+/* Multiple checkpoints notice (for parallel soundings) */
+.multiple-checkpoints-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border-left: 3px solid #fbbf24;
+  color: #fbbf24;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* Individual checkpoint instance (when multiple per session) */
+.checkpoint-instance {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(74, 158, 221, 0.1);
+}
+
+.checkpoint-instance:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
 /* Override DynamicUI container constraints for full display */
 .checkpoint-ui-full .dynamic-ui-container {
   max-width: none;

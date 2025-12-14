@@ -242,10 +242,24 @@ def list_checkpoints():
 
     try:
         cm = get_checkpoint_manager()
+        print(f"[Checkpoint API] Fetching pending checkpoints, session_id filter={session_id}")
+        print(f"[Checkpoint API] Manager cache size: {len(cm._cache)}")
+        print(f"[Checkpoint API] Manager use_db: {cm.use_db}")
+
         pending = cm.get_pending_checkpoints(session_id)
+        print(f"[Checkpoint API] Found {len(pending)} pending checkpoints")
 
         checkpoints = []
         for cp in pending:
+            # Skip if this checkpoint has corrupted data
+            try:
+                # Quick validation - can we access basic fields?
+                _ = cp.ui_spec
+                _ = cp.id
+            except Exception as e:
+                print(f"[Checkpoint API] Skipping corrupted checkpoint: {e}")
+                continue
+
             # DEBUG: Log what the raw UI spec looks like
             print(f"[CHECKPOINT DEBUG] Raw ui_spec for {cp.id}:")
             print(f"  Layout: {cp.ui_spec.get('layout') if cp.ui_spec else 'None'}")

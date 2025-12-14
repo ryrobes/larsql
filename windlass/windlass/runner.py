@@ -40,7 +40,7 @@ from .session_state import (
     SessionStatus, BlockedType
 )
 from .eddies.system import spawn_cascade
-from .eddies.state_tools import set_current_session_id, set_current_phase_name, set_current_cascade_id
+from .eddies.state_tools import set_current_session_id, set_current_phase_name, set_current_cascade_id, set_current_sounding_index
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
@@ -5121,6 +5121,15 @@ Use only numbers 0-100 for scores."""
                 sounding_runner.current_mutation_type = mutation_info['type']
                 sounding_runner.current_mutation_template = mutation_info['template']
 
+                # CRITICAL: Set context vars IN THIS THREAD (sounding thread)
+                # Context vars are thread-local, must be set in each sounding thread
+                session_token = set_current_session_id(sounding_runner.session_id)
+                phase_token = set_current_phase_name(phase.name)
+                cascade_token = set_current_cascade_id(sounding_runner.config.cascade_id)
+                sounding_token = set_current_sounding_index(i)
+
+                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, phase={phase.name}, sounding_index={i}")
+
                 # Execute the phase on isolated runner
                 result = sounding_runner._execute_phase_internal(
                     phase, input_data, sounding_trace,
@@ -6740,6 +6749,10 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Set current phase name for tools like ask_human to use
         set_current_phase_name(phase.name)
+
+        # Set current sounding index if we're in a sounding (for parallel sounding decisions)
+        if self.current_phase_sounding_index is not None:
+            set_current_sounding_index(self.current_phase_sounding_index)
 
         def _cleanup_rag():
             if rag_context:

@@ -247,8 +247,12 @@ class CheckpointManager:
             self._cache[checkpoint_id] = checkpoint
 
         # Persist to database
+        print(f"[Checkpoints] Created checkpoint {checkpoint_id}, use_db={self.use_db}")
         if self.use_db:
+            print(f"[Checkpoints] Attempting to save checkpoint {checkpoint_id} to database...")
             self._save_checkpoint(checkpoint)
+        else:
+            print(f"[Checkpoints] Skipping DB save (use_db=False)")
 
         # Publish event for UI notification
         self.event_bus.publish(Event(
@@ -596,39 +600,39 @@ class CheckpointManager:
         return timed_out
 
     def _save_checkpoint(self, checkpoint: Checkpoint):
-        """Persist checkpoint to database."""
+        """Persist checkpoint to database using insert_rows for proper escaping."""
         try:
             from .config import get_config
             config = get_config()
 
             if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                 db = get_db_adapter()
-                # Serialize trace_context if present
-                trace_context_json = json.dumps(checkpoint.trace_context.to_dict()).replace("'", "''") if checkpoint.trace_context else None
-                db.execute(f"""
-                    INSERT INTO checkpoints
-                    (id, session_id, cascade_id, phase_name, status, created_at, timeout_at,
-                     checkpoint_type, ui_spec, echo_snapshot, phase_output,
-                     sounding_outputs, sounding_metadata, trace_context)
-                    VALUES (
-                        '{checkpoint.id}',
-                        '{checkpoint.session_id}',
-                        '{checkpoint.cascade_id}',
-                        '{checkpoint.phase_name}',
-                        '{checkpoint.status.value}',
-                        toDateTime64('{checkpoint.created_at.isoformat()}', 3),
-                        {f"toDateTime64('{checkpoint.timeout_at.isoformat()}', 3)" if checkpoint.timeout_at else 'NULL'},
-                        '{checkpoint.checkpoint_type.value}',
-                        '{json.dumps(checkpoint.ui_spec).replace("'", "''")}',
-                        '{json.dumps(checkpoint.echo_snapshot).replace("'", "''")}',
-                        '{checkpoint.phase_output.replace("'", "''")}',
-                        {f"'{json.dumps(checkpoint.sounding_outputs)}'" if checkpoint.sounding_outputs else 'NULL'},
-                        {f"'{json.dumps(checkpoint.sounding_metadata)}'" if checkpoint.sounding_metadata else 'NULL'},
-                        {f"'{trace_context_json}'" if trace_context_json else 'NULL'}
-                    )
-                """)
+
+                # Build row dict - insert_rows handles escaping properly
+                row = {
+                    'id': checkpoint.id,
+                    'session_id': checkpoint.session_id,
+                    'cascade_id': checkpoint.cascade_id,
+                    'phase_name': checkpoint.phase_name,
+                    'status': checkpoint.status.value,
+                    'created_at': checkpoint.created_at,
+                    'timeout_at': checkpoint.timeout_at,
+                    'checkpoint_type': checkpoint.checkpoint_type.value,
+                    'ui_spec': json.dumps(checkpoint.ui_spec),  # JSON string, properly escaped by insert_rows
+                    'echo_snapshot': json.dumps(checkpoint.echo_snapshot),
+                    'phase_output': checkpoint.phase_output,
+                    'sounding_outputs': json.dumps(checkpoint.sounding_outputs) if checkpoint.sounding_outputs else None,
+                    'sounding_metadata': json.dumps(checkpoint.sounding_metadata) if checkpoint.sounding_metadata else None,
+                    'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None
+                }
+
+                db.insert_rows('checkpoints', [row], columns=list(row.keys()))
+                print(f"[Checkpoints] Saved checkpoint {checkpoint.id} to database")
+
         except Exception as e:
             print(f"[Windlass] Warning: Could not persist checkpoint to DB: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _update_checkpoint(self, checkpoint: Checkpoint):
         """Update existing checkpoint in database."""

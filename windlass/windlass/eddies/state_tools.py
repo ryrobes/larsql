@@ -11,6 +11,9 @@ current_phase_context = ContextVar("current_phase_context", default=None)
 # ContextVar to track current cascade ID
 current_cascade_context = ContextVar("current_cascade_context", default=None)
 
+# ContextVar to track current sounding index (for parallel sounding decisions)
+current_sounding_context = ContextVar("current_sounding_context", default=None)
+
 def set_current_session_id(sid):
     return current_session_context.set(sid)
 
@@ -28,6 +31,12 @@ def set_current_cascade_id(cascade_id):
 
 def get_current_cascade_id():
     return current_cascade_context.get()
+
+def set_current_sounding_index(sounding_index):
+    return current_sounding_context.set(sounding_index)
+
+def get_current_sounding_index():
+    return current_sounding_context.get()
 
 def set_state_internal(key: str, value) -> None:
     """

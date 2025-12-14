@@ -688,13 +688,10 @@ def request_decision(
     phase_name = get_current_phase_name()
     session_id = get_current_session_id()
 
-    # Check if we're in checkpoint mode
-    import sys
-    use_checkpoint = os.environ.get('WINDLASS_USE_CHECKPOINTS', 'false').lower() == 'true'
-    if not sys.stdin.isatty():
-        use_checkpoint = True
-
-    if use_checkpoint and session_id:
+    # ALWAYS use checkpoint mode if we have a session
+    # CLI and UI should work the same way - both create checkpoints and block
+    if session_id:
+        console.print(f"[cyan]→ Creating checkpoint and waiting for response...[/cyan]")
         return _request_decision_via_checkpoint(
             question=question,
             options=options,
@@ -708,7 +705,8 @@ def request_decision(
             console=console
         )
     else:
-        # CLI fallback
+        # Only use CLI fallback if there's no session context (shouldn't happen in practice)
+        console.print(f"[yellow]⚠ No session context - using CLI fallback[/yellow]")
         return _request_decision_cli(
             question=question,
             options=options,
@@ -734,9 +732,30 @@ def _request_decision_via_checkpoint(
     """Create checkpoint and wait for decision response."""
     from ..checkpoints import get_checkpoint_manager, CheckpointType
     from ..tracing import get_current_trace
+    from .state_tools import get_current_sounding_index
 
     trace = get_current_trace()
     checkpoint_manager = get_checkpoint_manager()
+
+    # Capture sounding_index if we're in a sounding (for parallel sounding decisions)
+    # Try multiple ways since context vars might not propagate across threads
+    sounding_index = get_current_sounding_index()
+
+    # Fallback: Try to get from runner metadata in trace
+    if sounding_index is None and trace:
+        try:
+            # Check if trace has sounding context
+            from ..runner import WindlassRunner
+            # Try to find runner instance via contextvars or other means
+            # For now, just log that we couldn't get it
+            console.print(f"[yellow]Warning: Could not get sounding_index from context var (thread issue)[/yellow]")
+        except:
+            pass
+
+    if sounding_index is not None:
+        console.print(f"[cyan]Creating checkpoint for Sounding {sounding_index}[/cyan]")
+    else:
+        console.print(f"[dim]Creating checkpoint (no sounding context detected)[/dim]")
 
     # Build UI spec - either from custom HTML or structured options
     if html:
@@ -752,6 +771,12 @@ def _request_decision_via_checkpoint(
             allow_custom=allow_custom
         )
 
+    # Add sounding_index to metadata for UI grouping
+    if sounding_index is not None:
+        ui_spec['_meta'] = ui_spec.get('_meta', {})
+        ui_spec['_meta']['sounding_index'] = sounding_index
+        console.print(f"[dim]Added sounding_index={sounding_index} to checkpoint metadata[/dim]")
+
     # Create the checkpoint
     checkpoint = checkpoint_manager.create_checkpoint(
         session_id=session_id,
@@ -764,7 +789,8 @@ def _request_decision_via_checkpoint(
         timeout_seconds=timeout_seconds
     )
 
-    console.print(f"\n[bold magenta]🔀 Decision point:[/bold magenta] {question}")
+    sounding_label = f" [cyan](Sounding {sounding_index})[/cyan]" if sounding_index is not None else ""
+    console.print(f"\n[bold magenta]🔀 Decision point{sounding_label}:[/bold magenta] {question}")
     if context:
         console.print(f"[dim]{context[:200]}{'...' if len(context) > 200 else ''}[/dim]")
     console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")

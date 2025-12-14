@@ -192,11 +192,19 @@ function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, o
   }, [session.session_id]);
 
   // Auto-fetch checkpoint on mount for HITL sessions
+  // If session has multiple checkpoints (parallel soundings), use the first one
   useEffect(() => {
     if (isHITLBlocked) {
-      fetchCheckpoint();
+      // Check if session already has checkpoints array from parent
+      if (session.checkpoints && session.checkpoints.length > 0) {
+        // Use first checkpoint (or we could show all)
+        setCheckpoint(session.checkpoints[0]);
+        setCheckpointLoading(false);
+      } else {
+        fetchCheckpoint();
+      }
     }
-  }, [isHITLBlocked, fetchCheckpoint]);
+  }, [isHITLBlocked, fetchCheckpoint, session.checkpoints]);
 
   // Handle checkpoint response submission
   const handleSubmitResponse = async (values) => {
@@ -278,8 +286,71 @@ function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, o
             </div>
           )}
 
-          {checkpoint && checkpoint.ui_spec && (
+          {/* Show all checkpoints for parallel soundings */}
+          {session.checkpoints && session.checkpoints.length > 1 && (
+            <div className="multiple-checkpoints-notice">
+              <Icon icon="mdi:source-fork" width="16" />
+              <span>{session.checkpoints.length} parallel sounding decisions</span>
+            </div>
+          )}
+
+          {session.checkpoints && session.checkpoints.map((cp, idx) => (
+            <div key={cp.id} className="checkpoint-instance">
+              {cp.ui_spec && (
+                <div className="checkpoint-ui-full">
+                  {/* Sounding badge if this checkpoint is from a sounding */}
+                  {cp.ui_spec._meta?.sounding_index !== undefined && cp.ui_spec._meta.sounding_index !== null && (
+                    <div className="checkpoint-sounding-badge">
+                      <Icon icon="mdi:source-fork" width="16" />
+                      <span>Sounding {cp.ui_spec._meta.sounding_index}</span>
+                    </div>
+                  )}
+
+                  {/* Check if UI has HTML sections - render inline with message */}
+                  {(() => {
+                    const hasHTMLSection = cp.ui_spec.sections?.some(s => s.type === 'html');
+
+                    if (hasHTMLSection) {
+                      // Inline rendering: message + HTMX form in natural flow
+                      return (
+                        <MessageWithInlineCheckpoint
+                          checkpoint={cp}
+                          onSubmit={handleSubmitResponse}
+                          isLoading={submitting}
+                          checkpointId={cp.id}
+                          sessionId={session.session_id}
+                        />
+                      );
+                    } else {
+                      // Traditional DSL UI (card_grid, choice, text_input, etc.)
+                      return (
+                        <DynamicUI
+                          spec={cp.ui_spec}
+                          onSubmit={handleSubmitResponse}
+                          isLoading={submitting}
+                          phaseOutput={cp.phase_output}
+                          checkpointId={cp.id}
+                          sessionId={session.session_id}
+                        />
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Fallback: single checkpoint from state (old behavior) */}
+          {!session.checkpoints && checkpoint && checkpoint.ui_spec && (
             <div className="checkpoint-ui-full">
+              {/* Sounding badge if this checkpoint is from a sounding */}
+              {checkpoint.ui_spec._meta?.sounding_index !== undefined && checkpoint.ui_spec._meta.sounding_index !== null && (
+                <div className="checkpoint-sounding-badge">
+                  <Icon icon="mdi:source-fork" width="16" />
+                  <span>Sounding {checkpoint.ui_spec._meta.sounding_index}</span>
+                </div>
+              )}
+
               {/* Check if UI has HTML sections - render inline with message */}
               {(() => {
                 const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
@@ -383,20 +454,50 @@ function BlockedSessionsView({ onBack, onSelectInstance }) {
   // Fetch blocked sessions and waiting signals
   const fetchData = useCallback(async () => {
     try {
-      const [sessionsRes, signalsRes] = await Promise.all([
-        fetch('http://localhost:5001/api/sessions/blocked'),
+      const [checkpointsRes, signalsRes] = await Promise.all([
+        fetch('http://localhost:5001/api/checkpoints'),  // Get pending checkpoints directly
         fetch('http://localhost:5001/api/signals/waiting')
       ]);
 
-      const sessionsData = await sessionsRes.json();
+      const checkpointsData = await checkpointsRes.json();
       const signalsData = await signalsRes.json();
 
-      if (sessionsData.error) {
-        setError(sessionsData.error);
+      if (checkpointsData.error) {
+        setError(checkpointsData.error);
         return;
       }
 
-      setBlockedSessions(sessionsData.sessions || []);
+      // Debug logging
+      console.log('[BlockedSessionsView] Fetched checkpoints:', checkpointsData.checkpoints?.length || 0);
+
+      // Build sessions from pending checkpoints (group by session_id)
+      const sessionMap = {};
+      (checkpointsData.checkpoints || []).forEach(cp => {
+        console.log('[BlockedSessionsView] Processing checkpoint:', cp.id, 'session:', cp.session_id);
+
+        const sid = cp.session_id;
+        if (!sessionMap[sid]) {
+          sessionMap[sid] = {
+            session_id: sid,
+            cascade_id: cp.cascade_id,
+            current_phase: cp.phase_name,
+            blocked_type: cp.checkpoint_type,
+            blocked_on: cp.id,
+            timeout_at: cp.timeout_at,
+            created_at: cp.created_at,
+            checkpoints: []
+          };
+        }
+        sessionMap[sid].checkpoints.push(cp);
+      });
+
+      const sessions = Object.values(sessionMap);
+      console.log('[BlockedSessionsView] Built sessions from checkpoints:', sessions.length);
+      sessions.forEach(s => {
+        console.log(`  - ${s.session_id}: ${s.checkpoints.length} checkpoints`);
+      });
+
+      setBlockedSessions(sessions);
       setWaitingSignals(signalsData.signals || []);
       setError(null);
     } catch (err) {
@@ -433,21 +534,44 @@ function BlockedSessionsView({ onBack, onSelectInstance }) {
     await fetchData();
   };
 
-  // Cancel a session
+  // Cancel a session by cancelling all its checkpoints
   const handleCancelSession = async (sessionId) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/sessions/${sessionId}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason: 'Cancelled from Blocked Sessions view',
-          force: true // Force cancel since it's blocked
-        })
-      });
+      // Find this session to get its checkpoints
+      const session = blockedSessions.find(s => s.session_id === sessionId);
 
-      const data = await response.json();
-      if (data.error) {
-        console.error('Failed to cancel session:', data.error);
+      if (session && session.checkpoints && session.checkpoints.length > 0) {
+        // Cancel all checkpoints for this session
+        console.log(`[BlockedSessionsView] Cancelling ${session.checkpoints.length} checkpoints for session ${sessionId}`);
+
+        await Promise.all(
+          session.checkpoints.map(cp =>
+            fetch(`http://localhost:5001/api/checkpoints/${cp.id}/cancel`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                reason: 'Cancelled from Blocked Sessions view'
+              })
+            })
+          )
+        );
+
+        console.log(`[BlockedSessionsView] Cancelled all checkpoints for ${sessionId}`);
+      } else {
+        // Fallback: try session-level cancel (for signal-blocked sessions)
+        const response = await fetch(`http://localhost:5001/api/sessions/${sessionId}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reason: 'Cancelled from Blocked Sessions view',
+            force: true
+          })
+        });
+
+        const data = await response.json();
+        if (data.error) {
+          console.error('Failed to cancel session:', data.error);
+        }
       }
 
       // Refresh data

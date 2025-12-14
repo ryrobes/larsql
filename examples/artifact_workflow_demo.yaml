@@ -13,43 +13,51 @@ inputs_schema:
 phases:
   - name: draft_and_iterate
     tackle: ["request_decision", "create_artifact", "route_to"]
+    model: anthropic/claude-sonnet-4.5
     handoffs:
       - finalize
+    soundings:
+      factor: 3
     rules:
       max_turns: 5
     instructions: |
       Analyze dataset: {{ input.dataset_name }}
 
-      ## Workflow:
+      ## Workflow (Each Sounding Explores Different Visualizations):
 
       1. **Generate synthetic data** (10-20 rows, 4-5 columns relevant to topic)
 
-      2. **Create draft visualization** using request_decision with HTMX:
-         - Plotly or Vega-Lite chart
-         - Include the data inline
+      2. **Create DIFFERENT visualization** depending on which sounding you are:
+         - Sounding 0: Create a Plotly bar/line chart
+         - Sounding 1: Create a Vega-Lite scatter/area chart
+         - Sounding 2: Create an interactive table with filters
+
+         Use Jinja2 context: {{ sounding_index }} to know which sounding you are
+
+      3. **Request approval** using request_decision with HTMX:
+         - Show your unique visualization
          - Ask: "Does this visualization effectively show the data?"
          - Buttons: "Approve" or "Request Changes"
 
-      3. **If changes requested:** Iterate based on feedback (modify chart type, colors, etc.)
-
-      4. **When approved:** Use create_artifact to publish final version:
+      4. **If approved:** Use create_artifact to publish:
          ```
          create_artifact(
-             html="<complete polished dashboard>",
-             title="[Dataset Name] Analysis Dashboard",
+             html="<your polished visualization>",
+             title="[Dataset] - [Chart Type] (Sounding {{ sounding_index }})",
              artifact_type="dashboard",
-             description="Interactive visualization with key insights",
-             tags=["analysis", "visualization", dataset_type]
+             description="Interactive visualization - approach {{ sounding_index }}",
+             tags=["analysis", "sounding{{ sounding_index }}"]
          )
          ```
 
-      5. **Route to finalize** phase
+      5. **Route to finalize**
 
-      The artifact will appear in the Artifacts gallery and remain accessible
-      even after this cascade completes!
+      NOTE: All 3 soundings will request decisions in PARALLEL. Each gets its own
+      checkpoint that routes back to its sounding thread. The evaluator will pick
+      the best one based on which visualization is approved!
 
   - name: finalize
-    tavkle: ["create_artifact"]
+    tackle: ["create_artifact"]
     instructions: |
       Artifact created: {{ outputs.draft_and_iterate.artifact_id }}
       (Please create it, if not done already)
