@@ -37,12 +37,14 @@ from checkpoint_api import checkpoint_bp
 from sextant_api import sextant_bp
 from sessions_api import sessions_bp
 from signals_api import signals_bp
+from artifacts_api import artifacts_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
 app.register_blueprint(sextant_bp)
 app.register_blueprint(sessions_bp)
 app.register_blueprint(signals_bp)
+app.register_blueprint(artifacts_bp)
 # Track query statistics
 import threading
 _query_lock = threading.Lock()

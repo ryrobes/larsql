@@ -6,6 +6,8 @@ import SplitDetailView from './components/SplitDetailView';
 import MessageFlowView from './components/MessageFlowView';
 import SextantView from './components/SextantView';
 import BlockedSessionsView from './components/BlockedSessionsView';
+import ArtifactsView from './components/ArtifactsView';
+import ArtifactViewer from './components/ArtifactViewer';
 import WorkshopPage from './workshop/WorkshopPage';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
@@ -56,7 +58,7 @@ function App() {
   const parseHash = useCallback(() => {
     const hash = window.location.hash.slice(1); // Remove leading #
     if (!hash || hash === '/') {
-      return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null };
+      return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
     }
 
     const parts = hash.split('/').filter(p => p); // Split and remove empty parts
@@ -64,36 +66,44 @@ function App() {
     if (parts.length === 1) {
       if (parts[0] === 'message_flow') {
         // /#/message_flow → message flow view
-        return { view: 'messageflow', cascadeId: null, sessionId: null, checkpointId: null };
+        return { view: 'messageflow', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'sextant') {
         // /#/sextant → sextant prompt observatory
-        return { view: 'sextant', cascadeId: null, sessionId: null, checkpointId: null };
+        return { view: 'sextant', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'workshop') {
         // /#/workshop → workshop cascade editor
-        return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null };
+        return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'blocked') {
         // /#/blocked → blocked sessions view
-        return { view: 'blocked', cascadeId: null, sessionId: null, checkpointId: null };
+        return { view: 'blocked', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+      }
+      if (parts[0] === 'artifacts') {
+        // /#/artifacts → artifacts gallery
+        return { view: 'artifacts', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       // /#/cascade_id → instances view
-      return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null };
+      return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null, artifactId: null };
     } else if (parts.length === 2) {
       if (parts[0] === 'checkpoint') {
         // /#/checkpoint/checkpoint_id → checkpoint view
-        return { view: 'checkpoint', cascadeId: null, sessionId: null, checkpointId: parts[1] };
+        return { view: 'checkpoint', cascadeId: null, sessionId: null, checkpointId: parts[1], artifactId: null };
       }
       if (parts[0] === 'message_flow') {
         // /#/message_flow/session_id → message flow view with session
-        return { view: 'messageflow', cascadeId: null, sessionId: parts[1], checkpointId: null };
+        return { view: 'messageflow', cascadeId: null, sessionId: parts[1], checkpointId: null, artifactId: null };
+      }
+      if (parts[0] === 'artifact') {
+        // /#/artifact/artifact_id → artifact viewer
+        return { view: 'artifact', cascadeId: null, sessionId: null, checkpointId: null, artifactId: parts[1] };
       }
       // /#/cascade_id/session_id → detail view
-      return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null };
+      return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null, artifactId: null };
     }
 
-    return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null };
+    return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
   }, []);
 
   // Update hash when navigation happens
@@ -284,6 +294,13 @@ function App() {
         // /#/checkpoint/:id → checkpoint view
         setActiveCheckpointId(route.checkpointId);
         setCurrentView('checkpoint');
+      } else if (route.view === 'artifacts') {
+        // /#/artifacts → artifacts gallery
+        setCurrentView('artifacts');
+      } else if (route.view === 'artifact' && route.artifactId) {
+        // /#/artifact/:id → artifact viewer
+        setCurrentView('artifact');
+        setActiveCheckpointId(route.artifactId); // Reuse for artifact ID
       }
     };
 
@@ -744,6 +761,10 @@ function App() {
             setCurrentView('blocked');
             updateHash('blocked');
           }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
           blockedCount={blockedCount}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
@@ -837,6 +858,25 @@ function App() {
             // Try to find the cascade for this session and navigate to detail
             // For now, just log - we'd need to look up the cascade_id
             console.log('Navigate to session:', sessionId);
+          }}
+        />
+      )}
+
+      {currentView === 'artifacts' && (
+        <ArtifactsView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+        />
+      )}
+
+      {currentView === 'artifact' && activeCheckpointId && (
+        <ArtifactViewer
+          artifactId={activeCheckpointId}
+          onBack={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
           }}
         />
       )}

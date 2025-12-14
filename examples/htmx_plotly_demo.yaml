@@ -8,11 +8,12 @@ inputs_schema:
 
 phases:
   - name: analyze_and_visualize
+    model: anthropic/claude-sonnet-4.5
     tackle: ["request_decision", "route_to"]
     handoffs:
       - final_report
-    rules:
-      max_turns: 5
+    # rules:
+    #   max_turns: 5
     instructions: |
       Analyze: {{ input.analysis_topic }}
 

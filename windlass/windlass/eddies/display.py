@@ -38,6 +38,7 @@ def show_ui(
     Arguments:
         html: HTML content to display. Can include <script> tags for visualizations.
               No template variables needed (not a checkpoint).
+              NO SIZE LIMITS - Include full charts and data inline.
         title: Optional title shown above the UI (rendered as h3)
         description: Optional description/context shown below title
         collapsible: If true, UI starts collapsed with expand button

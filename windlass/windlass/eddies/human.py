@@ -646,6 +646,8 @@ def request_decision(
               - For button choice: use ONE hidden input + onclick to change value
               - IMPORTANT: Include all context/analysis in your HTML, as only the question
                 is stored separately. Your HTML should be self-contained.
+              - NO SIZE LIMITS: Include full HTML with all data, scripts, and charts.
+                The system handles large HTML content without issues.
               - VISUALIZATION LIBRARIES AVAILABLE:
                 * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
                 * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))

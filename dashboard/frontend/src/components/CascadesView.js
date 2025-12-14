@@ -7,7 +7,7 @@ import VideoSpinner from './VideoSpinner';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, onWorkshop, onBlocked, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, onWorkshop, onBlocked, onArtifacts, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -374,6 +374,17 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
               {blockedCount > 0 && (
                 <span className="blocked-count-badge">{blockedCount}</span>
               )}
+            </button>
+          )}
+          {onArtifacts && (
+            <button className="artifacts-btn" onClick={onArtifacts} title="Artifacts - Persistent dashboards & visualizations">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/>
+                <rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="14" width="7" height="7" rx="1"/>
+              </svg>
+              Artifacts
             </button>
           )}
           <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />

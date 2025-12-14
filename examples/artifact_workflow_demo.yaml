@@ -1,0 +1,63 @@
+cascade_id: artifact_workflow_demo
+description: |
+  Demonstrates the complete artifact workflow:
+  1. Iterate on visualizations with request_decision (HTMX blocking)
+  2. Publish final polished version with create_artifact (persistent)
+
+  Shows how artifacts become permanent gallery items while request_decision
+  is ephemeral iteration tool.
+
+inputs_schema:
+  dataset_name: "What dataset to analyze"
+
+phases:
+  - name: draft_and_iterate
+    tackle: ["request_decision", "create_artifact", "route_to"]
+    handoffs:
+      - finalize
+    rules:
+      max_turns: 5
+    instructions: |
+      Analyze dataset: {{ input.dataset_name }}
+
+      ## Workflow:
+
+      1. **Generate synthetic data** (10-20 rows, 4-5 columns relevant to topic)
+
+      2. **Create draft visualization** using request_decision with HTMX:
+         - Plotly or Vega-Lite chart
+         - Include the data inline
+         - Ask: "Does this visualization effectively show the data?"
+         - Buttons: "Approve" or "Request Changes"
+
+      3. **If changes requested:** Iterate based on feedback (modify chart type, colors, etc.)
+
+      4. **When approved:** Use create_artifact to publish final version:
+         ```
+         create_artifact(
+             html="<complete polished dashboard>",
+             title="[Dataset Name] Analysis Dashboard",
+             artifact_type="dashboard",
+             description="Interactive visualization with key insights",
+             tags=["analysis", "visualization", dataset_type]
+         )
+         ```
+
+      5. **Route to finalize** phase
+
+      The artifact will appear in the Artifacts gallery and remain accessible
+      even after this cascade completes!
+
+  - name: finalize
+    tavkle: ["create_artifact"]
+    instructions: |
+      Artifact created: {{ outputs.draft_and_iterate.artifact_id }}
+      (Please create it, if not done already)
+
+      Provide a summary of:
+      - What the artifact contains
+      - Key insights from the data
+      - How to access it (Artifacts gallery)
+
+    context:
+      from: [draft_and_iterate]

@@ -8,6 +8,7 @@ inputs_schema:
 
 phases:
   - name: create_dashboard
+    model: anthropic/claude-sonnet-4.5
     tackle: ["request_decision", "route_to"]
     handoffs:
       - finalize

@@ -1,0 +1,365 @@
+/* ArtifactsView - Gallery of persistent artifacts */
+
+.artifacts-container {
+  width: 100%;
+  min-height: 100vh;
+  background: #0B1219;
+  padding: 2rem;
+}
+
+/* Header */
+.artifacts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #2C3B4B;
+}
+
+.artifacts-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.artifacts-header .brand-logo {
+  width: 64px;
+  height: 64px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.artifacts-header .brand-logo:hover {
+  transform: scale(1.05);
+}
+
+.artifacts-header .header-title h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #4A9EDD;
+}
+
+.artifacts-header .subtitle {
+  font-size: 0.9rem;
+  color: #9AA5B1;
+}
+
+.artifacts-header .header-stats {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #9AA5B1;
+  font-size: 0.95rem;
+}
+
+.types-summary {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.type-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #2C3B4B;
+  color: #9AA5B1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: rgba(74, 158, 221, 0.1);
+  border-color: #4A9EDD;
+  color: #4A9EDD;
+}
+
+/* Filters */
+.artifacts-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #16202A;
+  border: 1px solid #2C3B4B;
+  border-radius: 8px;
+}
+
+.search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #F0F4F8;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.search-bar input::placeholder {
+  color: #64748B;
+}
+
+.filter-pills {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #2C3B4B;
+  color: #9AA5B1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+
+.filter-pill:hover {
+  background: rgba(74, 158, 221, 0.1);
+  border-color: #4A9EDD;
+  color: #4A9EDD;
+}
+
+.filter-pill.active {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.filter-pill .count {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Loading/Error/Empty States */
+.artifacts-loading,
+.artifacts-error,
+.artifacts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: #9AA5B1;
+}
+
+.artifacts-loading .spinning {
+  animation: spin 1s linear infinite;
+  color: #4A9EDD;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.artifacts-error {
+  color: #ef4444;
+}
+
+.artifacts-error button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #ef4444;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.artifacts-empty Icon {
+  color: #64748B;
+  margin-bottom: 1rem;
+}
+
+.artifacts-empty h2 {
+  color: #9AA5B1;
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.artifacts-empty p {
+  color: #64748B;
+  font-size: 0.9375rem;
+  margin: 0.25rem 0;
+}
+
+/* Grid */
+.artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Artifact Card */
+.artifact-card {
+  background: #16202A;
+  border: 1px solid #2C3B4B;
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.artifact-card:hover {
+  transform: translateY(-2px);
+  border-color: #4A9EDD;
+  box-shadow: 0 8px 24px rgba(74, 158, 221, 0.15);
+}
+
+.artifact-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.artifact-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 8px;
+}
+
+.artifact-type-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.artifact-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.artifact-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #F0F4F8;
+}
+
+.artifact-description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #9AA5B1;
+  line-height: 1.5;
+}
+
+.artifact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: #64748B;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.artifact-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.artifact-tags .tag {
+  padding: 0.25rem 0.5rem;
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.artifact-tags .tag.more {
+  background: rgba(148, 163, 184, 0.15);
+  color: #9AA5B1;
+}
+
+.artifact-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2C3B4B;
+  font-size: 0.8125rem;
+  color: #64748B;
+}
+
+.footer-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.footer-item.size {
+  color: #9AA5B1;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .artifacts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .artifacts-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .filter-pills {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+}
