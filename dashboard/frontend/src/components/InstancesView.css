@@ -497,6 +497,95 @@
   border: 1px solid #CF6679;
 }
 
+/* Cancelled badge - red/orange */
+.cancelled-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+}
+
+/* Orphaned badge - gray/ghostly */
+.orphaned-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.15);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+
+/* Cancel pending badge - animated */
+.cancel-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+/* Blocked badge - cyan/teal for waiting states */
+.blocked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #22d3d1;
+  background: rgba(34, 211, 209, 0.15);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 211, 209, 0.5);
+  animation: pulse-blocked 2s ease-in-out infinite;
+}
+
+@keyframes pulse-blocked {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Instance row states */
+.instance-row-compact.cancelled {
+  border-left: 3px solid rgba(248, 113, 113, 0.5);
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.05) 0%, rgba(22, 32, 42, 0.95) 5%);
+}
+
+.instance-row-compact.orphaned {
+  border-left: 3px solid rgba(148, 163, 184, 0.5);
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.05) 0%, rgba(22, 32, 42, 0.95) 5%);
+  opacity: 0.7;
+}
+
+.instance-row-compact.cancel-pending {
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.05) 0%, rgba(22, 32, 42, 0.95) 5%);
+}
+
+.instance-row-compact.blocked {
+  border-left: 3px solid rgba(34, 211, 209, 0.5);
+  background: linear-gradient(90deg, rgba(34, 211, 209, 0.05) 0%, rgba(22, 32, 42, 0.95) 5%);
+}
+
 /* Left: Instance Info */
 .instance-info {
   width: 420px;
@@ -1379,6 +1468,49 @@
   border-color: #fbbf24;
   color: #fbbf24;
   animation: audible-pulse 1.5s ease-in-out infinite;
+}
+
+.btn-compact.cancel {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.btn-compact.cancel:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.btn-compact.cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-compact.cancel.requested {
+  border-color: #fbbf24;
+  color: #fbbf24;
+  animation: cancel-pulse 1.5s ease-in-out infinite;
+}
+
+.btn-compact.cancel.force {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  animation: force-cancel-pulse 0.8s ease-in-out infinite;
+}
+
+.btn-compact.cancel.force:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+@keyframes cancel-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@keyframes force-cancel-pulse {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
 }
 
 .btn-compact.freeze {

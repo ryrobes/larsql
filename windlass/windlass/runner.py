@@ -16,7 +16,8 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig
+import re
 from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
 from .human_ui import UIGenerator, normalize_human_input_config, generate_simple_ui
@@ -1353,6 +1354,363 @@ class WindlassRunner:
 
         return response
 
+    # ===== Decision Point Handling (LLM-Generated HITL) =====
+
+    # Regex pattern to detect <decision> blocks in phase output
+    DECISION_PATTERN = re.compile(
+        r'<decision>\s*(\{.*?\})\s*</decision>',
+        re.DOTALL
+    )
+
+    def _check_for_decision_point(
+        self,
+        phase_output: str,
+        phase: PhaseConfig
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Detect and parse <decision> blocks in phase output.
+
+        The LLM can output a decision block to request human input:
+        <decision>
+        {
+            "question": "How should I handle X?",
+            "options": [
+                {"id": "opt1", "label": "Option 1", "description": "..."},
+                {"id": "opt2", "label": "Option 2"}
+            ],
+            "allow_custom": true,
+            "severity": "warning"
+        }
+        </decision>
+
+        Returns:
+            Dict with decision data if found, None otherwise
+        """
+        if not phase.decision_points or not phase.decision_points.enabled:
+            return None
+
+        match = self.DECISION_PATTERN.search(phase_output)
+        if not match:
+            return None
+
+        try:
+            decision = json.loads(match.group(1))
+
+            # Validate required fields
+            if not decision.get("question") or not decision.get("options"):
+                console.print(f"[yellow]⚠️ Invalid decision block: missing question or options[/yellow]")
+                return None
+
+            # Extract context (text before the decision block)
+            context_before = phase_output[:match.start()].strip()
+
+            return {
+                "decision": decision,
+                "context_before": context_before,
+                "full_output": phase_output,
+                "match_start": match.start(),
+                "match_end": match.end()
+            }
+        except json.JSONDecodeError as e:
+            console.print(f"[yellow]⚠️ Invalid JSON in decision block: {e}[/yellow]")
+            return None
+
+    def _handle_decision_point(
+        self,
+        decision_data: Dict[str, Any],
+        phase: PhaseConfig,
+        trace: TraceNode
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Handle an LLM-generated decision point.
+
+        Creates a checkpoint with the decision UI, blocks for human response,
+        and returns routing information based on the selection.
+
+        Args:
+            decision_data: Parsed decision data from _check_for_decision_point
+            phase: The phase configuration
+            trace: The trace node for this phase
+
+        Returns:
+            Dict with routing info: {"_action": "continue|retry|route", ...}
+        """
+        decision = decision_data["decision"]
+        config = phase.decision_points
+        indent = "  " * self.depth
+
+        console.print(f"{indent}[bold magenta]🔀 Decision point detected: {decision['question']}[/bold magenta]")
+
+        # Build UI spec from decision block
+        sections = []
+
+        # Show context/output if configured
+        if config.ui.present_output and decision_data.get("context_before"):
+            sections.append({
+                "type": "preview",
+                "content": decision_data["context_before"],
+                "render": "markdown",
+                "label": "Context"
+            })
+
+        # Add decision context if provided in the block
+        if decision.get("context"):
+            sections.append({
+                "type": "preview",
+                "content": decision["context"],
+                "render": "markdown",
+                "label": "Details"
+            })
+
+        # Build choice section from options
+        options = decision["options"][:config.ui.max_options]  # Limit options
+
+        # Use card_grid for rich cards or choice for simple radio buttons
+        if len(options) <= 4 and config.ui.layout == "cards":
+            # Rich card grid layout
+            options_section = {
+                "type": "card_grid",
+                "label": decision["question"],
+                "input_name": "decision_choice",
+                "columns": min(len(options), 3),
+                "selection_mode": "single",
+                "cards": [
+                    {
+                        "id": opt.get("id", f"opt_{i}"),
+                        "title": opt.get("label", f"Option {i+1}"),
+                        "content": opt.get("description"),
+                        "badge": "Recommended" if opt.get("style") == "primary" else None,
+                    }
+                    for i, opt in enumerate(options)
+                ]
+            }
+        else:
+            # Simple choice with radio buttons
+            options_section = {
+                "type": "choice",
+                "prompt": decision["question"],
+                "label": decision["question"],
+                "input_name": "decision_choice",
+                "options": [
+                    {
+                        "value": opt.get("id", f"opt_{i}"),
+                        "label": opt.get("label", f"Option {i+1}"),
+                        "description": opt.get("description"),
+                        "icon": opt.get("icon"),
+                    }
+                    for i, opt in enumerate(options)
+                ]
+            }
+
+        # Add "Other" text input if custom allowed
+        allow_custom = decision.get("allow_custom", config.ui.allow_text_fallback)
+        if allow_custom:
+            sections.append(options_section)
+            sections.append({
+                "type": "text",
+                "label": "Or provide custom response",
+                "input_name": "decision_custom",
+                "placeholder": "Enter custom response...",
+                "multiline": False,
+                "required": False
+            })
+        else:
+            sections.append(options_section)
+
+        ui_spec = {
+            "layout": "vertical",
+            "title": decision["question"],
+            "sections": sections,
+            "_meta": {
+                "type": "decision_point",
+                "severity": decision.get("severity", "info"),
+                "category": decision.get("category"),
+                "options_count": len(options),
+                "phase_name": phase.name
+            }
+        }
+
+        # Create checkpoint
+        checkpoint_manager = get_checkpoint_manager()
+        checkpoint = checkpoint_manager.create_checkpoint(
+            session_id=self.session_id,
+            cascade_id=self.config.cascade_id,
+            phase_name=phase.name,
+            checkpoint_type=CheckpointType.DECISION,
+            ui_spec=ui_spec,
+            echo_snapshot={},
+            phase_output=decision_data["full_output"],
+            cascade_config=None,
+            trace_context=None,
+            timeout_seconds=config.timeout_seconds
+        )
+
+        console.print(f"{indent}  [cyan]Decision checkpoint created: {checkpoint.id}[/cyan]")
+        console.print(f"{indent}  [dim]Options: {len(options)}, Timeout: {config.timeout_seconds}s[/dim]")
+
+        # Log checkpoint creation
+        self.echo.add_history(
+            {"role": "system", "content": f"Decision point: {decision['question']} (checkpoint: {checkpoint.id})"},
+            trace_id=trace.id,
+            node_type="decision_waiting",
+            metadata={
+                "phase": phase.name,
+                "checkpoint_id": checkpoint.id,
+                "checkpoint_type": "decision",
+                "question": decision["question"],
+                "options_count": len(options),
+                "semantic_actor": "framework",
+                "semantic_purpose": "lifecycle",
+            }
+        )
+
+        # BLOCK waiting for human response
+        response = checkpoint_manager.wait_for_response(
+            checkpoint_id=checkpoint.id,
+            timeout=config.timeout_seconds,
+            poll_interval=0.5
+        )
+
+        if response is None:
+            console.print(f"{indent}  [yellow]⚠️ Decision timed out or cancelled[/yellow]")
+            self.echo.add_history(
+                {"role": "system", "content": f"Decision checkpoint timed out: {checkpoint.id}"},
+                trace_id=trace.id,
+                node_type="decision_timeout",
+                metadata={
+                    "phase": phase.name,
+                    "checkpoint_id": checkpoint.id,
+                    "semantic_actor": "framework",
+                    "semantic_purpose": "lifecycle",
+                }
+            )
+            return None
+
+        # Response received - extract selection
+        selected_id = response.get("decision_choice") or response.get("selected") or response.get("choice")
+        custom_text = response.get("decision_custom") or response.get("other_text") or response.get("custom") or response.get("text")
+
+        console.print(f"{indent}  [green]✓ Decision received: {selected_id}[/green]")
+
+        # Find the selected option
+        selected_option = next(
+            (opt for opt in decision["options"] if opt.get("id") == selected_id),
+            None
+        )
+
+        # Log response
+        self.echo.add_history(
+            {"role": "user", "content": f"Decision: {selected_option['label'] if selected_option else selected_id}" + (f" - {custom_text}" if custom_text else "")},
+            trace_id=trace.id,
+            node_type="decision_response",
+            metadata={
+                "phase": phase.name,
+                "checkpoint_id": checkpoint.id,
+                "selected_id": selected_id,
+                "selected_label": selected_option["label"] if selected_option else None,
+                "custom_text": custom_text,
+                "semantic_actor": "human",
+                "semantic_purpose": "task_input",
+            }
+        )
+
+        # Store decision in state for downstream access
+        self.echo.state[f"_decision_{phase.name}"] = {
+            "choice": selected_id,
+            "label": selected_option["label"] if selected_option else selected_id,
+            "custom_text": custom_text,
+            "question": decision["question"]
+        }
+
+        # Determine routing action
+        return self._route_decision(response, decision, config, phase, selected_id, custom_text, selected_option)
+
+    def _route_decision(
+        self,
+        response: Dict[str, Any],
+        decision: Dict[str, Any],
+        config: DecisionPointConfig,
+        phase: PhaseConfig,
+        selected_id: str,
+        custom_text: Optional[str],
+        selected_option: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Determine routing based on decision selection.
+
+        Checks (in order):
+        1. Option-level action (from the <decision> block)
+        2. Config-level routing (from phase.decision_points.routing)
+        3. Default: continue to next phase
+        """
+        indent = "  " * self.depth
+
+        # Check option-level action
+        action = None
+        if selected_option and selected_option.get("action"):
+            action = selected_option["action"]
+        # Check config-level routing
+        elif config.routing and selected_id in config.routing:
+            action = config.routing[selected_id]
+        elif config.routing:
+            action = config.routing.get("_continue", "next")
+        else:
+            action = "next"
+
+        # Normalize action to dict form
+        if isinstance(action, str):
+            if action in ("_abort", "abort"):
+                action = {"fail": True}
+            elif action in ("_retry", "retry", "self"):
+                action = {"to": "self", "inject": "feedback"}
+            elif action == "next":
+                action = {"to": "next"}
+            else:
+                action = {"to": action}  # Phase name
+
+        # Handle failure
+        if action.get("fail"):
+            error_msg = f"Decision aborted: {selected_option['label'] if selected_option else selected_id}"
+            if custom_text:
+                error_msg += f" - {custom_text}"
+            console.print(f"{indent}  [red]✗ Decision aborted cascade[/red]")
+            raise Exception(error_msg)
+
+        # Build feedback for injection
+        feedback = f"Human selected: {selected_option['label'] if selected_option else selected_id}"
+        if custom_text:
+            feedback += f"\nAdditional input: {custom_text}"
+
+        # Handle retry (route to self)
+        if action.get("to") == "self":
+            console.print(f"{indent}  [yellow]↻ Retrying phase with decision feedback[/yellow]")
+            # Store feedback for injection on retry
+            self.echo.state["_decision_feedback"] = feedback
+            return {
+                "_action": "retry",
+                "decision_choice": selected_id,
+                "decision_feedback": feedback,
+                "custom_text": custom_text
+            }
+
+        # Handle route to specific phase
+        target = action.get("to", "next")
+        if target != "next":
+            console.print(f"{indent}  [cyan]→ Routing to phase: {target}[/cyan]")
+            return {
+                "_action": "route",
+                "target_phase": target,
+                "decision_choice": selected_id,
+                "decision_feedback": feedback
+            }
+
+        # Default: continue to next phase
+        return {
+            "_action": "continue",
+            "decision_choice": selected_id,
+            "decision_feedback": feedback
+        }
+
     def _generate_tool_description(self, func: Callable, name: str) -> str:
         """
         Generate a prompt-based description of a tool for the agent.
@@ -1367,8 +1725,9 @@ class WindlassRunner:
         # Get FULL docstring - cleandoc handles indentation from multi-line docstrings
         description = inspect.cleandoc(func.__doc__) if func.__doc__ else f"Tool: {name}"
 
-        # Build parameter list with types (complements docstring's descriptions)
+        # Build parameter list with types and example values
         params = []
+        example_args = {}
         for param_name, param in sig.parameters.items():
             if param_name == "self":
                 continue
@@ -1379,7 +1738,28 @@ class WindlassRunner:
 
             params.append(f"  - {param_name} ({param_type}){required_marker}")
 
+            # Build example value based on type (only for required params)
+            if is_required:
+                if param_type == "str":
+                    example_args[param_name] = f"<{param_name}>"
+                elif param_type == "int":
+                    example_args[param_name] = 0
+                elif param_type == "float":
+                    example_args[param_name] = 0.0
+                elif param_type == "bool":
+                    example_args[param_name] = True
+                elif param_type == "list":
+                    example_args[param_name] = ["<item1>", "<item2>"]
+                elif param_type == "dict":
+                    example_args[param_name] = {"key": "value"}
+                else:
+                    example_args[param_name] = f"<{param_name}>"
+
         params_str = "\n".join(params) if params else "  (no parameters)"
+
+        # Format example args as JSON
+        import json
+        example_str = json.dumps(example_args) if example_args else "{}"
 
         # Format as markdown with full docstring
         tool_desc = f"""
@@ -1389,21 +1769,109 @@ class WindlassRunner:
 Parameter Types:
 {params_str}
 
-To use: Output JSON in this format:
-{{"tool": "{name}", "arguments": {{"param1": "value1", "param2": "value2"}}}}
+To call this tool, output a JSON code block:
+```json
+{{"tool": "{name}", "arguments": {example_str}}}
+```
 """
         return tool_desc.strip()
 
     def _parse_prompt_tool_calls(self, content: str) -> tuple[List[Dict], str]:
         """
         Parse prompt-based tool calls from agent response.
-        Looks for JSON structures like: {"tool": "name", "arguments": {...}}
-        Handles multiple formats:
-          - Markdown code-fenced JSON: ```json ... ```
-          - XML-style tags: <tool_call> ... </tool_call>
-          - Function call tags: <function_call> ... </function_call>
-          - Array formats: <function_calls>[{...}, {...}]</function_calls>
-          - Array formats: <tool_calls>[{...}, {...}]</tool_calls>
+
+        Supports 20+ formats for maximum LLM compatibility:
+
+        Format 1 (Preferred): Standard JSON with tool wrapper in code fence
+            ```json
+            {"tool": "tool_name", "arguments": {"param": "value"}}
+            ```
+
+        Format 2: Tool name as code fence language identifier (direct arguments)
+            ```request_decision
+            {"question": "...", "options": [...]}
+            ```
+
+        Format 3: XML-style tags with JSON body
+            <tool_call>{"tool": "name", "arguments": {...}}</tool_call>
+            <function_call>...</function_call>
+            <invoke name="tool_name">{"param": "value"}</invoke>
+
+        Format 4: Function call syntax
+            tool_name({"param": "value"})
+
+        Format 5: Anthropic/Claude-style with parameter elements
+            <invoke name="tool_name">
+                <parameter name="key">value</parameter>
+            </invoke>
+            (Also supports <invoke> namespace variant)
+
+        Format 6: ReAct-style (LangChain, AutoGPT)
+            Action: tool_name
+            Action Input: {"key": "value"}
+
+        Format 7: Mistral-style
+            [TOOL_CALLS] [{"name": "tool", "arguments": {...}}]
+
+        Format 8: Hermes/ChatML-style
+            <tool_call>{"name": "tool", "arguments": {...}}</tool_call>
+
+        Format 9: Bare JSON on its own line
+            {"tool": "name", "arguments": {...}}
+
+        Format 10: XML with name attributes
+            <function_call name="tool">...</function_call>
+            <tool name="...">...</tool>
+            <action name="...">...</action>
+
+        Format 11: YAML in code fences
+            ```yaml
+            tool: tool_name
+            arguments:
+              key: value
+            ```
+
+        Format 12: Thought/Action/Observation pattern
+            Thought: reasoning
+            Action: tool_name
+            Action Input: {...}
+            Observation: result
+
+        Format 13: OpenAI function wrapper
+            {"type": "function", "function": {"name": "...", "arguments": {...}}}
+
+        Format 14: Cohere-style
+            {"tool_name": "...", "parameters": {...}}
+
+        Format 15: Gemini-style
+            {"function_call": {"name": "...", "args": {...}}}
+
+        Format 16: Array formats for multiple calls
+            <tool_calls>[{...}, {...}]</tool_calls>
+            <function_calls>[...]</function_calls>
+
+        Format 17: Raw JSON array (no wrapper)
+            [{"tool": "a", "arguments": {}}, ...]
+
+        Format 18: Qwen/DeepSeek special tokens
+            <|tool_call|>{"name": "...", "arguments": {...}}<|/tool_call|>
+            [TOOL_CALL]...[/TOOL_CALL]
+
+        Format 19: Use/Call directive style
+            Use: tool_name
+            With: {"key": "value"}
+
+        Format 20: Markdown-style sections
+            ## Tool: tool_name
+            ### Arguments:
+            ```json
+            {...}
+            ```
+
+        Format 21: Simple key-value style (no JSON)
+            tool: tool_name
+            arg1: value1
+            arg2: value2
 
         Returns:
             tuple: (tool_calls, error_message)
@@ -1417,103 +1885,19 @@ To use: Output JSON in this format:
         tool_calls = []
         parse_errors = []
 
-        # Pattern 1: Markdown code fences (```json ... ```)
-        # This is the preferred/instructed format
-        code_fence_pattern = r'```json\s*(\{[^`]*\})\s*```'
-        all_json_blocks = re.findall(code_fence_pattern, content, re.DOTALL | re.IGNORECASE)
+        # Common programming languages that should NOT be treated as tool names
+        NON_TOOL_LANGUAGES = {
+            'json', 'javascript', 'js', 'typescript', 'ts', 'python', 'py',
+            'bash', 'sh', 'shell', 'zsh', 'html', 'css', 'xml', 'yaml', 'yml',
+            'sql', 'markdown', 'md', 'text', 'txt', 'plaintext', 'c', 'cpp',
+            'java', 'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'scala',
+            'r', 'matlab', 'perl', 'lua', 'vim', 'diff', 'dockerfile', 'makefile',
+            'toml', 'ini', 'conf', 'config', 'log', 'csv', 'tsv', 'graphql',
+            'proto', 'protobuf', 'terraform', 'hcl', 'nginx', 'apache'
+        }
 
-        # Pattern 2: XML-style <tool_call> tags (some models are hardcoded to use this)
-        # Matches: <tool_call> {...} </tool_call> or <tool_call>{...}</tool_call>
-        tool_call_tag_pattern = r'<tool_call>\s*(\{.*?\})\s*</tool_call>'
-        xml_tool_calls = re.findall(tool_call_tag_pattern, content, re.DOTALL | re.IGNORECASE)
-        all_json_blocks.extend(xml_tool_calls)
-
-        # Pattern 3: <function_call> tags (another common variant)
-        function_call_tag_pattern = r'<function_call>\s*(\{.*?\})\s*</function_call>'
-        function_calls = re.findall(function_call_tag_pattern, content, re.DOTALL | re.IGNORECASE)
-        all_json_blocks.extend(function_calls)
-
-        # Pattern 4: <tools> or <tool> tags (yet another variant some models use)
-        tools_tag_pattern = r'<tools?>\s*(\{.*?\})\s*</tools?>'
-        tools_calls = re.findall(tools_tag_pattern, content, re.DOTALL | re.IGNORECASE)
-        all_json_blocks.extend(tools_calls)
-
-        # Pattern 5: <function_calls> with array of tool calls (plural form for multiple calls)
-        # Matches: <function_calls>[{...}, {...}]</function_calls>
-        function_calls_array_pattern = r'<function_calls>\s*(\[.*?\])\s*</function_calls>'
-        function_calls_arrays = re.findall(function_calls_array_pattern, content, re.DOTALL | re.IGNORECASE)
-
-        # Also check <tool_calls> plural form
-        tool_calls_array_pattern = r'<tool_calls>\s*(\[.*?\])\s*</tool_calls>'
-        tool_calls_arrays = re.findall(tool_calls_array_pattern, content, re.DOTALL | re.IGNORECASE)
-
-        # Process array-based tool calls (extract individual objects from arrays)
-        for array_block in function_calls_arrays + tool_calls_arrays:
-            try:
-                array_data = json.loads(array_block.strip())
-                if isinstance(array_data, list):
-                    # Convert each object in the array to JSON string and add to blocks
-                    for item in array_data:
-                        if isinstance(item, dict):
-                            all_json_blocks.append(json.dumps(item))
-            except json.JSONDecodeError as e:
-                # Report error for malformed arrays
-                if '"tool"' in array_block:
-                    error_detail = f"Tool calls array JSON is malformed:\n"
-                    error_detail += f"  Error: {e.msg} at position {e.pos}\n"
-                    error_detail += f"  Your JSON: {array_block[:200]}{'...' if len(array_block) > 200 else ''}\n"
-                    parse_errors.append(error_detail)
-
-        # If no blocks found, agent isn't trying to call tools
-        # This is fine - phase might not have tools, or agent is just responding
-
-        for block_idx, block in enumerate(all_json_blocks):
-            # Clean up any remaining markdown or whitespace
-            block = block.strip()
-
-            # Try to parse the JSON
-            try:
-                data = json.loads(block)
-            except json.JSONDecodeError as e:
-                # ONLY report errors for blocks that LOOK like tool calls
-                # Check if this looks like a tool call attempt (has "tool" string in it)
-                if '"tool"' in block or "'tool'" in block:
-                    # This looks like a tool call attempt that's malformed
-                    error_detail = f"Tool call JSON is malformed:\n"
-                    error_detail += f"  Error: {e.msg} at position {e.pos}\n"
-                    error_detail += f"  Your JSON: {block[:150]}{'...' if len(block) > 150 else ''}\n"
-
-                    # Diagnose common errors
-                    opens = block.count('{')
-                    closes = block.count('}')
-                    if closes > opens:
-                        error_detail += f"  → You have {closes - opens} extra closing braces }}\n"
-                    elif opens > closes:
-                        error_detail += f"  → You're missing {opens - closes} closing braces }}\n"
-
-                    if block.count('"') % 2 != 0:
-                        error_detail += f"  → Unmatched quotes detected\n"
-
-                    parse_errors.append(error_detail)
-                # else: Not a tool call, just some other JSON (ignore it)
-                continue
-
-            # Successfully parsed - now check if it's actually a TOOL CALL
-            if not isinstance(data, dict):
-                continue  # Not a dict, ignore
-
-            if "tool" not in data:
-                continue  # No "tool" key, not a tool call, ignore
-
-            # This IS a tool call - validate structure
-            tool_name = data.get("tool")
-            arguments = data.get("arguments", {})
-
-            if not isinstance(arguments, dict):
-                parse_errors.append(f"Tool call 'arguments' must be an object/dict, got {type(arguments).__name__}")
-                continue
-
-            # Successfully parsed and validated tool call!
+        def add_tool_call(tool_name: str, arguments: dict):
+            """Helper to add a validated tool call."""
             tool_calls.append({
                 "id": f"prompt_tool_{len(tool_calls)}",
                 "type": "function",
@@ -1523,17 +1907,642 @@ To use: Output JSON in this format:
                 }
             })
 
+        # ============================================================
+        # Pattern 1: Code fences with any language identifier
+        # Matches: ```language_or_tool {...} ```
+        # ============================================================
+        code_fence_pattern = r'```(\w*)\s*\n?([\s\S]*?)\n?\s*```'
+
+        for match in re.finditer(code_fence_pattern, content, re.DOTALL):
+            language = (match.group(1) or '').lower().strip()
+            block_content = match.group(2).strip()
+
+            if not block_content:
+                continue
+
+            # Try to parse as JSON
+            try:
+                data = json.loads(block_content)
+            except json.JSONDecodeError as e:
+                # Check if this looks like a tool call attempt
+                if '"tool"' in block_content or language not in NON_TOOL_LANGUAGES:
+                    # Might be a malformed tool call
+                    if '{' in block_content:  # Only report if it looks like JSON
+                        error_detail = f"Possible tool call with malformed JSON:\n"
+                        error_detail += f"  Language: {language or '(none)'}\n"
+                        error_detail += f"  Error: {e.msg} at position {e.pos}\n"
+                        error_detail += f"  Content: {block_content[:150]}{'...' if len(block_content) > 150 else ''}\n"
+                        parse_errors.append(error_detail)
+                continue
+
+            if not isinstance(data, dict):
+                continue
+
+            # Case A: Standard format {"tool": "name", "arguments": {...}}
+            if "tool" in data:
+                tool_name = data.get("tool")
+                arguments = data.get("arguments", {})
+
+                # Handle case where arguments is the tool call itself (nested)
+                if not isinstance(arguments, dict):
+                    # Try to use the rest of the data as arguments
+                    arguments = {k: v for k, v in data.items() if k != "tool"}
+
+                if tool_name and isinstance(tool_name, str):
+                    add_tool_call(tool_name, arguments)
+                continue
+
+            # Case B: {"name": "tool_name", "arguments": {...}} variant
+            if "name" in data and "arguments" in data:
+                tool_name = data.get("name")
+                arguments = data.get("arguments", {})
+                if tool_name and isinstance(tool_name, str) and isinstance(arguments, dict):
+                    add_tool_call(tool_name, arguments)
+                continue
+
+            # Case C: Language identifier IS the tool name
+            # Only if language is not a known programming language
+            if language and language not in NON_TOOL_LANGUAGES:
+                # The JSON content is the arguments directly
+                # Check if it has an "arguments" wrapper
+                if "arguments" in data and isinstance(data["arguments"], dict):
+                    arguments = data["arguments"]
+                else:
+                    # Content is direct arguments
+                    arguments = data
+
+                add_tool_call(language, arguments)
+                continue
+
+        # ============================================================
+        # Pattern 2: XML-style tags with tool structure inside
+        # ============================================================
+        xml_patterns = [
+            (r'<tool_call>\s*([\s\S]*?)\s*</tool_call>', None),
+            (r'<function_call>\s*([\s\S]*?)\s*</function_call>', None),
+            (r'<tools?>\s*([\s\S]*?)\s*</tools?>', None),
+            # Invoke pattern with name attribute
+            (r'<invoke\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</invoke>', 'invoke'),
+            (r'<call\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</call>', 'invoke'),
+        ]
+
+        for pattern, pattern_type in xml_patterns:
+            for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+                if pattern_type == 'invoke':
+                    # Name is in the tag attribute, content is arguments
+                    tool_name = match.group(1)
+                    xml_content = match.group(2).strip()
+
+                    try:
+                        arguments = json.loads(xml_content) if xml_content else {}
+                        if isinstance(arguments, dict):
+                            add_tool_call(tool_name, arguments)
+                    except json.JSONDecodeError:
+                        parse_errors.append(f"Malformed JSON in <invoke name=\"{tool_name}\">: {xml_content[:100]}")
+                else:
+                    # Standard XML tag - content should have tool structure
+                    xml_content = match.group(1).strip()
+
+                    try:
+                        data = json.loads(xml_content)
+                        if isinstance(data, dict) and "tool" in data:
+                            tool_name = data.get("tool")
+                            arguments = data.get("arguments", {})
+                            if isinstance(arguments, dict):
+                                add_tool_call(tool_name, arguments)
+                    except json.JSONDecodeError:
+                        if '"tool"' in xml_content:
+                            parse_errors.append(f"Malformed JSON in XML tool tag: {xml_content[:100]}")
+
+        # ============================================================
+        # Pattern 3: Array formats for multiple tool calls
+        # ============================================================
+        array_patterns = [
+            r'<function_calls>\s*(\[[\s\S]*?\])\s*</function_calls>',
+            r'<tool_calls>\s*(\[[\s\S]*?\])\s*</tool_calls>',
+        ]
+
+        for pattern in array_patterns:
+            for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+                array_block = match.group(1)
+                try:
+                    array_data = json.loads(array_block.strip())
+                    if isinstance(array_data, list):
+                        for item in array_data:
+                            if isinstance(item, dict) and "tool" in item:
+                                tool_name = item.get("tool")
+                                arguments = item.get("arguments", {})
+                                if isinstance(arguments, dict):
+                                    add_tool_call(tool_name, arguments)
+                except json.JSONDecodeError as e:
+                    if '"tool"' in array_block:
+                        parse_errors.append(f"Malformed tool calls array: {e.msg}")
+
+        # ============================================================
+        # Pattern 4: Function call syntax: tool_name({...})
+        # Matches: request_decision({"question": "...", "options": [...]})
+        # ============================================================
+        func_call_pattern = r'\b(\w+)\s*\(\s*(\{[\s\S]*?\})\s*\)'
+
+        for match in re.finditer(func_call_pattern, content):
+            func_name = match.group(1)
+            func_args = match.group(2)
+
+            # Skip common non-tool function names
+            if func_name.lower() in {'print', 'console', 'log', 'json', 'dict', 'list', 'str', 'int', 'float', 'bool'}:
+                continue
+
+            try:
+                arguments = json.loads(func_args)
+                if isinstance(arguments, dict):
+                    # This looks like a tool call in function syntax
+                    add_tool_call(func_name, arguments)
+            except json.JSONDecodeError:
+                pass  # Not valid JSON, skip silently
+
+        # ============================================================
+        # Pattern 5: Anthropic/Claude-style <function_calls><invoke>
+        # With <parameter> elements for each argument
+        # ============================================================
+        # Pattern: <function_calls><invoke name="tool_name"><parameter name="key">value</parameter></invoke></function_calls>
+        # Also: <function_calls><invoke name="...">
+        invoke_with_params_pattern = r'<(?:antml:)?invoke\s+name=["\'](\w+)["\']>\s*([\s\S]*?)\s*</(?:antml:)?invoke>'
+
+        for match in re.finditer(invoke_with_params_pattern, content, re.DOTALL | re.IGNORECASE):
+            tool_name = match.group(1)
+            params_content = match.group(2).strip()
+
+            # Check if it contains <parameter> or <parameter> elements
+            param_pattern = r'<(?:antml:)?parameter\s+name=["\'](\w+)["\']\s*>([\s\S]*?)</(?:antml:)?parameter>'
+            param_matches = re.findall(param_pattern, params_content, re.DOTALL | re.IGNORECASE)
+
+            if param_matches:
+                # Build arguments from parameter elements
+                arguments = {}
+                for param_name, param_value in param_matches:
+                    # Try to parse as JSON, otherwise use as string
+                    param_value = param_value.strip()
+                    try:
+                        arguments[param_name] = json.loads(param_value)
+                    except json.JSONDecodeError:
+                        arguments[param_name] = param_value
+                add_tool_call(tool_name, arguments)
+            elif params_content:
+                # Fall back to trying to parse as JSON directly
+                try:
+                    arguments = json.loads(params_content)
+                    if isinstance(arguments, dict):
+                        add_tool_call(tool_name, arguments)
+                except json.JSONDecodeError:
+                    pass
+
+        # ============================================================
+        # Pattern 6: ReAct-style (Action: / Action Input:)
+        # Common in agent frameworks like LangChain
+        # ============================================================
+        # Pattern: Action: tool_name\nAction Input: {"key": "value"}
+        # Also handles: Action: tool_name\nAction Input:\n```json\n{...}\n```
+        react_pattern = r'Action:\s*(\w+)\s*\n\s*Action\s*Input:\s*(.+?)(?=\n(?:Observation:|Thought:|Action:|$)|\Z)'
+
+        for match in re.finditer(react_pattern, content, re.DOTALL | re.IGNORECASE):
+            action_name = match.group(1).strip()
+            action_input = match.group(2).strip()
+
+            if action_name.lower() in NON_TOOL_LANGUAGES:
+                continue
+
+            # Strip code fences if present
+            code_fence_match = re.search(r'```(?:\w*)\s*\n?([\s\S]*?)\n?\s*```', action_input)
+            if code_fence_match:
+                action_input = code_fence_match.group(1).strip()
+
+            try:
+                arguments = json.loads(action_input)
+                if isinstance(arguments, dict):
+                    add_tool_call(action_name, arguments)
+            except json.JSONDecodeError:
+                # Try treating the whole input as a single string argument
+                if action_input and not action_input.startswith('{'):
+                    add_tool_call(action_name, {"input": action_input})
+
+        # ============================================================
+        # Pattern 7: Mistral-style [TOOL_CALLS] format
+        # ============================================================
+        # Pattern: [TOOL_CALLS] [{"name": "tool", "arguments": {...}}]
+        mistral_pattern = r'\[TOOL_CALLS?\]\s*(\[[\s\S]*?\])'
+
+        for match in re.finditer(mistral_pattern, content, re.DOTALL | re.IGNORECASE):
+            tool_array = match.group(1).strip()
+            try:
+                tools = json.loads(tool_array)
+                if isinstance(tools, list):
+                    for tool in tools:
+                        if isinstance(tool, dict):
+                            tool_name = tool.get("name") or tool.get("tool")
+                            arguments = tool.get("arguments") or tool.get("parameters") or {}
+                            if tool_name and isinstance(arguments, dict):
+                                add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                parse_errors.append(f"Malformed Mistral-style tool calls: {tool_array[:100]}")
+
+        # ============================================================
+        # Pattern 8: Hermes/ChatML tool call format
+        # ============================================================
+        # Pattern: <tool_call>\n{"name": "tool", "arguments": {...}}\n</tool_call>
+        # Some models use "name" instead of "tool" as the key
+        hermes_pattern = r'<tool_call>\s*([\s\S]*?)\s*</tool_call>'
+
+        for match in re.finditer(hermes_pattern, content, re.DOTALL | re.IGNORECASE):
+            tool_content = match.group(1).strip()
+            try:
+                data = json.loads(tool_content)
+                if isinstance(data, dict):
+                    tool_name = data.get("name") or data.get("tool") or data.get("function")
+                    arguments = data.get("arguments") or data.get("parameters") or data.get("args") or {}
+                    # Handle nested function structure
+                    if "function" in data and isinstance(data["function"], dict):
+                        tool_name = data["function"].get("name")
+                        arguments = data["function"].get("arguments", {})
+                        if isinstance(arguments, str):
+                            try:
+                                arguments = json.loads(arguments)
+                            except json.JSONDecodeError:
+                                arguments = {"input": arguments}
+                    if tool_name and isinstance(arguments, dict):
+                        add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 9: Single-line JSON tool calls (no code fences)
+        # For models that output bare JSON on its own line
+        # ============================================================
+        # Match lines starting with { that contain tool/name/function key
+        bare_json_indicator = r'^[ \t]*\{.*"(?:tool|name|function)"'
+
+        for match in re.finditer(bare_json_indicator, content, re.MULTILINE):
+            # Found a potential bare JSON tool call, extract full JSON
+            start_pos = match.start()
+            # Skip leading whitespace
+            while start_pos < len(content) and content[start_pos] in ' \t':
+                start_pos += 1
+
+            # Find balanced braces
+            brace_count = 0
+            end_pos = start_pos
+
+            for i, c in enumerate(content[start_pos:]):
+                if c == '{':
+                    brace_count += 1
+                elif c == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = start_pos + i + 1
+                        break
+                elif c == '\n' and brace_count == 0:
+                    # Hit newline before closing brace at root level
+                    break
+
+            if brace_count == 0 and end_pos > start_pos:
+                json_str = content[start_pos:end_pos].strip()
+                try:
+                    data = json.loads(json_str)
+                    if isinstance(data, dict):
+                        tool_name = data.get("tool") or data.get("name") or data.get("function")
+                        arguments = data.get("arguments") or data.get("parameters") or data.get("args") or {}
+                        # Handle nested {"function": {"name": ..., "arguments": ...}}
+                        if "function" in data and isinstance(data["function"], dict):
+                            tool_name = data["function"].get("name")
+                            arguments = data["function"].get("arguments", {})
+                            if isinstance(arguments, str):
+                                try:
+                                    arguments = json.loads(arguments)
+                                except json.JSONDecodeError:
+                                    arguments = {"input": arguments}
+                        if tool_name and isinstance(arguments, dict):
+                            add_tool_call(tool_name, arguments)
+                except json.JSONDecodeError:
+                    pass
+
+        # ============================================================
+        # Pattern 10: XML with name attribute variants
+        # <function_call name="tool">...</function_call>
+        # ============================================================
+        xml_name_attr_patterns = [
+            (r'<function_call\s+name=["\'](\w+)["\']\s*(?:/)?\s*>', 'function_call'),
+            (r'<function_call\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</function_call>', 'function_call_full'),
+            (r'<tool\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</tool>', 'tool_full'),
+            (r'<action\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</action>', 'action_full'),
+        ]
+
+        for pattern, pattern_type in xml_name_attr_patterns:
+            for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+                if pattern_type == 'function_call':
+                    # Self-closing or empty, no arguments
+                    tool_name = match.group(1)
+                    add_tool_call(tool_name, {})
+                else:
+                    tool_name = match.group(1)
+                    xml_content = match.group(2).strip() if len(match.groups()) > 1 else ""
+
+                    arguments = {}
+                    if xml_content:
+                        # Try JSON first
+                        try:
+                            arguments = json.loads(xml_content)
+                            if not isinstance(arguments, dict):
+                                arguments = {"value": arguments}
+                        except json.JSONDecodeError:
+                            # Try parsing as XML parameters
+                            param_pattern = r'<(\w+)>([\s\S]*?)</\1>'
+                            param_matches = re.findall(param_pattern, xml_content, re.DOTALL)
+                            if param_matches:
+                                for param_name, param_value in param_matches:
+                                    param_value = param_value.strip()
+                                    try:
+                                        arguments[param_name] = json.loads(param_value)
+                                    except json.JSONDecodeError:
+                                        arguments[param_name] = param_value
+                            else:
+                                # Use as single input
+                                arguments = {"input": xml_content}
+
+                    if isinstance(arguments, dict):
+                        add_tool_call(tool_name, arguments)
+
+        # ============================================================
+        # Pattern 11: YAML-style tool calls in code fences
+        # ```yaml
+        # tool: tool_name
+        # arguments:
+        #   key: value
+        # ```
+        # ============================================================
+        yaml_fence_pattern = r'```ya?ml\s*\n([\s\S]*?)\n\s*```'
+
+        for match in re.finditer(yaml_fence_pattern, content, re.DOTALL | re.IGNORECASE):
+            yaml_content = match.group(1).strip()
+            try:
+                import yaml as yaml_lib
+                data = yaml_lib.safe_load(yaml_content)
+                if isinstance(data, dict):
+                    tool_name = data.get("tool") or data.get("name") or data.get("function") or data.get("action")
+                    arguments = data.get("arguments") or data.get("parameters") or data.get("args") or data.get("input") or {}
+                    # If tool_name not found but there's a single key that looks like a tool
+                    if not tool_name and len(data) == 2:
+                        for key in data:
+                            if key not in ('arguments', 'parameters', 'args', 'input'):
+                                tool_name = key
+                                arguments = data.get(key, {})
+                                break
+                    if tool_name and isinstance(tool_name, str):
+                        if not isinstance(arguments, dict):
+                            arguments = {"value": arguments}
+                        add_tool_call(tool_name, arguments)
+            except Exception:
+                pass  # YAML parsing failed, skip
+
+        # ============================================================
+        # Pattern 12: Thought/Action/Action Input (TAO) with Observation
+        # Used by some agent frameworks
+        # ============================================================
+        tao_pattern = r'(?:Thought:.*?\n)?Action:\s*(\w+)\s*\nAction\s*Input:\s*([\s\S]*?)(?=\nObservation:|\nThought:|\nAction:|\Z)'
+
+        for match in re.finditer(tao_pattern, content, re.DOTALL | re.IGNORECASE):
+            action_name = match.group(1).strip()
+            action_input = match.group(2).strip()
+
+            if action_name.lower() in NON_TOOL_LANGUAGES:
+                continue
+
+            # Skip if already handled by ReAct pattern
+            # (This is a more permissive variant)
+            try:
+                # Try parsing as JSON
+                arguments = json.loads(action_input)
+                if isinstance(arguments, dict):
+                    add_tool_call(action_name, arguments)
+            except json.JSONDecodeError:
+                # Use as string input if not valid JSON
+                if action_input:
+                    add_tool_call(action_name, {"input": action_input})
+
+        # ============================================================
+        # Pattern 13: OpenAI-style function wrapper
+        # {"type": "function", "function": {"name": "...", "arguments": "..."}}
+        # ============================================================
+        # Look for JSON objects containing "type": "function" pattern
+        openai_indicator_pattern = r'\{[^{}]*"type"\s*:\s*"function"[^{}]*"function"\s*:'
+
+        for match in re.finditer(openai_indicator_pattern, content, re.DOTALL):
+            # Found potential OpenAI format, extract the full JSON object
+            start_pos = match.start()
+            brace_count = 0
+            end_pos = start_pos
+
+            for i, c in enumerate(content[start_pos:]):
+                if c == '{':
+                    brace_count += 1
+                elif c == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = start_pos + i + 1
+                        break
+
+            try:
+                data = json.loads(content[start_pos:end_pos])
+                if isinstance(data, dict) and data.get("type") == "function" and "function" in data:
+                    func_data = data["function"]
+                    tool_name = func_data.get("name")
+                    arguments = func_data.get("arguments", {})
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {"input": arguments}
+                    if tool_name and isinstance(arguments, dict):
+                        add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 14: Cohere-style tool calls
+        # {"tool_name": "...", "parameters": {...}}
+        # ============================================================
+        # Already partially covered by other patterns but let's be explicit
+        cohere_pattern = r'\{\s*"tool_name"\s*:\s*"(\w+)"\s*,\s*"parameters"\s*:\s*(\{[^{}]*\})\s*\}'
+
+        for match in re.finditer(cohere_pattern, content, re.DOTALL):
+            tool_name = match.group(1)
+            params_str = match.group(2)
+            try:
+                arguments = json.loads(params_str)
+                if isinstance(arguments, dict):
+                    add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 15: Gemini-style function_call
+        # {"function_call": {"name": "...", "args": {...}}}
+        # ============================================================
+        gemini_pattern = r'\{\s*"function_call"\s*:\s*\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"args"\s*:\s*(\{[\s\S]*?\})\s*\}\s*\}'
+
+        for match in re.finditer(gemini_pattern, content, re.DOTALL):
+            tool_name = match.group(1)
+            args_str = match.group(2)
+            try:
+                arguments = json.loads(args_str)
+                if isinstance(arguments, dict):
+                    add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 16: Raw JSON array of tool calls (no wrapper)
+        # [{"tool": "a", "arguments": {}}, {"tool": "b", "arguments": {}}]
+        # ============================================================
+        # Match a JSON array that starts on its own line
+        raw_array_pattern = r'^[ \t]*(\[[\s\S]*?\])[ \t]*$'
+
+        for match in re.finditer(raw_array_pattern, content, re.MULTILINE):
+            array_str = match.group(1).strip()
+            try:
+                data = json.loads(array_str)
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            tool_name = item.get("tool") or item.get("name") or item.get("function")
+                            arguments = item.get("arguments") or item.get("parameters") or item.get("args") or {}
+                            if tool_name and isinstance(arguments, dict):
+                                add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 17: Qwen/DeepSeek style with <|tool_call|> tokens
+        # <|tool_call|>{"name": "...", "arguments": {...}}<|/tool_call|>
+        # ============================================================
+        special_token_patterns = [
+            r'<\|tool_call\|>\s*([\s\S]*?)\s*<\|/tool_call\|>',
+            r'<\|function_call\|>\s*([\s\S]*?)\s*<\|/function_call\|>',
+            r'<\|action\|>\s*([\s\S]*?)\s*<\|/action\|>',
+            r'\[TOOL_CALL\]\s*([\s\S]*?)\s*\[/TOOL_CALL\]',
+        ]
+
+        for pattern in special_token_patterns:
+            for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+                token_content = match.group(1).strip()
+                try:
+                    data = json.loads(token_content)
+                    if isinstance(data, dict):
+                        tool_name = data.get("name") or data.get("tool") or data.get("function")
+                        arguments = data.get("arguments") or data.get("parameters") or data.get("args") or {}
+                        if tool_name and isinstance(arguments, dict):
+                            add_tool_call(tool_name, arguments)
+                except json.JSONDecodeError:
+                    pass
+
+        # ============================================================
+        # Pattern 18: Use/Call directive style (some instruction models)
+        # Use: tool_name
+        # With: {"key": "value"}
+        # ============================================================
+        use_directive_pattern = r'(?:Use|Call|Execute|Run):\s*(\w+)\s*\n\s*(?:With|Args|Arguments|Params|Parameters):\s*(\{[\s\S]*?\})'
+
+        for match in re.finditer(use_directive_pattern, content, re.IGNORECASE):
+            tool_name = match.group(1).strip()
+            args_str = match.group(2).strip()
+
+            if tool_name.lower() in NON_TOOL_LANGUAGES:
+                continue
+
+            try:
+                arguments = json.loads(args_str)
+                if isinstance(arguments, dict):
+                    add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 19: Markdown-style tool call (## Tool: / ### Arguments:)
+        # ## Tool: tool_name
+        # ### Arguments:
+        # ```json
+        # {...}
+        # ```
+        # ============================================================
+        md_tool_pattern = r'#{1,3}\s*Tool:\s*(\w+)\s*\n(?:.*\n)*?#{1,3}\s*Arguments?:\s*\n```(?:json)?\s*\n([\s\S]*?)\n```'
+
+        for match in re.finditer(md_tool_pattern, content, re.IGNORECASE):
+            tool_name = match.group(1).strip()
+            args_str = match.group(2).strip()
+
+            try:
+                arguments = json.loads(args_str)
+                if isinstance(arguments, dict):
+                    add_tool_call(tool_name, arguments)
+            except json.JSONDecodeError:
+                pass
+
+        # ============================================================
+        # Pattern 20: Simple key-value style without JSON
+        # tool: tool_name
+        # arg1: value1
+        # arg2: value2
+        # ============================================================
+        # Match lines starting with "tool:" or "function:" followed by key-value pairs
+        simple_kv_pattern = r'^(?:tool|function|action):\s*(\w+)\s*\n((?:\w+:\s*.+\n?)+)'
+
+        for match in re.finditer(simple_kv_pattern, content, re.MULTILINE | re.IGNORECASE):
+            tool_name = match.group(1).strip()
+            kv_block = match.group(2)
+
+            if tool_name.lower() in NON_TOOL_LANGUAGES:
+                continue
+
+            # Parse key-value pairs
+            arguments = {}
+            kv_lines = kv_block.strip().split('\n')
+            for line in kv_lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Skip if key looks like a tool indicator
+                    if key.lower() in ('tool', 'function', 'action', 'name'):
+                        continue
+                    # Try to parse value as JSON
+                    try:
+                        arguments[key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        arguments[key] = value
+
+            if arguments:
+                add_tool_call(tool_name, arguments)
+
+        # ============================================================
         # Return results
+        # ============================================================
         if tool_calls:
-            return tool_calls, None  # Success!
+            # Deduplicate tool calls (same tool + same arguments)
+            seen = set()
+            unique_calls = []
+            for call in tool_calls:
+                key = (call["function"]["name"], call["function"]["arguments"])
+                if key not in seen:
+                    seen.add(key)
+                    # Re-number the IDs
+                    call["id"] = f"prompt_tool_{len(unique_calls)}"
+                    unique_calls.append(call)
+            return unique_calls, None
 
         if parse_errors:
-            # Found blocks that LOOKED like tool calls but were malformed
             error_msg = "\n".join(parse_errors)
             return [], error_msg
 
-        # No tool calls found (no ```json blocks, or JSON blocks weren't tool calls)
-        return [], None  # No error, agent just not calling tools
+        # No tool calls found
+        return [], None
 
     def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
         """
@@ -7656,9 +8665,30 @@ Refinement directive: {reforge_config.honing_prompt}
 
         _cleanup_rag()
 
-        # Handle human-in-the-loop checkpoint if configured
-        # This BLOCKS waiting for human input (no exceptions, just waits)
+        # Convert output to string for checkpoint handling
         phase_output_str = response_content if isinstance(response_content, str) else str(response_content)
+
+        # Check for LLM-generated decision points (<decision> blocks)
+        # This allows the LLM to dynamically request human input with custom options
+        decision_data = self._check_for_decision_point(phase_output_str, phase)
+        if decision_data:
+            decision_result = self._handle_decision_point(decision_data, phase, trace)
+            if decision_result:
+                action = decision_result.get("_action")
+                if action == "retry":
+                    # Retry this phase with decision feedback injected
+                    # The feedback is stored in state["_decision_feedback"]
+                    console.print(f"[yellow]↻ Retrying phase due to decision[/yellow]")
+                    # Note: Actual retry logic would need to be handled at a higher level
+                    # For now, we continue but the feedback is available in state
+                elif action == "route":
+                    # Route to a specific phase
+                    target = decision_result.get("target_phase")
+                    if target:
+                        return target  # Return the target phase name as the chosen next phase
+
+        # Handle human-in-the-loop checkpoint if configured (static HITL)
+        # This BLOCKS waiting for human input (no exceptions, just waits)
         human_response = self._handle_human_input_checkpoint(phase, phase_output_str, trace, input_data)
 
         # If human input was received, it can be accessed via self.echo.state or passed to next phase

@@ -330,6 +330,15 @@
   color: #67e8f9;
 }
 
+.action-btn.flow {
+  color: #a78bfa;
+}
+
+.action-btn.flow:hover {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
 /* No data placeholder */
 .no-data {
   color: #4b5563;

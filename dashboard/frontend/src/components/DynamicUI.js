@@ -23,11 +23,13 @@ import SidebarLayout from './layouts/SidebarLayout';
  *
  * Supports all built-in UI section types:
  * - preview: Display content (text, markdown, code)
+ * - header: Display heading with optional icon
+ * - text: Free text input OR static text display (auto-detected)
+ * - text_input: Free text input field
  * - confirmation: Yes/No buttons
  * - choice: Radio buttons (single select)
  * - multi_choice: Checkboxes (multi select)
  * - rating: Star rating
- * - text: Free text input
  * - slider: Range slider
  * - form: Multiple fields
  *
@@ -256,6 +258,8 @@ function UISection({ spec, value, error, onChange, phaseOutput, values, onValueC
     // Existing section types
     case 'preview':
       return <PreviewSection spec={spec} phaseOutput={phaseOutput} />;
+    case 'header':
+      return <HeaderSection spec={spec} />;
     case 'confirmation':
       return <ConfirmationSection spec={spec} value={value} onChange={onChange} />;
     case 'choice':
@@ -265,6 +269,13 @@ function UISection({ spec, value, error, onChange, phaseOutput, values, onValueC
     case 'rating':
       return <RatingSection spec={spec} value={value} onChange={onChange} />;
     case 'text':
+      // If has 'content' property, treat as display text (like preview)
+      if (spec.content) {
+        return <TextDisplaySection spec={spec} />;
+      }
+      // Otherwise, treat as input
+      return <TextSection spec={spec} value={value} error={error} onChange={onChange} />;
+    case 'text_input':
       return <TextSection spec={spec} value={value} error={error} onChange={onChange} />;
     case 'slider':
       return <SliderSection spec={spec} value={value} onChange={onChange} />;
@@ -292,6 +303,39 @@ function UISection({ spec, value, error, onChange, phaseOutput, values, onValueC
     default:
       return <div className="ui-section unknown">Unknown section type: {spec.type}</div>;
   }
+}
+
+/**
+ * Header Section - Renders a heading with optional icon
+ */
+function HeaderSection({ spec }) {
+  const level = spec.level || 2;
+  const text = spec.text || spec.content || '';
+  const icon = spec.icon;
+  const HeaderTag = `h${level}`;
+
+  return (
+    <div className="ui-section header">
+      <HeaderTag className="section-heading">
+        {icon && <span className="heading-icon">{icon}</span>}
+        {text}
+      </HeaderTag>
+    </div>
+  );
+}
+
+/**
+ * Text Display Section - Renders static text with optional styling
+ */
+function TextDisplaySection({ spec }) {
+  const content = spec.content || '';
+  const style = spec.style || 'normal';
+
+  return (
+    <div className={`ui-section text-display ${style}`}>
+      <p className="display-text">{content}</p>
+    </div>
+  );
 }
 
 /**
@@ -570,12 +614,15 @@ function RatingSection({ spec, value, onChange }) {
  */
 function TextSection({ spec, value, error, onChange }) {
   const isMultiline = spec.multiline !== false;
+  // Handle both 'required' and 'optional' properties
+  // optional: true means not required, so invert it
+  const isRequired = spec.required || (spec.optional === false);
 
   return (
     <div className="ui-section text">
       <label className="section-label">
         {spec.label || spec.prompt}
-        {spec.required && <span className="required">*</span>}
+        {isRequired && <span className="required">*</span>}
       </label>
       {error && <p className="section-error">{error}</p>}
       {isMultiline ? (
@@ -585,7 +632,7 @@ function TextSection({ spec, value, error, onChange }) {
           placeholder={spec.placeholder || ''}
           rows={spec.rows || 4}
           maxLength={spec.max_length}
-          required={spec.required}
+          required={isRequired}
           className="text-input multiline"
         />
       ) : (
@@ -595,7 +642,7 @@ function TextSection({ spec, value, error, onChange }) {
           onChange={(e) => onChange(e.target.value)}
           placeholder={spec.placeholder || ''}
           maxLength={spec.max_length}
-          required={spec.required}
+          required={isRequired}
           className="text-input"
         />
       )}

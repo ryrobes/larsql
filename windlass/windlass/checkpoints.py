@@ -44,6 +44,7 @@ class CheckpointType(str, Enum):
     CONFIRMATION = "confirmation"    # Yes/no confirmation
     RATING = "rating"                # Star rating (1-5)
     AUDIBLE = "audible"              # Real-time feedback injection mid-phase
+    DECISION = "decision"            # LLM-generated decision point (<decision> block)
 
 
 @dataclass
@@ -297,6 +298,9 @@ class CheckpointManager:
         """
         Get all pending checkpoints.
 
+        Checks both in-memory cache and database to ensure checkpoints
+        persist across server restarts.
+
         Args:
             session_id: Optional filter by session ID
 
@@ -304,12 +308,25 @@ class CheckpointManager:
             List of pending Checkpoint objects
         """
         pending = []
+        seen_ids = set()
 
+        # First check in-memory cache (fastest)
         with self._cache_lock:
             for checkpoint in self._cache.values():
                 if checkpoint.status == CheckpointStatus.PENDING:
                     if session_id is None or checkpoint.session_id == session_id:
                         pending.append(checkpoint)
+                        seen_ids.add(checkpoint.id)
+
+        # Then check database for any checkpoints not in cache
+        if self.use_db:
+            db_pending = self._load_pending_checkpoints(session_id)
+            for cp in db_pending:
+                if cp.id not in seen_ids:
+                    # Add to cache for future fast access
+                    with self._cache_lock:
+                        self._cache[cp.id] = cp
+                    pending.append(cp)
 
         return pending
 
@@ -422,9 +439,22 @@ class CheckpointManager:
         session_id = checkpoint.session_id
         try:
             from .session_state import set_session_blocked, set_session_unblocked, BlockedType
+            # Map checkpoint type to blocked type
+            blocked_type_map = {
+                CheckpointType.PHASE_INPUT: BlockedType.HITL,
+                CheckpointType.SOUNDING_EVAL: BlockedType.HITL,
+                CheckpointType.DECISION: BlockedType.DECISION,
+                CheckpointType.FREE_TEXT: BlockedType.HITL,
+                CheckpointType.CHOICE: BlockedType.HITL,
+                CheckpointType.MULTI_CHOICE: BlockedType.HITL,
+                CheckpointType.CONFIRMATION: BlockedType.APPROVAL,
+                CheckpointType.RATING: BlockedType.HITL,
+                CheckpointType.AUDIBLE: BlockedType.HITL,
+            }
+            blocked_type = blocked_type_map.get(checkpoint.checkpoint_type, BlockedType.HITL)
             set_session_blocked(
                 session_id=session_id,
-                blocked_type=BlockedType.HITL,
+                blocked_type=blocked_type,
                 blocked_on=checkpoint_id,
                 description=f"Waiting for human input ({checkpoint.checkpoint_type.value})",
                 timeout_at=checkpoint.timeout_at
@@ -608,10 +638,28 @@ class CheckpointManager:
 
             if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                 db = get_db_adapter()
-                # ClickHouse doesn't support UPDATE, so we use ALTER TABLE UPDATE
-                # For simplicity in this implementation, we just log and rely on cache
-                # In production, you might use ReplacingMergeTree or similar
-                print(f"[Windlass] Checkpoint {checkpoint.id} updated in cache (DB update skipped)")
+                # ClickHouse supports ALTER TABLE UPDATE for MergeTree family
+                responded_at_sql = f"toDateTime64('{checkpoint.responded_at.isoformat()}', 3)" if checkpoint.responded_at else "NULL"
+                response_sql = f"'{json.dumps(checkpoint.response).replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response else "NULL"
+                reasoning_sql = f"'{checkpoint.response_reasoning.replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response_reasoning else "NULL"
+                confidence_sql = str(checkpoint.response_confidence) if checkpoint.response_confidence is not None else "NULL"
+                winner_sql = str(checkpoint.winner_index) if checkpoint.winner_index is not None else "NULL"
+                rankings_sql = f"'{json.dumps(checkpoint.rankings)}'" if checkpoint.rankings else "NULL"
+                ratings_sql = f"'{json.dumps(checkpoint.ratings)}'" if checkpoint.ratings else "NULL"
+
+                db.execute(f"""
+                    ALTER TABLE checkpoints UPDATE
+                        status = '{checkpoint.status.value}',
+                        responded_at = {responded_at_sql},
+                        response = {response_sql},
+                        response_reasoning = {reasoning_sql},
+                        response_confidence = {confidence_sql},
+                        winner_index = {winner_sql},
+                        rankings = {rankings_sql},
+                        ratings = {ratings_sql}
+                    WHERE id = '{checkpoint.id}'
+                """)
+                print(f"[Windlass] Checkpoint {checkpoint.id} updated in DB (status={checkpoint.status.value})")
         except Exception as e:
             print(f"[Windlass] Warning: Could not update checkpoint in DB: {e}")
 
@@ -666,6 +714,78 @@ class CheckpointManager:
             print(f"[Windlass] Warning: Could not load checkpoint from DB: {e}")
 
         return None
+
+    def _load_pending_checkpoints(self, session_id: Optional[str] = None) -> List[Checkpoint]:
+        """
+        Load all pending checkpoints from database.
+
+        This enables checkpoint persistence across server restarts.
+
+        Args:
+            session_id: Optional filter by session ID
+
+        Returns:
+            List of pending Checkpoint objects from database
+        """
+        checkpoints = []
+        try:
+            from .config import get_config
+            config = get_config()
+
+            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
+                db = get_db_adapter()
+
+                # Build query with optional session filter
+                session_filter = f"AND session_id = '{session_id}'" if session_id else ""
+
+                result = db.query(f"""
+                    SELECT *
+                    FROM checkpoints
+                    WHERE status = 'pending'
+                    {session_filter}
+                    ORDER BY created_at DESC
+                """, output_format="dict")
+
+                for row in result:
+                    try:
+                        # Deserialize trace_context if present
+                        trace_context = None
+                        if row.get("trace_context"):
+                            trace_context_data = json.loads(row["trace_context"])
+                            trace_context = TraceContext.from_dict(trace_context_data)
+
+                        checkpoint = Checkpoint(
+                            id=row["id"],
+                            session_id=row["session_id"],
+                            cascade_id=row["cascade_id"],
+                            phase_name=row["phase_name"],
+                            checkpoint_type=CheckpointType(row["checkpoint_type"]),
+                            status=CheckpointStatus(row["status"]),
+                            ui_spec=json.loads(row["ui_spec"]),
+                            echo_snapshot=json.loads(row["echo_snapshot"]),
+                            phase_output=row["phase_output"],
+                            trace_context=trace_context,
+                            created_at=row["created_at"],
+                            timeout_at=row.get("timeout_at"),
+                            responded_at=row.get("responded_at"),
+                            sounding_outputs=json.loads(row["sounding_outputs"]) if row.get("sounding_outputs") else None,
+                            sounding_metadata=json.loads(row["sounding_metadata"]) if row.get("sounding_metadata") else None,
+                            response=json.loads(row["response"]) if row.get("response") else None,
+                            response_reasoning=row.get("response_reasoning"),
+                            response_confidence=row.get("response_confidence"),
+                            winner_index=row.get("winner_index"),
+                            rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
+                            ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
+                        )
+                        checkpoints.append(checkpoint)
+                    except Exception as row_err:
+                        print(f"[Windlass] Warning: Could not parse checkpoint row: {row_err}")
+                        continue
+
+        except Exception as e:
+            print(f"[Windlass] Warning: Could not load pending checkpoints from DB: {e}")
+
+        return checkpoints
 
 
 # Global checkpoint manager singleton

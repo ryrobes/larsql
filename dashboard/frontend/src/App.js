@@ -5,6 +5,7 @@ import HotOrNotView from './components/HotOrNotView';
 import SplitDetailView from './components/SplitDetailView';
 import MessageFlowView from './components/MessageFlowView';
 import SextantView from './components/SextantView';
+import BlockedSessionsView from './components/BlockedSessionsView';
 import WorkshopPage from './workshop/WorkshopPage';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
@@ -36,6 +37,7 @@ function App() {
   const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
   const [pendingCheckpoints, setPendingCheckpoints] = useState([]); // HITL checkpoints waiting for human input
   const [runningSoundings, setRunningSoundings] = useState({}); // Track running soundings: { sessionId: { phaseName: Set([index]) } }
+  const [blockedCount, setBlockedCount] = useState(0); // Count of blocked sessions for badge
 
   const showToast = (message, type = 'success', duration = null, cascadeData = null) => {
     const id = Date.now();
@@ -72,6 +74,10 @@ function App() {
         // /#/workshop → workshop cascade editor
         return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null };
       }
+      if (parts[0] === 'blocked') {
+        // /#/blocked → blocked sessions view
+        return { view: 'blocked', cascadeId: null, sessionId: null, checkpointId: null };
+      }
       // /#/cascade_id → instances view
       return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null };
     } else if (parts.length === 2) {
@@ -98,6 +104,8 @@ function App() {
       window.location.hash = '#/sextant';
     } else if (view === 'workshop') {
       window.location.hash = '#/workshop';
+    } else if (view === 'blocked') {
+      window.location.hash = '#/blocked';
     } else if (view === 'messageflow') {
       if (sessionId) {
         window.location.hash = `#/message_flow/${sessionId}`;
@@ -221,6 +229,10 @@ function App() {
         setDetailSessionId(null);
       } else if (route.view === 'workshop') {
         setCurrentView('workshop');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'blocked') {
+        setCurrentView('blocked');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'messageflow') {
@@ -472,9 +484,14 @@ function App() {
             setRefreshTrigger(prev => prev + 1);
             break;
 
-          // HITL Checkpoint events
+          // HITL Checkpoint events - refresh blocked count on any checkpoint event
           case 'checkpoint_waiting':
             //console.log('[SSE] Checkpoint waiting:', event.data);
+            // Immediately refresh blocked count
+            fetch('http://localhost:5001/api/sessions/blocked')
+              .then(res => res.json())
+              .then(data => data.sessions && setBlockedCount(data.sessions.length))
+              .catch(() => {});
             const newCheckpoint = {
               id: event.data.checkpoint_id,
               session_id: event.session_id,
@@ -498,6 +515,11 @@ function App() {
 
           case 'checkpoint_responded':
             console.log('[SSE] Checkpoint responded:', event.data);
+            // Immediately refresh blocked count
+            fetch('http://localhost:5001/api/sessions/blocked')
+              .then(res => res.json())
+              .then(data => data.sessions && setBlockedCount(data.sessions.length))
+              .catch(() => {});
             setPendingCheckpoints(prev =>
               prev.filter(cp => cp.id !== event.data.checkpoint_id)
             );
@@ -507,6 +529,11 @@ function App() {
 
           case 'checkpoint_cancelled':
             console.log('[SSE] Checkpoint cancelled:', event.data);
+            // Immediately refresh blocked count
+            fetch('http://localhost:5001/api/sessions/blocked')
+              .then(res => res.json())
+              .then(data => data.sessions && setBlockedCount(data.sessions.length))
+              .catch(() => {});
             setPendingCheckpoints(prev =>
               prev.filter(cp => cp.id !== event.data.checkpoint_id)
             );
@@ -515,6 +542,11 @@ function App() {
 
           case 'checkpoint_timeout':
             console.log('[SSE] Checkpoint timeout:', event.data);
+            // Immediately refresh blocked count
+            fetch('http://localhost:5001/api/sessions/blocked')
+              .then(res => res.json())
+              .then(data => data.sessions && setBlockedCount(data.sessions.length))
+              .catch(() => {});
             setPendingCheckpoints(prev =>
               prev.filter(cp => cp.id !== event.data.checkpoint_id)
             );
@@ -592,6 +624,25 @@ function App() {
       eventSource.close();
     };
   }, []);
+
+  // Fetch blocked sessions count
+  const fetchBlockedCount = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/sessions/blocked');
+      const data = await response.json();
+      if (!data.error && data.sessions) {
+        setBlockedCount(data.sessions.length);
+      }
+    } catch (err) {
+      // Silently fail - not critical
+    }
+  };
+
+  // Initial fetch and periodic refresh of blocked count
+  useEffect(() => {
+    fetchBlockedCount();
+    // Also refresh on refreshTrigger (SSE events trigger this)
+  }, [refreshTrigger]);
 
   // HITL Checkpoint handlers
   const handleCheckpointRespond = async (checkpointId, response, reasoning) => {
@@ -689,6 +740,11 @@ function App() {
             setCurrentView('workshop');
             updateHash('workshop');
           }}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
           finalizingSessions={finalizingSessions}
@@ -713,6 +769,11 @@ function App() {
           sessionUpdates={sessionUpdates}
           sessionStartTimes={sessionStartTimes}
           sseConnected={sseConnected}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
         />
       )}
 
@@ -726,6 +787,11 @@ function App() {
           sessionUpdates={sessionUpdates}
           sessionStartTimes={sessionStartTimes}
           runningSoundings={runningSoundings}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
         />
       )}
 
@@ -761,6 +827,20 @@ function App() {
         <WorkshopPage />
       )}
 
+      {currentView === 'blocked' && (
+        <BlockedSessionsView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+          onSelectInstance={(sessionId) => {
+            // Try to find the cascade for this session and navigate to detail
+            // For now, just log - we'd need to look up the cascade_id
+            console.log('Navigate to session:', sessionId);
+          }}
+        />
+      )}
+
       {currentView === 'checkpoint' && activeCheckpointId && (
         <CheckpointView
           checkpointId={activeCheckpointId}
@@ -793,20 +873,21 @@ function App() {
         />
       )}
 
-      {/* HITL Checkpoint Panel (for inline responses) */}
+      {/* HITL Checkpoint Panel and Badge disabled - use BlockedSessionsView instead */}
+      {/* Navigate to /#/blocked to respond to checkpoints inline */}
+      {/*
       <CheckpointPanel
         checkpoints={pendingCheckpoints}
         onRespond={handleCheckpointRespond}
         onCancel={handleCheckpointCancel}
       />
-
-      {/* HITL Checkpoint Badge (floating notification) */}
       {currentView !== 'checkpoint' && (
         <CheckpointBadge
           checkpoints={pendingCheckpoints}
           onSelectCheckpoint={handleSelectCheckpoint}
         />
       )}
+      */}
 
       {/* Toast notifications */}
       <div className="toast-container">

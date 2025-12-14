@@ -173,6 +173,7 @@ function InstanceGridView({
   finalizingSessions,
   sessionStartTimes,
   onSoundingsExplorer,
+  onVisualize,
   onAudibleClick,
   audibleSignaled,
   audibleSending,
@@ -346,21 +347,45 @@ function InstanceGridView({
 
   const ActionsRenderer = (props) => {
     const instance = props.data;
-    const isRunning = runningSessions?.has(instance.session_id);
-    const isFinalizing = finalizingSessions?.has(instance.session_id);
+    // Get callbacks from cellRendererParams
+    const {
+      runningSessions: rs,
+      finalizingSessions: fs,
+      onVisualize: visualize,
+      onSoundingsExplorer: soundings,
+      onRunCascade: runCascade,
+      cascadeData: cData,
+      onAudibleClick: audible,
+      audibleSignaled: aSig,
+      audibleSending: aSend,
+      onFreezeInstance: freeze
+    } = props;
+
+    const isRunning = rs?.has(instance.session_id);
+    const isFinalizing = fs?.has(instance.session_id);
     const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
     const isCompleted = instance.phases?.every(p => p.status === 'completed');
     const isChild = instance._isChild;
 
+    const handleClick = (e, callback, ...args) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (callback) callback(...args);
+    };
+
     return (
       <div className="actions-cell" onClick={(e) => e.stopPropagation()}>
+        <button
+          className="action-btn flow"
+          onClick={(e) => handleClick(e, visualize, instance.session_id, instance.cascade_id)}
+          title="View execution flow"
+        >
+          <Icon icon="ph:tree-structure" width="14" />
+        </button>
         {instance.has_soundings && (
           <button
             className="action-btn soundings"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSoundingsExplorer && onSoundingsExplorer(instance.session_id);
-            }}
+            onClick={(e) => handleClick(e, soundings, instance.session_id)}
             title="Explore soundings"
           >
             <Icon icon="mdi:sign-direction" width="14" />
@@ -368,37 +393,28 @@ function InstanceGridView({
         )}
         <button
           className="action-btn rerun"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRunCascade && onRunCascade({
-              ...cascadeData,
-              prefilled_inputs: instance.input_data || {}
-            });
-          }}
+          onClick={(e) => handleClick(e, runCascade, {
+            ...cData,
+            prefilled_inputs: instance.input_data || {}
+          })}
           title="Re-run with these inputs"
         >
           <Icon icon="mdi:replay" width="14" />
         </button>
         {(isRunning || (hasRunningPhases && !isFinalizing)) && (
           <button
-            className={`action-btn audible ${audibleSignaled?.[instance.session_id] ? 'signaled' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAudibleClick && onAudibleClick(e, instance.session_id);
-            }}
-            disabled={audibleSending?.[instance.session_id] || audibleSignaled?.[instance.session_id]}
-            title={audibleSignaled?.[instance.session_id] ? 'Audible signaled' : 'Call audible'}
+            className={`action-btn audible ${aSig?.[instance.session_id] ? 'signaled' : ''}`}
+            onClick={(e) => handleClick(e, audible, e, instance.session_id)}
+            disabled={aSend?.[instance.session_id] || aSig?.[instance.session_id]}
+            title={aSig?.[instance.session_id] ? 'Audible signaled' : 'Call audible'}
           >
             <Icon icon="mdi:bullhorn" width="14" />
           </button>
         )}
-        {isCompleted && onFreezeInstance && !isChild && (
+        {isCompleted && freeze && !isChild && (
           <button
             className="action-btn freeze"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFreezeInstance(instance);
-            }}
+            onClick={(e) => handleClick(e, freeze, instance)}
             title="Freeze as test snapshot"
           >
             <Icon icon="mdi:snowflake" width="14" />
@@ -429,10 +445,26 @@ function InstanceGridView({
       headerName: '',
       width: 120,
       cellRenderer: ActionsRenderer,
+      cellRendererParams: {
+        runningSessions,
+        finalizingSessions,
+        onVisualize,
+        onSoundingsExplorer,
+        onRunCascade,
+        cascadeData,
+        onAudibleClick,
+        audibleSignaled,
+        audibleSending,
+        onFreezeInstance
+      },
       sortable: false,
       filter: false,
       cellClass: 'actions-column',
-      suppressMenu: true
+      suppressMenu: true,
+      // Prevent row click when clicking in this column
+      onCellClicked: (params) => {
+        params.event.stopPropagation();
+      }
     },
     {
       field: 'session_id',
@@ -498,7 +530,7 @@ function InstanceGridView({
       cellClass: 'cost-cell',
       cellRenderer: CostRenderer
     }
-  ], [runningSessions, finalizingSessions, cascadeData, onFreezeInstance, onRunCascade, onSoundingsExplorer, onAudibleClick, audibleSignaled, audibleSending]);
+  ], [runningSessions, finalizingSessions, cascadeData, onFreezeInstance, onRunCascade, onSoundingsExplorer, onVisualize, onAudibleClick, audibleSignaled, audibleSending]);
 
   // Default column settings
   const defaultColDef = useMemo(() => ({
@@ -518,6 +550,15 @@ function InstanceGridView({
 
   // Handle row clicks
   const onRowClicked = (event) => {
+    // Skip if click was in the actions column
+    if (event.column?.getColId() === 'actions') {
+      return;
+    }
+    // Skip if click was on a button or inside a button
+    const target = event.event?.target;
+    if (target?.closest('button') || target?.closest('.action-btn')) {
+      return;
+    }
     if (event.data && onSelectInstance) {
       onSelectInstance(event.data.session_id);
     }

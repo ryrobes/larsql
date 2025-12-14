@@ -7,7 +7,7 @@ import VideoSpinner from './VideoSpinner';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, onWorkshop, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, onWorkshop, onBlocked, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,6 +45,8 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
     fetchCascades();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
+
+  // blockedCount is now provided via props from App.js (SSE-driven updates)
 
   // Recalculate layout when search query changes or view mode switches to tile
   useEffect(() => {
@@ -360,6 +362,18 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
                 <path d="M14 17h7M17.5 14v7"/>
               </svg>
               Workshop
+            </button>
+          )}
+          {onBlocked && (
+            <button className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`} onClick={onBlocked} title="Blocked Sessions - Waiting for signals/input">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+              Blocked
+              {blockedCount > 0 && (
+                <span className="blocked-count-badge">{blockedCount}</span>
+              )}
             </button>
           )}
           <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />

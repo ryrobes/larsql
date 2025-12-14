@@ -148,7 +148,17 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     timeout_at Nullable(DateTime64(3)),
 
     -- Type classification
-    checkpoint_type Enum8('phase_input' = 1, 'sounding_eval' = 2),
+    checkpoint_type Enum8(
+        'phase_input' = 1,
+        'sounding_eval' = 2,
+        'free_text' = 3,
+        'choice' = 4,
+        'multi_choice' = 5,
+        'confirmation' = 6,
+        'rating' = 7,
+        'audible' = 8,
+        'decision' = 9
+    ),
 
     -- UI specification (generated or configured)
     ui_spec String DEFAULT '{}',
@@ -507,7 +517,8 @@ CREATE TABLE IF NOT EXISTS session_state (
         'hitl' = 2,
         'sensor' = 3,
         'approval' = 4,
-        'checkpoint' = 5
+        'checkpoint' = 5,
+        'decision' = 6
     )),
     blocked_on Nullable(String),           -- signal_name, checkpoint_id, etc.
     blocked_description Nullable(String),  -- Human-readable description

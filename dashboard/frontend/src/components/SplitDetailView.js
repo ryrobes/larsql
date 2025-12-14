@@ -16,7 +16,9 @@ function SplitDetailView({
   finalizingSessions = new Set(),
   sessionUpdates = {},
   sessionStartTimes = {},
-  runningSoundings = {}
+  runningSoundings = {},
+  onBlocked,
+  blockedCount = 0
 }) {
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
@@ -166,6 +168,19 @@ function SplitDetailView({
           </div>
         </div>
         <div className="header-right">
+          {onBlocked && (
+            <button
+              className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`}
+              onClick={onBlocked}
+              title="Blocked Sessions - Waiting for signals/input"
+            >
+              <Icon icon="mdi:pause-circle-outline" width="18" />
+              Blocked
+              {blockedCount > 0 && (
+                <span className="blocked-count-badge">{blockedCount}</span>
+              )}
+            </button>
+          )}
           <span className="view-hint">
             <Icon icon="mdi:drag-horizontal-variant" width="16" />
             Drag divider to resize

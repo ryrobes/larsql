@@ -203,6 +203,63 @@
   color: #6B7FBB;
 }
 
+.blocked-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(34, 211, 209, 0.15), rgba(74, 158, 221, 0.15));
+  border: 1px solid rgba(34, 211, 209, 0.3);
+  border-radius: 8px;
+  color: #22d3d1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.blocked-btn:hover {
+  background: linear-gradient(135deg, rgba(34, 211, 209, 0.25), rgba(74, 158, 221, 0.25));
+  border-color: rgba(34, 211, 209, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 211, 209, 0.2);
+}
+
+.blocked-btn svg {
+  color: #22d3d1;
+}
+
+.blocked-btn.has-blocked {
+  background: linear-gradient(135deg, rgba(34, 211, 209, 0.25), rgba(74, 158, 221, 0.25));
+  border-color: rgba(34, 211, 209, 0.5);
+  animation: blocked-pulse 2s ease-in-out infinite;
+}
+
+@keyframes blocked-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(34, 211, 209, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(34, 211, 209, 0.5);
+  }
+}
+
+.blocked-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  background: #22d3d1;
+  color: #0B1219;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9px;
+  line-height: 1;
+}
+
 .connection-indicator {
   width: 10px;
   height: 10px;

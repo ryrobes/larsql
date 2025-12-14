@@ -35,10 +35,14 @@ CORS(app)
 from message_flow_api import message_flow_bp
 from checkpoint_api import checkpoint_bp
 from sextant_api import sextant_bp
+from sessions_api import sessions_bp
+from signals_api import signals_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
 app.register_blueprint(sextant_bp)
+app.register_blueprint(sessions_bp)
+app.register_blueprint(signals_bp)
 # Track query statistics
 import threading
 _query_lock = threading.Lock()
@@ -399,28 +403,65 @@ def get_cascade_definitions():
                         cascade_id = config.get('cascade_id')
 
                         if cascade_id and cascade_id not in all_cascades:
+                            # Extract phase data with full spec
+                            phases_data = []
+                            for p in config.get("phases", []):
+                                rules = p.get("rules", {})
+                                soundings = p.get("soundings", {})
+                                wards = p.get("wards", {})
+
+                                phases_data.append({
+                                    "name": p["name"],
+                                    "instructions": p.get("instructions", ""),
+                                    # Soundings
+                                    "has_soundings": "soundings" in p,
+                                    "soundings_factor": soundings.get("factor") if soundings else None,
+                                    "reforge_steps": soundings.get("reforge", {}).get("steps") if soundings.get("reforge") else None,
+                                    "soundings": soundings if soundings else None,
+                                    # Wards
+                                    "has_wards": bool(wards),
+                                    "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
+                                    "wards": wards if wards else None,
+                                    # Rules
+                                    "max_turns": rules.get("max_turns", 1),
+                                    "max_attempts": rules.get("max_attempts"),
+                                    "has_loop_until": "loop_until" in rules,
+                                    "loop_until": rules.get("loop_until"),
+                                    "has_turn_prompt": "turn_prompt" in rules,
+                                    "has_retry_instructions": "retry_instructions" in rules,
+                                    # Deterministic phases
+                                    "is_deterministic": "tool" in p and "instructions" not in p,
+                                    "deterministic_tool": p.get("tool"),
+                                    "deterministic_inputs": p.get("inputs"),
+                                    "routing": p.get("routing"),
+                                    # Error handling
+                                    "on_error": p.get("on_error"),
+                                    # Output validation
+                                    "output_schema": p.get("output_schema"),
+                                    # Sub-cascades
+                                    "sub_cascades": p.get("sub_cascades"),
+                                    "async_cascades": p.get("async_cascades"),
+                                    # Model & tools
+                                    "model": p.get("model"),
+                                    "tackle": p.get("tackle"),
+                                    "handoffs": p.get("handoffs"),
+                                    "context": p.get("context"),
+                                    # Metrics (enriched later)
+                                    "avg_cost": 0.0,
+                                    "avg_duration": 0.0,
+                                })
+
                             all_cascades[cascade_id] = {
                                 'cascade_id': cascade_id,
                                 'description': config.get('description', ''),
                                 'cascade_file': filepath,
-                                'phases': [
-                                    {
-                                        "name": p["name"],
-                                        "instructions": p.get("instructions", ""),
-                                        "has_soundings": "soundings" in p,
-                                        "soundings_factor": p.get("soundings", {}).get("factor") if "soundings" in p else None,
-                                        "reforge_steps": p.get("soundings", {}).get("reforge", {}).get("steps") if "soundings" in p and p.get("soundings", {}).get("reforge") else None,
-                                        "has_wards": "wards" in p,
-                                        "ward_count": (len(p.get("wards", {}).get("pre", [])) + len(p.get("wards", {}).get("post", []))) if "wards" in p else 0,
-                                        "max_turns": p.get("rules", {}).get("max_turns", 1),
-                                        "has_loop_until": "loop_until" in p.get("rules", {}),
-                                        "model": p.get("model"),
-                                        "avg_cost": 0.0,
-                                        "avg_duration": 0.0
-                                    }
-                                    for p in config.get("phases", [])
-                                ],
+                                'phases': phases_data,
                                 'inputs_schema': config.get('inputs_schema', {}),
+                                # Root-level features
+                                'memory': config.get('memory'),
+                                'tool_caching': config.get('tool_caching'),
+                                'triggers': config.get('triggers'),
+                                'cascade_soundings': config.get('soundings'),  # Cascade-level soundings
                                 'metrics': {
                                     'run_count': 0,
                                     'total_cost': 0.0,
@@ -1475,6 +1516,275 @@ def get_session_detail(session_id):
             'entries': entries,
             'source': 'clickhouse'
         })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/session/<session_id>/execution-flow', methods=['GET'])
+def get_session_execution_flow(session_id):
+    """
+    Get execution data for flow visualization.
+    Returns structured data for CascadeFlowModal execution overlay.
+    Includes rich content: outputs, sounding previews, images, models, ward results.
+    """
+    try:
+        conn = get_db_connection()
+
+        # Get all records for this session with richer content
+        query = """
+            SELECT
+                phase_name,
+                node_type,
+                role,
+                sounding_index,
+                is_winner,
+                winning_sounding_index,
+                reforge_step,
+                attempt_number,
+                turn_number,
+                cost,
+                duration_ms,
+                cascade_id,
+                model_requested,
+                model,
+                tokens_in,
+                tokens_out,
+                SUBSTRING(toString(content_json), 1, 500) as content_preview,
+                image_paths,
+                timestamp
+            FROM unified_logs
+            WHERE session_id = ?
+              AND phase_name IS NOT NULL
+              AND phase_name != ''
+            ORDER BY timestamp ASC
+        """
+        rows = conn.execute(query, [session_id]).fetchall()
+
+        if not rows:
+            conn.close()
+            return jsonify({'error': 'Session not found'}), 404
+
+        # Extract cascade_id from first row
+        cascade_id = rows[0][11] if rows else None
+
+        # Build execution data structure
+        phases = {}
+        executed_path = []
+        executed_handoffs = {}
+        prev_phase = None
+        total_cost = 0.0
+        total_duration = 0.0
+        overall_status = 'completed'
+
+        for row in rows:
+            (phase_name, node_type, role, sounding_index, is_winner,
+             winning_sounding_index, reforge_step, attempt_number, turn_number,
+             cost, duration_ms, _, model_requested, model_used,
+             tokens_in, tokens_out, content_preview, image_paths, timestamp) = row
+
+            # Track executed path (order of phases seen)
+            if phase_name not in executed_path:
+                executed_path.append(phase_name)
+                if prev_phase:
+                    executed_handoffs[prev_phase] = phase_name
+                prev_phase = phase_name
+
+            # Initialize phase data if not seen
+            if phase_name not in phases:
+                phases[phase_name] = {
+                    'status': 'completed',
+                    'cost': 0.0,
+                    'duration': 0.0,
+                    'turnCount': 0,
+                    'soundingWinner': None,
+                    'model': None,
+                    'tokensIn': 0,
+                    'tokensOut': 0,
+                    'output': None,
+                    'images': [],
+                    'details': {
+                        'soundings': {
+                            'winnerIndex': None,
+                            'attempts': []
+                        },
+                        'reforge': {
+                            'reforgeSteps': []
+                        },
+                        'wards': {}
+                    }
+                }
+
+            phase_data = phases[phase_name]
+
+            # Track model used
+            if model_used and not phase_data['model']:
+                phase_data['model'] = model_used
+            elif model_requested and not phase_data['model']:
+                phase_data['model'] = model_requested
+
+            # Accumulate costs and durations
+            if cost and cost > 0:
+                phase_data['cost'] += float(cost)
+                total_cost += float(cost)
+
+            if duration_ms and duration_ms > 0:
+                phase_data['duration'] += float(duration_ms) / 1000.0
+                total_duration += float(duration_ms) / 1000.0
+
+            # Track tokens
+            if tokens_in:
+                phase_data['tokensIn'] += int(tokens_in)
+            if tokens_out:
+                phase_data['tokensOut'] += int(tokens_out)
+
+            # Track max turn number
+            if turn_number and turn_number > phase_data['turnCount']:
+                phase_data['turnCount'] = turn_number
+
+            # Track images
+            if image_paths:
+                try:
+                    import json
+                    if isinstance(image_paths, str):
+                        imgs = json.loads(image_paths) if image_paths.startswith('[') else [image_paths]
+                    else:
+                        imgs = image_paths if isinstance(image_paths, list) else []
+                    for img in imgs:
+                        if img and img not in phase_data['images']:
+                            phase_data['images'].append(img)
+                except:
+                    pass
+
+            # Track sounding winner
+            if winning_sounding_index is not None:
+                phase_data['soundingWinner'] = winning_sounding_index
+                phase_data['details']['soundings']['winnerIndex'] = winning_sounding_index
+
+            # Track sounding attempts with richer data
+            if sounding_index is not None and role == 'assistant':
+                attempts = phase_data['details']['soundings']['attempts']
+                while len(attempts) <= sounding_index:
+                    attempts.append({
+                        'status': 'pending',
+                        'preview': '',
+                        'cost': 0,
+                        'model': None,
+                        'tokensIn': 0,
+                        'tokensOut': 0
+                    })
+                attempt = attempts[sounding_index]
+                attempt['status'] = 'completed'
+
+                # Model for this attempt
+                if model_used:
+                    attempt['model'] = model_used
+                elif model_requested:
+                    attempt['model'] = model_requested
+
+                # Tokens
+                if tokens_in:
+                    attempt['tokensIn'] = attempt.get('tokensIn', 0) + int(tokens_in)
+                if tokens_out:
+                    attempt['tokensOut'] = attempt.get('tokensOut', 0) + int(tokens_out)
+
+                # Content preview (longer, up to 300 chars)
+                if content_preview:
+                    preview = content_preview.strip('"').replace('\\n', '\n').replace('\\t', ' ')
+                    # Clean up JSON artifacts
+                    if preview.startswith('{') and '"content"' in preview:
+                        try:
+                            import json
+                            parsed = json.loads(content_preview)
+                            if isinstance(parsed, dict) and 'content' in parsed:
+                                preview = str(parsed['content'])
+                        except:
+                            pass
+                    preview = preview[:300]
+                    if len(preview) > len(attempt.get('preview', '')):
+                        attempt['preview'] = preview
+
+                if cost and cost > 0:
+                    attempt['cost'] = attempt.get('cost', 0) + float(cost)
+                if is_winner:
+                    attempt['is_winner'] = True
+
+            # Track final output (last assistant message that's not a sounding or is the winner)
+            if role == 'assistant' and content_preview:
+                is_final_output = (sounding_index is None) or is_winner
+                if is_final_output:
+                    preview = content_preview.strip('"').replace('\\n', '\n')[:400]
+                    # Try to parse JSON content
+                    if preview.startswith('{'):
+                        try:
+                            import json
+                            parsed = json.loads(content_preview)
+                            if isinstance(parsed, dict) and 'content' in parsed:
+                                preview = str(parsed['content'])[:400]
+                        except:
+                            pass
+                    phase_data['output'] = preview
+
+            # Track reforge steps
+            if reforge_step is not None and reforge_step > 0:
+                reforge_steps = phase_data['details']['reforge']['reforgeSteps']
+                while len(reforge_steps) < reforge_step:
+                    reforge_steps.append({'winnerIndex': None, 'attempts': []})
+                step_data = reforge_steps[reforge_step - 1]
+                if is_winner and winning_sounding_index is not None:
+                    step_data['winnerIndex'] = winning_sounding_index
+
+            # Check for error status
+            if node_type and 'error' in node_type.lower():
+                phase_data['status'] = 'error'
+                overall_status = 'error'
+
+            # Track ward results
+            if node_type and 'ward' in node_type.lower():
+                ward_type = 'pre' if 'pre' in node_type.lower() else 'post'
+                ward_key = f"{ward_type}_{len(phase_data['details']['wards'])}"
+                # Try to extract validation result from content
+                valid = 'pass' in node_type.lower() or 'valid' in str(content_preview).lower()
+                phase_data['details']['wards'][ward_key] = {
+                    'valid': valid,
+                    'type': ward_type,
+                    'reason': content_preview[:100] if content_preview else ''
+                }
+
+        # Check if cascade is still running (last phase might be in progress)
+        last_phase_query = """
+            SELECT node_type
+            FROM unified_logs
+            WHERE session_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """
+        last_row = conn.execute(last_phase_query, [session_id]).fetchone()
+        if last_row and last_row[0]:
+            last_type = last_row[0].lower()
+            if 'start' in last_type and 'complete' not in last_type:
+                overall_status = 'running'
+                # Mark last phase as running
+                if executed_path:
+                    phases[executed_path[-1]]['status'] = 'running'
+
+        conn.close()
+
+        return jsonify(sanitize_for_json({
+            'session_id': session_id,
+            'cascade_id': cascade_id,
+            'executedPath': executed_path,
+            'executedHandoffs': executed_handoffs,
+            'phases': phases,
+            'summary': {
+                'phaseCount': len(executed_path),
+                'totalCost': total_cost,
+                'totalDuration': total_duration,
+                'status': overall_status
+            }
+        }))
 
     except Exception as e:
         import traceback

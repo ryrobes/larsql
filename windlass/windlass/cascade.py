@@ -354,6 +354,96 @@ class AudibleConfig(BaseModel):
     timeout_seconds: Optional[int] = 120  # Feedback collection timeout
 
 
+# ===== Decision Point Configuration (Dynamic HITL) =====
+
+class DecisionPointUIConfig(BaseModel):
+    """
+    UI configuration for LLM-generated decision points.
+
+    Controls how the decision UI is presented when the LLM outputs
+    a <decision> block requesting human input.
+    """
+    present_output: bool = True      # Show phase output above decision
+    allow_text_fallback: bool = True  # Always allow "Other" with text input
+    max_options: int = 6              # Maximum options to display
+    layout: Literal["cards", "list", "buttons"] = "cards"  # How to render options
+
+
+class DecisionPointRoutingAction(BaseModel):
+    """Single routing action for decision points."""
+    to: Optional[str] = None          # Phase name, "self", or "next"
+    fail: bool = False                # If true, fails the cascade
+    inject: Optional[Literal["choice", "feedback", "context"]] = None  # How to inject response
+
+
+# Note: Routing config is a Dict[str, Union[str, DecisionPointRoutingAction]]
+# Special keys (use strings in JSON, e.g., "_continue"):
+# - "_continue": Default for unknown actions (continues to next phase)
+# - "_retry": Retry current phase with decision injected
+# - "_abort": Fail the cascade
+# Custom action IDs from <decision> options map to phase names or routing actions
+
+
+class DecisionPointConfig(BaseModel):
+    """
+    Configuration for LLM-generated decision points.
+
+    Decision points allow the LLM to "draw" its own HITL UI by outputting
+    a <decision> block with a question and options. The framework detects
+    this, creates a checkpoint, and routes based on the human's selection.
+
+    This enables dynamic error handling, schema repair, and other scenarios
+    where the LLM knows best what options to present.
+
+    Usage (minimal - enable detection):
+    {
+        "decision_points": {
+            "enabled": true
+        }
+    }
+
+    Usage (with routing):
+    {
+        "decision_points": {
+            "enabled": true,
+            "trigger": "output",
+            "routing": {
+                "_continue": "next",
+                "_retry": "self",
+                "escalate": "manager_review"
+            }
+        }
+    }
+
+    The LLM outputs a decision block:
+    <decision>
+    {
+        "question": "How should I handle the field 'uid'?",
+        "options": [
+            {"id": "fix_a", "label": "Rename to user_id"},
+            {"id": "fix_b", "label": "Rename to userId"}
+        ]
+    }
+    </decision>
+    """
+    enabled: bool = True
+
+    # When to check for decisions
+    trigger: Literal["output", "error", "both"] = "output"
+
+    # UI configuration
+    ui: DecisionPointUIConfig = Field(default_factory=DecisionPointUIConfig)
+
+    # Routing configuration
+    routing: Optional[Dict[str, Union[str, DecisionPointRoutingAction]]] = None
+
+    # Timeout
+    timeout_seconds: int = 3600  # Default 1 hour
+
+    # Error-specific settings (when trigger includes "error")
+    on_error_prompt: Optional[str] = None  # Prompt for LLM to generate error repair options
+
+
 class CalloutsConfig(BaseModel):
     """
     Configuration for semantic callouts - marking messages as important.
@@ -536,6 +626,10 @@ class PhaseConfig(BaseModel):
     # Audible configuration for real-time feedback injection
     # Allows users to steer cascades mid-phase by injecting feedback
     audibles: Optional[AudibleConfig] = None
+
+    # Decision points configuration for LLM-generated HITL decisions
+    # Detects <decision> blocks in output and creates checkpoints automatically
+    decision_points: Optional[DecisionPointConfig] = None
 
     # Callouts configuration for semantic message tagging
     # Marks important messages with names for easy retrieval in UIs/queries

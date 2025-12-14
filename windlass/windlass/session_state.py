@@ -53,6 +53,7 @@ class BlockedType(str, Enum):
     SENSOR = "sensor"
     APPROVAL = "approval"
     CHECKPOINT = "checkpoint"
+    DECISION = "decision"  # LLM-generated decision point
 
 
 @dataclass

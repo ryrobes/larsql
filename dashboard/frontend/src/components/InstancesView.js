@@ -6,6 +6,7 @@ import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
 import SoundingsExplorer from './SoundingsExplorer';
 import InstanceGridView from './InstanceGridView';
+import CascadeFlowModal from './CascadeFlowModal';
 // MermaidPreview, ImageGallery, HumanInputDisplay removed - now only shown in SplitDetailView
 import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
@@ -154,7 +155,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected }) {
+function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, blockedCount }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -163,12 +164,23 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const [expandedParents, setExpandedParents] = useState(new Set());
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'grid'
 
+  // Flow visualization modal state
+  const [flowModalData, setFlowModalData] = useState(null); // { cascade, executionData, sessionId }
+
   // Audible state - track per session since multiple can be running
   const [audibleSignaled, setAudibleSignaled] = useState({});  // { sessionId: boolean }
   const [audibleSending, setAudibleSending] = useState({});    // { sessionId: boolean }
 
+  // Cancel state - track per session
+  const [cancelSending, setCancelSending] = useState({});      // { sessionId: boolean }
+  const [cancelRequested, setCancelRequested] = useState({});  // { sessionId: timestamp } - when cancel was requested
+  const FORCE_CANCEL_TIMEOUT_MS = 10000; // Show force cancel after 10 seconds
+
   // Latest messages for running sessions - track per session
   const [latestMessages, setLatestMessages] = useState({});    // { sessionId: { text, metadata } }
+
+  // Session states from durable execution API - source of truth for running/blocked/cancelled
+  const [sessionStates, setSessionStates] = useState({});      // { sessionId: { status, blocked_type, cancel_requested, etc } }
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -278,6 +290,56 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
     return () => clearInterval(interval);
   }, [runningSessions, finalizingSessions, fetchInstances]);
+
+  // Fetch session states from durable execution API
+  // This is the source of truth for running/blocked/cancelled status
+  const fetchSessionStates = useCallback(async (sessionIds) => {
+    if (!sessionIds || sessionIds.length === 0) return;
+
+    try {
+      const response = await fetch('http://localhost:5001/api/sessions');
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!data.sessions) return;
+
+      // Convert to map keyed by session_id
+      const statesMap = {};
+      data.sessions.forEach(session => {
+        if (sessionIds.includes(session.session_id)) {
+          statesMap[session.session_id] = session;
+        }
+      });
+
+      setSessionStates(prev => ({ ...prev, ...statesMap }));
+    } catch (err) {
+      console.error('Error fetching session states:', err);
+    }
+  }, []);
+
+  // Poll session states for displayed instances
+  useEffect(() => {
+    if (!instances || instances.length === 0) return;
+
+    // Collect all session IDs (parents and children)
+    const sessionIds = [];
+    instances.forEach(inst => {
+      sessionIds.push(inst.session_id);
+      if (inst.children) {
+        inst.children.forEach(child => sessionIds.push(child.session_id));
+      }
+    });
+
+    // Initial fetch
+    fetchSessionStates(sessionIds);
+
+    // Poll every 2 seconds to keep session states fresh
+    const interval = setInterval(() => {
+      fetchSessionStates(sessionIds);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [instances, fetchSessionStates]);
 
   // Fetch latest message for running sessions
   const fetchLatestMessages = useCallback(async () => {
@@ -515,6 +577,85 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     }
   };
 
+  // Handle cancel button click for a specific session
+  const handleCancelClick = async (e, sessionId, force = false) => {
+    e.stopPropagation();
+
+    // Don't cancel if already sending (but allow if already requested and forcing)
+    if (cancelSending[sessionId]) return;
+    if (cancelRequested[sessionId] && !force) return;
+
+    setCancelSending(prev => ({ ...prev, [sessionId]: true }));
+
+    try {
+      const response = await fetch(`http://localhost:5001/api/sessions/${sessionId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: force ? 'Force cancelled via UI' : 'Cancelled via UI',
+          force: force
+        })
+      });
+      const data = await response.json();
+
+      if (data.message) {
+        // Store timestamp when cancel was requested (or clear if force succeeded)
+        if (force || data.was_zombie || data.was_forced) {
+          // Force cancel succeeded - clear the requested state
+          setCancelRequested(prev => ({ ...prev, [sessionId]: null }));
+        } else {
+          // Regular cancel - store timestamp for force cancel timeout
+          setCancelRequested(prev => ({ ...prev, [sessionId]: Date.now() }));
+        }
+        console.log(`[CANCEL] ${sessionId}: ${data.message}`);
+      }
+      if (data.error) {
+        console.error(`[CANCEL] ${sessionId}: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to cancel session:', err);
+    } finally {
+      setCancelSending(prev => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
+  // Check if force cancel should be available (cancel requested > timeout ago)
+  const shouldShowForceCancel = (sessionId) => {
+    const requestedAt = cancelRequested[sessionId];
+    if (!requestedAt) return false;
+    return (Date.now() - requestedAt) > FORCE_CANCEL_TIMEOUT_MS;
+  };
+
+  // Handle visualize button click - fetch cascade spec and execution data, then show modal
+  const handleVisualize = useCallback(async (sessionId, cascadeIdToFetch) => {
+    try {
+      // Fetch cascade spec and execution data in parallel
+      const [cascadesResponse, executionResponse] = await Promise.all([
+        fetch('http://localhost:5001/api/cascade-definitions'),
+        fetch(`http://localhost:5001/api/session/${sessionId}/execution-flow`)
+      ]);
+
+      const cascades = await cascadesResponse.json();
+      const executionData = await executionResponse.json();
+
+      // Find the cascade spec
+      const cascade = cascades.find(c => c.cascade_id === cascadeIdToFetch);
+
+      if (!cascade) {
+        console.error(`Cascade ${cascadeIdToFetch} not found`);
+        return;
+      }
+
+      setFlowModalData({
+        cascade,
+        executionData: executionData.error ? null : executionData,
+        sessionId
+      });
+    } catch (err) {
+      console.error('Failed to fetch flow visualization data:', err);
+    }
+  }, []);
+
   // Clear signaled state when session stops running
   useEffect(() => {
     setAudibleSignaled(prev => {
@@ -529,6 +670,26 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       return changed ? updated : prev;
     });
   }, [runningSessions]);
+
+  // Clear cancel state when session is terminated (using session states as source of truth)
+  useEffect(() => {
+    setCancelRequested(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      for (const sessionId of Object.keys(updated)) {
+        if (updated[sessionId]) {
+          // Check session state for terminal status
+          const sessionState = sessionStates[sessionId];
+          const isTerminated = sessionState && ['cancelled', 'completed', 'failed', 'orphaned'].includes(sessionState.status);
+          if (isTerminated) {
+            updated[sessionId] = null;
+            changed = true;
+          }
+        }
+      }
+      return changed ? updated : prev;
+    });
+  }, [sessionStates]);
 
   // Fetch latest messages for running sessions
   useEffect(() => {
@@ -553,6 +714,39 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       return () => clearInterval(interval);
     }
   }, [runningSessions]);
+
+  // Real-time updates for flow modal when viewing a running session
+  useEffect(() => {
+    if (!flowModalData?.sessionId) return;
+
+    const sessionId = flowModalData.sessionId;
+    const isRunning = runningSessions?.has(sessionId);
+
+    // Only poll if the session is running
+    if (!isRunning) return;
+
+    const refreshExecutionData = async () => {
+      try {
+        const response = await fetch(`http://localhost:5001/api/session/${sessionId}/execution-flow`);
+        const executionData = await response.json();
+
+        if (!executionData.error) {
+          setFlowModalData(prev => prev?.sessionId === sessionId
+            ? { ...prev, executionData }
+            : prev
+          );
+        }
+      } catch (err) {
+        console.error('Failed to refresh execution data:', err);
+      }
+    };
+
+    // Poll every 1 second for running sessions
+    const interval = setInterval(refreshExecutionData, 1000);
+    refreshExecutionData(); // Initial fetch
+
+    return () => clearInterval(interval);
+  }, [flowModalData?.sessionId, runningSessions]);
 
 
   // Outlined progress bar component with Tron aesthetic
@@ -634,22 +828,25 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
   const renderInstanceRow = (instance, isChild = false) => {
     const isCompleted = instance.phases?.every(p => p.status === 'completed');
     const hasRunning = instance.phases?.some(p => p.status === 'running');
-    const isSessionRunning = runningSessions && runningSessions.has(instance.session_id);
+    const sseIsRunning = runningSessions && runningSessions.has(instance.session_id);
     const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
+
+    // Get durable execution session state (source of truth)
+    const sessionState = sessionStates[instance.session_id];
+    const durableStatus = sessionState?.status; // 'running', 'blocked', 'completed', 'cancelled', 'failed', 'orphaned'
+    const isBlocked = durableStatus === 'blocked';
+    const isCancelled = durableStatus === 'cancelled';
+    const isOrphaned = durableStatus === 'orphaned';
+    const cancelPending = sessionState?.cancel_requested && durableStatus === 'running';
+
+    // Determine actual running state - use durable state as source of truth when available
+    // If durable state says cancelled/completed/failed/orphaned, don't show as running
+    const isTerminated = isCancelled || isOrphaned || durableStatus === 'completed' || durableStatus === 'failed';
+    const isSessionRunning = !isTerminated && (sseIsRunning || durableStatus === 'running');
 
     // Calculate historical average for running sessions based on cascade + inputs
     const historicalAvg = getHistoricalAverage(instance.cascade_id, instance.input_data, instance.session_id);
-    const showProgress = (isSessionRunning || hasRunning) && historicalAvg && !isFinalizing;
-
-    // Debug: log when historical data is found
-    if ((isSessionRunning || hasRunning) && !isFinalizing) {
-      const signature = getRunSignature(instance.cascade_id, instance.input_data);
-      // if (!historicalAvg) {
-      //   console.log(`[PROGRESS] ${instance.session_id}: No historical data for ${signature}`);
-      // } else {
-      //   console.log(`[PROGRESS] ${instance.session_id}: Progress bar active - avg ${historicalAvg.avgDuration.toFixed(1)}s from ${historicalAvg.sampleSize} runs`);
-      // }
-    }
+    const showProgress = (isSessionRunning || hasRunning) && historicalAvg && !isFinalizing && !isBlocked;
 
     // Calculate current duration for running sessions
     let currentDuration = instance.duration_seconds || 0;
@@ -677,23 +874,25 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
       }
     }
 
-    // Debug: log sessionStartTimes for running sessions
-    // if (isSessionRunning || isFinalizing) {
-    //   console.log('[renderInstanceRow] Running instance:', {
-    //     session_id: instance.session_id,
-    //     start_time: instance.start_time,
-    //     duration_seconds: instance.duration_seconds,
-    //     sessionStartTimes_keys: Object.keys(sessionStartTimes || {}),
-    //     sseStartTime: sessionStartTimes?.[instance.session_id],
-    //     runningSessions: Array.from(runningSessions || []),
-    //   });
-    // }
-
-    // Determine visual state
+    // Determine visual state - priority: cancelled > blocked > finalizing > running
     let stateClass = '';
     let stateBadge = null;
 
-    if (isFinalizing) {
+    if (isCancelled) {
+      stateClass = 'cancelled';
+      stateBadge = <span className="cancelled-badge"><Icon icon="mdi:cancel" width="14" style={{ marginRight: '4px' }} />Cancelled</span>;
+    } else if (isOrphaned) {
+      stateClass = 'orphaned';
+      stateBadge = <span className="orphaned-badge"><Icon icon="mdi:ghost" width="14" style={{ marginRight: '4px' }} />Orphaned</span>;
+    } else if (cancelPending) {
+      stateClass = 'cancel-pending';
+      stateBadge = <span className="cancel-pending-badge"><Icon icon="mdi:timer-sand" width="14" className="spinning" style={{ marginRight: '4px' }} />Cancelling...</span>;
+    } else if (isBlocked) {
+      const blockedType = sessionState?.blocked_type || 'signal';
+      const blockedIcon = blockedType === 'human' ? 'mdi:account-clock' : 'mdi:clock-alert';
+      stateClass = 'blocked';
+      stateBadge = <span className="blocked-badge"><Icon icon={blockedIcon} width="14" style={{ marginRight: '4px' }} />Blocked ({blockedType})</span>;
+    } else if (isFinalizing) {
       stateClass = 'finalizing';
       stateBadge = <span className="finalizing-badge"><Icon icon="mdi:sync" width="14" className="spinning" style={{ marginRight: '4px' }} />Processing...</span>;
     } else if (hasRunning || isSessionRunning) {
@@ -735,7 +934,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           >
             <Icon icon="mdi:replay" width="14" />
           </button>
-          {(isSessionRunning || (hasRunning && !isFinalizing)) && (
+          {(isSessionRunning || (hasRunning && !isFinalizing)) && !isBlocked && (
             <button
               className={`btn-compact audible ${audibleSignaled[instance.session_id] ? 'signaled' : ''}`}
               onClick={(e) => handleAudibleClick(e, instance.session_id)}
@@ -744,6 +943,30 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             >
               <Icon icon="mdi:bullhorn" width="14" />
             </button>
+          )}
+          {/* Show cancel button for running, blocked, or finalizing sessions that aren't already terminated */}
+          {(isSessionRunning || isBlocked || hasRunning || isFinalizing) && !isTerminated && (
+            shouldShowForceCancel(instance.session_id) ? (
+              // Force cancel button - shown after timeout when graceful cancel hasn't worked
+              <button
+                className="btn-compact cancel force"
+                onClick={(e) => handleCancelClick(e, instance.session_id, true)}
+                disabled={cancelSending[instance.session_id]}
+                title="Force cancel - process may be unresponsive"
+              >
+                <Icon icon={cancelSending[instance.session_id] ? "mdi:loading" : "mdi:skull"} width="14" className={cancelSending[instance.session_id] ? 'spinning' : ''} />
+              </button>
+            ) : (
+              // Regular cancel button
+              <button
+                className={`btn-compact cancel ${cancelRequested[instance.session_id] || cancelPending ? 'requested' : ''}`}
+                onClick={(e) => handleCancelClick(e, instance.session_id)}
+                disabled={cancelSending[instance.session_id] || cancelRequested[instance.session_id] || cancelPending}
+                title={cancelRequested[instance.session_id] || cancelPending ? 'Cancel requested - waiting for process...' : 'Cancel cascade'}
+              >
+                <Icon icon={cancelSending[instance.session_id] ? "mdi:loading" : (cancelRequested[instance.session_id] || cancelPending) ? "mdi:timer-sand" : "mdi:stop-circle"} width="14" className={cancelSending[instance.session_id] || cancelRequested[instance.session_id] || cancelPending ? 'spinning' : ''} />
+              </button>
+            )
           )}
           {isCompleted && onFreezeInstance && !isChild && (
             <button
@@ -993,6 +1216,19 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               Run
             </button>
           )}
+          {onBlocked && (
+            <button
+              className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`}
+              onClick={onBlocked}
+              title="Blocked Sessions - Waiting for signals/input"
+            >
+              <Icon icon="mdi:pause-circle-outline" width="18" />
+              Blocked
+              {blockedCount > 0 && (
+                <span className="blocked-count-badge">{blockedCount}</span>
+              )}
+            </button>
+          )}
           <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />
         </div>
       </header>
@@ -1127,6 +1363,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           finalizingSessions={finalizingSessions}
           sessionStartTimes={sessionStartTimes}
           onSoundingsExplorer={(sessionId) => setSoundingsExplorerSession(sessionId)}
+          onVisualize={handleVisualize}
           onAudibleClick={handleAudibleClick}
           audibleSignaled={audibleSignaled}
           audibleSending={audibleSending}
@@ -1148,6 +1385,16 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         <SoundingsExplorer
           sessionId={soundingsExplorerSession}
           onClose={() => setSoundingsExplorerSession(null)}
+        />
+      )}
+
+      {/* Flow Visualization Modal */}
+      {flowModalData && (
+        <CascadeFlowModal
+          cascade={flowModalData.cascade}
+          executionData={flowModalData.executionData}
+          sessionId={flowModalData.sessionId}
+          onClose={() => setFlowModalData(null)}
         />
       )}
     </div>

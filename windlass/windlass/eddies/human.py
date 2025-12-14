@@ -604,3 +604,366 @@ def _cli_prompt_custom(
     _store_response(phase_name, answer)
 
     return answer
+
+
+# =============================================================================
+# request_decision - Tool-based Decision Points
+# =============================================================================
+
+@simple_eddy
+def request_decision(
+    question: str,
+    options: list,
+    context: str = None,
+    severity: str = "info",
+    allow_custom: bool = True,
+    html: str = None,
+    timeout_seconds: int = 600
+) -> dict:
+    """
+    Request a human decision with structured options.
+
+    This tool creates a decision checkpoint and blocks until the human responds.
+    Use this when you need human input to continue - the decision will be
+    returned directly and you can act on it immediately.
+
+    Arguments:
+        question: The decision question to present to the human
+        options: Array of option objects. Each option has:
+                 - id (string, required): Unique identifier
+                 - label (string, required): Short display text
+                 - description (string, optional): Longer explanation
+                 - style (string, optional): "primary" for recommended, "danger" for risky
+        context: Background information explaining why this decision matters
+        severity: Issue level - "info" (preference), "warning" (concern), "error" (blocking)
+        allow_custom: Whether the human can type a custom response instead of picking an option
+        html: Custom HTML for the decision UI (advanced - renders raw HTML form)
+        timeout_seconds: Maximum wait time (default 600 = 10 minutes)
+
+    Returns a JSON object with:
+        - selected: The ID of the chosen option, or "custom" if they typed their own
+        - custom_text: Their custom response (only if selected is "custom")
+        - reasoning: Their explanation (if provided)
+
+    Example response: {"selected": "option_a", "reasoning": "This approach is simpler"}
+    Example custom: {"selected": "custom", "custom_text": "I want to do X instead"}
+    """
+    import json
+    from rich.console import Console
+    from .state_tools import get_current_session_id, get_current_phase_name
+
+    console = Console()
+    phase_name = get_current_phase_name()
+    session_id = get_current_session_id()
+
+    # Check if we're in checkpoint mode
+    import sys
+    use_checkpoint = os.environ.get('WINDLASS_USE_CHECKPOINTS', 'false').lower() == 'true'
+    if not sys.stdin.isatty():
+        use_checkpoint = True
+
+    if use_checkpoint and session_id:
+        return _request_decision_via_checkpoint(
+            question=question,
+            options=options,
+            context=context,
+            severity=severity,
+            allow_custom=allow_custom,
+            html=html,
+            timeout_seconds=timeout_seconds,
+            session_id=session_id,
+            phase_name=phase_name,
+            console=console
+        )
+    else:
+        # CLI fallback
+        return _request_decision_cli(
+            question=question,
+            options=options,
+            context=context,
+            allow_custom=allow_custom,
+            phase_name=phase_name,
+            console=console
+        )
+
+
+def _request_decision_via_checkpoint(
+    question: str,
+    options: list,
+    context: str,
+    severity: str,
+    allow_custom: bool,
+    html: str,
+    timeout_seconds: int,
+    session_id: str,
+    phase_name: str,
+    console
+) -> dict:
+    """Create checkpoint and wait for decision response."""
+    from ..checkpoints import get_checkpoint_manager, CheckpointType
+    from ..tracing import get_current_trace
+
+    trace = get_current_trace()
+    checkpoint_manager = get_checkpoint_manager()
+
+    # Build UI spec - either from custom HTML or structured options
+    if html:
+        # Custom HTML mode - render the HTML directly
+        ui_spec = _build_html_decision_ui(html, question, context, severity)
+    else:
+        # Structured options mode - build card-based UI
+        ui_spec = _build_structured_decision_ui(
+            question=question,
+            options=options,
+            context=context,
+            severity=severity,
+            allow_custom=allow_custom
+        )
+
+    # Create the checkpoint
+    checkpoint = checkpoint_manager.create_checkpoint(
+        session_id=session_id,
+        cascade_id=trace.name if trace else "unknown",
+        phase_name=phase_name or "request_decision",
+        checkpoint_type=CheckpointType.DECISION,
+        phase_output=question,
+        ui_spec=ui_spec,
+        echo_snapshot={},
+        timeout_seconds=timeout_seconds
+    )
+
+    console.print(f"\n[bold magenta]🔀 Decision point:[/bold magenta] {question}")
+    if context:
+        console.print(f"[dim]{context[:200]}{'...' if len(context) > 200 else ''}[/dim]")
+    console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")
+    console.print(f"Waiting for human input on checkpoint {checkpoint.id[:8]}...")
+
+    # Block waiting for response
+    response = checkpoint_manager.wait_for_response(
+        checkpoint_id=checkpoint.id,
+        timeout=timeout_seconds,
+        poll_interval=0.5
+    )
+
+    if response is None:
+        console.print("[yellow]⚠ No response received (timeout or cancelled)[/yellow]")
+        return {"selected": None, "timeout": True}
+
+    # Process the response
+    result = _process_decision_response(response, ui_spec)
+    console.print(f"[green]✓ Decision received: {result.get('selected', result)}[/green]")
+
+    # Store in state
+    import json
+    _store_response(phase_name, json.dumps(result))
+
+    return result
+
+
+def _build_html_decision_ui(html: str, question: str, context: str, severity: str) -> dict:
+    """Build UI spec for custom HTML decision UI."""
+    sections = [
+        {
+            "type": "header",
+            "text": question,
+            "level": 2
+        }
+    ]
+    if context:
+        sections.append({
+            "type": "text",
+            "content": context
+        })
+    sections.append({
+        "type": "html",
+        "content": html,
+        "allow_forms": True
+    })
+    sections.append({
+        "type": "submit",
+        "label": "Submit Decision",
+        "style": "primary"
+    })
+
+    return {
+        "layout": "vertical",
+        "title": question,
+        "_meta": {
+            "type": "html_decision",
+            "severity": severity
+        },
+        "sections": sections
+    }
+
+
+def _build_structured_decision_ui(
+    question: str,
+    options: list,
+    context: str,
+    severity: str,
+    allow_custom: bool
+) -> dict:
+    """Build UI spec for structured option cards."""
+    # Build option cards
+    cards = []
+    for opt in options:
+        card = {
+            "id": opt.get("id", f"opt_{len(cards)}"),
+            "title": opt.get("label", opt.get("title", "Option")),
+            "content": opt.get("description", opt.get("content", "")),
+        }
+        if opt.get("style") == "primary":
+            card["recommended"] = True
+        if opt.get("style") == "danger":
+            card["variant"] = "danger"
+        cards.append(card)
+
+    sections = [
+        {
+            "type": "header",
+            "text": question,
+            "level": 2,
+            "icon": "mdi:help-circle" if severity == "info" else
+                    "mdi:alert" if severity == "warning" else
+                    "mdi:alert-circle"
+        }
+    ]
+
+    if context:
+        sections.append({
+            "type": "text",
+            "content": context,
+            "style": "muted"
+        })
+
+    sections.append({
+        "type": "card_grid",
+        "cards": cards,
+        "selection_mode": "single",
+        "columns": min(len(cards), 3)
+    })
+
+    if allow_custom:
+        sections.append({
+            "type": "text_input",
+            "name": "custom_response",
+            "label": "Or provide a custom response:",
+            "placeholder": "Type your alternative here...",
+            "optional": True
+        })
+
+    sections.append({
+        "type": "text_input",
+        "name": "reasoning",
+        "label": "Reasoning (optional):",
+        "placeholder": "Explain your choice...",
+        "optional": True,
+        "multiline": True
+    })
+
+    return {
+        "layout": "vertical",
+        "title": question,
+        "_meta": {
+            "type": "decision",
+            "severity": severity,
+            "allow_custom": allow_custom
+        },
+        "sections": sections
+    }
+
+
+def _process_decision_response(response: dict, ui_spec: dict) -> dict:
+    """Process the raw response into a structured decision result."""
+    if not isinstance(response, dict):
+        return {"selected": str(response)}
+
+    result = {}
+
+    # Check for card selection
+    if "selected_card" in response:
+        result["selected"] = response["selected_card"]
+    elif "selected" in response:
+        result["selected"] = response["selected"]
+
+    # Check for custom response
+    if response.get("custom_response"):
+        result["selected"] = "custom"
+        result["custom_text"] = response["custom_response"]
+
+    # Include reasoning if provided
+    if response.get("reasoning"):
+        result["reasoning"] = response["reasoning"]
+
+    # For HTML forms, include all form data
+    if ui_spec.get("_meta", {}).get("type") == "html_decision":
+        # Return the full response as form data
+        result = {k: v for k, v in response.items() if not k.startswith("_")}
+
+    return result if result else response
+
+
+def _request_decision_cli(
+    question: str,
+    options: list,
+    context: str,
+    allow_custom: bool,
+    phase_name: str,
+    console
+) -> dict:
+    """CLI fallback for request_decision."""
+    from rich.prompt import Prompt
+    from rich.panel import Panel
+
+    console.print(f"\n[bold magenta]🔀 Decision Required:[/bold magenta] {question}")
+
+    if context:
+        console.print(Panel(context[:500], title="Context", border_style="dim"))
+
+    console.print("\n[bold]Options:[/bold]")
+    for i, opt in enumerate(options, 1):
+        label = opt.get("label", opt.get("title", f"Option {i}"))
+        desc = opt.get("description", opt.get("content", ""))
+        style_marker = " [recommended]" if opt.get("style") == "primary" else ""
+        style_marker = " [danger]" if opt.get("style") == "danger" else style_marker
+        console.print(f"  {i}. [cyan]{label}[/cyan]{style_marker}")
+        if desc:
+            console.print(f"     [dim]{desc[:100]}[/dim]")
+
+    if allow_custom:
+        console.print(f"  {len(options) + 1}. [yellow]Custom response[/yellow]")
+
+    # Get selection
+    choice = Prompt.ask(
+        "\n[bold green]Your choice (number or option ID)[/bold green]"
+    )
+
+    # Parse selection
+    try:
+        choice_num = int(choice)
+        if 1 <= choice_num <= len(options):
+            selected = options[choice_num - 1].get("id", f"opt_{choice_num}")
+            result = {"selected": selected}
+        elif allow_custom and choice_num == len(options) + 1:
+            custom = Prompt.ask("[bold green]Enter custom response[/bold green]")
+            result = {"selected": "custom", "custom_text": custom}
+        else:
+            result = {"selected": choice}
+    except ValueError:
+        # Try to match by ID
+        matching = [o for o in options if o.get("id") == choice]
+        if matching:
+            result = {"selected": choice}
+        else:
+            result = {"selected": "custom", "custom_text": choice}
+
+    # Optional reasoning
+    reasoning = Prompt.ask("[dim]Reasoning (optional, press Enter to skip)[/dim]", default="")
+    if reasoning:
+        result["reasoning"] = reasoning
+
+    # Store in state
+    import json
+    _store_response(phase_name, json.dumps(result))
+
+    return result

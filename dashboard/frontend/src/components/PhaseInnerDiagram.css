@@ -1,0 +1,535 @@
+/**
+ * PhaseInnerDiagram Styles
+ *
+ * Visualizes inner phase complexity:
+ * - Soundings: Fan-out pattern with attempts
+ * - Reforge: Sequential refinement steps
+ * - Wards: Validation checkpoints
+ */
+
+/* ============================================
+   COLLAPSED VIEW (Summary chips)
+   ============================================ */
+
+.phase-inner-collapsed {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.complexity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.complexity-chip.soundings {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.complexity-chip.wards {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+/* ============================================
+   EXPANDED DIAGRAM CONTAINER
+   ============================================ */
+
+.phase-inner-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.phase-inner-diagram.ghost {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.phase-inner-diagram.executed {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+/* ============================================
+   SOUNDINGS VISUAL
+   ============================================ */
+
+.soundings-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.soundings-visual.ghost {
+  opacity: 0.8;
+}
+
+/* Attempts row */
+.attempts-row {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+}
+
+.attempt-box {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fbbf24;
+  position: relative;
+  transition: all 0.15s;
+}
+
+.attempt-box:hover {
+  background: rgba(251, 191, 36, 0.3);
+  transform: scale(1.1);
+}
+
+.attempt-box.winner {
+  background: rgba(52, 211, 153, 0.3);
+  border-color: #34d399;
+  color: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.4);
+}
+
+.attempt-box .attempt-number {
+  font-size: 8px;
+}
+
+.attempt-box .winner-check {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #34d399;
+  border-radius: 50%;
+  padding: 1px;
+  color: #0a0a0a;
+}
+
+/* Status states */
+.attempt-box.completed {
+  border-color: #34d399;
+}
+
+.attempt-box.running {
+  border-color: #fbbf24;
+  animation: pulse-attempt 1s ease-in-out infinite;
+}
+
+@keyframes pulse-attempt {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(251, 191, 36, 0); }
+}
+
+.attempt-box.error {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.2);
+}
+
+/* Convergence arrows */
+.convergence-arrows {
+  width: 100%;
+  height: 16px;
+  color: #4a5568;
+}
+
+.convergence-arrows svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Evaluator box */
+.evaluator-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #a78bfa;
+}
+
+.evaluator-box.aggregate {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #60a5fa;
+}
+
+/* Output indicator */
+.output-indicator {
+  color: #4a5568;
+  margin-top: 2px;
+}
+
+/* ============================================
+   SOUNDING CONTENT PREVIEWS (Execution Data)
+   ============================================ */
+
+.soundings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sounding-preview {
+  padding: 6px 8px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.sounding-preview.winner {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.4);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.2);
+}
+
+.sounding-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.sounding-preview-header .sounding-num {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.sounding-preview.winner .sounding-num {
+  color: #34d399;
+}
+
+.sounding-preview-header .winner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  background: rgba(52, 211, 153, 0.2);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #34d399;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sounding-preview-header .sounding-cost {
+  font-size: 9px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  color: #34d399;
+  margin-left: auto;
+}
+
+.sounding-preview-header .sounding-model {
+  font-size: 8px;
+  padding: 1px 4px;
+  background: rgba(96, 165, 250, 0.15);
+  border-radius: 2px;
+  color: #60a5fa;
+}
+
+.sounding-preview-text {
+  font-size: 10px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  color: #999;
+  line-height: 1.4;
+  word-break: break-word;
+  white-space: pre-wrap;
+  cursor: help;
+}
+
+.sounding-preview.winner .sounding-preview-text {
+  color: #bbb;
+}
+
+/* ============================================
+   REFORGE VISUAL
+   ============================================ */
+
+.reforge-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 4px;
+  border: 1px dashed rgba(167, 139, 250, 0.3);
+}
+
+.reforge-visual.ghost {
+  opacity: 0.7;
+}
+
+.reforge-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reforge-steps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reforge-step {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.step-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: #a78bfa;
+  padding: 2px 4px;
+  background: rgba(167, 139, 250, 0.2);
+  border-radius: 2px;
+}
+
+.step-attempts {
+  display: flex;
+  gap: 2px;
+}
+
+.reforge-attempt {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.reforge-attempt.winner {
+  background: rgba(52, 211, 153, 0.2);
+  border-color: #34d399;
+  color: #34d399;
+}
+
+.step-arrow {
+  color: #4a5568;
+}
+
+/* ============================================
+   WARDS VISUAL
+   ============================================ */
+
+.wards-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wards-visual.ghost {
+  opacity: 0.7;
+}
+
+.wards-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.wards-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 28px;
+}
+
+.ward-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 500;
+  border: 1px solid;
+  transition: all 0.15s;
+}
+
+/* Ward types */
+.ward-chip.pre {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.3);
+  color: #2dd4bf;
+}
+
+.ward-chip.post {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #60a5fa;
+}
+
+/* Ward modes */
+.ward-chip.blocking {
+  border-style: solid;
+}
+
+.ward-chip.retry {
+  border-style: dashed;
+}
+
+.ward-chip.advisory {
+  border-style: dotted;
+  opacity: 0.8;
+}
+
+/* Ward status */
+.ward-chip.pass {
+  border-color: #34d399;
+}
+
+.ward-chip.pass .ward-status {
+  color: #34d399;
+}
+
+.ward-chip.fail {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.ward-chip.fail .ward-status {
+  color: #f87171;
+}
+
+.ward-name {
+  max-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   INSTRUCTION SNIPPETS
+   ============================================ */
+
+.instruction-snippet {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+  border-left: 2px solid #666;
+  cursor: help;
+}
+
+.instruction-snippet .snippet-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  margin-bottom: 2px;
+}
+
+.instruction-snippet .snippet-text {
+  font-size: 9px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  color: #aaa;
+  line-height: 1.3;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Evaluator snippet */
+.instruction-snippet.evaluator {
+  border-left-color: #fbbf24;
+}
+
+.instruction-snippet.evaluator .snippet-header {
+  color: #fbbf24;
+}
+
+/* Aggregator snippet */
+.instruction-snippet.aggregator {
+  border-left-color: #34d399;
+}
+
+.instruction-snippet.aggregator .snippet-header {
+  color: #34d399;
+}
+
+/* Honing prompt snippet */
+.instruction-snippet.honing {
+  border-left-color: #a78bfa;
+}
+
+.instruction-snippet.honing .snippet-header {
+  color: #a78bfa;
+}
+
+/* ============================================
+   RESPONSIVE / COMPACT
+   ============================================ */
+
+@media (max-width: 400px) {
+  .attempt-box {
+    width: 16px;
+    height: 16px;
+    font-size: 8px;
+  }
+
+  .reforge-attempt {
+    width: 14px;
+    height: 14px;
+    font-size: 7px;
+  }
+
+  .ward-chip {
+    padding: 1px 4px;
+    font-size: 8px;
+  }
+
+  .instruction-snippet {
+    display: none;
+  }
+}
