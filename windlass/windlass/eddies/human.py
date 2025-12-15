@@ -648,10 +648,53 @@ def request_decision(
                 is stored separately. Your HTML should be self-contained.
               - NO SIZE LIMITS: Include full HTML with all data, scripts, and charts.
                 The system handles large HTML content without issues.
+              - SYSTEM EXTRAS: The system automatically adds to your form:
+                * Notes textarea (response[notes]) - User can add context
+                * Screenshot checkbox (response[include_screenshot]) - Attaches visual
+                These are injected inside your <form> tag automatically!
               - VISUALIZATION LIBRARIES AVAILABLE:
                 * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
                 * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))
                 * Use dark theme: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
+              - SQL DATA FETCHING (test queries first!):
+                * STEP 1 - Test your query with run_sql() BEFORE writing HTML:
+                  run_sql("SELECT state, COUNT(*) as count FROM table GROUP BY state LIMIT 5", "csv_files")
+                  # Returns: {columns: ['state', 'count'], rows: [['WA', 632], ...]}
+                  # Note the exact column names and order!
+
+                * STEP 2 - Use those EXACT column names in your fetch() code:
+                  fetch('http://localhost:5001/api/sql/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                      connection: 'csv_files',
+                      sql: 'SELECT state, COUNT(*) as count FROM table GROUP BY state',
+                      limit: 1000
+                    })
+                  }).then(r => r.json()).then(result => {
+                    // result.columns = ['state', 'count']  // From your test!
+                    // result.rows = [['WA', 632], ['CA', 445], ...]
+
+                    // Find column indices by name (safer than hardcoding):
+                    const stateIdx = result.columns.indexOf('state');
+                    const countIdx = result.columns.indexOf('count');
+
+                    // Use in Plotly:
+                    Plotly.newPlot('chart', [{
+                      x: result.rows.map(r => r[stateIdx]),
+                      y: result.rows.map(r => r[countIdx]),
+                      type: 'bar'
+                    }], layout);
+
+                    // Or transform to objects for Vega-Lite:
+                    const data = result.rows.map(row =>
+                      Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
+                    );
+                  });
+
+                * Discovery tools: sql_search(), list_sql_connections(), run_sql()
+                * Filters: Rebuild SQL with WHERE clause and re-fetch
+                * CRITICAL: Always test queries with run_sql() first to verify column names!
               - Example (basic form):
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
                       hx-ext="json-enc"
@@ -676,9 +719,19 @@ def request_decision(
         - selected: The ID of the chosen option, or "custom" if they typed their own
         - custom_text: Their custom response (only if selected is "custom")
         - reasoning: Their explanation (if provided)
+        - notes: Additional context from system-provided textarea (optional)
+        - include_screenshot: "true" if user checked the screenshot box
+        - _screenshot_metadata: Internal metadata (path, url) - not for LLM processing
 
     Example response: {"selected": "option_a", "reasoning": "This approach is simpler"}
-    Example custom: {"selected": "custom", "custom_text": "I want to do X instead"}
+    Example with extras: {
+      "selected": "approve",
+      "notes": "Changed colors for accessibility",
+      "include_screenshot": "true",
+      "_screenshot_metadata": {"path": "...", "url": "..."}
+    }
+
+    Note: Fields with _ prefix are internal metadata, not part of the logical response.
     """
     import json
     from rich.console import Console
@@ -833,6 +886,48 @@ def _request_decision_via_checkpoint(
     result = _process_decision_response(response, ui_spec)
     console.print(f"[green]✓ Decision received: {result.get('selected', result)}[/green]")
 
+    # If screenshot was requested, wait for it to finish and attach path
+    if result.get('include_screenshot') == 'true':
+        try:
+            from .config import get_config
+            import time
+
+            cfg = get_config()
+
+            # Build screenshot path (matches what screenshot_service saves)
+            if sounding_index is not None:
+                filename = f"decision_s{sounding_index}.png"
+            else:
+                filename = "decision_latest.png"
+
+            screenshot_path = os.path.join(
+                cfg.image_dir,
+                session_id,
+                phase_name or "request_decision",
+                filename
+            )
+
+            # Wait up to 10 seconds for screenshot to be saved
+            console.print(f"[dim]📸 Waiting for screenshot to finish...[/dim]")
+            for i in range(20):  # 20 * 0.5s = 10 seconds max
+                if os.path.exists(screenshot_path):
+                    # Store in separate metadata field (not in main response to avoid LLM confusion)
+                    result['_screenshot_metadata'] = {
+                        'path': screenshot_path,
+                        'url': f"/images/{session_id}/{phase_name or 'request_decision'}/{filename}",
+                        'filename': filename
+                    }
+                    console.print(f"[green]📸 Screenshot attached: {screenshot_path}[/green]")
+                    break
+                time.sleep(0.5)
+            else:
+                # Timeout - screenshot not ready
+                result['_screenshot_metadata'] = {'pending': True, 'expected_path': screenshot_path}
+                console.print(f"[yellow]📸 Screenshot timeout (will be available later)[/yellow]")
+
+        except Exception as e:
+            console.print(f"[yellow]⚠ Could not attach screenshot: {e}[/yellow]")
+
     # Store in state
     import json
     _store_response(phase_name, json.dumps(result))
@@ -841,7 +936,65 @@ def _request_decision_via_checkpoint(
 
 
 def _build_html_decision_ui(html: str, question: str, context: str, severity: str) -> dict:
-    """Build UI spec for custom HTML decision UI."""
+    """Build UI spec for custom HTML decision UI with system-added extras."""
+
+    # Inject system extras INSIDE the form (before closing </form> tag)
+    # This ensures they're submitted with the LLM's form data
+    extras_html = """
+<!-- System-provided extras (always included, auto-merged with form) -->
+<div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid #333;">
+  <div style="margin-bottom: 16px;">
+    <label style="display: block; margin-bottom: 8px; color: #9ca3af; font-size: 0.875rem; font-weight: 500;">
+      💬 Additional Notes (optional):
+    </label>
+    <textarea
+      name="response[notes]"
+      placeholder="Add context, feedback, or clarifications..."
+      rows="3"
+      style="width: 100%; background: #0a0a0a; border: 1px solid #333; color: #e5e7eb; padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <label style="display: flex; align-items: center; gap: 8px; color: #9ca3af; font-size: 0.875rem; cursor: pointer;">
+      <input
+        type="checkbox"
+        name="response[include_screenshot]"
+        value="true"
+        style="width: auto; cursor: pointer;">
+      <span>📸 Include screenshot with response</span>
+    </label>
+
+    <button
+      type="submit"
+      style="background: #4A9EDD; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.875rem; white-space: nowrap;">
+      Submit Response
+    </button>
+  </div>
+</div>
+"""
+
+    # Inject extras before closing </form> tag
+    import re
+    if '</form>' in html.lower():
+        # Find the last </form> tag and inject before it
+        enhanced_html = re.sub(
+            r'(</form>)',
+            extras_html + r'\1',
+            html,
+            flags=re.IGNORECASE
+        )
+    else:
+        # No form found, wrap everything in a form
+        enhanced_html = f"""
+<form hx-post="/api/checkpoints/{{{{ checkpoint_id }}}}/respond"
+      hx-ext="json-enc"
+      hx-swap="outerHTML">
+  {html}
+  {extras_html}
+  <button type="submit" style="margin-top: 16px; width: 100%;">Submit</button>
+</form>
+"""
+
     sections = [
         {
             "type": "header",
@@ -856,7 +1009,7 @@ def _build_html_decision_ui(html: str, question: str, context: str, severity: st
         })
     sections.append({
         "type": "html",
-        "content": html,
+        "content": enhanced_html,  # Use enhanced HTML with extras
         "allow_forms": True
     })
     sections.append({

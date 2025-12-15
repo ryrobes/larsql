@@ -86,16 +86,23 @@ class ClickHouseAdapter:
         if auto_create:
             self._ensure_database()
 
-        # Now connect to the database
+        # Now connect to the database with connection pooling settings
         self.client = self._Client(
             host=host,
             port=port,
             database=database,
             user=user,
             password=password,
+            # Connection settings for high concurrency
+            connect_timeout=10,
+            send_receive_timeout=30,
+            sync_request_timeout=30,
+            # Query settings
             settings={
                 'use_numpy': True,
                 'max_block_size': 100000,
+                'max_threads': 4,  # Limit threads per query
+                'max_execution_time': 60,  # 60s query timeout
             }
         )
 

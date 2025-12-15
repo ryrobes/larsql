@@ -35,6 +35,74 @@ def create_artifact(
     Available libraries: Plotly.js, Vega-Lite, HTMX, vanilla JavaScript
     Dark theme CSS variables automatically available
 
+    **Fetching Live SQL Data:**
+
+    IMPORTANT WORKFLOW - Always test queries before embedding them:
+
+    Step 1: Discover and test your query first
+      # Use sql_search() to find tables
+      sql_search("bigfoot sightings data")
+
+      # Test the query with run_sql() to see actual column names and data structure
+      run_sql("SELECT state, COUNT(*) as count FROM bigfoot_sightings GROUP BY state LIMIT 5", "csv_files")
+      # Returns: {columns: ['state', 'count'], rows: [['WA', 632], ...]}
+
+    Step 2: Write HTML using the EXACT column names from your test
+      fetch('http://localhost:5001/api/sql/query', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          connection: 'csv_files',  // Connection name from sql_connections/
+          sql: 'SELECT state, COUNT(*) as count FROM bigfoot_sightings GROUP BY state ORDER BY count DESC',
+          limit: 1000
+        })
+      }).then(r => r.json()).then(result => {
+        // result.columns = ['state', 'count']  // Matches your test!
+        // result.rows = [['WA', 632], ['CA', 445], ...]
+
+        // Use column indices OR find by name:
+        const stateIdx = result.columns.indexOf('state');  // = 0
+        const countIdx = result.columns.indexOf('count');  // = 1
+
+        // Plotly example - use indices from your test:
+        Plotly.newPlot('chart', [{
+          x: result.rows.map(r => r[stateIdx]),  // state column
+          y: result.rows.map(r => r[countIdx]),  // count column
+          type: 'bar',
+          marker: {color: '#a78bfa'}
+        }], {
+          paper_bgcolor: '#1a1a1a',
+          plot_bgcolor: '#0a0a0a',
+          font: {color: '#e5e7eb'}
+        });
+      });
+
+    Transform to objects for Vega-Lite (needs {key: value} format):
+      const data = result.rows.map(row =>
+        Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
+      );
+      // [{state: 'WA', count: 632}, {state: 'CA', count: 445}, ...]
+
+    Filters: Rebuild SQL query with WHERE clause and call fetch() again
+      async function applyFilter(filterValue) {
+        const sql = filterValue
+          ? `SELECT state, COUNT(*) as count FROM bigfoot_sightings WHERE class = '${filterValue}' GROUP BY state`
+          : `SELECT state, COUNT(*) as count FROM bigfoot_sightings GROUP BY state`;
+
+        const result = await fetch('http://localhost:5001/api/sql/query', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({connection: 'csv_files', sql: sql})
+        }).then(r => r.json());
+
+        // Update chart with new data
+        Plotly.react('chart', [{x: result.rows.map(r => r[0]), y: result.rows.map(r => r[1]), type: 'bar'}], layout);
+      }
+
+    Discovery tools: sql_search(), list_sql_connections(), run_sql()
+
+    KEY POINT: Always run_sql() first to verify column names before writing fetch() code!
+
     Arguments:
         html: Full HTML content for the artifact. Can include inline JavaScript,
               Plotly charts, Vega-Lite specs, interactive tables, etc.

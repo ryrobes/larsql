@@ -47,22 +47,51 @@ class DatabaseConnector:
     """Handle DuckDB ATTACH for various database types."""
 
     def __init__(self):
-        self.conn = duckdb.connect(":memory:")  # In-memory DuckDB
+        # Use persistent DuckDB file to cache materialized CSVs
+        # This avoids re-importing on every tool call
+        import os
+        from pathlib import Path
+
+        # Get data directory from config (or default)
+        data_dir = os.getenv('WINDLASS_DATA_DIR', os.path.join(os.getcwd(), 'data'))
+        os.makedirs(data_dir, exist_ok=True)
+
+        duckdb_path = os.path.join(data_dir, 'sql_cache.duckdb')
+
+        # Connect to persistent DuckDB file (creates if doesn't exist)
+        self.conn = duckdb.connect(duckdb_path)
         self._attached = set()
+
+        print(f"[SQL] Using DuckDB cache: {duckdb_path}")
 
     def attach(self, config: SqlConnectionConfig) -> str:
         """
         Attach database to DuckDB and return alias.
 
-        For csv_folder type, this also discovers all CSV files and creates views.
+        For csv_folder type, this also discovers all CSV files and materializes them.
+        Uses persistent DuckDB file, so materialization happens only once.
 
         Returns:
             The alias name to use in queries
         """
         alias = config.connection_name
 
+        # Check if already attached (in-memory check)
         if alias in self._attached:
             return alias
+
+        # For CSV folders, also check if schema exists in DuckDB file (persistence check)
+        if config.type == "csv_folder":
+            schema_exists = self.conn.execute(f"""
+                SELECT COUNT(*) FROM information_schema.schemata
+                WHERE schema_name = '{alias}'
+            """).fetchone()[0] > 0
+
+            if schema_exists:
+                # Schema exists in persistent file, just mark as attached
+                self._attached.add(alias)
+                print(f"[SQL] Using cached schema: {alias} (already materialized)")
+                return alias
 
         if config.type == "postgres":
             self._attach_postgres(config, alias)
@@ -146,44 +175,75 @@ class DatabaseConnector:
         # Create schema first
         self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
 
-        # Create a view for each CSV file
+        # MATERIALIZE each CSV as a TABLE (not view!)
+        # This imports data once, queries are fast (no re-reading CSV)
         # Schema name = sanitized filename
         loaded_count = 0
         failed_count = 0
+        total_rows = 0
+        newly_imported_count = 0
+
         for csv_file in csv_files:
             schema_name = sanitize_name(csv_file.name)
-            view_name = f"{alias}.{schema_name}"
+            table_name = f"{alias}.{schema_name}"
 
             try:
-                # Use DuckDB's read_csv_auto for automatic type detection
-                # Add ignore_errors to handle malformed CSV files gracefully
+                # Check if table already exists (skip re-materialization)
+                table_exists = self.conn.execute(f"""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = '{alias}' AND table_name = '{schema_name}'
+                """).fetchone()[0] > 0
+
+                if table_exists:
+                    # Already materialized, skip
+                    row_count = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                    total_rows += row_count
+                    loaded_count += 1
+                    # Silent - already loaded
+                    continue
+
+                # Import CSV into DuckDB table (CTAS - Create Table As Select)
+                # This reads CSV once and stores persistently
                 self.conn.execute(f"""
-                    CREATE VIEW {view_name} AS
+                    CREATE TABLE {table_name} AS
                     SELECT * FROM read_csv_auto('{csv_file}', AUTO_DETECT=TRUE, ignore_errors=true)
                 """)
+
+                # Count rows for feedback
+                row_count = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                total_rows += row_count
+
                 loaded_count += 1
+                newly_imported_count += 1
+                print(f"    ✓ Materialized {csv_file.name} → {schema_name} ({row_count:,} rows)")
             except Exception as e:
                 failed_count += 1
                 print(f"    ⚠️  Skipped {csv_file.name}: {str(e)[:100]}")
 
         if loaded_count > 0:
-            print(f"  └─ Loaded {loaded_count} CSV file(s) from {config.folder_path}")
+            if newly_imported_count > 0:
+                print(f"  └─ Imported {newly_imported_count} NEW CSV file(s) (first time)")
+            cached_count = loaded_count - newly_imported_count
+            if cached_count > 0:
+                print(f"  └─ Using {cached_count} cached CSV table(s) (instant)")
+            print(f"  └─ Total: {loaded_count} CSV tables ({total_rows:,} rows) ready for queries")
         if failed_count > 0:
             print(f"      ({failed_count} file(s) skipped due to errors)")
 
     def list_csv_schemas(self, alias: str) -> List[str]:
         """
-        List all CSV schemas (views) for a csv_folder connection.
+        List all CSV schemas (materialized tables) for a csv_folder connection.
 
         Returns:
             List of schema names (e.g., ['bigfoot_sightings', 'sales_2024'])
         """
         # Query information schema for tables in the alias schema
+        # Changed from table_type='VIEW' to 'BASE TABLE' (materialized)
         result = self.conn.execute(f"""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = '{alias}'
-              AND table_type = 'VIEW'
+              AND table_type = 'BASE TABLE'
             ORDER BY table_name
         """).fetchall()
 

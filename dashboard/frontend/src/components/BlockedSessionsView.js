@@ -105,7 +105,7 @@ function SignalFireModal({ signal, onClose, onFire }) {
  * Card for displaying a blocked session with inline checkpoint UI
  * For HITL/decision sessions, the UI is always expanded and shown in full
  */
-function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, onViewSession, onRefresh }) {
+const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, onViewSession, onRefresh }) {
   const isSignalBlocked = session.blocked_type === 'signal';
   const isHITLBlocked = session.blocked_type === 'hitl' || session.blocked_type === 'approval' || session.blocked_type === 'decision';
 
@@ -439,7 +439,12 @@ function BlockedSessionCard({ session, signals, onFireSignal, onCancelSession, o
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if session checkpoint IDs changed
+  const prevCheckpointIds = prevProps.session.checkpoints?.map(cp => cp.id).join(',') || '';
+  const nextCheckpointIds = nextProps.session.checkpoints?.map(cp => cp.id).join(',') || '';
+  return prevCheckpointIds === nextCheckpointIds;
+});
 
 /**
  * Main Blocked Sessions View
@@ -497,7 +502,23 @@ function BlockedSessionsView({ onBack, onSelectInstance }) {
         console.log(`  - ${s.session_id}: ${s.checkpoints.length} checkpoints`);
       });
 
-      setBlockedSessions(sessions);
+      // Only update state if data actually changed (prevents iframe recreation)
+      setBlockedSessions(prevSessions => {
+        // Check if checkpoint IDs changed
+        const prevIds = new Set(prevSessions.flatMap(s => s.checkpoints?.map(cp => cp.id) || []));
+        const newIds = new Set(sessions.flatMap(s => s.checkpoints?.map(cp => cp.id) || []));
+
+        const idsMatch = prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id));
+
+        if (idsMatch && prevSessions.length === sessions.length) {
+          console.log('[BlockedSessionsView] Data unchanged, keeping existing state');
+          return prevSessions; // Don't update - prevents iframe recreation
+        }
+
+        console.log('[BlockedSessionsView] Data changed, updating state');
+        return sessions;
+      });
+
       setWaitingSignals(signalsData.signals || []);
       setError(null);
     } catch (err) {

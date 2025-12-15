@@ -184,7 +184,7 @@ function HTMLSection({ spec, checkpointId, sessionId }) {
 
   return (
     <div className="html-section-wrapper">
-      {process.env.NODE_ENV === 'development' && (
+      {process.env.NODE_ENV === 'development_ZOO' && ( // commented out for now. ugly.
         <div className="html-section-dev-warning">
           ⚠️ Development Mode: Unsanitized HTML in iframe. Never use in production without DOMPurify.
         </div>

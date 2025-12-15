@@ -9,7 +9,7 @@ Provides REST API for:
 import json
 import os
 import sys
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, Response
 from datetime import datetime
 
 # Add parent directory to path to import windlass
@@ -353,6 +353,60 @@ def list_artifacts_by_cascade(cascade_id):
             "count": len(artifacts),
             "cascade_id": cascade_id
         })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@artifacts_bp.route('/api/sql/query', methods=['POST'])
+def execute_sql_query():
+    """
+    Execute SQL query and return compact JSON format.
+
+    POST body:
+    {
+        "connection": "csv_files",
+        "sql": "SELECT col1, col2 FROM table WHERE ...",
+        "limit": 1000  // optional, defaults to 1000
+    }
+
+    Returns:
+    {
+        "columns": ["col1", "col2"],
+        "rows": [[val1, val2], [val3, val4], ...],
+        "row_count": N
+    }
+    """
+    try:
+        # Import run_sql tool
+        try:
+            from windlass.sql_tools.tools import run_sql
+        except ImportError:
+            return jsonify({"error": "SQL tools not available"}), 500
+
+        body = request.json
+
+        if not body:
+            return jsonify({"error": "Request body required"}), 400
+
+        connection = body.get('connection')
+        sql = body.get('sql')
+        limit = body.get('limit', 1000)
+
+        if not connection:
+            return jsonify({"error": "Missing 'connection' field"}), 400
+
+        if not sql:
+            return jsonify({"error": "Missing 'sql' field"}), 400
+
+        # run_sql already returns JSON string with compact format
+        result_json = run_sql(sql, connection, limit)
+
+        return Response(result_json, mimetype='application/json')
 
     except Exception as e:
         import traceback

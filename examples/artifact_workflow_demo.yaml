@@ -12,18 +12,27 @@ inputs_schema:
 
 phases:
   - name: draft_and_iterate
-    tackle: ["request_decision", "create_artifact", "route_to", "run_code", "linux_shell"]
+    tackle:
+      - request_decision
+      - create_artifact
+      - route_to
+      - run_code
+      - linux_shell
+      - sql_search
+      #- list_sql_connections
+      - request_decision
+      - sql_query
     #model: anthropic/claude-sonnet-4.5
     handoffs:
       - finalize
     soundings:
       factor: 3
       models:
-        - x-ai/grok-4.1-fast
+        #- x-ai/grok-4.1-fast
         - openai/gpt-5.2
-        - google/gemini-3-pro-preview
+        #- google/gemini-3-pro-preview
     rules:
-      max_turns: 3
+      max_turns: 10
     instructions: |
       Analyze / find dataset: {{ input.dataset_name }}
 
@@ -31,23 +40,14 @@ phases:
 
       1. **Get Data (you have many tools at your command)
 
-      2. **Create a Dashboard**
+      2. **Create a professional and data-dense Dashboard**
 
       3. **Request approval** using request_decision with HTMX:
          - Show your unique visualization
          - Ask: "Does this visualization effectively show the data?"
          - Buttons: "Approve" or "Request Changes"
 
-      4. **If approved:** Use create_artifact to publish:
-         ```
-         create_artifact(
-             html="<your polished visualization>",
-             title="[Dataset] - [Chart Type] (Sounding {{ sounding_index }})",
-             artifact_type="dashboard",
-             description="Interactive visualization - approach {{ sounding_index }}",
-             tags=["analysis", "sounding{{ sounding_index }}"]
-         )
-         ```
+      4. **If approved:** Use create_artifact to publish, and then route_to the finalize step.
 
   - name: finalize
     tackle: ["create_artifact"]
