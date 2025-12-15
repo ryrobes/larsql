@@ -149,6 +149,28 @@ def show_ui(
 
     message_content = "\n\n".join(message_parts)
 
+    # Capture screenshot of display UI (async, non-blocking, overwrites iterations)
+    try:
+        from ..screenshot_service import get_screenshot_service
+        from ..eddies.human import _build_screenshot_html
+        from .state_tools import get_current_sounding_index
+
+        screenshot_service = get_screenshot_service()
+        complete_html = _build_screenshot_html(html)
+        sounding_idx = get_current_sounding_index()
+
+        screenshot_service.capture_htmx_render(
+            html=complete_html,
+            session_id=session_id,
+            phase_name=phase_name or "show_ui",
+            sounding_index=sounding_idx,
+            render_type="display"
+        )
+        print(f"[Screenshots] 📸 show_ui screenshot queued (overwrites)")
+    except Exception as e:
+        # Don't fail if screenshot fails
+        print(f"[Screenshots] ⚠ Screenshot failed: {e}")
+
     # Add to echo history with ui_spec in metadata
     # The frontend will detect ui_spec in metadata and render HTMLSection inline
     echo.add_history(

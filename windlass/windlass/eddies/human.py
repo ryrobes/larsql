@@ -796,6 +796,28 @@ def _request_decision_via_checkpoint(
     console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")
     console.print(f"Waiting for human input on checkpoint {checkpoint.id[:8]}...")
 
+    # Capture screenshot of HTMX content (async, non-blocking, overwrites iterations)
+    if html:
+        try:
+            from ..screenshot_service import get_screenshot_service
+
+            screenshot_service = get_screenshot_service()
+
+            # Build complete iframe HTML document (same as frontend renders)
+            complete_html = _build_screenshot_html(html)
+
+            screenshot_service.capture_htmx_render(
+                html=complete_html,
+                session_id=session_id,
+                phase_name=phase_name or "request_decision",
+                sounding_index=sounding_index,
+                render_type="decision"
+            )
+            console.print(f"[dim]📸 Screenshot queued (overwrites)[/dim]")
+        except Exception as e:
+            # Don't fail checkpoint if screenshot fails
+            console.print(f"[dim]⚠ Screenshot skipped: {e}[/dim]")
+
     # Block waiting for response
     response = checkpoint_manager.wait_for_response(
         checkpoint_id=checkpoint.id,
@@ -1025,3 +1047,79 @@ def _request_decision_cli(
     _store_response(phase_name, json.dumps(result))
 
     return result
+
+
+def _build_screenshot_html(body_html: str) -> str:
+    """
+    Build complete HTML document for screenshot capture.
+
+    Mirrors the iframe template from frontend HTMLSection.js
+    """
+    base_css = """
+:root {
+  --bg-darkest: #0a0a0a;
+  --bg-dark: #121212;
+  --bg-card: #1a1a1a;
+  --border-default: #333;
+  --text-primary: #e5e7eb;
+  --accent-purple: #a78bfa;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: #1a1a1a;
+}
+
+* { box-sizing: border-box; }
+
+h1, h2, h3 {
+  color: var(--accent-purple);
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+}
+
+button {
+  background: var(--accent-purple);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+input, textarea {
+  background: var(--bg-darkest);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-family: inherit;
+}
+"""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>{base_css}</style>
+
+  <!-- Visualization libraries -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+</head>
+<body>
+{body_html}
+</body>
+</html>"""

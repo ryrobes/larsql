@@ -164,6 +164,24 @@ def create_artifact(
     except Exception as e:
         return {"error": f"Failed to save artifact: {str(e)}", "created": False}
 
+    # Capture screenshot for gallery thumbnail (async, non-blocking)
+    thumbnail_path = None
+    try:
+        from ..screenshot_service import get_screenshot_service
+        from ..eddies.human import _build_screenshot_html
+
+        screenshot_service = get_screenshot_service()
+        complete_html = _build_screenshot_html(html)
+
+        thumbnail_path = screenshot_service.capture_artifact_sync(
+            artifact_id=artifact_id,
+            html=complete_html
+        )
+        print(f"[Artifacts] 📸 Thumbnail screenshot queued: {thumbnail_path}")
+    except Exception as e:
+        # Don't fail artifact creation if screenshot fails
+        print(f"[Artifacts] ⚠ Thumbnail screenshot failed: {e}")
+
     # Add to echo history for visibility
     tag_str = f" • Tags: {', '.join(tags)}" if tags else ""
     echo.add_history(

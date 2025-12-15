@@ -77,15 +77,36 @@ function HTMLSection({ spec, checkpointId, sessionId }) {
           console.log('[Windlass HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
         }, 100);
 
-        // Auto-resize iframe based on content (debounced to prevent loop errors)
+        // Auto-resize iframe based on content (with protection against infinite growth)
+        let lastHeight = 0;
+        let resizeCount = 0;
+        const MAX_HEIGHT = 2000; // Cap at 2000px to prevent runaway growth
+        const MAX_RESIZES = 20; // Stop after 20 resize attempts
+
         let resizeTimeout;
         const resizeIframe = () => {
           clearTimeout(resizeTimeout);
           resizeTimeout = setTimeout(() => {
             try {
               const contentHeight = iframeDocument.body.scrollHeight;
-              const newHeight = Math.max(contentHeight + 20, 100); // Add padding, min 100px
-              setIframeHeight(`${newHeight}px`);
+              const newHeight = Math.min(Math.max(contentHeight + 20, 100), MAX_HEIGHT);
+
+              // Only update if height changed by more than 5px (avoid tiny fluctuations)
+              const heightDelta = Math.abs(newHeight - lastHeight);
+              if (heightDelta > 5) {
+                resizeCount++;
+
+                // Stop resizing if we've hit the limit (prevents infinite loops)
+                if (resizeCount > MAX_RESIZES) {
+                  console.warn('[HTMX iframe] Stopped auto-resize after', MAX_RESIZES, 'attempts');
+                  if (resizeObserver) resizeObserver.disconnect();
+                  return;
+                }
+
+                setIframeHeight(`${newHeight}px`);
+                lastHeight = newHeight;
+                console.log('[HTMX iframe] Resized to', newHeight, 'px (attempt', resizeCount, ')');
+              }
             } catch (err) {
               console.warn('[Windlass HTMX] Could not resize iframe:', err);
             }
@@ -101,17 +122,14 @@ function HTMLSection({ spec, checkpointId, sessionId }) {
         });
 
         // Resize on content changes (debounced via ResizeObserver)
-        // Wrap in try-catch to suppress "ResizeObserver loop" errors (harmless React dev issue)
-        const resizeObserver = new ResizeObserver((entries) => {
-          try {
-            requestAnimationFrame(resizeIframe);
-          } catch (err) {
-            // Suppress ResizeObserver loop errors (harmless timing issue)
-            if (err.message && err.message.includes('ResizeObserver')) {
-              return;
+        let resizeObserver;
+        resizeObserver = new ResizeObserver((entries) => {
+          // Throttle ResizeObserver calls
+          requestAnimationFrame(() => {
+            if (resizeCount < MAX_RESIZES) {
+              resizeIframe();
             }
-            throw err;
-          }
+          });
         });
         resizeObserver.observe(iframeDocument.body);
 
