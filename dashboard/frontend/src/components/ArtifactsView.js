@@ -233,16 +233,38 @@ function ArtifactCard({ artifact, onClick }) {
     return `${(kb / 1024).toFixed(1)} MB`;
   };
 
+  // Thumbnail URL for background
+  const thumbnailUrl = `http://localhost:5001/api/images/artifacts/${artifact.id}.png`;
+  const [imageError, setImageError] = React.useState(false);
+
+  // Preload image to check if it exists
+  React.useEffect(() => {
+    const img = new Image();
+    img.onload = () => setImageError(false);
+    img.onerror = () => setImageError(true);
+    img.src = thumbnailUrl;
+  }, [thumbnailUrl]);
+
   return (
-    <div className="artifact-card" onClick={onClick}>
-      <div className="artifact-card-header">
-        <div className="artifact-icon" style={{ color }}>
-          <Icon icon={icon} width="32" />
+    <div
+      className="artifact-card"
+      onClick={onClick}
+      style={{
+        backgroundImage: imageError ? 'none' : `url(${thumbnailUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+    >
+      {/* Glassmorphic overlay */}
+      <div className="artifact-card-glass">
+        <div className="artifact-card-header">
+          <div className="artifact-icon" style={{ color }}>
+            <Icon icon={icon} width="32" />
+          </div>
+          <div className="artifact-type-badge" style={{ background: `${color}22`, color }}>
+            {artifact.artifact_type || 'custom'}
+          </div>
         </div>
-        <div className="artifact-type-badge" style={{ background: `${color}22`, color }}>
-          {artifact.artifact_type || 'custom'}
-        </div>
-      </div>
 
       <div className="artifact-card-body">
         <h3 className="artifact-title">{artifact.title}</h3>
@@ -276,15 +298,17 @@ function ArtifactCard({ artifact, onClick }) {
         )}
       </div>
 
-      <div className="artifact-card-footer">
-        <span className="footer-item">
-          <Icon icon="mdi:clock-outline" width="14" />
-          {formatDate(artifact.created_at)}
-        </span>
-        <span className="footer-item size">
-          {formatSize(artifact.html_size)}
-        </span>
+        <div className="artifact-card-footer">
+          <span className="footer-item">
+            <Icon icon="mdi:clock-outline" width="14" />
+            {formatDate(artifact.created_at)}
+          </span>
+          <span className="footer-item size">
+            {formatSize(artifact.html_size)}
+          </span>
+        </div>
       </div>
+      {/* End glassmorphic overlay */}
     </div>
   );
 }
