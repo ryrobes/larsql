@@ -20,7 +20,6 @@ from .rag.store import search_chunks
 from .rag.indexer import embed_texts
 from .cascade import RagConfig, load_cascade_config
 import os
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +98,12 @@ class MemorySystem:
         self._metadata_cache[memory_name] = metadata
 
     def _get_rag_context(self, memory_name: str) -> Optional[RagContext]:
-        """Get or create RAG context for a memory bank."""
+        """Get RAG context for a memory bank (ClickHouse-based).
+
+        This creates a simple RagContext that points to ClickHouse.
+        No Parquet files or batch indexing needed - messages are indexed
+        incrementally as they're saved.
+        """
         # Check cache
         if memory_name in self._rag_contexts:
             return self._rag_contexts[memory_name]
@@ -110,126 +114,49 @@ class MemorySystem:
             self._rag_contexts[memory_name] = rag_ctx
             return rag_ctx
 
-        # Need to build index
-        memory_dir = self.memories_dir / memory_name / "messages"
-        if not memory_dir.exists():
+        # Create ClickHouse-based context
+        from .db_adapter import get_db
+        db = get_db()
+
+        rag_id = f"memory_{memory_name}"
+
+        # Check if any chunks exist in ClickHouse
+        chunk_count_query = f"SELECT COUNT(*) as cnt FROM rag_chunks WHERE rag_id = '{rag_id}'"
+        result = db.query(chunk_count_query)
+
+        if not result or result[0]['cnt'] == 0:
+            logger.debug(f"No indexed messages in ClickHouse for memory: {memory_name}")
             return None
 
-        # Build RAG context manually (simpler than full indexer)
-        try:
-            rag_ctx = self._build_memory_rag_index(memory_name)
-            if rag_ctx:
-                self._rag_contexts[memory_name] = rag_ctx
-                register_rag_context(rag_ctx)
-            return rag_ctx
-        except Exception as e:
-            logger.error(f"Failed to build RAG index for {memory_name}: {e}")
-            return None
+        # Get embedding model from existing chunks
+        model_query = f"""
+            SELECT DISTINCT embedding_model
+            FROM rag_chunks
+            WHERE rag_id = '{rag_id}'
+            LIMIT 1
+        """
+        model_result = db.query(model_query)
+        embed_model = model_result[0]['embedding_model'] if model_result else get_config().default_embed_model
 
-    def _build_memory_rag_index(self, memory_name: str) -> Optional[RagContext]:
-        """Build a simple RAG index for memory messages."""
-        memory_dir = self.memories_dir / memory_name / "messages"
-        if not memory_dir.exists():
-            return None
+        # Create ClickHouse-based RAG context
+        rag_ctx = RagContext(
+            rag_id=rag_id,
+            directory="",  # Not needed for ClickHouse
+            embed_model=embed_model,
+            stats={'chunk_count': result[0]['cnt']},
+            session_id=None,
+            cascade_id=None,
+            phase_name=None,
+            trace_id=None,
+            parent_id=None
+        )
 
-        # Create RAG storage directory
-        cfg = get_config()
-        rag_base = Path(cfg.data_dir) / "rag" / f"memory_{memory_name}"
-        rag_base.mkdir(parents=True, exist_ok=True)
+        # Cache and register
+        self._rag_contexts[memory_name] = rag_ctx
+        register_rag_context(rag_ctx)
 
-        manifest_path = str(rag_base / "manifest.parquet")
-        chunks_path = str(rag_base / "chunks.parquet")
-        meta_path = str(rag_base / "meta.json")
+        return rag_ctx
 
-        # Collect all message files
-        message_files = list(memory_dir.glob("*.json"))
-        if not message_files:
-            return None
-
-        # Read messages and create chunks
-        chunks_data = []
-        manifest_data = []
-
-        for msg_file in message_files:
-            try:
-                msg = json.loads(msg_file.read_text())
-                content = msg.get('content', '')
-                if not content or not isinstance(content, str):
-                    continue
-
-                # Create chunk for this message
-                chunk_id = f"msg_{msg_file.stem}"
-                chunks_data.append({
-                    'chunk_id': chunk_id,
-                    'doc_id': msg_file.stem,
-                    'rel_path': msg_file.name,  # Required by search_chunks
-                    'start_line': 0,  # Messages aren't line-based, use 0
-                    'end_line': 0,  # Messages aren't line-based, use 0
-                    'text': content,
-                    'metadata': json.dumps(msg)
-                })
-
-                # Add to manifest
-                manifest_data.append({
-                    'doc_id': msg_file.stem,
-                    'rel_path': msg_file.name,
-                    'chunk_count': 1,  # Each message is one chunk
-                    'size': msg_file.stat().st_size,
-                    'mtime': msg_file.stat().st_mtime
-                })
-
-            except Exception as e:
-                logger.warning(f"Failed to process {msg_file}: {e}")
-                continue
-
-        if not chunks_data:
-            return None
-
-        # Embed chunks
-        texts = [c['text'] for c in chunks_data]
-        cfg = get_config()
-        embed_model = cfg.default_embed_model
-
-        try:
-            embed_result = embed_texts(texts, embed_model)
-            embeddings = embed_result['embeddings']  # Extract embeddings list from result dict
-
-            # Add embeddings to chunks
-            for chunk, emb in zip(chunks_data, embeddings):
-                chunk['embedding'] = emb
-
-            # Save to parquet
-            chunks_df = pd.DataFrame(chunks_data)
-            chunks_df.to_parquet(chunks_path)
-
-            manifest_df = pd.DataFrame(manifest_data)
-            manifest_df.to_parquet(manifest_path)
-
-            # Save metadata
-            meta = {
-                'embed_model': embed_model,
-                'embedding_dim': embed_result.get('dim', len(embeddings[0]) if embeddings else 0),
-                'chunk_count': len(chunks_data)
-            }
-            with open(meta_path, 'w') as f:
-                json.dump(meta, f)
-
-            # Create RAG context
-            rag_ctx = RagContext(
-                rag_id=memory_name,
-                directory=str(memory_dir),
-                manifest_path=manifest_path,
-                chunks_path=chunks_path,
-                meta_path=meta_path,
-                embed_model=embed_model,
-                stats=meta
-            )
-
-            return rag_ctx
-
-        except Exception as e:
-            logger.error(f"Failed to embed memory chunks: {e}")
-            return None
 
     def save_message(
         self,
@@ -237,7 +164,7 @@ class MemorySystem:
         message: dict,
         metadata: dict
     ):
-        """Save a message to memory.
+        """Save a message to memory and index it in ClickHouse for search.
 
         Args:
             memory_name: Name of the memory bank
@@ -262,9 +189,79 @@ class MemorySystem:
             **metadata  # session_id, cascade_id, phase_name, etc.
         }
 
-        # Save message file
+        # Save message file (for backup/inspection)
         message_file = memory_dir / filename
         message_file.write_text(json.dumps(entry, indent=2))
+
+        # Embed and insert into ClickHouse
+        content = message.get('content', '')
+        if content and isinstance(content, str) and content.strip():
+            try:
+                cfg = get_config()
+                embed_model = cfg.default_embed_model
+
+                # Embed the message
+                embed_result = embed_texts(
+                    texts=[content],
+                    model=embed_model,
+                    session_id=metadata.get('session_id'),
+                    trace_id=metadata.get('trace_id'),
+                    parent_id=metadata.get('parent_id'),
+                    phase_name=metadata.get('phase_name'),
+                    cascade_id=metadata.get('cascade_id')
+                )
+
+                embedding = embed_result['embeddings'][0]
+                embedding_dim = embed_result['dim']
+
+                # Insert into ClickHouse rag_chunks table
+                from .db_adapter import get_db
+                import uuid
+
+                db = get_db()
+                chunk_id = str(uuid.uuid4())
+                doc_id = message_file.stem  # Use filename stem as doc_id
+                rag_id = f"memory_{memory_name}"
+
+                # Prepare row for insertion
+                row = {
+                    'chunk_id': chunk_id,
+                    'rag_id': rag_id,
+                    'doc_id': doc_id,
+                    'rel_path': filename,
+                    'chunk_index': 0,
+                    'text': content,
+                    'char_start': 0,
+                    'char_end': len(content),
+                    'start_line': 0,
+                    'end_line': 0,
+                    'file_hash': hashlib.md5(content.encode()).hexdigest(),
+                    'embedding': embedding,
+                    'embedding_model': embed_model
+                }
+
+                db.insert_rows('rag_chunks', [row])
+
+                # Also insert into rag_manifests
+                manifest_row = {
+                    'doc_id': doc_id,
+                    'rag_id': rag_id,
+                    'rel_path': filename,
+                    'abs_path': str(message_file),
+                    'file_hash': row['file_hash'],
+                    'file_size': len(content),
+                    'mtime': time.time(),
+                    'chunk_count': 1,
+                    'content_hash': row['file_hash']
+                }
+
+                db.insert_rows('rag_manifests', [manifest_row])
+
+                logger.debug(f"Indexed message in ClickHouse: {rag_id} / {doc_id}")
+
+            except Exception as e:
+                # Don't fail the save if indexing fails
+                logger.warning(f"Failed to index message in ClickHouse: {e}")
 
         # Update metadata
         mem_metadata = self.get_metadata(memory_name)
@@ -277,10 +274,6 @@ class MemorySystem:
             mem_metadata.setdefault('cascades_using', []).append(cascade_id)
 
         self._save_metadata(memory_name, mem_metadata)
-
-        # Invalidate RAG cache - will rebuild on next query
-        if memory_name in self._rag_contexts:
-            del self._rag_contexts[memory_name]
 
         # Check if summary needs update
         if mem_metadata['message_count'] % self.SUMMARY_UPDATE_INTERVAL == 0:

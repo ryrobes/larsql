@@ -20,8 +20,8 @@ docker run -d \
   -v clickhouse-logs:/var/log/clickhouse-server \
   -v "$TEMP_CONFIG:/etc/clickhouse-server/config.d/windlass.xml:ro" \
   -v "$TEMP_USERS:/etc/clickhouse-server/users.d/windlass-users.xml:ro" \
-  --memory=4g \
-  --cpus=2 \
+  --memory=32g \
+  --cpus=8 \
   clickhouse/clickhouse-server:25.11
 
 echo "ClickHouse started with optimized config + no password"

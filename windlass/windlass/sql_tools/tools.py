@@ -13,13 +13,16 @@ from .config import load_discovery_metadata, load_sql_connections
 from .connector import DatabaseConnector
 
 
-def sql_search(
+def sql_rag_search(
     query: str,
     k: int = 10,
     score_threshold: Optional[float] = 0.3
 ) -> str:
     """
-    Search SQL schema metadata using semantic search.
+    Search SQL schema metadata using ClickHouse RAG (pure vector search).
+
+    **Note:** This is the legacy RAG-based approach. For better results with smaller
+    payloads, use `sql_search` which uses Elasticsearch hybrid search.
 
     Finds relevant tables and columns across all configured databases.
     Returns table metadata including column info, distributions, and sample values.
@@ -43,7 +46,7 @@ def sql_search(
         - Full column schemas with types
         - Value distributions for low-cardinality columns
         - Min/max ranges for high-cardinality columns
-        - Sample rows from each table
+        - Sample rows from each table (can be large!)
     """
     # Load discovery metadata
     meta = load_discovery_metadata()
@@ -140,6 +143,89 @@ def sql_search(
         "total_results": len(tables),
         "tables": tables
     }, indent=2, default=str)
+
+
+def sql_search(
+    query: str,
+    k: int = 10,
+    min_row_count: Optional[int] = None
+) -> str:
+    """
+    Search SQL schema metadata using Elasticsearch hybrid search.
+
+    **Recommended approach** - Uses hybrid search (vector + BM25 keywords) and returns
+    compact, structured results without heavy sample data.
+
+    Finds relevant tables and columns across all configured databases.
+    Returns clean table metadata optimized for LLM consumption.
+
+    Example queries:
+      - "tables with user information"
+      - "sales or revenue data"
+      - "bigfoot sightings location data"
+      - "customer country information"
+      - "find tables with email addresses and login timestamps"
+
+    The query can be verbose - both semantic meaning and keywords are used for matching.
+
+    Args:
+        query: Natural language description (can be multi-word, verbose)
+        k: Number of results to return (default: 10)
+        min_row_count: Optional filter for minimum table size
+
+    Returns:
+        JSON with matching tables and their metadata including:
+        - Table names and database info
+        - Full column schemas with types
+        - Row counts
+        **Note:** Sample rows are NOT included (use run_sql to query actual data)
+    """
+    try:
+        # Try Elasticsearch first
+        from ..elastic import get_elastic_client, hybrid_search_sql_schemas
+        from ..rag.indexer import embed_texts
+
+        es = get_elastic_client()
+        if not es.ping():
+            # Fallback to RAG search
+            return sql_rag_search(query, k=k, score_threshold=0.3)
+
+        # Embed the query
+        cfg = get_config()
+        embed_result = embed_texts(
+            texts=[query],
+            model=cfg.default_embed_model,
+            session_id=None,
+            trace_id=None,
+            parent_id=None,
+            phase_name="sql_search",
+            cascade_id=None
+        )
+        query_embedding = embed_result['embeddings'][0]
+
+        # Hybrid search
+        tables = hybrid_search_sql_schemas(
+            query=query,
+            query_embedding=query_embedding,
+            k=k,
+            min_row_count=min_row_count
+        )
+
+        return json.dumps({
+            "query": query,
+            "source": "elasticsearch",
+            "total_results": len(tables),
+            "tables": tables,
+            "note": "Results optimized for LLM - sample_rows excluded. Use run_sql to query actual data."
+        }, indent=2, default=str)
+
+    except ImportError:
+        # Elasticsearch not available - fallback to RAG
+        return sql_rag_search(query, k=k, score_threshold=0.3)
+    except Exception as e:
+        # If Elasticsearch fails, fallback to RAG
+        print(f"Elasticsearch search failed, falling back to RAG: {e}")
+        return sql_rag_search(query, k=k, score_threshold=0.3)
 
 
 def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:

@@ -51,8 +51,9 @@ register_tackle("list_files", list_files)
 register_tackle("file_info", file_info)
 
 # SQL tools (multi-database discovery and querying)
-from .sql_tools.tools import sql_search, run_sql as sql_run_sql, list_sql_connections
-register_tackle("sql_search", sql_search)
+from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections
+register_tackle("sql_search", sql_search)  # Elasticsearch hybrid search (default)
+register_tackle("sql_rag_search", sql_rag_search)  # ClickHouse RAG fallback (legacy)
 register_tackle("sql_query", sql_run_sql)  # Named sql_query to avoid conflict with smart_sql_run
 register_tackle("list_sql_connections", list_sql_connections)
 

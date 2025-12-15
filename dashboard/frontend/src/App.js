@@ -9,6 +9,8 @@ import BlockedSessionsView from './components/BlockedSessionsView';
 import ArtifactsView from './components/ArtifactsView';
 import ArtifactViewer from './components/ArtifactViewer';
 import WorkshopPage from './workshop/WorkshopPage';
+import ToolBrowserView from './components/ToolBrowserView';
+import SearchView from './components/SearchView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -24,6 +26,7 @@ function App() {
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
   const [messageFlowSessionId, setMessageFlowSessionId] = useState(null);
+  const [searchTab, setSearchTab] = useState('rag');
   const [showRunModal, setShowRunModal] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
@@ -84,8 +87,17 @@ function App() {
         // /#/artifacts → artifacts gallery
         return { view: 'artifacts', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
+      if (parts[0] === 'tools') {
+        // /#/tools → tool browser
+        return { view: 'tools', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
+      }
+      if (parts[0] === 'search') {
+        // /#/search or /#/search/rag → search view
+        const searchTab = parts[1] || 'rag';
+        return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab };
+      }
       // /#/cascade_id → instances view
-      return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null, artifactId: null };
+      return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
     } else if (parts.length === 2) {
       if (parts[0] === 'checkpoint') {
         // /#/checkpoint/checkpoint_id → checkpoint view
@@ -98,6 +110,10 @@ function App() {
       if (parts[0] === 'artifact') {
         // /#/artifact/artifact_id → artifact viewer
         return { view: 'artifact', cascadeId: null, sessionId: null, checkpointId: null, artifactId: parts[1] };
+      }
+      if (parts[0] === 'search') {
+        // /#/search/rag → search view with specific tab
+        return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
       }
       // /#/cascade_id/session_id → detail view
       return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null, artifactId: null };
@@ -116,6 +132,11 @@ function App() {
       window.location.hash = '#/workshop';
     } else if (view === 'blocked') {
       window.location.hash = '#/blocked';
+    } else if (view === 'tools') {
+      window.location.hash = '#/tools';
+    } else if (view === 'search') {
+      const tab = arguments[3] || 'rag'; // searchTab is the 4th argument
+      window.location.hash = `#/search/${tab}`;
     } else if (view === 'messageflow') {
       if (sessionId) {
         window.location.hash = `#/message_flow/${sessionId}`;
@@ -243,6 +264,15 @@ function App() {
         setDetailSessionId(null);
       } else if (route.view === 'blocked') {
         setCurrentView('blocked');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'tools') {
+        setCurrentView('tools');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'search') {
+        setCurrentView('search');
+        setSearchTab(route.searchTab || 'rag');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'messageflow') {
@@ -761,6 +791,14 @@ function App() {
             setCurrentView('blocked');
             updateHash('blocked');
           }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
           onArtifacts={() => {
             setCurrentView('artifacts');
             window.location.hash = '#/artifacts';
@@ -859,6 +897,25 @@ function App() {
             // For now, just log - we'd need to look up the cascade_id
             console.log('Navigate to session:', sessionId);
           }}
+        />
+      )}
+
+      {currentView === 'tools' && (
+        <ToolBrowserView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+        />
+      )}
+
+      {currentView === 'search' && (
+        <SearchView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+          searchTab={searchTab}
         />
       )}
 
