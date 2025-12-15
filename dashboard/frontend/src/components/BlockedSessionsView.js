@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import VideoSpinner from './VideoSpinner';
 import DynamicUI from './DynamicUI';
 import MessageWithInlineCheckpoint from './MessageWithInlineCheckpoint';
+import Header from './Header';
 import './BlockedSessionsView.css';
 
 /**
@@ -449,7 +450,7 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
 /**
  * Main Blocked Sessions View
  */
-function BlockedSessionsView({ onBack, onSelectInstance }) {
+function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [blockedSessions, setBlockedSessions] = useState([]);
   const [waitingSignals, setWaitingSignals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -639,23 +640,49 @@ function BlockedSessionsView({ onBack, onSelectInstance }) {
 
   return (
     <div className="blocked-sessions-container">
-      <header className="blocked-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={onBack} title="Back">
-            <Icon icon="mdi:arrow-left" width="20" />
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:pause-circle-outline" width="28" style={{ marginRight: '8px' }} />
+            <span className="header-stat">Blocked Sessions</span>
+            {blockedSessions.length > 0 && (
+              <>
+                <span className="header-divider">·</span>
+                <span className="header-stat">{blockedSessions.length} <span className="stat-dim">waiting</span></span>
+              </>
+            )}
+          </>
+        }
+        customButtons={
+          <button className="refresh-btn" onClick={fetchData} title="Refresh" style={{
+            padding: '8px 14px',
+            background: 'linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(94, 234, 212, 0.15))',
+            border: '1px solid rgba(74, 158, 221, 0.3)',
+            borderRadius: '8px',
+            color: '#4A9EDD',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.85rem',
+            fontWeight: '500'
+          }}>
+            <Icon icon="mdi:refresh" width="18" />
+            Refresh
           </button>
-          <h1>
-            <Icon icon="mdi:pause-circle-outline" width="28" />
-            Blocked Sessions
-          </h1>
-          <span className="count-badge">{blockedSessions.length}</span>
-        </div>
-        <div className="header-right">
-          <button className="refresh-btn" onClick={fetchData} title="Refresh">
-            <Icon icon="mdi:refresh" width="20" />
-          </button>
-        </div>
-      </header>
+        }
+        onMessageFlow={onMessageFlow}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onArtifacts={onArtifacts}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {error && (
         <div className="error-banner">

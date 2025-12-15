@@ -1,0 +1,235 @@
+/* ResearchCockpit - Main Container */
+.research-cockpit {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0a0a0a;
+  color: #e5e7eb;
+  overflow: hidden;
+}
+
+/* Cockpit Layout - Main + Sidebar */
+.cockpit-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Main Content Area */
+.cockpit-main {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
+}
+
+/* Checkpoint Container */
+.checkpoint-container {
+  background: #121212;
+  border-radius: 12px;
+  border: 1px solid #333;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.checkpoint-html-view {
+  /* HTMLSection iframe will fill this */
+}
+
+.checkpoint-simple-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.checkpoint-question {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #a78bfa;
+  margin: 0;
+}
+
+.simple-input {
+  width: 100%;
+  padding: 14px 18px;
+  background: #0a0a0a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 1rem;
+  font-family: 'Manrope', sans-serif;
+  transition: all 0.2s;
+}
+
+.simple-input:focus {
+  outline: none;
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.1);
+}
+
+.simple-submit {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.simple-submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(167, 139, 250, 0.3);
+}
+
+/* Timeline History */
+.timeline-history {
+  margin-top: 32px;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #a78bfa;
+  margin-bottom: 16px;
+}
+
+.timeline-item {
+  background: #121212;
+  border-left: 3px solid #a78bfa;
+  border-radius: 0 8px 8px 0;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.timeline-item:hover {
+  background: #1a1a1a;
+  border-left-color: #8b5cf6;
+}
+
+.timeline-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.timeline-timestamp {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.timeline-item-content {
+  color: #e5e7eb;
+}
+
+.timeline-response {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #0a0a0a;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #10b981;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Empty State */
+.cockpit-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 16px;
+  color: #6b7280;
+}
+
+.empty-icon {
+  opacity: 0.3;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.cockpit-empty-state h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.cockpit-empty-state p {
+  font-size: 1rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 20px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 8px;
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.pulsing {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Header Customizations */
+.header-stat.cascade-name {
+  font-family: 'IBM Plex Mono', monospace;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(94, 234, 212, 0.15));
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+/* New Session Button */
+.new-session-btn {
+  transition: all 0.2s;
+}
+
+.new-session-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .cockpit-layout {
+    flex-direction: column;
+  }
+}

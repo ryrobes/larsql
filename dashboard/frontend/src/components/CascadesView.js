@@ -4,10 +4,11 @@ import CascadeTile, { calculateTileDimensions } from './CascadeTile';
 import CascadeGridView from './CascadeGridView';
 import CascadeFlowModal from './CascadeFlowModal';
 import VideoSpinner from './VideoSpinner';
+import Header from './Header';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onSextant, onWorkshop, onBlocked, onTools, onSearch, onArtifacts, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onCockpit, onSextant, onWorkshop, onBlocked, onTools, onSearch, onArtifacts, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -285,130 +286,63 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
 
   return (
     <div className="cascades-container">
-      <header className="app-header">
-        <div className="header-left">
-          <img
-            src="/windlass-transparent-square.png"
-            alt="Windlass"
-            className="brand-logo"
-          />
-        </div>
-        <div className="header-center">
-          <span className="header-stat">{cascades.length} <span className="stat-dim">cascades</span></span>
-          <span className="header-divider">·</span>
-          <span className="header-stat">{totalRuns} <span className="stat-dim">runs</span></span>
-          <span className="header-divider">·</span>
-          <span className="header-stat cost">{formatCost(totalCost)}</span>
-        </div>
-        <div className="header-right">
-          {/* View mode toggle */}
-          <div className="view-mode-toggle">
-            <button
-              className={`view-mode-btn ${viewMode === 'tile' ? 'active' : ''}`}
-              onClick={() => setViewMode('tile')}
-              title="Tile View"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-              </svg>
-            </button>
-            <button
-              className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              title="Grid View"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-          </div>
+      <Header
+        centerContent={
+          <>
+            <span className="header-stat">{cascades.length} <span className="stat-dim">cascades</span></span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{totalRuns} <span className="stat-dim">runs</span></span>
+            <span className="header-divider">·</span>
+            <span className="header-stat cost">{formatCost(totalCost)}</span>
+          </>
+        }
+        customButtons={
+          <>
+            {/* View mode toggle */}
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${viewMode === 'tile' ? 'active' : ''}`}
+                onClick={() => setViewMode('tile')}
+                title="Tile View"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                </svg>
+              </button>
+              <button
+                className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Grid View"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
+            </div>
 
-          {onHotOrNot && (
-            <button className="hotornot-btn" onClick={onHotOrNot} title="Hot or Not - Rate sounding outputs">
-              <img src="/hotornot-500.png" alt="Hot or Not" className="hotornot-logo" />
-            </button>
-          )}
-          {onMessageFlow && (
-            <button className="messageflow-btn" onClick={onMessageFlow} title="Message Flow - Debug message branching">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-              Message Flow
-            </button>
-          )}
-          {onSextant && (
-            <button className="sextant-btn" onClick={onSextant} title="Sextant - Prompt Observatory">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 2 L12 12 L18 18"/>
-                <path d="M2 12 L22 12"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              Sextant
-            </button>
-          )}
-          {onWorkshop && (
-            <button className="workshop-btn" onClick={onWorkshop} title="Workshop - Cascade Builder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <path d="M14 17h7M17.5 14v7"/>
-              </svg>
-              Workshop
-            </button>
-          )}
-          {onBlocked && (
-            <button className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`} onClick={onBlocked} title="Blocked Sessions - Waiting for signals/input">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-              Blocked
-              {blockedCount > 0 && (
-                <span className="blocked-count-badge">{blockedCount}</span>
-              )}
-            </button>
-          )}
-          {onTools && (
-            <button className="tools-btn" onClick={onTools} title="Tool Browser - Test and explore tools">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-              </svg>
-              Tools
-            </button>
-          )}
-          {onSearch && (
-            <button className="search-btn" onClick={onSearch} title="Search & RAG - Semantic search across data">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
-                <path d="M11 8v6"/>
-                <path d="M8 11h6"/>
-              </svg>
-              Search
-            </button>
-          )}
-          {onArtifacts && (
-            <button className="artifacts-btn" onClick={onArtifacts} title="Artifacts - Persistent dashboards & visualizations">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
-              </svg>
-              Artifacts
-            </button>
-          )}
-          <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />
-        </div>
-      </header>
+            {onHotOrNot && (
+              <button className="hotornot-btn" onClick={onHotOrNot} title="Hot or Not - Rate sounding outputs">
+                <img src="/hotornot-500.png" alt="Hot or Not" className="hotornot-logo" />
+              </button>
+            )}
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onArtifacts={onArtifacts}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       <div className="search-bar">
         <div className="search-container">

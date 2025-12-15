@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
+import Header from './Header';
 import './SextantView.css';
 
 /**
@@ -1448,7 +1449,7 @@ function SimilaritySearch({ onResults }) {
  * 3. Direct manipulation - click to expand, inline actions
  * 4. Tight loops - no modals, everything inline
  */
-function SextantView({ onBack }) {
+function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [cascades, setCascades] = useState([]);
   const [selectedCascade, setSelectedCascade] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -1505,33 +1506,34 @@ function SextantView({ onBack }) {
 
   return (
     <div className="sextant-container">
-      {/* Header */}
-      <div className="sextant-header">
-        <div className="header-left">
-          <button className="back-button" onClick={onBack}>
-            <Icon icon="mdi:arrow-left" width="20" />
-          </button>
-          <Icon icon="mdi:compass-rose" width="32" className="sextant-icon" />
-          <div className="header-title">
-            <h1>Sextant</h1>
-            <span className="subtitle">Prompt Observatory</span>
-          </div>
-        </div>
-        <div className="header-stats">
-          {cascades.length > 0 && (
-            <>
-              <span className="stat">
-                <Icon icon="mdi:ship-wheel" width="16" />
-                {cascades.length} cascades
-              </span>
-              <span className="stat ready">
-                <Icon icon="mdi:check-circle" width="16" />
-                {cascades.filter(c => c.analysis_ready).length} ready
-              </span>
-            </>
-          )}
-        </div>
-      </div>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:compass-rose" width="28" className="sextant-icon" style={{ marginRight: '8px' }} />
+            <span className="header-stat">Sextant</span>
+            <span className="subtitle" style={{ fontSize: '0.8rem', color: '#9AA5B1', marginLeft: '8px' }}>Prompt Observatory</span>
+            {cascades.length > 0 && (
+              <>
+                <span className="header-divider">·</span>
+                <span className="header-stat">{cascades.length} <span className="stat-dim">cascades</span></span>
+                <span className="header-divider">·</span>
+                <span className="header-stat">{cascades.filter(c => c.analysis_ready).length} <span className="stat-dim">ready</span></span>
+              </>
+            )}
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onArtifacts={onArtifacts}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Main Content */}
       <div className="sextant-content">

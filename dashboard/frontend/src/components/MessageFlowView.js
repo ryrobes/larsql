@@ -9,6 +9,7 @@ import ContextCrossRefPanel from './ContextCrossRefPanel';
 import SpeciesWidget from './SpeciesWidget';
 import PhaseSpeciesBadges from './PhaseSpeciesBadges';
 import MessageItem from './MessageItem';
+import Header from './Header';
 import './MessageFlowView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
@@ -238,7 +239,7 @@ function EvaluatorSection({ evaluator, winnerIndex }) {
   );
 }
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null, externalData = null }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null, externalData = null, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -741,15 +742,26 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   return (
     <div className={`message-flow-view ${hideControls ? 'embedded' : ''}`}>
       {!hideControls && (
-        <div className="controls">
-          {onBack && (
-            <button onClick={onBack} className="back-button" title="Back to Cascades">
-              <Icon icon="mdi:arrow-left" width="18" />
-            </button>
-          )}
-
-          {/* Recent Sessions Row */}
-          <div className="recent-sessions-row">
+        <>
+          <Header
+            onBack={onBack}
+            backLabel="Back"
+            centerContent={
+              <span className="header-stat">Message Flow</span>
+            }
+            onMessageFlow={onMessageFlow}
+            onSextant={onSextant}
+            onWorkshop={onWorkshop}
+            onTools={onTools}
+            onSearch={onSearch}
+            onArtifacts={onArtifacts}
+            onBlocked={onBlocked}
+            blockedCount={blockedCount}
+            sseConnected={sseConnected}
+          />
+          <div className="controls">
+            {/* Recent Sessions Row */}
+            <div className="recent-sessions-row">
             {recentSessions.length === 0 ? (
               <span className="no-recent-sessions">No recent sessions</span>
             ) : (
@@ -784,6 +796,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             {loading ? 'Loading...' : 'Fetch Messages'}
           </button>
         </div>
+        </>
       )}
 
       {error && (

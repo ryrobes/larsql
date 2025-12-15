@@ -13,6 +13,7 @@ import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
 import RunPercentile from './RunPercentile';
 import PhaseSpeciesBadges from './PhaseSpeciesBadges';
+import Header from './Header';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
 
@@ -155,7 +156,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, blockedCount }) {
+function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, blockedCount }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1157,81 +1158,73 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
   return (
     <div className="instances-container">
-      <header className="app-header">
-        <div className="header-left">
-          <img
-            src="/windlass-transparent-square.png"
-            alt="Windlass"
-            className="brand-logo"
-            onClick={onBack}
-            style={{ cursor: 'pointer' }}
-            title="Back to cascades"
-          />
-          <div className="cascade-title-block">
-            <span className="cascade-title">{cascadeId}</span>
-            {cascadeData?.cascade_file && (
-              <span className="cascade-file-path">{cascadeData.cascade_file}</span>
-            )}
-          </div>
-        </div>
-        <div className="header-center">
-          <span className="header-stat">{instances.length} <span className="stat-dim">{instances.length === 1 ? 'instance' : 'instances'}</span></span>
-          <span className="header-divider">·</span>
-          <span className="header-stat cost"><AnimatedCost value={totalCost} formatFn={formatCost} /></span>
-        </div>
-        <div className="header-right">
-          {/* View mode toggle */}
-          <div className="view-mode-toggle">
-            <button
-              className={`view-mode-btn ${viewMode === 'card' ? 'active' : ''}`}
-              onClick={() => setViewMode('card')}
-              title="Card View"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-              </svg>
-            </button>
-            <button
-              className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              title="Grid View"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-          </div>
-          {cascadeData && onRunCascade && (
-            <button
-              className="run-button"
-              onClick={() => onRunCascade(cascadeData)}
-              title="Run this cascade"
-            >
-              <Icon icon="mdi:play" width="18" />
-              Run
-            </button>
-          )}
-          {onBlocked && (
-            <button
-              className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`}
-              onClick={onBlocked}
-              title="Blocked Sessions - Waiting for signals/input"
-            >
-              <Icon icon="mdi:pause-circle-outline" width="18" />
-              Blocked
-              {blockedCount > 0 && (
-                <span className="blocked-count-badge">{blockedCount}</span>
+      <Header
+        onBack={onBack}
+        backLabel="Back to Cascades"
+        centerContent={
+          <>
+            <div className="cascade-title-block">
+              <span className="cascade-title">{cascadeId}</span>
+              {cascadeData?.cascade_file && (
+                <span className="cascade-file-path">{cascadeData.cascade_file}</span>
               )}
-            </button>
-          )}
-          <span className={`connection-indicator ${sseConnected ? 'connected' : 'disconnected'}`} title={sseConnected ? 'Connected' : 'Disconnected'} />
-        </div>
-      </header>
+            </div>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{instances.length} <span className="stat-dim">{instances.length === 1 ? 'instance' : 'instances'}</span></span>
+            <span className="header-divider">·</span>
+            <span className="header-stat cost"><AnimatedCost value={totalCost} formatFn={formatCost} /></span>
+          </>
+        }
+        customButtons={
+          <>
+            {/* View mode toggle */}
+            <div className="view-mode-toggle">
+              <button
+                className={`view-mode-btn ${viewMode === 'card' ? 'active' : ''}`}
+                onClick={() => setViewMode('card')}
+                title="Card View"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                </svg>
+              </button>
+              <button
+                className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Grid View"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
+            </div>
+            {cascadeData && onRunCascade && (
+              <button
+                className="run-button"
+                onClick={() => onRunCascade(cascadeData)}
+                title="Run this cascade"
+              >
+                <Icon icon="mdi:play" width="18" />
+                Run
+              </button>
+            )}
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onArtifacts={onArtifacts}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {viewMode === 'card' ? (
         <>

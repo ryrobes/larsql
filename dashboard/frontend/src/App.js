@@ -11,6 +11,7 @@ import ArtifactViewer from './components/ArtifactViewer';
 import WorkshopPage from './workshop/WorkshopPage';
 import ToolBrowserView from './components/ToolBrowserView';
 import SearchView from './components/SearchView';
+import ResearchCockpit from './components/ResearchCockpit';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -87,6 +88,10 @@ function App() {
         // /#/artifacts → artifacts gallery
         return { view: 'artifacts', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
+      if (parts[0] === 'cockpit') {
+        // /#/cockpit → research cockpit (launches picker)
+        return { view: 'cockpit', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+      }
       if (parts[0] === 'tools') {
         // /#/tools → tool browser
         return { view: 'tools', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
@@ -111,6 +116,10 @@ function App() {
         // /#/artifact/artifact_id → artifact viewer
         return { view: 'artifact', cascadeId: null, sessionId: null, checkpointId: null, artifactId: parts[1] };
       }
+      if (parts[0] === 'cockpit') {
+        // /#/cockpit/session_id → research cockpit with session
+        return { view: 'cockpit', cascadeId: null, sessionId: parts[1], checkpointId: null, artifactId: null };
+      }
       if (parts[0] === 'search') {
         // /#/search/rag → search view with specific tab
         return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
@@ -132,6 +141,12 @@ function App() {
       window.location.hash = '#/workshop';
     } else if (view === 'blocked') {
       window.location.hash = '#/blocked';
+    } else if (view === 'cockpit') {
+      if (sessionId) {
+        window.location.hash = `#/cockpit/${sessionId}`;
+      } else {
+        window.location.hash = '#/cockpit';
+      }
     } else if (view === 'tools') {
       window.location.hash = '#/tools';
     } else if (view === 'search') {
@@ -266,6 +281,10 @@ function App() {
         setCurrentView('blocked');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
+      } else if (route.view === 'cockpit') {
+        setCurrentView('cockpit');
+        setSelectedCascadeId(null);
+        setDetailSessionId(route.sessionId || null);
       } else if (route.view === 'tools') {
         setCurrentView('tools');
         setSelectedCascadeId(null);
@@ -779,6 +798,10 @@ function App() {
             setCurrentView('messageflow');
             updateHash('messageflow');
           }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
           onSextant={() => {
             setCurrentView('sextant');
             updateHash('sextant');
@@ -832,6 +855,34 @@ function App() {
             setCurrentView('blocked');
             updateHash('blocked');
           }}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
           blockedCount={blockedCount}
         />
       )}
@@ -870,6 +921,40 @@ function App() {
             setCurrentView('cascades');
             updateHash('cascades');
           }}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
+          sseConnected={sseConnected}
         />
       )}
 
@@ -879,6 +964,40 @@ function App() {
             setCurrentView('cascades');
             updateHash('cascades');
           }}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
+          sseConnected={sseConnected}
         />
       )}
 
@@ -897,6 +1016,40 @@ function App() {
             // For now, just log - we'd need to look up the cascade_id
             console.log('Navigate to session:', sessionId);
           }}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
+          sseConnected={sseConnected}
         />
       )}
 
@@ -925,6 +1078,50 @@ function App() {
             setCurrentView('cascades');
             updateHash('cascades');
           }}
+        />
+      )}
+
+      {currentView === 'cockpit' && (
+        <ResearchCockpit
+          initialSessionId={detailSessionId}
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+          onMessageFlow={() => {
+            setCurrentView('messageflow');
+            updateHash('messageflow');
+          }}
+          onCockpit={() => {
+            setCurrentView('cockpit');
+            updateHash('cockpit');
+          }}
+          onSextant={() => {
+            setCurrentView('sextant');
+            updateHash('sextant');
+          }}
+          onWorkshop={() => {
+            setCurrentView('workshop');
+            updateHash('workshop');
+          }}
+          onTools={() => {
+            setCurrentView('tools');
+            updateHash('tools');
+          }}
+          onSearch={() => {
+            setCurrentView('search');
+            updateHash('search', null, null, 'rag');
+          }}
+          onArtifacts={() => {
+            setCurrentView('artifacts');
+            window.location.hash = '#/artifacts';
+          }}
+          onBlocked={() => {
+            setCurrentView('blocked');
+            updateHash('blocked');
+          }}
+          blockedCount={blockedCount}
+          sseConnected={sseConnected}
         />
       )}
 
