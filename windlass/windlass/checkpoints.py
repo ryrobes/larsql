@@ -278,7 +278,7 @@ class CheckpointManager:
         ))
 
         # Generate summary asynchronously (non-blocking)
-        self._generate_summary_async(checkpoint_id, phase_output)
+        self._generate_summary_async(checkpoint_id, session_id, phase_output)
 
         return checkpoint
 
@@ -709,30 +709,50 @@ class CheckpointManager:
         except Exception as e:
             print(f"[Windlass] Warning: Could not update checkpoint in DB: {e}")
 
-    def _generate_summary_async(self, checkpoint_id: str, phase_output: str):
+    def _generate_summary_async(self, checkpoint_id: str, session_id: str, phase_output: str):
         """
         Generate AI summary for checkpoint asynchronously (non-blocking).
         Uses a cheap model (gemini-flash-lite) to create a one-sentence summary.
+        Properly routes through OpenRouter with cost tracking.
         """
         def generate():
             try:
-                import litellm
+                from .agent import Agent
+                from .config import get_config
+                from .logs import log_message
+
+                config = get_config()
 
                 # Truncate phase_output if too long (keep first 1500 chars for context)
                 truncated = phase_output[:1500] if phase_output else "No content"
 
-                # Call cheap model for summary
-                response = litellm.completion(
+                # Create agent with proper OpenRouter config
+                agent = Agent(
                     model="google/gemini-2.0-flash-lite",
-                    messages=[{
-                        "role": "user",
-                        "content": f"Summarize this checkpoint interaction in ONE short sentence (max 10 words):\n\n{truncated}"
-                    }],
-                    max_tokens=50,
-                    temperature=0.3
+                    system_prompt="",
+                    base_url=config.provider_base_url,
+                    api_key=config.provider_api_key
                 )
 
-                summary = response.choices[0].message.content.strip()
+                # Call model for summary
+                response = agent.run(
+                    input_message=f"Summarize this checkpoint interaction in ONE short sentence (max 10 words):\n\n{truncated}"
+                )
+
+                summary = response.get("content", "").strip()
+
+                # Log the LLM call with session_id for cost tracking
+                log_message(
+                    session_id=session_id,
+                    cascade_id="checkpoint_summary",
+                    phase_name="summary_generation",
+                    role="assistant",
+                    content=summary,
+                    model=response.get("model", "google/gemini-2.0-flash-lite"),
+                    cost=response.get("cost", 0),
+                    input_tokens=response.get("tokens_in", 0),
+                    output_tokens=response.get("tokens_out", 0)
+                )
 
                 # Update checkpoint in cache and database
                 with self._cache_lock:
@@ -742,9 +762,6 @@ class CheckpointManager:
                         # Update database
                         if self.use_db:
                             try:
-                                from .config import get_config
-                                config = get_config()
-
                                 if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                                     db = get_db_adapter()
                                     # Escape single quotes for SQL
@@ -760,6 +777,8 @@ class CheckpointManager:
 
             except Exception as e:
                 print(f"[Checkpoints] Failed to generate summary for {checkpoint_id}: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Run in background thread
         thread = threading.Thread(target=generate, daemon=True)

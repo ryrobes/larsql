@@ -1,6 +1,7 @@
 /* HTMLSection - Styles for HTMX iframe wrapper */
 
 .html-section-wrapper {
+  position: relative; /* Required for annotation overlay positioning */
   margin: 1rem 0;
 }
 
@@ -112,6 +113,89 @@
 
 .html-section .w-full { width: 100%; }
 
+/* Annotate button - shown when annotation mode is available */
+.annotate-toggle-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: rgba(26, 26, 26, 0.95);
+  color: #e5e7eb;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  backdrop-filter: blur(4px);
+}
+
+.annotate-toggle-btn:hover {
+  border-color: #a78bfa;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.annotate-toggle-btn.active {
+  border-color: #a78bfa;
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.annotate-toggle-btn.has-annotations {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.annotate-toggle-btn.screenshot-saved {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.html-section-wrapper.has-saved-screenshot {
+  position: relative;
+}
+
+.html-section-wrapper.has-saved-screenshot::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 24px 24px 0;
+  border-color: transparent #10b981 transparent transparent;
+  border-radius: 0 8px 0 0;
+}
+
+.annotation-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 9px;
+  background: #10b981;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Annotation mode indicator */
+.html-section-wrapper.annotating {
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.5);
+  border-radius: 8px;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .html-section {
@@ -121,5 +205,9 @@
   .html-section-dev-warning {
     font-size: 0.75rem;
     padding: 0.5rem 0.75rem;
+  }
+
+  .annotate-toggle-btn span {
+    display: none;
   }
 }

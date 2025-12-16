@@ -34,6 +34,9 @@ except ImportError as e:
 
 checkpoint_bp = Blueprint('checkpoints', __name__)
 
+# Store annotated screenshots for checkpoints (in-memory, keyed by checkpoint_id)
+_annotated_screenshots = {}  # checkpoint_id -> {"url": ..., "path": ..., "timestamp": ...}
+
 # ========== AUDIBLE SIGNAL STORAGE ==========
 # Simple in-memory storage for audible signals
 # The runner polls this to check if an audible was requested
@@ -415,6 +418,20 @@ def respond_to_checkpoint_endpoint(checkpoint_id):
         reasoning = data.get('reasoning')
         confidence = data.get('confidence')
 
+        # Check if there's an annotated screenshot for this checkpoint
+        annotated_screenshot = _annotated_screenshots.pop(checkpoint_id, None)
+        if annotated_screenshot:
+            print(f"[Checkpoint API] Including annotated screenshot in response: {annotated_screenshot['url']}")
+            # Add to response as metadata
+            if isinstance(response, dict):
+                response['_annotated_screenshot'] = annotated_screenshot
+            else:
+                # If response is not a dict, wrap it
+                response = {
+                    'value': response,
+                    '_annotated_screenshot': annotated_screenshot
+                }
+
         # Record the response - the blocking thread in the runner will pick it up
         cm = get_checkpoint_manager()
         cp = cm.respond_to_checkpoint(
@@ -584,4 +601,93 @@ def clear_audible(session_id):
         })
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ========== ANNOTATED SCREENSHOT API ==========
+
+@checkpoint_bp.route('/api/checkpoints/<checkpoint_id>/annotated-screenshot', methods=['POST'])
+def save_annotated_screenshot(checkpoint_id):
+    """
+    Save an annotated screenshot for a checkpoint.
+
+    The frontend captures the HTMX content + annotation canvas using html2canvas
+    and sends the result as a base64 data URL.
+
+    Request body:
+    {
+        "image_data": "data:image/png;base64,..."  // Base64-encoded PNG
+    }
+
+    Returns:
+    - Path to saved image and API URL
+    """
+    import base64
+    from datetime import datetime
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body required"}), 400
+
+        image_data = data.get('image_data')
+        if not image_data:
+            return jsonify({"error": "image_data field required"}), 400
+
+        # Parse data URL
+        if not image_data.startswith('data:image/'):
+            return jsonify({"error": "Invalid image data format. Expected data:image/... URL"}), 400
+
+        # Extract base64 data
+        # Format: data:image/png;base64,<base64data>
+        header, encoded = image_data.split(',', 1)
+        image_bytes = base64.b64decode(encoded)
+
+        # Get checkpoint to find session_id and phase_name
+        cp = None
+        if get_checkpoint_manager:
+            cm = get_checkpoint_manager()
+            cp = cm.get_checkpoint(checkpoint_id)
+
+        if not cp:
+            return jsonify({"error": f"Checkpoint {checkpoint_id} not found"}), 404
+
+        # Build save path: images/{session_id}/{phase_name}/annotated_{checkpoint_id[:8]}_{timestamp}.png
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"annotated_{checkpoint_id[:8]}_{timestamp}.png"
+
+        save_dir = os.path.join(IMAGE_DIR, cp.session_id, cp.phase_name)
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, filename)
+
+        # Write image file
+        with open(save_path, 'wb') as f:
+            f.write(image_bytes)
+
+        print(f"[Checkpoint API] Saved annotated screenshot: {save_path}")
+
+        # Build API URL
+        api_url = f"/api/images/{cp.session_id}/{cp.phase_name}/{filename}"
+
+        # Store reference for inclusion in checkpoint response
+        _annotated_screenshots[checkpoint_id] = {
+            "url": api_url,
+            "path": save_path,
+            "filename": filename,
+            "timestamp": timestamp
+        }
+        print(f"[Checkpoint API] Stored annotated screenshot reference for checkpoint {checkpoint_id}")
+
+        return jsonify({
+            "status": "saved",
+            "checkpoint_id": checkpoint_id,
+            "path": save_path,
+            "url": api_url,
+            "filename": filename
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500

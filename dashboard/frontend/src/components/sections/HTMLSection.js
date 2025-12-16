@@ -1,4 +1,8 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { Icon } from '@iconify/react';
+import html2canvas from 'html2canvas';
+import AnnotationCanvas from './AnnotationCanvas';
+import AnnotationToolbar from './AnnotationToolbar';
 import './HTMLSection.css';
 
 /**
@@ -17,11 +21,109 @@ import './HTMLSection.css';
  * - Auto-injection of checkpoint context headers
  * - Error handling and source display
  * - Branching: Can intercept form submissions to create research branches
+ * - Annotation: Draw on top of rendered content (TLDRAW-style)
  */
-function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranchSubmit }) {
+function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranchSubmit, onAnnotationSave }) {
   const iframeRef = useRef(null);
+  const annotationCanvasRef = useRef(null);
   const [error, setError] = useState(null);
   const [iframeHeight, setIframeHeight] = useState('400px');
+
+  // Annotation state
+  const [annotationMode, setAnnotationMode] = useState(false);
+  const [brushColor, setBrushColor] = useState('#ef4444'); // Red default
+  const [brushSize, setBrushSize] = useState(5); // Medium default
+  const [strokeCount, setStrokeCount] = useState(0);
+  const [isSavingScreenshot, setIsSavingScreenshot] = useState(false);
+  const [savedScreenshotUrl, setSavedScreenshotUrl] = useState(null);
+  const wrapperRef = useRef(null);
+
+  // Annotation handlers
+  const handleStrokesChange = useCallback((strokes) => {
+    setStrokeCount(strokes.length);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    annotationCanvasRef.current?.undo();
+  }, []);
+
+  const handleClear = useCallback(() => {
+    annotationCanvasRef.current?.clear();
+  }, []);
+
+  const handleAnnotationDone = useCallback(() => {
+    // Exit annotation mode but keep strokes visible
+    setAnnotationMode(false);
+
+    // If there are annotations, notify parent
+    if (annotationCanvasRef.current?.hasStrokes()) {
+      const dataURL = annotationCanvasRef.current.toDataURL();
+      console.log('[HTMLSection] Annotation done, strokes:', strokeCount);
+      onAnnotationSave?.(dataURL);
+    }
+  }, [strokeCount, onAnnotationSave]);
+
+  // Save annotated screenshot using html2canvas
+  const handleSaveScreenshot = useCallback(async () => {
+    if (!wrapperRef.current || !checkpointId) {
+      console.error('[HTMLSection] Cannot save screenshot: missing wrapper ref or checkpoint ID');
+      return;
+    }
+
+    setIsSavingScreenshot(true);
+
+    try {
+      console.log('[HTMLSection] Capturing screenshot with html2canvas...');
+
+      // Capture the wrapper (iframe + annotation canvas)
+      const canvas = await html2canvas(wrapperRef.current, {
+        backgroundColor: '#1a1a1a',
+        scale: 2, // Higher quality
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        // Ignore the toolbar during capture
+        ignoreElements: (element) => {
+          return element.classList.contains('annotation-toolbar') ||
+                 element.classList.contains('annotate-toggle-btn');
+        }
+      });
+
+      const dataURL = canvas.toDataURL('image/png');
+      console.log('[HTMLSection] Screenshot captured, size:', dataURL.length);
+
+      // Send to backend
+      const response = await fetch(`http://localhost:5001/api/checkpoints/${checkpointId}/annotated-screenshot`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image_data: dataURL }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save screenshot: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('[HTMLSection] Screenshot saved:', result);
+
+      setSavedScreenshotUrl(result.url);
+
+      // Notify parent if callback provided
+      onAnnotationSave?.(result.url, result);
+
+    } catch (err) {
+      console.error('[HTMLSection] Screenshot capture failed:', err);
+      alert(`Failed to save screenshot: ${err.message}`);
+    } finally {
+      setIsSavingScreenshot(false);
+    }
+  }, [checkpointId, onAnnotationSave]);
+
+  const toggleAnnotationMode = useCallback(() => {
+    setAnnotationMode(prev => !prev);
+  }, []);
 
   useEffect(() => {
     // Security warning in development
@@ -226,12 +328,59 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
   }
 
   return (
-    <div className="html-section-wrapper">
+    <div
+      ref={wrapperRef}
+      className={`html-section-wrapper ${annotationMode ? 'annotating' : ''} ${savedScreenshotUrl ? 'has-saved-screenshot' : ''}`}
+    >
       {process.env.NODE_ENV === 'development_ZOO' && ( // commented out for now. ugly.
         <div className="html-section-dev-warning">
           ⚠️ Development Mode: Unsanitized HTML in iframe. Never use in production without DOMPurify.
         </div>
       )}
+
+      {/* Annotate toggle button - visible when not annotating */}
+      {!annotationMode && (
+        <button
+          className={`annotate-toggle-btn ${strokeCount > 0 ? 'has-annotations' : ''} ${savedScreenshotUrl ? 'screenshot-saved' : ''}`}
+          onClick={toggleAnnotationMode}
+          title={savedScreenshotUrl ? "Screenshot saved! Click to annotate more" : "Draw annotations on this content"}
+        >
+          <Icon icon={savedScreenshotUrl ? "mdi:check-circle" : "mdi:draw"} width="16" />
+          <span>{savedScreenshotUrl ? "Saved" : "Annotate"}</span>
+          {strokeCount > 0 && !savedScreenshotUrl && (
+            <span className="annotation-badge">{strokeCount}</span>
+          )}
+        </button>
+      )}
+
+      {/* Annotation toolbar - visible when annotating */}
+      {annotationMode && (
+        <AnnotationToolbar
+          brushColor={brushColor}
+          brushSize={brushSize}
+          onColorChange={setBrushColor}
+          onSizeChange={setBrushSize}
+          onUndo={handleUndo}
+          onClear={handleClear}
+          onDone={handleAnnotationDone}
+          onSaveScreenshot={handleSaveScreenshot}
+          canUndo={strokeCount > 0}
+          strokeCount={strokeCount}
+          isSaving={isSavingScreenshot}
+          hasSavedScreenshot={!!savedScreenshotUrl}
+        />
+      )}
+
+      {/* Annotation canvas - always rendered but only active when annotationMode is true */}
+      <AnnotationCanvas
+        ref={annotationCanvasRef}
+        targetRef={iframeRef}
+        enabled={annotationMode}
+        brushColor={brushColor}
+        brushSize={brushSize}
+        onStrokesChange={handleStrokesChange}
+      />
+
       <iframe
         ref={iframeRef}
         className="html-section-iframe"
