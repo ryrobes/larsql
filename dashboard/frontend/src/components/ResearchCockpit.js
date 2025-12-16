@@ -39,10 +39,39 @@ function ResearchCockpit({
   const [cascadeId, setCascadeId] = useState(null);
   const [showPicker, setShowPicker] = useState(!initialSessionId);
 
+  // Update sessionId when initialSessionId prop changes (e.g., navigating to saved session)
+  useEffect(() => {
+    console.log('[ResearchCockpit] initialSessionId changed:', initialSessionId);
+
+    if (initialSessionId) {
+      console.log('[ResearchCockpit] Loading session:', initialSessionId);
+      setSessionId(initialSessionId);
+      setShowPicker(false);
+      setCascadeId(null); // Will be fetched from session data
+      setCheckpoint(null);
+      setTimeline([]);
+      setOrchestrationState({
+        currentPhase: null,
+        currentModel: null,
+        totalCost: 0,
+        turnCount: 0,
+        status: 'idle',
+        lastToolCall: null,
+        phaseHistory: [],
+        soundings: null
+      });
+    } else {
+      console.log('[ResearchCockpit] No initial session, showing picker');
+      setShowPicker(true);
+    }
+  }, [initialSessionId]);
+
   // Live data
   const [checkpoint, setCheckpoint] = useState(null);
   const [sessionData, setSessionData] = useState(null);
   const [timeline, setTimeline] = useState([]); // History of interactions
+  const [savedSessionData, setSavedSessionData] = useState(null); // Full saved session with checkpoints
+  const [isSavedSession, setIsSavedSession] = useState(false);
   const [orchestrationState, setOrchestrationState] = useState({
     currentPhase: null,
     currentModel: null,
@@ -56,6 +85,43 @@ function ResearchCockpit({
 
   // SSE for real-time updates
   const eventSourceRef = useRef(null);
+
+  // Fetch saved session data (if exists)
+  const fetchSavedSession = useCallback(async () => {
+    if (!sessionId) return;
+
+    try {
+      // Check if this session has been saved
+      const res = await fetch(`http://localhost:5001/api/research-sessions?limit=100`);
+      const data = await res.json();
+
+      if (!data.error && data.sessions) {
+        const saved = data.sessions.find(s => s.original_session_id === sessionId);
+
+        if (saved) {
+          console.log('[ResearchCockpit] Found saved session:', saved);
+
+          // Fetch full details
+          const detailRes = await fetch(`http://localhost:5001/api/research-sessions/${saved.id}`);
+          const detailData = await detailRes.json();
+
+          if (!detailData.error) {
+            console.log('[ResearchCockpit] Loaded full saved session with', detailData.checkpoints_data?.length, 'checkpoints');
+            setSavedSessionData(detailData);
+            setIsSavedSession(true);
+            return;
+          }
+        }
+      }
+
+      // Not a saved session
+      setIsSavedSession(false);
+      setSavedSessionData(null);
+
+    } catch (err) {
+      console.error('[ResearchCockpit] Failed to fetch saved session:', err);
+    }
+  }, [sessionId]);
 
   // Fetch session data
   const fetchSessionData = useCallback(async () => {
@@ -309,6 +375,7 @@ function ResearchCockpit({
     if (!sessionId) return;
 
     // Initial fetch
+    fetchSavedSession(); // Check if this is a saved session
     fetchSessionData();
     fetchCheckpoint();
 
@@ -319,7 +386,7 @@ function ResearchCockpit({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [sessionId, fetchSessionData, fetchCheckpoint]);
+  }, [sessionId, fetchSessionData, fetchCheckpoint, fetchSavedSession]);
 
   // Handle cascade selection
   const handleCascadeSelected = async (cascade, input) => {
@@ -422,6 +489,12 @@ function ResearchCockpit({
     });
   };
 
+  // Sessions are now auto-saved! No manual save needed.
+  // The backend automatically saves on:
+  // - cascade_start (initial record)
+  // - checkpoint_resumed (incremental updates)
+  // - cascade_complete (finalize)
+
   return (
     <div className="research-cockpit">
       <Header
@@ -479,13 +552,18 @@ function ResearchCockpit({
         <CascadePicker
           onSelect={handleCascadeSelected}
           onCancel={() => {
+            // If no session loaded, go back to previous view
             if (!sessionId) {
-              // No session yet, go back
               if (onBack) onBack();
             } else {
               // Has session, just close picker
               setShowPicker(false);
             }
+          }}
+          onResumeSession={(session) => {
+            // Session navigation is handled by CascadePicker changing hash
+            // Just close the picker, useEffect will handle the rest
+            setShowPicker(false);
           }}
         />
       )}
@@ -495,8 +573,40 @@ function ResearchCockpit({
         <div className="cockpit-layout">
           {/* Main Content Area - Timeline */}
           <div className="cockpit-main">
-            {/* Current Checkpoint (if any) */}
-            {checkpoint && checkpoint.ui_spec && (
+            {/* Saved Session Timeline (expandable checkpoints) */}
+            {isSavedSession && savedSessionData && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
+              <div className="saved-session-timeline">
+                <div className="timeline-header-section">
+                  <Icon icon="mdi:history" width="24" />
+                  <div className="timeline-header-text">
+                    <h2>Saved Research Session</h2>
+                    <p>{savedSessionData.title}</p>
+                  </div>
+                  <div className="timeline-stats">
+                    <span className="stat-badge">
+                      <Icon icon="mdi:currency-usd" width="14" />
+                      ${savedSessionData.total_cost?.toFixed(4)}
+                    </span>
+                    <span className="stat-badge">
+                      <Icon icon="mdi:counter" width="14" />
+                      {savedSessionData.total_turns} turns
+                    </span>
+                  </div>
+                </div>
+
+                {savedSessionData.checkpoints_data.map((checkpointData, idx) => (
+                  <ExpandableCheckpoint
+                    key={checkpointData.id || idx}
+                    checkpoint={checkpointData}
+                    index={idx}
+                    sessionId={sessionId}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Current Checkpoint (if any) - for live sessions */}
+            {!isSavedSession && checkpoint && checkpoint.ui_spec && (
               <div className="checkpoint-container">
                 {(() => {
                   const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
@@ -599,6 +709,114 @@ function ResearchCockpit({
             orchestrationState={orchestrationState}
             sessionData={sessionData}
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ExpandableCheckpoint - Single checkpoint in the saved session timeline
+ * Shows collapsed summary, expands to show full HTMX UI + user response
+ */
+function ExpandableCheckpoint({ checkpoint, index, sessionId }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Parse ui_spec if it's a string
+  let uiSpec = checkpoint.ui_spec;
+  if (typeof uiSpec === 'string') {
+    try {
+      uiSpec = JSON.parse(uiSpec);
+    } catch (e) {
+      console.error('[ExpandableCheckpoint] Failed to parse ui_spec:', e);
+      uiSpec = null;
+    }
+  }
+
+  // Parse response if it's a string
+  let response = checkpoint.response;
+  if (typeof response === 'string') {
+    try {
+      response = JSON.parse(response);
+    } catch (e) {
+      // Keep as string if not valid JSON
+    }
+  }
+
+  const hasHTMLSection = uiSpec?.sections?.some(s => s.type === 'html');
+  const htmlSection = uiSpec?.sections?.find(s => s.type === 'html');
+
+  return (
+    <div className={`expandable-checkpoint ${expanded ? 'expanded' : 'collapsed'}`}>
+      {/* Collapsed Header - Always Visible */}
+      <div
+        className="checkpoint-header"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="checkpoint-number">
+          {index + 1}
+        </div>
+        <div className="checkpoint-summary">
+          <h3>{checkpoint.phase_output || 'Interaction'}</h3>
+          <div className="checkpoint-meta">
+            <span className="checkpoint-timestamp">
+              <Icon icon="mdi:clock-outline" width="14" />
+              {checkpoint.created_at ? new Date(checkpoint.created_at).toLocaleTimeString() : 'N/A'}
+            </span>
+            <span className="checkpoint-type">
+              <Icon icon="mdi:tag" width="14" />
+              {checkpoint.checkpoint_type || 'decision'}
+            </span>
+          </div>
+        </div>
+        <Icon
+          icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+          width="24"
+          className="expand-icon"
+        />
+      </div>
+
+      {/* Expanded Content - Full HTMX UI */}
+      {expanded && (
+        <div className="checkpoint-expanded-content">
+          {/* Render the full HTMX UI that was shown */}
+          {hasHTMLSection && htmlSection && (
+            <div className="checkpoint-html-replay">
+              <div className="replay-label">
+                <Icon icon="mdi:replay" width="16" />
+                <span>Original UI</span>
+              </div>
+              <HTMLSection
+                spec={htmlSection}
+                checkpointId={checkpoint.id}
+                sessionId={sessionId}
+              />
+            </div>
+          )}
+
+          {/* Show the user's response */}
+          {response && (
+            <div className="checkpoint-response-section">
+              <div className="response-label">
+                <Icon icon="mdi:account" width="16" />
+                <span>Your Response</span>
+              </div>
+              <div className="response-content">
+                {typeof response === 'object' ? (
+                  <pre className="response-json">{JSON.stringify(response, null, 2)}</pre>
+                ) : (
+                  <div className="response-text">{response}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* No HTML section - show text */}
+          {!hasHTMLSection && (
+            <div className="checkpoint-text-content">
+              <p>{checkpoint.phase_output}</p>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -2957,13 +2957,19 @@ def run_cascade():
             cascade_path = temp_file
 
         import threading
-        from windlass.event_hooks import EventPublishingHooks
+        from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
 
         def run_in_background():
             try:
                 # Enable checkpoint system for HITL tools
                 os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
-                hooks = EventPublishingHooks()
+
+                # Combine event publishing + auto-save hooks
+                hooks = CompositeHooks(
+                    EventPublishingHooks(),
+                    ResearchSessionAutoSaveHooks()
+                )
+
                 execute_cascade(cascade_path, inputs, session_id, hooks=hooks)
             except Exception as e:
                 print(f"Cascade execution error: {e}")
@@ -4242,4 +4248,353 @@ if __name__ == '__main__':
 
     print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()
+
+
+# ==============================================================================
+# Research Sessions API - Temporal versioning for Research Cockpit
+# ==============================================================================
+
+@app.route('/api/research-sessions', methods=['GET'])
+def list_research_sessions_api():
+    """List saved research sessions with optional filtering."""
+    try:
+        cascade_id = request.args.get('cascade_id')
+        limit = int(request.args.get('limit', 20))
+
+        conn = get_db_connection()
+
+        filters = []
+        if cascade_id:
+            filters.append(f"cascade_id = '{cascade_id}'")
+
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        query = f"""
+            SELECT
+                id, original_session_id, cascade_id, title, description,
+                created_at, frozen_at, status,
+                total_cost, total_turns, total_input_tokens, total_output_tokens,
+                duration_seconds, tags
+            FROM research_sessions
+            {where_clause}
+            ORDER BY frozen_at DESC
+            LIMIT {limit}
+        """
+
+        result = conn.execute(query).fetchall()
+        columns = ['id', 'original_session_id', 'cascade_id', 'title', 'description',
+                   'created_at', 'frozen_at', 'status',
+                   'total_cost', 'total_turns', 'total_input_tokens', 'total_output_tokens',
+                   'duration_seconds', 'tags']
+
+        sessions = []
+        for row in result:
+            session = dict(zip(columns, row))
+            # Parse tags
+            if session.get('tags'):
+                try:
+                    session['tags'] = json.loads(session['tags']) if isinstance(session['tags'], str) else session['tags']
+                except:
+                    session['tags'] = []
+            sessions.append(session)
+
+        conn.close()
+
+        return jsonify({
+            'sessions': sessions,
+            'count': len(sessions)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research-sessions/<research_session_id>', methods=['GET'])
+def get_research_session_api(research_session_id):
+    """Get full research session data including context for resumption."""
+    try:
+        conn = get_db_connection()
+
+        query = """
+            SELECT * FROM research_sessions
+            WHERE id = ?
+        """
+
+        result = conn.execute(query, [research_session_id]).fetchone()
+
+        if not result:
+            conn.close()
+            return jsonify({'error': 'Research session not found'}), 404
+
+        # Get column names
+        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'research_sessions'").fetchall()
+        column_names = [col[0] for col in columns]
+
+        session = dict(zip(column_names, result))
+        conn.close()
+
+        # Parse JSON fields
+        json_fields = [
+            'context_snapshot', 'checkpoints_data', 'entries_snapshot',
+            'screenshots', 'phases_visited', 'tools_used', 'tags'
+        ]
+
+        for field in json_fields:
+            if session.get(field):
+                try:
+                    session[field] = json.loads(session[field]) if isinstance(session[field], str) else session[field]
+                except:
+                    session[field] = [] if field.endswith('s') or field.endswith('data') else {}
+
+        return jsonify(session)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research-sessions/save', methods=['POST'])
+def save_research_session_api():
+    """
+    Save a research session from the UI.
+
+    Body: {
+        "session_id": "research_123",
+        "title": "Optional title",
+        "description": "Optional description",
+        "tags": ["tag1", "tag2"]
+    }
+    """
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+
+        if not session_id:
+            return jsonify({'error': 'session_id required'}), 400
+
+        # Fetch all session data
+        conn = get_db_connection()
+
+        # Get entries
+        entries_query = """
+            SELECT * FROM unified_logs
+            WHERE session_id = ?
+            ORDER BY timestamp
+        """
+        entries_result = conn.execute(entries_query, [session_id]).fetchall()
+
+        # Get column names for entries
+        entries_columns = conn.execute(
+            "SELECT name FROM system.columns WHERE table = 'unified_logs'"
+        ).fetchall()
+        entries_column_names = [col[0] for col in entries_columns]
+
+        entries = [dict(zip(entries_column_names, row)) for row in entries_result]
+
+        # Get checkpoints
+        checkpoints_query = """
+            SELECT
+                id, phase_name, checkpoint_type,
+                phase_output, ui_spec,
+                response, responded_at,
+                created_at, status
+            FROM checkpoints
+            WHERE session_id = ?
+            ORDER BY created_at
+        """
+
+        # Try to get checkpoints (table might not exist)
+        checkpoints = []
+        try:
+            checkpoint_result = conn.execute(checkpoints_query, [session_id]).fetchall()
+            checkpoint_columns = ['id', 'phase_name', 'checkpoint_type', 'phase_output',
+                                   'ui_spec', 'response', 'responded_at', 'created_at', 'status']
+
+            for row in checkpoint_result:
+                cp = dict(zip(checkpoint_columns, row))
+                cp['can_branch_from'] = cp.get('status') == 'responded'
+                checkpoints.append(cp)
+        except:
+            print("[ResearchSessions] No checkpoints table or no checkpoints found")
+
+        conn.close()
+
+        if not entries:
+            return jsonify({'error': 'Session not found or has no entries'}), 404
+
+        # Compute metrics
+        first_entry = entries[0]
+        last_entry = entries[-1]
+        cascade_id = first_entry.get('cascade_id', 'unknown')
+
+        total_cost = sum(e.get('cost', 0) for e in entries if e.get('cost'))
+        total_turns = len([e for e in entries if e.get('role') == 'assistant'])
+        total_input_tokens = sum(e.get('input_tokens', 0) for e in entries)
+        total_output_tokens = sum(e.get('output_tokens', 0) for e in entries)
+
+        # Duration
+        duration_seconds = 0.0
+        if first_entry.get('timestamp') and last_entry.get('timestamp'):
+            from datetime import datetime
+            first_ts = first_entry['timestamp']
+            last_ts = last_entry['timestamp']
+
+            if isinstance(first_ts, str):
+                first_dt = datetime.fromisoformat(first_ts.replace('Z', '+00:00'))
+            else:
+                first_dt = first_ts
+
+            if isinstance(last_ts, str):
+                last_dt = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
+            else:
+                last_dt = last_ts
+
+            duration_seconds = (last_dt - first_dt).total_seconds()
+
+        # Phases and tools
+        phases_visited = list(dict.fromkeys([e.get('phase_name') for e in entries if e.get('phase_name')]))
+
+        tools_used = []
+        for e in entries:
+            if e.get('tool_calls_json'):
+                try:
+                    tool_calls = json.loads(e['tool_calls_json']) if isinstance(e['tool_calls_json'], str) else e['tool_calls_json']
+                    if isinstance(tool_calls, list):
+                        for tc in tool_calls:
+                            tool_name = tc.get('function', {}).get('name')
+                            if tool_name and tool_name not in tools_used:
+                                tools_used.append(tool_name)
+                except:
+                    pass
+
+        # Build context snapshot
+        context_snapshot = {
+            "state": {},  # Would need Echo instance to get this
+            "history": [],  # Would need Echo instance
+            "lineage": {}
+        }
+
+        # Auto-generate title if not provided
+        title = data.get('title')
+        if not title and checkpoints:
+            question = checkpoints[0].get('phase_output', '')
+            title = question[:80] + ("..." if len(question) > 80 else "")
+        if not title:
+            title = f"Research Session - {session_id[:8]}"
+
+        # Auto-generate description
+        description = data.get('description')
+        if not description:
+            description = f"Research session with {len(checkpoints)} interactions and {len(tools_used)} tool calls"
+
+        # Get mermaid graph
+        from ...windlass.config import get_config as get_windlass_config
+        wl_cfg = get_windlass_config()
+        graph_path = os.path.join(wl_cfg.graph_dir, f"{session_id}.mmd")
+        mermaid_graph = ""
+        if os.path.exists(graph_path):
+            with open(graph_path, 'r') as f:
+                mermaid_graph = f.read()
+
+        # Generate research session ID
+        research_id = f"research_session_{uuid4().hex[:12]}"
+        now = datetime.utcnow()
+
+        research_session = {
+            "id": research_id,
+            "original_session_id": session_id,
+            "cascade_id": cascade_id,
+            "title": title,
+            "description": description,
+            "created_at": first_entry.get('timestamp', now),
+            "frozen_at": now,
+            "status": "completed",
+
+            # Context (JSON strings)
+            "context_snapshot": json.dumps(context_snapshot),
+            "checkpoints_data": json.dumps(checkpoints),
+            "entries_snapshot": json.dumps(entries, default=str),  # default=str for datetime serialization
+
+            # Visual
+            "mermaid_graph": mermaid_graph,
+            "screenshots": json.dumps([]),
+
+            # Metrics
+            "total_cost": total_cost,
+            "total_turns": total_turns,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "duration_seconds": duration_seconds,
+            "phases_visited": json.dumps(phases_visited),
+            "tools_used": json.dumps(tools_used),
+
+            # Taxonomy
+            "tags": json.dumps(data.get('tags', [])),
+
+            # Branching (future)
+            "parent_session_id": None,
+            "branch_point_checkpoint_id": None,
+
+            "updated_at": now
+        }
+
+        # Save to database
+        conn = get_db_connection()
+        conn.execute("""
+            INSERT INTO research_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            research_session['id'],
+            research_session['original_session_id'],
+            research_session['cascade_id'],
+            research_session['title'],
+            research_session['description'],
+            research_session['created_at'],
+            research_session['frozen_at'],
+            research_session['status'],
+            research_session['context_snapshot'],
+            research_session['checkpoints_data'],
+            research_session['entries_snapshot'],
+            research_session['mermaid_graph'],
+            research_session['screenshots'],
+            research_session['total_cost'],
+            research_session['total_turns'],
+            research_session['total_input_tokens'],
+            research_session['total_output_tokens'],
+            research_session['duration_seconds'],
+            research_session['phases_visited'],
+            research_session['tools_used'],
+            research_session['tags'],
+            research_session['parent_session_id'],
+            research_session['branch_point_checkpoint_id'],
+            research_session['updated_at']
+        ])
+        conn.close()
+
+        return jsonify({
+            'saved': True,
+            'research_session_id': research_id,
+            'title': title,
+            'checkpoints_count': len(checkpoints),
+            'total_cost': total_cost
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+# ==============================================================================
+# Start the Flask app
+# ==============================================================================
+
+if __name__ == '__main__':
+    print(f"🌊 Windlass Dashboard Backend")
+    print(f"Backend: http://localhost:5001")
+    print(f"Frontend: http://localhost:5550")
+    print()
+
     app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)

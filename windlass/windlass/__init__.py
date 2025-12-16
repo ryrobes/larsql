@@ -17,6 +17,15 @@ from .eddies.extras import run_code, take_screenshot, linux_shell
 from .eddies.human import ask_human, ask_human_custom, request_decision
 from .eddies.display import show_ui
 from .eddies.artifacts import create_artifact, list_artifacts, get_artifact
+from .eddies.research_sessions import (
+    save_research_session,
+    list_research_sessions,
+    get_research_session,
+    _fetch_session_entries,
+    _compute_session_metrics,
+    _fetch_mermaid_graph,
+    _fetch_checkpoints_for_session
+)
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
@@ -34,6 +43,9 @@ register_tackle("show_ui", show_ui)
 register_tackle("create_artifact", create_artifact)
 register_tackle("list_artifacts", list_artifacts)
 register_tackle("get_artifact", get_artifact)
+register_tackle("save_research_session", save_research_session)
+register_tackle("list_research_sessions", list_research_sessions)
+register_tackle("get_research_session", get_research_session)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
 register_tackle("create_chart", create_chart)

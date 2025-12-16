@@ -30,6 +30,8 @@ function LiveOrchestrationSidebar({
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [mermaidContent, setMermaidContent] = useState(null);
   const [mermaidCollapsed, setMermaidCollapsed] = useState(false);
+  const [previousSessions, setPreviousSessions] = useState([]);
+  const [sessionsCollapsed, setSessionsCollapsed] = useState(true);
   const mermaidRef = React.useRef(null);
 
   // Animate cost changes
@@ -120,6 +122,33 @@ function LiveOrchestrationSidebar({
     renderMermaid();
   }, [mermaidContent, sessionId]);
 
+  // Fetch previous research sessions
+  const fetchPreviousSessions = useCallback(async () => {
+    if (!cascadeId) return;
+
+    try {
+      const res = await fetch(`http://localhost:5001/api/research-sessions?cascade_id=${cascadeId}&limit=10`);
+      const data = await res.json();
+
+      if (!data.error) {
+        setPreviousSessions(data.sessions || []);
+      }
+    } catch (err) {
+      console.error('[LiveOrchestrationSidebar] Failed to fetch previous sessions:', err);
+    }
+  }, [cascadeId]);
+
+  // Fetch previous sessions on mount and when cascade changes
+  useEffect(() => {
+    if (cascadeId) {
+      fetchPreviousSessions();
+
+      // Auto-refresh every 5 seconds to show newly saved sessions
+      const interval = setInterval(fetchPreviousSessions, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [cascadeId, fetchPreviousSessions]);
+
   // Status indicator colors and icons
   const statusConfig = {
     idle: {
@@ -172,7 +201,7 @@ function LiveOrchestrationSidebar({
 
   return (
     <div className="live-orchestration-sidebar">
-      {/* Live Indicator */}
+      {/* Live Indicator + Auto-Save Badge */}
       <div className="sidebar-live-indicator">
         <div className="live-dot" />
         <span className="live-label">LIVE</span>
@@ -180,6 +209,14 @@ function LiveOrchestrationSidebar({
           {lastUpdate.toLocaleTimeString()}
         </span>
       </div>
+
+      {/* Auto-Save Indicator */}
+      {sessionId && sessionId.startsWith('research_') && (
+        <div className="auto-save-indicator">
+          <Icon icon="mdi:content-save-check" width="14" />
+          <span>Auto-saving</span>
+        </div>
+      )}
 
       {/* Status Header */}
       <div className="sidebar-section status-section">
@@ -374,6 +411,76 @@ function LiveOrchestrationSidebar({
                 ref={mermaidRef}
                 className="mermaid-content"
               />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Previous Research Sessions */}
+      {previousSessions.length > 0 && (
+        <div className="sidebar-section sessions-section">
+          <div
+            className="section-header clickable"
+            onClick={() => setSessionsCollapsed(!sessionsCollapsed)}
+            style={{ cursor: 'pointer' }}
+            title="Auto-saved sessions - click to browse"
+          >
+            <Icon icon="mdi:history" width="18" />
+            <span>Saved Sessions ({previousSessions.length})</span>
+            <Icon
+              icon={sessionsCollapsed ? 'mdi:chevron-down' : 'mdi:chevron-up'}
+              width="18"
+              style={{ marginLeft: 'auto' }}
+            />
+          </div>
+          {!sessionsCollapsed && (
+            <div className="previous-sessions-list">
+              {previousSessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="session-item"
+                  onClick={() => {
+                    // Navigate to this session
+                    window.location.hash = `#/cockpit/${session.original_session_id}`;
+                  }}
+                >
+                  <div className="session-item-header">
+                    <h4 className="session-title">
+                      {session.title}
+                    </h4>
+                    <div className="session-date">
+                      {new Date(session.frozen_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  {session.description && (
+                    <p className="session-description">
+                      {session.description.substring(0, 80)}
+                      {session.description.length > 80 ? '...' : ''}
+                    </p>
+                  )}
+                  <div className="session-stats">
+                    <span className="session-stat">
+                      <Icon icon="mdi:currency-usd" width="12" />
+                      ${session.total_cost?.toFixed(4) || '0.0000'}
+                    </span>
+                    <span className="session-stat">
+                      <Icon icon="mdi:counter" width="12" />
+                      {session.total_turns || 0} turns
+                    </span>
+                    <span className="session-stat">
+                      <Icon icon="mdi:clock-outline" width="12" />
+                      {Math.floor((session.duration_seconds || 0) / 60)}m
+                    </span>
+                  </div>
+                  {session.tags && session.tags.length > 0 && (
+                    <div className="session-tags">
+                      {session.tags.slice(0, 3).map((tag, idx) => (
+                        <span key={idx} className="session-tag">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

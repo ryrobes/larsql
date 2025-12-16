@@ -2,11 +2,14 @@
 Event Publishing Hooks - Publishes lifecycle events to the event bus
 
 Enhanced to include sounding/turn context for proper UI rendering.
+Includes auto-save for Research Cockpit sessions.
 """
 from datetime import datetime
 from typing import Any
 from .runner import WindlassHooks, HookAction
 from .events import get_event_bus, Event
+import os
+import json
 
 class EventPublishingHooks(WindlassHooks):
     """
@@ -273,4 +276,184 @@ class CompositeHooks(WindlassHooks):
         for hook in self.hooks:
             if hasattr(hook, 'on_checkpoint_resumed'):
                 hook.on_checkpoint_resumed(session_id, checkpoint_id, phase_name, response, cascade_id)
+        return {"action": HookAction.CONTINUE}
+
+
+class ResearchSessionAutoSaveHooks(WindlassHooks):
+    """
+    Auto-saves Research Cockpit sessions to research_sessions table.
+
+    Triggers:
+    - on_cascade_start: Create initial record (status="active")
+    - on_checkpoint_resumed: Update with latest interaction
+    - on_cascade_complete: Finalize (status="completed")
+
+    Only saves sessions with session_id starting with "research_"
+    """
+
+    def __init__(self):
+        self._auto_save_enabled = os.environ.get('WINDLASS_AUTO_SAVE_RESEARCH', 'true').lower() == 'true'
+
+    def _is_research_session(self, session_id: str) -> bool:
+        """Check if this is a Research Cockpit session."""
+        return session_id and session_id.startswith('research_')
+
+    def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active"):
+        """Save or update research session in database."""
+        if not self._auto_save_enabled:
+            return
+
+        try:
+            from .eddies.research_sessions import _fetch_session_entries, _compute_session_metrics, _fetch_mermaid_graph, _fetch_checkpoints_for_session
+            from .config import get_config
+            from .db_adapter import get_db
+            from uuid import uuid4
+
+            cfg = get_config()
+            db = get_db()
+
+            # Fetch session data
+            entries = _fetch_session_entries(session_id)
+            if not entries:
+                print(f"[ResearchAutoSave] No entries yet for {session_id}, skipping")
+                return
+
+            checkpoints = _fetch_checkpoints_for_session(session_id)
+            metrics = _compute_session_metrics(entries)
+            mermaid = _fetch_mermaid_graph(session_id)
+
+            # Auto-generate title from first checkpoint
+            title = f"Research Session - {session_id[:12]}"
+            description = f"Auto-saved research session"
+
+            if checkpoints and len(checkpoints) > 0:
+                first_question = checkpoints[0].get('phase_output', '')
+                if first_question:
+                    title = first_question[:80] + ("..." if len(first_question) > 80 else "")
+                description = f"Research session with {len(checkpoints)} interactions"
+
+            # Check if session already exists
+            research_id = f"research_session_{session_id}"
+
+            # Use unified db adapter
+            now = datetime.utcnow()
+            first_entry = entries[0] if entries else {}
+            created_at = first_entry.get('timestamp', now)
+
+            # Check if exists
+            existing_result = db.query(f"SELECT id FROM research_sessions WHERE original_session_id = '{session_id}' LIMIT 1")
+            existing = list(existing_result) if existing_result else []
+
+            if existing:
+                # Update existing - use simple UPDATE (ALTER TABLE is ClickHouse-specific)
+                try:
+                    # Delete old record and insert new one (safer than ALTER TABLE)
+                    db.execute(f"DELETE FROM research_sessions WHERE original_session_id = '{session_id}'")
+
+                    db.insert_rows('research_sessions', [{
+                        'id': research_id,
+                        'original_session_id': session_id,
+                        'cascade_id': cascade_id,
+                        'title': title,
+                        'description': description,
+                        'created_at': created_at,
+                        'frozen_at': now,
+                        'status': status,
+                        'context_snapshot': json.dumps({}),
+                        'checkpoints_data': json.dumps(checkpoints, default=str),
+                        'entries_snapshot': json.dumps(entries, default=str),
+                        'mermaid_graph': mermaid,
+                        'screenshots': json.dumps([]),
+                        'total_cost': metrics['total_cost'],
+                        'total_turns': metrics['total_turns'],
+                        'total_input_tokens': metrics['total_input_tokens'],
+                        'total_output_tokens': metrics['total_output_tokens'],
+                        'duration_seconds': metrics['duration_seconds'],
+                        'phases_visited': json.dumps(metrics['phases_visited']),
+                        'tools_used': json.dumps(metrics['tools_used']),
+                        'tags': json.dumps([]),
+                        'parent_session_id': None,
+                        'branch_point_checkpoint_id': None,
+                        'updated_at': now
+                    }])
+                    print(f"[ResearchAutoSave] ✓ Updated session {session_id} (status={status})")
+                except Exception as e:
+                    print(f"[ResearchAutoSave] ⚠ Update failed, trying insert: {e}")
+
+            else:
+                # Insert new
+                db.insert_rows('research_sessions', [{
+                    'id': research_id,
+                    'original_session_id': session_id,
+                    'cascade_id': cascade_id,
+                    'title': title,
+                    'description': description,
+                    'created_at': created_at,
+                    'frozen_at': now,
+                    'status': status,
+                    'context_snapshot': json.dumps({}),
+                    'checkpoints_data': json.dumps(checkpoints, default=str),
+                    'entries_snapshot': json.dumps(entries, default=str),
+                    'mermaid_graph': mermaid,
+                    'screenshots': json.dumps([]),
+                    'total_cost': metrics['total_cost'],
+                    'total_turns': metrics['total_turns'],
+                    'total_input_tokens': metrics['total_input_tokens'],
+                    'total_output_tokens': metrics['total_output_tokens'],
+                    'duration_seconds': metrics['duration_seconds'],
+                    'phases_visited': json.dumps(metrics['phases_visited']),
+                    'tools_used': json.dumps(metrics['tools_used']),
+                    'tags': json.dumps([]),
+                    'parent_session_id': None,
+                    'branch_point_checkpoint_id': None,
+                    'updated_at': now
+                }])
+                print(f"[ResearchAutoSave] ✓ Created session {session_id} (status={status})")
+
+        except Exception as e:
+            print(f"[ResearchAutoSave] ⚠ Failed to save session {session_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_cascade_start(self, cascade_id: str, session_id: str, context: dict) -> dict:
+        if self._is_research_session(session_id):
+            print(f"[ResearchAutoSave] Creating initial record for {session_id}")
+            # Create initial record in background (don't block cascade start)
+            import threading
+            thread = threading.Thread(
+                target=self._save_or_update_session,
+                args=(session_id, cascade_id, "active")
+            )
+            thread.daemon = True
+            thread.start()
+
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, phase_name: str,
+                              response: Any = None, cascade_id: str = None) -> dict:
+        if self._is_research_session(session_id):
+            print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint response")
+            # Update in background
+            import threading
+            thread = threading.Thread(
+                target=self._save_or_update_session,
+                args=(session_id, cascade_id or "unknown", "active")
+            )
+            thread.daemon = True
+            thread.start()
+
+        return {"action": HookAction.CONTINUE}
+
+    def on_cascade_complete(self, cascade_id: str, session_id: str, result: dict) -> dict:
+        if self._is_research_session(session_id):
+            print(f"[ResearchAutoSave] Finalizing session {session_id}")
+            # Finalize in background
+            import threading
+            thread = threading.Thread(
+                target=self._save_or_update_session,
+                args=(session_id, cascade_id, "completed")
+            )
+            thread.daemon = True
+            thread.start()
+
         return {"action": HookAction.CONTINUE}

@@ -166,6 +166,51 @@ See `examples/research_cockpit_demo.yaml` for a complete example with:
 
 ---
 
+## Auto-Save: Git for Conversations
+
+**Every Research Cockpit session is automatically saved!** No buttons, no friction.
+
+### How It Works
+
+Sessions are auto-saved at three points:
+1. **On cascade start** → Creates initial record (status: "active")
+2. **After each checkpoint response** → Updates with latest interaction
+3. **On cascade complete** → Finalizes (status: "completed")
+
+### What's Captured
+
+Each auto-save stores:
+- ✅ Full conversation history
+- ✅ All checkpoint interactions (branch points!)
+- ✅ Complete execution log
+- ✅ Mermaid graph (live updates)
+- ✅ Metrics (cost, turns, tokens)
+- ✅ Tools used & phases visited
+
+### Browse Saved Sessions
+
+In the sidebar (bottom):
+- **"Saved Sessions (N)"** section appears
+- Auto-refreshes every 5 seconds
+- Click any session to reload it
+- Shows cost, turns, duration, tags
+
+### Visual Indicators
+
+- 🟢 **"Auto-saving"** badge in sidebar (pulsing checkmark)
+- 🔴 **"LIVE"** indicator with timestamp
+- 📊 Sessions list updates in real-time
+
+### Disable Auto-Save (Optional)
+
+```bash
+export WINDLASS_AUTO_SAVE_RESEARCH=false
+```
+
+Default: enabled for all sessions starting with `research_`
+
+---
+
 ## Design Philosophy
 
 ### Bret Victor's "Inventing on Principle"
@@ -185,7 +230,7 @@ Traditional chat interfaces hide:
 - How phases transition
 - Token usage
 
-Research Cockpit **shows everything** in the sidebar.
+Research Cockpit **shows everything** in the sidebar - and **saves everything** automatically.
 
 ---
 

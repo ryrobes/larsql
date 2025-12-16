@@ -7,9 +7,12 @@ import './CascadePicker.css';
  *
  * Shows available cascades with their descriptions and input schemas
  * Allows entering initial input before launching
+ * Also shows saved research sessions for resumption
  */
-function CascadePicker({ onSelect, onCancel }) {
+function CascadePicker({ onSelect, onCancel, onResumeSession }) {
+  const [mode, setMode] = useState('cascades'); // 'cascades' or 'sessions'
   const [cascades, setCascades] = useState([]);
+  const [savedSessions, setSavedSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedCascade, setSelectedCascade] = useState(null);
@@ -18,8 +21,12 @@ function CascadePicker({ onSelect, onCancel }) {
 
   // Fetch available cascades
   useEffect(() => {
-    fetchCascades();
-  }, []);
+    if (mode === 'cascades') {
+      fetchCascades();
+    } else {
+      fetchSavedSessions();
+    }
+  }, [mode]);
 
   const fetchCascades = async () => {
     setLoading(true);
@@ -55,10 +62,47 @@ function CascadePicker({ onSelect, onCancel }) {
     setInputValues(initialInput);
   };
 
+  const fetchSavedSessions = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log('[CascadePicker] Fetching saved sessions...');
+      const res = await fetch('http://localhost:5001/api/research-sessions?limit=50');
+      const data = await res.json();
+
+      console.log('[CascadePicker] Saved sessions response:', data);
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        const sessions = data.sessions || [];
+        console.log('[CascadePicker] Setting saved sessions:', sessions.length);
+        setSavedSessions(sessions);
+      }
+    } catch (err) {
+      console.error('[CascadePicker] Error fetching saved sessions:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLaunch = () => {
     if (!selectedCascade) return;
 
     onSelect(selectedCascade, inputValues);
+  };
+
+  const handleResumeSession = (session) => {
+    // Navigate to the original session (hash change will trigger App.js routing)
+    window.location.hash = `#/cockpit/${session.original_session_id}`;
+
+    // Don't call onCancel() here - let the parent component handle closing via hash change
+    // The picker will close automatically when ResearchCockpit detects the session loaded
+    if (typeof onResumeSession === 'function') {
+      onResumeSession(session);
+    }
   };
 
   return (
@@ -66,11 +110,32 @@ function CascadePicker({ onSelect, onCancel }) {
       <div className="cascade-picker-modal" onClick={e => e.stopPropagation()}>
         <div className="picker-header">
           <div className="picker-title">
-            <Icon icon="mdi:rocket-launch" width="24" />
-            <h2>Launch Research Session</h2>
+            <Icon icon={mode === 'cascades' ? 'mdi:rocket-launch' : 'mdi:history'} width="24" />
+            <h2>{mode === 'cascades' ? 'Launch Research Session' : 'Resume Saved Session'}</h2>
           </div>
           <button className="close-btn" onClick={onCancel}>
             <Icon icon="mdi:close" width="24" />
+          </button>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="picker-tabs">
+          <button
+            className={`picker-tab ${mode === 'cascades' ? 'active' : ''}`}
+            onClick={() => setMode('cascades')}
+          >
+            <Icon icon="mdi:source-branch" width="18" />
+            <span>New Session</span>
+          </button>
+          <button
+            className={`picker-tab ${mode === 'sessions' ? 'active' : ''}`}
+            onClick={() => setMode('sessions')}
+          >
+            <Icon icon="mdi:history" width="18" />
+            <span>Saved Sessions</span>
+            {savedSessions.length > 0 && (
+              <span className="tab-badge">{savedSessions.length}</span>
+            )}
           </button>
         </div>
 
@@ -92,8 +157,153 @@ function CascadePicker({ onSelect, onCancel }) {
 
           {!loading && !error && (
             <div className="picker-content">
+              {/* Saved Sessions List */}
+              {mode === 'sessions' && (
+                <div className="saved-sessions-list">
+                  {/* Search Filter */}
+                  <div className="cascade-search">
+                    <Icon icon="mdi:magnify" width="18" className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Search saved sessions..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="cascade-search-input"
+                      autoFocus
+                    />
+                    {searchQuery && (
+                      <button
+                        className="clear-search"
+                        onClick={() => setSearchQuery('')}
+                        title="Clear search"
+                      >
+                        <Icon icon="mdi:close" width="16" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Results Header */}
+                  <div className="cascade-list-header">
+                    <Icon icon="mdi:history" width="20" />
+                    <span>
+                      {(() => {
+                        const filtered = savedSessions.filter(session => {
+                          if (!searchQuery) return true;
+                          const query = searchQuery.toLowerCase();
+                          return (
+                            session.title?.toLowerCase().includes(query) ||
+                            session.description?.toLowerCase().includes(query) ||
+                            session.cascade_id?.toLowerCase().includes(query)
+                          );
+                        });
+                        return searchQuery
+                          ? `${filtered.length} of ${savedSessions.length} sessions`
+                          : `${savedSessions.length} saved sessions`;
+                      })()}
+                    </span>
+                  </div>
+
+                  {/* Sessions List */}
+                  {savedSessions.filter(session => {
+                    if (!searchQuery) return true;
+                    const query = searchQuery.toLowerCase();
+                    return (
+                      session.title?.toLowerCase().includes(query) ||
+                      session.description?.toLowerCase().includes(query) ||
+                      session.cascade_id?.toLowerCase().includes(query)
+                    );
+                  }).map(session => (
+                    <div
+                      key={session.id}
+                      className="saved-session-card"
+                      onClick={() => handleResumeSession(session)}
+                    >
+                      <div className="session-card-header">
+                        <h3>{session.title}</h3>
+                        <div className="session-status">
+                          {session.status === 'completed' ? (
+                            <Icon icon="mdi:check-circle" width="16" style={{ color: '#10b981' }} />
+                          ) : (
+                            <Icon icon="mdi:clock-outline" width="16" style={{ color: '#fbbf24' }} />
+                          )}
+                        </div>
+                      </div>
+
+                      {session.description && (
+                        <p className="session-card-description">{session.description}</p>
+                      )}
+
+                      <div className="session-card-meta">
+                        <span className="meta-badge cascade">
+                          <Icon icon="mdi:source-branch" width="14" />
+                          {session.cascade_id}
+                        </span>
+                        <span className="meta-badge cost">
+                          <Icon icon="mdi:currency-usd" width="14" />
+                          ${session.total_cost?.toFixed(4) || '0.0000'}
+                        </span>
+                        <span className="meta-badge turns">
+                          <Icon icon="mdi:counter" width="14" />
+                          {session.total_turns || 0} turns
+                        </span>
+                        <span className="meta-badge duration">
+                          <Icon icon="mdi:clock-outline" width="14" />
+                          {Math.floor((session.duration_seconds || 0) / 60)}m
+                        </span>
+                      </div>
+
+                      <div className="session-card-footer">
+                        <span className="session-date">
+                          <Icon icon="mdi:calendar" width="14" />
+                          {new Date(session.frozen_at).toLocaleDateString()} at {new Date(session.frozen_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+                        </span>
+                      </div>
+
+                      {session.tags && session.tags.length > 0 && (
+                        <div className="session-card-tags">
+                          {session.tags.map((tag, idx) => (
+                            <span key={idx} className="session-tag">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* No Results */}
+                  {savedSessions.filter(session => {
+                    if (!searchQuery) return true;
+                    const query = searchQuery.toLowerCase();
+                    return (
+                      session.title?.toLowerCase().includes(query) ||
+                      session.description?.toLowerCase().includes(query) ||
+                      session.cascade_id?.toLowerCase().includes(query)
+                    );
+                  }).length === 0 && (
+                    <div className="no-results">
+                      {searchQuery ? (
+                        <>
+                          <Icon icon="mdi:file-search-outline" width="48" />
+                          <p>No sessions match "{searchQuery}"</p>
+                          <button onClick={() => setSearchQuery('')} className="clear-search-btn">
+                            Clear Search
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Icon icon="mdi:inbox-outline" width="48" />
+                          <p>No saved sessions yet</p>
+                          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            Sessions are auto-saved as you research
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Cascade Selection */}
-              {!selectedCascade && (
+              {mode === 'cascades' && !selectedCascade && (
                 <div className="cascade-list">
                   {/* Search Filter */}
                   <div className="cascade-search">
