@@ -110,6 +110,9 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
 
       setSavedScreenshotUrl(result.url);
 
+      // Hide the screenshot checkbox in the iframe and show annotation note
+      hideScreenshotCheckboxInIframe(result.url);
+
       // Notify parent if callback provided
       onAnnotationSave?.(result.url, result);
 
@@ -123,6 +126,57 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
 
   const toggleAnnotationMode = useCallback(() => {
     setAnnotationMode(prev => !prev);
+  }, []);
+
+  // Hide the screenshot checkbox in iframe and replace with annotation note
+  const hideScreenshotCheckboxInIframe = useCallback((screenshotUrl) => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentDocument) return;
+
+    try {
+      const iframeDoc = iframe.contentDocument;
+
+      // Find the screenshot checkbox by name
+      const checkbox = iframeDoc.querySelector('input[name="response[include_screenshot]"]');
+      if (checkbox) {
+        // Find the parent label
+        const label = checkbox.closest('label');
+        if (label) {
+          // Hide the checkbox label
+          label.style.display = 'none';
+
+          // Create and insert annotation note
+          const note = iframeDoc.createElement('div');
+          note.className = 'annotation-included-note';
+          note.innerHTML = `
+            <span style="color: #10b981; font-size: 0.875rem; display: flex; align-items: center; gap: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+              </svg>
+              Annotated screenshot will be included
+            </span>
+          `;
+          label.parentNode.insertBefore(note, label);
+
+          console.log('[HTMLSection] Replaced screenshot checkbox with annotation note');
+        }
+      }
+
+      // Also add a hidden input to ensure the response knows annotation is included
+      const existingHidden = iframeDoc.querySelector('input[name="response[has_annotation]"]');
+      if (!existingHidden) {
+        const form = iframeDoc.querySelector('form');
+        if (form) {
+          const hiddenInput = iframeDoc.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = 'response[has_annotation]';
+          hiddenInput.value = 'true';
+          form.appendChild(hiddenInput);
+        }
+      }
+    } catch (err) {
+      console.warn('[HTMLSection] Could not modify iframe for annotation note:', err);
+    }
   }, []);
 
   useEffect(() => {
