@@ -40,4 +40,21 @@ class PromptEngine:
 _engine = PromptEngine()
 
 def render_instruction(instruction: str, context: Dict[str, Any]) -> str:
-    return _engine.render(instruction, context)
+    # Debug logging for branching sessions
+    if 'state' in context and context['state'].get('conversation_history'):
+        print(f"[PromptRender] ✓ Rendering with conversation_history: {len(context['state']['conversation_history'])} items")
+        print(f"[PromptRender] State keys available: {list(context.get('state', {}).keys())}")
+        print(f"[PromptRender] input.initial_query: {context.get('input', {}).get('initial_query')}")
+    elif 'state' in context and context['state']:
+        print(f"[PromptRender] ⚠ Rendering with state but NO conversation_history")
+        print(f"[PromptRender] State keys: {list(context.get('state', {}).keys())}")
+
+    rendered = _engine.render(instruction, context)
+
+    # Show first 500 chars of rendered prompt if branching
+    if context.get('input', {}).get('initial_query'):
+        print(f"[PromptRender] ===== RENDERED PROMPT (first 500 chars) =====")
+        print(rendered[:500])
+        print(f"[PromptRender] ============================================")
+
+    return rendered

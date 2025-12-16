@@ -4356,6 +4356,177 @@ def get_research_session_api(research_session_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/research-sessions/branch', methods=['POST'])
+def branch_research_session_api():
+    """
+    Create a branch from a saved research session checkpoint.
+
+    Body: {
+        "parent_research_session_id": "research_session_abc",
+        "branch_checkpoint_index": 2,
+        "new_response": {"query": "Different question"}
+    }
+
+    Returns:
+        {
+            "success": true,
+            "new_session_id": "research_123_branch",
+            "parent_session_id": "research_original",
+            "branch_point": "checkpoint_xyz"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        parent_id = data.get('parent_research_session_id')
+        checkpoint_index = data.get('branch_checkpoint_index')
+        new_response = data.get('new_response', {})
+
+        if not parent_id or checkpoint_index is None:
+            return jsonify({'error': 'parent_research_session_id and branch_checkpoint_index required'}), 400
+
+        # Import branching logic
+        from windlass.eddies.branching import launch_branch_cascade
+
+        # Get parent session to find cascade path
+        conn = get_db_connection()
+        parent_query = "SELECT * FROM research_sessions WHERE id = ?"
+        parent_result = conn.execute(parent_query, [parent_id]).fetchone()
+
+        if not parent_result:
+            conn.close()
+            return jsonify({'error': 'Parent session not found'}), 404
+
+        # Get column names
+        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'research_sessions'").fetchall()
+        column_names = [col[0] for col in columns]
+        parent_session_dict = dict(zip(column_names, parent_result))
+        conn.close()
+
+        # Parse JSON fields
+        parent_session_dict['entries_snapshot'] = json.loads(parent_session_dict.get('entries_snapshot', '[]'))
+        parent_session_dict['checkpoints_data'] = json.loads(parent_session_dict.get('checkpoints_data', '[]'))
+        parent_session_dict['context_snapshot'] = json.loads(parent_session_dict.get('context_snapshot', '{}'))
+
+        # Find cascade file
+        cascade_id = parent_session_dict.get('cascade_id')
+        cascade_file = find_cascade_file(cascade_id)
+
+        if not cascade_file:
+            return jsonify({'error': f'Cascade file not found for {cascade_id}'}), 404
+
+        # Launch branch
+        result = launch_branch_cascade(
+            parent_research_session_id=parent_id,
+            branch_checkpoint_index=checkpoint_index,
+            new_response=new_response,
+            cascade_path=cascade_file
+        )
+
+        return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/research-sessions/tree/<session_id>', methods=['GET'])
+def get_research_tree_api(session_id):
+    """
+    Get the research tree for a session (parent + all branches).
+
+    Returns hierarchical tree structure for visualization.
+    """
+    try:
+        conn = get_db_connection()
+
+        # Find the root session (might be this session or an ancestor)
+        current_query = "SELECT id, original_session_id, parent_session_id, title, cascade_id FROM research_sessions WHERE original_session_id = ?"
+        current_result = conn.execute(current_query, [session_id]).fetchone()
+
+        if not current_result:
+            # Try as research_session_id
+            current_query = "SELECT id, original_session_id, parent_session_id, title, cascade_id FROM research_sessions WHERE id = ?"
+            current_result = conn.execute(current_query, [session_id]).fetchone()
+
+        if not current_result:
+            conn.close()
+            return jsonify({'error': 'Session not found'}), 404
+
+        _, original_sid, parent_sid, title, cascade_id = current_result
+
+        # Find root (traverse up to parent with no parent_session_id)
+        root_session_id = original_sid
+        if parent_sid:
+            # Walk up to find root
+            while parent_sid:
+                parent_query = "SELECT original_session_id, parent_session_id FROM research_sessions WHERE original_session_id = ?"
+                parent_result = conn.execute(parent_query, [parent_sid]).fetchone()
+                if parent_result:
+                    root_session_id, parent_sid = parent_result
+                else:
+                    break
+
+        # Get all sessions in this tree (root + all descendants)
+        all_sessions_query = """
+            SELECT id, original_session_id, parent_session_id, branch_point_checkpoint_id,
+                   title, total_cost, total_turns, status, frozen_at
+            FROM research_sessions
+            WHERE original_session_id = ?
+               OR parent_session_id = ?
+               OR parent_session_id IN (
+                   SELECT original_session_id FROM research_sessions WHERE parent_session_id = ?
+               )
+            ORDER BY frozen_at
+        """
+
+        # Query for root and immediate children (can expand recursively if needed)
+        all_result = conn.execute(all_sessions_query, [root_session_id, root_session_id, root_session_id]).fetchall()
+        conn.close()
+
+        # Build tree structure
+        sessions_by_id = {}
+        for row in all_result:
+            sid, orig_sid, parent_sid, branch_pt, title, cost, turns, status, frozen = row
+            sessions_by_id[orig_sid] = {
+                'id': sid,
+                'session_id': orig_sid,
+                'parent_session_id': parent_sid,
+                'branch_point_checkpoint_id': branch_pt,
+                'title': title,
+                'total_cost': float(cost) if cost else 0.0,
+                'total_turns': turns or 0,
+                'status': status,
+                'frozen_at': frozen,
+                'children': []
+            }
+
+        # Build parent-child relationships
+        root_node = None
+        for sid, node in sessions_by_id.items():
+            if node['parent_session_id']:
+                parent = sessions_by_id.get(node['parent_session_id'])
+                if parent:
+                    parent['children'].append(node)
+            else:
+                root_node = node
+
+        if not root_node:
+            root_node = sessions_by_id.get(root_session_id)
+
+        return jsonify({
+            'root_session_id': root_session_id,
+            'current_session_id': session_id,
+            'tree': root_node
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/research-sessions/save', methods=['POST'])
 def save_research_session_api():
     """

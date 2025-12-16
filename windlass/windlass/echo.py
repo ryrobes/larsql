@@ -275,7 +275,12 @@ class SessionManager:
 
     def get_session(self, session_id: str, parent_session_id: str = None) -> Echo:
         if session_id not in self.sessions:
+            print(f"[SessionManager] Creating NEW Echo for {session_id}")
             self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id)
+        else:
+            print(f"[SessionManager] REUSING existing Echo for {session_id}")
+            print(f"[SessionManager]   State keys: {list(self.sessions[session_id].state.keys())}")
+            print(f"[SessionManager]   History entries: {len(self.sessions[session_id].history)}")
         return self.sessions[session_id]
 
 _session_manager = SessionManager()

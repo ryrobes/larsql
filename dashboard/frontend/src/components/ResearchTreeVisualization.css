@@ -1,0 +1,96 @@
+/* Research Tree Visualization */
+.research-tree-container {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tree-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tree-header:hover {
+  background: rgba(167, 139, 250, 0.1);
+  color: #a78bfa;
+}
+
+.tree-badge {
+  padding: 2px 8px;
+  background: rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  color: #a78bfa;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.tree-visualization {
+  padding: 16px;
+  background: #0a0a0a;
+  border-top: 1px solid #222;
+  overflow-y: auto;  /* Changed from overflow-x for vertical tree */
+  max-height: 500px;
+}
+
+.tree-svg {
+  width: 100%;
+  height: auto;
+  min-height: 100px;
+  display: block;
+}
+
+/* Pulsing animation for current node */
+.current-node-pulse {
+  animation: node-pulse 2s ease-in-out infinite;
+}
+
+@keyframes node-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 rgba(167, 139, 250, 0.7));
+  }
+  50% {
+    opacity: 0.8;
+    filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.9));
+  }
+}
+
+.tree-error {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ef4444;
+  font-size: 0.75rem;
+}
+
+/* Scrollbar for tree */
+.tree-visualization::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tree-visualization::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+.tree-visualization::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.tree-visualization::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}

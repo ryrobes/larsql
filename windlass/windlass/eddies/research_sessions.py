@@ -177,22 +177,20 @@ def list_research_sessions(
     Returns:
         {"sessions": [...], "count": N}
     """
-    from ..config import get_config
+    from ..db_adapter import get_db
+    import json
 
-    cfg = get_config()
+    try:
+        db = get_db()
 
-    # Build query
-    filters = []
-    if cascade_id:
-        filters.append(f"cascade_id = '{cascade_id}'")
+        # Build query
+        filters = []
+        if cascade_id:
+            filters.append(f"cascade_id = '{cascade_id}'")
 
-    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
-    if cfg.use_clickhouse_server:
-        import clickhouse_connect
-        client = clickhouse_connect.get_client(host=cfg.clickhouse_host)
-
-        result = client.query(f"""
+        result = db.query(f"""
             SELECT
                 id, original_session_id, cascade_id, title, description,
                 created_at, frozen_at, status,
@@ -204,34 +202,25 @@ def list_research_sessions(
             LIMIT {limit}
         """)
 
-        sessions = [dict(zip(result.column_names, row)) for row in result.result_rows]
+        # Convert to list of dicts
+        sessions = list(result) if result else []
 
-    else:
-        import chdb
-        data_dir = cfg.data_dir
-        sessions_file = os.path.join(data_dir, "research_sessions.parquet")
+        # Parse tags field
+        for session in sessions:
+            if session.get('tags') and isinstance(session['tags'], str):
+                try:
+                    session['tags'] = json.loads(session['tags'])
+                except:
+                    session['tags'] = []
 
-        if not os.path.exists(sessions_file):
-            return {"sessions": [], "count": 0}
+        return {
+            "sessions": sessions,
+            "count": len(sessions)
+        }
 
-        result = chdb.query(f"""
-            SELECT
-                id, original_session_id, cascade_id, title, description,
-                created_at, frozen_at, status,
-                total_cost, total_turns, total_input_tokens, total_output_tokens,
-                duration_seconds, tags
-            FROM file('{sessions_file}', Parquet)
-            {where_clause}
-            ORDER BY frozen_at DESC
-            LIMIT {limit}
-        """)
-
-        sessions = result.to_dict('records')
-
-    return {
-        "sessions": sessions,
-        "count": len(sessions)
-    }
+    except Exception as e:
+        print(f"[ResearchSessions] Failed to list sessions: {e}")
+        return {"sessions": [], "count": 0}
 
 
 @simple_eddy
@@ -241,52 +230,46 @@ def get_research_session(research_session_id: str) -> dict:
 
     Returns all data needed to display or resume the session.
     """
-    from ..config import get_config
+    from ..db_adapter import get_db
+    import json
 
-    cfg = get_config()
+    try:
+        db = get_db()
 
-    if cfg.use_clickhouse_server:
-        import clickhouse_connect
-        client = clickhouse_connect.get_client(host=cfg.clickhouse_host)
-
-        result = client.query(f"""
+        # Query using unified adapter
+        result = db.query(f"""
             SELECT * FROM research_sessions WHERE id = '{research_session_id}'
         """)
 
-        if not result.result_rows:
-            return {"error": "Research session not found"}
+        # Convert to list
+        sessions = list(result) if result else []
 
-        session = dict(zip(result.column_names, result.result_rows[0]))
-
-    else:
-        import chdb
-        data_dir = cfg.data_dir
-        sessions_file = os.path.join(data_dir, "research_sessions.parquet")
-
-        if not os.path.exists(sessions_file):
-            return {"error": "No research sessions found"}
-
-        result = chdb.query(f"""
-            SELECT * FROM file('{sessions_file}', Parquet)
-            WHERE id = '{research_session_id}'
-        """)
-
-        sessions = result.to_dict('records')
         if not sessions:
             return {"error": "Research session not found"}
 
         session = sessions[0]
 
-    # Parse JSON fields
-    session['context_snapshot'] = json.loads(session.get('context_snapshot', '{}'))
-    session['checkpoints_data'] = json.loads(session.get('checkpoints_data', '[]'))
-    session['entries_snapshot'] = json.loads(session.get('entries_snapshot', '[]'))
-    session['screenshots'] = json.loads(session.get('screenshots', '[]'))
-    session['phases_visited'] = json.loads(session.get('phases_visited', '[]'))
-    session['tools_used'] = json.loads(session.get('tools_used', '[]'))
-    session['tags'] = json.loads(session.get('tags', '[]'))
+        # Parse JSON fields
+        json_fields = ['context_snapshot', 'checkpoints_data', 'entries_snapshot',
+                      'screenshots', 'phases_visited', 'tools_used', 'tags']
 
-    return session
+        for field in json_fields:
+            value = session.get(field)
+            if value and isinstance(value, str):
+                try:
+                    session[field] = json.loads(value)
+                except:
+                    session[field] = [] if field.endswith('s') or field == 'checkpoints_data' else {}
+            elif not value:
+                session[field] = [] if field.endswith('s') or field == 'checkpoints_data' else {}
+
+        return session
+
+    except Exception as e:
+        print(f"[ResearchSessions] Failed to get session: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 # =============================================================================
@@ -356,7 +339,13 @@ def _fetch_checkpoints_for_session(session_id: str) -> list:
         elif isinstance(result, list):
             checkpoints = result
         else:
-            checkpoints = []
+            # Try converting to list
+            try:
+                checkpoints = list(result)
+            except:
+                checkpoints = []
+
+        print(f"[ResearchSessions] Fetched {len(checkpoints)} checkpoints for session {session_id}")
 
         # Mark branch points
         for cp in checkpoints:
@@ -365,7 +354,9 @@ def _fetch_checkpoints_for_session(session_id: str) -> list:
         return checkpoints
 
     except Exception as e:
-        print(f"[ResearchSessions] Failed to fetch checkpoints: {e}")
+        print(f"[ResearchSessions] Failed to fetch checkpoints for {session_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 

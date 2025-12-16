@@ -298,7 +298,7 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
         """Check if this is a Research Cockpit session."""
         return session_id and session_id.startswith('research_')
 
-    def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active"):
+    def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active", parent_session_id: str = None, branch_checkpoint_id: str = None):
         """Save or update research session in database."""
         if not self._auto_save_enabled:
             return
@@ -308,9 +308,20 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
             from .config import get_config
             from .db_adapter import get_db
             from uuid import uuid4
+            from .echo import get_echo
 
             cfg = get_config()
             db = get_db()
+
+            # Try to get Echo to extract parent info if not provided
+            if not parent_session_id:
+                try:
+                    echo = get_echo(session_id)
+                    if echo and hasattr(echo, 'parent_session_id'):
+                        parent_session_id = echo.parent_session_id
+                        print(f"[ResearchAutoSave] Detected parent from Echo: {parent_session_id}")
+                except:
+                    pass
 
             # Fetch session data
             entries = _fetch_session_entries(session_id)
@@ -318,9 +329,16 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
                 print(f"[ResearchAutoSave] No entries yet for {session_id}, skipping")
                 return
 
+            # Get cascade_id from entries if not provided
+            if cascade_id == "unknown" and entries:
+                cascade_id = entries[0].get('cascade_id', 'unknown')
+                print(f"[ResearchAutoSave] Detected cascade_id from entries: {cascade_id}")
+
             checkpoints = _fetch_checkpoints_for_session(session_id)
             metrics = _compute_session_metrics(entries)
             mermaid = _fetch_mermaid_graph(session_id)
+
+            print(f"[ResearchAutoSave] Fetched data for {session_id}: {len(entries)} entries, {len(checkpoints)} checkpoints")
 
             # Auto-generate title from first checkpoint
             title = f"Research Session - {session_id[:12]}"
@@ -372,8 +390,8 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
                         'phases_visited': json.dumps(metrics['phases_visited']),
                         'tools_used': json.dumps(metrics['tools_used']),
                         'tags': json.dumps([]),
-                        'parent_session_id': None,
-                        'branch_point_checkpoint_id': None,
+                        'parent_session_id': parent_session_id,  # Capture parent!
+                        'branch_point_checkpoint_id': branch_checkpoint_id,  # Capture branch point!
                         'updated_at': now
                     }])
                     print(f"[ResearchAutoSave] ✓ Updated session {session_id} (status={status})")
@@ -404,11 +422,15 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
                     'phases_visited': json.dumps(metrics['phases_visited']),
                     'tools_used': json.dumps(metrics['tools_used']),
                     'tags': json.dumps([]),
-                    'parent_session_id': None,
-                    'branch_point_checkpoint_id': None,
+                    'parent_session_id': parent_session_id,  # Capture parent!
+                    'branch_point_checkpoint_id': branch_checkpoint_id,  # Capture branch point!
                     'updated_at': now
                 }])
-                print(f"[ResearchAutoSave] ✓ Created session {session_id} (status={status})")
+
+                if parent_session_id:
+                    print(f"[ResearchAutoSave] ✓ Created BRANCH session {session_id} from parent {parent_session_id} (status={status})")
+                else:
+                    print(f"[ResearchAutoSave] ✓ Created session {session_id} (status={status})")
 
         except Exception as e:
             print(f"[ResearchAutoSave] ⚠ Failed to save session {session_id}: {e}")
@@ -423,6 +445,22 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
             thread = threading.Thread(
                 target=self._save_or_update_session,
                 args=(session_id, cascade_id, "active")
+            )
+            thread.daemon = True
+            thread.start()
+
+        return {"action": HookAction.CONTINUE}
+
+    def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
+                                phase_name: str, message: str = None) -> dict:
+        """Called when cascade is suspended waiting for checkpoint response."""
+        if self._is_research_session(session_id):
+            print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint created")
+            # Update in background to capture the checkpoint
+            import threading
+            thread = threading.Thread(
+                target=self._save_or_update_session,
+                args=(session_id, "unknown", "active")  # Will detect cascade_id from entries
             )
             thread.daemon = True
             thread.start()

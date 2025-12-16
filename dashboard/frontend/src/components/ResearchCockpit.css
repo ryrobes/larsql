@@ -2,25 +2,32 @@
 .research-cockpit {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh;  /* Fixed height, not min-height */
   background: #0a0a0a;
   color: #e5e7eb;
-  overflow: hidden;
+  overflow: hidden;  /* Prevent outer scroll */
+}
+
+/* Override Header margins for ResearchCockpit (no parent padding) */
+.research-cockpit .app-header {
+  margin: 0 0 0 0;  /* Remove negative margins that cause clipping */
+  flex-shrink: 0;  /* Don't shrink header */
 }
 
 /* Cockpit Layout - Main + Sidebar */
 .cockpit-layout {
   display: flex;
-  flex: 1;
-  overflow: hidden;
+  flex: 1;  /* Take remaining space after header */
+  overflow: hidden;  /* Prevent layout scroll */
   position: relative;
 }
 
-/* Main Content Area */
+/* Main Content Area - Only scrolling element */
 .cockpit-main {
   flex: 1;
   padding: 24px;
-  overflow-y: auto;
+  overflow-y: auto;  /* This is the ONLY scrolling element */
+  overflow-x: hidden;
   background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
 }
 
@@ -397,6 +404,26 @@
   margin-bottom: 12px;
 }
 
+.branch-hint {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  color: #a78bfa;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.branch-hint svg {
+  animation: pulse 2s ease-in-out infinite;
+}
+
 .checkpoint-response-section {
   border-left: 3px solid #4A9EDD;
 }
@@ -428,6 +455,34 @@
   line-height: 1.6;
 }
 
+/* Branch Badge */
+.branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.branch-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #a78bfa;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .cockpit-layout {
@@ -438,3 +493,4 @@
     padding-left: 20px;
   }
 }
+

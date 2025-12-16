@@ -4,11 +4,13 @@
   background: linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 100%);
   border-left: 1px solid #1a1a1a;
   padding: 20px;
-  overflow-y: auto;
+  overflow-y: auto;  /* Sidebar has its own scroll */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 24px;
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.5);
+  height: 100%;  /* Fill parent height */
 }
 
 /* Live Indicator */
@@ -246,80 +248,90 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
-/* Phase Section */
-.phase-section {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.05), rgba(167, 139, 250, 0.02));
+/* Session Overview - Compact Grid */
+.session-overview-section {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.05), rgba(74, 158, 221, 0.05));
   border-color: rgba(167, 139, 250, 0.2);
 }
 
-.phase-display {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.phase-name {
-  font-size: 1.125rem;
-  font-weight: 700;
+.overview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #0a0a0a;
+  border: 1px solid #222;
+  border-radius: 6px;
+}
+
+.overview-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.overview-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e5e7eb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-value.phase-value {
   color: #a78bfa;
   font-family: 'IBM Plex Mono', monospace;
 }
 
-.model-badge {
+.overview-value.turn-value {
+  color: #fbbf24;
+  font-size: 1.5rem;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.overview-value.turn-value.zero {
+  color: #6b7280;
+  font-size: 1.25rem;
+}
+
+.overview-value.session-value {
+  font-size: 0.75rem;
+}
+
+.overview-value.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.model-badge-compact {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   background: rgba(74, 158, 221, 0.2);
   border: 1px solid rgba(74, 158, 221, 0.4);
-  border-radius: 6px;
-  font-size: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
   font-weight: 600;
   color: #4A9EDD;
   align-self: flex-start;
+  margin-top: 4px;
 }
 
-.phase-empty {
-  color: #6b7280;
-  font-style: italic;
-  font-size: 0.875rem;
-}
-
-/* Turn Counter */
-.turns-section {
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.05), rgba(251, 191, 36, 0.02));
-  border-color: rgba(251, 191, 36, 0.2);
-  text-align: center;
-}
-
-.turn-counter {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.turn-number {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #fbbf24;
-  font-family: 'IBM Plex Mono', monospace;
-  line-height: 1;
-  transition: all 0.3s;
-}
-
-.turn-number.zero {
-  font-size: 2rem;
-  color: #6b7280;
-}
-
-.turn-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #9ca3af;
-  font-weight: 600;
-  transition: all 0.3s;
+/* Full-width session ID */
+.overview-item.session-id {
+  grid-column: 1 / -1;  /* Span both columns */
 }
 
 /* Phase Timeline */
@@ -431,41 +443,6 @@
 .token-stat.total .token-value {
   font-size: 1.125rem;
   color: #a78bfa;
-}
-
-/* Session Info */
-.session-info-section {
-  background: #0f0f0f;
-  border-color: #1a1a1a;
-}
-
-.session-details {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.session-detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.75rem;
-}
-
-.detail-label {
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
-}
-
-.detail-value {
-  color: #e5e7eb;
-  font-weight: 500;
-}
-
-.detail-value.mono {
-  font-family: 'IBM Plex Mono', monospace;
 }
 
 /* Execution Graph Section */

@@ -25,6 +25,7 @@ function ResearchCockpit({
   initialSessionId = null,
   onBack,
   onMessageFlow,
+  onCockpit,
   onSextant,
   onWorkshop,
   onTools,
@@ -107,6 +108,15 @@ function ResearchCockpit({
 
           if (!detailData.error) {
             console.log('[ResearchCockpit] Loaded full saved session with', detailData.checkpoints_data?.length, 'checkpoints');
+
+            // Check if this is a new branch (has parent but no checkpoints yet)
+            const isNewBranch = detailData.parent_session_id &&
+                               (!detailData.checkpoints_data || detailData.checkpoints_data.length === 0);
+
+            if (isNewBranch) {
+              console.log('[ResearchCockpit] Detected new branch - cascade is starting');
+            }
+
             setSavedSessionData(detailData);
             setIsSavedSession(true);
             return;
@@ -114,7 +124,8 @@ function ResearchCockpit({
         }
       }
 
-      // Not a saved session
+      // Not a saved session (yet) - might be a very new branch
+      // Keep retrying for a bit
       setIsSavedSession(false);
       setSavedSessionData(null);
 
@@ -209,10 +220,17 @@ function ResearchCockpit({
       const res = await fetch(`http://localhost:5001/api/checkpoints?session_id=${sessionId}`);
       const data = await res.json();
 
+      console.log('[ResearchCockpit] Checkpoint fetch result:', {
+        sessionId,
+        checkpointCount: data.checkpoints?.length,
+        hasPending: data.checkpoints?.some(cp => cp.status === 'pending')
+      });
+
       if (!data.error) {
         const pending = data.checkpoints?.find(cp => cp.status === 'pending');
 
         if (pending && (!checkpoint || pending.id !== checkpoint.id)) {
+          console.log('[ResearchCockpit] ✓ Setting checkpoint:', pending.id);
           setCheckpoint(pending);
 
           // Update status
@@ -220,6 +238,10 @@ function ResearchCockpit({
             ...prev,
             status: 'waiting_human'
           }));
+        } else if (pending) {
+          console.log('[ResearchCockpit] Checkpoint unchanged:', pending.id);
+        } else {
+          console.log('[ResearchCockpit] No pending checkpoint found');
         }
       }
     } catch (err) {
@@ -379,13 +401,21 @@ function ResearchCockpit({
     fetchSessionData();
     fetchCheckpoint();
 
-    // Poll every second for live updates
-    const interval = setInterval(() => {
+    // Poll saved session more frequently (for branches that are loading)
+    const savedSessionInterval = setInterval(() => {
+      fetchSavedSession();
+    }, 2000);
+
+    // Poll live data every second
+    const liveDataInterval = setInterval(() => {
       fetchSessionData();
       fetchCheckpoint();
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(savedSessionInterval);
+      clearInterval(liveDataInterval);
+    };
   }, [sessionId, fetchSessionData, fetchCheckpoint, fetchSavedSession]);
 
   // Handle cascade selection
@@ -495,6 +525,44 @@ function ResearchCockpit({
   // - checkpoint_resumed (incremental updates)
   // - cascade_complete (finalize)
 
+  // Handle branch creation from saved checkpoint
+  const handleCreateBranch = async (checkpointIndex, newResponse) => {
+    if (!savedSessionData) return;
+
+    console.log('[ResearchCockpit] Creating branch from checkpoint', checkpointIndex, 'with response:', newResponse);
+
+    try {
+      const res = await fetch('http://localhost:5001/api/research-sessions/branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_research_session_id: savedSessionData.id,
+          branch_checkpoint_index: checkpointIndex,
+          new_response: newResponse
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        alert('Failed to create branch: ' + data.error);
+        return;
+      }
+
+      console.log('[ResearchCockpit] ✓ Branch created:', data.new_session_id);
+
+      // Navigate to the new branch
+      window.location.hash = `#/cockpit/${data.new_session_id}`;
+
+      // Show toast/notification
+      alert(`🌿 Branch created!\n\nNew session: ${data.new_session_id}\nBranching from checkpoint ${checkpointIndex + 1}`);
+
+    } catch (err) {
+      console.error('[ResearchCockpit] Failed to create branch:', err);
+      alert('Failed to create branch: ' + err.message);
+    }
+  };
+
   return (
     <div className="research-cockpit">
       <Header
@@ -537,6 +605,7 @@ function ResearchCockpit({
           )
         }
         onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
         onTools={onTools}
@@ -573,7 +642,14 @@ function ResearchCockpit({
         <div className="cockpit-layout">
           {/* Main Content Area - Timeline */}
           <div className="cockpit-main">
-            {/* Saved Session Timeline (expandable checkpoints) */}
+            {console.log('[ResearchCockpit] Render decision:', {
+              isSavedSession,
+              savedStatus: savedSessionData?.status,
+              hasCheckpoint: !!checkpoint,
+              checkpointId: checkpoint?.id,
+              savedCheckpointsCount: savedSessionData?.checkpoints_data?.length
+            })}
+            {/* Saved Session Timeline (any session with checkpoints - completed OR paused) */}
             {isSavedSession && savedSessionData && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
               <div className="saved-session-timeline">
                 <div className="timeline-header-section">
@@ -581,6 +657,12 @@ function ResearchCockpit({
                   <div className="timeline-header-text">
                     <h2>Saved Research Session</h2>
                     <p>{savedSessionData.title}</p>
+                    {savedSessionData.parent_session_id && (
+                      <div className="branch-badge">
+                        <Icon icon="mdi:source-fork" width="14" />
+                        <span>Branch of {savedSessionData.parent_session_id.slice(0, 12)}...</span>
+                      </div>
+                    )}
                   </div>
                   <div className="timeline-stats">
                     <span className="stat-badge">
@@ -600,13 +682,15 @@ function ResearchCockpit({
                     checkpoint={checkpointData}
                     index={idx}
                     sessionId={sessionId}
+                    savedSessionData={savedSessionData}
+                    onBranch={handleCreateBranch}
                   />
                 ))}
               </div>
             )}
 
-            {/* Current Checkpoint (if any) - for live sessions */}
-            {!isSavedSession && checkpoint && checkpoint.ui_spec && (
+            {/* Live Checkpoint - for sessions with pending checkpoints */}
+            {checkpoint && checkpoint.ui_spec && (
               <div className="checkpoint-container">
                 {(() => {
                   const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
@@ -678,12 +762,28 @@ function ResearchCockpit({
               </div>
             )}
 
-            {/* Empty state */}
-            {!checkpoint && timeline.length === 0 && (
+            {/* Empty state - ONLY for brand new sessions with no saved data */}
+            {!checkpoint &&
+             timeline.length === 0 &&
+             (!savedSessionData || (savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length === 0)) && (
               <div className="cockpit-empty-state">
-                <Icon icon="mdi:compass" width="80" className="empty-icon" />
-                <h2>Session Active</h2>
-                <p>Cascade is executing. Results will appear here.</p>
+                {savedSessionData?.parent_session_id && savedSessionData?.status === 'active' ? (
+                  <>
+                    <Icon icon="mdi:source-fork" width="80" className="empty-icon spinning" />
+                    <h2>Branch Starting...</h2>
+                    <p>Restoring context from parent and initializing cascade...</p>
+                    <div className="branch-info">
+                      <Icon icon="mdi:information-outline" width="16" />
+                      <span>Parent: {savedSessionData.parent_session_id.slice(0, 12)}...</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Icon icon="mdi:compass" width="80" className="empty-icon" />
+                    <h2>Session Active</h2>
+                    <p>Cascade is executing. Results will appear here.</p>
+                  </>
+                )}
                 <div className="status-indicator">
                   {orchestrationState.status === 'thinking' && (
                     <>
@@ -718,9 +818,19 @@ function ResearchCockpit({
 /**
  * ExpandableCheckpoint - Single checkpoint in the saved session timeline
  * Shows collapsed summary, expands to show full HTMX UI + user response
+ * Can create branches by re-submitting with different responses
  */
-function ExpandableCheckpoint({ checkpoint, index, sessionId }) {
+function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, onBranch }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Handle form submission from HTMX iframe - create branch!
+  const handleBranchSubmit = (response) => {
+    console.log('[ExpandableCheckpoint] Form submitted, creating branch!', response);
+
+    if (onBranch) {
+      onBranch(index, response);
+    }
+  };
 
   // Parse ui_spec if it's a string
   let uiSpec = checkpoint.ui_spec;
@@ -785,11 +895,17 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId }) {
               <div className="replay-label">
                 <Icon icon="mdi:replay" width="16" />
                 <span>Original UI</span>
+                <div className="branch-hint">
+                  <Icon icon="mdi:source-fork" width="14" />
+                  <span>Submit to create branch</span>
+                </div>
               </div>
               <HTMLSection
                 spec={htmlSection}
                 checkpointId={checkpoint.id}
                 sessionId={sessionId}
+                isSavedCheckpoint={true}
+                onBranchSubmit={handleBranchSubmit}
               />
             </div>
           )}

@@ -30,12 +30,48 @@ phases:
       - state.current_query: The query you're currently answering
       - state.research_depth: How many queries have been explored
 
-      ## First Turn (if input.initial_query provided)
-      If this is the first turn and {{ input.initial_query }}:
-      - Research the initial query
-      - Skip the input form (user already provided query)
+      {% if input.initial_query %}
+      ═══════════════════════════════════════════════════════════════
+      🌿 BRANCHING MODE - CONTINUATION OF RESEARCH
+      ═══════════════════════════════════════════════════════════════
 
-      ## Subsequent Turns
+      You are CONTINUING research from a previous session or branch.
+
+      **The user's NEW query:** "{{ input.initial_query }}"
+
+      **Previous research context:**
+      {% if state.conversation_history %}
+      {% for item in state.conversation_history %}
+      {{ loop.index }}. {{ item.query }} → (Already answered)
+      {% endfor %}
+      {% endif %}
+
+      **IMMEDIATE ACTION REQUIRED:**
+
+      DO NOT ask for input. DO NOT show a welcome screen.
+      The user ALREADY provided their query: "{{ input.initial_query }}"
+
+      1. IMMEDIATELY research "{{ input.initial_query }}" using available tools
+      2. Generate the HTMX UI that shows:
+         - Previous queries from state.conversation_history (collapsed <details> tags)
+         - NEW comprehensive answer to "{{ input.initial_query }}" (expanded section)
+         - Charts/visualizations if relevant
+         - Input form for the NEXT action:
+           * User can enter a new query (asks something different)
+           * OR leave it empty and just submit (continues/deepens current topic)
+
+      3. After generating the UI with request_decision(), the user will either:
+         - Provide a new query → Research that
+         - Submit empty → Continue/deepen current answer with more detail
+
+      ═══════════════════════════════════════════════════════════════
+
+      {% else %}
+
+      This is a fresh research session. You'll ask the user for their first query.
+
+      {% endif %}
+
       For each research iteration:
 
       ### 1. Generate Rich HTMX Interface
@@ -150,39 +186,49 @@ phases:
               style="background: #121212; border: 1px solid #333; border-radius: 12px; padding: 20px;">
 
           <label style="display: block; color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 8px;">
-            Next Research Query:
+            Next Step:
           </label>
 
           <input
             type="text"
             id="query-input"
             name="response[query]"
-            placeholder="Ask anything - web search, data analysis, code execution..."
+            placeholder="New question... (or leave empty to deepen current topic)"
             style="width: 100%; padding: 14px 18px; background: #0a0a0a; border: 2px solid #333; border-radius: 8px; color: #e5e7eb; font-size: 1rem; font-family: 'Manrope', sans-serif; margin-bottom: 16px;"
-            autofocus
-            required />
+            autofocus />
 
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="color: #6b7280; font-size: 0.75rem;">
-              Tools available: Web Search, Code Execution, SQL, Charts
+              💡 Empty = Continue current topic • New question = Start new research
             </div>
             <button
               type="submit"
               style="background: linear-gradient(135deg, #a78bfa, #8b5cf6); color: white; border: none; padding: 12px 28px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 1rem; box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);">
-              Research
+              Continue
             </button>
           </div>
         </form>
       </div>
       ```
 
-      ### 2. Wait for User Query
+      ### 2. Wait for User Input
 
-      Block and wait for the user to submit their next research question.
+      Block and wait for the user to submit.
 
-      ### 3. Research the Query
+      ### 3. Handle Response (Continuation vs New Query)
 
-      When response is received:
+      When response is received, check if response[query] is provided:
+
+      **If query is EMPTY or just whitespace:**
+      - User wants to CONTINUE/DEEPEN the current topic
+      - Use response[notes] for guidance (if provided)
+      - Deepen the current answer with more detail
+      - Add additional visualizations or perspectives
+      - Show previous context + enhanced answer
+      - This is like "tell me more" or "go deeper"
+
+      **If query is PROVIDED:**
+      - User has a NEW research question
       - Extract query from response[query]
       - Use Manifest to automatically select appropriate tools:
         - web_search for factual/current info
@@ -195,20 +241,33 @@ phases:
       ### 4. Update State
 
       Store results for next iteration:
-      ```python
-      set_state("current_query", query)
-      set_state("current_answer", answer_with_citations)
-      set_state("current_sources", [{"title": "...", "url": "..."}])
-      set_state("follow_ups", ["Related question 1", "Related question 2"])
 
-      # Add to history
+      **For NEW queries:**
+      ```python
+      # Add the completed Q&A to history
       history_item = {
-        "query": query,
+        "query": response[query],
         "answer": answer_with_citations,
         "sources": ["Source 1", "Source 2"],
         "timestamp": "HH:MM"
       }
-      # Append to conversation_history list
+
+      # Append to conversation_history
+      current_history = state.get('conversation_history', [])
+      current_history.append(history_item)
+      set_state("conversation_history", current_history)
+
+      # Clear current answer (will be replaced next turn)
+      set_state("current_answer", None)
+      ```
+
+      **For CONTINUATIONS (empty query):**
+      ```python
+      # Update the LAST item in conversation_history with enhanced answer
+      # Or just update current_answer without adding to history
+      set_state("current_answer", enhanced_answer_with_more_detail)
+
+      # Don't add to history - we're still on the same topic
       ```
 
       ### 5. Loop Back

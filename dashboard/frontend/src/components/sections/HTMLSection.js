@@ -16,8 +16,9 @@ import './HTMLSection.css';
  * - HTMX initialization and lifecycle management
  * - Auto-injection of checkpoint context headers
  * - Error handling and source display
+ * - Branching: Can intercept form submissions to create research branches
  */
-function HTMLSection({ spec, checkpointId, sessionId }) {
+function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranchSubmit }) {
   const iframeRef = useRef(null);
   const [error, setError] = useState(null);
   const [iframeHeight, setIframeHeight] = useState('400px');
@@ -69,6 +70,47 @@ function HTMLSection({ spec, checkpointId, sessionId }) {
         if (!iframeWindow || !iframeDocument) {
           setError('Failed to access iframe window');
           return;
+        }
+
+        // BRANCHING: Intercept form submissions for saved checkpoints
+        if (isSavedCheckpoint && onBranchSubmit) {
+          console.log('[HTMLSection] Setting up branch interception for saved checkpoint');
+
+          iframeDocument.addEventListener('submit', (e) => {
+            const form = e.target;
+
+            // Check if this form has hx-post (HTMX form)
+            if (form.hasAttribute('hx-post')) {
+              console.log('[HTMLSection] BRANCH INTERCEPT: Form submit detected on saved checkpoint');
+              e.preventDefault();
+              e.stopPropagation();
+
+              // Extract form data
+              const formData = new FormData(form);
+              const response = {};
+
+              for (let [key, value] of formData.entries()) {
+                // Parse response[field] or response[field} (handle LLM typos with curly braces)
+                const match = key.match(/response\[(.+?)[\]\}]/);  // Match ] or }
+                if (match) {
+                  response[match[1]] = value;
+                } else {
+                  response[key] = value;
+                }
+              }
+
+              console.log('[HTMLSection] Extracted response for branch:', response);
+              console.log('[HTMLSection] Raw form keys:', Array.from(formData.keys()));
+
+              // Call branch handler
+              onBranchSubmit(response);
+
+              // Show visual feedback
+              form.innerHTML = '<div style="background: rgba(167, 139, 250, 0.2); border: 2px solid #a78bfa; padding: 20px; border-radius: 8px; text-align: center; color: #a78bfa; font-weight: 600;"><div style="font-size: 2rem; margin-bottom: 8px;">🌿</div>Creating branch...</div>';
+
+              return false;
+            }
+          }, true); // Use capture to intercept before HTMX
         }
 
         // HTMX is now loaded via script tag in iframe, no manual init needed

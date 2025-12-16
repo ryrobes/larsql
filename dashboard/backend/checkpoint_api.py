@@ -273,7 +273,7 @@ def list_checkpoints():
                         has_src = 'src' in sec
                         has_cards = 'cards' in sec
                         has_options = 'options' in sec
-                        print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
+                        #print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
                         if has_base64:
                             print(f"    base64 length: {len(sec.get('base64', ''))}")
                         if has_src:
