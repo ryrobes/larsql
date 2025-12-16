@@ -51,6 +51,8 @@ function ResearchCockpit({
       setCascadeId(null); // Will be fetched from session data
       setCheckpoint(null);
       setTimeline([]);
+      setCheckpointHistory([]); // Clear checkpoint history for new session
+      setGhostMessages([]); // Clear ghost messages for new session
       setOrchestrationState({
         currentPhase: null,
         currentModel: null,
@@ -71,8 +73,10 @@ function ResearchCockpit({
   const [checkpoint, setCheckpoint] = useState(null);
   const [sessionData, setSessionData] = useState(null);
   const [timeline, setTimeline] = useState([]); // History of interactions
+  const [checkpointHistory, setCheckpointHistory] = useState([]); // ALL checkpoints for live session (both pending and responded)
   const [savedSessionData, setSavedSessionData] = useState(null); // Full saved session with checkpoints
   const [isSavedSession, setIsSavedSession] = useState(false);
+  const [ghostMessages, setGhostMessages] = useState([]); // Live thinking/tool messages (cleared on checkpoint)
   const [orchestrationState, setOrchestrationState] = useState({
     currentPhase: null,
     currentModel: null,
@@ -134,6 +138,62 @@ function ResearchCockpit({
     }
   }, [sessionId]);
 
+  // Extract ghost messages from session data (messages since last checkpoint)
+  const extractGhostMessages = useCallback((entries) => {
+    if (!entries || entries.length === 0) return [];
+
+    const ghosts = [];
+
+    // Process entries in reverse to find messages since last checkpoint response
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+
+      // Stop when we hit a checkpoint response (start of current thinking cycle)
+      if (entry.content && typeof entry.content === 'string' &&
+          entry.content.includes('checkpoint_responded')) {
+        break;
+      }
+
+      // Capture interesting events
+      if (entry.role === 'assistant' && entry.content) {
+        // Tool calls
+        if (entry.tool_calls && entry.tool_calls.length > 0) {
+          entry.tool_calls.forEach(tc => {
+            ghosts.unshift({
+              type: 'tool_call',
+              tool: tc.function?.name || 'unknown',
+              timestamp: entry.timestamp,
+              id: `${entry.timestamp}_${tc.id}`
+            });
+          });
+        }
+
+        // Text responses
+        if (entry.content && !entry.tool_calls) {
+          ghosts.unshift({
+            type: 'thinking',
+            content: entry.content.substring(0, 200),
+            timestamp: entry.timestamp,
+            id: `${entry.timestamp}_text`
+          });
+        }
+      }
+
+      // Tool results
+      if (entry.role === 'tool' && entry.tool_call_id) {
+        ghosts.unshift({
+          type: 'tool_result',
+          tool: entry.name || 'tool',
+          content: entry.content?.substring(0, 100),
+          timestamp: entry.timestamp,
+          id: `${entry.timestamp}_result`
+        });
+      }
+    }
+
+    return ghosts.slice(-10); // Keep last 10 messages
+  }, []);
+
   // Fetch session data
   const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
@@ -144,6 +204,12 @@ function ResearchCockpit({
 
       if (!data.error && data.entries) {
         setSessionData(data);
+
+        // Extract ghost messages for live sessions
+        if (!isSavedSession) {
+          const ghosts = extractGhostMessages(data.entries);
+          setGhostMessages(ghosts);
+        }
 
         // Compute aggregated metrics from entries
         const entries = data.entries || [];
@@ -210,14 +276,15 @@ function ResearchCockpit({
     } catch (err) {
       console.error('[ResearchCockpit] Failed to fetch session:', err);
     }
-  }, [sessionId]);
+  }, [sessionId, isSavedSession, extractGhostMessages]);
 
   // Fetch pending checkpoint
   const fetchCheckpoint = useCallback(async () => {
     if (!sessionId) return;
 
     try {
-      const res = await fetch(`http://localhost:5001/api/checkpoints?session_id=${sessionId}`);
+      // Request ALL checkpoints (pending + responded) for timeline visualization
+      const res = await fetch(`http://localhost:5001/api/checkpoints?session_id=${sessionId}&include_all=true`);
       const data = await res.json();
 
       console.log('[ResearchCockpit] Checkpoint fetch result:', {
@@ -227,8 +294,26 @@ function ResearchCockpit({
       });
 
       if (!data.error) {
-        const pending = data.checkpoints?.find(cp => cp.status === 'pending');
+        const allCheckpoints = data.checkpoints || [];
+        const pending = allCheckpoints.find(cp => cp.status === 'pending');
 
+        // Update checkpoint history (ALL checkpoints - for timeline display)
+        // Sort by created_at to show in chronological order
+        const sortedCheckpoints = [...allCheckpoints].sort((a, b) =>
+          new Date(a.created_at) - new Date(b.created_at)
+        );
+        setCheckpointHistory(sortedCheckpoints);
+
+        const respondedCount = sortedCheckpoints.filter(cp => cp.status === 'responded').length;
+        const pendingCount = sortedCheckpoints.filter(cp => cp.status === 'pending').length;
+        console.log('[ResearchCockpit] Updated checkpoint history:', {
+          total: sortedCheckpoints.length,
+          responded: respondedCount,
+          pending: pendingCount,
+          checkpointIds: sortedCheckpoints.map(c => c.id.slice(0, 8))
+        });
+
+        // Set current pending checkpoint (if any)
         if (pending && (!checkpoint || pending.id !== checkpoint.id)) {
           console.log('[ResearchCockpit] ✓ Setting checkpoint:', pending.id);
           setCheckpoint(pending);
@@ -242,6 +327,7 @@ function ResearchCockpit({
           console.log('[ResearchCockpit] Checkpoint unchanged:', pending.id);
         } else {
           console.log('[ResearchCockpit] No pending checkpoint found');
+          setCheckpoint(null); // Clear if no pending
         }
       }
     } catch (err) {
@@ -345,7 +431,9 @@ function ResearchCockpit({
 
           case 'checkpoint_created':
           case 'checkpoint_waiting':
-            console.log('[ResearchCockpit] Checkpoint created/waiting');
+            console.log('[ResearchCockpit] Checkpoint created/waiting - clearing ghost messages');
+            // Clear ghost messages when checkpoint arrives
+            setGhostMessages([]);
             fetchCheckpoint();
             setOrchestrationState(prev => ({
               ...prev,
@@ -355,6 +443,8 @@ function ResearchCockpit({
 
           case 'checkpoint_responded':
             console.log('[ResearchCockpit] Checkpoint responded');
+            // Refresh checkpoint history to show the newly responded checkpoint as collapsed
+            fetchCheckpoint();
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking'
@@ -479,8 +569,9 @@ function ResearchCockpit({
         return;
       }
 
-      // Clear checkpoint and update status
+      // Clear checkpoint, ghost messages, and update status
       setCheckpoint(null);
+      setGhostMessages([]); // Clear any residual ghost messages
       setOrchestrationState(prev => ({
         ...prev,
         status: 'thinking'
@@ -494,6 +585,12 @@ function ResearchCockpit({
         response: values
       }]);
 
+      // CRITICAL: Refresh checkpoint history to include the newly responded checkpoint
+      // This will show it as a collapsed card in the timeline
+      setTimeout(() => {
+        fetchCheckpoint();
+      }, 500); // Small delay to ensure backend has processed the response
+
     } catch (err) {
       console.error('[ResearchCockpit] Failed to submit response:', err);
     }
@@ -506,6 +603,8 @@ function ResearchCockpit({
     setCheckpoint(null);
     setSessionData(null);
     setTimeline([]);
+    setCheckpointHistory([]); // Clear checkpoint history
+    setGhostMessages([]); // Clear ghost messages
     setShowPicker(true);
     setOrchestrationState({
       currentPhase: null,
@@ -525,18 +624,41 @@ function ResearchCockpit({
   // - checkpoint_resumed (incremental updates)
   // - cascade_complete (finalize)
 
-  // Handle branch creation from saved checkpoint
+  // Handle branch creation from checkpoint (works for both saved and live sessions)
   const handleCreateBranch = async (checkpointIndex, newResponse) => {
-    if (!savedSessionData) return;
-
     console.log('[ResearchCockpit] Creating branch from checkpoint', checkpointIndex, 'with response:', newResponse);
 
     try {
+      // If this is a live session (not saved yet), trigger a save first
+      let researchSessionId = savedSessionData?.id;
+
+      if (!researchSessionId) {
+        console.log('[ResearchCockpit] Live session - fetching/creating saved session first...');
+
+        // Check if session was auto-saved already
+        const checkRes = await fetch(`http://localhost:5001/api/research-sessions?limit=100`);
+        const checkData = await checkRes.json();
+
+        if (!checkData.error && checkData.sessions) {
+          const existing = checkData.sessions.find(s => s.original_session_id === sessionId);
+          if (existing) {
+            researchSessionId = existing.id;
+            console.log('[ResearchCockpit] Found auto-saved session:', researchSessionId);
+          }
+        }
+
+        // If still not found, session hasn't been saved yet - can't branch
+        if (!researchSessionId) {
+          alert('Cannot branch from live session - session not saved yet. Try again after the next interaction.');
+          return;
+        }
+      }
+
       const res = await fetch('http://localhost:5001/api/research-sessions/branch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          parent_research_session_id: savedSessionData.id,
+          parent_research_session_id: researchSessionId,
           branch_checkpoint_index: checkpointIndex,
           new_response: newResponse
         })
@@ -647,10 +769,13 @@ function ResearchCockpit({
               savedStatus: savedSessionData?.status,
               hasCheckpoint: !!checkpoint,
               checkpointId: checkpoint?.id,
-              savedCheckpointsCount: savedSessionData?.checkpoints_data?.length
+              savedCheckpointsCount: savedSessionData?.checkpoints_data?.length,
+              checkpointHistoryCount: checkpointHistory.length,
+              willShowSavedTimeline: isSavedSession && savedSessionData?.status === 'completed',
+              willShowLiveTimeline: (!isSavedSession || savedSessionData?.status === 'active') && checkpointHistory.length > 0
             })}
-            {/* Saved Session Timeline (any session with checkpoints - completed OR paused) */}
-            {isSavedSession && savedSessionData && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
+            {/* Saved Session Timeline (ONLY for completed sessions) */}
+            {isSavedSession && savedSessionData && savedSessionData.status === 'completed' && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
               <div className="saved-session-timeline">
                 <div className="timeline-header-section">
                   <Icon icon="mdi:history" width="24" />
@@ -689,8 +814,78 @@ function ResearchCockpit({
               </div>
             )}
 
-            {/* Live Checkpoint - for sessions with pending checkpoints */}
-            {checkpoint && checkpoint.ui_spec && (
+            {/* Ghost Messages - Show live thinking/tool activity */}
+            {!isSavedSession && ghostMessages.length > 0 && (
+              <div className="ghost-messages">
+                {ghostMessages.map(ghost => (
+                  <GhostMessage key={ghost.id} ghost={ghost} />
+                ))}
+              </div>
+            )}
+
+            {/* Live Session Checkpoint Timeline - show ALL checkpoints (responded + pending) */}
+            {/* Show for: unsaved sessions OR active saved sessions */}
+            {(!isSavedSession || savedSessionData?.status === 'active') && checkpointHistory.length > 0 && (
+              <div className="live-checkpoint-timeline">
+                {console.log('[ResearchCockpit] RENDER TIME - Live timeline:', {
+                  totalCheckpoints: checkpointHistory.length,
+                  respondedCheckpoints: checkpointHistory.filter(cp => cp.status === 'responded').length,
+                  pendingCheckpoints: checkpointHistory.filter(cp => cp.status === 'pending').length,
+                  allStatuses: checkpointHistory.map(cp => ({
+                    id: cp.id?.slice(0, 8),
+                    status: cp.status,
+                    created: cp.created_at
+                  }))
+                })}
+                {/* Responded checkpoints (collapsed by default, expandable for branching) */}
+                {checkpointHistory
+                  .filter(cp => cp.status === 'responded')
+                  .map((checkpointData, idx) => {
+                    console.log('[ResearchCockpit] Rendering responded checkpoint:', {
+                      id: checkpointData.id?.slice(0, 8),
+                      status: checkpointData.status,
+                      index: idx
+                    });
+                    return (
+                      <ExpandableCheckpoint
+                        key={checkpointData.id || idx}
+                        checkpoint={checkpointData}
+                        index={idx}
+                        sessionId={sessionId}
+                        savedSessionData={null}
+                        onBranch={handleCreateBranch}
+                      />
+                    );
+                  })}
+
+                {/* Current pending checkpoint (expanded, at bottom) */}
+                {checkpoint && checkpoint.ui_spec && (
+                  <div className="checkpoint-container current">
+                    {(() => {
+                      const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
+                      const htmlSection = checkpoint.ui_spec.sections?.find(s => s.type === 'html');
+
+                      if (hasHTMLSection && htmlSection) {
+                        return (
+                          <div className="checkpoint-html-view">
+                            <HTMLSection
+                              spec={htmlSection}
+                              checkpointId={checkpoint.id}
+                              sessionId={sessionId}
+                            />
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Fallback: Old single checkpoint view (deprecated - keeping for safety) */}
+            {!isSavedSession && checkpointHistory.length === 0 && checkpoint && checkpoint.ui_spec && (
               <div className="checkpoint-container">
                 {(() => {
                   const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
@@ -762,8 +957,9 @@ function ResearchCockpit({
               </div>
             )}
 
-            {/* Empty state - ONLY for brand new sessions with no saved data */}
+            {/* Empty state - ONLY for brand new sessions with no checkpoints or timeline */}
             {!checkpoint &&
+             checkpointHistory.length === 0 &&
              timeline.length === 0 &&
              (!savedSessionData || (savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length === 0)) && (
               <div className="cockpit-empty-state">
@@ -867,7 +1063,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
           {index + 1}
         </div>
         <div className="checkpoint-summary">
-          <h3>{checkpoint.phase_output || 'Interaction'}</h3>
+          <h3>{checkpoint.summary || checkpoint.phase_output || 'Interaction'}</h3>
           <div className="checkpoint-meta">
             <span className="checkpoint-timestamp">
               <Icon icon="mdi:clock-outline" width="14" />
@@ -934,6 +1130,56 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * GhostMessage - Translucent message showing LLM's work in progress
+ * Displays tool calls, thinking, phase transitions
+ * Cleared when checkpoint arrives
+ */
+function GhostMessage({ ghost }) {
+  const getIcon = () => {
+    switch (ghost.type) {
+      case 'tool_call':
+        return 'mdi:tools';
+      case 'tool_result':
+        return 'mdi:check-circle';
+      case 'thinking':
+        return 'mdi:brain';
+      default:
+        return 'mdi:dots-horizontal';
+    }
+  };
+
+  const getLabel = () => {
+    switch (ghost.type) {
+      case 'tool_call':
+        return `Calling ${ghost.tool}...`;
+      case 'tool_result':
+        return `${ghost.tool} completed`;
+      case 'thinking':
+        return 'Thinking...';
+      default:
+        return 'Working...';
+    }
+  };
+
+  return (
+    <div className="ghost-message">
+      <Icon icon={getIcon()} width="16" className="ghost-icon" />
+      <div className="ghost-content">
+        <span className="ghost-label">{getLabel()}</span>
+        {ghost.content && (
+          <span className="ghost-preview">{ghost.content}...</span>
+        )}
+      </div>
+      {ghost.timestamp && (
+        <span className="ghost-time">
+          {new Date(ghost.timestamp).toLocaleTimeString()}
+        </span>
       )}
     </div>
   );

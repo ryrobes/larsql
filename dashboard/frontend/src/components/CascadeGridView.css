@@ -1,17 +1,19 @@
-/* Grid container */
+/* Grid container - fills parent flex container */
 .cascade-grid-container {
   width: 100%;
-  height: calc(100vh - 240px); /* Full viewport height minus header and search */
+  height: 100%; /* Fill parent (.cascades-content) completely */
   display: flex;
   flex-direction: column;
   padding: 0 0.5rem;
+  min-height: 0; /* Allow flex shrinking */
+  overflow: hidden; /* Grid handles its own scrolling */
 }
 
 .cascade-grid {
   flex: 1;
   width: 100%;
   height: 100%;
-  min-height: 500px;
+  /* AG Grid handles internal scrolling - no min-height needed */
 }
 
 /* Cell styling */

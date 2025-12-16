@@ -273,14 +273,34 @@ def list_blocked_sessions():
     """
     Get all sessions currently blocked on signals/HITL.
 
+    Query params:
+        exclude_research_cockpit: If 'true', exclude sessions blocked on research cockpit checkpoints
+
     Returns:
         List of blocked sessions with blocking details
     """
     try:
+        exclude_research = request.args.get('exclude_research_cockpit', 'false').lower() == 'true'
         sessions = get_blocked_sessions()
 
         result = []
         for session in sessions:
+            # If excluding research cockpit, check if session is blocked on a research checkpoint
+            if exclude_research and session.blocked_type in ('hitl', 'approval', 'decision'):
+                # Need to check if the checkpoint has research_cockpit metadata
+                # This requires fetching the checkpoint - let's check via blocked_on (checkpoint_id)
+                try:
+                    from windlass.checkpoints import get_checkpoint_manager
+                    checkpoint_manager = get_checkpoint_manager()
+                    if session.blocked_on:  # blocked_on contains checkpoint_id
+                        checkpoint = checkpoint_manager.get_checkpoint(session.blocked_on)
+                        if checkpoint and checkpoint.ui_spec.get('_meta', {}).get('research_cockpit'):
+                            # Skip this session - it's a research cockpit checkpoint
+                            continue
+                except Exception as e:
+                    # If we can't check, include it (safer than excluding)
+                    pass
+
             is_zombie = _check_is_zombie(session)
             can_resume = session.resumable and session.last_checkpoint_id is not None
             result.append(_session_to_dict(session, is_zombie, can_resume))

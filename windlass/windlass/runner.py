@@ -6825,7 +6825,19 @@ Refinement directive: {reforge_config.honing_prompt}
                 )
             # else: no RAG context and no RAG tools requested - leave context as-is
 
-        rendered_instructions = render_instruction(phase.instructions, render_context)
+        # ========== RESEARCH COCKPIT MODE: Inject UI scaffolding ==========
+        # If this phase is running in Research Cockpit mode (interactive research UI),
+        # inject system prompt with UI patterns, state management, and available tools
+        from .research_cockpit import is_research_cockpit_mode, inject_research_scaffolding, get_detection_reason
+
+        phase_instructions = phase.instructions
+        if is_research_cockpit_mode(phase):
+            reason = get_detection_reason(phase)
+            console.print(f"{indent}[dim cyan]🧭 Research Cockpit mode detected ({reason})[/dim cyan]")
+            console.print(f"{indent}[dim]Injecting UI scaffolding and state management patterns...[/dim]")
+            phase_instructions = inject_research_scaffolding(phase.instructions, phase, render_context)
+
+        rendered_instructions = render_instruction(phase_instructions, render_context)
 
         # Apply mutation if provided (for sounding variations)
         # Three modes:

@@ -655,7 +655,9 @@ def request_decision(
               - VISUALIZATION LIBRARIES AVAILABLE:
                 * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
                 * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))
+                * AG Grid - Professional data tables with sorting/filtering (agGrid.createGrid('#grid', gridOptions))
                 * Use dark theme: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
+                * AG Grid: Use 'ag-theme-quartz-dark' class for dark mode styling
               - SQL DATA FETCHING (test queries first!):
                 * STEP 1 - Test your query with run_sql() BEFORE writing HTML:
                   run_sql("SELECT state, COUNT(*) as count FROM table GROUP BY state LIMIT 5", "csv_files")
@@ -712,6 +714,26 @@ def request_decision(
                 </script>
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
                   <button name="response[selected]" value="approve">Approve Chart</button>
+                </form>
+              - Example (with AG Grid table):
+                <div id="myGrid" class="ag-theme-quartz-dark" style="height: 400px;"></div>
+                <script>
+                  const gridOptions = {
+                    columnDefs: [
+                      { field: 'name', sortable: true, filter: true },
+                      { field: 'value', sortable: true, filter: 'agNumberColumnFilter' }
+                    ],
+                    rowData: [
+                      { name: 'Item 1', value: 100 },
+                      { name: 'Item 2', value: 200 }
+                    ],
+                    pagination: true,
+                    defaultColDef: { resizable: true }
+                  };
+                  agGrid.createGrid(document.querySelector('#myGrid'), gridOptions);
+                </script>
+                <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+                  <button name="response[selected]" value="approve">Approve Data</button>
                 </form>
         timeout_seconds: Maximum wait time (default 600 = 10 minutes)
 
@@ -829,6 +851,14 @@ def _request_decision_via_checkpoint(
         ui_spec['_meta'] = ui_spec.get('_meta', {})
         ui_spec['_meta']['sounding_index'] = sounding_index
         console.print(f"[dim]Added sounding_index={sounding_index} to checkpoint metadata[/dim]")
+
+    # Tag checkpoints created in Research Cockpit mode
+    # These have dedicated inline UI and shouldn't clutter the Blocked Sessions page
+    import os
+    if os.environ.get('WINDLASS_RESEARCH_MODE', 'false').lower() == 'true':
+        ui_spec['_meta'] = ui_spec.get('_meta', {})
+        ui_spec['_meta']['research_cockpit'] = True
+        console.print(f"[dim cyan]Tagged checkpoint as research_cockpit mode[/dim cyan]")
 
     # Create the checkpoint
     checkpoint = checkpoint_manager.create_checkpoint(
@@ -1271,6 +1301,11 @@ input, textarea {
   <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <!-- AG Grid -->
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
 </head>
 <body>
 {body_html}

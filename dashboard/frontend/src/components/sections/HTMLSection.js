@@ -119,19 +119,20 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
           console.log('[Windlass HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
         }, 100);
 
-        // Auto-resize iframe based on content (with protection against infinite growth)
+        // Auto-resize iframe to full content height (no scrollbars!)
         let lastHeight = 0;
         let resizeCount = 0;
-        const MAX_HEIGHT = 2000; // Cap at 2000px to prevent runaway growth
-        const MAX_RESIZES = 20; // Stop after 20 resize attempts
+        const MAX_RESIZES = 30; // Stop after 30 resize attempts to prevent infinite loops
 
         let resizeTimeout;
         const resizeIframe = () => {
           clearTimeout(resizeTimeout);
           resizeTimeout = setTimeout(() => {
             try {
+              // Get the full scrollHeight including all nested content
               const contentHeight = iframeDocument.body.scrollHeight;
-              const newHeight = Math.min(Math.max(contentHeight + 20, 100), MAX_HEIGHT);
+              // Add generous padding to ensure no scrollbars (40px buffer)
+              const newHeight = Math.max(contentHeight + 40, 100);
 
               // Only update if height changed by more than 5px (avoid tiny fluctuations)
               const heightDelta = Math.abs(newHeight - lastHeight);
@@ -345,11 +346,16 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>${baseCSS}</style>
 
-  <!-- Visualization libraries for LLM-generated charts -->
+  <!-- Visualization libraries for LLM-generated charts and tables -->
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <!-- AG Grid for data tables -->
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
 
   <!-- HTMX loaded directly in iframe context -->
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
@@ -360,12 +366,14 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
     console.log('[HTMX iframe INIT] Plotly loaded:', typeof Plotly !== 'undefined');
     console.log('[HTMX iframe INIT] Vega loaded:', typeof vega !== 'undefined');
     console.log('[HTMX iframe INIT] vegaEmbed loaded:', typeof vegaEmbed !== 'undefined');
+    console.log('[HTMX iframe INIT] AG Grid loaded:', typeof agGrid !== 'undefined');
 
     // Wait for HTMX to fully initialize
     window.addEventListener('DOMContentLoaded', () => {
       console.log('[HTMX iframe] DOMContentLoaded, htmx available:', typeof htmx !== 'undefined');
       console.log('[HTMX iframe] Plotly:', typeof Plotly !== 'undefined');
       console.log('[HTMX iframe] vegaEmbed:', typeof vegaEmbed !== 'undefined');
+      console.log('[HTMX iframe] AG Grid:', typeof agGrid !== 'undefined');
 
       if (typeof htmx !== 'undefined') {
         // HTMX configuration for iframe

@@ -553,8 +553,8 @@ function App() {
           // HITL Checkpoint events - refresh blocked count on any checkpoint event
           case 'checkpoint_waiting':
             //console.log('[SSE] Checkpoint waiting:', event.data);
-            // Immediately refresh blocked count
-            fetch('http://localhost:5001/api/sessions/blocked')
+            // Immediately refresh blocked count (exclude research cockpit)
+            fetch('http://localhost:5001/api/sessions/blocked?exclude_research_cockpit=true')
               .then(res => res.json())
               .then(data => data.sessions && setBlockedCount(data.sessions.length))
               .catch(() => {});
@@ -581,8 +581,8 @@ function App() {
 
           case 'checkpoint_responded':
             console.log('[SSE] Checkpoint responded:', event.data);
-            // Immediately refresh blocked count
-            fetch('http://localhost:5001/api/sessions/blocked')
+            // Immediately refresh blocked count (exclude research cockpit)
+            fetch('http://localhost:5001/api/sessions/blocked?exclude_research_cockpit=true')
               .then(res => res.json())
               .then(data => data.sessions && setBlockedCount(data.sessions.length))
               .catch(() => {});
@@ -595,8 +595,8 @@ function App() {
 
           case 'checkpoint_cancelled':
             console.log('[SSE] Checkpoint cancelled:', event.data);
-            // Immediately refresh blocked count
-            fetch('http://localhost:5001/api/sessions/blocked')
+            // Immediately refresh blocked count (exclude research cockpit)
+            fetch('http://localhost:5001/api/sessions/blocked?exclude_research_cockpit=true')
               .then(res => res.json())
               .then(data => data.sessions && setBlockedCount(data.sessions.length))
               .catch(() => {});
@@ -608,8 +608,8 @@ function App() {
 
           case 'checkpoint_timeout':
             console.log('[SSE] Checkpoint timeout:', event.data);
-            // Immediately refresh blocked count
-            fetch('http://localhost:5001/api/sessions/blocked')
+            // Immediately refresh blocked count (exclude research cockpit)
+            fetch('http://localhost:5001/api/sessions/blocked?exclude_research_cockpit=true')
               .then(res => res.json())
               .then(data => data.sessions && setBlockedCount(data.sessions.length))
               .catch(() => {});
@@ -691,10 +691,10 @@ function App() {
     };
   }, []);
 
-  // Fetch blocked sessions count
+  // Fetch blocked sessions count (excluding research cockpit by default)
   const fetchBlockedCount = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/sessions/blocked');
+      const response = await fetch('http://localhost:5001/api/sessions/blocked?exclude_research_cockpit=true');
       const data = await response.json();
       if (!data.error && data.sessions) {
         setBlockedCount(data.sessions.length);

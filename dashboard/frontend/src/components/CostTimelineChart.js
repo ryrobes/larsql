@@ -1,311 +1,472 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  ComposedChart,
-  Bar,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  Cell
+  ResponsiveContainer
 } from 'recharts';
-import { getSequentialColor } from './CascadeBar';
 import './CostTimelineChart.css';
 
-function CostTimelineChart({ messages = [], isRunning = false, onBarClick = null }) {
-  const [hoveredBar, setHoveredBar] = useState(null);
+/**
+ * CostTimelineChart - Elegant cost visualization with Bret Victor-inspired design
+ *
+ * Design philosophy:
+ * - Let the data breathe - minimal chrome, maximum clarity
+ * - Harmonious color palette that blends with the dashboard
+ * - Direct, honest representation of values
+ * - Smooth interactions that reveal detail on demand
+ */
+function CostTimelineChart({ cascadeFilter = null }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [hoveredModel, setHoveredModel] = useState(null);
 
-  // Build phase color map based on order of first appearance
-  const phaseColorMap = useMemo(() => {
-    if (!messages || messages.length === 0) return {};
+  useEffect(() => {
+    fetchCostTimeline();
+  }, [cascadeFilter]);
 
-    const map = {};
-    let colorIndex = 0;
+  const fetchCostTimeline = async () => {
+    try {
+      setLoading(true);
 
-    // Sort by timestamp to get correct order
-    const sorted = [...messages].sort((a, b) => a.timestamp - b.timestamp);
-
-    sorted.forEach(msg => {
-      const phaseName = msg.phase_name || '_unknown_';
-      if (!(phaseName in map)) {
-        map[phaseName] = getSequentialColor(colorIndex);
-        colorIndex++;
+      const params = new URLSearchParams();
+      if (cascadeFilter) {
+        params.append('cascade_id', cascadeFilter);
       }
-    });
+      params.append('limit', '14');
 
-    return map;
-  }, [messages]);
+      const res = await fetch(`http://localhost:5001/api/analytics/cost-timeline?${params}`);
+      const result = await res.json();
 
-  // Process messages into chart data
-  const chartData = useMemo(() => {
-    if (!messages || messages.length === 0) return [];
-
-    // Filter to messages with cost or timestamps
-    const relevantMessages = messages.filter(m =>
-      m.cost > 0 || m.tokens_in > 0 || m.tokens_out > 0
-    );
-
-    if (relevantMessages.length === 0) return [];
-
-    // Sort by timestamp
-    const sorted = [...relevantMessages].sort((a, b) => a.timestamp - b.timestamp);
-
-    // Calculate cumulative cost and time deltas
-    let cumulativeCost = 0;
-    let prevTimestamp = sorted[0].timestamp;
-
-    return sorted.map((msg, index) => {
-      cumulativeCost += msg.cost || 0;
-      // Calculate duration of this message (time since previous message)
-      const messageDuration = index === 0 ? 0 : msg.timestamp - prevTimestamp;
-      prevTimestamp = msg.timestamp;
-
-      // Get phase color from our map (matches CascadeBar colors)
-      const phaseName = msg.phase_name || '_unknown_';
-      let barColor = phaseColorMap[phaseName] || '#2DD4BF';
-
-      // Dim non-winner soundings slightly
-      const isDimmed = msg.sounding_index !== null && !msg.is_winner;
-
-      // Find the original index in all_messages for scrolling
-      // Prefer _index from backend (avoids timestamp collision issues)
-      let originalIndex = msg._index;
-      if (originalIndex === undefined || originalIndex === null) {
-        // Fallback: Match by multiple fields for uniqueness
-        originalIndex = messages.findIndex(m =>
-          m.timestamp === msg.timestamp &&
-          m.phase_name === msg.phase_name &&
-          m.node_type === msg.node_type &&
-          m.turn_number === msg.turn_number &&
-          m.sounding_index === msg.sounding_index &&
-          m.role === msg.role
-        );
+      if (result.error) {
+        setError(result.error);
+        return;
       }
 
-      return {
-        index,
-        originalIndex, // Index in all_messages for scrolling
-        label: `${index + 1}`,
-        cost: msg.cost || 0,
-        cumulativeCost,
-        duration: messageDuration, // Time this message took (delta from previous)
-        phase: phaseName,
-        role: msg.role,
-        nodeType: msg.node_type,
-        tokens: (msg.tokens_in || 0) + (msg.tokens_out || 0),
-        model: msg.model,
-        isWinner: msg.is_winner,
-        soundingIndex: msg.sounding_index,
-        barColor,
-        isDimmed
-      };
-    });
-  }, [messages, phaseColorMap]);
-
-  // Calculate totals for header
-  const totals = useMemo(() => {
-    const totalCost = chartData.reduce((sum, d) => sum + d.cost, 0);
-    const totalTokens = chartData.reduce((sum, d) => sum + d.tokens, 0);
-    const totalDuration = chartData.reduce((sum, d) => sum + d.duration, 0);
-    return { totalCost, totalTokens, totalDuration };
-  }, [chartData]);
-
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="cost-chart-tooltip">
-          <div className="tooltip-header">Message #{data.index + 1}</div>
-          <div className="tooltip-row">
-            <span>Phase:</span>
-            <span>{data.phase || 'N/A'}</span>
-          </div>
-          <div className="tooltip-row">
-            <span>Type:</span>
-            <span>{data.nodeType} / {data.role}</span>
-          </div>
-          <div className="tooltip-row highlight">
-            <span>Cost:</span>
-            <span>${data.cost.toFixed(6)}</span>
-          </div>
-          <div className="tooltip-row">
-            <span>Tokens:</span>
-            <span>{data.tokens.toLocaleString()}</span>
-          </div>
-          <div className="tooltip-row">
-            <span>Duration:</span>
-            <span>{data.duration.toFixed(1)}s</span>
-          </div>
-          {data.model && (
-            <div className="tooltip-row">
-              <span>Model:</span>
-              <span className="model-name">{data.model.split('/').pop()}</span>
-            </div>
-          )}
-          {data.soundingIndex !== null && (
-            <div className="tooltip-row">
-              <span>Sounding:</span>
-              <span>#{data.soundingIndex} {data.isWinner ? '(Winner)' : ''}</span>
-            </div>
-          )}
-        </div>
-      );
+      setData(result);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    return null;
   };
 
-  // Format cost for Y-axis
-  const formatCost = (value) => {
-    if (value >= 0.01) return `$${value.toFixed(2)}`;
-    if (value >= 0.001) return `$${value.toFixed(3)}`;
-    return `$${value.toFixed(4)}`;
+  // Harmonious color palette - blues, teals, and subtle accents
+  const colorPalette = useMemo(() => ({
+    primary: [
+      '#4A9EDD',  // Dashboard blue
+      '#5EEAD4',  // Teal accent
+      '#60A5FA',  // Sky blue
+      '#818CF8',  // Indigo
+      '#A78BFA',  // Purple
+      '#F472B6',  // Pink
+      '#FB923C',  // Orange (for contrast)
+      '#6B7280',  // Gray for "Other"
+    ],
+    gradient: {
+      start: 'rgba(74, 158, 221, 0.4)',
+      end: 'rgba(74, 158, 221, 0.02)'
+    },
+    tokens: {
+      input: '#5EEAD4',   // Teal for input
+      output: '#A78BFA',  // Purple for output
+    }
+  }), []);
+
+  // Shorten model names for elegant display
+  const shortenModelName = (fullName) => {
+    if (!fullName || fullName === 'None' || fullName === 'Other') {
+      return fullName === 'Other' ? 'Other' : 'Unknown';
+    }
+
+    let name = fullName;
+    name = name.replace(/^(openai|anthropic|google|x-ai)\//, '');
+
+    const transforms = [
+      [/claude-(\d+\.?\d*)-sonnet.*/, 'Claude $1 Sonnet'],
+      [/claude-sonnet-(\d+\.?\d*).*/, 'Claude $1 Sonnet'],
+      [/claude-(\d+\.?\d*)-opus.*/, 'Claude $1 Opus'],
+      [/claude-opus-(\d+\.?\d*).*/, 'Claude $1 Opus'],
+      [/claude-(\d+\.?\d*)-haiku.*/, 'Claude $1 Haiku'],
+      [/claude-haiku-(\d+\.?\d*).*/, 'Claude $1 Haiku'],
+      [/gpt-(\d+\.?\d*).*/, 'GPT-$1'],
+      [/gemini-(\d+\.?\d*)-pro.*/, 'Gemini $1 Pro'],
+      [/gemini-(\d+\.?\d*)-flash-lite.*/, 'Gemini $1 Lite'],
+      [/gemini-(\d+\.?\d*)-flash.*/, 'Gemini $1 Flash'],
+      [/grok-(\d+).*/, 'Grok $1'],
+      [/qwen.*embed.*/, 'Qwen Embed'],
+    ];
+
+    for (const [pattern, replacement] of transforms) {
+      if (pattern.test(name)) {
+        name = name.replace(pattern, replacement);
+        break;
+      }
+    }
+
+    if (name.length > 20) {
+      name = name.substring(0, 18) + '…';
+    }
+
+    return name;
   };
 
-  // Format time for Y-axis
-  const formatTime = (value) => {
-    if (value >= 60) return `${(value / 60).toFixed(1)}m`;
-    return `${value.toFixed(0)}s`;
+  // Format currency elegantly
+  const formatCost = (value, precision = 2) => {
+    if (value >= 100) return `$${value.toFixed(0)}`;
+    if (value >= 10) return `$${value.toFixed(1)}`;
+    if (value >= 1) return `$${value.toFixed(precision)}`;
+    return `$${value.toFixed(Math.min(precision + 2, 4))}`;
   };
 
-  if (chartData.length === 0) {
+  // Format token count
+  const formatTokens = (value) => {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+    return value.toString();
+  };
+
+  // Format time bucket
+  const formatTimeBucket = (bucket) => {
+    if (!data) return bucket;
+    const bucketType = data.bucket_type;
+    const date = new Date(bucket);
+
+    if (bucketType === 'hour') {
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } else if (bucketType === 'day') {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (bucketType === 'week') {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (bucketType === 'month') {
+      return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    }
+    return bucket;
+  };
+
+  // Process data for visualization
+  const processedData = useMemo(() => {
+    if (!data || !data.buckets) return { chartData: [], modelBreakdown: [], tokenData: [] };
+
+    // Sort models by total cost
+    const modelTotals = Object.entries(data.model_totals || {})
+      .map(([model, cost]) => ({ model, cost, displayName: shortenModelName(model) }))
+      .sort((a, b) => b.cost - a.cost);
+
+    // Top 7 models + Other
+    const topModels = modelTotals.slice(0, 7);
+    const otherModels = modelTotals.slice(7);
+    const otherTotal = otherModels.reduce((sum, m) => sum + m.cost, 0);
+
+    const modelBreakdown = [...topModels];
+    if (otherTotal > 0) {
+      modelBreakdown.push({ model: 'Other', cost: otherTotal, displayName: 'Other' });
+    }
+
+    // Assign colors
+    modelBreakdown.forEach((item, idx) => {
+      item.color = colorPalette.primary[idx] || colorPalette.primary[7];
+    });
+
+    // Chart data - costs and tokens
+    const chartData = data.buckets.map(bucket => ({
+      time: bucket.time_bucket,
+      total: bucket.total_cost,
+      tokens_in: bucket.tokens_in || 0,
+      tokens_out: bucket.tokens_out || 0,
+      models: bucket.models
+    }));
+
+    return { chartData, modelBreakdown };
+  }, [data, colorPalette]);
+
+  // Custom tooltip for cost chart
+  const CostTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload[0]) return null;
+
+    const dataPoint = payload[0].payload;
+    const models = dataPoint.models || {};
+
+    const sortedModels = Object.entries(models)
+      .filter(([, cost]) => cost > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
     return (
-      <div className="cost-timeline-chart empty">
-        <div className="chart-header">
-          <span className="chart-title">Cost Timeline</span>
-          <span className="no-data">No cost data yet</span>
+      <div className="cost-tooltip-v2">
+        <div className="tooltip-header-v2">{formatTimeBucket(label)}</div>
+        <div className="tooltip-total-v2">{formatCost(dataPoint.total, 3)}</div>
+        {sortedModels.length > 0 && (
+          <div className="tooltip-models-v2">
+            {sortedModels.map(([model, cost]) => (
+              <div key={model} className="tooltip-model-row">
+                <span className="tooltip-model-name">{shortenModelName(model)}</span>
+                <span className="tooltip-model-cost">{formatCost(cost, 3)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Custom tooltip for token chart
+  const TokenTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload[0]) return null;
+
+    const dataPoint = payload[0].payload;
+
+    return (
+      <div className="cost-tooltip-v2">
+        <div className="tooltip-header-v2">{formatTimeBucket(label)}</div>
+        <div className="tooltip-token-row">
+          <span className="token-label" style={{ color: colorPalette.tokens.input }}>Input</span>
+          <span className="token-value">{formatTokens(dataPoint.tokens_in)}</span>
         </div>
+        <div className="tooltip-token-row">
+          <span className="token-label" style={{ color: colorPalette.tokens.output }}>Output</span>
+          <span className="token-value">{formatTokens(dataPoint.tokens_out)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="cost-analytics-v2 loading">
+        <div className="loading-pulse" />
+        <span>Loading analytics...</span>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="cost-analytics-v2 error">
+        <span className="error-icon">○</span>
+        <span>{error}</span>
+      </div>
+    );
+  }
+
+  if (!data || !data.buckets || data.buckets.length === 0) {
+    return (
+      <div className="cost-analytics-v2 empty">
+        <span>No cost data available</span>
+      </div>
+    );
+  }
+
+  const { chartData, modelBreakdown } = processedData;
+  const totalCost = data.total_cost || 0;
+  const totalTokensIn = data.total_tokens_in || 0;
+  const totalTokensOut = data.total_tokens_out || 0;
+  const maxModelCost = modelBreakdown.length > 0 ? modelBreakdown[0].cost : 0;
+
   return (
-    <div className={`cost-timeline-chart ${isRunning ? 'running' : ''}`}>
-      <div className="chart-header">
-        <span className="chart-title">Cost Timeline</span>
-        <div className="chart-stats">
-          <span className="stat cost">
-            <span className="stat-label">Total:</span>
-            <span className="stat-value">${totals.totalCost.toFixed(4)}</span>
+    <div className="cost-analytics-v2">
+      {/* Header */}
+      <div className="analytics-header">
+        <div className="header-primary">
+          <h3 className="analytics-title">Cost Analytics</h3>
+          <span className="analytics-period">
+            {data.bucket_type === 'hour' ? 'Hourly' :
+             data.bucket_type === 'day' ? 'Daily' :
+             data.bucket_type === 'week' ? 'Weekly' : 'Monthly'}
           </span>
-          <span className="stat tokens">
-            <span className="stat-label">Tokens:</span>
-            <span className="stat-value">{totals.totalTokens.toLocaleString()}</span>
-          </span>
-          <span className="stat time">
-            <span className="stat-label">Duration:</span>
-            <span className="stat-value">{formatTime(totals.totalDuration)}</span>
-          </span>
-          {isRunning && (
-            <span className="stat running-indicator">
-              <span className="pulse"></span>
-              Live
-            </span>
-          )}
+        </div>
+        <div className="header-stats">
+          <div className="header-stat">
+            <span className="stat-label">Total</span>
+            <span className="stat-value cost">{formatCost(totalCost, 2)}</span>
+          </div>
+          <div className="header-stat">
+            <span className="stat-label">Tokens</span>
+            <span className="stat-value tokens">{formatTokens(totalTokensIn + totalTokensOut)}</span>
+          </div>
         </div>
       </div>
-      <div className="chart-container">
-        <ResponsiveContainer width="100%" height={100}>
-          <ComposedChart
-            data={chartData}
-            margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fill: '#64748b', fontSize: 9 }}
-              axisLine={{ stroke: '#2C3B4B' }}
-              tickLine={false}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              yAxisId="cost"
-              orientation="left"
-              tick={{ fill: '#2DD4BF', fontSize: 9 }}
-              tickFormatter={formatCost}
-              axisLine={false}
-              tickLine={false}
-              width={50}
-            />
-            <YAxis
-              yAxisId="time"
-              orientation="right"
-              tick={{ fill: '#60a5fa', fontSize: 9 }}
-              tickFormatter={formatTime}
-              axisLine={false}
-              tickLine={false}
-              width={35}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar
-              yAxisId="cost"
-              dataKey="cost"
-              radius={[2, 2, 0, 0]}
-              isAnimationActive={true}
-              animationDuration={300}
-              onClick={(data, index) => {
-                if (onBarClick && data && data.originalIndex !== undefined) {
-                  onBarClick(data.originalIndex);
-                }
-              }}
-              onMouseEnter={(data, index) => setHoveredBar(index)}
-              onMouseLeave={() => setHoveredBar(null)}
-              style={{ cursor: onBarClick ? 'pointer' : 'default' }}
-            >
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.barColor}
-                  opacity={entry.isDimmed ? 0.4 : (hoveredBar === index ? 1 : 0.85)}
-                  stroke={hoveredBar === index ? '#fff' : 'none'}
-                  strokeWidth={hoveredBar === index ? 1 : 0}
-                />
-              ))}
-            </Bar>
-            <Line
-              yAxisId="time"
-              type="monotone"
-              dataKey="duration"
-              stroke="#60a5fa"
-              strokeWidth={2}
-              dot={{ r: 3, fill: '#60a5fa', stroke: '#0a0f14', strokeWidth: 1, cursor: 'pointer' }}
-              activeDot={{
-                r: 5,
-                fill: '#60a5fa',
-                stroke: '#fff',
-                strokeWidth: 2,
-                cursor: 'pointer',
-                onClick: (e, payload) => {
-                  if (onBarClick && payload && payload.payload && payload.payload.originalIndex !== undefined) {
-                    onBarClick(payload.payload.originalIndex);
-                  }
-                }
-              }}
-              isAnimationActive={true}
-              animationDuration={300}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+
+      {/* Main content area */}
+      <div className="analytics-content">
+        {/* Charts column */}
+        <div className="charts-column">
+          {/* Cost timeline chart */}
+          <div className="chart-section">
+            <div className="chart-label">
+              <span className="chart-label-text">Cost</span>
+            </div>
+            <div className="timeline-chart">
+              <ResponsiveContainer width="100%" height={120}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={colorPalette.gradient.start} />
+                      <stop offset="100%" stopColor={colorPalette.gradient.end} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="time"
+                    tickFormatter={formatTimeBucket}
+                    stroke="#3A4A5A"
+                    fontSize={9}
+                    tickLine={false}
+                    axisLine={false}
+                    dy={4}
+                    interval="preserveStartEnd"
+                    hide
+                  />
+                  <YAxis
+                    stroke="#3A4A5A"
+                    fontSize={9}
+                    tickFormatter={(v) => formatCost(v, 0)}
+                    tickLine={false}
+                    axisLine={false}
+                    width={44}
+                    dx={-4}
+                  />
+                  <Tooltip content={<CostTooltip />} cursor={{ stroke: 'rgba(74, 158, 221, 0.3)', strokeWidth: 1 }} />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    stroke="#4A9EDD"
+                    strokeWidth={2}
+                    fill="url(#costGradient)"
+                    dot={false}
+                    activeDot={{ r: 3, fill: '#4A9EDD', stroke: '#0B1219', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Token usage chart */}
+          <div className="chart-section token-section">
+            <div className="chart-label">
+              <span className="chart-label-text">Tokens</span>
+              <div className="token-legend">
+                <span className="token-legend-item">
+                  <span className="legend-dot" style={{ background: colorPalette.tokens.input }} />
+                  In
+                </span>
+                <span className="token-legend-item">
+                  <span className="legend-dot" style={{ background: colorPalette.tokens.output }} />
+                  Out
+                </span>
+              </div>
+            </div>
+            <div className="timeline-chart">
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="tokensInGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(94, 234, 212, 0.35)" />
+                      <stop offset="100%" stopColor="rgba(94, 234, 212, 0.02)" />
+                    </linearGradient>
+                    <linearGradient id="tokensOutGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(167, 139, 250, 0.35)" />
+                      <stop offset="100%" stopColor="rgba(167, 139, 250, 0.02)" />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="time"
+                    tickFormatter={formatTimeBucket}
+                    stroke="#3A4A5A"
+                    fontSize={9}
+                    tickLine={false}
+                    axisLine={false}
+                    dy={4}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    stroke="#3A4A5A"
+                    fontSize={9}
+                    tickFormatter={formatTokens}
+                    tickLine={false}
+                    axisLine={false}
+                    width={44}
+                    dx={-4}
+                  />
+                  <Tooltip content={<TokenTooltip />} cursor={{ stroke: 'rgba(94, 234, 212, 0.3)', strokeWidth: 1 }} />
+                  <Area
+                    type="monotone"
+                    dataKey="tokens_in"
+                    stroke={colorPalette.tokens.input}
+                    strokeWidth={1.5}
+                    fill="url(#tokensInGradient)"
+                    dot={false}
+                    activeDot={{ r: 2, fill: colorPalette.tokens.input, stroke: '#0B1219', strokeWidth: 1 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="tokens_out"
+                    stroke={colorPalette.tokens.output}
+                    strokeWidth={1.5}
+                    fill="url(#tokensOutGradient)"
+                    dot={false}
+                    activeDot={{ r: 2, fill: colorPalette.tokens.output, stroke: '#0B1219', strokeWidth: 1 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Model breakdown - horizontal bars */}
+        <div className="model-breakdown">
+          <div className="breakdown-header">
+            <span className="breakdown-title">Model Distribution</span>
+          </div>
+          <div className="breakdown-bars">
+            {modelBreakdown.map((item, idx) => {
+              const percentage = maxModelCost > 0 ? (item.cost / totalCost) * 100 : 0;
+              const barWidth = maxModelCost > 0 ? (item.cost / maxModelCost) * 100 : 0;
+              const isHovered = hoveredModel === item.model;
+
+              return (
+                <div
+                  key={item.model}
+                  className={`breakdown-row ${isHovered ? 'hovered' : ''}`}
+                  onMouseEnter={() => setHoveredModel(item.model)}
+                  onMouseLeave={() => setHoveredModel(null)}
+                >
+                  <div className="breakdown-label">
+                    <span
+                      className="breakdown-dot"
+                      style={{ background: item.color }}
+                    />
+                    <span className="breakdown-name">{item.displayName}</span>
+                  </div>
+                  <div className="breakdown-bar-container">
+                    <div
+                      className="breakdown-bar"
+                      style={{
+                        width: `${barWidth}%`,
+                        background: item.color,
+                        opacity: isHovered ? 1 : 0.7
+                      }}
+                    />
+                  </div>
+                  <div className="breakdown-values">
+                    <span className="breakdown-cost">{formatCost(item.cost, 2)}</span>
+                    <span className="breakdown-percent">{percentage.toFixed(0)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
-      <div className="chart-legend">
-        {Object.entries(phaseColorMap).slice(0, 6).map(([phase, color]) => (
-          <span key={phase} className="legend-item phase-legend">
-            <span className="legend-dot" style={{ background: color }}></span>
-            {phase === '_unknown_' ? 'Init' : phase.length > 12 ? phase.substring(0, 10) + '...' : phase}
-          </span>
-        ))}
-        {Object.keys(phaseColorMap).length > 6 && (
-          <span className="legend-item phase-legend">
-            +{Object.keys(phaseColorMap).length - 6} more
-          </span>
-        )}
-        <span className="legend-divider">|</span>
-        <span className="legend-item">
-          <span className="legend-line" style={{ background: '#60a5fa' }}></span>
-          Time
-        </span>
-      </div>
+
+      {cascadeFilter && (
+        <div className="filter-indicator">
+          Filtered: <span className="filter-value">{cascadeFilter}</span>
+        </div>
+      )}
     </div>
   );
 }

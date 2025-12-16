@@ -456,6 +456,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedSignal, setSelectedSignal] = useState(null);
+  const [showResearchCockpit, setShowResearchCockpit] = useState(false); // Filter toggle for research cockpit checkpoints
 
   // Fetch blocked sessions and waiting signals
   const fetchData = useCallback(async () => {
@@ -476,9 +477,25 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
       // Debug logging
       console.log('[BlockedSessionsView] Fetched checkpoints:', checkpointsData.checkpoints?.length || 0);
 
+      // Filter out research cockpit checkpoints unless toggle is enabled
+      // Research cockpit checkpoints have ui_spec._meta.research_cockpit = true
+      // They have dedicated inline UI and shouldn't clutter this view by default
+      let checkpointsToShow = checkpointsData.checkpoints || [];
+      const researchCockpitCheckpoints = checkpointsToShow.filter(cp =>
+        cp.ui_spec?._meta?.research_cockpit === true
+      );
+
+      if (!showResearchCockpit && researchCockpitCheckpoints.length > 0) {
+        // Filter out research cockpit checkpoints
+        checkpointsToShow = checkpointsToShow.filter(cp =>
+          cp.ui_spec?._meta?.research_cockpit !== true
+        );
+        console.log(`[BlockedSessionsView] Filtered out ${researchCockpitCheckpoints.length} research cockpit checkpoints (toggle off)`);
+      }
+
       // Build sessions from pending checkpoints (group by session_id)
       const sessionMap = {};
-      (checkpointsData.checkpoints || []).forEach(cp => {
+      checkpointsToShow.forEach(cp => {
         console.log('[BlockedSessionsView] Processing checkpoint:', cp.id, 'session:', cp.session_id);
 
         const sid = cp.session_id;
@@ -527,7 +544,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showResearchCockpit]); // Re-fetch when filter toggle changes
 
   useEffect(() => {
     fetchData();
@@ -656,22 +673,47 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
           </>
         }
         customButtons={
-          <button className="refresh-btn" onClick={fetchData} title="Refresh" style={{
-            padding: '8px 14px',
-            background: 'linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(94, 234, 212, 0.15))',
-            border: '1px solid rgba(74, 158, 221, 0.3)',
-            borderRadius: '8px',
-            color: '#4A9EDD',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.85rem',
-            fontWeight: '500'
-          }}>
-            <Icon icon="mdi:refresh" width="18" />
-            Refresh
-          </button>
+          <>
+            <button
+              onClick={() => setShowResearchCockpit(!showResearchCockpit)}
+              title={showResearchCockpit ? "Hide Research Cockpit checkpoints" : "Show Research Cockpit checkpoints"}
+              style={{
+                padding: '8px 14px',
+                background: showResearchCockpit
+                  ? 'linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(139, 92, 246, 0.2))'
+                  : 'linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(75, 85, 99, 0.15))',
+                border: showResearchCockpit ? '1px solid rgba(167, 139, 250, 0.4)' : '1px solid rgba(107, 114, 128, 0.3)',
+                borderRadius: '8px',
+                color: showResearchCockpit ? '#a78bfa' : '#9ca3af',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.85rem',
+                fontWeight: '500',
+                marginRight: '8px'
+              }}>
+              <Icon icon={showResearchCockpit ? "mdi:eye" : "mdi:eye-off"} width="18" />
+              Research Cockpit
+            </button>
+
+            <button className="refresh-btn" onClick={fetchData} title="Refresh" style={{
+              padding: '8px 14px',
+              background: 'linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(94, 234, 212, 0.15))',
+              border: '1px solid rgba(74, 158, 221, 0.3)',
+              borderRadius: '8px',
+              color: '#4A9EDD',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.85rem',
+              fontWeight: '500'
+            }}>
+              <Icon icon="mdi:refresh" width="18" />
+              Refresh
+            </button>
+          </>
         }
         onMessageFlow={onMessageFlow}
         onSextant={onSextant}

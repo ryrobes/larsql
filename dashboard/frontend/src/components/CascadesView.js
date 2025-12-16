@@ -5,6 +5,7 @@ import CascadeGridView from './CascadeGridView';
 import CascadeFlowModal from './CascadeFlowModal';
 import VideoSpinner from './VideoSpinner';
 import Header from './Header';
+import CostTimelineChart from './CostTimelineChart';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
@@ -343,6 +344,9 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
         blockedCount={blockedCount}
         sseConnected={sseConnected}
       />
+
+      {/* Cost Analytics Chart */}
+      <CostTimelineChart cascadeFilter={searchQuery || null} />
 
       <div className="search-bar">
         <div className="search-container">

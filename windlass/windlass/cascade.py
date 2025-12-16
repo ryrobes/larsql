@@ -636,6 +636,10 @@ class PhaseConfig(BaseModel):
     # Supports string shorthand: callouts="Result" → callouts.output="Result"
     callouts: Optional[Union[str, CalloutsConfig]] = None
 
+    # UI mode hint for specialized rendering (e.g., 'research_cockpit')
+    # When set to 'research_cockpit', injects UI scaffolding for interactive research sessions
+    ui_mode: Optional[Literal['research_cockpit']] = None
+
     def is_deterministic(self) -> bool:
         """Check if this phase is deterministic (tool-based) vs LLM-based."""
         return self.tool is not None

@@ -112,6 +112,7 @@ class Checkpoint:
     winner_index: Optional[int] = None
     rankings: Optional[List[int]] = None
     ratings: Optional[Dict[str, float]] = None
+    summary: Optional[str] = None  # AI-generated one-sentence summary of the checkpoint
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -138,6 +139,7 @@ class Checkpoint:
             "winner_index": self.winner_index,
             "rankings": self.rankings,
             "ratings": self.ratings,
+            "summary": self.summary,
         }
 
 
@@ -275,6 +277,9 @@ class CheckpointManager:
             }
         ))
 
+        # Generate summary asynchronously (non-blocking)
+        self._generate_summary_async(checkpoint_id, phase_output)
+
         return checkpoint
 
     def get_checkpoint(self, checkpoint_id: str) -> Optional[Checkpoint]:
@@ -333,6 +338,42 @@ class CheckpointManager:
                     pending.append(cp)
 
         return pending
+
+    def get_all_checkpoints(self, session_id: str) -> List[Checkpoint]:
+        """
+        Get ALL checkpoints for a session (pending + responded).
+
+        Used for research cockpit timeline visualization.
+
+        Args:
+            session_id: Session ID to filter by
+
+        Returns:
+            List of all Checkpoint objects for this session
+        """
+        all_checkpoints = []
+        seen_ids = set()
+
+        # First check in-memory cache
+        with self._cache_lock:
+            for checkpoint in self._cache.values():
+                if checkpoint.session_id == session_id:
+                    all_checkpoints.append(checkpoint)
+                    seen_ids.add(checkpoint.id)
+
+        # Then check database for any checkpoints not in cache
+        if self.use_db:
+            db_checkpoints = self._load_all_checkpoints(session_id)
+            for cp in db_checkpoints:
+                if cp.id not in seen_ids:
+                    # Add to cache for future fast access
+                    with self._cache_lock:
+                        self._cache[cp.id] = cp
+                    all_checkpoints.append(cp)
+
+        # Sort by created_at
+        all_checkpoints.sort(key=lambda cp: cp.created_at if cp.created_at else datetime.now())
+        return all_checkpoints
 
     def respond_to_checkpoint(
         self,
@@ -623,7 +664,8 @@ class CheckpointManager:
                     'phase_output': checkpoint.phase_output,
                     'sounding_outputs': json.dumps(checkpoint.sounding_outputs) if checkpoint.sounding_outputs else None,
                     'sounding_metadata': json.dumps(checkpoint.sounding_metadata) if checkpoint.sounding_metadata else None,
-                    'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None
+                    'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None,
+                    'summary': checkpoint.summary  # Will be NULL initially, updated async
                 }
 
                 db.insert_rows('checkpoints', [row], columns=list(row.keys()))
@@ -666,6 +708,62 @@ class CheckpointManager:
                 print(f"[Windlass] Checkpoint {checkpoint.id} updated in DB (status={checkpoint.status.value})")
         except Exception as e:
             print(f"[Windlass] Warning: Could not update checkpoint in DB: {e}")
+
+    def _generate_summary_async(self, checkpoint_id: str, phase_output: str):
+        """
+        Generate AI summary for checkpoint asynchronously (non-blocking).
+        Uses a cheap model (gemini-flash-lite) to create a one-sentence summary.
+        """
+        def generate():
+            try:
+                import litellm
+
+                # Truncate phase_output if too long (keep first 1500 chars for context)
+                truncated = phase_output[:1500] if phase_output else "No content"
+
+                # Call cheap model for summary
+                response = litellm.completion(
+                    model="google/gemini-2.0-flash-lite",
+                    messages=[{
+                        "role": "user",
+                        "content": f"Summarize this checkpoint interaction in ONE short sentence (max 10 words):\n\n{truncated}"
+                    }],
+                    max_tokens=50,
+                    temperature=0.3
+                )
+
+                summary = response.choices[0].message.content.strip()
+
+                # Update checkpoint in cache and database
+                with self._cache_lock:
+                    if checkpoint_id in self._cache:
+                        self._cache[checkpoint_id].summary = summary
+
+                        # Update database
+                        if self.use_db:
+                            try:
+                                from .config import get_config
+                                config = get_config()
+
+                                if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
+                                    db = get_db_adapter()
+                                    # Escape single quotes for SQL
+                                    safe_summary = summary.replace("'", "''")
+                                    db.execute(f"""
+                                        ALTER TABLE checkpoints UPDATE
+                                            summary = '{safe_summary}'
+                                        WHERE id = '{checkpoint_id}'
+                                    """)
+                                    print(f"[Checkpoints] Generated summary for {checkpoint_id}: {summary}")
+                            except Exception as db_err:
+                                print(f"[Checkpoints] Failed to save summary to DB: {db_err}")
+
+            except Exception as e:
+                print(f"[Checkpoints] Failed to generate summary for {checkpoint_id}: {e}")
+
+        # Run in background thread
+        thread = threading.Thread(target=generate, daemon=True)
+        thread.start()
 
     def _load_checkpoint(self, checkpoint_id: str) -> Optional[Checkpoint]:
         """Load checkpoint from database."""
@@ -780,6 +878,7 @@ class CheckpointManager:
                             winner_index=row.get("winner_index"),
                             rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
                             ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
+                            summary=row.get("summary"),
                         )
                         checkpoints.append(checkpoint)
                     except Exception as row_err:
@@ -788,6 +887,73 @@ class CheckpointManager:
 
         except Exception as e:
             print(f"[Windlass] Warning: Could not load pending checkpoints from DB: {e}")
+
+        return checkpoints
+
+    def _load_all_checkpoints(self, session_id: str) -> List[Checkpoint]:
+        """
+        Load ALL checkpoints for a session from database (pending + responded).
+
+        Args:
+            session_id: Session ID to filter by
+
+        Returns:
+            List of all Checkpoint objects from database for this session
+        """
+        checkpoints = []
+        try:
+            from .config import get_config
+            config = get_config()
+
+            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
+                db = get_db_adapter()
+
+                result = db.query(f"""
+                    SELECT *
+                    FROM checkpoints
+                    WHERE session_id = '{session_id}'
+                    ORDER BY created_at ASC
+                """, output_format="dict")
+
+                for row in result:
+                    try:
+                        # Deserialize trace_context if present
+                        trace_context = None
+                        if row.get("trace_context"):
+                            trace_context_data = json.loads(row["trace_context"])
+                            trace_context = TraceContext.from_dict(trace_context_data)
+
+                        checkpoint = Checkpoint(
+                            id=row["id"],
+                            session_id=row["session_id"],
+                            cascade_id=row["cascade_id"],
+                            phase_name=row["phase_name"],
+                            checkpoint_type=CheckpointType(row["checkpoint_type"]),
+                            status=CheckpointStatus(row["status"]),
+                            ui_spec=json.loads(row["ui_spec"]),
+                            echo_snapshot=json.loads(row["echo_snapshot"]),
+                            phase_output=row["phase_output"],
+                            trace_context=trace_context,
+                            created_at=row["created_at"],
+                            timeout_at=row.get("timeout_at"),
+                            responded_at=row.get("responded_at"),
+                            sounding_outputs=json.loads(row["sounding_outputs"]) if row.get("sounding_outputs") else None,
+                            sounding_metadata=json.loads(row["sounding_metadata"]) if row.get("sounding_metadata") else None,
+                            response=json.loads(row["response"]) if row.get("response") else None,
+                            response_reasoning=row.get("response_reasoning"),
+                            response_confidence=row.get("response_confidence"),
+                            winner_index=row.get("winner_index"),
+                            rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
+                            ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
+                            summary=row.get("summary"),
+                        )
+                        checkpoints.append(checkpoint)
+                    except Exception as row_err:
+                        print(f"[Windlass] Warning: Could not parse checkpoint row: {row_err}")
+                        continue
+
+        except Exception as e:
+            print(f"[Windlass] Warning: Could not load all checkpoints from DB: {e}")
 
         return checkpoints
 

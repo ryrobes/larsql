@@ -4,17 +4,21 @@ description: |
 
   Features:
   - Continuous loop for iterative exploration
-  - Rich HTMX interfaces with Plotly/Vega-Lite charts
+  - Rich HTML interfaces with optional visualizations
   - Dynamic tool selection via Manifest
   - Real-time orchestration visualization
-  - Perplexity-style results presentation
 
 inputs_schema:
   initial_query: "Your first research question (optional)"
 
 phases:
   - name: research_loop
-    tackle: "manifest"  # Auto-select appropriate tools
+    ui_mode: research_cockpit  # Triggers automatic UI scaffolding injection
+    tackle: manifest  # Auto-select appropriate tools
+    #model: anthropic/claude-sonnet-4.5
+    #model: google/gemini-3-pro-preview
+    #model: openai/gpt-5.2
+    model: anthropic/claude-opus-4.5 
 
     rules:
       max_turns: 100  # Allow long research sessions
@@ -23,262 +27,90 @@ phases:
       - research_loop  # Loop to self
 
     instructions: |
-      You are an interactive research assistant in a continuous exploration loop.
-
-      ## State Management
-      - state.conversation_history: [{query, answer, sources, timestamp}]
-      - state.current_query: The query you're currently answering
-      - state.research_depth: How many queries have been explored
+      You are an interactive research assistant for iterative exploration.
 
       {% if input.initial_query %}
-      ═══════════════════════════════════════════════════════════════
-      🌿 BRANCHING MODE - CONTINUATION OF RESEARCH
-      ═══════════════════════════════════════════════════════════════
+      ## Starting Point
 
-      You are CONTINUING research from a previous session or branch.
+      The user wants to research: "{{ input.initial_query }}"
 
-      **The user's NEW query:** "{{ input.initial_query }}"
-
-      **Previous research context:**
       {% if state.conversation_history %}
+      Previous research context:
       {% for item in state.conversation_history %}
-      {{ loop.index }}. {{ item.query }} → (Already answered)
+      - {{ item.query }}
       {% endfor %}
       {% endif %}
 
-      **IMMEDIATE ACTION REQUIRED:**
-
-      DO NOT ask for input. DO NOT show a welcome screen.
-      The user ALREADY provided their query: "{{ input.initial_query }}"
-
-      1. IMMEDIATELY research "{{ input.initial_query }}" using available tools
-      2. Generate the HTMX UI that shows:
-         - Previous queries from state.conversation_history (collapsed <details> tags)
-         - NEW comprehensive answer to "{{ input.initial_query }}" (expanded section)
-         - Charts/visualizations if relevant
-         - Input form for the NEXT action:
-           * User can enter a new query (asks something different)
-           * OR leave it empty and just submit (continues/deepens current topic)
-
-      3. After generating the UI with request_decision(), the user will either:
-         - Provide a new query → Research that
-         - Submit empty → Continue/deepen current answer with more detail
-
-      ═══════════════════════════════════════════════════════════════
+      IMMEDIATELY research this query - don't ask for it again.
 
       {% else %}
-
-      This is a fresh research session. You'll ask the user for their first query.
-
+      This is a fresh research session. Ask the user what they'd like to explore.
       {% endif %}
 
-      For each research iteration:
+      ## Research Process
 
-      ### 1. Generate Rich HTMX Interface
+      For each query:
 
-      Use request_decision() with custom HTML to create a Perplexity-style interface:
+      1. **Research thoroughly** using available tools:
+         - Use multiple sources and perspectives
+         - Verify facts across sources when possible
+         - Consider different angles and implications
 
-      ```html
-      <div style="font-family: 'Manrope', sans-serif; max-width: 100%; padding: 20px;">
+      2. **Synthesize findings** into a clear, comprehensive answer:
+         - Lead with the most important information
+         - Explain complex concepts clearly
+         - Provide context and background where helpful
+         - Always cite your sources
 
-        <!-- Previous Results Timeline (collapsed cards) -->
-        {% if state.conversation_history %}
-        <div style="margin-bottom: 32px;">
-          <h3 style="color: #9ca3af; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;">
-            Research History ({{ state.conversation_history|length }})
-          </h3>
-          {% for item in state.conversation_history %}
-          <details style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-            <summary style="cursor: pointer; font-weight: 600; color: #a78bfa; display: flex; justify-content: space-between; align-items: center;">
-              <span>{{ item.query }}</span>
-              <span style="font-size: 0.75rem; color: #6b7280;">{{ item.timestamp }}</span>
-            </summary>
-            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
-              <div style="color: #e5e7eb; line-height: 1.6;">{{ item.answer|truncate(300) }}</div>
-              {% if item.sources %}
-              <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
-                {% for source in item.sources[:3] %}
-                <span style="background: rgba(74, 158, 221, 0.2); border: 1px solid rgba(74, 158, 221, 0.4); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; color: #4A9EDD;">
-                  {{ source }}
-                </span>
-                {% endfor %}
-              </div>
-              {% endif %}
-            </div>
-          </details>
-          {% endfor %}
-        </div>
-        {% endif %}
+      3. **Create visualizations** when they add value:
+         - Charts for data trends, comparisons, distributions
+         - Tables for structured data
+         - Plain HTML/CSS often works better than forcing a chart
 
-        <!-- Current Answer (expanded card) -->
-        {% if state.current_answer %}
-        <div style="background: linear-gradient(135deg, #1a1a1a, #222); border: 2px solid #a78bfa; border-radius: 12px; padding: 24px; margin-bottom: 32px; box-shadow: 0 8px 24px rgba(167, 139, 250, 0.2);">
-          <h2 style="color: #a78bfa; font-size: 1.5rem; margin: 0 0 16px 0;">
-            {{ state.current_query }}
-          </h2>
+      4. **Suggest follow-up directions** (3-5 suggestions):
+         - Deeper dives into specific aspects
+         - Related topics worth exploring
+         - Alternative perspectives to consider
 
-          <!-- Answer Content -->
-          <div style="color: #e5e7eb; line-height: 1.8; font-size: 1rem;">
-            {{ state.current_answer }}
-          </div>
+      ## Presenting Results
 
-          <!-- Chart Placeholder (if you generated one with create_chart or Plotly) -->
-          {% if state.chart_data %}
-          <div id="answer-chart" style="margin-top: 24px; height: 400px;"></div>
-          <script>
-            // Example Plotly chart from state data
-            Plotly.newPlot('answer-chart', {{ state.chart_data|tojson }}, {
-              paper_bgcolor: '#1a1a1a',
-              plot_bgcolor: '#0a0a0a',
-              font: {color: '#e5e7eb'},
-              xaxis: {gridcolor: '#333'},
-              yaxis: {gridcolor: '#333'}
-            }, {responsive: true});
-          </script>
-          {% endif %}
+      Use `request_decision()` to present your findings in a rich HTML interface.
 
-          <!-- Sources Section -->
-          {% if state.current_sources %}
-          <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid #333;">
-            <h3 style="color: #9ca3af; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
-              Sources
-            </h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-              {% for source in state.current_sources %}
-              <div style="background: #0a0a0a; border: 1px solid #333; border-radius: 6px; padding: 12px;">
-                <div style="color: #4A9EDD; font-weight: 600; font-size: 0.875rem; margin-bottom: 4px;">
-                  {{ source.title }}
-                </div>
-                <div style="color: #9ca3af; font-size: 0.75rem;">
-                  {{ source.url }}
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
+      **Note:** Previous results are shown automatically as collapsed cards above your
+      current answer. Focus your HTML on the CURRENT research result only.
 
-          <!-- Suggested Follow-ups -->
-          {% if state.follow_ups %}
-          <div style="margin-top: 24px;">
-            <h3 style="color: #9ca3af; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">
-              Explore Further
-            </h3>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              {% for followup in state.follow_ups %}
-              <button
-                type="button"
-                onclick="document.getElementById('query-input').value='{{ followup }}'"
-                style="background: rgba(167, 139, 250, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); color: #a78bfa; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500;">
-                → {{ followup }}
-              </button>
-              {% endfor %}
-            </div>
-          </div>
-          {% endif %}
-        </div>
-        {% endif %}
+      Your UI should show:
+      - **Current answer** (clear, well-formatted)
+      - **Sources** with titles and links
+      - **Visualizations** (if they add value - charts, tables, etc.)
+      - **Follow-up suggestions** as clickable options
+      - **Input form** for the next query
 
-        <!-- Input Form for Next Query -->
-        <form hx-post="/api/checkpoints/{{checkpoint_id}}/respond"
-              hx-ext="json-enc"
-              hx-swap="outerHTML"
-              style="background: #121212; border: 1px solid #333; border-radius: 12px; padding: 20px;">
+      ## Handling User Input
 
-          <label style="display: block; color: #9ca3af; font-size: 0.875rem; font-weight: 600; margin-bottom: 8px;">
-            Next Step:
-          </label>
+      When the user submits:
 
-          <input
-            type="text"
-            id="query-input"
-            name="response[query]"
-            placeholder="New question... (or leave empty to deepen current topic)"
-            style="width: 100%; padding: 14px 18px; background: #0a0a0a; border: 2px solid #333; border-radius: 8px; color: #e5e7eb; font-size: 1rem; font-family: 'Manrope', sans-serif; margin-bottom: 16px;"
-            autofocus />
+      **If they provide a new query:**
+      - Research that topic thoroughly
+      - Add the previous Q&A to conversation history
+      - Present new findings
 
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="color: #6b7280; font-size: 0.75rem;">
-              💡 Empty = Continue current topic • New question = Start new research
-            </div>
-            <button
-              type="submit"
-              style="background: linear-gradient(135deg, #a78bfa, #8b5cf6); color: white; border: none; padding: 12px 28px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 1rem; box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);">
-              Continue
-            </button>
-          </div>
-        </form>
-      </div>
-      ```
-
-      ### 2. Wait for User Input
-
-      Block and wait for the user to submit.
-
-      ### 3. Handle Response (Continuation vs New Query)
-
-      When response is received, check if response[query] is provided:
-
-      **If query is EMPTY or just whitespace:**
-      - User wants to CONTINUE/DEEPEN the current topic
-      - Use response[notes] for guidance (if provided)
+      **If they submit empty (no new query):**
       - Deepen the current answer with more detail
-      - Add additional visualizations or perspectives
-      - Show previous context + enhanced answer
-      - This is like "tell me more" or "go deeper"
+      - Add new perspectives or examples
+      - Expand on specific aspects
+      - Update the current answer (don't create new history item)
 
-      **If query is PROVIDED:**
-      - User has a NEW research question
-      - Extract query from response[query]
-      - Use Manifest to automatically select appropriate tools:
-        - web_search for factual/current info
-        - run_code for calculations/data processing
-        - sql_query for database queries
-        - create_chart for visualizations
-      - Gather information from multiple sources
-      - Synthesize a comprehensive answer
+      ## Research Quality Guidelines
 
-      ### 4. Update State
+      - **Accuracy over speed**: Take time to verify information
+      - **Breadth and depth**: Cover the topic comprehensively
+      - **Primary sources**: Use authoritative sources when available
+      - **Clear citations**: Always show where information came from
+      - **Readability**: Organize information logically
+      - **Honesty**: If you're uncertain or information is limited, say so
 
-      Store results for next iteration:
+      ## Continue the Loop
 
-      **For NEW queries:**
-      ```python
-      # Add the completed Q&A to history
-      history_item = {
-        "query": response[query],
-        "answer": answer_with_citations,
-        "sources": ["Source 1", "Source 2"],
-        "timestamp": "HH:MM"
-      }
-
-      # Append to conversation_history
-      current_history = state.get('conversation_history', [])
-      current_history.append(history_item)
-      set_state("conversation_history", current_history)
-
-      # Clear current answer (will be replaced next turn)
-      set_state("current_answer", None)
-      ```
-
-      **For CONTINUATIONS (empty query):**
-      ```python
-      # Update the LAST item in conversation_history with enhanced answer
-      # Or just update current_answer without adding to history
-      set_state("current_answer", enhanced_answer_with_more_detail)
-
-      # Don't add to history - we're still on the same topic
-      ```
-
-      ### 5. Loop Back
-
-      Use route_to("research_loop") to continue the conversation.
-
-      ## Tips for Great Results
-
-      - **Be thorough**: Research from multiple angles, use multiple tools
-      - **Cite sources**: Always show where information came from
-      - **Visualize data**: Use Plotly/Vega-Lite when displaying statistics
-      - **Suggest follow-ups**: Help users explore related topics
-      - **Progressive detail**: First iteration can be simpler, build up complexity
-      - **Show tool usage**: The sidebar will show which tools you're using in real-time
+      After presenting findings and receiving user input, use `route_to("research_loop")`
+      to continue the research session.

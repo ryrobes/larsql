@@ -227,10 +227,12 @@ def resolve_image_paths_to_urls(ui_spec, session_id):
 @checkpoint_bp.route('/api/checkpoints', methods=['GET'])
 def list_checkpoints():
     """
-    List all pending checkpoints.
+    List checkpoints.
 
     Query params:
     - session_id: Optional filter by session ID
+    - include_all: If true and session_id provided, return ALL checkpoints (pending + responded)
+                   Default: false (returns only pending checkpoints)
 
     Returns:
     - List of checkpoint objects with UI specs
@@ -239,14 +241,19 @@ def list_checkpoints():
         return jsonify({"error": "Checkpoint system not available"}), 500
 
     session_id = request.args.get('session_id')
+    include_all = request.args.get('include_all', 'false').lower() == 'true'
 
     try:
         cm = get_checkpoint_manager()
-        # print(f"[Checkpoint API] Fetching pending checkpoints, session_id filter={session_id}")
-        # print(f"[Checkpoint API] Manager cache size: {len(cm._cache)}")
-        # print(f"[Checkpoint API] Manager use_db: {cm.use_db}")
 
-        pending = cm.get_pending_checkpoints(session_id)
+        # If session_id provided and include_all=true, get ALL checkpoints for timeline
+        # Otherwise, get only pending checkpoints (backward compatible)
+        if session_id and include_all:
+            print(f"[Checkpoint API] Fetching ALL checkpoints for session {session_id}")
+            pending = cm.get_all_checkpoints(session_id)
+        else:
+            print(f"[Checkpoint API] Fetching pending checkpoints, session_id filter={session_id}")
+            pending = cm.get_pending_checkpoints(session_id)
         #print(f"[Checkpoint API] Found {len(pending)} pending checkpoints")
 
         checkpoints = []
@@ -312,7 +319,10 @@ def list_checkpoints():
                 "created_at": cp.created_at.isoformat() if cp.created_at else None,
                 "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
                 "ui_spec": resolved_ui_spec,
+                "phase_output": cp.phase_output,  # Full phase output for display
                 "phase_output_preview": cp.phase_output[:500] if cp.phase_output else None,
+                "response": cp.response,  # User response for display in timeline
+                "summary": cp.summary,  # AI-generated summary
                 "num_soundings": len(cp.sounding_outputs) if cp.sounding_outputs else None
             })
 

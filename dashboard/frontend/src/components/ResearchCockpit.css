@@ -41,6 +41,13 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
+/* Current pending checkpoint - highlighted */
+.checkpoint-container.current {
+  border: 2px solid #a78bfa;
+  background: linear-gradient(135deg, #1a1a1a, #222);
+  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.2);
+}
+
 .checkpoint-html-view {
   /* HTMLSection iframe will fill this */
 }
@@ -236,6 +243,13 @@
 
 /* Saved Session Timeline */
 .saved-session-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Live Session Checkpoint Timeline (same as saved) */
+.live-checkpoint-timeline {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -481,6 +495,84 @@
   font-size: 0.875rem;
   color: #a78bfa;
   font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Ghost Messages - Translucent live activity */
+.ghost-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 0 20px;
+}
+
+.ghost-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(167, 139, 250, 0.05);
+  border: 1px solid rgba(167, 139, 250, 0.1);
+  border-left: 3px solid rgba(167, 139, 250, 0.3);
+  border-radius: 8px;
+  opacity: 0.7;
+  animation: ghost-fade-in 0.3s ease-out, ghost-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ghost-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 0.7;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ghost-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.ghost-icon {
+  color: #a78bfa;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.ghost-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ghost-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.ghost-preview {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.ghost-time {
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-family: 'IBM Plex Mono', monospace;
+  flex-shrink: 0;
 }
 
 /* Responsive */

@@ -9,10 +9,15 @@
   overflow: hidden;
 }
 
-/* Fixed header area (Header + Search bar) - using flexbox, not sticky */
+/* Fixed header area (Header + Chart + Search bar) - using flexbox, not sticky */
 .cascades-container > .app-header {
   flex-shrink: 0;
   z-index: 100;
+}
+
+.cascades-container > .cost-timeline-container {
+  flex-shrink: 0; /* Chart doesn't shrink */
+  z-index: 98;
 }
 
 .cascades-container > .search-bar {
