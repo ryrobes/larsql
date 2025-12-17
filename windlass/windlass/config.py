@@ -48,6 +48,23 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Speech-to-Text (STT) Configuration
+    # =========================================================================
+    # STT model - uses OpenRouter's audio-capable models
+    # Default: Voxtral (Mistral's audio model via OpenRouter)
+    stt_model: str = Field(
+        default_factory=lambda: os.getenv(
+            "WINDLASS_STT_MODEL", "google/gemini-2.5-flash-preview-09-2025"
+        )
+    )
+    # Alternative audio models:
+    # - "google/gemini-2.5-flash-preview-09-2025" - Gemini with audio support
+    # - "mistralai/voxtral-small-24b-2507" - Voxtral (requires wav/mp3, not webm)
+
+    # STT uses the same provider as LLM calls (OpenRouter)
+    # No separate API key needed - uses provider_api_key
+
+    # =========================================================================
     # Directory Configuration
     # =========================================================================
     # Root directory - single source of truth

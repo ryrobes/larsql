@@ -4,6 +4,9 @@ Database connector using DuckDB ATTACH for unified SQL interface.
 
 import os
 import re
+import shutil
+import tempfile
+import time
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -104,6 +107,9 @@ class DatabaseConnector:
 
         elif config.type == "csv_folder":
             self._attach_csv_folder(config, alias)
+
+        elif config.type == "duckdb_folder":
+            self._attach_duckdb_folder(config, alias)
 
         else:
             raise ValueError(f"Unsupported database type: {config.type}")
@@ -229,6 +235,192 @@ class DatabaseConnector:
             print(f"  └─ Total: {loaded_count} CSV tables ({total_rows:,} rows) ready for queries")
         if failed_count > 0:
             print(f"      ({failed_count} file(s) skipped due to errors)")
+
+    def _attach_duckdb_file(self, db_file: Path, db_name: str, max_retries: int = 2) -> bool:
+        """
+        Attach a single DuckDB file with fallback for locked files.
+
+        Strategy:
+        1. Try direct READ_ONLY attach (fastest, works when no exclusive lock)
+        2. Retry with exponential backoff (handles transient locks from brief writes)
+        3. Fall back to copy-on-read (guarantees success even with persistent locks)
+
+        The copy-on-read approach copies the file to a temp location, which works
+        even when the original has an exclusive lock. The data may be milliseconds
+        stale, but this is acceptable for read-only operations like schema discovery.
+
+        Args:
+            db_file: Path to the .duckdb file
+            db_name: Sanitized name to use as database alias
+            max_retries: Number of direct attach attempts before falling back to copy
+
+        Returns:
+            True if used snapshot copy (file was locked), False if direct attach succeeded
+
+        Raises:
+            Exception if attachment failed completely (even with copy fallback)
+        """
+        last_error = None
+
+        # Strategy 1 & 2: Try direct attach with retries for transient locks
+        for attempt in range(max_retries):
+            try:
+                self.conn.execute(f"ATTACH '{db_file}' AS {db_name} (READ_ONLY)")
+                return False  # Success - no snapshot needed
+            except Exception as e:
+                last_error = e
+                error_str = str(e).lower()
+
+                # Check if this is a lock-related error
+                is_lock_error = any(phrase in error_str for phrase in [
+                    "lock", "could not set lock", "database is locked",
+                    "unable to open", "exclusive"
+                ])
+
+                if not is_lock_error:
+                    # Non-lock error (e.g., corrupt file, permission denied) - don't retry
+                    raise
+
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 0.3s, 0.6s, 1.2s...
+                    sleep_time = 0.3 * (2 ** attempt)
+                    time.sleep(sleep_time)
+
+        # Strategy 3: All retries failed due to lock - fall back to copy-on-read
+        try:
+            # Use a dedicated temp directory for windlass DuckDB snapshots
+            # This keeps temp files organized and allows easy cleanup
+            temp_dir = Path(tempfile.gettempdir()) / "windlass_duckdb_snapshots"
+            temp_dir.mkdir(exist_ok=True)
+
+            # Use consistent filename (overwrites previous snapshot of same db)
+            # This prevents accumulation of stale temp files
+            temp_path = temp_dir / f"{db_name}.duckdb"
+
+            # Copy the file - this works even with exclusive locks on the original
+            # because we're reading the file content, not acquiring a DuckDB lock
+            shutil.copy2(db_file, temp_path)
+
+            # Attach the snapshot copy
+            self.conn.execute(f"ATTACH '{temp_path}' AS {db_name} (READ_ONLY)")
+
+            return True  # Success via snapshot
+
+        except Exception as copy_error:
+            # Even copy failed - could be permission issue, disk space, or corrupt file
+            raise Exception(
+                f"Failed to attach {db_file.name}: "
+                f"direct attach failed ({last_error}), "
+                f"snapshot copy also failed ({copy_error})"
+            )
+
+    def _attach_duckdb_folder(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach all DuckDB files in folder as separate databases.
+
+        Each .duckdb file becomes a separate attached database.
+        Query syntax: SELECT * FROM db_name.table_name
+        Where: db_name comes from filename (e.g., market_research.duckdb → market_research)
+
+        DuckDB files have structure: db_name.main.table_name
+        But we expose as: db_name.table_name for simplicity (main schema implied)
+
+        Handles locked files gracefully:
+        - Retries with backoff for transient locks (brief write operations)
+        - Falls back to snapshot copy for persistent locks (active writer process)
+        """
+        if not config.folder_path:
+            raise ValueError(f"DuckDB folder connection {alias} missing folder_path")
+
+        folder = Path(config.folder_path)
+        if not folder.exists():
+            raise FileNotFoundError(f"DuckDB folder not found: {config.folder_path}")
+
+        if not folder.is_dir():
+            raise ValueError(f"DuckDB folder_path is not a directory: {config.folder_path}")
+
+        # Find all DuckDB files
+        duckdb_files = list(folder.glob("*.duckdb"))
+
+        if not duckdb_files:
+            print(f"Warning: No .duckdb files found in {config.folder_path}")
+            return
+
+        # Track attached databases for this folder
+        if not hasattr(self, '_duckdb_folder_dbs'):
+            self._duckdb_folder_dbs = {}
+        self._duckdb_folder_dbs[alias] = []
+
+        # Statistics for summary
+        attached_count = 0
+        failed_count = 0
+        snapshot_count = 0
+        total_tables = 0
+
+        for db_file in duckdb_files:
+            db_name = sanitize_name(db_file.name)  # market_research.duckdb → market_research
+
+            try:
+                # Check if already attached (from previous call or persistent cache)
+                existing = self.conn.execute("""
+                    SELECT database_name FROM duckdb_databases()
+                    WHERE database_name = ?
+                """, [db_name]).fetchone()
+
+                if existing:
+                    # Already attached - just count tables and track
+                    tables = self.conn.execute(f"""
+                        SELECT table_name FROM duckdb_tables()
+                        WHERE database_name = '{db_name}'
+                    """).fetchall()
+                    table_count = len(tables)
+                    total_tables += table_count
+                    attached_count += 1
+                    self._duckdb_folder_dbs[alias].append(db_name)
+                    continue
+
+                # Attach with lock-aware fallback
+                used_snapshot = self._attach_duckdb_file(db_file, db_name)
+
+                # Count tables
+                tables = self.conn.execute(f"""
+                    SELECT table_name FROM duckdb_tables()
+                    WHERE database_name = '{db_name}'
+                """).fetchall()
+                table_count = len(tables)
+                total_tables += table_count
+
+                attached_count += 1
+                self._duckdb_folder_dbs[alias].append(db_name)
+
+                if used_snapshot:
+                    snapshot_count += 1
+                    print(f"    📸 Attached {db_file.name} → {db_name} ({table_count} tables) [snapshot - file was locked]")
+                else:
+                    print(f"    ✓ Attached {db_file.name} → {db_name} ({table_count} tables)")
+
+            except Exception as e:
+                failed_count += 1
+                print(f"    ⚠️  Failed to attach {db_file.name}: {str(e)[:100]}")
+
+        # Summary
+        if attached_count > 0:
+            print(f"  └─ Attached {attached_count} DuckDB file(s) ({total_tables} total tables)")
+            if snapshot_count > 0:
+                print(f"      ({snapshot_count} via snapshot copy due to locks)")
+        if failed_count > 0:
+            print(f"      ({failed_count} file(s) skipped due to errors)")
+
+    def list_duckdb_schemas(self, alias: str) -> List[str]:
+        """
+        List all attached DuckDB databases for a duckdb_folder connection.
+
+        Returns:
+            List of database names (e.g., ['market_research', 'demo_research'])
+        """
+        if not hasattr(self, '_duckdb_folder_dbs') or alias not in self._duckdb_folder_dbs:
+            return []
+        return self._duckdb_folder_dbs[alias]
 
     def list_csv_schemas(self, alias: str) -> List[str]:
         """

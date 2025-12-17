@@ -354,6 +354,47 @@ class AudibleConfig(BaseModel):
     timeout_seconds: Optional[int] = 120  # Feedback collection timeout
 
 
+class NarratorConfig(BaseModel):
+    """
+    Configuration for async voice narrator during cascade execution.
+
+    The narrator generates spoken synopses of cascade activity without blocking
+    the main execution flow. It gathers recent context (messages, tool calls)
+    and uses the 'say' tool to provide real-time audio commentary.
+
+    All narrator costs (LLM + TTS) are charged to the parent session for tracking.
+
+    Usage (cascade-level):
+    {
+        "narrator": {
+            "enabled": true,
+            "instructions": "You are an enthusiastic narrator. Summarize activity in 2-3 sentences.",
+            "triggers": ["turn", "phase_complete"]
+        }
+    }
+
+    Usage (phase-level override):
+    {
+        "phases": [{
+            "name": "research",
+            "narrator": {
+                "enabled": true,
+                "instructions": "Technical update: {{ phase_name }} is processing..."
+            }
+        }]
+    }
+    """
+    enabled: bool = True
+    model: Optional[str] = None  # Model for synopsis generation (defaults to cheap/fast model)
+    instructions: Optional[str] = None  # Jinja2 template for narration style
+    voice_id: Optional[str] = None  # ElevenLabs voice override
+    triggers: List[Literal["turn", "phase_start", "phase_complete", "tool_call"]] = Field(
+        default_factory=lambda: ["phase_complete"]
+    )
+    context_turns: int = 3  # How many recent turns to include in context
+    min_interval_seconds: float = 10.0  # Minimum gap between narrations (debounce)
+
+
 # ===== Decision Point Configuration (Dynamic HITL) =====
 
 class DecisionPointUIConfig(BaseModel):
@@ -640,6 +681,11 @@ class PhaseConfig(BaseModel):
     # When set to 'research_cockpit', injects UI scaffolding for interactive research sessions
     ui_mode: Optional[Literal['research_cockpit']] = None
 
+    # Narrator configuration for async voice commentary
+    # Generates spoken synopses of phase activity without blocking execution
+    # Use bool to enable/disable (inherits cascade config), or NarratorConfig for override
+    narrator: Optional[Union[bool, NarratorConfig]] = None
+
     def is_deterministic(self) -> bool:
         """Check if this phase is deterministic (tool-based) vs LLM-based."""
         return self.tool is not None
@@ -803,6 +849,11 @@ class CascadeConfig(BaseModel):
     # Defines how/when this cascade should be executed
     # Use `windlass triggers export` to generate external scheduler configs
     triggers: Optional[List[Trigger]] = None
+
+    # Narrator configuration for async voice commentary during cascade execution
+    # Generates spoken synopses of activity without blocking the main execution flow
+    # Can be overridden at phase level
+    narrator: Optional[NarratorConfig] = None
 
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is

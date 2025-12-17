@@ -750,8 +750,8 @@ class CheckpointManager:
                     content=summary,
                     model=response.get("model", "google/gemini-2.5-flash-lite"),
                     cost=response.get("cost", 0),
-                    input_tokens=response.get("tokens_in", 0),
-                    output_tokens=response.get("tokens_out", 0)
+                    tokens_in=response.get("tokens_in", 0),
+                    tokens_out=response.get("tokens_out", 0)
                 )
 
                 # Update checkpoint in cache and database

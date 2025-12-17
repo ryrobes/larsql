@@ -240,11 +240,14 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
       - SQLite: connection_name.table
       - CSV folders: connection_name.table_name
         Example: SELECT * FROM csv_files.bigfoot_sightings
+      - DuckDB folders (research_dbs): db_name.table_name
+        Example: SELECT * FROM market_research.zollege_schools
+        (Each .duckdb file is attached directly as a database)
 
     Examples:
       - "SELECT * FROM prod_db.public.users LIMIT 10"
       - "SELECT COUNT(*) FROM csv_files.bigfoot_sightings WHERE state = 'California'"
-      - "SELECT class, COUNT(*) as count FROM csv_files.bigfoot_sightings GROUP BY class"
+      - "SELECT * FROM market_research.zollege_schools LIMIT 10"
 
     Args:
         sql: SQL query to execute

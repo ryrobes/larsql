@@ -18,6 +18,7 @@ import CheckpointPanel from './components/CheckpointPanel';
 import CheckpointBadge from './components/CheckpointBadge';
 import CheckpointView from './components/CheckpointView';
 import Toast from './components/Toast';
+import GlobalVoiceInput from './components/GlobalVoiceInput';
 import './App.css';
 
 function App() {
@@ -1196,6 +1197,9 @@ function App() {
           />
         ))}
       </div>
+
+      {/* Global voice input - floating mic button */}
+      <GlobalVoiceInput />
     </div>
   );
 }

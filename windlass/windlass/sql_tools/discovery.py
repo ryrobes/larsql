@@ -123,6 +123,10 @@ def discover_all_schemas(session_id: str = None):
                     if conn_config.type == "csv_folder":
                         # CSV: flat structure under connection name
                         db_dir = os.path.join(samples_dir, conn_name)
+                    elif conn_config.type == "duckdb_folder":
+                        # DuckDB folder: research_dbs/db_name/table.json
+                        # schema here is the db_name (e.g., "market_research")
+                        db_dir = os.path.join(samples_dir, conn_name, schema or "default")
                     else:
                         # Database: db/schema/table.json
                         db_dir = os.path.join(samples_dir, conn_name, schema or "default")

@@ -197,7 +197,7 @@
 }
 
 /* Responsive */
-@media (max-width: 640px) {
+/* @media (max-width: 640px) {
   .html-section {
     padding: 1rem;
   }
@@ -210,4 +210,4 @@
   .annotate-toggle-btn span {
     display: none;
   }
-}
+} */

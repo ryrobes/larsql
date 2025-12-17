@@ -9,9 +9,8 @@ These tools integrate with the unified logging system for
 cost tracking and observability.
 
 Configuration:
-- WINDLASS_STT_API_KEY: API key (falls back to OPENROUTER_API_KEY)
-- WINDLASS_STT_BASE_URL: API base URL (default: https://api.openai.com/v1)
-- WINDLASS_STT_MODEL: Model name (default: whisper-1)
+- WINDLASS_STT_MODEL: Model name (default: mistralai/voxtral-small-24b-2507)
+- Uses standard OPENROUTER_API_KEY from config
 """
 
 import os
@@ -41,7 +40,7 @@ def transcribe_audio(
     prompt: Optional[str] = None,
 ) -> str:
     """
-    Transcribe an audio file to text using Whisper.
+    Transcribe an audio file to text using OpenRouter's audio models.
 
     Use this tool to convert speech in an audio file to text.
     Supports common audio formats: mp3, mp4, mpeg, mpga, m4a, wav, webm.
@@ -59,7 +58,6 @@ def transcribe_audio(
             "content": "The transcribed text...",
             "metadata": {
                 "language": "en",
-                "duration_seconds": 45.2,
                 "audio_file": "/path/to/audio.mp3"
             }
         }
@@ -99,9 +97,9 @@ def transcribe_audio(
             "content": result["text"],
             "metadata": {
                 "language": result["language"],
-                "duration_seconds": result["duration"],
                 "audio_file": audio_file_path,
                 "model": result["model"],
+                "tokens": result.get("tokens", 0),
             },
             "audio": [audio_file_path],
         })
@@ -324,8 +322,8 @@ def process_voice_recording(
             "content": result["text"],
             "metadata": {
                 "language": result["language"],
-                "duration_seconds": result["duration"],
                 "model": result["model"],
+                "tokens": result.get("tokens", 0),
                 "input_type": "voice",
             }
         })

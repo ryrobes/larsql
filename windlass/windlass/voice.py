@@ -1,28 +1,24 @@
 """
-Voice Transcription Service - Speech-to-Text via OpenAI Whisper
+Voice Transcription Service - Speech-to-Text via OpenRouter
 
-This module provides speech-to-text transcription with proper logging to the
-unified logging system. All calls are logged to ClickHouse with cost tracking.
+This module provides speech-to-text transcription using Agent.transcribe(),
+ensuring proper cost tracking and logging through the unified system.
 
 Key Features:
-- Uses OpenAI Whisper API (works with OpenRouter API keys)
-- Logs to unified_logs with cost tracking
+- Uses Agent.transcribe() which goes through litellm for proper tracking
+- Default model: mistralai/voxtral-small-24b-2507 (configurable via config.stt_model)
+- Logs to unified_logs with cost tracking via request_id
 - Supports session context for cascade integration
-- Auto-generates session IDs for standalone use (voice_stt_<timestamp>)
 
 Configuration:
-- WINDLASS_STT_API_KEY: API key (falls back to OPENROUTER_API_KEY)
-- WINDLASS_STT_BASE_URL: API base URL (default: https://api.openai.com/v1)
-- WINDLASS_STT_MODEL: Model name (default: whisper-1)
+- WINDLASS_STT_MODEL: Model name (default: mistralai/voxtral-small-24b-2507)
+- Uses standard OPENROUTER_API_KEY from config
 """
 
 import os
-import json
-import time
-import uuid
-import httpx
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
+import base64
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 from .config import get_config
 from .logs import log_message
@@ -36,19 +32,10 @@ def get_stt_config() -> Dict[str, Any]:
     """Get STT configuration from environment."""
     cfg = get_config()
 
-    # API key: prefer dedicated STT key, fall back to OpenRouter key
-    api_key = os.getenv("WINDLASS_STT_API_KEY") or cfg.provider_api_key
-
-    # Base URL: OpenAI's endpoint by default (Whisper API)
-    base_url = os.getenv("WINDLASS_STT_BASE_URL", "https://api.openai.com/v1")
-
-    # Model: whisper-1 is the default
-    model = os.getenv("WINDLASS_STT_MODEL", "whisper-1")
-
     return {
-        "api_key": api_key,
-        "base_url": base_url,
-        "model": model,
+        "api_key": cfg.provider_api_key,
+        "base_url": cfg.provider_base_url,
+        "model": cfg.stt_model,
     }
 
 
@@ -59,15 +46,13 @@ def is_available() -> bool:
 
 
 # ============================================================================
-# Transcription Function
+# Transcription Functions
 # ============================================================================
 
 def transcribe(
     audio_file_path: str,
     language: Optional[str] = None,
     prompt: Optional[str] = None,
-    response_format: str = "verbose_json",
-    temperature: float = 0.0,
     # Logging context
     session_id: Optional[str] = None,
     trace_id: Optional[str] = None,
@@ -76,16 +61,15 @@ def transcribe(
     cascade_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Transcribe audio file to text using Whisper API.
+    Transcribe audio file to text using Agent.transcribe().
 
-    All calls are logged to unified_logs with proper cost tracking.
+    All calls go through the standard Agent pipeline for proper
+    cost tracking and logging.
 
     Args:
         audio_file_path: Path to audio file (mp3, mp4, mpeg, mpga, m4a, wav, webm)
         language: ISO-639-1 language code (e.g., 'en', 'es', 'fr') - auto-detect if None
         prompt: Optional context/prompt to guide transcription
-        response_format: Output format (json, text, srt, verbose_json, vtt)
-        temperature: Sampling temperature (0.0-1.0)
         session_id: Session ID for logging (auto-generated if None)
         trace_id: Trace ID for logging (auto-generated if None)
         parent_id: Parent trace ID for hierarchy
@@ -96,25 +80,17 @@ def transcribe(
         dict with keys:
             - text: Transcribed text
             - language: Detected/specified language
-            - duration: Audio duration in seconds
-            - segments: Word-level timestamps (if verbose_json)
             - model: Model used
+            - tokens: Total tokens used
             - session_id: Session ID used for logging
             - trace_id: Trace ID used for logging
     """
-    config = get_stt_config()
+    from .agent import Agent
 
-    if not config["api_key"]:
-        raise ValueError("STT API key not configured. Set WINDLASS_STT_API_KEY or OPENROUTER_API_KEY.")
-
-    # Generate IDs if not provided
-    # Use a recognizable session prefix for standalone voice calls
+    # Generate session_id if not provided
     if session_id is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         session_id = f"voice_stt_{timestamp}"
-
-    if trace_id is None:
-        trace_id = str(uuid.uuid4())
 
     # Validate file exists
     if not os.path.exists(audio_file_path):
@@ -124,196 +100,103 @@ def transcribe(
     file_size = os.path.getsize(audio_file_path)
     file_name = os.path.basename(audio_file_path)
 
-    # Check file size (Whisper limit is 25MB)
+    # Check file size (reasonable limit)
     if file_size > 25 * 1024 * 1024:
         raise ValueError(f"Audio file too large: {file_size} bytes (max 25MB)")
 
     log_message(session_id, "system", f"transcribe: starting for {file_name} ({file_size} bytes)",
                 metadata={"tool": "transcribe", "file_path": audio_file_path, "file_size": file_size})
 
-    # Build API request
-    url = f"{config['base_url'].rstrip('/')}/audio/transcriptions"
-    headers = {
-        "Authorization": f"Bearer {config['api_key']}",
-    }
+    # Read and encode audio as base64
+    with open(audio_file_path, 'rb') as f:
+        audio_bytes = f.read()
+    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
 
-    start_time = time.time()
+    # Determine format from extension
+    ext = os.path.splitext(audio_file_path)[1].lower().lstrip('.')
+    audio_format = ext if ext else "webm"
 
-    try:
-        with open(audio_file_path, 'rb') as f:
-            # Prepare multipart form data
-            files = {
-                'file': (file_name, f, 'audio/mpeg'),
-            }
-            data = {
-                'model': config['model'],
-                'response_format': response_format,
-                'temperature': str(temperature),
-            }
-
-            if language:
-                data['language'] = language
-            if prompt:
-                data['prompt'] = prompt
-
-            # Make API request
-            with httpx.Client(timeout=300.0) as client:
-                response = client.post(url, headers=headers, files=files, data=data)
-                response.raise_for_status()
-
-        duration_ms = (time.time() - start_time) * 1000
-
-        # Parse response based on format
-        if response_format in ("json", "verbose_json"):
-            result_data = response.json()
-        else:
-            # text, srt, vtt formats return plain text
-            result_data = {"text": response.text}
-
-        # Extract key fields
-        text = result_data.get("text", "")
-        detected_language = result_data.get("language", language or "unknown")
-        audio_duration = result_data.get("duration", 0)
-        segments = result_data.get("segments", [])
-
-        log_message(session_id, "system", f"transcribe: complete in {duration_ms:.0f}ms",
-                    metadata={
-                        "tool": "transcribe",
-                        "text_length": len(text),
-                        "duration_ms": duration_ms,
-                        "audio_duration": audio_duration,
-                        "language": detected_language
-                    })
-
-        # Log to unified logging system
-        # This ensures the call appears in the database with cost tracking
-        _log_transcription(
-            session_id=session_id,
-            trace_id=trace_id,
-            parent_id=parent_id,
-            phase_name=phase_name,
-            cascade_id=cascade_id,
-            model=config['model'],
-            audio_file=audio_file_path,
-            audio_duration=audio_duration,
-            text=text,
-            language=detected_language,
-            duration_ms=duration_ms,
-            file_size=file_size,
-        )
-
-        return {
-            "text": text,
-            "language": detected_language,
-            "duration": audio_duration,
-            "segments": segments,
-            "model": config['model'],
-            "session_id": session_id,
-            "trace_id": trace_id,
-        }
-
-    except httpx.HTTPStatusError as e:
-        duration_ms = (time.time() - start_time) * 1000
-        error_detail = ""
-        try:
-            error_detail = e.response.text[:500]
-        except Exception:
-            pass
-
-        log_message(session_id, "system", f"transcribe: API error {e.response.status_code}",
-                    metadata={
-                        "tool": "transcribe",
-                        "error": "http",
-                        "status_code": e.response.status_code,
-                        "detail": error_detail
-                    })
-
-        raise RuntimeError(f"Whisper API error {e.response.status_code}: {error_detail}") from e
-
-    except httpx.TimeoutException as e:
-        log_message(session_id, "system", "transcribe: request timeout",
-                    metadata={"tool": "transcribe", "error": "timeout"})
-        raise RuntimeError("Whisper API request timed out") from e
-
-    except Exception as e:
-        log_message(session_id, "system", f"transcribe: error {type(e).__name__}: {e}",
-                    metadata={"tool": "transcribe", "error": type(e).__name__})
-        raise
-
-
-def _log_transcription(
-    session_id: str,
-    trace_id: str,
-    parent_id: Optional[str],
-    phase_name: Optional[str],
-    cascade_id: Optional[str],
-    model: str,
-    audio_file: str,
-    audio_duration: float,
-    text: str,
-    language: str,
-    duration_ms: float,
-    file_size: int,
-):
-    """Log transcription to unified logging system."""
-    from .unified_logs import log_unified
-
-    # Estimate cost: Whisper is $0.006 per minute
-    # Round up to nearest minute for cost calculation
-    import math
-    minutes = math.ceil(audio_duration / 60) if audio_duration > 0 else 1
-    estimated_cost = minutes * 0.006
-
-    log_unified(
+    # Use Agent.transcribe() for the actual call
+    result = Agent.transcribe(
+        audio_base64=audio_base64,
+        audio_format=audio_format,
+        language=language,
+        prompt=prompt,
         session_id=session_id,
         trace_id=trace_id,
         parent_id=parent_id,
-        node_type="transcription",
-        role="assistant",  # Treat as assistant response for cost tracking
-        depth=0,
         phase_name=phase_name,
         cascade_id=cascade_id,
-        model=model,
-        provider="openai",  # Whisper is OpenAI
-        duration_ms=duration_ms,
-        cost=estimated_cost,
-        content=text,
-        audio=[audio_file],
-        metadata={
-            "tool": "transcribe",
-            "audio_duration_seconds": audio_duration,
-            "language": language,
-            "file_size": file_size,
-            "estimated_cost": estimated_cost,
-        }
     )
 
+    log_message(session_id, "system", f"transcribe: complete",
+                metadata={
+                    "tool": "transcribe",
+                    "text_length": len(result.get("text", "")),
+                    "tokens": result.get("tokens", 0),
+                })
 
-# ============================================================================
-# Streaming Transcription (Future)
-# ============================================================================
+    return result
 
-async def transcribe_stream(
-    audio_stream,
+
+def transcribe_from_base64(
+    base64_data: str,
+    file_format: str = "webm",
     language: Optional[str] = None,
     session_id: Optional[str] = None,
-):
+    trace_id: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    phase_name: Optional[str] = None,
+    cascade_id: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
     """
-    Stream audio for real-time transcription.
+    Transcribe base64-encoded audio directly using Agent.transcribe().
 
-    This is a placeholder for future streaming support.
-    Currently, Whisper API doesn't support streaming, but this
-    could be implemented using:
-    - Chunked processing with VAD (voice activity detection)
-    - Alternative providers with streaming support
-    - Local Whisper with streaming
+    This is the preferred method for browser integration where audio
+    comes as base64-encoded data from MediaRecorder.
+
+    Args:
+        base64_data: Base64-encoded audio data
+        file_format: Audio format (webm, mp3, wav, etc.)
+        language: Language code for transcription
+        session_id: Session ID for logging
+        **kwargs: Additional arguments (ignored for compatibility)
+
+    Returns:
+        Transcription result dict
     """
-    raise NotImplementedError("Streaming transcription not yet implemented")
+    from .agent import Agent
 
+    # Generate session_id if not provided
+    if session_id is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_id = f"voice_stt_{timestamp}"
 
-# ============================================================================
-# Audio Recording (Browser Integration)
-# ============================================================================
+    log_message(session_id, "system", f"transcribe_from_base64: starting ({file_format})",
+                metadata={"tool": "transcribe", "format": file_format, "data_length": len(base64_data)})
+
+    # Use Agent.transcribe() directly with base64 data
+    result = Agent.transcribe(
+        audio_base64=base64_data,
+        audio_format=file_format,
+        language=language,
+        session_id=session_id,
+        trace_id=trace_id,
+        parent_id=parent_id,
+        phase_name=phase_name,
+        cascade_id=cascade_id,
+    )
+
+    log_message(session_id, "system", f"transcribe_from_base64: complete",
+                metadata={
+                    "tool": "transcribe",
+                    "text_length": len(result.get("text", "")),
+                    "tokens": result.get("tokens", 0),
+                })
+
+    return result
+
 
 def save_audio_from_base64(
     base64_data: str,
@@ -323,7 +206,9 @@ def save_audio_from_base64(
     """
     Save base64-encoded audio data to a file.
 
-    Used when receiving audio from browser's MediaRecorder API.
+    Used when you need to persist the audio file (e.g., for auditing).
+    For transcription, prefer transcribe_from_base64() which doesn't
+    need to save the file.
 
     Args:
         base64_data: Base64-encoded audio data
@@ -333,8 +218,6 @@ def save_audio_from_base64(
     Returns:
         Path to saved audio file
     """
-    import base64
-
     cfg = get_config()
 
     # Generate filename
@@ -353,38 +236,3 @@ def save_audio_from_base64(
                 metadata={"tool": "save_audio", "filepath": filepath, "size": len(audio_bytes)})
 
     return filepath
-
-
-def transcribe_from_base64(
-    base64_data: str,
-    file_format: str = "webm",
-    language: Optional[str] = None,
-    session_id: Optional[str] = None,
-    **kwargs
-) -> Dict[str, Any]:
-    """
-    Save base64 audio and transcribe in one call.
-
-    Convenience function for browser integration where audio
-    comes as base64-encoded data from MediaRecorder.
-
-    Args:
-        base64_data: Base64-encoded audio data
-        file_format: Audio format (webm, mp3, wav, etc.)
-        language: Language code for transcription
-        session_id: Session ID for logging
-        **kwargs: Additional arguments passed to transcribe()
-
-    Returns:
-        Transcription result dict
-    """
-    # Save audio file
-    audio_path = save_audio_from_base64(base64_data, file_format, session_id)
-
-    # Transcribe
-    return transcribe(
-        audio_file_path=audio_path,
-        language=language,
-        session_id=session_id,
-        **kwargs
-    )

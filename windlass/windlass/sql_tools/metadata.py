@@ -21,6 +21,9 @@ class TableMetadata:
 
         Returns:
             List of (schema, table_name) tuples
+            - For duckdb_folder: schema is "db_name" (e.g., "market_research")
+            - For csv_folder: schema is the alias (e.g., "csv_files")
+            - For databases: schema is the actual schema (e.g., "public")
         """
         alias = config.connection_name
 
@@ -28,6 +31,28 @@ class TableMetadata:
             # For CSV folders, each file is a "table" in the alias schema
             schemas = self.conn.list_csv_schemas(alias)
             return [(alias, schema) for schema in schemas]
+
+        elif config.type == "duckdb_folder":
+            # For DuckDB folders, each .duckdb file is a separate attached database
+            # Returns: [(db_name, table_name), ...]
+            # DuckDB files have tables in db_name.main.table_name structure
+            tables = []
+            db_names = self.conn.list_duckdb_schemas(alias)
+            for db_name in db_names:
+                try:
+                    # Use duckdb_tables() function instead of information_schema
+                    sql = f"""
+                        SELECT table_name
+                        FROM duckdb_tables()
+                        WHERE database_name = '{db_name}'
+                        ORDER BY table_name
+                    """
+                    rows = self.conn.fetch_all(sql)
+                    for row in rows:
+                        tables.append((db_name, row[0]))
+                except Exception as e:
+                    print(f"    ⚠️  Failed to list tables in {db_name}: {str(e)[:100]}")
+            return tables
 
         elif config.type == "postgres":
             sql = f"""
@@ -98,6 +123,11 @@ class TableMetadata:
             # For CSV: csv_files.bigfoot_sightings
             full_table_name = f"{alias}.{table_name}"
             display_schema = alias
+        elif config.type == "duckdb_folder":
+            # For DuckDB folder: schema is db_name (e.g., "market_research")
+            # Query: market_research.table_name (direct, since db is attached)
+            full_table_name = f"{schema}.{table_name}"
+            display_schema = schema  # db_name
         elif schema:
             full_table_name = f"{alias}.{schema}.{table_name}"
             display_schema = schema

@@ -49,6 +49,7 @@ function ResearchCockpit({
       setSessionId(initialSessionId);
       setShowPicker(false);
       setCascadeId(null); // Will be fetched from session data
+      setCascadeInputs(null); // Will be fetched from session data if available
       setCheckpoint(null);
       setTimeline([]);
       setCheckpointHistory([]); // Clear checkpoint history for new session
@@ -77,6 +78,7 @@ function ResearchCockpit({
   const [savedSessionData, setSavedSessionData] = useState(null); // Full saved session with checkpoints
   const [isSavedSession, setIsSavedSession] = useState(false);
   const [ghostMessages, setGhostMessages] = useState([]); // Live thinking/tool messages (cleared on checkpoint)
+  const [cascadeInputs, setCascadeInputs] = useState(null); // Initial inputs when cascade started
   const [orchestrationState, setOrchestrationState] = useState({
     currentPhase: null,
     currentModel: null,
@@ -87,6 +89,7 @@ function ResearchCockpit({
     phaseHistory: [],
     soundings: null
   });
+  const [roundEvents, setRoundEvents] = useState([]); // Events accumulated during current agent round
 
   // SSE for real-time updates
   const eventSourceRef = useRef(null);
@@ -377,6 +380,8 @@ function ResearchCockpit({
 
           case 'turn_start':
             console.log('[ResearchCockpit] Turn started:', event.data);
+            // Clear round events at start of new turn
+            setRoundEvents([]);
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking'
@@ -385,6 +390,12 @@ function ResearchCockpit({
 
           case 'llm_request':
             console.log('[ResearchCockpit] LLM request:', event.data);
+            setRoundEvents(prev => [...prev, {
+              type: 'llm_request',
+              model: event.data.model?.split('/').pop() || 'LLM',
+              timestamp: Date.now(),
+              id: `llm_${Date.now()}`
+            }]);
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking',
@@ -394,6 +405,11 @@ function ResearchCockpit({
 
           case 'llm_response':
             console.log('[ResearchCockpit] LLM response received');
+            setRoundEvents(prev => [...prev, {
+              type: 'llm_response',
+              timestamp: Date.now(),
+              id: `llm_resp_${Date.now()}`
+            }]);
             setOrchestrationState(prev => ({
               ...prev,
               turnCount: prev.turnCount + 1
@@ -408,6 +424,12 @@ function ResearchCockpit({
 
           case 'tool_call':
             console.log('[ResearchCockpit] Tool call:', event.data);
+            setRoundEvents(prev => [...prev, {
+              type: 'tool_call',
+              tool: event.data.tool_name,
+              timestamp: Date.now(),
+              id: `tool_${Date.now()}_${event.data.tool_name}`
+            }]);
             setOrchestrationState(prev => ({
               ...prev,
               status: 'tool_running',
@@ -417,6 +439,12 @@ function ResearchCockpit({
 
           case 'tool_result':
             console.log('[ResearchCockpit] Tool result received');
+            setRoundEvents(prev => [...prev, {
+              type: 'tool_result',
+              tool: event.data.tool_name,
+              timestamp: Date.now(),
+              id: `result_${Date.now()}`
+            }]);
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking',
@@ -432,8 +460,9 @@ function ResearchCockpit({
           case 'checkpoint_created':
           case 'checkpoint_waiting':
             console.log('[ResearchCockpit] Checkpoint created/waiting - clearing ghost messages');
-            // Clear ghost messages when checkpoint arrives
+            // Clear ghost messages and round events when checkpoint arrives
             setGhostMessages([]);
+            setRoundEvents([]); // Clear round events - checkpoint marks end of agent work
             fetchCheckpoint();
             setOrchestrationState(prev => ({
               ...prev,
@@ -453,6 +482,7 @@ function ResearchCockpit({
 
           case 'cascade_complete':
             console.log('[ResearchCockpit] Cascade complete');
+            setRoundEvents([]); // Clear round events on cascade complete
             setOrchestrationState(prev => ({
               ...prev,
               status: 'idle'
@@ -531,6 +561,7 @@ function ResearchCockpit({
 
       setSessionId(data.session_id);
       setCascadeId(cascade.cascade_id);
+      setCascadeInputs(input); // Store the initial inputs
       setShowPicker(false);
 
       // Initialize orchestration state
@@ -600,11 +631,13 @@ function ResearchCockpit({
   const handleNewCascade = () => {
     setSessionId(null);
     setCascadeId(null);
+    setCascadeInputs(null); // Clear cascade inputs
     setCheckpoint(null);
     setSessionData(null);
     setTimeline([]);
     setCheckpointHistory([]); // Clear checkpoint history
     setGhostMessages([]); // Clear ghost messages
+    setRoundEvents([]); // Clear round events
     setShowPicker(true);
     setOrchestrationState({
       currentPhase: null,
@@ -764,6 +797,14 @@ function ResearchCockpit({
         <div className="cockpit-layout">
           {/* Main Content Area - Timeline */}
           <div className="cockpit-main">
+            {/* Sticky Context Header - Shows initial inputs and latest checkpoint feedback */}
+            <CascadeContextHeader
+              cascadeInputs={cascadeInputs}
+              checkpointHistory={checkpointHistory}
+              cascadeId={cascadeId}
+              savedSessionData={savedSessionData}
+            />
+
             {console.log('[ResearchCockpit] Render decision:', {
               isSavedSession,
               savedStatus: savedSessionData?.status,
@@ -1004,6 +1045,7 @@ function ResearchCockpit({
             cascadeId={cascadeId}
             orchestrationState={orchestrationState}
             sessionData={sessionData}
+            roundEvents={roundEvents}
           />
         </div>
       )}
@@ -1136,6 +1178,95 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
 }
 
 /**
+ * CascadeContextHeader - Sticky header showing initial inputs and latest checkpoint feedback
+ * Provides persistent context for the user about the current cascade session
+ */
+function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, savedSessionData }) {
+  // Combine checkpoints from live session and saved session
+  const allCheckpoints = savedSessionData?.checkpoints_data?.length > 0
+    ? savedSessionData.checkpoints_data
+    : checkpointHistory;
+
+  // Get the latest responded checkpoint feedback
+  const respondedCheckpoints = allCheckpoints.filter(cp => cp.status === 'responded');
+  const latestCheckpoint = respondedCheckpoints.length > 0
+    ? respondedCheckpoints[respondedCheckpoints.length - 1]
+    : null;
+
+  // Get feedback message (phase_output or summary)
+  const latestFeedback = latestCheckpoint?.summary || latestCheckpoint?.phase_output;
+
+  // Don't render if no inputs and no feedback
+  if (!cascadeInputs && !latestFeedback) {
+    return null;
+  }
+
+  // Format inputs nicely
+  const formatInputs = (inputs) => {
+    if (!inputs) return null;
+    if (typeof inputs === 'string') return inputs;
+
+    // Handle object inputs
+    return Object.entries(inputs).map(([key, value]) => {
+      const displayValue = typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+      // Truncate long values
+      const truncated = displayValue.length > 150
+        ? displayValue.slice(0, 150) + '...'
+        : displayValue;
+      return { key, value: truncated };
+    });
+  };
+
+  const formattedInputs = formatInputs(cascadeInputs);
+
+  return (
+    <div className="cascade-context-header">
+      {/* Initial Inputs Section */}
+      {cascadeInputs && (
+        <div className="context-inputs-section">
+          <div className="context-label">
+            <Icon icon="mdi:input" width="14" />
+            <span>Initial Input</span>
+          </div>
+          <div className="context-inputs">
+            {Array.isArray(formattedInputs) ? (
+              formattedInputs.map(({ key, value }) => (
+                <div key={key} className="input-item">
+                  <span className="input-key">{key}:</span>
+                  <span className="input-value">{value}</span>
+                </div>
+              ))
+            ) : (
+              <span className="input-value single">{formattedInputs}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Latest Feedback Section */}
+      {latestFeedback && (
+        <div className="context-feedback-section">
+          <div className="feedback-label">
+            <Icon icon="mdi:message-text-clock" width="12" />
+            <span>Latest Checkpoint</span>
+            {latestCheckpoint?.created_at && (
+              <span className="feedback-time">
+                {new Date(latestCheckpoint.created_at).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+          <div className="feedback-text">
+            {latestFeedback.length > 200 ? latestFeedback.slice(0, 200) + '...' : latestFeedback}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * GhostMessage - Translucent message showing LLM's work in progress
  * Displays tool calls, thinking, phase transitions
  * Cleared when checkpoint arrives
@@ -1157,29 +1288,125 @@ function GhostMessage({ ghost }) {
   const getLabel = () => {
     switch (ghost.type) {
       case 'tool_call':
-        return `Calling ${ghost.tool}...`;
+        return `${ghost.tool || 'Tool'}`;
       case 'tool_result':
-        return `${ghost.tool} completed`;
+        return `${ghost.tool || 'Tool'} result`;
       case 'thinking':
-        return 'Thinking...';
+        return 'Thinking';
       default:
-        return 'Working...';
+        return 'Working';
+    }
+  };
+
+  // Parse and format content (handle JSON, markdown code blocks, etc.)
+  const formatContent = (content) => {
+    if (!content) return null;
+
+    let jsonContent = content;
+
+    // Try to extract JSON from markdown code blocks (with or without closing ```)
+    // Match: ```json {...} or ```json {...}``` or ``` {...}
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/);
+    if (codeBlockMatch) {
+      jsonContent = codeBlockMatch[1].trim();
+    }
+
+    // Also try stripping just the opening ``` marker if present
+    if (jsonContent.startsWith('```')) {
+      jsonContent = jsonContent.replace(/^```(?:json)?\s*/, '').trim();
+    }
+
+    // Try to find JSON object in the content (starts with { )
+    const jsonObjectMatch = jsonContent.match(/(\{[\s\S]*)/);
+    if (jsonObjectMatch) {
+      jsonContent = jsonObjectMatch[1];
+    }
+
+    // Try to parse as JSON (may be truncated, so try to fix common issues)
+    try {
+      // First try direct parse
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonContent);
+      } catch {
+        // If truncated, try to extract just the tool and arguments we can see
+        const toolMatch = jsonContent.match(/"tool"\s*:\s*"([^"]+)"/);
+        const argsMatch = jsonContent.match(/"arguments"\s*:\s*\{([^}]*)/);
+
+        if (toolMatch) {
+          // Build a partial parsed object from what we can extract
+          parsed = { tool: toolMatch[1], arguments: {} };
+
+          if (argsMatch) {
+            // Try to extract key-value pairs from arguments
+            const argsStr = argsMatch[1];
+            const kvMatches = argsStr.matchAll(/"([^"]+)"\s*:\s*(?:"([^"]*)"|([\d.]+)|(\[[^\]]*\]?))/g);
+            for (const kv of kvMatches) {
+              const key = kv[1];
+              const value = kv[2] || kv[3] || kv[4] || '';
+              parsed.arguments[key] = value;
+            }
+          }
+        } else {
+          throw new Error('Not valid JSON');
+        }
+      }
+
+      // Handle tool call format: {"tool": "name", "arguments": {...}}
+      if (parsed.tool) {
+        const args = parsed.arguments || {};
+        // Extract key info from arguments
+        const keyArgs = Object.entries(args).slice(0, 4).map(([k, v]) => {
+          const strVal = typeof v === 'string' ? v : JSON.stringify(v);
+          const truncated = strVal.length > 80 ? strVal.slice(0, 80) + '...' : strVal;
+          return { key: k, value: truncated };
+        });
+
+        return (
+          <div className="ghost-tool-call">
+            <span className="ghost-tool-name">{parsed.tool}</span>
+            {keyArgs.length > 0 && (
+              <div className="ghost-tool-args">
+                {keyArgs.map(({ key, value }) => (
+                  <div key={key} className="ghost-arg">
+                    <span className="ghost-arg-key">{key}:</span>
+                    <span className="ghost-arg-value">{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Generic JSON - show formatted
+      return (
+        <pre className="ghost-json">
+          {JSON.stringify(parsed, null, 2).slice(0, 200)}
+        </pre>
+      );
+    } catch {
+      // Not JSON - show as text (truncated)
+      const truncated = content.length > 150 ? content.slice(0, 150) + '...' : content;
+      return <span className="ghost-text">{truncated}</span>;
     }
   };
 
   return (
-    <div className="ghost-message">
-      <Icon icon={getIcon()} width="16" className="ghost-icon" />
-      <div className="ghost-content">
+    <div className={`ghost-message ghost-${ghost.type}`}>
+      <div className="ghost-header">
+        <Icon icon={getIcon()} width="14" className="ghost-icon" />
         <span className="ghost-label">{getLabel()}</span>
-        {ghost.content && (
-          <span className="ghost-preview">{ghost.content}...</span>
+        {ghost.timestamp && (
+          <span className="ghost-time">
+            {new Date(ghost.timestamp).toLocaleTimeString()}
+          </span>
         )}
       </div>
-      {ghost.timestamp && (
-        <span className="ghost-time">
-          {new Date(ghost.timestamp).toLocaleTimeString()}
-        </span>
+      {ghost.content && (
+        <div className="ghost-body">
+          {formatContent(ghost.content)}
+        </div>
       )}
     </div>
   );

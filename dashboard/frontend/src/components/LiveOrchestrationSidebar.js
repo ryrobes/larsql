@@ -24,7 +24,8 @@ function LiveOrchestrationSidebar({
   sessionId,
   cascadeId,
   orchestrationState,
-  sessionData
+  sessionData,
+  roundEvents = []
 }) {
   const [costAnimation, setCostAnimation] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -144,20 +145,68 @@ function LiveOrchestrationSidebar({
 
       {/* Status Header */}
       <div className="sidebar-section status-section">
-        <div
-          className={`status-indicator-large ${currentStatus.pulse ? 'pulse' : ''}`}
-          style={{ borderColor: currentStatus.color }}
-        >
-          <Icon
-            icon={currentStatus.icon}
-            width="32"
-            style={{ color: currentStatus.color }}
-            className={currentStatus.pulse ? 'spinning' : ''}
-          />
+        <div className="status-orb-container">
+          {/* Orbiting event circles */}
+          <div className="event-orbits">
+            {roundEvents.map((event, index) => {
+              const eventColors = {
+                tool_call: '#10b981',    // green
+                tool_result: '#34d399',  // light green
+                llm_request: '#a78bfa',  // purple
+                llm_response: '#8b5cf6', // dark purple
+              };
+              const color = eventColors[event.type] || '#6b7280';
+              const angle = (index * 137.5) % 360; // Golden angle for nice distribution
+              const orbitRadius = 52 + (index % 3) * 8; // Varying orbit radii
+
+              return (
+                <div
+                  key={event.id}
+                  className="event-orbit-dot"
+                  style={{
+                    '--orbit-angle': `${angle}deg`,
+                    '--orbit-radius': `${orbitRadius}px`,
+                    '--dot-color': color,
+                    '--animation-delay': `${index * 0.1}s`,
+                  }}
+                  title={event.tool || event.type}
+                >
+                  {event.type === 'tool_call' && (
+                    <Icon icon="mdi:wrench" width="10" style={{ color: '#fff' }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Main status indicator */}
+          <div
+            className={`status-indicator-large ${currentStatus.pulse ? 'pulse' : ''}`}
+            style={{ borderColor: currentStatus.color }}
+          >
+            <Icon
+              icon={currentStatus.icon}
+              width="32"
+              style={{ color: currentStatus.color }}
+              className={currentStatus.pulse ? 'spinning' : ''}
+            />
+          </div>
         </div>
+
         <div className="status-label" style={{ color: currentStatus.color }}>
           {currentStatus.label}
         </div>
+
+        {/* Event count badge */}
+        {roundEvents.length > 0 && (
+          <div className="round-events-badge">
+            <span className="event-count">{roundEvents.length}</span>
+            <span className="event-label">
+              {roundEvents.filter(e => e.type === 'tool_call').length} tools
+            </span>
+          </div>
+        )}
+
         {orchestrationState.lastToolCall && orchestrationState.status === 'tool_running' && (
           <div className="tool-call-badge">
             <Icon icon="mdi:tools" width="14" />

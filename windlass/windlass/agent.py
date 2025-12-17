@@ -389,3 +389,299 @@ class Agent:
             "provider": "deterministic",
         }
 
+    @classmethod
+    def _convert_audio_to_wav(cls, audio_base64: str, source_format: str) -> tuple:
+        """
+        Convert audio from webm/other formats to wav using ffmpeg directly.
+
+        Returns:
+            tuple of (wav_base64, "wav") or original data if conversion not needed/failed
+        """
+        import base64
+        import tempfile
+        import os
+        import subprocess
+        import shutil
+
+        # If already wav or mp3, no conversion needed
+        if source_format in ("wav", "mp3"):
+            return audio_base64, source_format
+
+        # Check if ffmpeg is available
+        if not shutil.which("ffmpeg"):
+            print("[TRANSCRIBE] WARNING: ffmpeg not found, cannot convert audio format")
+            return audio_base64, source_format
+
+        try:
+            # Decode base64 to bytes
+            audio_bytes = base64.b64decode(audio_base64)
+
+            # Create temp files
+            with tempfile.NamedTemporaryFile(suffix=f".{source_format}", delete=False) as f:
+                f.write(audio_bytes)
+                temp_input = f.name
+
+            temp_output = temp_input.replace(f".{source_format}", ".wav")
+
+            try:
+                # Use ffmpeg to convert
+                result = subprocess.run([
+                    "ffmpeg", "-y",  # Overwrite output
+                    "-i", temp_input,
+                    "-ar", "16000",  # Sample rate suitable for speech
+                    "-ac", "1",  # Mono
+                    "-f", "wav",
+                    temp_output
+                ], capture_output=True, text=True, timeout=30)
+
+                if result.returncode != 0:
+                    print(f"[TRANSCRIBE] ffmpeg error: {result.stderr[:500]}")
+                    return audio_base64, source_format
+
+                # Read back as base64
+                with open(temp_output, "rb") as f:
+                    wav_bytes = f.read()
+                wav_base64 = base64.b64encode(wav_bytes).decode("utf-8")
+
+                print(f"[TRANSCRIBE] Converted {source_format} to wav ({len(audio_bytes)} -> {len(wav_bytes)} bytes)")
+
+                return wav_base64, "wav"
+
+            finally:
+                # Cleanup
+                if os.path.exists(temp_input):
+                    os.unlink(temp_input)
+                if os.path.exists(temp_output):
+                    os.unlink(temp_output)
+
+        except Exception as e:
+            print(f"[TRANSCRIBE] WARNING: Audio conversion failed: {e}")
+            return audio_base64, source_format
+
+    @classmethod
+    def transcribe(
+        cls,
+        audio_base64: str,
+        audio_format: str = "webm",
+        language: str = None,
+        prompt: str = None,
+        model: str = None,
+        session_id: str = None,
+        trace_id: str = None,
+        parent_id: str = None,
+        phase_name: str = None,
+        cascade_id: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Transcribe audio using the standard provider config (OpenRouter).
+
+        Uses direct HTTP call to OpenRouter's chat/completions endpoint with
+        input_audio content type. Logs to unified_logs for cost tracking.
+
+        Automatically converts webm to wav since most audio APIs don't support webm.
+
+        Args:
+            audio_base64: Base64-encoded audio data
+            audio_format: Audio format (webm, mp3, wav, m4a, etc.)
+            language: Optional ISO-639-1 language code
+            prompt: Optional context to guide transcription
+            model: Model to use (defaults to config.stt_model)
+            session_id: Session ID for logging
+            trace_id: Trace ID for logging
+            parent_id: Parent trace ID
+            phase_name: Phase name for cascade context
+            cascade_id: Cascade ID for cascade context
+
+        Returns:
+            dict with keys:
+                - text: Transcribed text
+                - language: Language used/detected
+                - model: Model used
+                - request_id: Provider request ID
+                - tokens_in: Input tokens
+                - tokens_out: Output tokens
+                - provider: Provider name
+        """
+        import time
+        import uuid
+        import httpx
+
+        cfg = get_config()
+
+        # Use provided model or fall back to STT model from config
+        stt_model = model or cfg.stt_model
+
+        # Convert webm to wav (APIs don't support webm well)
+        if audio_format in ("webm", "ogg"):
+            audio_base64, audio_format = cls._convert_audio_to_wav(audio_base64, audio_format)
+
+        # Build system prompt for transcription
+        system_content = (
+            "You are a speech-to-text transcription assistant. "
+            "Transcribe the audio accurately. Output ONLY the transcribed text, "
+            "nothing else - no explanations, no formatting, no quotes around the text."
+        )
+        if language:
+            system_content += f" The audio is in {language}."
+        if prompt:
+            system_content += f" Context: {prompt}"
+
+        # Build multimodal message with audio content
+        # OpenRouter format for audio input (from docs)
+        messages = [
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Transcribe this audio."
+                    },
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": audio_base64,
+                            "format": audio_format
+                        }
+                    }
+                ]
+            }
+        ]
+
+        # Generate trace_id if not provided
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())
+
+        # Direct HTTP call - litellm doesn't support input_audio content type
+        url = f"{cfg.provider_base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {cfg.provider_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://windlass.dev",
+            "X-Title": "Windlass Voice Transcription",
+        }
+        payload = {
+            "model": stt_model,
+            "messages": messages,
+            "max_tokens": 4096,
+            "temperature": 0.0,
+        }
+
+        start_time = time.time()
+
+        # Debug logging
+        print(f"\n[TRANSCRIBE] Model: {stt_model}")
+        print(f"[TRANSCRIBE] URL: {url}")
+        print(f"[TRANSCRIBE] Audio format: {audio_format}")
+        print(f"[TRANSCRIBE] Audio data length: {len(audio_base64)} chars")
+
+        try:
+            with httpx.Client(timeout=300.0) as client:
+                resp = client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Debug: print full response
+            print(f"[TRANSCRIBE] Response status: {resp.status_code}")
+            print(f"[TRANSCRIBE] Response model: {data.get('model', 'N/A')}")
+            print(f"[TRANSCRIBE] Response usage: {data.get('usage', {})}")
+
+            # Extract response
+            text = ""
+            if "choices" in data and len(data["choices"]) > 0:
+                text = data["choices"][0].get("message", {}).get("content", "")
+                print(f"[TRANSCRIBE] Response text (first 200 chars): {text[:200]}")
+
+            # Extract usage info
+            usage = data.get("usage", {})
+            tokens_in = usage.get("prompt_tokens", 0)
+            tokens_out = usage.get("completion_tokens", 0)
+
+            # Extract request ID and model
+            request_id = data.get("id")
+            model_used = data.get("model", stt_model)
+
+            # Extract provider
+            from .blocking_cost import extract_provider_from_model
+            provider = extract_provider_from_model(stt_model)
+
+            # Build full request/response for logging (without the huge base64 audio)
+            full_request = {
+                "model": stt_model,
+                "messages": [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": "[audio content omitted]"}
+                ],
+            }
+            full_response = {
+                "id": request_id,
+                "model": model_used,
+                "choices": [{"message": {"role": "assistant", "content": text}}],
+                "usage": {"prompt_tokens": tokens_in, "completion_tokens": tokens_out}
+            }
+
+            # Log to unified system - same path as chat completions
+            from .unified_logs import log_unified
+            log_unified(
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_id=parent_id,
+                node_type="transcription",
+                role="assistant",
+                depth=0,
+                phase_name=phase_name,
+                cascade_id=cascade_id,
+                model=model_used,
+                provider=provider,
+                request_id=request_id,
+                duration_ms=duration_ms,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost=None,  # Will be fetched by unified logger via request_id
+                content=text,
+                full_request=full_request,
+                full_response=full_response,
+                metadata={
+                    "tool": "transcribe",
+                    "language": language or "auto",
+                    "audio_format": audio_format,
+                }
+            )
+
+            return {
+                "text": text,
+                "language": language or "auto",
+                "model": model_used,
+                "request_id": request_id,
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "tokens": tokens_in + tokens_out,
+                "provider": provider,
+                "session_id": session_id,
+                "trace_id": trace_id,
+            }
+
+        except httpx.HTTPStatusError as e:
+            duration_ms = (time.time() - start_time) * 1000
+            error_detail = ""
+            try:
+                error_detail = e.response.text[:500]
+            except Exception:
+                pass
+
+            log_message(session_id, "system", f"Transcription API error {e.response.status_code}: {error_detail}",
+                       metadata={"tool": "transcribe", "error": "http", "status_code": e.response.status_code})
+
+            raise RuntimeError(f"Transcription failed: HTTP {e.response.status_code}: {error_detail}") from e
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log error
+            log_message(session_id, "system", f"Transcription error: {type(e).__name__}: {e}",
+                       metadata={"tool": "transcribe", "error": type(e).__name__, "duration_ms": duration_ms})
+
+            raise RuntimeError(f"Transcription failed: {type(e).__name__}: {e}") from e
+

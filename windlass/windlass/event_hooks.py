@@ -293,10 +293,159 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
 
     def __init__(self):
         self._auto_save_enabled = os.environ.get('WINDLASS_AUTO_SAVE_RESEARCH', 'true').lower() == 'true'
+        self._title_cache = {}  # Cache generated titles: {session_id: {"title": str, "checkpoint_count": int}}
 
     def _is_research_session(self, session_id: str) -> bool:
         """Check if this is a Research Cockpit session."""
         return session_id and session_id.startswith('research_')
+
+    def _generate_session_title_async(self, session_id: str, checkpoints: list):
+        """
+        Generate an intelligent session title from checkpoint summaries.
+        Uses a cheap model asynchronously to create a descriptive title.
+        """
+        import threading
+
+        def generate():
+            try:
+                from .agent import Agent
+                from .config import get_config
+                from .db_adapter import get_db
+                from .logs import log_message
+
+                config = get_config()
+
+                # Collect checkpoint summaries or phase_outputs
+                checkpoint_texts = []
+                for cp in checkpoints[:10]:  # Limit to first 10 checkpoints
+                    # Prefer summary, fall back to phase_output
+                    text = cp.get('summary') or cp.get('phase_output', '')
+                    if text:
+                        checkpoint_texts.append(text[:200])  # Truncate long texts
+
+                if not checkpoint_texts:
+                    return  # No content to generate title from
+
+                # Build context from checkpoint texts
+                context = "\n".join([f"- {t}" for t in checkpoint_texts])
+
+                # Create agent with cheap model
+                agent = Agent(
+                    model="google/gemini-2.5-flash-lite",
+                    system_prompt="",
+                    base_url=config.provider_base_url,
+                    api_key=config.provider_api_key
+                )
+
+                # Generate title
+                prompt = f"""Create a SHORT title (max 8 words) for this research session based on these checkpoint summaries:
+
+{context}
+
+The title should capture what the session is about. Be specific, not generic.
+Return ONLY the title, nothing else."""
+
+                response = agent.run(input_message=prompt)
+                title = response.get("content", "").strip()
+
+                # Clean up title (remove quotes if present)
+                title = title.strip('"\'')
+
+                if not title or len(title) < 3:
+                    return  # Invalid title
+
+                # Truncate if too long
+                if len(title) > 100:
+                    title = title[:97] + "..."
+
+                # Log the LLM call
+                log_message(
+                    session_id=session_id,
+                    cascade_id="session_title",
+                    phase_name="title_generation",
+                    role="assistant",
+                    content=title,
+                    model=response.get("model", "google/gemini-2.5-flash-lite"),
+                    cost=response.get("cost", 0),
+                    tokens_in=response.get("tokens_in", 0),
+                    tokens_out=response.get("tokens_out", 0)
+                )
+
+                # Update the session title in database
+                db = get_db()
+                research_id = f"research_session_{session_id}"
+
+                # Escape single quotes for SQL
+                safe_title = title.replace("'", "''")
+
+                # Check if using ClickHouse server (supports ALTER TABLE UPDATE)
+                if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
+                    db.execute(f"""
+                        ALTER TABLE research_sessions UPDATE
+                            title = '{safe_title}'
+                        WHERE original_session_id = '{session_id}'
+                    """)
+                else:
+                    # For chDB, delete and re-insert is needed (no ALTER UPDATE)
+                    # Skip for now - title will be updated on next save
+                    pass
+
+                # Cache the title with checkpoint count
+                self._title_cache[session_id] = {
+                    "title": title,
+                    "checkpoint_count": len(checkpoints)
+                }
+                print(f"[ResearchAutoSave] ✨ Generated title for {session_id}: {title}")
+
+            except Exception as e:
+                print(f"[ResearchAutoSave] ⚠ Failed to generate title for {session_id}: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Run in background thread
+        thread = threading.Thread(target=generate, daemon=True)
+        thread.start()
+
+    def _get_smart_title(self, session_id: str, checkpoints: list) -> str:
+        """
+        Get a smart title for the session.
+        Returns cached title if available, regenerates when checkpoint count increases.
+        """
+        current_count = len(checkpoints) if checkpoints else 0
+        cached = self._title_cache.get(session_id)
+
+        # Check if we have a valid cached title
+        if cached:
+            cached_title = cached.get("title", "")
+            cached_count = cached.get("checkpoint_count", 0)
+
+            # Regenerate if checkpoint count increased significantly (every 2 new checkpoints)
+            should_regenerate = current_count > 0 and (current_count - cached_count) >= 2
+
+            if should_regenerate:
+                print(f"[ResearchAutoSave] Regenerating title: {cached_count} -> {current_count} checkpoints")
+                self._generate_session_title_async(session_id, checkpoints)
+
+            # Return cached title while regeneration happens in background
+            if cached_title:
+                return cached_title
+
+        # Build fallback title from checkpoints
+        if checkpoints and len(checkpoints) > 0:
+            # Try to use first checkpoint's summary or phase_output
+            first_cp = checkpoints[0]
+            first_text = first_cp.get('summary') or first_cp.get('phase_output', '')
+            if first_text:
+                fallback = first_text[:80] + ("..." if len(first_text) > 80 else "")
+            else:
+                fallback = f"Research Session - {session_id[:12]}"
+
+            # Trigger initial title generation
+            self._generate_session_title_async(session_id, checkpoints)
+
+            return fallback
+
+        return f"Research Session - {session_id[:12]}"
 
     def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active", parent_session_id: str = None, branch_checkpoint_id: str = None):
         """Save or update research session in database."""
@@ -340,15 +489,9 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
 
             print(f"[ResearchAutoSave] Fetched data for {session_id}: {len(entries)} entries, {len(checkpoints)} checkpoints")
 
-            # Auto-generate title from first checkpoint
-            title = f"Research Session - {session_id[:12]}"
-            description = f"Auto-saved research session"
-
-            if checkpoints and len(checkpoints) > 0:
-                first_question = checkpoints[0].get('phase_output', '')
-                if first_question:
-                    title = first_question[:80] + ("..." if len(first_question) > 80 else "")
-                description = f"Research session with {len(checkpoints)} interactions"
+            # Get smart title (uses LLM to generate from checkpoint summaries)
+            title = self._get_smart_title(session_id, checkpoints)
+            description = f"Research session with {len(checkpoints)} interactions" if checkpoints else "Auto-saved research session"
 
             # Check if session already exists
             research_id = f"research_session_{session_id}"

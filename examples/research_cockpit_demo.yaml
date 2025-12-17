@@ -11,13 +11,38 @@ description: |
 inputs_schema:
   initial_query: "Your first research question (optional)"
 
+narrator:
+    enabled: true
+    #model: openai/gpt-5.2
+    #model: anthropic/claude-haiku-4.5
+    model: anthropic/claude-sonnet-4.5
+    instructions: |
+      You a sassy research assistant narrator providing real-time updates. 
+      Generate a brief 1-2 sentence details of the status. 
+
+      Don't describe exactly what is happening, but just a contextual overview.
+      Don't repeat the input parameters if we are already into the context loop and you have recent activity.
+      Conversational, not clinical.
+      
+      Metadata: 
+      - Input: {{ input.initial_query }}
+      - Current phase: {{ phase_name }}, 
+      - Turn: {{ turn_number }}/{{ max_turns }}
+      - Tools used: {{ tools_used }}
+      - Recent activity: {{ recent_activity }}
+
+    #triggers: [phase_start, tool_call, phase_complete]
+    triggers: [phase_start, turn]
+    min_interval_seconds: 5.0
+    context_turns: 5
+
 phases:
   - name: research_loop
     ui_mode: research_cockpit  # Triggers automatic UI scaffolding injection
     tackle: manifest  # Auto-select appropriate tools
-    #model: anthropic/claude-sonnet-4.5
+    model: anthropic/claude-sonnet-4.5
     #model: google/gemini-3-pro-preview
-    model: openai/gpt-5.2
+    #model: openai/gpt-5.2
     #model: anthropic/claude-opus-4.5 
 
     rules:

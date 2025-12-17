@@ -170,6 +170,9 @@ class WindlassRunner:
         self._audible_budget_used = {}  # phase_name -> count of audibles used
         self._audible_lock = threading.Lock()
 
+        # Narrator config (cascade-level, can be overridden per-phase)
+        self.cascade_narrator = self.config.narrator if hasattr(self.config, 'narrator') else None
+
         # Heartbeat system for durable execution
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._heartbeat_running = False
@@ -3659,6 +3662,102 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
 
         return memory_query_tool
 
+    def _maybe_narrate(
+        self,
+        phase: "PhaseConfig",
+        trigger: str,
+        turn_number: int = 1,
+        max_turns: int = 1,
+        tool_calls: List = None,
+        trace: "TraceNode" = None,
+        input_data: dict = None
+    ):
+        """
+        Spawn narrator if configured for this trigger.
+
+        The narrator runs asynchronously in a background thread and never
+        blocks the main execution flow. All costs are charged to parent_session_id.
+
+        Args:
+            phase: Current phase config
+            trigger: What triggered this narration (turn, phase_start, phase_complete, tool_call)
+            turn_number: Current turn (1-indexed)
+            max_turns: Total turns configured
+            tool_calls: Tool calls from this turn (if any)
+            trace: Current trace node
+            input_data: Original input data for Jinja2 rendering
+        """
+        from .cascade import NarratorConfig
+
+        print(f"[Narrator] _maybe_narrate called: trigger={trigger}, phase={phase.name}")
+        print(f"[Narrator]   cascade_narrator={self.cascade_narrator}")
+        print(f"[Narrator]   phase.narrator={phase.narrator}")
+
+        # Determine effective narrator config (phase override or cascade)
+        narrator_config = None
+
+        if phase.narrator is not None:
+            if isinstance(phase.narrator, bool):
+                # Bool: True inherits cascade config, False disables
+                narrator_config = self.cascade_narrator if phase.narrator else None
+            else:
+                # NarratorConfig: use phase-level override
+                narrator_config = phase.narrator
+        else:
+            # No phase override: use cascade-level config
+            narrator_config = self.cascade_narrator
+
+        print(f"[Narrator]   effective narrator_config={narrator_config}")
+
+        if not narrator_config or not narrator_config.enabled:
+            print(f"[Narrator] SKIP: narrator not configured or disabled")
+            return
+
+        # Check if this trigger is configured
+        if trigger not in narrator_config.triggers:
+            print(f"[Narrator] SKIP: trigger '{trigger}' not in {narrator_config.triggers}")
+            return
+
+        print(f"[Narrator] Trigger '{trigger}' matched, proceeding...")
+
+        # Import narrator module
+        from .eddies.narrator import narrate_async, gather_narrator_context
+
+        # Gather context
+        context = gather_narrator_context(
+            context_messages=self.context_messages,
+            phase_name=phase.name,
+            turn_number=turn_number,
+            max_turns=max_turns,
+            tool_calls=tool_calls,
+            context_turns=narrator_config.context_turns
+        )
+        context["model"] = phase.model or self.model
+        context["trigger"] = trigger
+
+        # Build render context for Jinja2 (same vars as phase instructions)
+        context["render_context"] = {
+            "input": input_data or {},
+            "state": self.echo.state,
+            "history": self.echo.history,
+            "outputs": {entry["phase"]: entry["output"] for entry in self.echo.lineage if "phase" in entry and "output" in entry},
+            "lineage": self.echo.lineage,
+            "phase_name": phase.name,
+            "turn_number": turn_number,
+            "max_turns": max_turns,
+        }
+
+        # Spawn async narrator (fire-and-forget)
+        narrate_async(
+            session_id=self.session_id,
+            parent_session_id=self.parent_session_id or self.session_id,
+            cascade_id=self.config.cascade_id,
+            narrator_config=narrator_config,
+            context=context,
+            trace_id=trace.id if trace else "unknown",
+            parent_trace_id=trace.parent_id if trace else None,
+        )
+
     def _run_ward(self, ward_config, content: str, trace: TraceNode, ward_type: str = "post") -> dict:
         """
         Run a single ward (validator) and return validation result.
@@ -6967,6 +7066,9 @@ Refinement directive: {reforge_config.honing_prompt}
                    phase_name=phase.name, cascade_id=self.config.cascade_id,
                    species_hash=phase_species_hash, phase_config=phase.dict() if phase_species_hash else None)
 
+        # Narrator: Phase Start
+        self._maybe_narrate(phase, "phase_start", trace=trace, input_data=input_data)
+
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
         if phase.tackle == "manifest":
@@ -7687,6 +7789,16 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     self._update_graph()
 
+                    # Narrator: Turn complete (after agent responds)
+                    self._maybe_narrate(
+                        phase, "turn",
+                        turn_number=i + 1,
+                        max_turns=max_turns,
+                        tool_calls=tool_calls,
+                        trace=turn_trace,
+                        input_data=input_data
+                    )
+
                     response_content = content
                     tool_outputs = []  # Track tool outputs for validation
 
@@ -7813,6 +7925,16 @@ Refinement directive: {reforge_config.honing_prompt}
                                      "result": str(result)
                                  })
                                  console.print(f"{indent}    [dim cyan][DEBUG] tool_outputs.append() - now has {len(tool_outputs)} item(s)[/dim cyan]")
+
+                                 # Narrator: Tool call completed
+                                 self._maybe_narrate(
+                                     phase, "tool_call",
+                                     turn_number=i + 1,
+                                     max_turns=max_turns,
+                                     tool_calls=[{"function": {"name": func_name}}],
+                                     trace=turn_trace,
+                                     input_data=input_data
+                                 )
 
                             # Handle Smart Image Injection logic
                             parsed_result = result
@@ -8062,6 +8184,16 @@ Refinement directive: {reforge_config.honing_prompt}
                                             "tool": func_name,
                                             "result": str(result)
                                         })
+
+                                        # Narrator: Tool call completed (follow-up)
+                                        self._maybe_narrate(
+                                            phase, "tool_call",
+                                            turn_number=i + 1,
+                                            max_turns=max_turns,
+                                            tool_calls=[{"function": {"name": func_name}}],
+                                            trace=turn_trace,
+                                            input_data=input_data
+                                        )
 
                                         # Add tool result to context
                                         tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
@@ -8723,6 +8855,15 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # If human input was received, it can be accessed via self.echo.state or passed to next phase
         # For now, we just log it and continue - the response is in the history
+
+        # Narrator: Phase complete
+        self._maybe_narrate(
+            phase, "phase_complete",
+            turn_number=max_turns,
+            max_turns=max_turns,
+            trace=trace,
+            input_data=input_data
+        )
 
         return chosen_next_phase if chosen_next_phase else response_content
 

@@ -3767,7 +3767,7 @@ def serve_session_audio(session_id, subpath):
 @app.route('/api/voice/transcribe', methods=['POST'])
 def transcribe_voice():
     """
-    Transcribe audio from base64-encoded data.
+    Transcribe audio from base64-encoded data using OpenRouter's audio models.
 
     Expected JSON body:
     {
@@ -3781,9 +3781,9 @@ def transcribe_voice():
     {
         "text": "transcribed text",
         "language": "en",
-        "duration": 5.2,
-        "model": "whisper-1",
-        "session_id": "voice_stt_20231215_123456"
+        "model": "mistralai/voxtral-small-24b-2507",
+        "session_id": "voice_stt_20231215_123456",
+        "tokens": 123
     }
     """
     try:
@@ -3821,9 +3821,9 @@ def transcribe_voice():
                 timestamp=datetime.now().isoformat(),
                 data={
                     "text": result.get('text', ''),
-                    "language": result.get('language', 'unknown'),
-                    "duration": result.get('duration', 0),
-                    "model": result.get('model', 'whisper-1'),
+                    "language": result.get('language', 'auto'),
+                    "model": result.get('model', 'unknown'),
+                    "tokens": result.get('tokens', 0),
                 }
             ))
         except Exception:
@@ -3831,11 +3831,11 @@ def transcribe_voice():
 
         return jsonify({
             'text': result.get('text', ''),
-            'language': result.get('language', 'unknown'),
-            'duration': result.get('duration', 0),
-            'model': result.get('model', 'whisper-1'),
+            'language': result.get('language', 'auto'),
+            'model': result.get('model', 'unknown'),
             'session_id': result.get('session_id', session_id),
             'trace_id': result.get('trace_id'),
+            'tokens': result.get('tokens', 0),
         })
 
     except FileNotFoundError as e:
@@ -3898,9 +3898,9 @@ def transcribe_voice_file():
 
         return jsonify({
             'text': result.get('text', ''),
-            'language': result.get('language', 'unknown'),
-            'duration': result.get('duration', 0),
-            'model': result.get('model', 'whisper-1'),
+            'language': result.get('language', 'auto'),
+            'model': result.get('model', 'unknown'),
+            'tokens': result.get('tokens', 0),
             'session_id': result.get('session_id', session_id),
             'trace_id': result.get('trace_id'),
         })
@@ -3919,8 +3919,8 @@ def voice_status():
     Returns:
     {
         "available": true,
-        "model": "whisper-1",
-        "base_url": "https://api.openai.com/v1"
+        "model": "mistralai/voxtral-small-24b-2507",
+        "base_url": "https://openrouter.ai/api/v1"
     }
     """
     try:
@@ -3930,8 +3930,8 @@ def voice_status():
 
         return jsonify({
             'available': is_available(),
-            'model': config.get('model', 'whisper-1'),
-            'base_url': config.get('base_url', 'https://api.openai.com/v1'),
+            'model': config.get('model', 'unknown'),
+            'base_url': config.get('base_url', 'https://openrouter.ai/api/v1'),
             # Don't expose the API key
             'has_api_key': bool(config.get('api_key')),
         })
