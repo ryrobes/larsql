@@ -41,6 +41,7 @@ from .session_state import (
 )
 from .eddies.system import spawn_cascade
 from .eddies.state_tools import set_current_session_id, set_current_phase_name, set_current_cascade_id, set_current_sounding_index
+from .eddies.research_db import set_current_research_db
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
@@ -3081,6 +3082,10 @@ Refinement directive: {reforge_config.honing_prompt}
         session_context_token = set_current_session_id(self.session_id)
         cascade_context_token = set_current_cascade_id(self.config.cascade_id)
         trace_context_token = set_current_trace(self.trace)
+
+        # Set research database context if configured
+        if self.config.research_db:
+            set_current_research_db(self.config.research_db)
 
         # Set visualization context
         self.echo.set_cascade_context(self.config.cascade_id)

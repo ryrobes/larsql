@@ -28,6 +28,7 @@ from .eddies.research_sessions import (
 )
 from .eddies.state_tools import set_state
 from .eddies.system import spawn_cascade
+from .eddies.research_db import research_query, research_execute
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
 from .eddies.filesystem import read_file, write_file, append_file, list_files, file_info
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
@@ -48,6 +49,8 @@ register_tackle("list_research_sessions", list_research_sessions)
 register_tackle("get_research_session", get_research_session)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
+register_tackle("research_query", research_query)
+register_tackle("research_execute", research_execute)
 register_tackle("create_chart", create_chart)
 register_tackle("create_vega_lite", create_vega_lite)
 register_tackle("create_plotly", create_plotly)
@@ -73,6 +76,18 @@ register_tackle("list_sql_connections", list_sql_connections)
 from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_available
 if elevenlabs_available():
     register_tackle("say", elevenlabs_say)
+
+# Conditional: Speech-to-Text (only if API key is configured)
+from .eddies.stt import (
+    transcribe_audio,
+    listen as voice_listen,
+    process_voice_recording,
+    is_available as stt_available
+)
+if stt_available():
+    register_tackle("transcribe_audio", transcribe_audio)
+    register_tackle("listen", voice_listen)
+    register_tackle("process_voice_recording", process_voice_recording)
 
 # Rabbitize - Visual browser automation
 from .eddies.rabbitize import (

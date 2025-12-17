@@ -1,0 +1,294 @@
+/* VoiceRecorder Component Styles */
+
+.voice-recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Size variants */
+.voice-recorder-small .voice-recorder-button {
+  width: 40px;
+  height: 40px;
+}
+
+.voice-recorder-small .voice-icon {
+  font-size: 18px;
+}
+
+.voice-recorder-medium .voice-recorder-button {
+  width: 56px;
+  height: 56px;
+}
+
+.voice-recorder-medium .voice-icon {
+  font-size: 24px;
+}
+
+.voice-recorder-large .voice-recorder-button {
+  width: 72px;
+  height: 72px;
+}
+
+.voice-recorder-large .voice-icon {
+  font-size: 32px;
+}
+
+/* Button styling */
+.voice-recorder-button {
+  position: relative;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ocean-primary, #4A9EDD) 0%, var(--storm-blue-light, #5A8DC4) 100%);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(74, 158, 221, 0.3);
+}
+
+.voice-recorder-button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(74, 158, 221, 0.4);
+}
+
+.voice-recorder-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.voice-recorder-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Recording state */
+.voice-recorder-button.recording {
+  background: linear-gradient(135deg, var(--danger-red, #EF4444) 0%, #DC2626 100%);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(239, 68, 68, 0.6);
+  }
+}
+
+/* Audio level visualization ring */
+.audio-level-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  transition: transform 0.05s ease-out, opacity 0.05s ease-out;
+}
+
+/* Icon styling */
+.voice-icon {
+  transition: transform 0.2s ease;
+}
+
+.voice-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Recording duration badge */
+.recording-duration {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--midnight-deep, #070A0D);
+  color: var(--danger-red, #EF4444);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Status text */
+.voice-recorder-status {
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  text-align: center;
+  min-height: 16px;
+}
+
+.voice-recorder-recording .voice-recorder-status {
+  color: var(--danger-red, #EF4444);
+}
+
+.voice-recorder-processing .voice-recorder-status {
+  color: var(--ocean-primary, #4A9EDD);
+}
+
+.voice-recorder-error .voice-recorder-status {
+  color: var(--danger-red, #EF4444);
+  font-size: 11px;
+  max-width: 200px;
+}
+
+/* Transcript display */
+.voice-transcript {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--midnight-deep, #070A0D);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  max-width: 300px;
+}
+
+.voice-transcript .quote-icon {
+  color: var(--ocean-primary, #4A9EDD);
+  flex-shrink: 0;
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.voice-transcript .transcript-text {
+  font-size: 13px;
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+  line-height: 1.5;
+}
+
+/* Compact inline variant */
+.voice-recorder.inline {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.voice-recorder.inline .voice-recorder-status {
+  text-align: left;
+}
+
+.voice-recorder.inline .voice-transcript {
+  margin-top: 0;
+  margin-left: 8px;
+}
+
+/* Dark mode adjustments (already dark by default) */
+@media (prefers-color-scheme: light) {
+  .voice-recorder-button {
+    box-shadow: 0 4px 12px rgba(74, 158, 221, 0.2);
+  }
+
+  .voice-recorder-button.recording {
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  }
+}
+
+/* Mobile touch improvements */
+@media (max-width: 768px) {
+  .voice-recorder-small .voice-recorder-button {
+    width: 48px;
+    height: 48px;
+  }
+
+  .voice-recorder-medium .voice-recorder-button {
+    width: 64px;
+    height: 64px;
+  }
+
+  .voice-recorder-large .voice-recorder-button {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+/* Input field integration - voice button next to input */
+.voice-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-input-wrapper input,
+.voice-input-wrapper textarea {
+  flex: 1;
+}
+
+.voice-input-wrapper .voice-recorder {
+  flex-shrink: 0;
+}
+
+.voice-input-wrapper .voice-recorder-status {
+  display: none; /* Hide status in inline mode */
+}
+
+/* Voice input section in checkpoint panels */
+.section-voice-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: var(--midnight-deep, #070A0D);
+  border: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+}
+
+.section-voice-input .voice-prompt {
+  font-size: 14px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  text-align: center;
+  max-width: 280px;
+}
+
+.section-voice-input .voice-transcript {
+  width: 100%;
+  max-width: none;
+}
+
+/* Waveform visualization (alternative to ring) */
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 32px;
+}
+
+.voice-waveform-bar {
+  width: 3px;
+  background: var(--ocean-primary, #4A9EDD);
+  border-radius: 1.5px;
+  transition: height 0.1s ease;
+}
+
+.voice-recorder-recording .voice-waveform-bar {
+  background: var(--danger-red, #EF4444);
+  animation: waveform-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes waveform-pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}

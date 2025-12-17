@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import VoiceInputSection from './VoiceInputSection';
 import './CheckpointPanel.css';
 
 /**
@@ -175,6 +176,11 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
       case 'card_grid':
         return renderCardGridSection(section, checkpoint, key);
+
+      case 'voice':
+      case 'voice_input':
+      case 'audio_input':
+        return renderVoiceInputSection(section, checkpoint, key);
 
       default:
         // Unknown section type - render as preview if it has content
@@ -596,6 +602,39 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
     );
   };
 
+  const renderVoiceInputSection = (section, checkpoint, key) => {
+    const voiceValue = responses[checkpoint.id] || '';
+    const isSubmitting = submitting[checkpoint.id];
+
+    return (
+      <div key={key} className="section section-input voice">
+        <VoiceInputSection
+          section={{
+            label: section.label,
+            prompt: section.prompt || 'Speak your response...',
+            placeholder: section.placeholder || 'Or type your response here...',
+            allow_text_fallback: section.allow_text_fallback !== false,
+            editable_transcript: section.editable_transcript !== false,
+            language: section.language,
+          }}
+          value={voiceValue}
+          onChange={(value) => handleResponseChange(checkpoint.id, value)}
+          sessionId={checkpoint.session_id}
+          disabled={isSubmitting}
+        />
+        {voiceValue && (
+          <button
+            className="checkpoint-btn approve"
+            onClick={() => handleSubmit(checkpoint, { voice_transcript: voiceValue })}
+            disabled={!voiceValue.trim() || isSubmitting}
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit Voice Response'}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   // ==========================================================================
   // LAYOUT RENDERERS
   // ==========================================================================
@@ -604,7 +643,7 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
    * Find the primary input type from sections (for fallback logic)
    */
   const findPrimaryInputType = (sections) => {
-    const inputTypes = ['confirmation', 'choice', 'multi_choice', 'rating', 'text', 'card_grid'];
+    const inputTypes = ['confirmation', 'choice', 'multi_choice', 'rating', 'text', 'card_grid', 'voice', 'voice_input', 'audio_input'];
     for (const section of sections) {
       if (inputTypes.includes(section.type)) {
         return section.type;

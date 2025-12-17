@@ -17,8 +17,8 @@ phases:
     tackle: manifest  # Auto-select appropriate tools
     #model: anthropic/claude-sonnet-4.5
     #model: google/gemini-3-pro-preview
-    #model: openai/gpt-5.2
-    model: anthropic/claude-opus-4.5 
+    model: openai/gpt-5.2
+    #model: anthropic/claude-opus-4.5 
 
     rules:
       max_turns: 100  # Allow long research sessions

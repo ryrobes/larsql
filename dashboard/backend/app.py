@@ -3760,6 +3760,193 @@ def serve_session_audio(session_id, subpath):
         return jsonify({'error': str(e)}), 500
 
 
+# ==============================================================================
+# Voice Transcription API
+# ==============================================================================
+
+@app.route('/api/voice/transcribe', methods=['POST'])
+def transcribe_voice():
+    """
+    Transcribe audio from base64-encoded data.
+
+    Expected JSON body:
+    {
+        "audio_base64": "base64-encoded audio data",
+        "format": "webm",  # webm, mp3, wav, m4a, etc.
+        "language": "en",  # optional: ISO-639-1 language code
+        "session_id": "session_123"  # optional: for logging context
+    }
+
+    Returns:
+    {
+        "text": "transcribed text",
+        "language": "en",
+        "duration": 5.2,
+        "model": "whisper-1",
+        "session_id": "voice_stt_20231215_123456"
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'audio_base64' not in data:
+            return jsonify({'error': 'Missing audio_base64 in request body'}), 400
+
+        audio_base64 = data['audio_base64']
+        audio_format = data.get('format', 'webm')
+        language = data.get('language')
+        session_id = data.get('session_id')
+
+        # Import voice module
+        try:
+            from windlass.voice import transcribe_from_base64
+        except ImportError as e:
+            return jsonify({'error': f'Voice module not available: {e}'}), 500
+
+        # Perform transcription
+        result = transcribe_from_base64(
+            base64_data=audio_base64,
+            file_format=audio_format,
+            language=language,
+            session_id=session_id,
+        )
+
+        # Emit SSE event for real-time updates
+        try:
+            from windlass.events import get_event_bus, Event
+            bus = get_event_bus()
+            bus.publish(Event(
+                type="transcription_complete",
+                session_id=result.get('session_id', session_id or 'unknown'),
+                timestamp=datetime.now().isoformat(),
+                data={
+                    "text": result.get('text', ''),
+                    "language": result.get('language', 'unknown'),
+                    "duration": result.get('duration', 0),
+                    "model": result.get('model', 'whisper-1'),
+                }
+            ))
+        except Exception:
+            pass  # Don't fail if event publishing fails
+
+        return jsonify({
+            'text': result.get('text', ''),
+            'language': result.get('language', 'unknown'),
+            'duration': result.get('duration', 0),
+            'model': result.get('model', 'whisper-1'),
+            'session_id': result.get('session_id', session_id),
+            'trace_id': result.get('trace_id'),
+        })
+
+    except FileNotFoundError as e:
+        return jsonify({'error': f'Audio file error: {e}'}), 400
+    except ValueError as e:
+        return jsonify({'error': f'Configuration error: {e}'}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/voice/transcribe-file', methods=['POST'])
+def transcribe_voice_file():
+    """
+    Transcribe audio from an uploaded file.
+
+    Expects multipart/form-data with:
+    - file: audio file
+    - language: optional ISO-639-1 language code
+    - session_id: optional session ID for logging
+
+    Returns same format as /api/voice/transcribe
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        language = request.form.get('language')
+        session_id = request.form.get('session_id')
+
+        # Save uploaded file temporarily
+        import tempfile
+        import base64
+
+        # Read file and convert to base64
+        file_data = file.read()
+        audio_base64 = base64.b64encode(file_data).decode('utf-8')
+
+        # Get format from filename
+        ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'webm'
+
+        # Import voice module
+        try:
+            from windlass.voice import transcribe_from_base64
+        except ImportError as e:
+            return jsonify({'error': f'Voice module not available: {e}'}), 500
+
+        # Perform transcription
+        result = transcribe_from_base64(
+            base64_data=audio_base64,
+            file_format=ext,
+            language=language,
+            session_id=session_id,
+        )
+
+        return jsonify({
+            'text': result.get('text', ''),
+            'language': result.get('language', 'unknown'),
+            'duration': result.get('duration', 0),
+            'model': result.get('model', 'whisper-1'),
+            'session_id': result.get('session_id', session_id),
+            'trace_id': result.get('trace_id'),
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/voice/status', methods=['GET'])
+def voice_status():
+    """
+    Check if voice transcription is available and configured.
+
+    Returns:
+    {
+        "available": true,
+        "model": "whisper-1",
+        "base_url": "https://api.openai.com/v1"
+    }
+    """
+    try:
+        from windlass.voice import is_available, get_stt_config
+
+        config = get_stt_config()
+
+        return jsonify({
+            'available': is_available(),
+            'model': config.get('model', 'whisper-1'),
+            'base_url': config.get('base_url', 'https://api.openai.com/v1'),
+            # Don't expose the API key
+            'has_api_key': bool(config.get('api_key')),
+        })
+
+    except ImportError as e:
+        return jsonify({
+            'available': False,
+            'error': f'Voice module not available: {e}'
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/debug/schema', methods=['GET'])
 def debug_schema():
     """Debug endpoint to show what columns and data exist in ClickHouse"""

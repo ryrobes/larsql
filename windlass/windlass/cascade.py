@@ -789,6 +789,12 @@ class CascadeConfig(BaseModel):
     token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
     tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
 
+    # Research database - DuckDB instance for cascade-specific data persistence
+    # When set, injects research_query and research_execute tools automatically
+    # Multiple cascades can share the same DB by using the same name
+    # DB files stored in $WINDLASS_ROOT/research_dbs/{name}.duckdb
+    research_db: Optional[str] = None
+
     # Inline validators - cascade-scoped validator definitions
     # These are checked before global tackle/ directory when resolving validator names
     validators: Optional[Dict[str, InlineValidatorConfig]] = None

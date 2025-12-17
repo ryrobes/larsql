@@ -251,7 +251,7 @@ Return ONLY the JSON, no explanation."""
 
         try:
             import os
-            model = os.getenv("WINDLASS_UI_GENERATOR_MODEL", "google/gemini-2.0-flash-lite")
+            model = os.getenv("WINDLASS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
             agent = Agent(model=model)
             response = agent.call([{"role": "user", "content": prompt}])
 
@@ -318,7 +318,7 @@ Return the HTML template only, no explanation."""
 
         try:
             import os
-            model = os.getenv("WINDLASS_UI_GENERATOR_MODEL", "google/gemini-2.0-flash-lite")
+            model = os.getenv("WINDLASS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
             agent = Agent(model=model)
             response = agent.call([{"role": "user", "content": prompt}])
 

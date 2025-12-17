@@ -728,7 +728,7 @@ class CheckpointManager:
 
                 # Create agent with proper OpenRouter config
                 agent = Agent(
-                    model="google/gemini-2.0-flash-lite",
+                    model="google/gemini-2.5-flash-lite",
                     system_prompt="",
                     base_url=config.provider_base_url,
                     api_key=config.provider_api_key
@@ -748,7 +748,7 @@ class CheckpointManager:
                     phase_name="summary_generation",
                     role="assistant",
                     content=summary,
-                    model=response.get("model", "google/gemini-2.0-flash-lite"),
+                    model=response.get("model", "google/gemini-2.5-flash-lite"),
                     cost=response.get("cost", 0),
                     input_tokens=response.get("tokens_in", 0),
                     output_tokens=response.get("tokens_out", 0)

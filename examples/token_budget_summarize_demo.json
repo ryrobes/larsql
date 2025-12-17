@@ -10,7 +10,7 @@
     "strategy": "summarize",
     "warning_threshold": 0.75,
     "summarizer": {
-      "model": "google/gemini-2.0-flash-lite",
+      "model": "google/gemini-2.5-flash-lite",
       "target_size": 2000
     }
   },

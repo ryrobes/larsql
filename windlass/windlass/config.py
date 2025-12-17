@@ -71,6 +71,9 @@ class Config(BaseModel):
     image_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "images"))
     audio_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "audio"))
 
+    # Research databases directory (DuckDB files for cascade-specific data)
+    research_db_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "research_dbs"))
+
     # Content directories - cascade/tool definitions
     examples_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "examples"))
     tackle_dir: str = Field(default=os.path.join(_WINDLASS_ROOT, "tackle"))
@@ -142,6 +145,7 @@ def _ensure_directories(config: Config):
         config.state_dir,
         config.image_dir,
         config.audio_dir,
+        config.research_db_dir,  # DuckDB research databases
     ]
     for dir_path in dirs_to_create:
         os.makedirs(dir_path, exist_ok=True)

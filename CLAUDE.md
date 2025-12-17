@@ -24,6 +24,10 @@ pip install .
 
 **Optional Environment Variables**:
 - `HF_TOKEN`: HuggingFace API token for Harbor (HF Spaces integration)
+- `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`: For TTS (`say` tool)
+- `WINDLASS_STT_API_KEY`: API key for speech-to-text (falls back to OPENROUTER_API_KEY)
+- `WINDLASS_STT_BASE_URL`: STT API URL (default: https://api.openai.com/v1)
+- `WINDLASS_STT_MODEL`: STT model (default: whisper-1)
 
 **Workspace Configuration**:
 - `WINDLASS_ROOT`: Workspace root (default: current directory) - all paths derived from this
@@ -45,6 +49,7 @@ $WINDLASS_ROOT/
 ├── graphs/        # Mermaid execution graphs
 ├── states/        # Session state JSON files
 ├── images/        # Multi-modal image outputs
+├── audio/         # Voice recordings and TTS outputs
 ├── examples/      # Example cascade definitions
 ├── tackle/        # Reusable tool cascades
 └── cascades/      # User-defined cascades
@@ -129,7 +134,7 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 2. **Cascade Tools**: JSON cascades with `inputs_schema` in `tackle/` directory
 3. **Gradio Tools (Harbor)**: HuggingFace Spaces as tools via `.tool.json` with `type: "gradio"`
 
-**Built-in Tools**: `linux_shell`, `run_code`, `smart_sql_run`, `take_screenshot`, `ask_human`, `ask_human_custom`, `set_state`, `spawn_cascade`, `create_chart`, `rabbitize_*`
+**Built-in Tools**: `linux_shell`, `run_code`, `smart_sql_run`, `take_screenshot`, `ask_human`, `ask_human_custom`, `set_state`, `spawn_cascade`, `create_chart`, `rabbitize_*`, `say` (TTS), `listen` (STT), `transcribe_audio`
 
 **Registering Custom Tools**:
 ```python
@@ -249,6 +254,7 @@ The `examples/` directory contains reference implementations:
 **Validation**: `ward_*.json`, `loop_until_*.json`
 **Context**: `context_selective_demo.json`, `context_sugar_demo.json`
 **Tools**: `manifest_flow.json`, `rabbitize_*.json`, `hitl_flow.json`
+**Voice**: `voice_transcription_demo.json`, `voice_assistant_demo.json`, `voice_conversation_demo.json`
 
 ## Terminology (Nautical Theme)
 

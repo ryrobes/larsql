@@ -331,7 +331,7 @@ class TokenBudgetManager:
             from .agent import Agent
 
             summarizer_config = self.config.summarizer or {}
-            summarizer_model = summarizer_config.get("model", "google/gemini-2.0-flash-lite")
+            summarizer_model = summarizer_config.get("model", "google/gemini-2.5-flash-lite")
 
             summarizer = Agent(model=summarizer_model, system_prompt="You are a concise summarizer.")
             response = summarizer.run(input_message=summary_prompt)
