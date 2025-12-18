@@ -399,11 +399,22 @@ class NarratorConfig(BaseModel):
     - LLM-formatted speech: The narrator cascade uses 'say' as a tool
     - Proper logging: All narrator activity tracked in unified_logs
 
+    Available Jinja2 template variables in 'instructions':
+    - {{ input.phase_name }}        - Current phase name
+    - {{ input.event_type }}        - Event that triggered narration (turn, phase_start, etc.)
+    - {{ input.turn_number }}       - Current turn number within phase
+    - {{ input.max_turns }}         - Maximum turns configured for phase
+    - {{ input.tools_used }}        - List of tools called (e.g., [{"name": "web_search"}])
+    - {{ input.context }}           - Human-readable summary of recent activity
+    - {{ input.cascade_complete }}  - Boolean, true if cascade just finished
+    - {{ input.previous_narrations }} - List of previous narrations for continuity
+    - {{ input.original_input }}    - Original cascade input (e.g., {{ input.original_input.initial_query }})
+
     Usage (cascade-level):
     {
         "narrator": {
             "enabled": true,
-            "instructions": "You are an enthusiastic narrator. Summarize in 2-3 sentences, then call say().",
+            "instructions": "You are an enthusiastic narrator. Phase: {{ input.phase_name }}. Context: {{ input.context }}. Call say().",
             "on_events": ["phase_complete", "cascade_complete"]
         }
     }
@@ -414,7 +425,7 @@ class NarratorConfig(BaseModel):
             "name": "research",
             "narrator": {
                 "enabled": true,
-                "instructions": "Technical update for {{ phase_name }}... then call say()."
+                "instructions": "Technical update for {{ input.phase_name }}... then call say()."
             }
         }]
     }

@@ -268,7 +268,7 @@ class WindlassRunner:
                     break
                 time.sleep(1)
 
-    def _start_narrator_service(self):
+    def _start_narrator_service(self, input_data: dict = None):
         """Start the event-driven narrator service."""
         from .narrator_service import NarratorService, check_tts_available
         from .events import get_event_bus
@@ -284,6 +284,7 @@ class WindlassRunner:
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
                 parent_session_id=self.parent_session_id,
+                cascade_input=input_data,  # Pass original cascade input for template access
             )
             self._narrator_service.start(get_event_bus())
             log_message(self.session_id, "narrator", "Narrator service started",
@@ -3331,7 +3332,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Start narrator service if configured (only at depth 0 to avoid nested narrators)
         if self.cascade_narrator and self.cascade_narrator.enabled and self.depth == 0:
-            self._start_narrator_service()
+            self._start_narrator_service(input_data)
 
         try:
             # Update status to running

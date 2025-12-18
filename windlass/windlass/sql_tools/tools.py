@@ -3,8 +3,28 @@ LLM-facing SQL tools for schema search and query execution.
 """
 
 import json
+import math
 import os
 from typing import Optional
+
+
+def sanitize_for_json(obj):
+    """Recursively sanitize an object for JSON serialization.
+
+    Converts NaN/Infinity to None, which becomes null in JSON.
+    This is necessary because pandas converts SQL NULLs to float('nan')
+    for numeric columns, and json.dumps outputs literal NaN which is
+    invalid JSON that JavaScript's JSON.parse() cannot handle.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    return obj
 
 from ..config import get_config
 from ..rag.store import search_chunks
@@ -281,8 +301,9 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         # Execute
         df = connector.fetch_df(sql_with_limit)
 
-        # Convert to JSON
-        results = df.to_dict('records')
+        # Convert to JSON and sanitize NaN/Infinity values
+        # (pandas converts SQL NULLs to float('nan') for numeric columns)
+        results = sanitize_for_json(df.to_dict('records'))
 
         connector.close()
 

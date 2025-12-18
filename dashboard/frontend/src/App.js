@@ -17,6 +17,7 @@ import BrowserSessionDetail from './components/BrowserSessionDetail';
 import FlowBuilderView from './components/FlowBuilderView';
 import FlowRegistryView from './components/FlowRegistryView';
 import SessionsView from './components/SessionsView';
+import SqlQueryPage from './sql-query/SqlQueryPage';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -118,6 +119,10 @@ function App() {
       if (parts[0] === 'tools') {
         // /#/tools → tool browser
         return { view: 'tools', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
+      }
+      if (parts[0] === 'sql-query') {
+        // /#/sql-query → SQL query page
+        return { view: 'sql-query', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'search') {
         // /#/search or /#/search/rag → search view
@@ -341,6 +346,10 @@ function App() {
         setDetailSessionId(null);
       } else if (route.view === 'flow-registry') {
         setCurrentView('flow-registry');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'sessions') {
+        setCurrentView('sessions');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'tools') {
@@ -880,6 +889,10 @@ function App() {
             setCurrentView('search');
             updateHash('search', null, null, 'rag');
           }}
+          onSqlQuery={() => {
+            setCurrentView('sql-query');
+            window.location.hash = '#/sql-query';
+          }}
           onArtifacts={() => {
             setCurrentView('artifacts');
             window.location.hash = '#/artifacts';
@@ -1128,6 +1141,10 @@ function App() {
         />
       )}
 
+      {currentView === 'sql-query' && (
+        <SqlQueryPage />
+      )}
+
       {currentView === 'browser' && (
         <BrowserSessionsView
           onBack={() => {
@@ -1146,6 +1163,10 @@ function App() {
           onOpenFlowRegistry={() => {
             setCurrentView('flow-registry');
             updateHash('flow-registry');
+          }}
+          onOpenLiveSessions={() => {
+            setCurrentView('sessions');
+            updateHash('sessions');
           }}
         />
       )}

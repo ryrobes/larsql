@@ -198,7 +198,7 @@ def _log_invalid_mermaid(content: str, error: str, context: Optional[Dict], outp
     }
 
     log_file.write_text(json.dumps(log_entry, indent=2))
-    print(f"📝 Invalid Mermaid logged: {log_file}")
+    #print(f"📝 Invalid Mermaid logged: {log_file}")
 
 
 def validate_and_write_mermaid(
@@ -230,7 +230,7 @@ def validate_and_write_mermaid(
         with open(output_path, "w") as f:
             f.write(safe_content)
 
-        print(f"⚠️  Invalid Mermaid diagram written to {output_path} (see mermaid_failures/ for details)")
+        #print(f"⚠️  Invalid Mermaid diagram written to {output_path} (see mermaid_failures/ for details)")
         return False, output_path
 
     # Valid - write normally
@@ -3764,8 +3764,8 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
 
     is_valid, path = validate_and_write_mermaid(mermaid_content, output_path, context)
 
-    if not is_valid:
-        print(f"⚠️  Generated diagram may not render correctly")
+    # if not is_valid:
+    #     print(f"⚠️  Generated diagram may not render correctly")
 
     return path
 

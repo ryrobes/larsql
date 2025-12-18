@@ -8,7 +8,7 @@ import './BrowserSessionsView.css';
  * Shows all Rabbitize browser sessions from rabbitize-runs/.
  * Each session card shows thumbnail, command count, duration, video status.
  */
-function BrowserSessionsView({ onBack, onSelectSession, onOpenFlowBuilder, onOpenFlowRegistry }) {
+function BrowserSessionsView({ onBack, onSelectSession, onOpenFlowBuilder, onOpenFlowRegistry, onOpenLiveSessions }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -171,6 +171,12 @@ function BrowserSessionsView({ onBack, onSelectSession, onOpenFlowBuilder, onOpe
         </div>
 
         <div className="header-right">
+          {onOpenLiveSessions && (
+            <button className="live-sessions-btn" onClick={onOpenLiveSessions}>
+              <Icon icon="mdi:monitor-multiple" width="20" />
+              Live Sessions
+            </button>
+          )}
           {onOpenFlowRegistry && (
             <button className="flow-registry-btn" onClick={onOpenFlowRegistry}>
               <Icon icon="mdi:sitemap" width="20" />

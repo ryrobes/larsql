@@ -13,11 +13,128 @@ Why Elastic for SQL schemas:
 - Better than chunked text for structured data
 """
 import os
+import json
+import math
 import logging
 from typing import List, Dict, Any, Optional
 from elasticsearch import Elasticsearch, helpers
 
 logger = logging.getLogger(__name__)
+
+
+class NumpySafeEncoder(json.JSONEncoder):
+    """JSON encoder that safely handles NumPy types for NumPy 2.0 compatibility."""
+
+    def default(self, obj):
+        # Check if it's a numpy type by module name (avoids using deprecated np.float_, etc.)
+        obj_type = type(obj)
+        obj_module = getattr(obj_type, '__module__', '')
+        obj_name = getattr(obj_type, '__name__', '')
+
+        if obj_module == 'numpy' or obj_module.startswith('numpy.'):
+            # NumPy array -> list
+            if obj_name == 'ndarray':
+                return obj.tolist()
+
+            # NumPy scalar -> native Python type
+            if hasattr(obj, 'item'):
+                return obj.item()
+
+            # Fallback: try converting to float/int/bool
+            try:
+                if 'int' in obj_name.lower():
+                    return int(obj)
+                if 'float' in obj_name.lower():
+                    val = float(obj)
+                    if math.isnan(val) or math.isinf(val):
+                        return None
+                    return val
+                if 'bool' in obj_name.lower():
+                    return bool(obj)
+            except (ValueError, TypeError):
+                pass
+
+        # Handle NaN/Inf floats
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+
+        # Fallback to string representation
+        return str(obj)
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Recursively sanitize an object for JSON serialization.
+
+    Handles:
+    - NumPy arrays -> Python lists
+    - NumPy scalars -> Python native types
+    - NaN/Inf floats -> None (JSON doesn't support these)
+    - Nested dicts and lists
+
+    Uses type name checking instead of isinstance with numpy types
+    to avoid NumPy 2.0 deprecation issues with np.float_, np.int_, etc.
+    """
+    # Handle None
+    if obj is None:
+        return None
+
+    # Get type info for numpy checks
+    obj_type = type(obj)
+    obj_module = getattr(obj_type, '__module__', '')
+    obj_name = getattr(obj_type, '__name__', '')
+
+    # Check if it's a numpy type by module name
+    if obj_module == 'numpy' or obj_module.startswith('numpy.'):
+        # NumPy array -> list with native Python types
+        if obj_name == 'ndarray':
+            # tolist() converts to native Python types
+            return obj.tolist()
+
+        # NumPy integer types (int8, int16, int32, int64, uint8, etc.)
+        if 'int' in obj_name.lower():
+            return int(obj)
+
+        # NumPy float types (float16, float32, float64, float_, floating, etc.)
+        if 'float' in obj_name.lower():
+            val = float(obj)
+            if math.isnan(val) or math.isinf(val):
+                return None
+            return val
+
+        # NumPy boolean
+        if 'bool' in obj_name.lower():
+            return bool(obj)
+
+        # NumPy string types (str_, bytes_, string_)
+        if 'str' in obj_name.lower() or 'bytes' in obj_name.lower():
+            return str(obj)
+
+        # Generic fallback for any other numpy scalar - try to convert
+        try:
+            # Try native Python conversion
+            if hasattr(obj, 'item'):
+                return obj.item()  # Converts numpy scalar to Python scalar
+        except (ValueError, TypeError):
+            pass
+
+    # Handle Python floats with NaN/Inf
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+
+    # Handle dicts recursively
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+
+    # Handle lists/tuples recursively
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(x) for x in obj]
+
+    # Pass through other types (str, int, bool, etc.)
+    return obj
 
 # Global client instance
 _es_client: Optional[Elasticsearch] = None
@@ -188,6 +305,12 @@ def index_sql_schema(qualified_name: str, schema_data: Dict[str, Any]):
         "indexed_at": schema_data.get('indexed_at', None)
     }
 
+    # Sanitize for JSON: convert numpy types, handle NaN/Inf
+    doc = _sanitize_for_json(doc)
+
+    # Extra safety: JSON round-trip to ensure all types are native Python
+    doc = json.loads(json.dumps(doc, cls=NumpySafeEncoder))
+
     # Index document
     es.index(index=index_name, id=qualified_name, document=doc)
     logger.debug(f"Indexed SQL schema: {qualified_name}")
@@ -205,30 +328,50 @@ def bulk_index_sql_schemas(schemas: List[Dict[str, Any]]):
     # Prepare bulk actions
     actions = []
     for schema in schemas:
+        # Build source document
+        source = {
+            "qualified_name": schema['qualified_name'],
+            "database": schema.get('database', ''),
+            "schema": schema.get('schema', ''),
+            "table_name": schema.get('table_name', ''),
+            "description": schema.get('description', ''),
+            "row_count": schema.get('row_count', 0),
+            "table_type": schema.get('table_type', 'TABLE'),
+            "columns": schema.get('columns', []),
+            "sample_rows": schema.get('sample_rows', []),
+            "embedding": schema.get('embedding'),
+            "embedding_model": schema.get('embedding_model', ''),
+            "indexed_at": schema.get('indexed_at')
+        }
+
+        # Sanitize for JSON: convert numpy types, handle NaN/Inf
+        source = _sanitize_for_json(source)
+
+        # Double-check by serializing to JSON and back - ensures all types are native Python
+        # This is a safety net for any numpy types that might slip through
+        try:
+            source = json.loads(json.dumps(source, cls=NumpySafeEncoder))
+        except (TypeError, ValueError) as e:
+            logger.warning(f"JSON round-trip failed for {schema.get('qualified_name')}: {e}")
+
         action = {
             "_index": index_name,
             "_id": schema['qualified_name'],
-            "_source": {
-                "qualified_name": schema['qualified_name'],
-                "database": schema.get('database', ''),
-                "schema": schema.get('schema', ''),
-                "table_name": schema.get('table_name', ''),
-                "description": schema.get('description', ''),
-                "row_count": schema.get('row_count', 0),
-                "table_type": schema.get('table_type', 'TABLE'),
-                "columns": schema.get('columns', []),
-                "sample_rows": schema.get('sample_rows', []),
-                "embedding": schema.get('embedding'),
-                "embedding_model": schema.get('embedding_model', ''),
-                "indexed_at": schema.get('indexed_at')
-            }
+            "_source": source
         }
         actions.append(action)
 
     # Bulk index
     if actions:
         try:
-            success_count, errors = helpers.bulk(es, actions, raise_on_error=False, stats_only=False)
+            # Pre-serialize all actions to ensure no numpy types remain
+            # This catches issues before elasticsearch's helpers.bulk touches the data
+            clean_actions = []
+            for action in actions:
+                clean_action = json.loads(json.dumps(action, cls=NumpySafeEncoder))
+                clean_actions.append(clean_action)
+
+            success_count, errors = helpers.bulk(es, clean_actions, raise_on_error=False, stats_only=False)
 
             # errors is a list of tuples: (success, error_dict) where success is bool
             failed_items = [e for e in errors if not e[0]]
@@ -248,10 +391,14 @@ def bulk_index_sql_schemas(schemas: List[Dict[str, Any]]):
             success_count = 0
             for action in actions:
                 try:
+                    # Extra safety: serialize to JSON string first to catch numpy issues
+                    doc_json = json.dumps(action['_source'], cls=NumpySafeEncoder)
+                    doc = json.loads(doc_json)
+
                     es.index(
                         index=action['_index'],
                         id=action['_id'],
-                        document=action['_source']
+                        document=doc
                     )
                     success_count += 1
                 except Exception as index_error:

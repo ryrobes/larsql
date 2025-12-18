@@ -727,7 +727,27 @@ function ResearchCockpit({
           <>
             <Icon icon="mdi:compass" width="28" style={{ marginRight: '8px' }} />
             <span className="header-stat">Research Cockpit</span>
-            {cascadeId && (
+            {/* Show session title if available (from auto-save), otherwise show cascade_id */}
+            {savedSessionData?.title && savedSessionData.title !== `Research Session - ${sessionId?.slice(0, 12)}` ? (
+              <span
+                className="header-stat session-title"
+                style={{
+                  marginLeft: '12px',
+                  padding: '4px 12px',
+                  background: 'linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(139, 92, 246, 0.1))',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(167, 139, 250, 0.2)',
+                  fontSize: '0.9rem',
+                  maxWidth: '400px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+                title={savedSessionData.title}
+              >
+                {savedSessionData.title}
+              </span>
+            ) : cascadeId && (
               <>
                 <span className="header-divider">·</span>
                 <span className="header-stat cascade-name">{cascadeId}</span>

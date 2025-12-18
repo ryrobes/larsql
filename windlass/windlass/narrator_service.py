@@ -104,11 +104,13 @@ class NarratorService:
         session_id: str,
         cascade_id: str,
         parent_session_id: Optional[str] = None,
+        cascade_input: Optional[Dict[str, Any]] = None,
     ):
         self.config = config
         self.session_id = session_id
         self.cascade_id = cascade_id
         self.parent_session_id = parent_session_id or session_id
+        self.cascade_input = cascade_input or {}  # Original cascade input for template access
 
         # State
         self._running = False
@@ -329,9 +331,12 @@ class NarratorService:
             "context": context.get("summary", "No context available"),
             "cascade_complete": event.type == "cascade_complete",
             "turn_number": context.get("turn_number"),
+            "max_turns": context.get("max_turns"),  # Include max_turns for progress tracking
             "tools_used": context.get("tools_used", []),
             # Include previous narrations for continuity
             "previous_narrations": list(self._narration_history),
+            # Include original cascade input for template access (e.g., {{ input.original_input.initial_query }})
+            "original_input": self.cascade_input,
         }
 
         # Use custom cascade if configured, otherwise use default

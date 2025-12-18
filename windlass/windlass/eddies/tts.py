@@ -13,6 +13,7 @@ from ..logs import log_message
 ELEVENLABS_API_KEY: Optional[str] = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID: Optional[str] = os.environ.get("ELEVENLABS_VOICE_ID")
 ELEVENLABS_MODEL_ID: str = "eleven_v3"  # Hardcoded per requirements
+TTS_VOLUME: float = float(os.environ.get("WINDLASS_TTS_VOLUME", "0.70"))  # Volume 0.0-1.0 (default 70%)
 
 
 def is_available() -> bool:
@@ -99,6 +100,13 @@ def say(text: str) -> str:
         # Decode MP3 and play using miniaudio
         decoded = miniaudio.decode(audio_data, output_format=miniaudio.SampleFormat.SIGNED16)
 
+        # Apply volume scaling (default 70% to avoid being too loud)
+        # Configurable via WINDLASS_TTS_VOLUME env var (0.0-1.0)
+        import array
+        samples = array.array('h', decoded.samples)  # 'h' = signed 16-bit
+        scaled_samples = array.array('h', (int(s * TTS_VOLUME) for s in samples))
+        scaled_bytes = scaled_samples.tobytes()
+
         # Create playback device and play
         device = miniaudio.PlaybackDevice(
             output_format=miniaudio.SampleFormat.SIGNED16,
@@ -106,9 +114,24 @@ def say(text: str) -> str:
             sample_rate=decoded.sample_rate
         )
 
-        # Convert to generator for streaming playback
-        audio_generator = miniaudio.stream_memory(audio_data, output_format=miniaudio.SampleFormat.SIGNED16)
-        device.start(audio_generator)
+        # Generator that yields scaled audio samples following miniaudio's protocol
+        # Miniaudio calls send(framecount) on the generator to request audio chunks
+        def scaled_audio_generator():
+            nonlocal scaled_bytes
+            bytes_per_sample = 2  # 16-bit = 2 bytes
+            bytes_per_frame = bytes_per_sample * decoded.nchannels
+            offset = 0
+            required_frames = yield b""  # First yield primes the generator
+            while offset < len(scaled_bytes):
+                required_bytes = required_frames * bytes_per_frame
+                chunk = scaled_bytes[offset:offset + required_bytes]
+                offset += len(chunk)
+                required_frames = yield chunk
+
+        # Create and prime the generator before passing to miniaudio
+        gen = scaled_audio_generator()
+        next(gen)  # Prime the generator (advances to first yield)
+        device.start(gen)
 
         # Wait for playback to complete
         import time

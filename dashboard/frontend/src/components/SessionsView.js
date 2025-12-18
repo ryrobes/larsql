@@ -20,24 +20,95 @@ import './SessionsView.css';
  */
 function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
   const [sessions, setSessions] = useState([]);
-  const [orphans, setOrphans] = useState([]);
+  const [discoveredSessions, setDiscoveredSessions] = useState([]); // Unregistered sessions found by scanning
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
-  const [showOrphans, setShowOrphans] = useState(false);
-  const [scanningOrphans, setScanningOrphans] = useState(false);
+  const [scanningForSessions, setScanningForSessions] = useState(false);
+  const [streamErrors, setStreamErrors] = useState({}); // Track which streams have failed
 
   const apiUrl = 'http://localhost:5001';
 
+  // Convert orphan data from backend to session-like format
+  const convertOrphanToSession = (orphan) => {
+    const status = orphan.status || {};
+    const currentState = status.currentState || {};
+
+    // Try to get browser_session_path from multiple possible locations
+    // 1. Direct sessionPath from status (most reliable)
+    // 2. Build from currentState components
+    // 3. Fallback: try the runs directory structure
+    let browserSessionPath = status.sessionPath || null;
+
+    if (!browserSessionPath && currentState.sessionId) {
+      const clientId = currentState.clientId || 'default';
+      const testId = currentState.testId || 'default';
+      browserSessionPath = `${clientId}/${testId}/${currentState.sessionId}`;
+    }
+
+    // Get URL from various possible fields
+    const currentUrl = currentState.initialUrl || currentState.url || status.url || null;
+
+    return {
+      session_id: `discovered_${orphan.port}`,
+      port: orphan.port,
+      pid: orphan.pid,
+      source: 'discovered',
+      healthy: true, // If we found it, it's responding
+      started_at: null, // Unknown
+      current_url: currentUrl,
+      browser_session_path: browserSessionPath,
+      has_browser_session: status.hasSession !== false, // Default to true if we found it
+      is_discovered: true, // Flag to show adopt button
+      // Include raw data for debugging
+      _orphan_data: orphan
+    };
+  };
+
+  // Check if a session can show a live stream
+  const canShowLiveStream = (session) => {
+    return session.healthy &&
+           session.browser_session_path &&
+           session.port &&
+           !streamErrors[session.session_id];
+  };
+
+  // Handle stream error - fall back to static screenshot
+  const handleStreamError = (sessionId) => {
+    setStreamErrors(prev => ({ ...prev, [sessionId]: true }));
+  };
+
+  // Clear stream error when sessions refresh (session might be working again)
+  const clearStreamErrors = () => {
+    setStreamErrors({});
+  };
+
+  // Fetch both registered sessions AND discover unregistered ones
   const fetchSessions = useCallback(async () => {
     try {
-      const response = await fetch(`${apiUrl}/api/rabbitize/registry/sessions`);
-      const data = await response.json();
-      if (data.error) {
-        setError(data.error);
+      // Fetch registered sessions
+      const registeredResponse = await fetch(`${apiUrl}/api/rabbitize/registry/sessions`);
+      const registeredData = await registeredResponse.json();
+
+      if (registeredData.error) {
+        setError(registeredData.error);
       } else {
-        setSessions(data.sessions || []);
+        setSessions(registeredData.sessions || []);
         setError(null);
+      }
+
+      // Also discover unregistered sessions (auto-discovery)
+      try {
+        const orphanResponse = await fetch(`${apiUrl}/api/rabbitize/registry/orphans`);
+        const orphanData = await orphanResponse.json();
+        const orphans = orphanData.orphans || [];
+
+        // Convert orphans to session-like format
+        const discovered = orphans.map(convertOrphanToSession);
+        setDiscoveredSessions(discovered);
+      } catch (orphanErr) {
+        console.warn('Could not scan for unregistered sessions:', orphanErr);
+        // Don't fail the whole fetch if orphan discovery fails
       }
     } catch (err) {
       setError('Failed to fetch sessions');
@@ -46,46 +117,60 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
     }
   }, [apiUrl]);
 
-  const scanOrphans = async () => {
-    setScanningOrphans(true);
-    try {
-      const response = await fetch(`${apiUrl}/api/rabbitize/registry/orphans`);
-      const data = await response.json();
-      setOrphans(data.orphans || []);
-      setShowOrphans(true);
-    } catch (err) {
-      console.error('Failed to scan orphans:', err);
-    } finally {
-      setScanningOrphans(false);
-    }
+  // Manual rescan (same as fetch but shows loading state)
+  const manualRescan = async () => {
+    setScanningForSessions(true);
+    await fetchSessions();
+    setScanningForSessions(false);
   };
 
-  const adoptOrphan = async (port) => {
+  // Adopt a discovered session into the registry
+  const adoptSession = async (session, e) => {
+    if (e) e.stopPropagation();
+
     try {
-      const response = await fetch(`${apiUrl}/api/rabbitize/registry/orphans/${port}`, {
+      const response = await fetch(`${apiUrl}/api/rabbitize/registry/orphans/${session.port}`, {
         method: 'POST'
       });
       const data = await response.json();
       if (data.success) {
-        // Refresh sessions and orphans
+        // Remove from discovered, refresh registered sessions
+        setDiscoveredSessions(prev => prev.filter(s => s.port !== session.port));
         fetchSessions();
-        scanOrphans();
       }
     } catch (err) {
-      console.error('Failed to adopt orphan:', err);
+      console.error('Failed to adopt session:', err);
     }
   };
 
-  const killSession = async (sessionId, e) => {
+  // Combined list of all sessions (registered + discovered)
+  const allSessions = [...sessions, ...discoveredSessions];
+
+  const killSession = async (session, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`Kill session ${sessionId}?`)) return;
+    const displayId = session.is_discovered ? `Port ${session.port}` : session.session_id;
+    if (!window.confirm(`Kill session ${displayId}?`)) return;
 
     try {
-      await fetch(`${apiUrl}/api/rabbitize/registry/sessions/${sessionId}`, {
-        method: 'DELETE'
-      });
-      fetchSessions();
-      if (selectedSession?.session_id === sessionId) {
+      if (session.is_discovered) {
+        // For discovered sessions, call /end on the Rabbitize server directly
+        // Then remove from discovered list
+        try {
+          await fetch(`http://localhost:${session.port}/end`, { method: 'POST' });
+        } catch (endErr) {
+          // Server might already be shutting down
+          console.warn('End request failed (server may be stopping):', endErr);
+        }
+        setDiscoveredSessions(prev => prev.filter(s => s.port !== session.port));
+      } else {
+        // For registered sessions, use the registry API
+        await fetch(`${apiUrl}/api/rabbitize/registry/sessions/${session.session_id}`, {
+          method: 'DELETE'
+        });
+        fetchSessions();
+      }
+
+      if (selectedSession?.session_id === session.session_id) {
         setSelectedSession(null);
       }
     } catch (err) {
@@ -165,22 +250,20 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
         <h1>
           <Icon icon="mdi:monitor-multiple" width="28" />
           Active Browser Sessions
-          <span className="session-count">{sessions.length}</span>
+          <span className="session-count">{allSessions.length}</span>
+          {discoveredSessions.length > 0 && (
+            <span className="discovered-count" title="Unregistered sessions found">
+              +{discoveredSessions.length} discovered
+            </span>
+          )}
         </h1>
         <div className="header-actions">
           <button
-            className="scan-orphans-button"
-            onClick={scanOrphans}
-            disabled={scanningOrphans}
-          >
-            <Icon icon={scanningOrphans ? "mdi:loading" : "mdi:radar"} width="18" className={scanningOrphans ? 'spin' : ''} />
-            Scan for Orphans
-          </button>
-          <button
             className="refresh-button"
-            onClick={fetchSessions}
+            onClick={() => { clearStreamErrors(); manualRescan(); }}
+            disabled={scanningForSessions}
           >
-            <Icon icon="mdi:refresh" width="18" />
+            <Icon icon={scanningForSessions ? "mdi:loading" : "mdi:refresh"} width="18" className={scanningForSessions ? 'spin' : ''} />
             Refresh
           </button>
         </div>
@@ -193,71 +276,37 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
         </div>
       )}
 
-      {/* Orphans Section */}
-      {showOrphans && orphans.length > 0 && (
-        <div className="orphans-section">
-          <div className="orphans-header">
-            <h2>
-              <Icon icon="mdi:ghost" width="20" />
-              Orphan Sessions ({orphans.length})
-            </h2>
-            <button className="close-orphans" onClick={() => setShowOrphans(false)}>
-              <Icon icon="mdi:close" width="18" />
-            </button>
-          </div>
-          <p className="orphans-description">
-            These Rabbitize instances are running but not tracked in the registry.
-            They may be from cascades or previous runs.
-          </p>
-          <div className="orphans-list">
-            {orphans.map(orphan => (
-              <div key={orphan.port} className="orphan-card">
-                <div className="orphan-info">
-                  <span className="orphan-port">Port {orphan.port}</span>
-                  <span className="orphan-pid">PID: {orphan.pid || 'Unknown'}</span>
-                </div>
-                <button
-                  className="adopt-button"
-                  onClick={() => adoptOrphan(orphan.port)}
-                >
-                  <Icon icon="mdi:account-plus" width="16" />
-                  Adopt
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {showOrphans && orphans.length === 0 && (
-        <div className="orphans-section empty">
-          <Icon icon="mdi:check-circle" width="24" />
-          <span>No orphan sessions found</span>
-          <button className="close-orphans" onClick={() => setShowOrphans(false)}>
-            <Icon icon="mdi:close" width="18" />
-          </button>
-        </div>
-      )}
-
       <div className="sessions-layout">
         {/* Sessions List */}
         <div className="sessions-list">
-          {sessions.length === 0 ? (
+          {allSessions.length === 0 ? (
             <div className="empty-state">
               <Icon icon="mdi:monitor-off" width="48" />
               <h3>No Active Sessions</h3>
-              <p>Start a browser session from FlowBuilder or run a cascade with browser config.</p>
+              <p>Start a browser session from FlowBuilder, run a cascade with browser config, or click "Discover Sessions" to find running instances.</p>
             </div>
           ) : (
-            sessions.map(session => (
+            allSessions.map(session => (
               <div
                 key={session.session_id}
-                className={`session-card ${selectedSession?.session_id === session.session_id ? 'selected' : ''} ${!session.healthy ? 'unhealthy' : ''}`}
+                className={`session-card ${selectedSession?.session_id === session.session_id ? 'selected' : ''} ${!session.healthy ? 'unhealthy' : ''} ${session.is_discovered ? 'discovered' : ''}`}
                 onClick={() => setSelectedSession(session)}
               >
-                {/* Thumbnail */}
-                <div className="session-thumbnail">
-                  {session.latest_screenshot ? (
+                {/* Thumbnail - Live MJPEG stream or static screenshot */}
+                <div className={`session-thumbnail ${canShowLiveStream(session) ? 'live' : ''}`}>
+                  {canShowLiveStream(session) ? (
+                    <>
+                      <img
+                        src={`http://localhost:${session.port}/stream/${session.browser_session_path}`}
+                        alt="Live stream"
+                        onError={() => handleStreamError(session.session_id)}
+                      />
+                      <div className="live-badge">
+                        <span className="live-dot" />
+                        LIVE
+                      </div>
+                    </>
+                  ) : session.latest_screenshot ? (
                     <img
                       src={`${apiUrl}/api/browser-media/${session.latest_screenshot}`}
                       alt="Session preview"
@@ -344,6 +393,16 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
 
                 {/* Actions */}
                 <div className="session-actions">
+                  {/* Adopt button for discovered (unregistered) sessions */}
+                  {session.is_discovered && (
+                    <button
+                      className="action-button adopt"
+                      onClick={(e) => adoptSession(session, e)}
+                      title="Add to registry for persistent tracking"
+                    >
+                      <Icon icon="mdi:plus-circle" width="18" />
+                    </button>
+                  )}
                   {onAttachSession && session.healthy && (
                     <button
                       className="action-button attach"
@@ -356,7 +415,7 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
                       <Icon icon="mdi:connection" width="18" />
                     </button>
                   )}
-                  {session.browser_session_path && onViewArtifacts && (
+                  {session.browser_session_path && onViewArtifacts && !session.is_discovered && (
                     <button
                       className="action-button view"
                       onClick={(e) => {
@@ -370,7 +429,7 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
                   )}
                   <button
                     className="action-button kill"
-                    onClick={(e) => killSession(session.session_id, e)}
+                    onClick={(e) => killSession(session, e)}
                     title="Kill Session"
                   >
                     <Icon icon="mdi:close-circle" width="18" />
@@ -395,7 +454,7 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
             <div className="stream-preview">
               {selectedSession.healthy && selectedSession.browser_session_path ? (
                 <img
-                  src={`${apiUrl}/api/rabbitize/stream/${selectedSession.session_id}/stream/${selectedSession.browser_session_path}`}
+                  src={`http://localhost:${selectedSession.port}/stream/${selectedSession.browser_session_path}`}
                   alt="Live stream"
                   className="mjpeg-stream"
                   onError={(e) => {
@@ -437,14 +496,18 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
                 <label>PID</label>
                 <span className="monospace">{selectedSession.pid || '-'}</span>
               </div>
-              <div className="info-row">
-                <label>Started</label>
-                <span>{new Date(selectedSession.started_at).toLocaleString()}</span>
-              </div>
-              <div className="info-row">
-                <label>Duration</label>
-                <span>{formatDuration(selectedSession.started_at)}</span>
-              </div>
+              {selectedSession.started_at && (
+                <>
+                  <div className="info-row">
+                    <label>Started</label>
+                    <span>{new Date(selectedSession.started_at).toLocaleString()}</span>
+                  </div>
+                  <div className="info-row">
+                    <label>Duration</label>
+                    <span>{formatDuration(selectedSession.started_at)}</span>
+                  </div>
+                </>
+              )}
               {selectedSession.cascade_id && (
                 <>
                   <div className="info-row">
@@ -473,6 +536,16 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
 
             {/* Detail Actions */}
             <div className="detail-actions">
+              {/* Adopt button for discovered sessions */}
+              {selectedSession.is_discovered && (
+                <button
+                  className="adopt-action"
+                  onClick={() => adoptSession(selectedSession)}
+                >
+                  <Icon icon="mdi:plus-circle" width="18" />
+                  Add to Registry
+                </button>
+              )}
               {onAttachSession && selectedSession.healthy && (
                 <button
                   className="primary-action"
@@ -482,7 +555,7 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
                   Attach in FlowBuilder
                 </button>
               )}
-              {selectedSession.browser_session_path && onViewArtifacts && (
+              {selectedSession.browser_session_path && onViewArtifacts && !selectedSession.is_discovered && (
                 <button
                   className="secondary-action"
                   onClick={() => onViewArtifacts(selectedSession.browser_session_path)}
@@ -493,7 +566,7 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
               )}
               <button
                 className="danger-action"
-                onClick={() => killSession(selectedSession.session_id)}
+                onClick={() => killSession(selectedSession)}
               >
                 <Icon icon="mdi:close-circle" width="18" />
                 Kill Session

@@ -267,6 +267,11 @@ class Agent:
 
         Set WINDLASS_EMBED_BACKEND=deterministic for offline/testing mode.
 
+        Features:
+        - Automatic batching for large text lists (default 50 texts per batch)
+        - Retry with exponential backoff for transient failures
+        - 5 minute timeout per batch for large embedding requests
+
         Returns:
             dict with keys:
                 - embeddings: List of embedding vectors
@@ -279,6 +284,7 @@ class Agent:
         import os
         import hashlib
         import math
+        import time
 
         cfg = get_config()
 
@@ -290,8 +296,12 @@ class Agent:
         # Use provided model or fall back to default embedding model
         embed_model = model or cfg.default_embed_model
 
+        # Batching config - most embedding APIs have limits on batch size
+        batch_size = int(os.getenv("WINDLASS_EMBED_BATCH_SIZE", "50"))
+        max_retries = 3
+        base_delay = 2.0  # seconds
+
         # Direct HTTP call to embeddings endpoint - same pattern as chat completions
-        # No need for litellm complexity, it's just a POST request
         import httpx
 
         url = f"{cfg.provider_base_url.rstrip('/')}/embeddings"
@@ -299,32 +309,65 @@ class Agent:
             "Authorization": f"Bearer {cfg.provider_api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": embed_model,
-            "input": texts,
-        }
 
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            try:
-                data = resp.json()
-            except Exception as e:
-                raise RuntimeError(f"Failed to parse embedding response as JSON. Status: {resp.status_code}, Body: {resp.text[:500]}") from e
+        # Process in batches with retry logic
+        all_vectors = []
+        total_tokens = 0
+        last_request_id = None
+        model_used = embed_model
+        dim = None
 
-        embeddings_data = data.get("data", [])
-        if not embeddings_data:
-            raise RuntimeError(f"No embedding data returned: {data}")
+        # Use longer timeout (5 minutes) for embedding requests which can be slow
+        with httpx.Client(timeout=300.0) as client:
+            for batch_start in range(0, len(texts), batch_size):
+                batch_texts = texts[batch_start:batch_start + batch_size]
+                payload = {
+                    "model": embed_model,
+                    "input": batch_texts,
+                }
 
-        vectors = [d["embedding"] for d in embeddings_data]
-        if not vectors or not vectors[0]:
-            raise RuntimeError("Empty embedding response")
+                # Retry loop with exponential backoff
+                last_error = None
+                for attempt in range(max_retries):
+                    try:
+                        resp = client.post(url, json=payload, headers=headers)
+                        resp.raise_for_status()
+                        try:
+                            data = resp.json()
+                        except Exception as e:
+                            raise RuntimeError(f"Failed to parse embedding response as JSON. Status: {resp.status_code}, Body: {resp.text[:500]}") from e
 
-        dim = len(vectors[0])
-        request_id = data.get("id")
-        usage = data.get("usage", {})
-        tokens = usage.get("total_tokens", 0)
-        model_used = data.get("model", embed_model)
+                        embeddings_data = data.get("data", [])
+                        if not embeddings_data:
+                            raise RuntimeError(f"No embedding data returned: {data}")
+
+                        batch_vectors = [d["embedding"] for d in embeddings_data]
+                        if not batch_vectors or not batch_vectors[0]:
+                            raise RuntimeError("Empty embedding response")
+
+                        all_vectors.extend(batch_vectors)
+
+                        # Track metadata from last successful batch
+                        if dim is None:
+                            dim = len(batch_vectors[0])
+                        last_request_id = data.get("id")
+                        usage = data.get("usage", {})
+                        total_tokens += usage.get("total_tokens", 0)
+                        model_used = data.get("model", embed_model)
+
+                        break  # Success - exit retry loop
+
+                    except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                        last_error = e
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                            time.sleep(delay)
+                        else:
+                            raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
+
+        if not all_vectors:
+            raise RuntimeError("No embeddings generated")
 
         # Extract provider
         from .blocking_cost import extract_provider_from_model
@@ -343,20 +386,20 @@ class Agent:
             cascade_id=cascade_id,
             model=model_used,
             provider=provider,
-            request_id=request_id,
+            request_id=last_request_id,
             content=f"Embedded {len(texts)} texts ({dim} dimensions)",
             metadata={"text_count": len(texts), "dimension": dim},
-            tokens_in=tokens,
+            tokens_in=total_tokens,
             tokens_out=None,
             cost=None,  # Will be fetched by unified logger if request_id available
         )
 
         return {
-            "embeddings": vectors,
+            "embeddings": all_vectors,
             "model": model_used,
             "dim": dim,
-            "request_id": request_id,
-            "tokens": tokens,
+            "request_id": last_request_id,
+            "tokens": total_tokens,
             "provider": provider,
         }
 

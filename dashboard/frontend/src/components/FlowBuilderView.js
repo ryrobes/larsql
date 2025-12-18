@@ -46,6 +46,7 @@ function FlowBuilderView({ onBack, onSaveFlow }) {
   const [sessionDetails, setSessionDetails] = useState(null);
   const [serverStatus, setServerStatus] = useState('unknown'); // unknown, starting, running, error
   const [dashboardSessionId, setDashboardSessionId] = useState(null); // Tracks our Rabbitize instance
+  const [isAttachedSession, setIsAttachedSession] = useState(false); // True if attached from SessionsView
 
   // Start a new browser session
   const startSession = useCallback(async (navigateUrl) => {
@@ -101,27 +102,32 @@ function FlowBuilderView({ onBack, onSaveFlow }) {
     }
   }, [apiUrl]);
 
-  // End the current session
+  // End or detach from the current session
   const endSession = useCallback(async () => {
     if (!sessionActive) return;
 
-    try {
-      await fetch(`${apiUrl}/api/rabbitize/session/end`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dashboard_session_id: dashboardSessionId })
-      });
-    } catch (err) {
-      console.error('Error ending session:', err);
-    } finally {
-      setSessionActive(false);
-      setSessionId(null);
-      setSessionDetails(null);
-      setDashboardSessionId(null);
-      setCurrentUrl('');
-      setServerStatus('unknown');
+    // For attached sessions, just detach (don't kill the remote session)
+    if (!isAttachedSession) {
+      try {
+        await fetch(`${apiUrl}/api/rabbitize/session/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dashboard_session_id: dashboardSessionId })
+        });
+      } catch (err) {
+        console.error('Error ending session:', err);
+      }
     }
-  }, [sessionActive, apiUrl, dashboardSessionId]);
+
+    // Clear local state
+    setSessionActive(false);
+    setSessionId(null);
+    setSessionDetails(null);
+    setDashboardSessionId(null);
+    setCurrentUrl('');
+    setServerStatus('unknown');
+    setIsAttachedSession(false);
+  }, [sessionActive, apiUrl, dashboardSessionId, isAttachedSession]);
 
   // Build Rabbitize command array from command type and args
   const buildCommandArray = (commandType, args) => {
@@ -444,41 +450,79 @@ function FlowBuilderView({ onBack, onSaveFlow }) {
 
         setServerStatus('running');
         setSessionActive(true);
+        setIsAttachedSession(true);
         setSessionId(session.session_id);
         setDashboardSessionId(session.session_id);
         setCurrentUrl(session.current_url || '');
 
-        // Set up session details for streaming
-        if (session.browser_session_path) {
-          const pathParts = session.browser_session_path.split('/');
+        // First, try to get the stream path from the session data
+        // Backend returns browser_session_path when enriching registry data
+        const streamPath = session.browser_session_path || session.browser_session_id;
+
+        if (streamPath) {
+          const pathParts = streamPath.split('/');
           setSessionDetails({
             clientId: pathParts[0] || 'unknown',
             testId: pathParts[1] || 'unknown',
             sessionId: pathParts[2] || session.session_id,
             dashboardSessionId: session.session_id,
-            streamPath: session.browser_session_path,
-            port: session.port  // Store port for API calls
+            streamPath: streamPath,
+            port: session.port  // Store port for direct API calls
           });
+        } else if (session.port) {
+          // No stream path yet - fetch from Rabbitize status endpoint
+          fetch(`http://localhost:${session.port}/status`)
+            .then(res => res.json())
+            .then(status => {
+              console.log('Session status:', status);
+              const currentState = status.currentState || {};
+              const clientId = currentState.clientId || 'unknown';
+              const testId = currentState.testId || 'unknown';
+              const rabbitSessionId = currentState.sessionId;
+
+              if (rabbitSessionId) {
+                const fetchedStreamPath = `${clientId}/${testId}/${rabbitSessionId}`;
+                setSessionDetails({
+                  clientId,
+                  testId,
+                  sessionId: rabbitSessionId,
+                  dashboardSessionId: session.session_id,
+                  streamPath: fetchedStreamPath,
+                  port: session.port
+                });
+                if (currentState.initialUrl) {
+                  setCurrentUrl(currentState.initialUrl);
+                }
+              } else {
+                // No active browser session on this Rabbitize server
+                setSessionDetails({
+                  clientId: 'attached',
+                  testId: 'session',
+                  sessionId: session.session_id,
+                  dashboardSessionId: session.session_id,
+                  port: session.port
+                });
+              }
+            })
+            .catch(err => {
+              console.warn('Could not fetch session status:', err);
+              // Set minimal details so we can still try to control the session
+              setSessionDetails({
+                clientId: 'attached',
+                testId: 'session',
+                sessionId: session.session_id,
+                dashboardSessionId: session.session_id,
+                port: session.port
+              });
+            });
         } else {
-          // Fallback: use session ID for streaming
+          // No port or stream path - very limited attachment
           setSessionDetails({
             clientId: 'attached',
             testId: 'session',
             sessionId: session.session_id,
-            dashboardSessionId: session.session_id,
-            port: session.port
+            dashboardSessionId: session.session_id
           });
-        }
-
-        // Load command history from the session if available
-        if (session.port) {
-          fetch(`http://localhost:${session.port}/status`)
-            .then(res => res.json())
-            .then(status => {
-              // Could populate commands from status.commandHistory if available
-              console.log('Session status:', status);
-            })
-            .catch(err => console.warn('Could not fetch session status:', err));
         }
       } catch (err) {
         console.error('Failed to attach to session:', err);
@@ -514,14 +558,14 @@ function FlowBuilderView({ onBack, onSaveFlow }) {
         </div>
 
         <div className="header-right">
-          <span className={`session-status ${sessionActive ? 'active' : 'inactive'}`}>
-            <Icon icon={sessionActive ? 'mdi:circle' : 'mdi:circle-outline'} width="12" />
-            {sessionActive ? 'Session Active' : 'No Session'}
+          <span className={`session-status ${sessionActive ? 'active' : 'inactive'} ${isAttachedSession ? 'attached' : ''}`}>
+            <Icon icon={sessionActive ? (isAttachedSession ? 'mdi:link' : 'mdi:circle') : 'mdi:circle-outline'} width="12" />
+            {sessionActive ? (isAttachedSession ? 'Attached Session' : 'Session Active') : 'No Session'}
           </span>
           {sessionActive && (
             <button className="end-session-btn" onClick={endSession}>
-              <Icon icon="mdi:stop" width="18" />
-              End Session
+              <Icon icon={isAttachedSession ? "mdi:link-off" : "mdi:stop"} width="18" />
+              {isAttachedSession ? 'Detach' : 'End Session'}
             </button>
           )}
           {!sessionActive && serverStatus === 'error' && (
@@ -638,8 +682,10 @@ function FlowBuilderView({ onBack, onSaveFlow }) {
               <div className="stream-container">
                 <img
                   ref={streamRef}
-                  src={sessionDetails?.streamPath && sessionDetails?.dashboardSessionId
-                    ? `${apiUrl}/api/rabbitize/stream/${sessionDetails.dashboardSessionId}/${sessionDetails.streamPath}`
+                  src={sessionDetails?.streamPath
+                    ? (sessionDetails?.port
+                        ? `http://localhost:${sessionDetails.port}/stream/${sessionDetails.streamPath}`
+                        : `${apiUrl}/api/rabbitize/stream/${sessionDetails.dashboardSessionId}/${sessionDetails.streamPath}`)
                     : ''}
                   alt="Browser Stream"
                   className="browser-stream"

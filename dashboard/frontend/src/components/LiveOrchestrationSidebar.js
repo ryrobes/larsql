@@ -31,6 +31,7 @@ function LiveOrchestrationSidebar({
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [previousSessions, setPreviousSessions] = useState([]);
   const [sessionsCollapsed, setSessionsCollapsed] = useState(true);
+  const [cancellingSession, setCancellingSession] = useState(false);
 
   // Animate cost changes
   useEffect(() => {
@@ -102,6 +103,36 @@ function LiveOrchestrationSidebar({
   };
 
   const currentStatus = statusConfig[orchestrationState.status] || statusConfig.idle;
+
+  // Handle cascade cancellation
+  const handleCancelCascade = useCallback(async () => {
+    if (!sessionId || cancellingSession) return;
+
+    setCancellingSession(true);
+    try {
+      const res = await fetch('http://localhost:5001/api/cancel-cascade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          reason: 'User clicked END button'
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('[LiveOrchestrationSidebar] Failed to cancel:', data.error);
+      } else {
+        console.log('[LiveOrchestrationSidebar] Cancellation requested:', data);
+      }
+    } catch (err) {
+      console.error('[LiveOrchestrationSidebar] Cancel request failed:', err);
+    } finally {
+      // Keep the cancelling state for a bit to show feedback
+      setTimeout(() => setCancellingSession(false), 2000);
+    }
+  }, [sessionId, cancellingSession]);
 
   // Debug logging
   useEffect(() => {
@@ -212,6 +243,19 @@ function LiveOrchestrationSidebar({
             <Icon icon="mdi:tools" width="14" />
             {orchestrationState.lastToolCall}
           </div>
+        )}
+
+        {/* END button - subtle, shows when cascade is active */}
+        {orchestrationState.status !== 'idle' && (
+          <button
+            className={`end-cascade-btn ${cancellingSession ? 'cancelling' : ''}`}
+            onClick={handleCancelCascade}
+            disabled={cancellingSession}
+            title="End cascade gracefully"
+          >
+            <Icon icon={cancellingSession ? 'mdi:loading' : 'mdi:stop-circle-outline'} width="14" className={cancellingSession ? 'spinning' : ''} />
+            <span>{cancellingSession ? 'Ending...' : 'END'}</span>
+          </button>
         )}
       </div>
 

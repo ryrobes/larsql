@@ -128,6 +128,28 @@
   box-shadow: 0 4px 12px rgba(163, 190, 140, 0.2);
 }
 
+.browser-sessions-header .live-sessions-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(94, 234, 212, 0.15));
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 8px;
+  color: var(--purple-accent, #a78bfa);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.browser-sessions-header .live-sessions-btn:hover {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.25), rgba(94, 234, 212, 0.25));
+  border-color: rgba(167, 139, 250, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2);
+}
+
 .browser-sessions-header .back-btn {
   display: flex;
   align-items: center;

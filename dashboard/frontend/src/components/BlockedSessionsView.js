@@ -457,6 +457,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
   const [error, setError] = useState(null);
   const [selectedSignal, setSelectedSignal] = useState(null);
   const [showResearchCockpit, setShowResearchCockpit] = useState(false); // Filter toggle for research cockpit checkpoints
+  const [hiddenResearchCount, setHiddenResearchCount] = useState(0); // Count of hidden research checkpoints
 
   // Fetch blocked sessions and waiting signals
   const fetchData = useCallback(async () => {
@@ -478,17 +479,22 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
       console.log('[BlockedSessionsView] Fetched checkpoints:', checkpointsData.checkpoints?.length || 0);
 
       // Filter out research cockpit checkpoints unless toggle is enabled
-      // Research cockpit checkpoints have ui_spec._meta.research_cockpit = true
-      // They have dedicated inline UI and shouldn't clutter this view by default
+      // Research sessions have session_id starting with "research_"
+      // They have dedicated inline UI in the Research Cockpit and shouldn't clutter this view
       let checkpointsToShow = checkpointsData.checkpoints || [];
+
+      // Count research cockpit checkpoints (session_id starts with "research_")
       const researchCockpitCheckpoints = checkpointsToShow.filter(cp =>
-        cp.ui_spec?._meta?.research_cockpit === true
+        cp.session_id?.startsWith('research_')
       );
 
+      // Track hidden count for the toggle badge
+      setHiddenResearchCount(researchCockpitCheckpoints.length);
+
       if (!showResearchCockpit && researchCockpitCheckpoints.length > 0) {
-        // Filter out research cockpit checkpoints
+        // Filter out research cockpit checkpoints by session_id prefix
         checkpointsToShow = checkpointsToShow.filter(cp =>
-          cp.ui_spec?._meta?.research_cockpit !== true
+          !cp.session_id?.startsWith('research_')
         );
         console.log(`[BlockedSessionsView] Filtered out ${researchCockpitCheckpoints.length} research cockpit checkpoints (toggle off)`);
       }
@@ -674,28 +680,43 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
         }
         customButtons={
           <>
-            <button
-              onClick={() => setShowResearchCockpit(!showResearchCockpit)}
-              title={showResearchCockpit ? "Hide Research Cockpit checkpoints" : "Show Research Cockpit checkpoints"}
-              style={{
-                padding: '8px 14px',
-                background: showResearchCockpit
-                  ? 'linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(139, 92, 246, 0.2))'
-                  : 'linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(75, 85, 99, 0.15))',
-                border: showResearchCockpit ? '1px solid rgba(167, 139, 250, 0.4)' : '1px solid rgba(107, 114, 128, 0.3)',
-                borderRadius: '8px',
-                color: showResearchCockpit ? '#a78bfa' : '#9ca3af',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.85rem',
-                fontWeight: '500',
-                marginRight: '8px'
-              }}>
-              <Icon icon={showResearchCockpit ? "mdi:eye" : "mdi:eye-off"} width="18" />
-              Research Cockpit
-            </button>
+            {/* Only show toggle if there are research checkpoints */}
+            {hiddenResearchCount > 0 && (
+              <button
+                onClick={() => setShowResearchCockpit(!showResearchCockpit)}
+                title={showResearchCockpit ? "Hide Research Cockpit checkpoints" : "Show Research Cockpit checkpoints"}
+                style={{
+                  padding: '8px 14px',
+                  background: showResearchCockpit
+                    ? 'linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(139, 92, 246, 0.2))'
+                    : 'linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(75, 85, 99, 0.15))',
+                  border: showResearchCockpit ? '1px solid rgba(167, 139, 250, 0.4)' : '1px solid rgba(107, 114, 128, 0.3)',
+                  borderRadius: '8px',
+                  color: showResearchCockpit ? '#a78bfa' : '#9ca3af',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  marginRight: '8px'
+                }}>
+                <Icon icon={showResearchCockpit ? "mdi:eye" : "mdi:eye-off"} width="18" />
+                Research
+                {!showResearchCockpit && (
+                  <span style={{
+                    background: 'rgba(167, 139, 250, 0.3)',
+                    color: '#a78bfa',
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600'
+                  }}>
+                    +{hiddenResearchCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button className="refresh-btn" onClick={fetchData} title="Refresh" style={{
               padding: '8px 14px',

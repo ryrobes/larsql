@@ -252,10 +252,10 @@ def list_checkpoints():
         # If session_id provided and include_all=true, get ALL checkpoints for timeline
         # Otherwise, get only pending checkpoints (backward compatible)
         if session_id and include_all:
-            print(f"[Checkpoint API] Fetching ALL checkpoints for session {session_id}")
+            #print(f"[Checkpoint API] Fetching ALL checkpoints for session {session_id}")
             pending = cm.get_all_checkpoints(session_id)
         else:
-            print(f"[Checkpoint API] Fetching pending checkpoints, session_id filter={session_id}")
+            #print(f"[Checkpoint API] Fetching pending checkpoints, session_id filter={session_id}")
             pending = cm.get_pending_checkpoints(session_id)
         #print(f"[Checkpoint API] Found {len(pending)} pending checkpoints")
 

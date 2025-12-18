@@ -315,16 +315,28 @@ class ResearchSessionAutoSaveHooks(WindlassHooks):
 
                 config = get_config()
 
-                # Collect checkpoint summaries or phase_outputs
+                # Collect checkpoint summaries, phase_outputs, or responses
                 checkpoint_texts = []
                 for cp in checkpoints[:10]:  # Limit to first 10 checkpoints
-                    # Prefer summary, fall back to phase_output
-                    text = cp.get('summary') or cp.get('phase_output', '')
-                    if text:
-                        checkpoint_texts.append(text[:200])  # Truncate long texts
+                    # Prefer summary, fall back to phase_output, then response
+                    text = cp.get('summary') or cp.get('phase_output') or ''
+
+                    # If no text, try response
+                    if not text and cp.get('response'):
+                        response = cp.get('response')
+                        if isinstance(response, dict):
+                            text = response.get('text') or response.get('message') or response.get('input') or ''
+                        elif isinstance(response, str):
+                            text = response
+
+                    if text and len(str(text).strip()) > 5:
+                        checkpoint_texts.append(str(text)[:200])  # Truncate long texts
 
                 if not checkpoint_texts:
+                    print(f"[ResearchAutoSave] No checkpoint texts found for title generation")
                     return  # No content to generate title from
+
+                print(f"[ResearchAutoSave] Generating title from {len(checkpoint_texts)} checkpoint texts")
 
                 # Build context from checkpoint texts
                 context = "\n".join([f"- {t}" for t in checkpoint_texts])
@@ -378,17 +390,19 @@ Return ONLY the title, nothing else."""
                 # Escape single quotes for SQL
                 safe_title = title.replace("'", "''")
 
-                # Check if using ClickHouse server (supports ALTER TABLE UPDATE)
+                # Update title in database
+                # For ClickHouse: use ALTER TABLE UPDATE
+                # For chDB: delete and re-insert (handled by caching + next save cycle)
                 if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                    db.execute(f"""
-                        ALTER TABLE research_sessions UPDATE
-                            title = '{safe_title}'
-                        WHERE original_session_id = '{session_id}'
-                    """)
-                else:
-                    # For chDB, delete and re-insert is needed (no ALTER UPDATE)
-                    # Skip for now - title will be updated on next save
-                    pass
+                    try:
+                        db.execute(f"""
+                            ALTER TABLE research_sessions UPDATE
+                                title = '{safe_title}'
+                            WHERE original_session_id = '{session_id}'
+                        """)
+                    except Exception as update_err:
+                        print(f"[ResearchAutoSave] ⚠ ALTER UPDATE failed (will use cache): {update_err}")
+                # Title is cached and will be used on next _save_or_update_session call
 
                 # Cache the title with checkpoint count
                 self._title_cache[session_id] = {
@@ -432,19 +446,35 @@ Return ONLY the title, nothing else."""
 
         # Build fallback title from checkpoints
         if checkpoints and len(checkpoints) > 0:
-            # Try to use first checkpoint's summary or phase_output
+            # Try to use first checkpoint's summary, phase_output, or response
             first_cp = checkpoints[0]
-            first_text = first_cp.get('summary') or first_cp.get('phase_output', '')
-            if first_text:
-                fallback = first_text[:80] + ("..." if len(first_text) > 80 else "")
+            first_text = first_cp.get('summary') or first_cp.get('phase_output') or ''
+
+            # If no phase_output, try to use the user's response from the checkpoint
+            if not first_text and first_cp.get('response'):
+                response = first_cp.get('response')
+                if isinstance(response, dict):
+                    # Try to get text from common response fields
+                    first_text = response.get('text') or response.get('message') or response.get('input') or str(response)[:100]
+                elif isinstance(response, str):
+                    first_text = response
+
+            if first_text and len(first_text.strip()) > 5:
+                # Clean up the text for title use
+                fallback = first_text.strip()[:80]
+                if len(first_text.strip()) > 80:
+                    fallback += "..."
+                print(f"[ResearchAutoSave] Using fallback title from checkpoint: {fallback[:50]}...")
             else:
                 fallback = f"Research Session - {session_id[:12]}"
+                print(f"[ResearchAutoSave] No checkpoint text found, using default title")
 
             # Trigger initial title generation
             self._generate_session_title_async(session_id, checkpoints)
 
             return fallback
 
+        print(f"[ResearchAutoSave] No checkpoints yet, using default title")
         return f"Research Session - {session_id[:12]}"
 
     def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active", parent_session_id: str = None, branch_checkpoint_id: str = None):

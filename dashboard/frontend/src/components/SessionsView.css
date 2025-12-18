@@ -50,12 +50,21 @@
   font-weight: 500;
 }
 
+.sessions-header h1 .discovered-count {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .header-actions {
   display: flex;
   gap: 12px;
 }
 
-.scan-orphans-button,
+.scan-button,
 .refresh-button {
   display: flex;
   align-items: center;
@@ -70,13 +79,13 @@
   transition: all 0.2s ease;
 }
 
-.scan-orphans-button:hover,
+.scan-button:hover,
 .refresh-button:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
 
-.scan-orphans-button:disabled {
+.scan-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -289,6 +298,17 @@
   opacity: 0.7;
 }
 
+.session-card.discovered {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.05);
+  border-style: dashed;
+}
+
+.session-card.discovered:hover {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.08);
+}
+
 /* Session Thumbnail */
 .session-thumbnail {
   width: 120px;
@@ -329,6 +349,42 @@
 
 .processing-indicator svg {
   color: #000;
+}
+
+/* Live Stream Styling */
+.session-thumbnail.live {
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+}
+
+.live-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(239, 68, 68, 0.9);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* Session Info */
@@ -489,6 +545,15 @@
   background: rgba(248, 113, 113, 0.2);
 }
 
+.action-button.adopt {
+  background: rgba(94, 234, 212, 0.1);
+  color: #5EEAD4;
+}
+
+.action-button.adopt:hover {
+  background: rgba(94, 234, 212, 0.2);
+}
+
 /* Session Detail Panel */
 .session-detail-panel {
   background: rgba(255, 255, 255, 0.03);
@@ -638,6 +703,16 @@
 
 .secondary-action:hover {
   background: rgba(74, 158, 221, 0.3);
+}
+
+.adopt-action {
+  background: rgba(94, 234, 212, 0.15);
+  border: 1px solid rgba(94, 234, 212, 0.4);
+  color: #5EEAD4;
+}
+
+.adopt-action:hover {
+  background: rgba(94, 234, 212, 0.25);
 }
 
 .danger-action {

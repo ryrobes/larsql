@@ -56,6 +56,7 @@ from tool_browser_api import tool_browser_bp
 from search_api import search_bp
 from analytics_api import analytics_bp
 from browser_sessions_api import browser_sessions_bp
+from sql_query_api import sql_query_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -67,6 +68,7 @@ app.register_blueprint(tool_browser_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
+app.register_blueprint(sql_query_bp)
 # Track query statistics
 import threading
 _query_lock = threading.Lock()
@@ -3001,6 +3003,103 @@ def run_cascade():
             'success': True,
             'session_id': session_id,
             'message': 'Cascade started in background'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cancel-cascade', methods=['POST'])
+def cancel_cascade():
+    """Cancel a running cascade gracefully.
+
+    The cascade will stop at the next phase boundary.
+    """
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        reason = data.get('reason', 'User requested cancellation')
+
+        if not session_id:
+            return jsonify({'error': 'session_id required'}), 400
+
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.session_state import request_session_cancellation, get_session
+
+        # Request cancellation
+        request_session_cancellation(session_id, reason)
+
+        # Get current session state
+        state = get_session(session_id)
+        status = state.status.value if state else 'unknown'
+
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'status': status,
+            'message': f'Cancellation requested for session {session_id}'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sessions/blocked', methods=['GET'])
+def get_blocked_sessions():
+    """Get sessions that are blocked waiting for human input or signals.
+
+    Query params:
+    - exclude_research_cockpit: If 'true', exclude sessions with IDs starting with 'research_'
+                                These are handled in the Research Cockpit UI instead.
+
+    Returns:
+    - List of blocked session objects
+    """
+    try:
+        exclude_research = request.args.get('exclude_research_cockpit', 'false').lower() == 'true'
+
+        # Import checkpoint manager
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass.checkpoints import get_checkpoint_manager
+
+        cm = get_checkpoint_manager()
+        pending = cm.get_pending_checkpoints()
+
+        # Group by session_id and filter
+        session_map = {}
+        for cp in pending:
+            sid = cp.session_id
+
+            # Filter out research cockpit sessions if requested
+            if exclude_research and sid.startswith('research_'):
+                continue
+
+            if sid not in session_map:
+                session_map[sid] = {
+                    'session_id': sid,
+                    'cascade_id': cp.cascade_id,
+                    'current_phase': cp.phase_name,
+                    'blocked_type': cp.checkpoint_type.value if hasattr(cp.checkpoint_type, 'value') else str(cp.checkpoint_type),
+                    'blocked_on': cp.id,
+                    'created_at': cp.created_at.isoformat() if cp.created_at else None,
+                    'checkpoint_count': 0
+                }
+            session_map[sid]['checkpoint_count'] += 1
+
+        sessions = list(session_map.values())
+
+        return jsonify({
+            'sessions': sessions,
+            'count': len(sessions),
+            'excluded_research': exclude_research
         })
 
     except Exception as e:

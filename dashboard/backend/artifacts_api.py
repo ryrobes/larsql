@@ -7,10 +7,27 @@ Provides REST API for:
 - Viewing artifact HTML content
 """
 import json
+import math
 import os
 import sys
 from flask import Blueprint, jsonify, request, send_file, Response
 from datetime import datetime
+
+
+def sanitize_for_json(obj):
+    """Recursively sanitize an object for JSON serialization.
+
+    Converts NaN/Infinity to None, which becomes null in JSON.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    return obj
 
 # Add parent directory to path to import windlass
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -403,10 +420,13 @@ def execute_sql_query():
         if not sql:
             return jsonify({"error": "Missing 'sql' field"}), 400
 
-        # run_sql already returns JSON string with compact format
+        # run_sql returns JSON string - parse, sanitize NaN/Infinity, re-serialize
+        # (run_sql now sanitizes too, but this is a safety net)
         result_json = run_sql(sql, connection, limit)
+        result_data = json.loads(result_json)
+        sanitized_data = sanitize_for_json(result_data)
 
-        return Response(result_json, mimetype='application/json')
+        return jsonify(sanitized_data)
 
     except Exception as e:
         import traceback

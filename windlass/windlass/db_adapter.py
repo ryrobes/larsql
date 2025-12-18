@@ -296,24 +296,26 @@ class ClickHouseAdapter:
                 return val
 
             # Handle numpy types (convert to Python native)
+            # NumPy 2.0 removed np.float_, np.int_, np.bool_ etc. - use abstract types
             try:
                 import numpy as np
-                # Check if it's any numpy integer type
+                # Check if it's any numpy integer type (np.integer covers all int types)
                 if isinstance(val, np.integer):
                     return int(val)
-                # Check if it's any numpy floating type
+                # Check if it's any numpy floating type (np.floating covers all float types)
                 if isinstance(val, np.floating):
                     return float(val)
-                # Check if it's numpy boolean
-                if isinstance(val, (np.bool_, bool)) and type(val).__module__ == 'numpy':
+                # Check if it's numpy boolean (check module to distinguish from Python bool)
+                # In NumPy 2.0, np.bool_ is removed - check via module name instead
+                if type(val).__module__ == 'numpy' and type(val).__name__ in ('bool_', 'bool'):
                     return bool(val)
                 # Check if it's numpy array
                 if isinstance(val, np.ndarray):
                     return val.tolist()
-                # Check if it's numpy string
-                if isinstance(val, np.str_) or (hasattr(val, 'dtype') and val.dtype.kind in ('U', 'S')):
+                # Check if it's numpy string (check dtype kind for string types)
+                if hasattr(val, 'dtype') and val.dtype.kind in ('U', 'S'):
                     return str(val)
-            except (ImportError, AttributeError):
+            except (ImportError, AttributeError, TypeError):
                 pass
 
             # Handle JSON columns

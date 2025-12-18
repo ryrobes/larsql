@@ -808,6 +808,15 @@ async function main() {
       status.hasSession = isRunning;
       status.pid = process.pid;
 
+      // Add session path for stream URL construction
+      if (isRunning && global.currentPlaywrightSession) {
+        const session = global.currentPlaywrightSession;
+        if (session.clientId && session.testId && session.sessionId) {
+          status.sessionPath = `${session.clientId}/${session.testId}/${session.sessionId}`;
+          status.currentState.sessionId = session.sessionId;
+        }
+      }
+
       // Update Firebase with status
       try {
         const statusUpdate = { ...status.currentState };

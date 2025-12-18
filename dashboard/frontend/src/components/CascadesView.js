@@ -9,7 +9,7 @@ import CostTimelineChart from './CostTimelineChart';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './CascadesView.css';
 
-function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onCockpit, onSextant, onWorkshop, onBlocked, onTools, onSearch, onArtifacts, onBrowser, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
+function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow, onCockpit, onSextant, onWorkshop, onBlocked, onTools, onSearch, onSqlQuery, onArtifacts, onBrowser, onSessions, blockedCount, refreshTrigger, runningCascades, finalizingSessions, sseConnected }) {
   const [cascades, setCascades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -339,8 +339,10 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
         onWorkshop={onWorkshop}
         onTools={onTools}
         onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
         onArtifacts={onArtifacts}
         onBrowser={onBrowser}
+        onSessions={onSessions}
         onBlocked={onBlocked}
         blockedCount={blockedCount}
         sseConnected={sseConnected}
