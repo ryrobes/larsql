@@ -12,18 +12,38 @@
   gap: 1rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   cursor: pointer;
-  animation: slideIn 0.3s ease-out forwards;
+  animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-@keyframes slideIn {
-  from {
-    transform: translateX(400px);
+/* Pop-in animation - scale up with slight overshoot */
+@keyframes popIn {
+  0% {
+    transform: translateX(100px) scale(0.8);
     opacity: 0;
   }
-  to {
-    transform: translateX(0);
+  100% {
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
+}
+
+/* Slide-out animation - smooth exit to the right */
+@keyframes slideOut {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(400px) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* Exiting state - plays slide-out animation */
+.toast-exiting {
+  animation: slideOut 0.3s ease-in forwards;
+  pointer-events: none;
 }
 
 /* Toast types with bright pastels */
@@ -109,8 +129,8 @@
   color: #F0F4F8;
 }
 
-/* Hover effect */
-.toast:hover {
+/* Hover effect - disabled during exit animation */
+.toast:not(.toast-exiting):hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
 }

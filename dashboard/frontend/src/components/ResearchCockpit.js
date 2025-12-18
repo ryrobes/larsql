@@ -214,10 +214,34 @@ function ResearchCockpit({
   }, [sessionId]);
 
   // Extract ghost messages from session data (messages since last checkpoint)
-  const extractGhostMessages = useCallback((entries) => {
+  const extractGhostMessages = useCallback((entries, existingGhosts = []) => {
     if (!entries || entries.length === 0) return [];
 
+    // Build a map of existing ghosts to preserve their createdAt/exiting state
+    const existingMap = new Map(existingGhosts.map(g => [g.id, g]));
+
     const ghosts = [];
+
+    // Helper to get createdAt from timestamp or existing ghost
+    const getCreatedAt = (id, timestamp) => {
+      const existing = existingMap.get(id);
+      if (existing?.createdAt) return existing.createdAt;
+      // Parse ISO timestamp if available
+      if (timestamp) {
+        const parsed = new Date(timestamp).getTime();
+        if (!isNaN(parsed)) return parsed;
+      }
+      return Date.now();
+    };
+
+    // Helper to preserve exiting state from existing ghost
+    const getExitingState = (id) => {
+      const existing = existingMap.get(id);
+      return {
+        exiting: existing?.exiting || false,
+        exitStartedAt: existing?.exitStartedAt
+      };
+    };
 
     // Process entries in reverse to find messages since last checkpoint response
     for (let i = entries.length - 1; i >= 0; i--) {
@@ -234,34 +258,43 @@ function ResearchCockpit({
         // Tool calls
         if (entry.tool_calls && entry.tool_calls.length > 0) {
           entry.tool_calls.forEach(tc => {
+            const id = `${entry.timestamp}_${tc.id}`;
             ghosts.unshift({
               type: 'tool_call',
               tool: tc.function?.name || 'unknown',
               timestamp: entry.timestamp,
-              id: `${entry.timestamp}_${tc.id}`
+              id,
+              createdAt: getCreatedAt(id, entry.timestamp),
+              ...getExitingState(id)
             });
           });
         }
 
         // Text responses
         if (entry.content && !entry.tool_calls) {
+          const id = `${entry.timestamp}_text`;
           ghosts.unshift({
             type: 'thinking',
             content: entry.content.substring(0, 200),
             timestamp: entry.timestamp,
-            id: `${entry.timestamp}_text`
+            id,
+            createdAt: getCreatedAt(id, entry.timestamp),
+            ...getExitingState(id)
           });
         }
       }
 
       // Tool results
       if (entry.role === 'tool' && entry.tool_call_id) {
+        const id = `${entry.timestamp}_result`;
         ghosts.unshift({
           type: 'tool_result',
           tool: entry.name || 'tool',
           content: entry.content?.substring(0, 100),
           timestamp: entry.timestamp,
-          id: `${entry.timestamp}_result`
+          id,
+          createdAt: getCreatedAt(id, entry.timestamp),
+          ...getExitingState(id)
         });
       }
     }
@@ -280,10 +313,9 @@ function ResearchCockpit({
       if (!data.error && data.entries) {
         setSessionData(data);
 
-        // Extract ghost messages for live sessions
+        // Extract ghost messages for live sessions, preserving createdAt/exiting state
         if (!isSavedSession) {
-          const ghosts = extractGhostMessages(data.entries);
-          setGhostMessages(ghosts);
+          setGhostMessages(prev => extractGhostMessages(data.entries, prev));
         }
 
         // Compute aggregated metrics from entries
@@ -421,7 +453,7 @@ function ResearchCockpit({
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
-      console.log('[ResearchCockpit] SSE connected');
+      //console.log('[ResearchCockpit] SSE connected');
     };
 
     eventSource.onmessage = (e) => {
@@ -430,7 +462,7 @@ function ResearchCockpit({
 
         // Debug: show all non-heartbeat events
         if (event.type !== 'heartbeat') {
-          console.log('[ResearchCockpit] SSE:', event.type, 'session match:', event.session_id === sessionId, '(ours:', sessionId, 'event:', event.session_id, ')');
+          //console.log('[ResearchCockpit] SSE:', event.type, 'session match:', event.session_id === sessionId, '(ours:', sessionId, 'event:', event.session_id, ')');
         }
 
         // Only process events for our session
@@ -523,7 +555,9 @@ function ResearchCockpit({
                   tool: event.data.tool_name,
                   arguments: event.data.args,
                   timestamp: event.timestamp || new Date().toISOString(),
-                  id: `ghost_tool_${Date.now()}_${event.data.tool_name}`
+                  id: `ghost_tool_${Date.now()}_${event.data.tool_name}`,
+                  createdAt: Date.now(),
+                  exiting: false
                 };
                 return [...prev, newGhost];
               });
@@ -553,7 +587,9 @@ function ResearchCockpit({
                   tool: event.data.tool_name,
                   result: event.data.result_preview,
                   timestamp: event.timestamp || new Date().toISOString(),
-                  id: `ghost_result_${Date.now()}_${event.data.tool_name}`
+                  id: `ghost_result_${Date.now()}_${event.data.tool_name}`,
+                  createdAt: Date.now(),
+                  exiting: false
                 };
                 return [...prev, newGhost];
               });
@@ -684,6 +720,45 @@ function ResearchCockpit({
       clearInterval(liveDataInterval);
     };
   }, [sessionId, fetchSessionData, fetchCheckpoint, fetchSavedSession]);
+
+  // Ghost message auto-cleanup: slide off to the left after 30 seconds
+  useEffect(() => {
+    const GHOST_LIFETIME_MS = 20000; // 30 seconds before starting exit
+    const EXIT_ANIMATION_MS = 600;   // Duration of slide-out animation
+
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+
+      setGhostMessages(prev => {
+        // Check if any ghosts need to start exiting
+        const needsUpdate = prev.some(ghost =>
+          !ghost.exiting && ghost.createdAt && (now - ghost.createdAt > GHOST_LIFETIME_MS)
+        );
+
+        if (!needsUpdate) return prev;
+
+        // Mark old ghosts as exiting
+        return prev.map(ghost => {
+          if (!ghost.exiting && ghost.createdAt && (now - ghost.createdAt > GHOST_LIFETIME_MS)) {
+            return { ...ghost, exiting: true, exitStartedAt: now };
+          }
+          return ghost;
+        });
+      });
+
+      // Remove ghosts that have finished their exit animation
+      setGhostMessages(prev => {
+        return prev.filter(ghost => {
+          if (ghost.exiting && ghost.exitStartedAt) {
+            return (now - ghost.exitStartedAt) < EXIT_ANIMATION_MS;
+          }
+          return true;
+        });
+      });
+    }, 1000); // Check every second
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // Handle cascade selection
   const handleCascadeSelected = async (cascade, input) => {
@@ -1640,7 +1715,7 @@ function GhostMessage({ ghost }) {
   };
 
   return (
-    <div className={`ghost-message ghost-${ghost.type}`}>
+    <div className={`ghost-message ghost-${ghost.type}${ghost.exiting ? ' ghost-exiting' : ''}`}>
       <div className="ghost-header">
         <Icon icon={getIcon()} width="14" className="ghost-icon" />
         <span className="ghost-label">{getLabel()}</span>

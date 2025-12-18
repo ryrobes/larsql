@@ -304,7 +304,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
 
                 setIframeHeight(`${newHeight}px`);
                 lastHeight = newHeight;
-                console.log('[HTMX iframe] Resized to', newHeight, 'px (attempt', resizeCount, ')');
+                //console.log('[HTMX iframe] Resized to', newHeight, 'px (attempt', resizeCount, ')');
               }
             } catch (err) {
               console.warn('[Windlass HTMX] Could not resize iframe:', err);
@@ -564,19 +564,19 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
   <script>
-    console.log('[HTMX iframe INIT] htmx loaded:', typeof htmx !== 'undefined');
-    console.log('[HTMX iframe INIT] htmx.ext:', typeof htmx !== 'undefined' ? htmx.ext : 'N/A');
-    console.log('[HTMX iframe INIT] Plotly loaded:', typeof Plotly !== 'undefined');
-    console.log('[HTMX iframe INIT] Vega loaded:', typeof vega !== 'undefined');
-    console.log('[HTMX iframe INIT] vegaEmbed loaded:', typeof vegaEmbed !== 'undefined');
-    console.log('[HTMX iframe INIT] AG Grid loaded:', typeof agGrid !== 'undefined');
+    //console.log('[HTMX iframe INIT] htmx loaded:', typeof htmx !== 'undefined');
+    //console.log('[HTMX iframe INIT] htmx.ext:', typeof htmx !== 'undefined' ? htmx.ext : 'N/A');
+    //console.log('[HTMX iframe INIT] Plotly loaded:', typeof Plotly !== 'undefined');
+    //console.log('[HTMX iframe INIT] Vega loaded:', typeof vega !== 'undefined');
+    //console.log('[HTMX iframe INIT] vegaEmbed loaded:', typeof vegaEmbed !== 'undefined');
+    //console.log('[HTMX iframe INIT] AG Grid loaded:', typeof agGrid !== 'undefined');
 
     // Wait for HTMX to fully initialize
     window.addEventListener('DOMContentLoaded', () => {
-      console.log('[HTMX iframe] DOMContentLoaded, htmx available:', typeof htmx !== 'undefined');
-      console.log('[HTMX iframe] Plotly:', typeof Plotly !== 'undefined');
-      console.log('[HTMX iframe] vegaEmbed:', typeof vegaEmbed !== 'undefined');
-      console.log('[HTMX iframe] AG Grid:', typeof agGrid !== 'undefined');
+      //console.log('[HTMX iframe] DOMContentLoaded, htmx available:', typeof htmx !== 'undefined');
+      //console.log('[HTMX iframe] Plotly:', typeof Plotly !== 'undefined');
+      //console.log('[HTMX iframe] vegaEmbed:', typeof vegaEmbed !== 'undefined');
+      //console.log('[HTMX iframe] AG Grid:', typeof agGrid !== 'undefined');
 
       if (typeof htmx !== 'undefined') {
         // HTMX configuration for iframe
@@ -584,8 +584,8 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
         htmx.config.defaultSwapStyle = 'innerHTML';
 
         // Check if json-enc extension is loaded
-        console.log('[HTMX iframe] Extensions available:', htmx.ext);
-        console.log('[HTMX iframe] json-enc extension object:', htmx.ext ? htmx.ext['json-enc'] : 'no ext object');
+        //console.log('[HTMX iframe] Extensions available:', htmx.ext);
+        //console.log('[HTMX iframe] json-enc extension object:', htmx.ext ? htmx.ext['json-enc'] : 'no ext object');
 
         // CRITICAL FIX: The json-enc extension loads but doesn't auto-activate
         // We need to manually define it using the extension API

@@ -667,9 +667,13 @@ def request_decision(
               - VISUALIZATION LIBRARIES AVAILABLE:
                 * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
                 * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))
-                * AG Grid - Professional data tables with sorting/filtering (agGrid.createGrid('#grid', gridOptions))
-                * Use dark theme: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
-                * AG Grid: Use 'ag-theme-quartz-dark' class for dark mode styling
+                * AG Grid v33+ - Professional data tables with sorting/filtering
+                * Use dark theme for Plotly: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
+                * AG Grid v33 THEMING (CRITICAL - no CSS classes needed!):
+                  - Use the Theming API via gridOptions.theme
+                  - For dark mode: theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark)
+                  - Do NOT use ag-theme-* CSS classes (deprecated in v33)
+                  - The div needs NO class, just an id and height
               - SQL DATA FETCHING (CRITICAL - test queries first!):
                 * STEP 1 - ALWAYS test your query with sql_query() BEFORE writing HTML:
                   sql_query(sql="SELECT * FROM database.table LIMIT 1", connection="research_dbs")
@@ -759,10 +763,11 @@ def request_decision(
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
                   <button name="response[selected]" value="approve">Approve Chart</button>
                 </form>
-              - Example (with AG Grid table):
-                <div id="myGrid" class="ag-theme-quartz-dark" style="height: 400px;"></div>
+              - Example (with AG Grid table - v33 Theming API):
+                <div id="myGrid" style="height: 400px;"></div>
                 <script>
                   const gridOptions = {
+                    theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark),
                     columnDefs: [
                       { field: 'name', sortable: true, filter: true },
                       { field: 'value', sortable: true, filter: 'agNumberColumnFilter' }
@@ -772,7 +777,7 @@ def request_decision(
                       { name: 'Item 2', value: 200 }
                     ],
                     pagination: true,
-                    defaultColDef: { resizable: true }
+                    defaultColDef: { resizable: true, flex: 1 }
                   };
                   agGrid.createGrid(document.querySelector('#myGrid'), gridOptions);
                 </script>
@@ -1392,10 +1397,8 @@ input, textarea {
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 
-  <!-- AG Grid -->
+  <!-- AG Grid (v33+ uses Theming API, no CSS files needed) -->
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css">
 </head>
 <body>
 {body_html}

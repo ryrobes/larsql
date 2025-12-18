@@ -68,12 +68,12 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
       return;
     }
 
-    console.log('[NarrationPlayer] Starting amplitude monitoring...');
+    //console.log('[NarrationPlayer] Starting amplitude monitoring...');
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
 
     const animate = () => {
       if (!isPlaying) {
-        console.log('[NarrationPlayer] Amplitude monitoring stopped (not playing)');
+        //console.log('[NarrationPlayer] Amplitude monitoring stopped (not playing)');
         return;
       }
 
@@ -98,7 +98,7 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
 
   // Play audio function
   const playAudio = useCallback(async (audioPath) => {
-    console.log('[NarrationPlayer] playAudio called with:', audioPath);
+    //console.log('[NarrationPlayer] playAudio called with:', audioPath);
 
     try {
       const audioContext = audioContextRef.current;
@@ -107,20 +107,20 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
         return;
       }
 
-      console.log('[NarrationPlayer] AudioContext state:', audioContext.state);
+      //console.log('[NarrationPlayer] AudioContext state:', audioContext.state);
 
       // Resume context if suspended
       if (audioContext.state === 'suspended') {
-        console.log('[NarrationPlayer] Resuming suspended AudioContext...');
+        //console.log('[NarrationPlayer] Resuming suspended AudioContext...');
         await audioContext.resume();
-        console.log('[NarrationPlayer] AudioContext resumed, new state:', audioContext.state);
+        //console.log('[NarrationPlayer] AudioContext resumed, new state:', audioContext.state);
       }
 
       // Extract filename from path
       const filename = audioPath.split('/').pop();
       const fetchUrl = `http://localhost:5001/api/audio/${filename}`;
 
-      console.log('[NarrationPlayer] Fetching audio from:', fetchUrl);
+      //console.log('[NarrationPlayer] Fetching audio from:', fetchUrl);
 
       // Fetch audio file from backend
       const response = await fetch(fetchUrl);
@@ -130,13 +130,13 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
         return;
       }
 
-      console.log('[NarrationPlayer] Audio fetched successfully, decoding...');
+      //console.log('[NarrationPlayer] Audio fetched successfully, decoding...');
 
       const arrayBuffer = await response.arrayBuffer();
-      console.log('[NarrationPlayer] ArrayBuffer size:', arrayBuffer.byteLength);
+      //console.log('[NarrationPlayer] ArrayBuffer size:', arrayBuffer.byteLength);
 
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      console.log('[NarrationPlayer] Audio decoded, duration:', audioBuffer.duration, 'seconds');
+      //console.log('[NarrationPlayer] Audio decoded, duration:', audioBuffer.duration, 'seconds');
 
       // Create buffer source
       const source = audioContext.createBufferSource();
@@ -173,16 +173,16 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
       };
 
       // Start playback
-      console.log('[NarrationPlayer] Starting playback...');
+      //console.log('[NarrationPlayer] Starting playback...');
       setIsPlaying(true);
       source.start(0);
-      console.log('[NarrationPlayer] Playback started!');
+      //console.log('[NarrationPlayer] Playback started!');
 
       if (onPlaybackStart) {
         onPlaybackStart();
       }
 
-      console.log(`[NarrationPlayer] ✅ Successfully playing audio: ${filename}`);
+      //console.log(`[NarrationPlayer] ✅ Successfully playing audio: ${filename}`);
 
     } catch (error) {
       console.error('[NarrationPlayer] Playback error:', error);
@@ -209,7 +209,7 @@ export function useNarrationPlayer({ onAmplitudeChange, onPlaybackStart, onPlayb
     if (isPlaying) {
       // Add to queue
       setQueue(prevQueue => [...prevQueue, audioPath]);
-      console.log(`[NarrationPlayer] Audio queued (${queue.length + 1} in queue)`);
+      //console.log(`[NarrationPlayer] Audio queued (${queue.length + 1} in queue)`);
     } else {
       // Play immediately
       playAudio(audioPath);

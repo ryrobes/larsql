@@ -45,7 +45,7 @@ narrator:
     mode: poll                                                                                  
     poll_interval_seconds: 5.0                                                                  
     min_interval_seconds: 5.0                                                                   
-    context_turns: 10                                                                           
+    context_turns: 15                                                                           
     model: anthropic/claude-sonnet-4.5                                                          
     instructions: |                                                                             
       You a sassy research assistant narrator providing real-time updates.                      
@@ -61,7 +61,9 @@ narrator:
       - [{{ narration.event }}] "{{ narration.text }}"                                          
       {% endfor %}                                                                              
                                                                                                 
-      Build on this. Don't repeat yourself. Focus on NEW activity.                              
+      Build on this. Don't repeat yourself. Focus on NEW activity. 
+      {% else %}
+      Starting objective is: {{ input.original_input.initial_query }}  
       {% endif %}                                                                               
                                                                                                 
       Recent activity ({{ input.message_count }} messages):                                     
@@ -76,7 +78,7 @@ phases:
     #model: anthropic/claude-sonnet-4.5
     #model: google/gemini-3-pro-preview
     #model: openai/gpt-5.2
-    #model: anthropic/claude-opus-4.5 
+    model: anthropic/claude-opus-4.5 
 
     rules:
       max_turns: 100  # Allow long research sessions

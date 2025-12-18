@@ -574,6 +574,34 @@
   }
 }
 
+/* Slide-out-left animation for auto-cleanup after 30s */
+@keyframes ghost-slide-out {
+  from {
+    opacity: 0.85;
+    transform: translateX(0) scale(1);
+    max-height: 200px;
+    margin-bottom: 6px;
+    padding: 10px 14px;
+  }
+  50% {
+    opacity: 0.4;
+    transform: translateX(-100px) scale(0.95);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-300px) scale(0.9);
+    max-height: 0;
+    margin-bottom: 0;
+    padding: 0 14px;
+  }
+}
+
+.ghost-message.ghost-exiting {
+  animation: ghost-slide-out 0.6s ease-in forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 .ghost-header {
   display: flex;
   align-items: center;

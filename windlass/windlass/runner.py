@@ -1851,7 +1851,7 @@ To call this tool, output a JSON code block:
         """
         Parse prompt-based tool calls from agent response.
 
-        Supports 20+ formats for maximum LLM compatibility:
+        Supports 22 formats for maximum LLM compatibility:
 
         Format 1 (Preferred): Standard JSON with tool wrapper in code fence
             ```json
@@ -1943,6 +1943,12 @@ To call this tool, output a JSON code block:
             tool: tool_name
             arg1: value1
             arg2: value2
+
+        Format 22: HTML code fence auto-correction (request_decision injection)
+            ```html
+            <div>Any HTML content here</div>
+            ```
+            → Automatically converted to request_decision(html=...) for rendering
 
         Returns:
             tuple: (tool_calls, error_message)
@@ -2593,6 +2599,76 @@ To call this tool, output a JSON code block:
                 add_tool_call(tool_name, arguments)
 
         # ============================================================
+        # Pattern 22: Auto-correct HTML code fences to request_decision
+        # When dumber models forget to use request_decision and just
+        # output HTML in code fences, auto-convert it to a tool call.
+        # The checkpoint system has fallback UI for responses even
+        # without proper form callbacks, so we render ALL HTML.
+        # Pattern handles both actual newlines and escaped \n as literal strings
+        # ============================================================
+        html_fence_pattern = r'```html(?:\s*\n|\\n)([\s\S]*?)(?:\n|\\n)?\s*```'
+
+        for match in re.finditer(html_fence_pattern, content, re.DOTALL | re.IGNORECASE):
+            html_content = match.group(1).strip()
+
+            if not html_content:
+                continue
+
+            # Unescape literal \n and \t to actual newlines/tabs
+            html_content = html_content.replace('\\n', '\n').replace('\\t', '\t')
+
+            # Skip if we already have a request_decision tool call
+            # (this would mean the model did it correctly)
+            has_request_decision = any(
+                tc.get("function", {}).get("name") == "request_decision"
+                for tc in tool_calls
+            )
+            if has_request_decision:
+                continue
+
+            # Try to extract a question from the surrounding text
+            # Look for text before the code fence that looks like a question
+            match_start = match.start()
+            preceding_text = content[:match_start].strip()
+
+            # Get the last paragraph or sentence before the HTML
+            question = "Please provide your response"
+            if preceding_text:
+                # Split by double newlines to get paragraphs
+                paragraphs = preceding_text.split('\n\n')
+                if paragraphs:
+                    last_para = paragraphs[-1].strip()
+                    # Clean up markdown and get last meaningful line
+                    lines = [l.strip() for l in last_para.split('\n') if l.strip()]
+                    if lines:
+                        # Use last non-empty line as question context
+                        potential_question = lines[-1]
+                        # Remove markdown formatting
+                        potential_question = re.sub(r'^#+\s*', '', potential_question)  # Remove headers
+                        potential_question = re.sub(r'^\*+\s*', '', potential_question)  # Remove bullets
+                        potential_question = re.sub(r'^-\s*', '', potential_question)    # Remove dashes
+                        potential_question = potential_question.strip()
+                        if potential_question and len(potential_question) > 5:
+                            question = potential_question
+
+            # Log the auto-correction to console
+            console.print(
+                f"[yellow]⚠️  AUTO-CORRECTED: Model output HTML in code fence instead of "
+                f"using request_decision tool. Injecting into request_decision call.[/yellow]"
+            )
+
+            # Create the request_decision tool call
+            arguments = {
+                "question": question,
+                "options": [],  # Empty - the HTML has its own UI
+                "html": html_content,
+                "severity": "info",
+                "allow_custom": True
+            }
+
+            add_tool_call("request_decision", arguments)
+
+        # ============================================================
         # Return results
         # ============================================================
         if tool_calls:
@@ -2614,6 +2690,93 @@ To call this tool, output a JSON code block:
 
         # No tool calls found
         return [], None
+
+    def _auto_correct_html_to_request_decision(self, content: str, existing_tool_calls: list) -> list:
+        """
+        Auto-correct HTML code fences to request_decision tool calls.
+
+        When models output HTML in ```html code fences instead of properly
+        using the request_decision tool, this method detects and converts them.
+        The checkpoint system has fallback UI for responses even without
+        proper form callbacks.
+
+        Args:
+            content: The assistant response content
+            existing_tool_calls: Already parsed tool calls (to check for existing request_decision)
+
+        Returns:
+            List of auto-corrected tool calls (may be empty)
+        """
+        import re
+
+        if not content:
+            return []
+
+        # Skip if we already have a request_decision tool call
+        has_request_decision = any(
+            tc.get("function", {}).get("name") == "request_decision"
+            for tc in existing_tool_calls
+        )
+        if has_request_decision:
+            return []
+
+        auto_calls = []
+        # Pattern handles both actual newlines and escaped \n as literal strings
+        html_fence_pattern = r'```html(?:\s*\n|\\n)([\s\S]*?)(?:\n|\\n)?\s*```'
+
+        for match in re.finditer(html_fence_pattern, content, re.DOTALL | re.IGNORECASE):
+            html_content = match.group(1).strip()
+
+            if not html_content:
+                continue
+
+            # Unescape literal \n and \t to actual newlines/tabs
+            html_content = html_content.replace('\\n', '\n').replace('\\t', '\t')
+
+            # Try to extract a question from the surrounding text
+            match_start = match.start()
+            preceding_text = content[:match_start].strip()
+
+            question = "Please provide your response"
+            if preceding_text:
+                paragraphs = preceding_text.split('\n\n')
+                if paragraphs:
+                    last_para = paragraphs[-1].strip()
+                    lines = [l.strip() for l in last_para.split('\n') if l.strip()]
+                    if lines:
+                        potential_question = lines[-1]
+                        potential_question = re.sub(r'^#+\s*', '', potential_question)
+                        potential_question = re.sub(r'^\*+\s*', '', potential_question)
+                        potential_question = re.sub(r'^-\s*', '', potential_question)
+                        potential_question = potential_question.strip()
+                        if potential_question and len(potential_question) > 5:
+                            question = potential_question
+
+            # Log the auto-correction to console
+            console.print(
+                f"[yellow]⚠️  AUTO-CORRECTED: Model output HTML in code fence instead of "
+                f"using request_decision tool. Injecting into request_decision call.[/yellow]"
+            )
+
+            # Create the request_decision tool call
+            arguments = {
+                "question": question,
+                "options": [],
+                "html": html_content,
+                "severity": "info",
+                "allow_custom": True
+            }
+
+            auto_calls.append({
+                "id": f"html_auto_{len(auto_calls)}",
+                "type": "function",
+                "function": {
+                    "name": "request_decision",
+                    "arguments": json.dumps(arguments)
+                }
+            })
+
+        return auto_calls
 
     def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
         """
@@ -7969,6 +8132,20 @@ Refinement directive: {reforge_config.honing_prompt}
                             console.print(f"{indent}  [dim cyan]Parsed {len(parsed_tool_calls)} prompt-based tool call(s)[/dim cyan]")
                             tool_calls = parsed_tool_calls
 
+                    # ================================================================
+                    # HTML Auto-Correction: Always check for HTML code fences
+                    # This runs regardless of native/prompt mode or existing tool_calls
+                    # Models sometimes output HTML in code fences instead of using
+                    # request_decision - we auto-inject it as a request_decision call
+                    # Tool execution falls back to global registry, so no need to add to tool_map
+                    # ================================================================
+                    if content and not json_parse_error:
+                        html_auto_calls = self._auto_correct_html_to_request_decision(content, tool_calls or [])
+                        if html_auto_calls:
+                            if tool_calls is None:
+                                tool_calls = []
+                            tool_calls = list(tool_calls) + html_auto_calls
+
                     # Handle tool calls (both native and prompt-based)
                     # Skip if there was a JSON parse error
                     if tool_calls and not json_parse_error:
@@ -8000,8 +8177,11 @@ Refinement directive: {reforge_config.honing_prompt}
                                 tool_name=func_name
                             )
 
-                            # Find tool
+                            # Find tool - first check phase tool_map, then fall back to global registry
                             tool_func = tool_map.get(func_name)
+                            if not tool_func:
+                                # Fallback to global tool registry - phase tackle only controls prompting
+                                tool_func = get_tackle(func_name)
                             result = "Tool not found."
                         
                             # Check for route_to specifically to capture state
@@ -8288,8 +8468,10 @@ Refinement directive: {reforge_config.honing_prompt}
                                             tool_name=func_name
                                         )
 
-                                        # Find and execute tool
+                                        # Find and execute tool - check phase tool_map, then global registry
                                         tool_func = tool_map.get(func_name)
+                                        if not tool_func:
+                                            tool_func = get_tackle(func_name)
                                         result = "Tool not found."
 
                                         # Check for route_to

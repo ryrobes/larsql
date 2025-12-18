@@ -62,9 +62,9 @@ function App() {
     setToasts(prev => [...prev, { id, message, type, duration: finalDuration, cascadeData }]);
   };
 
-  const removeToast = (id) => {
+  const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
 
   // Parse hash to determine route
   const parseHash = useCallback(() => {
@@ -1378,11 +1378,12 @@ function App() {
         {toasts.map(toast => (
           <Toast
             key={toast.id}
+            id={toast.id}
             message={toast.message}
             type={toast.type}
             duration={toast.duration}
             cascadeData={toast.cascadeData}
-            onClose={() => removeToast(toast.id)}
+            onClose={removeToast}
           />
         ))}
       </div>
