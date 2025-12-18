@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Increase concurrent query limits for heavy workloads -->
+    <max_concurrent_queries>500</max_concurrent_queries>
+    <max_concurrent_insert_queries>200</max_concurrent_insert_queries>
+    <max_concurrent_select_queries>300</max_concurrent_select_queries>
+
+    <!-- Increase connection limits -->
+    <max_connections>2048</max_connections>
+
+    <!-- Background pool sizes (for async operations) -->
+    <background_pool_size>32</background_pool_size>
+    <background_schedule_pool_size>32</background_schedule_pool_size>
+
+    <!-- Keep connections alive longer -->
+    <keep_alive_timeout>30</keep_alive_timeout>
+
+    <!-- Performance tuning -->
+    <mark_cache_size>5368709120</mark_cache_size>
+    <max_server_memory_usage_to_ram_ratio>0.9</max_server_memory_usage_to_ram_ratio>
+</clickhouse>

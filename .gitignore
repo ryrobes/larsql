@@ -17,3 +17,6 @@ samples
 sql_connections/discovery_metadata.json
 sql_connections/discovery_metadata.json
 dashboard/backend/workshop_temp/
+node_modules
+marimo/docs
+

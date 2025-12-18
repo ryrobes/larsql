@@ -1,0 +1,256 @@
+# Copyright 2024 Marimo. All rights reserved.
+from __future__ import annotations
+
+import io
+import sys
+from typing import TYPE_CHECKING
+from unittest.mock import Mock, patch
+
+import pytest
+
+from marimo._dependencies.dependencies import DependencyManager
+from marimo._runtime.capture import capture_stderr
+from marimo._runtime.patches import patch_polars_write_json
+from marimo._runtime.runtime import Kernel
+from marimo._utils.platform import is_pyodide
+from tests._messaging.mocks import MockStream
+from tests.conftest import ExecReqProvider
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class TestMicropip:
+    @staticmethod
+    def _assert_micropip_warning_printed(message: str) -> None:
+        assert "micropip is only available in WASM notebooks" in message
+
+    @staticmethod
+    async def test_micropip_available(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        await executing_kernel.run([exec_req.get("import micropip")])
+        assert "micropip" in executing_kernel.globals
+
+    @staticmethod
+    async def test_micropip_once(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        await executing_kernel.run([exec_req.get("import sys")])
+        assert (
+            executing_kernel.globals["sys"].meta_path[-1].__class__.__name__
+            == "_MicropipFinder"
+        )
+        # Double patched at this point, barring explicit fix.
+        assert (
+            executing_kernel.globals["sys"].meta_path[-2].__class__.__name__
+            != "_MicropipFinder"
+        )
+
+    @staticmethod
+    async def test_micropip_install(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("await micropip.install('foo')"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_list(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("micropip.list()"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_freeze(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("micropip.freeze()"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_add_mock_package(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get(
+                            "micropip.add_mock_package('foo', '0.1')"
+                        ),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_list_mock_packages(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("micropip.list_mock_packages()"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_uninstall(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("micropip.uninstall('foo')"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+    @staticmethod
+    async def test_micropip_set_index_urls(
+        executing_kernel: Kernel, exec_req: ExecReqProvider
+    ) -> None:
+        if not is_pyodide():
+            with capture_stderr() as buf:
+                await executing_kernel.run(
+                    [
+                        exec_req.get("import micropip"),
+                        exec_req.get("micropip.set_index_urls('foo')"),
+                    ]
+                )
+            TestMicropip._assert_micropip_warning_printed(buf.getvalue())
+
+
+async def test_webbrowser_injection(
+    mocked_kernel: Kernel, exec_req: ExecReqProvider
+):
+    await mocked_kernel.k.run(
+        [
+            exec_req.get("""
+          import webbrowser
+          MarimoBrowser = __marimo__._runtime.marimo_browser.build_browser_fallback()
+          webbrowser.register(
+              "marimo-output", None, MarimoBrowser(), preferred=True
+          )
+          """),
+        ]
+    )
+    await mocked_kernel.k.run(
+        [
+            cell := exec_req.get("webbrowser.open('https://marimo.io');"),
+        ]
+    )
+    assert "webbrowser" in mocked_kernel.k.globals
+    outputs: list[str] = []
+    stream = MockStream(mocked_kernel.stream)
+    for msg in stream.operations:
+        if msg["op"] == "cell-op" and msg["output"] is not None:
+            outputs.append(msg["output"]["data"])
+
+    assert "<iframe" in outputs[-1]
+
+
+async def test_webbrowser_easter_egg(
+    mocked_kernel: Kernel, exec_req: ExecReqProvider
+):
+    await mocked_kernel.k.run(
+        [
+            exec_req.get("""
+          import webbrowser
+          MarimoBrowser = __marimo__._runtime.marimo_browser.build_browser_fallback()
+          webbrowser.register(
+              "marimo-output", None, MarimoBrowser(), preferred=True
+          )
+          """),
+        ]
+    )
+    await mocked_kernel.k.run(
+        [
+            cell := exec_req.get("import antigravity;"),
+        ]
+    )
+    assert "antigravity" in mocked_kernel.k.globals
+    outputs: list[str] = []
+    stream = MockStream(mocked_kernel.stream)
+    for msg in stream.operations:
+        if msg["op"] == "cell-op" and msg["output"] is not None:
+            outputs.append(msg["output"]["data"])
+
+    assert "<iframe" not in outputs[-1]
+    assert "<img" in outputs[-1]
+
+
+@pytest.mark.skipif(
+    not DependencyManager.polars.has(),
+    reason="Polars is not installed",
+)
+@patch.dict(sys.modules, {"pyodide": Mock()})
+def test_polars_write_json_patch(tmp_path: Path):
+    import polars as pl
+
+    file_path = tmp_path / "test.json"
+
+    # Make write_json throw an error
+    with patch(
+        "polars.DataFrame.write_json",
+        side_effect=ValueError("Test error"),
+    ):
+        # Test it fails
+        df = pl.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+        with pytest.raises(ValueError, match="Test error"):
+            df.write_json(file_path)
+
+        # Patch to fallback to write_csv
+        unpatch_polars_write_json = patch_polars_write_json()
+
+        expected_json = '[{"a": "1", "b": "x"}, {"a": "2", "b": "y"}]'
+
+        # Test it succeeds with file path
+        df.write_json(file_path)
+        assert file_path.read_text() == expected_json
+
+        # Test it succeeds with string path
+        df.write_json(str(file_path))
+        assert file_path.read_text() == expected_json
+
+        # Test it succeeds with buffer
+        buffer = io.StringIO()
+        df.write_json(buffer)
+        assert buffer.getvalue() == expected_json
+
+        # Test it succeeds with None
+        assert df.write_json() == expected_json
+
+        # Patch the patch
+        unpatch_polars_write_json()
+
+        # Test it fails again
+        with pytest.raises(ValueError, match="Test error"):
+            df.write_json(file_path)

@@ -1,0 +1,23 @@
+[
+  {
+    "output": "",
+    "console": [],
+    "status": "idle"
+  },
+  {
+    "output": "",
+    "console": [],
+    "status": "idle"
+  },
+  {
+    "output": [
+      {
+        "type": "ancestor-stopped",
+        "msg": "This cell wasn't run because an ancestor was stopped with `mo.stop`: ",
+        "raising_cell": "MJUe"
+      }
+    ],
+    "console": [],
+    "status": "idle"
+  }
+]

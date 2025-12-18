@@ -1,0 +1,237 @@
+/* Copyright 2024 Marimo. All rights reserved. */
+
+import { act, render, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TestUtils } from "@/__tests__/test-helpers";
+import type { UIElementId } from "@/core/cells/ids";
+import { MarimoIncomingMessageEvent } from "@/core/dom/events";
+import {
+  getDirtyFields,
+  resolveInitialValue,
+  visibleForTesting,
+} from "../AnyWidgetPlugin";
+import { Model } from "../model";
+
+const { LoadedSlot } = visibleForTesting;
+
+describe("getDirtyFields", () => {
+  it("should return empty set when values are equal", () => {
+    const value = { foo: "bar", baz: 123 };
+    const initialValue = { foo: "bar", baz: 123 };
+
+    const result = getDirtyFields(value, initialValue);
+
+    expect(result.size).toBe(0);
+  });
+
+  it("should return keys of changed values", () => {
+    const value = { foo: "changed", baz: 123 };
+    const initialValue = { foo: "bar", baz: 123 };
+
+    const result = getDirtyFields(value, initialValue);
+
+    expect(result.size).toBe(1);
+    expect(result.has("foo")).toBe(true);
+  });
+
+  it("should handle multiple changed values", () => {
+    const value = { foo: "changed", baz: 456, extra: "new" };
+    const initialValue = { foo: "bar", baz: 123, extra: "old" };
+
+    const result = getDirtyFields(value, initialValue);
+
+    expect(result.size).toBe(3);
+    expect(result.has("foo")).toBe(true);
+    expect(result.has("baz")).toBe(true);
+    expect(result.has("extra")).toBe(true);
+  });
+
+  it("should handle nested objects correctly", () => {
+    const value = { foo: "bar", nested: { a: 1, b: 2 } };
+    const initialValue = { foo: "bar", nested: { a: 1, b: 3 } };
+
+    const result = getDirtyFields(value, initialValue);
+
+    expect(result.size).toBe(1);
+    expect(result.has("nested")).toBe(true);
+  });
+
+  it("should handle subset of initial fields", () => {
+    const value = { foo: "bar", baz: 123 };
+    const initialValue = { foo: "bar", baz: 123, full: "value" };
+
+    const result = getDirtyFields(value, initialValue);
+    expect(result.size).toBe(0);
+  });
+});
+
+// Mock a minimal AnyWidget implementation
+const mockWidget = {
+  initialize: vi.fn(),
+  render: vi.fn(),
+};
+
+vi.mock("../AnyWidgetPlugin", async () => {
+  const originalModule = await vi.importActual("../AnyWidgetPlugin");
+  return {
+    ...originalModule,
+    runAnyWidgetModule: vi.fn(),
+  };
+});
+
+describe("LoadedSlot", () => {
+  const mockProps = {
+    value: { count: 0 },
+    setValue: vi.fn(),
+    widget: mockWidget,
+    functions: {
+      send_to_widget: vi.fn().mockResolvedValue(null),
+    },
+    data: {
+      jsUrl: "http://example.com/widget.js",
+      jsHash: "abc123",
+      initialValue: { count: 0 },
+    },
+    host: document.createElement("div"),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should render a div with ref", () => {
+    const { container } = render(<LoadedSlot {...mockProps} />);
+    expect(container.querySelector("div")).not.toBeNull();
+  });
+
+  it("should initialize model with merged values", () => {
+    const modelSpy = vi.spyOn(Model.prototype, "updateAndEmitDiffs");
+    render(<LoadedSlot {...mockProps} />);
+
+    expect(modelSpy).toHaveBeenCalledExactlyOnceWith({ count: 0 });
+  });
+
+  it("should update model when value prop changes", async () => {
+    const { rerender } = render(<LoadedSlot {...mockProps} />);
+    const modelSpy = vi.spyOn(Model.prototype, "updateAndEmitDiffs");
+
+    // Update the value prop
+    rerender(<LoadedSlot {...mockProps} value={{ count: 5 }} />);
+
+    // Model should be updated with the new value
+    expect(modelSpy).toHaveBeenCalledWith({ count: 5 });
+  });
+
+  it("should listen for incoming messages", async () => {
+    render(<LoadedSlot {...mockProps} />);
+
+    // Send a mock message
+    const mockMessageEvent = MarimoIncomingMessageEvent.create({
+      detail: {
+        objectId: "test-id" as UIElementId,
+        message: {
+          method: "update",
+          state: { count: 10 },
+        },
+        buffers: [],
+      },
+      bubbles: false,
+      composed: true,
+    });
+    const updateAndEmitDiffsSpy = vi.spyOn(Model.prototype, "set");
+
+    // Dispatch the event on the host element
+    act(() => {
+      mockProps.host.dispatchEvent(mockMessageEvent);
+    });
+
+    await waitFor(() => {
+      expect(updateAndEmitDiffsSpy).toHaveBeenCalledWith("count", 10);
+    });
+  });
+
+  it("should call runAnyWidgetModule on initialization", async () => {
+    const { rerender } = render(<LoadedSlot {...mockProps} />);
+
+    // Wait a render
+    await waitFor(() => {
+      expect(mockWidget.render).toHaveBeenCalled();
+    });
+
+    // Render without any prop changes
+    rerender(<LoadedSlot {...mockProps} />);
+    await TestUtils.nextTick();
+
+    // Still only called once
+    expect(mockWidget.render).toHaveBeenCalledTimes(1);
+
+    // Change the jsUrl
+    rerender(
+      <LoadedSlot
+        {...mockProps}
+        data={{
+          ...mockProps.data,
+          jsUrl: "http://example.com/widget-updated.js",
+        }}
+      />,
+    );
+    await TestUtils.nextTick();
+
+    // Wait a render
+    await waitFor(() => {
+      expect(mockWidget.render).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe("resolveInitialValue", () => {
+  it("should convert base64 strings to DataView at specified paths", () => {
+    const result = resolveInitialValue(
+      {
+        a: 10,
+        b: "aGVsbG8=", // "hello" in base64
+        c: [1, "d29ybGQ="], // "world" in base64
+        d: {
+          foo: "bWFyaW1vCg==", // "marimo" in base64
+          baz: 20,
+        },
+      },
+      [["b"], ["c", 1], ["d", "foo"]],
+    );
+
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "a": 10,
+        "b": DataView [
+          104,
+          101,
+          108,
+          108,
+          111,
+        ],
+        "c": [
+          1,
+          DataView [
+            119,
+            111,
+            114,
+            108,
+            100,
+          ],
+        ],
+        "d": {
+          "baz": 20,
+          "foo": DataView [
+            109,
+            97,
+            114,
+            105,
+            109,
+            111,
+            10,
+          ],
+        },
+      }
+    `);
+  });
+});
