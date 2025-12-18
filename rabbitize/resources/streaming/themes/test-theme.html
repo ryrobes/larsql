@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Theme Test</title>
+    <link rel="stylesheet" href="theme-variables.css">
+    <link rel="stylesheet" href="theme-styles.css">
+    <style>
+        body {
+            background: var(--bg-base);
+            color: var(--text-primary);
+            padding: 20px;
+            font-family: sans-serif;
+        }
+        
+        .test-box {
+            border: 2px solid var(--color-primary);
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .color-test {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .color-block {
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-base);
+        }
+    </style>
+</head>
+<body>
+    <h1>Theme System Test</h1>
+    
+    <div class="test-box">
+        <p>Current theme: <span id="current-theme">unknown</span></p>
+        <p>Theme attribute: <span id="theme-attr">none</span></p>
+    </div>
+    
+    <div class="color-test">
+        <div class="color-block" style="background: var(--color-primary)">Primary</div>
+        <div class="color-block" style="background: var(--color-secondary)">Secondary</div>
+        <div class="color-block" style="background: var(--color-accent)">Accent</div>
+    </div>
+    
+    <button onclick="setTheme('cyberpunk')">Cyberpunk</button>
+    <button onclick="setTheme('github-dark')">GitHub Dark</button>
+    <button onclick="setTheme('matrix')">Matrix</button>
+    <button onclick="setTheme('synthwave')">Synthwave</button>
+    <button onclick="setTheme('ocean')">Ocean</button>
+    
+    <script>
+        function updateDisplay() {
+            const theme = localStorage.getItem('rabbitize-theme') || 'none';
+            const attr = document.documentElement.getAttribute('data-theme') || 'none';
+            document.getElementById('current-theme').textContent = theme;
+            document.getElementById('theme-attr').textContent = attr;
+        }
+        
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('rabbitize-theme', theme);
+            updateDisplay();
+        }
+        
+        // Initial display
+        updateDisplay();
+        
+        // Check if theme loads from storage
+        const savedTheme = localStorage.getItem('rabbitize-theme');
+        if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+        
+        updateDisplay();
+    </script>
+</body>
+</html>

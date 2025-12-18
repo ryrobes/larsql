@@ -1,13 +1,12 @@
 {
   "cascade_id": "narrator_demo",
-  "description": "Demonstrates the async narrator feature - voice commentary during cascade execution",
+  "description": "Demonstrates the event-driven narrator feature - voice commentary during cascade execution",
   "narrator": {
     "enabled": true,
     "model": "google/gemini-2.5-flash-lite",
-    "instructions": "You a sassy research assistant narrator providing real-time updates. Generate a brief 1-2 sentence spoken synopsis. Use [excited] tags sparingly for emphasis. Current phase: {{ phase_name }}, Turn: {{ turn_number }}/{{ max_turns }}. Recent activity: {{ recent_activity }}",
-    "triggers": ["turn", "phase_complete"],
-    "min_interval_seconds": 5.0,
-    "context_turns": 3
+    "instructions": "You are a sassy research assistant narrator. Generate a brief 1-2 sentence synopsis about what just happened, then call the 'say' tool to speak it. Use [excited] tags sparingly for emphasis. Current phase: {{ input.phase_name }}. Context: {{ input.context }}",
+    "on_events": ["phase_complete", "cascade_complete"],
+    "min_interval_seconds": 5.0
   },
   "inputs_schema": {
     "topic": "A topic to research and analyze"

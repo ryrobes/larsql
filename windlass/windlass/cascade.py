@@ -127,6 +127,35 @@ class HumanSoundingEvalConfig(BaseModel):
 
 # ===== Core Configuration Models =====
 
+class BrowserConfig(BaseModel):
+    """
+    Configuration for browser automation in a phase.
+
+    When a phase has browser config, Windlass will:
+    1. Spawn a dedicated Rabbitize subprocess on an available port
+    2. Initialize the browser and navigate to the specified URL
+    3. Inject browser tools (rabbitize_execute, etc.) into the phase
+    4. Clean up the browser session when the phase completes
+
+    Usage:
+        {
+            "name": "navigate_site",
+            "browser": {
+                "url": "https://example.com",
+                "stability_detection": true
+            },
+            "instructions": "Find the pricing page",
+            "tackle": ["rabbitize_execute"]
+        }
+    """
+    url: str  # Starting URL (supports Jinja2 templating: {{ input.url }})
+    stability_detection: bool = False  # Wait for page idle after commands
+    stability_wait: float = 3.0  # Seconds to wait for stability
+    show_overlay: bool = True  # Show command overlay in video recordings
+    inject_dom_coords: bool = False  # Auto-add DOM coordinates to context
+    auto_screenshot_context: bool = True  # Include screenshots in LLM context
+
+
 class RuleConfig(BaseModel):
     max_turns: Optional[int] = None
     max_attempts: Optional[int] = None
@@ -356,20 +385,26 @@ class AudibleConfig(BaseModel):
 
 class NarratorConfig(BaseModel):
     """
-    Configuration for async voice narrator during cascade execution.
+    Configuration for event-driven voice narrator during cascade execution.
 
-    The narrator generates spoken synopses of cascade activity without blocking
-    the main execution flow. It gathers recent context (messages, tool calls)
-    and uses the 'say' tool to provide real-time audio commentary.
+    The narrator subscribes to cascade events and spawns background narrator
+    cascades that use the 'say' tool to provide real-time audio commentary.
+    The LLM in the narrator cascade decides how to format text for speech,
+    including ElevenLabs v3 tags like [excited], [curious], etc.
 
-    All narrator costs (LLM + TTS) are charged to the parent session for tracking.
+    Key features:
+    - Event-driven: Subscribes to phase/cascade events
+    - Singleton: Only one narrator runs at a time per session (no audio overlap)
+    - Latest-wins: If events queue up, only the most recent is processed (no stale audio)
+    - LLM-formatted speech: The narrator cascade uses 'say' as a tool
+    - Proper logging: All narrator activity tracked in unified_logs
 
     Usage (cascade-level):
     {
         "narrator": {
             "enabled": true,
-            "instructions": "You are an enthusiastic narrator. Summarize activity in 2-3 sentences.",
-            "triggers": ["turn", "phase_complete"]
+            "instructions": "You are an enthusiastic narrator. Summarize in 2-3 sentences, then call say().",
+            "on_events": ["phase_complete", "cascade_complete"]
         }
     }
 
@@ -379,20 +414,40 @@ class NarratorConfig(BaseModel):
             "name": "research",
             "narrator": {
                 "enabled": true,
-                "instructions": "Technical update: {{ phase_name }} is processing..."
+                "instructions": "Technical update for {{ phase_name }}... then call say()."
             }
         }]
     }
     """
     enabled: bool = True
     model: Optional[str] = None  # Model for synopsis generation (defaults to cheap/fast model)
-    instructions: Optional[str] = None  # Jinja2 template for narration style
-    voice_id: Optional[str] = None  # ElevenLabs voice override
-    triggers: List[Literal["turn", "phase_start", "phase_complete", "tool_call"]] = Field(
-        default_factory=lambda: ["phase_complete"]
+    instructions: Optional[str] = None  # Jinja2 template for narrator cascade instructions
+    voice_id: Optional[str] = None  # ElevenLabs voice override (not yet implemented)
+    cascade: Optional[str] = None  # Path to custom narrator cascade (uses built-in if not specified)
+
+    # Events to narrate on - renamed from "triggers" for clarity
+    # Valid values: "turn", "phase_start", "phase_complete", "tool_call", "cascade_complete"
+    on_events: Optional[List[Literal["turn", "phase_start", "phase_complete", "tool_call", "cascade_complete"]]] = None
+
+    # Backwards compatibility: 'triggers' is an alias for 'on_events'
+    triggers: Optional[List[Literal["turn", "phase_start", "phase_complete", "tool_call"]]] = Field(
+        default=None,
+        description="DEPRECATED: Use 'on_events' instead. Kept for backwards compatibility."
     )
-    context_turns: int = 3  # How many recent turns to include in context
+
     min_interval_seconds: float = 10.0  # Minimum gap between narrations (debounce)
+
+    # Legacy field - no longer used but kept for backwards compatibility
+    context_turns: int = 3
+
+    @property
+    def effective_on_events(self) -> List[str]:
+        """Get the effective list of events to narrate on."""
+        if self.on_events:
+            return list(self.on_events)
+        if self.triggers:
+            return list(self.triggers)
+        return ["phase_complete"]  # Default
 
 
 # ===== Decision Point Configuration (Dynamic HITL) =====
@@ -685,6 +740,11 @@ class PhaseConfig(BaseModel):
     # Generates spoken synopses of phase activity without blocking execution
     # Use bool to enable/disable (inherits cascade config), or NarratorConfig for override
     narrator: Optional[Union[bool, NarratorConfig]] = None
+
+    # Browser automation configuration
+    # When set, Windlass spawns a dedicated Rabbitize browser subprocess for this phase
+    # The browser lifecycle is tied to the phase - starts on phase start, ends on phase end
+    browser: Optional[BrowserConfig] = None
 
     def is_deterministic(self) -> bool:
         """Check if this phase is deterministic (tool-based) vs LLM-based."""

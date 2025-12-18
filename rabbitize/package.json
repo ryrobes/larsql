@@ -1,0 +1,61 @@
+{
+  "name": "windlass-rabbitize",
+  "version": "0.2.0",
+  "description": "Embedded browser automation server for Windlass - forked from Rabbitize",
+  "main": "src/index.js",
+  "bin": {
+    "windlass-rabbitize": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "postinstall": "playwright install chromium",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "windlass",
+    "browser-automation",
+    "playwright",
+    "headless-browser",
+    "llm-tools",
+    "ai-automation"
+  ],
+  "author": {
+    "name": "Ryan Robitaille",
+    "email": "ryan.robitaille@gmail.com",
+    "url": "https://ryrob.es"
+  },
+  "contributors": [
+    {
+      "name": "Original Rabbitize",
+      "url": "https://github.com/ryrobes/rabbitize"
+    }
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryrobes/windlass.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "express": "^4.18.2",
+    "figlet": "^1.8.0",
+    "node-fetch": "^2.7.0",
+    "pidusage": "^3.0.2",
+    "pixelmatch": "^6.0.0",
+    "playwright": "^1.41.0",
+    "sharp": "^0.33.5",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "get-port": "^7.1.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}

@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RABBITIZE /// FLOW BUILDER</title>
+    <link rel="stylesheet" href="/resources/streaming/cyberpunk.css">
+    <link rel="stylesheet" href="/resources/streaming/flow-builder.css">
+    <link rel="icon" type="image/x-icon" href="/resources/streaming/favicon.png">
+    <!-- Monaco Editor -->
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/editor/editor.main.min.css">
+</head>
+<body>
+    <div class="flow-builder-container">
+        <!-- Header -->
+        <div class="flow-header">
+            <a href="/streaming" class="back-to-dashboard">← Back to Dashboard</a>
+            <h1 class="glitch" data-text="FLOW BUILDER">FLOW BUILDER</h1>
+            <div class="subtitle">INTERACTIVE BROWSER AUTOMATION DESIGNER</div>
+        </div>
+
+        <div class="flow-main">
+            <!-- Browser Window -->
+            <div class="browser-window">
+                <!-- Chrome-like Navigation Bar -->
+                <div class="browser-nav">
+                    <div class="nav-buttons">
+                        <button class="nav-btn" id="back-btn" disabled title="Back">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 12H5M12 19l-7-7 7-7"/>
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="forward-btn" disabled title="Forward">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 12h14M12 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="refresh-btn" disabled title="Refresh">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="url-bar-container">
+                        <input type="text" id="url-input" class="url-bar" placeholder="Enter URL and press Enter to start..." />
+                        <div class="url-status" id="url-status">
+                            <span class="status-icon">🔒</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Browser Viewport -->
+                <div class="browser-viewport" id="browser-viewport">
+                    <div class="browser-viewport-inner">
+                        <div class="viewport-placeholder" id="viewport-placeholder">
+                            <div class="placeholder-content">
+                                <!-- <div class="placeholder-icon">🚀</div> -->
+                                 <img src="/resources/streaming/images/rabbitize-masks.png" style="opacity: 0.22; height: 30vh;"/>
+                                <h2>Ready to Build Your Flow</h2>
+                                <p>Enter a URL above and press Enter to start</p>
+                            </div>
+                        </div>
+                        <!-- Stream will be inserted here -->
+                        <img id="browser-stream" class="browser-stream" style="display: none;" />
+                        <!-- Click overlay for coordinate capture -->
+                        <div id="click-overlay" class="click-overlay" style="display: none;">
+                            <div id="cursor-indicator" class="cursor-indicator"></div>
+                            <div id="position-marker" class="position-marker"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Command Palette -->
+            <div class="command-palette">
+                <div class="palette-header">
+                    <h3>COMMAND PALETTE</h3>
+                    <div class="coordinates" id="coordinates">X: 0, Y: 0</div>
+                </div>
+
+                <div class="command-categories">
+                    <!-- Navigation -->
+                    <div class="command-category">
+                        <h4>Navigation</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="back" disabled>← Back</button>
+                            <button class="cmd-btn" data-command="forward" disabled>→ Forward</button>
+                            <button class="cmd-btn" data-command="url" disabled>📍 Get URL</button>
+                        </div>
+                    </div>
+
+                    <!-- Mouse Actions -->
+                    <div class="command-category">
+                        <h4>Mouse Actions</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="click" disabled>🖱️ Click</button>
+                            <button class="cmd-btn" data-command="move-click" disabled>↗️🖱️ Move + Click</button>
+                            <button class="cmd-btn" data-command="right-click" disabled>🖱️ Right Click</button>
+                            <button class="cmd-btn" data-command="move-mouse" disabled>↗️ Move Mouse</button>
+                        </div>
+                    </div>
+
+                    <!-- Drag Actions -->
+                    <div class="command-category">
+                        <h4>Drag & Drop</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="mouse-down" data-toggle="mouse-up" disabled>🖱️↓ Mouse Down</button>
+                            <button class="cmd-btn" data-command="mouse-up" data-toggle="mouse-down" style="display: none;" disabled>🖱️↑ Mouse Up</button>
+                        </div>
+                    </div>
+
+                    <!-- Scrolling -->
+                    <div class="command-category">
+                        <h4>Scrolling</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="scroll-up" disabled>⬆️ Scroll Up</button>
+                            <button class="cmd-btn" data-command="scroll-down" disabled>⬇️ Scroll Down</button>
+                        </div>
+                    </div>
+
+                    <!-- Input -->
+                    <div class="command-category">
+                        <h4>Input</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="type" disabled>⌨️ Type Text</button>
+                            <button class="cmd-btn" data-command="key" disabled>⌨️ Key Press</button>
+                            <button class="cmd-btn" data-command="clear" disabled>🗑️ Clear Field</button>
+                        </div>
+                    </div>
+
+                    <!-- File Handling -->
+                    <div class="command-category">
+                        <h4>File Handling</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="set-upload-file" disabled>📤 Set Upload File</button>
+                            <button class="cmd-btn" data-command="set-download-path" disabled>📥 Set Download Path</button>
+                        </div>
+                    </div>
+
+                    <!-- Timing -->
+                    <div class="command-category">
+                        <h4>Timing</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="wait" disabled>⏱️ Wait</button>
+                        </div>
+                    </div>
+
+                    <!-- Advanced -->
+                    <div class="command-category">
+                        <h4>Advanced</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn" data-command="screenshot" disabled>📷 Screenshot</button>
+                            <button class="cmd-btn" data-command="viewport" disabled>📐 Set Viewport</button>
+                        </div>
+                    </div>
+
+                    <!-- Session Control -->
+                    <div class="command-category">
+                        <h4>Session Control</h4>
+                        <div class="command-buttons">
+                            <button class="cmd-btn session-btn" id="end-session-btn" disabled>🛑 End Session</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Command Editor Sidebar -->
+        <div class="command-editor">
+            <div class="editor-header">
+                <!-- <h3>FLOW EDITOR</h3> -->
+                <div class="editor-actions">
+                    <button class="editor-btn" id="replay-flow" title="Replay entire flow">Replay</button>
+                    <button class="editor-btn" id="export-menu" title="Export options">Export</button>
+                    <button class="editor-btn" id="clear-editor" title="Clear editor">Clear</button>
+                </div>
+            </div>
+            <div id="monaco-editor" class="monaco-container">
+                <!-- Monaco editor will be initialized here -->
+            </div>
+            <div class="editor-footer">
+                <div class="editor-status" id="editor-status">Ready</div>
+            </div>
+            <!-- Export dropdown -->
+            <div id="export-dropdown" class="export-dropdown" style="display: none;">
+                <button class="export-option" id="export-json">Copy as JSON</button>
+                <button class="export-option" id="export-cli">Copy as CLI</button>
+                <button class="export-option" id="export-curl">Copy as cURL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Parameter Input Modal -->
+    <div id="param-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="param-modal-title">Enter Parameter</h3>
+                <span class="close" onclick="closeParamModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="param-inputs">
+                    <!-- Dynamic inputs will be inserted here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeParamModal()">Cancel</button>
+                <button class="modal-btn confirm" onclick="confirmParamModal()">Execute</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monaco Editor Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+    </script>
+
+    <script>
+        // Configuration
+        const PORT = {{PORT}};
+        let FLOW_TEST_ID = '{{FLOW_TEST_ID}}';
+        const CLIENT_ID = 'flow-builder';
+
+        // State
+        let sessionActive = false;
+        let sessionId = null;
+        let sessionPort = PORT; // Start with main port, will change for spawned sessions
+        let lastCoordinates = { x: 0, y: 0 };
+        let streamConnected = false;
+        let pendingCommand = null;
+        let isExecuting = false;
+        let isReplaying = false; // Flag to prevent infinite loop during replay
+        let editor = null; // Monaco editor instance
+        let commandHistory = [];
+        let spawnedSessionId = null; // Track spawned session for cleanup
+
+        // Elements
+        const urlInput = document.getElementById('url-input');
+        const browserStream = document.getElementById('browser-stream');
+        const viewportPlaceholder = document.getElementById('viewport-placeholder');
+        const clickOverlay = document.getElementById('click-overlay');
+        const cursorIndicator = document.getElementById('cursor-indicator');
+        const coordinatesDisplay = document.getElementById('coordinates');
+        const positionMarker = document.getElementById('position-marker');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            updateUI();
+            initializeMonacoEditor();
+            // Delay session check to ensure Monaco is ready
+            setTimeout(() => {
+                checkForExistingSession();
+            }, 500);
+        });
+        
+        // Listen for storage changes from other tabs
+        window.addEventListener('storage', (e) => {
+            if (e.key === STORAGE_KEY) {
+                if (e.newValue && !sessionActive) {
+                    // Another tab started a session
+                    const otherTabState = JSON.parse(e.newValue);
+                    if (otherTabState.sessionActive) {
+                        console.log('Flow Builder session started in another tab');
+                    }
+                } else if (!e.newValue && sessionActive) {
+                    // Another tab cleared the session
+                    console.log('Session was ended in another tab');
+                }
+            }
+        });
+
+        // Note: We don't need cleanup on unload - spawned processes handle their own lifecycle
+
+        // State Management Functions
+        const STORAGE_KEY = 'rabbitize-flow-builder-state';
+        
+        function saveFlowBuilderState() {
+            if (!sessionActive) {
+                console.log('Not saving state - session not active');
+                return;
+            }
+            
+            // Extract just the commands from the history (not the wrapper objects)
+            const commands = commandHistory
+                .filter(item => item.command && (item.command.url || Array.isArray(item.command)))
+                .map(item => {
+                    if (item.command.url) {
+                        return [":navigate", item.command.url];
+                    }
+                    return item.command;
+                });
+            
+            const state = {
+                sessionActive,
+                sessionId,
+                sessionPort,
+                spawnedSessionId,
+                url: urlInput.value,
+                lastCoordinates,
+                commands, // Save clean command array
+                editorContent: editor ? editor.getValue() : null,
+                timestamp: Date.now(),
+                clientId: CLIENT_ID,
+                testId: FLOW_TEST_ID
+            };
+            
+            console.log('Saving Flow Builder state:', {
+                sessionPort: state.sessionPort,
+                commandCount: commands.length,
+                url: state.url
+            });
+            
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                console.log('State saved successfully');
+            } catch (error) {
+                console.error('Failed to save Flow Builder state:', error);
+            }
+        }
+        
+        function loadFlowBuilderState() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved) return null;
+                
+                const state = JSON.parse(saved);
+                
+                // Check if state is too old (>1 hour)
+                if (Date.now() - state.timestamp > 3600000) {
+                    clearFlowBuilderState();
+                    return null;
+                }
+                
+                return state;
+            } catch (error) {
+                console.error('Failed to load Flow Builder state:', error);
+                return null;
+            }
+        }
+        
+        function clearFlowBuilderState() {
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (error) {
+                console.error('Failed to clear Flow Builder state:', error);
+            }
+        }
+        
+        async function checkForExistingSession() {
+            console.log('Checking for existing Flow Builder session...');
+            const savedState = loadFlowBuilderState();
+            console.log('Loaded state:', savedState);
+            
+            if (!savedState || !savedState.sessionActive) {
+                console.log('No active session found in localStorage');
+                return;
+            }
+            
+            // Check if the saved session is still valid by attempting to reach it
+            try {
+                console.log(`Checking if session on port ${savedState.sessionPort} is still active...`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1000);
+                
+                const response = await fetch(`http://${window.location.hostname}:${savedState.sessionPort}/status`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    // Session is still active, silently reconnect
+                    console.log('Session is still active! Reconnecting...');
+                    await reconnectToSession(savedState);
+                } else {
+                    // Session is not responding, clear state
+                    console.log('Session not responding, clearing state');
+                    clearFlowBuilderState();
+                }
+            } catch (error) {
+                // Session is not reachable, clear state silently
+                console.log('Error checking session:', error.message);
+                clearFlowBuilderState();
+            }
+        }
+        
+        async function reconnectToSession(savedState) {
+            try {
+                console.log('Starting reconnection process...');
+                
+                // Restore the original test ID!
+                if (savedState.testId) {
+                    FLOW_TEST_ID = savedState.testId;
+                    console.log('Restored original test ID:', FLOW_TEST_ID);
+                }
+                
+                // Restore state variables
+                sessionActive = true;
+                sessionId = savedState.sessionId;
+                sessionPort = savedState.sessionPort;
+                spawnedSessionId = savedState.spawnedSessionId;
+                lastCoordinates = savedState.lastCoordinates || { x: 0, y: 0 };
+                streamConnected = false; // Will be set to true when stream connects
+                
+                // Rebuild command history from saved commands
+                commandHistory = [];
+                if (savedState.commands && Array.isArray(savedState.commands)) {
+                    // Add navigate command first if it exists
+                    const navigateCmd = savedState.commands.find(cmd => cmd[0] === ':navigate');
+                    if (navigateCmd) {
+                        commandHistory.push({
+                            type: 'start',
+                            command: { url: navigateCmd[1] },
+                            timestamp: savedState.timestamp
+                        });
+                    }
+                    
+                    // Add all other commands
+                    savedState.commands.forEach(cmd => {
+                        if (cmd[0] !== ':navigate') {
+                            commandHistory.push({
+                                type: cmd[0].replace(':', ''),
+                                command: cmd,
+                                timestamp: savedState.timestamp
+                            });
+                        }
+                    });
+                }
+                
+                // Restore UI
+                urlInput.value = savedState.url;
+                urlInput.disabled = true;
+                
+                // Restore editor content - use saved commands
+                if (savedState.commands) {
+                    const jsonContent = JSON.stringify(savedState.commands, null, 2);
+                    // Wait for editor to be ready
+                    const setEditorContent = () => {
+                        if (editor) {
+                            editor.setValue(jsonContent);
+                        } else {
+                            // Try again in 100ms
+                            setTimeout(setEditorContent, 100);
+                        }
+                    };
+                    setEditorContent();
+                }
+                
+                // Update UI first
+                updateUI();
+                
+                // Reconnect to stream with a small delay to ensure process is ready
+                setTimeout(() => {
+                    connectToStream();
+                }, 500);
+                
+                // Update coordinates display if we have saved coordinates
+                if (lastCoordinates.x !== 0 || lastCoordinates.y !== 0) {
+                    coordinatesDisplay.textContent = `X: ${lastCoordinates.x}, Y: ${lastCoordinates.y}`;
+                    // Show position marker if we have coordinates
+                    positionMarker.style.display = 'block';
+                }
+                
+                console.log('Successfully reconnected to Flow Builder session');
+                console.log('Session port:', sessionPort);
+                console.log('Session ID:', sessionId);
+                console.log('Spawned Session ID:', spawnedSessionId);
+                console.log('Restored', commandHistory.length, 'commands');
+            } catch (error) {
+                console.error('Failed to reconnect to session:', error);
+                clearFlowBuilderState();
+                
+                // Reset to clean state
+                sessionActive = false;
+                sessionId = null;
+                sessionPort = PORT;
+                spawnedSessionId = null;
+                urlInput.disabled = false;
+                updateUI();
+            }
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // URL input
+            urlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !sessionActive) {
+                    startSession();
+                }
+            });
+
+            // Click overlay
+            clickOverlay.addEventListener('click', handleViewportClick);
+            clickOverlay.addEventListener('mousemove', handleViewportMouseMove);
+
+            // Command buttons
+            document.querySelectorAll('.cmd-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const command = btn.dataset.command;
+
+                    // Handle toggle buttons (mouse-down/mouse-up)
+                    if (btn.dataset.toggle) {
+                        const toggleCommand = btn.dataset.toggle;
+                        const toggleBtn = document.querySelector(`[data-command="${toggleCommand}"]`);
+                        if (toggleBtn) {
+                            btn.style.display = 'none';
+                            toggleBtn.style.display = 'inline-block';
+                        }
+                    }
+
+                    executeCommand(command);
+                });
+            });
+
+            // Session control
+            document.getElementById('end-session-btn').addEventListener('click', endSession);
+
+            // Editor buttons
+            document.getElementById('replay-flow').addEventListener('click', replayFlow);
+            document.getElementById('clear-editor').addEventListener('click', clearEditor);
+            document.getElementById('export-menu').addEventListener('click', toggleExportMenu);
+
+            // Export options
+            document.getElementById('export-json').addEventListener('click', exportAsJSON);
+            document.getElementById('export-cli').addEventListener('click', exportAsCLI);
+            document.getElementById('export-curl').addEventListener('click', exportAsCURL);
+
+            // Close export menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#export-menu') && !e.target.closest('#export-dropdown')) {
+                    document.getElementById('export-dropdown').style.display = 'none';
+                }
+            });
+
+            // Navigation buttons
+            document.getElementById('back-btn').addEventListener('click', () => executeCommand('back'));
+            document.getElementById('forward-btn').addEventListener('click', () => executeCommand('forward'));
+            document.getElementById('refresh-btn').addEventListener('click', () => window.location.reload());
+
+            // Modal keyboard support
+            document.getElementById('param-modal').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    // Don't submit on Enter in textarea
+                    if (e.target.tagName !== 'TEXTAREA') {
+                        e.preventDefault();
+                        confirmParamModal();
+                    }
+                } else if (e.key === 'Escape') {
+                    closeParamModal();
+                }
+            });
+        }
+
+        // Session Management
+        async function startSession() {
+            let url = urlInput.value.trim();
+            if (!url) return;
+
+            // Normalize URL - add https:// if no protocol specified
+            if (!url.match(/^https?:\/\//i)) {
+                url = 'https://' + url;
+                urlInput.value = url;
+            }
+            
+            // Check if there's an existing session and clean it up silently
+            const existingState = loadFlowBuilderState();
+            if (existingState && existingState.sessionActive) {
+                // Try to end the existing session
+                try {
+                    await fetch(`http://${window.location.hostname}:${existingState.sessionPort}/end`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                } catch (error) {
+                    console.error('Failed to end existing session:', error);
+                }
+                
+                clearFlowBuilderState();
+            }
+
+            try {
+                // Note: We don't kill existing sessions - they'll clean themselves up
+
+                // Spawn a new isolated session
+                const response = await fetch(`http://${window.location.hostname}:${PORT}/spawn-session`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: url,
+                        clientId: CLIENT_ID,
+                        testId: FLOW_TEST_ID
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to spawn session');
+
+                const result = await response.json();
+                spawnedSessionId = result.sessionId;
+                sessionPort = result.port;
+
+                // Wait for the spawned process to be ready
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Now start the session on the spawned process
+                const startResponse = await fetch(`http://${window.location.hostname}:${sessionPort}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: url,
+                        clientId: CLIENT_ID,
+                        testId: FLOW_TEST_ID
+                    })
+                });
+
+                if (!startResponse.ok) throw new Error('Failed to start session on spawned process');
+
+                const startResult = await startResponse.json();
+                sessionId = startResult.sessionId;
+                sessionActive = true;
+
+                // Add to history
+                addToHistory('start', { url });
+
+                // Connect to stream
+                connectToStream();
+
+                // Update UI
+                updateUI();
+                urlInput.disabled = true;
+                
+                // Save state after successful session start
+                saveFlowBuilderState();
+
+            } catch (error) {
+                console.error('Failed to start session:', error);
+                alert('Failed to start session: ' + error.message);
+            }
+        }
+
+        async function endSession() {
+            if (!sessionActive) return;
+
+            try {
+                // End the session on the spawned process
+                await fetch(`http://${window.location.hostname}:${sessionPort}/end`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                // The spawned process will handle its own cleanup and exit
+                // We just need to clean up our state
+                sessionActive = false;
+                sessionId = null;
+                streamConnected = false;
+                sessionPort = PORT; // Reset to main port
+                spawnedSessionId = null;
+
+                // Reset UI
+                browserStream.style.display = 'none';
+                viewportPlaceholder.style.display = 'flex';
+                clickOverlay.style.display = 'none';
+                urlInput.disabled = false;
+                urlInput.value = '';
+
+                updateUI();
+                
+                // Clear saved state
+                clearFlowBuilderState();
+
+                // Redirect to dashboard after ending session
+                setTimeout(() => {
+                    window.location.href = '/streaming';
+                }, 500);
+
+            } catch (error) {
+                console.error('Failed to end session:', error);
+            }
+        }
+
+
+        // Stream Connection
+        function connectToStream() {
+            if (!sessionActive || !sessionId) {
+                console.log('Cannot connect to stream - no active session');
+                return;
+            }
+
+            console.log(`Connecting to stream on port ${sessionPort}...`);
+            
+            // Force a fresh connection with unique ID and timestamp
+            const uniqueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const streamUrl = `http://${window.location.hostname}:${sessionPort}/stream/${CLIENT_ID}/${FLOW_TEST_ID}/${sessionId}?cid=flow-builder-${uniqueId}&t=${Date.now()}`;
+
+            // Clear any existing stream first
+            if (browserStream.src) {
+                console.log('Clearing existing stream...');
+                browserStream.src = '';
+            }
+            
+            // Immediately show stream elements for reconnection
+            browserStream.style.display = 'block';
+            viewportPlaceholder.style.display = 'none';
+            clickOverlay.style.display = 'block';
+            
+            // Set new stream URL
+            console.log('Setting stream URL:', streamUrl);
+            browserStream.src = streamUrl;
+            
+            // Also handle the 'load' event for mJPEG streams
+            const handleStreamReady = () => {
+                streamConnected = true;
+                console.log('Stream connected successfully');
+                
+                // Make sure stream is visible
+                browserStream.style.display = 'block';
+                viewportPlaceholder.style.display = 'none';
+                clickOverlay.style.display = 'block';
+
+                // Ensure the overlay matches the image size
+                setTimeout(() => {
+                    resizeOverlay();
+                }, 100);
+
+                updateUI();
+            };
+            
+            browserStream.onload = handleStreamReady;
+            
+            // For mJPEG streams, the load event might not fire, so also check after a delay
+            setTimeout(() => {
+                if (!streamConnected && browserStream.src && browserStream.naturalWidth > 0) {
+                    console.log('Stream appears ready (naturalWidth check)');
+                    handleStreamReady();
+                }
+            }, 1000);
+
+            browserStream.onerror = (e) => {
+                console.error('Stream error:', e);
+                console.error('Failed to connect to stream, retrying...');
+                // Hide elements on error
+                browserStream.style.display = 'none';
+                viewportPlaceholder.style.display = 'flex';
+                clickOverlay.style.display = 'none';
+                setTimeout(connectToStream, 1000); // Retry
+            };
+        }
+
+        // Coordinate Handling
+        function handleViewportClick(e) {
+            // Get the actual image dimensions for accurate coordinate calculation
+            const imgRect = browserStream.getBoundingClientRect();
+            const x = e.clientX - imgRect.left;
+            const y = e.clientY - imgRect.top;
+
+            // Calculate actual coordinates (1920x1080)
+            const actualCoords = getActualCoordinates(x, y, imgRect.width, imgRect.height);
+            lastCoordinates = actualCoords;
+
+            // Show visual feedback relative to the image
+            const overlayRect = clickOverlay.getBoundingClientRect();
+            const visualX = e.clientX - overlayRect.left;
+            const visualY = e.clientY - overlayRect.top;
+
+            cursorIndicator.style.left = visualX + 'px';
+            cursorIndicator.style.top = visualY + 'px';
+            cursorIndicator.classList.add('pulse');
+            setTimeout(() => cursorIndicator.classList.remove('pulse'), 300);
+
+            // Update position marker
+            positionMarker.style.left = visualX + 'px';
+            positionMarker.style.top = visualY + 'px';
+            positionMarker.style.display = 'block';
+
+            // Update display
+            updateCoordinatesDisplay();
+        }
+
+        function handleViewportMouseMove(e) {
+            // Get the actual image dimensions
+            const imgRect = browserStream.getBoundingClientRect();
+            const x = e.clientX - imgRect.left;
+            const y = e.clientY - imgRect.top;
+
+            // Only calculate coordinates if mouse is over the image
+            if (x >= 0 && x <= imgRect.width && y >= 0 && y <= imgRect.height) {
+                const actualCoords = getActualCoordinates(x, y, imgRect.width, imgRect.height);
+                coordinatesDisplay.textContent = `X: ${actualCoords.x}, Y: ${actualCoords.y}`;
+            }
+        }
+
+        function getActualCoordinates(clickX, clickY, displayWidth, displayHeight) {
+            // Prevent division by zero
+            if (!displayWidth || !displayHeight || displayWidth === 0 || displayHeight === 0) {
+                return { x: 0, y: 0 };
+            }
+            
+            const actualWidth = 1920;
+            const actualHeight = 1080;
+
+            const scaleX = actualWidth / displayWidth;
+            const scaleY = actualHeight / displayHeight;
+
+            // Ensure finite values
+            const x = Math.round(clickX * scaleX);
+            const y = Math.round(clickY * scaleY);
+            
+            return {
+                x: isFinite(x) ? x : 0,
+                y: isFinite(y) ? y : 0
+            };
+        }
+
+        function updateCoordinatesDisplay() {
+            coordinatesDisplay.textContent = `X: ${lastCoordinates.x}, Y: ${lastCoordinates.y}`;
+        }
+
+        // Resize overlay to match stream
+        function resizeOverlay() {
+            // Make sure browserStream has dimensions before calculating
+            if (!browserStream || browserStream.width === 0 || browserStream.height === 0) {
+                console.log('Browser stream not ready for resize');
+                return;
+            }
+            
+            const imgRect = browserStream.getBoundingClientRect();
+            const parentRect = browserStream.parentElement.getBoundingClientRect();
+
+            // Position overlay exactly over the image
+            clickOverlay.style.width = imgRect.width + 'px';
+            clickOverlay.style.height = imgRect.height + 'px';
+            clickOverlay.style.left = (imgRect.left - parentRect.left) + 'px';
+            clickOverlay.style.top = (imgRect.top - parentRect.top) + 'px';
+
+            // Recalculate position marker if it exists
+            if (positionMarker.style.display === 'block' && lastCoordinates.x !== 0) {
+                const scaleX = imgRect.width / 1920;
+                const scaleY = imgRect.height / 1080;
+                if (isFinite(scaleX) && isFinite(scaleY)) {
+                    positionMarker.style.left = (lastCoordinates.x * scaleX) + 'px';
+                    positionMarker.style.top = (lastCoordinates.y * scaleY) + 'px';
+                }
+            }
+        }
+
+        // Add resize listener
+        window.addEventListener('resize', () => {
+            if (streamConnected) {
+                resizeOverlay();
+            }
+        });
+
+        // Parameter Modal Functions
+        function showParamModal(commandType, params) {
+            pendingCommand = { type: commandType, params: params };
+            const modal = document.getElementById('param-modal');
+            const title = document.getElementById('param-modal-title');
+            const inputs = document.getElementById('param-inputs');
+
+            // Set title based on command
+            const titles = {
+                'type': 'Type Text',
+                'key': 'Press Key',
+                'wait': 'Wait Duration',
+                'viewport': 'Set Viewport Size',
+                'clear': 'Clear Field',
+                'set-upload-file': 'Set Upload File',
+                'set-download-path': 'Set Download Path'
+            };
+            title.textContent = titles[commandType] || 'Enter Parameters';
+
+            // Build inputs based on command
+            let inputsHTML = '';
+            switch(commandType) {
+                case 'type':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Text to Type</label>
+                            <textarea id="param-text" rows="3" placeholder="Enter text to type..." autofocus></textarea>
+                            <div class="input-hint">The text will be typed character by character</div>
+                        </div>
+                    `;
+                    break;
+                case 'key':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Key to Press</label>
+                            <select id="param-key">
+                                <option value="Enter">Enter</option>
+                                <option value="Tab">Tab</option>
+                                <option value="Escape">Escape</option>
+                                <option value="Backspace">Backspace</option>
+                                <option value="Delete">Delete</option>
+                                <option value="ArrowUp">Arrow Up</option>
+                                <option value="ArrowDown">Arrow Down</option>
+                                <option value="ArrowLeft">Arrow Left</option>
+                                <option value="ArrowRight">Arrow Right</option>
+                                <option value="Home">Home</option>
+                                <option value="End">End</option>
+                                <option value="PageUp">Page Up</option>
+                                <option value="PageDown">Page Down</option>
+                                <option value="Space">Space</option>
+                            </select>
+                            <div class="input-hint">Special keys and modifiers</div>
+                        </div>
+                    `;
+                    break;
+                case 'wait':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Wait Duration (seconds)</label>
+                            <input type="number" id="param-seconds" min="0.1" max="60" step="0.1" value="2" autofocus>
+                            <div class="input-hint">How long to wait before the next command</div>
+                        </div>
+                    `;
+                    break;
+                case 'viewport':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Width</label>
+                            <input type="number" id="param-width" min="320" max="3840" value="1920" autofocus>
+                        </div>
+                        <div class="param-input-group">
+                            <label>Height</label>
+                            <input type="number" id="param-height" min="240" max="2160" value="1080">
+                            <div class="input-hint">Browser viewport dimensions in pixels</div>
+                        </div>
+                    `;
+                    break;
+                case 'clear':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Clear Method</label>
+                            <select id="param-method">
+                                <option value="triple-click">Triple Click + Delete</option>
+                                <option value="select-all">Ctrl+A + Delete</option>
+                            </select>
+                            <div class="input-hint">Method to clear the current field</div>
+                        </div>
+                    `;
+                    break;
+                case 'set-upload-file':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>File Path(s)</label>
+                            <input type="text" id="param-file-path" placeholder="/path/to/file.pdf or ./relative/path.txt" autofocus>
+                            <div class="input-hint">Enter the path to the file you want to upload. Can be absolute or relative path.</div>
+                            <div class="input-hint" style="margin-top: 5px;">For multiple files, separate with commas: file1.pdf, file2.jpg</div>
+                            <div class="input-hint" style="margin-top: 5px; color: #0ff;">💡 This will auto-populate file dialogs when they appear!</div>
+                        </div>
+                    `;
+                    break;
+                case 'set-download-path':
+                    inputsHTML = `
+                        <div class="param-input-group">
+                            <label>Download Directory</label>
+                            <input type="text" id="param-download-path" placeholder="./downloads or /absolute/path/to/folder" autofocus>
+                            <div class="input-hint">Where to save downloaded files. Leave empty to use session directory.</div>
+                            <div class="input-hint" style="margin-top: 5px;">Default: rabbitize-runs/[client]/[test]/[session]/</div>
+                        </div>
+                    `;
+                    break;
+            }
+
+            inputs.innerHTML = inputsHTML;
+            modal.style.display = 'flex';
+
+            // Focus first input
+            setTimeout(() => {
+                const firstInput = inputs.querySelector('input, textarea, select');
+                if (firstInput) firstInput.focus();
+            }, 100);
+        }
+
+        function closeParamModal() {
+            document.getElementById('param-modal').style.display = 'none';
+            pendingCommand = null;
+        }
+
+        function confirmParamModal() {
+            if (!pendingCommand) return;
+
+            const { type } = pendingCommand;
+            let command;
+
+            switch(type) {
+                case 'type':
+                    const text = document.getElementById('param-text').value;
+                    if (text) {
+                        // Convert text to individual keypress commands
+                        const commands = [];
+                        for (const char of text) {
+                            commands.push([':keypress', char]);
+                        }
+                        executeCommandWithParams('type', commands);
+                    }
+                    break;
+                case 'key':
+                    const key = document.getElementById('param-key').value;
+                    executeCommandWithParams('key', [[':keypress', key]]);
+                    break;
+                case 'wait':
+                    const seconds = parseFloat(document.getElementById('param-seconds').value);
+                    executeCommandWithParams('wait', [[':wait', seconds]]);
+                    break;
+                case 'viewport':
+                    const width = parseInt(document.getElementById('param-width').value);
+                    const height = parseInt(document.getElementById('param-height').value);
+                    executeCommandWithParams('viewport', [
+                        [':width', width],
+                        [':height', height]
+                    ]);
+                    break;
+                case 'clear':
+                    const method = document.getElementById('param-method').value;
+                    if (method === 'triple-click') {
+                        executeCommandWithParams('clear', [
+                            [':click', ':at', lastCoordinates.x, lastCoordinates.y],
+                            [':wait', 0.1],
+                            [':click', ':at', lastCoordinates.x, lastCoordinates.y],
+                            [':wait', 0.1],
+                            [':click', ':at', lastCoordinates.x, lastCoordinates.y],
+                            [':keypress', 'Delete']
+                        ]);
+                    } else {
+                        executeCommandWithParams('clear', [
+                            [':click', ':at', lastCoordinates.x, lastCoordinates.y],
+                            [':keypress', 'Control+a'],
+                            [':keypress', 'Delete']
+                        ]);
+                    }
+                    break;
+                case 'set-upload-file':
+                    const filePath = document.getElementById('param-file-path').value.trim();
+                    if (filePath) {
+                        // Split by comma for multiple files and trim each path
+                        const filePaths = filePath.split(',').map(p => p.trim()).filter(p => p);
+                        const command = [':set-upload-file', ...filePaths];
+                        executeCommandWithParams('set-upload-file', [command]);
+                    }
+                    break;
+                case 'set-download-path':
+                    const downloadPath = document.getElementById('param-download-path').value.trim();
+                    if (downloadPath) {
+                        executeCommandWithParams('set-download-path', [[':set-download-path', downloadPath]]);
+                    } else {
+                        // Empty path means use default session directory
+                        executeCommandWithParams('set-download-path', [[':set-download-path', '']]);
+                    }
+                    break;
+            }
+
+            closeParamModal();
+        }
+
+        // Make modal functions global
+        window.closeParamModal = closeParamModal;
+        window.confirmParamModal = confirmParamModal;
+
+        // Command Execution
+        async function executeCommand(commandType) {
+            if (!sessionActive || isExecuting) return;
+
+            // Check if command needs parameters
+            const needsParams = ['type', 'key', 'wait', 'viewport', 'clear', 'set-upload-file', 'set-download-path'].includes(commandType);
+            if (needsParams) {
+                showParamModal(commandType);
+                return;
+            }
+
+            let commands = [];
+
+            // Build command based on type
+            switch(commandType) {
+                case 'click':
+                    commands = [[':click', ':at', lastCoordinates.x, lastCoordinates.y]];
+                    break;
+                case 'move-click':
+                    // Move then click - two commands sent together
+                    commands = [
+                        [':move-mouse', ':to', lastCoordinates.x, lastCoordinates.y],
+                        [':click', ':at', lastCoordinates.x, lastCoordinates.y]
+                    ];
+                    break;
+                case 'right-click':
+                    commands = [[':right-click', ':at', lastCoordinates.x, lastCoordinates.y]];
+                    break;
+                case 'move-mouse':
+                    commands = [[':move-mouse', ':to', lastCoordinates.x, lastCoordinates.y]];
+                    break;
+                case 'mouse-down':
+                    commands = [[':click-hold', ':at', lastCoordinates.x, lastCoordinates.y]];
+                    break;
+                case 'mouse-up':
+                    commands = [[':click-release', ':at', lastCoordinates.x, lastCoordinates.y]];
+                    break;
+                case 'back':
+                    commands = [[':back']];
+                    break;
+                case 'forward':
+                    commands = [[':forward']];
+                    break;
+                case 'url':
+                    commands = [[':url']];
+                    break;
+                case 'scroll-up':
+                    commands = [[':scroll-wheel-up', 5]];
+                    break;
+                case 'scroll-down':
+                    commands = [[':scroll-wheel-down', 5]];
+                    break;
+                case 'screenshot':
+                    commands = [[':screenshot']];
+                    break;
+                default:
+                    console.error('Unknown command:', commandType);
+                    return;
+            }
+
+            await executeCommandList(commands, commandType);
+        }
+
+        // Execute command with parameters from modal
+        async function executeCommandWithParams(commandType, commands) {
+            await executeCommandList(commands, commandType);
+        }
+
+        // Execute a list of commands
+        async function executeCommandList(commands, commandType) {
+            if (isExecuting) return;
+
+            isExecuting = true;
+            showLoadingIndicator();
+
+            try {
+                // Execute all commands
+                for (const command of commands) {
+                    const response = await fetch(`http://${window.location.hostname}:${sessionPort}/execute`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command })
+                    });
+
+                    if (!response.ok) throw new Error('Command execution failed');
+
+                    // Add each command to history
+                    addToHistory(commandType, command);
+                }
+
+            } catch (error) {
+                console.error('Failed to execute command:', error);
+                alert('Failed to execute command: ' + error.message);
+            } finally {
+                isExecuting = false;
+                hideLoadingIndicator();
+            }
+        }
+
+        // Loading indicator functions
+        function showLoadingIndicator() {
+            const overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = '<div class="loading-spinner"></div>';
+            document.querySelector('.browser-viewport').appendChild(overlay);
+        }
+
+        function hideLoadingIndicator() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) overlay.remove();
+        }
+
+        // Monaco Editor Functions
+        function initializeMonacoEditor() {
+            require(['vs/editor/editor.main'], function() {
+                editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+                    value: '[\n  // Your browser automation commands will appear here\n]',
+                    language: 'json',
+                    theme: 'vs-dark',
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    lineNumbers: 'on',
+                    wordWrap: 'on',
+                    readOnly: false,
+                    scrollBeyondLastLine: false,
+                    renderWhitespace: 'boundary',
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace"
+                });
+
+                // Add custom theme
+                monaco.editor.defineTheme('rabbitize-dark', {
+                    base: 'vs-dark',
+                    inherit: true,
+                    rules: [
+                        { token: 'comment', foreground: '888888' },
+                        { token: 'string', foreground: '00ffff' },
+                        { token: 'keyword', foreground: 'ffff00' }
+                    ],
+                    colors: {
+                        'editor.background': '#0a0a0a',
+                        'editor.foreground': '#ffffff',
+                        'editor.lineHighlightBackground': '#1a1a1a',
+                        'editorCursor.foreground': '#0ff',
+                        'editor.selectionBackground': '#0ff3'
+                    }
+                });
+                monaco.editor.setTheme('rabbitize-dark');
+            });
+        }
+
+        // History Management
+        function addToHistory(type, command) {
+            // Skip adding to history during replay to prevent infinite loop
+            if (isReplaying) {
+                return;
+            }
+
+            const historyItem = {
+                type,
+                command,
+                timestamp: Date.now()
+            };
+
+            commandHistory.push(historyItem);
+
+            // Add to Monaco editor
+            if (editor) {
+                // Build the commands array
+                const commands = commandHistory
+                    .filter(item => item.command.url || Array.isArray(item.command))
+                    .map(item => {
+                        if (item.command.url) {
+                            return [":navigate", item.command.url];
+                        }
+                        return item.command;
+                    });
+
+                // Format as pretty JSON
+                const jsonContent = JSON.stringify(commands, null, 2);
+                editor.setValue(jsonContent);
+
+                // Scroll to bottom
+                const lastLine = editor.getModel().getLineCount();
+                editor.revealLine(lastLine);
+            }
+            
+            // Save state after adding to history
+            saveFlowBuilderState();
+        }
+
+        function formatCommandForEditor(type, command) {
+            if (command.url) {
+                return `[":navigate", "${command.url}"]`;
+            }
+
+            if (Array.isArray(command)) {
+                return JSON.stringify(command);
+            }
+
+            // Fallback
+            return `// ${JSON.stringify(command)}`;
+        }
+
+        async function clearEditor() {
+            if (confirm('Clear the flow editor and reset to start?')) {
+                try {
+                    // End any active session first
+                    if (sessionActive) {
+                        await fetch(`http://${window.location.hostname}:${sessionPort}/end`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        }).catch(() => {}); // Ignore errors, just try to end it
+
+                        // Reset session state
+                        sessionActive = false;
+                        sessionId = null;
+                        streamConnected = false;
+                        sessionPort = PORT;
+                        spawnedSessionId = null;
+                    }
+
+                    // Clear command history
+                    commandHistory = [];
+
+                    // Reset editor
+                    if (editor) {
+                        editor.setValue('[\n  // Your browser automation commands will appear here\n]');
+                    }
+
+                    // Reset UI to initial state
+                    browserStream.style.display = 'none';
+                    browserStream.src = '';
+                    viewportPlaceholder.style.display = 'flex';
+                    clickOverlay.style.display = 'none';
+                    urlInput.disabled = false;
+                    urlInput.value = '';
+
+                    // Reset coordinates
+                    lastCoordinates = { x: 0, y: 0 };
+                    positionMarker.style.display = 'none';
+                    coordinatesDisplay.textContent = 'X: 0, Y: 0';
+
+                    // Update UI state
+                    updateUI();
+                    updateEditorStatus('Flow Builder reset');
+                    
+                    // Clear saved state since we reset everything
+                    clearFlowBuilderState();
+
+                } catch (error) {
+                    console.error('Error during reset:', error);
+                    updateEditorStatus('Reset completed with errors');
+                }
+            }
+        }
+
+
+        async function replayFlow() {
+            const commands = getCommandsFromEditor();
+            if (!commands || commands.length === 0) {
+                alert('No commands to replay');
+                return;
+            }
+
+            // Find the first navigate command to get the URL
+            const navigateCmd = commands.find(cmd => cmd[0] === ':navigate');
+            if (!navigateCmd) {
+                alert('No navigation URL found in commands');
+                return;
+            }
+
+            const replayUrl = navigateCmd[1];
+
+            updateEditorStatus('Restarting session for replay...');
+
+            try {
+                // End current session if active
+                if (sessionActive) {
+                    await endSession();
+                    // Wait a bit for cleanup
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                // Start a fresh session
+                urlInput.value = replayUrl;
+                await startSession();
+
+                // Wait for session to be ready
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                updateEditorStatus('Replaying commands...');
+
+                // Create a flag to prevent adding replayed commands to history
+                isReplaying = true;
+
+                // Execute all commands except the navigate (already done in startSession)
+                for (const command of commands) {
+                    if (command[0] === ':navigate') {
+                        continue; // Skip navigate as session already started with URL
+                    }
+
+                    const response = await fetch(`http://${window.location.hostname}:${sessionPort}/execute`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Command execution failed');
+                    }
+
+                    // Add a small delay between commands for stability
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                updateEditorStatus('Replay complete');
+            } catch (error) {
+                console.error('Replay failed:', error);
+                updateEditorStatus('Replay failed');
+                alert('Failed to replay flow: ' + error.message);
+            } finally {
+                isReplaying = false;
+            }
+        }
+
+        function updateEditorStatus(message) {
+            const statusElement = document.getElementById('editor-status');
+            if (statusElement) {
+                statusElement.textContent = message;
+                setTimeout(() => {
+                    statusElement.textContent = 'Ready';
+                }, 3000);
+            }
+        }
+
+        // Export menu toggle
+        function toggleExportMenu() {
+            const dropdown = document.getElementById('export-dropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Export Functions
+        function exportAsJSON() {
+            if (editor) {
+                const content = editor.getValue();
+                navigator.clipboard.writeText(content).then(() => {
+                    updateEditorStatus('JSON copied to clipboard!');
+                    document.getElementById('export-dropdown').style.display = 'none';
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    updateEditorStatus('Copy failed');
+                });
+            }
+        }
+
+        function exportAsCLI() {
+            const commands = getCommandsFromEditor();
+            if (!commands) return;
+
+            const cli = `node src/index.js \\
+  --client-id "${CLIENT_ID}" \\
+  --test-id "${FLOW_TEST_ID}" \\
+  --exit-on-end true \\
+  --batch-url "${urlInput.value}" \\
+  --batch-commands='${JSON.stringify(commands, null, 2)}'`;
+
+            navigator.clipboard.writeText(cli).then(() => {
+                updateEditorStatus('CLI command copied!');
+                document.getElementById('export-dropdown').style.display = 'none';
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                updateEditorStatus('Copy failed');
+            });
+        }
+
+        function exportAsCURL() {
+            const commands = getCommandsFromEditor();
+            if (!commands) return;
+
+            const curls = [`curl -X POST http://${window.location.hostname}:${PORT}/start \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "${urlInput.value}", "clientId": "${CLIENT_ID}", "testId": "${FLOW_TEST_ID}"}'`];
+
+            commands.forEach(command => {
+                if (command[0] !== ':navigate') {  // Skip navigate as it's already in start
+                    curls.push(`curl -X POST http://${window.location.hostname}:${PORT}/execute \\
+  -H "Content-Type: application/json" \\
+  -d '{"command": ${JSON.stringify(command)}}'`);
+                }
+            });
+
+            curls.push(`curl -X POST http://${window.location.hostname}:${PORT}/end`);
+
+            navigator.clipboard.writeText(curls.join('\n\n')).then(() => {
+                updateEditorStatus('cURL commands copied!');
+                document.getElementById('export-dropdown').style.display = 'none';
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                updateEditorStatus('Copy failed');
+            });
+        }
+
+        function getCommandsFromEditor() {
+            if (!editor) return null;
+
+            try {
+                const content = editor.getValue();
+                return JSON.parse(content);
+            } catch (error) {
+                alert('Invalid JSON in editor. Please fix the syntax errors.');
+                return null;
+            }
+        }
+
+
+        // UI Updates
+        function updateUI() {
+            // Enable/disable buttons based on session state
+            document.querySelectorAll('.cmd-btn').forEach(btn => {
+                if (btn.classList.contains('session-btn')) {
+                    btn.disabled = !sessionActive;
+                } else {
+                    btn.disabled = !sessionActive || !streamConnected;
+                }
+            });
+
+            // Navigation buttons
+            document.getElementById('back-btn').disabled = !sessionActive;
+            document.getElementById('forward-btn').disabled = !sessionActive;
+            
+            console.log('UI Updated - sessionActive:', sessionActive, 'streamConnected:', streamConnected);
+        }
+    </script>
+</body>
+</html>

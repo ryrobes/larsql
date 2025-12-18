@@ -1,0 +1,86 @@
+/* ===== CYBERPUNK.CSS WITH THEME VARIABLES ===== */
+/* 
+ * Example of how to convert existing CSS to use theme variables
+ * This shows the key replacements needed
+ */
+
+/* Original: background: #000; */
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+/* Original: color: #0ff; */
+a {
+  color: var(--color-primary);
+}
+
+/* Original: border: 1px solid #0ff; */
+.session-card {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-surface);
+}
+
+/* Original: background: rgba(0, 0, 0, 0.8); */
+.modal {
+  background: var(--overlay-dark);
+}
+
+/* Original: box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); */
+.glitch {
+  text-shadow: 0 0 20px var(--glow-primary);
+}
+
+/* Status colors */
+.status-indicator {
+  background: var(--status-active);
+}
+
+.status-indicator-finished {
+  background: var(--status-inactive);
+}
+
+/* Success/Error/Warning */
+.success { color: var(--color-success); }
+.error { color: var(--color-error); }
+.warning { color: var(--color-warning); }
+
+/* Text hierarchy */
+.subtitle { color: var(--text-secondary); }
+.muted { color: var(--text-muted); }
+
+/* Special colors */
+.external-indicator { color: var(--external-indicator); }
+.timing-bar { background: var(--timing-bar); }
+.timing-gap { background: var(--timing-gap); }
+
+/* ===== COLOR MAPPING GUIDE ===== */
+/*
+ * DIRECT REPLACEMENTS:
+ * #000 → var(--bg-base)
+ * #0a0a0a → var(--bg-surface)
+ * #1a1a1a → var(--bg-surface-2)
+ * #2a2a2a → var(--bg-surface-3)
+ * #3a3a3a → var(--bg-surface-4)
+ * 
+ * #0ff → var(--color-primary)
+ * #f0f → var(--color-secondary)
+ * #ff0 → var(--color-accent)
+ * #0f0 → var(--color-success)
+ * #f00 → var(--color-error)
+ * 
+ * #fff → var(--text-primary)
+ * #ccc → var(--text-secondary)
+ * #666 → var(--text-muted)
+ * #444 → var(--text-disabled)
+ * 
+ * #333 → var(--border-secondary)
+ * #222 → var(--border-muted)
+ * 
+ * rgba(0, 255, 255, 0.5) → var(--glow-primary)
+ * rgba(255, 0, 255, 0.5) → var(--glow-secondary)
+ * rgba(255, 255, 0, 0.5) → var(--glow-accent)
+ * 
+ * rgba(0, 0, 0, 0.8) → var(--overlay-dark)
+ * rgba(255, 255, 255, 0.1) → var(--overlay-light)
+ */

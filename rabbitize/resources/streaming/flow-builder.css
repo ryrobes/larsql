@@ -1,0 +1,679 @@
+/* Flow Builder Specific Styles */
+
+/* Placeholder Logo */
+.placeholder-logo {
+    opacity: 0.3;
+    height: 200px;
+}
+
+.flow-builder-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #000;
+    overflow: hidden;
+    padding-right: 300px; /* Reserve space for sidebar */
+}
+
+.flow-header {
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid #0ff;
+    background: rgba(0, 255, 255, 0.05);
+    position: relative;
+}
+
+.back-to-dashboard {
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    color: #0ff;
+    text-decoration: none;
+    padding: 8px 16px;
+    border: 1px solid #0ff;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.back-to-dashboard:hover {
+    background: #0ff;
+    color: #000;
+    transform: translateX(-2px);
+}
+
+.flow-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    overflow: hidden;
+}
+
+/* Browser Window Styles */
+.browser-window {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0; /* Important for flex children */
+}
+
+/* Chrome-like Navigation Bar */
+.browser-nav {
+    background: #2a2a2a;
+    border-bottom: 1px solid #333;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.nav-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: #888;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.url-bar-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.url-bar {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 20px;
+    padding: 6px 40px 6px 16px;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.url-bar:focus {
+    border-color: #0ff;
+    background: #0a0a0a;
+    box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.2);
+}
+
+.url-status {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+}
+
+/* Browser Viewport */
+.browser-viewport {
+    background: #000;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 10px; /* Add some padding to prevent edge cutoff */
+}
+
+/* Aspect ratio wrapper */
+.browser-viewport-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.viewport-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+}
+
+.placeholder-content {
+    text-align: center;
+    color: #0ff;
+}
+
+.placeholder-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.placeholder-content h2 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.placeholder-content p {
+    opacity: 0.7;
+}
+
+.browser-stream {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+/* Click Overlay */
+.click-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    z-index: 10;
+}
+
+.cursor-indicator {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #0ff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.cursor-indicator.pulse {
+    opacity: 1;
+    animation: pulse 0.3s ease-out;
+}
+
+@keyframes pulse {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.5); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Position marker - persistent indicator of last click */
+.position-marker {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #ff0;
+    background: rgba(255, 255, 0, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+    animation: glow 2s ease-in-out infinite;
+}
+
+.position-marker::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    background: #ff0;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.position-marker::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(255, 255, 0, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: ripple 2s ease-out infinite;
+}
+
+@keyframes glow {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+}
+
+@keyframes ripple {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.6;
+    }
+    100% {
+        width: 40px;
+        height: 40px;
+        opacity: 0;
+    }
+}
+
+/* Command Palette */
+.command-palette {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0; /* Don't shrink when space is limited */
+}
+
+.palette-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.palette-header h3 {
+    color: #0ff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.coordinates {
+    color: #888;
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.command-categories {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.command-category h4 {
+    color: #0ff;
+    font-size: 14px;
+    margin: 0 0 8px 0;
+    opacity: 0.8;
+}
+
+.command-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.cmd-btn {
+    background: #2a2a2a;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.cmd-btn:hover:not(:disabled) {
+    background: #333;
+    border-color: #0ff;
+    color: #0ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 255, 255, 0.3);
+}
+
+.cmd-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.cmd-btn.session-btn {
+    background: #ff0044;
+    border-color: #ff0044;
+}
+
+.cmd-btn.session-btn:hover:not(:disabled) {
+    background: #ff3366;
+    border-color: #ff3366;
+    color: #fff;
+}
+
+/* Command Editor Sidebar */
+.command-editor {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 300px;
+    background: #0a0a0a;
+    border-left: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(0);
+    transition: transform 0.3s;
+    z-index: 100;
+}
+
+.editor-header {
+    padding: 16px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.editor-header h3 {
+    color: #0ff;
+    font-size: 16px;
+    margin: 0;
+}
+
+.editor-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.editor-btn {
+    background: transparent;
+    border: 1px solid #333;
+    color: #888;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.editor-btn:hover {
+    border-color: #0ff;
+    color: #0ff;
+    background: rgba(0, 255, 255, 0.1);
+}
+
+.monaco-container {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+.editor-footer {
+    padding: 8px 16px;
+    border-top: 1px solid #333;
+    flex-shrink: 0;
+}
+
+.editor-status {
+    color: #888;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Export dropdown */
+.export-dropdown {
+    position: absolute;
+    bottom: 50px;
+    right: 16px;
+    background: #1a1a1a;
+    border: 1px solid #0ff;
+    border-radius: 4px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
+    z-index: 1000;
+}
+
+.export-option {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #fff;
+    padding: 8px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.export-option:hover {
+    background: rgba(0, 255, 255, 0.1);
+    color: #0ff;
+}
+
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+    .flow-builder-container {
+        padding-right: 250px; /* Smaller sidebar on medium screens */
+    }
+    
+    .command-editor {
+        width: 250px;
+    }
+}
+
+@media (max-width: 768px) {
+    .flow-builder-container {
+        padding-right: 0; /* Remove padding on mobile */
+    }
+    
+    .command-editor {
+        width: 100%;
+        transform: translateX(100%);
+    }
+    
+    .command-editor.open {
+        transform: translateX(0);
+    }
+    
+    .command-categories {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #1a1a1a;
+    border: 2px solid #0ff;
+    border-radius: 8px;
+    min-width: 400px;
+    max-width: 600px;
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+}
+
+.modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    color: #0ff;
+    font-size: 18px;
+    margin: 0;
+}
+
+.modal-header .close {
+    color: #888;
+    font-size: 24px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.modal-header .close:hover {
+    color: #fff;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.param-input-group {
+    margin-bottom: 16px;
+}
+
+.param-input-group label {
+    display: block;
+    color: #0ff;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.param-input-group input,
+.param-input-group textarea,
+.param-input-group select {
+    width: 100%;
+    background: #0a0a0a;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+}
+
+.param-input-group input:focus,
+.param-input-group textarea:focus,
+.param-input-group select:focus {
+    outline: none;
+    border-color: #0ff;
+    box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.2);
+}
+
+.param-input-group .input-hint {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #333;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.modal-btn {
+    padding: 8px 20px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #2a2a2a;
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.modal-btn.confirm {
+    border-color: #0ff;
+    color: #0ff;
+}
+
+.modal-btn.confirm:hover {
+    background: #0ff;
+    color: #000;
+}
+
+.modal-btn.cancel:hover {
+    background: #333;
+}
+
+/* Loading indicator */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #333;
+    border-top-color: #0ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Scrollbar styling */
+.command-palette::-webkit-scrollbar {
+    width: 8px;
+}
+
+.command-palette::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+.command-palette::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.command-palette::-webkit-scrollbar-thumb:hover {
+    background: #444;
+}

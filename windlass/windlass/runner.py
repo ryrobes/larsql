@@ -44,6 +44,10 @@ from .eddies.state_tools import set_current_session_id, set_current_phase_name, 
 from .eddies.research_db import set_current_research_db
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
+from .browser_manager import (
+    BrowserSession, BrowserSessionManager,
+    create_browser_session, close_browser_session, get_browser_manager
+)
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
 
 from rich.tree import Tree
@@ -172,6 +176,7 @@ class WindlassRunner:
 
         # Narrator config (cascade-level, can be overridden per-phase)
         self.cascade_narrator = self.config.narrator if hasattr(self.config, 'narrator') else None
+        self._narrator_service = None  # Will be initialized in run() if configured
 
         # Heartbeat system for durable execution
         self._heartbeat_thread: Optional[threading.Thread] = None
@@ -262,6 +267,53 @@ class WindlassRunner:
                 if not self._heartbeat_running:
                     break
                 time.sleep(1)
+
+    def _start_narrator_service(self):
+        """Start the event-driven narrator service."""
+        from .narrator_service import NarratorService, check_tts_available
+        from .events import get_event_bus
+
+        # Check if TTS is available
+        if not check_tts_available():
+            log_message(self.session_id, "narrator", "Narrator skipped: TTS not configured (missing ELEVENLABS keys)")
+            return
+
+        try:
+            self._narrator_service = NarratorService(
+                config=self.cascade_narrator,
+                session_id=self.session_id,
+                cascade_id=self.config.cascade_id,
+                parent_session_id=self.parent_session_id,
+            )
+            self._narrator_service.start(get_event_bus())
+            log_message(self.session_id, "narrator", "Narrator service started",
+                       metadata={"on_events": self.cascade_narrator.effective_on_events})
+        except Exception as e:
+            log_message(self.session_id, "narrator_error", f"Failed to start narrator: {e}")
+            self._narrator_service = None
+
+    def _stop_narrator_service(self):
+        """Stop the narrator service."""
+        if self._narrator_service:
+            try:
+                self._narrator_service.stop()
+                log_message(self.session_id, "narrator", "Narrator service stopped")
+            except Exception as e:
+                log_message(self.session_id, "narrator_error", f"Failed to stop narrator: {e}")
+            self._narrator_service = None
+
+    def _publish_event(self, event_type: str, data: dict):
+        """Publish an event to the event bus for narrator and other subscribers."""
+        from .events import get_event_bus, Event
+        from datetime import datetime
+
+        event_bus = get_event_bus()
+        event_bus.publish(Event(
+            type=event_type,
+            session_id=self.session_id,
+            timestamp=datetime.now().isoformat(),
+            data=data
+        ))
 
     def _check_cancellation(self) -> bool:
         """
@@ -3235,6 +3287,14 @@ Refinement directive: {reforge_config.honing_prompt}
 
         self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
 
+        # Publish cascade_complete event (for narrator and other subscribers)
+        self._publish_event("cascade_complete", {
+            "cascade_id": self.config.cascade_id,
+            "status": final_status,
+            "final_output": str(result.get("final_output", ""))[:500] if result else None,
+            "error_count": len(result.get("errors", [])) if result else 0,
+        })
+
         # Log cascade completion with status
         log_message(self.session_id, "system", f"Cascade {final_status}: {self.config.cascade_id}",
                    metadata={"status": final_status, "error_count": len(result.get("errors", []))},
@@ -3268,6 +3328,10 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Start heartbeat thread
         self._start_heartbeat()
+
+        # Start narrator service if configured (only at depth 0 to avoid nested narrators)
+        if self.cascade_narrator and self.cascade_narrator.enabled and self.depth == 0:
+            self._start_narrator_service()
 
         try:
             # Update status to running
@@ -3314,6 +3378,8 @@ Refinement directive: {reforge_config.honing_prompt}
         finally:
             # Always stop heartbeat thread
             self._stop_heartbeat()
+            # Stop narrator service if running
+            self._stop_narrator_service()
 
     def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
@@ -3661,102 +3727,6 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         memory_query_tool.__doc__ = f"{summary}\n\nArgs:\n    query (str): Natural language search query\n    limit (int): Maximum results (default: 5)"
 
         return memory_query_tool
-
-    def _maybe_narrate(
-        self,
-        phase: "PhaseConfig",
-        trigger: str,
-        turn_number: int = 1,
-        max_turns: int = 1,
-        tool_calls: List = None,
-        trace: "TraceNode" = None,
-        input_data: dict = None
-    ):
-        """
-        Spawn narrator if configured for this trigger.
-
-        The narrator runs asynchronously in a background thread and never
-        blocks the main execution flow. All costs are charged to parent_session_id.
-
-        Args:
-            phase: Current phase config
-            trigger: What triggered this narration (turn, phase_start, phase_complete, tool_call)
-            turn_number: Current turn (1-indexed)
-            max_turns: Total turns configured
-            tool_calls: Tool calls from this turn (if any)
-            trace: Current trace node
-            input_data: Original input data for Jinja2 rendering
-        """
-        from .cascade import NarratorConfig
-
-        print(f"[Narrator] _maybe_narrate called: trigger={trigger}, phase={phase.name}")
-        print(f"[Narrator]   cascade_narrator={self.cascade_narrator}")
-        print(f"[Narrator]   phase.narrator={phase.narrator}")
-
-        # Determine effective narrator config (phase override or cascade)
-        narrator_config = None
-
-        if phase.narrator is not None:
-            if isinstance(phase.narrator, bool):
-                # Bool: True inherits cascade config, False disables
-                narrator_config = self.cascade_narrator if phase.narrator else None
-            else:
-                # NarratorConfig: use phase-level override
-                narrator_config = phase.narrator
-        else:
-            # No phase override: use cascade-level config
-            narrator_config = self.cascade_narrator
-
-        print(f"[Narrator]   effective narrator_config={narrator_config}")
-
-        if not narrator_config or not narrator_config.enabled:
-            print(f"[Narrator] SKIP: narrator not configured or disabled")
-            return
-
-        # Check if this trigger is configured
-        if trigger not in narrator_config.triggers:
-            print(f"[Narrator] SKIP: trigger '{trigger}' not in {narrator_config.triggers}")
-            return
-
-        print(f"[Narrator] Trigger '{trigger}' matched, proceeding...")
-
-        # Import narrator module
-        from .eddies.narrator import narrate_async, gather_narrator_context
-
-        # Gather context
-        context = gather_narrator_context(
-            context_messages=self.context_messages,
-            phase_name=phase.name,
-            turn_number=turn_number,
-            max_turns=max_turns,
-            tool_calls=tool_calls,
-            context_turns=narrator_config.context_turns
-        )
-        context["model"] = phase.model or self.model
-        context["trigger"] = trigger
-
-        # Build render context for Jinja2 (same vars as phase instructions)
-        context["render_context"] = {
-            "input": input_data or {},
-            "state": self.echo.state,
-            "history": self.echo.history,
-            "outputs": {entry["phase"]: entry["output"] for entry in self.echo.lineage if "phase" in entry and "output" in entry},
-            "lineage": self.echo.lineage,
-            "phase_name": phase.name,
-            "turn_number": turn_number,
-            "max_turns": max_turns,
-        }
-
-        # Spawn async narrator (fire-and-forget)
-        narrate_async(
-            session_id=self.session_id,
-            parent_session_id=self.parent_session_id or self.session_id,
-            cascade_id=self.config.cascade_id,
-            narrator_config=narrator_config,
-            context=context,
-            trace_id=trace.id if trace else "unknown",
-            parent_trace_id=trace.parent_id if trace else None,
-        )
 
     def _run_ward(self, ward_config, content: str, trace: TraceNode, ward_type: str = "post") -> dict:
         """
@@ -6683,15 +6653,145 @@ Refinement directive: {reforge_config.honing_prompt}
         return winner
 
     def execute_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
-        # Check if this is a deterministic (tool-based) phase
-        if phase.is_deterministic():
-            return self._execute_deterministic_phase(phase, input_data, trace)
+        import asyncio
 
-        # Check if soundings (Tree of Thought) is enabled
-        if phase.soundings and phase.soundings.factor > 1:
-            return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
+        # ─────────────────────────────────────────────────────────────────────
+        # Browser lifecycle management
+        # ─────────────────────────────────────────────────────────────────────
+        browser_session: Optional[BrowserSession] = None
 
-        return self._execute_phase_internal(phase, input_data, trace, initial_injection)
+        if phase.browser:
+            # Set up browser session for this phase
+            browser_session = self._setup_browser_session(phase, input_data, trace)
+
+        try:
+            # Check if this is a deterministic (tool-based) phase
+            if phase.is_deterministic():
+                return self._execute_deterministic_phase(phase, input_data, trace)
+
+            # Check if soundings (Tree of Thought) is enabled
+            if phase.soundings and phase.soundings.factor > 1:
+                return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
+
+            return self._execute_phase_internal(phase, input_data, trace, initial_injection)
+
+        finally:
+            # Clean up browser session
+            if browser_session:
+                self._teardown_browser_session(browser_session, phase)
+
+    def _setup_browser_session(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Optional[BrowserSession]:
+        """
+        Set up a browser session for a phase with browser config.
+
+        Spawns a dedicated Rabbitize subprocess, initializes the browser,
+        and stores session info in echo.state for tools to access.
+        """
+        import asyncio
+        from .prompts import render_instruction
+
+        indent = "  " * self.depth
+        console.print(f"{indent}[bold cyan]🌐 Starting browser session for phase '{phase.name}'[/bold cyan]")
+
+        try:
+            # Create unique session ID for this phase
+            session_id = f"{self.session_id}_{phase.name}"
+
+            # Run async browser setup in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                browser_session = loop.run_until_complete(
+                    create_browser_session(
+                        session_id,
+                        stability_detection=phase.browser.stability_detection,
+                        stability_wait=phase.browser.stability_wait,
+                        show_overlay=phase.browser.show_overlay,
+                        # Cascade context for unified session registry
+                        cascade_id=self.cascade_config.cascade_id,
+                        phase_name=phase.name,
+                        windlass_session_id=self.session_id
+                    )
+                )
+
+                # Render URL template (supports {{ input.url }} etc.)
+                outputs = {entry["phase"]: entry["output"] for entry in self.echo.lineage if "phase" in entry and "output" in entry}
+                render_context = {
+                    "input": input_data,
+                    "state": self.echo.state,
+                    "outputs": outputs,
+                    "history": self.echo.history,
+                    "lineage": self.echo.lineage
+                }
+                url = render_instruction(phase.browser.url, render_context)
+
+                # Initialize browser and navigate to URL
+                result = loop.run_until_complete(browser_session.initialize(url))
+
+                if not result.get("success"):
+                    raise RuntimeError(f"Failed to initialize browser: {result.get('error')}")
+
+                # Store browser session info in echo.state for tools to access
+                self.echo.state["_browser_session_id"] = session_id
+                self.echo.state["_browser_port"] = browser_session.port
+                self.echo.state["_browser_base_url"] = browser_session.base_url
+                if browser_session.artifacts:
+                    self.echo.state["_browser_artifacts"] = {
+                        "base_path": browser_session.artifacts.base_path,
+                        "screenshots": browser_session.artifacts.screenshots,
+                        "video": browser_session.artifacts.video,
+                        "dom_snapshots": browser_session.artifacts.dom_snapshots,
+                        "dom_coords": browser_session.artifacts.dom_coords,
+                    }
+
+                console.print(f"{indent}[green]✓ Browser ready at {url}[/green]")
+                console.print(f"{indent}[dim]  Port: {browser_session.port}, Session: {session_id}[/dim]")
+
+                return browser_session
+
+            finally:
+                loop.close()
+
+        except Exception as e:
+            console.print(f"{indent}[bold red]✗ Failed to start browser: {e}[/bold red]")
+            logging.error(f"Browser session setup failed for phase '{phase.name}': {e}")
+            # Don't fail the phase - just continue without browser
+            return None
+
+    def _teardown_browser_session(self, browser_session: BrowserSession, phase: PhaseConfig) -> None:
+        """
+        Clean up a browser session after phase completion.
+
+        Ends the browser session (finalizing video) and kills the subprocess.
+        """
+        import asyncio
+
+        indent = "  " * self.depth
+        console.print(f"{indent}[dim]🌐 Closing browser session...[/dim]")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # End session (this finalizes video recording)
+                loop.run_until_complete(browser_session.end())
+                # Close subprocess
+                loop.run_until_complete(browser_session.close())
+                # Remove from manager
+                loop.run_until_complete(close_browser_session(browser_session.session_id))
+            finally:
+                loop.close()
+
+            # Clear browser state from echo
+            for key in list(self.echo.state.keys()):
+                if key.startswith("_browser_"):
+                    del self.echo.state[key]
+
+            console.print(f"{indent}[green]✓ Browser session closed[/green]")
+
+        except Exception as e:
+            console.print(f"{indent}[yellow]⚠ Error closing browser: {e}[/yellow]")
+            logging.warning(f"Browser session teardown failed: {e}")
 
     def _execute_deterministic_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
         """
@@ -7066,8 +7166,13 @@ Refinement directive: {reforge_config.honing_prompt}
                    phase_name=phase.name, cascade_id=self.config.cascade_id,
                    species_hash=phase_species_hash, phase_config=phase.dict() if phase_species_hash else None)
 
-        # Narrator: Phase Start
-        self._maybe_narrate(phase, "phase_start", trace=trace, input_data=input_data)
+        # Publish phase_start event (for narrator and other subscribers)
+        self._publish_event("phase_start", {
+            "phase_name": phase.name,
+            "cascade_id": self.config.cascade_id,
+            "model": phase_model,
+            "trace_id": trace.id if trace else None,
+        })
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
@@ -7789,15 +7894,15 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     self._update_graph()
 
-                    # Narrator: Turn complete (after agent responds)
-                    self._maybe_narrate(
-                        phase, "turn",
-                        turn_number=i + 1,
-                        max_turns=max_turns,
-                        tool_calls=tool_calls,
-                        trace=turn_trace,
-                        input_data=input_data
-                    )
+                    # Publish turn_complete event (for narrator and other subscribers)
+                    self._publish_event("turn_complete", {
+                        "phase_name": phase.name,
+                        "cascade_id": self.config.cascade_id,
+                        "turn_number": i + 1,
+                        "max_turns": max_turns,
+                        "tool_calls": [{"name": tc.get("function", {}).get("name", "unknown")} for tc in (tool_calls or [])],
+                        "trace_id": turn_trace.id if turn_trace else None,
+                    })
 
                     response_content = content
                     tool_outputs = []  # Track tool outputs for validation
@@ -7926,15 +8031,15 @@ Refinement directive: {reforge_config.honing_prompt}
                                  })
                                  console.print(f"{indent}    [dim cyan][DEBUG] tool_outputs.append() - now has {len(tool_outputs)} item(s)[/dim cyan]")
 
-                                 # Narrator: Tool call completed
-                                 self._maybe_narrate(
-                                     phase, "tool_call",
-                                     turn_number=i + 1,
-                                     max_turns=max_turns,
-                                     tool_calls=[{"function": {"name": func_name}}],
-                                     trace=turn_trace,
-                                     input_data=input_data
-                                 )
+                                 # Publish tool_complete event (for narrator and other subscribers)
+                                 self._publish_event("tool_complete", {
+                                     "phase_name": phase.name,
+                                     "cascade_id": self.config.cascade_id,
+                                     "tool_name": func_name,
+                                     "turn_number": i + 1,
+                                     "max_turns": max_turns,
+                                     "trace_id": turn_trace.id if turn_trace else None,
+                                 })
 
                             # Handle Smart Image Injection logic
                             parsed_result = result
@@ -8185,15 +8290,15 @@ Refinement directive: {reforge_config.honing_prompt}
                                             "result": str(result)
                                         })
 
-                                        # Narrator: Tool call completed (follow-up)
-                                        self._maybe_narrate(
-                                            phase, "tool_call",
-                                            turn_number=i + 1,
-                                            max_turns=max_turns,
-                                            tool_calls=[{"function": {"name": func_name}}],
-                                            trace=turn_trace,
-                                            input_data=input_data
-                                        )
+                                        # Publish tool_complete event (follow-up)
+                                        self._publish_event("tool_complete", {
+                                            "phase_name": phase.name,
+                                            "cascade_id": self.config.cascade_id,
+                                            "tool_name": func_name,
+                                            "turn_number": i + 1,
+                                            "max_turns": max_turns,
+                                            "trace_id": turn_trace.id if turn_trace else None,
+                                        })
 
                                         # Add tool result to context
                                         tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
@@ -8856,14 +8961,15 @@ Refinement directive: {reforge_config.honing_prompt}
         # If human input was received, it can be accessed via self.echo.state or passed to next phase
         # For now, we just log it and continue - the response is in the history
 
-        # Narrator: Phase complete
-        self._maybe_narrate(
-            phase, "phase_complete",
-            turn_number=max_turns,
-            max_turns=max_turns,
-            trace=trace,
-            input_data=input_data
-        )
+        # Publish phase_complete event (for narrator and other subscribers)
+        self._publish_event("phase_complete", {
+            "phase_name": phase.name,
+            "cascade_id": self.config.cascade_id,
+            "output": str(response_content)[:500] if response_content else None,
+            "turn_number": max_turns,
+            "max_turns": max_turns,
+            "trace_id": trace.id if trace else None,
+        })
 
         return chosen_next_phase if chosen_next_phase else response_content
 

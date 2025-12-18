@@ -16,6 +16,15 @@ Integration with Windlass:
 - Screenshots automatically flow through multi-modal vision protocol
 - Metadata exposed for agent reasoning
 - Auto-cleanup on errors and phase completion
+
+Managed Mode (First-Class):
+- When a phase has `browser` config, runner spawns a dedicated subprocess
+- Tools automatically use the managed session via echo.state["_browser_session_id"]
+- No external server needed - subprocess per phase
+
+Legacy Mode (Backwards Compatible):
+- Use RABBITIZE_SERVER_URL env var to point to external server
+- Requires manual server management
 """
 
 import requests
@@ -24,7 +33,7 @@ import time
 import json
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from .base import simple_eddy
 from ..echo import get_echo
 from .state_tools import current_session_context
@@ -32,6 +41,54 @@ from ..logs import log_message
 
 # Configuration
 RABBITIZE_SERVER_URL = os.getenv("RABBITIZE_SERVER_URL", "http://localhost:3037")
+
+# Managed session detection - when runner spawns browser subprocess
+def _get_managed_session_info() -> Optional[Dict[str, Any]]:
+    """
+    Check if there's a managed browser session from runner's browser config.
+
+    When a phase has `browser` config, the runner spawns a subprocess and stores:
+    - _browser_session_id: Session ID
+    - _browser_port: Port number
+    - _browser_base_url: HTTP base URL (http://localhost:{port})
+    - _browser_artifacts: Artifact paths
+
+    Returns:
+        Dict with session info if managed session exists, None otherwise
+    """
+    windlass_sid = _get_windlass_session_id()
+    if not windlass_sid:
+        return None
+
+    try:
+        echo = get_echo(windlass_sid)
+        if "_browser_session_id" in echo.state:
+            return {
+                "session_id": echo.state["_browser_session_id"],
+                "port": echo.state.get("_browser_port"),
+                "base_url": echo.state.get("_browser_base_url"),
+                "artifacts": echo.state.get("_browser_artifacts"),
+                "is_managed": True
+            }
+    except:
+        pass
+
+    return None
+
+
+def _get_server_url() -> str:
+    """
+    Get the Rabbitize server URL.
+
+    Priority:
+    1. Managed session base_url (from runner's browser config)
+    2. RABBITIZE_SERVER_URL environment variable
+    3. Default http://localhost:3037
+    """
+    managed = _get_managed_session_info()
+    if managed and managed.get("base_url"):
+        return managed["base_url"]
+    return RABBITIZE_SERVER_URL
 
 # RABBITIZE_RUNS_DIR should be absolute to work from any working directory
 # Search for existing rabbitize-runs directory up the tree
@@ -144,11 +201,24 @@ def _ensure_server_running() -> bool:
     """
     Check if Rabbitize server is running, start if needed.
     Returns True if server is available.
+
+    For managed sessions (from runner's browser config), returns True immediately
+    since the runner has already started the subprocess.
     """
     global _server_process
 
+    # If using managed session, server is already running
+    managed = _get_managed_session_info()
+    if managed:
+        server_url = managed["base_url"]
+        log_message(None, "system", f"Using managed browser session on {server_url}",
+                   metadata={"tool": "rabbitize", "status": "managed",
+                            "session_id": managed["session_id"], "port": managed["port"]})
+        return True
+
+    # Legacy mode: check external server
     try:
-        response = requests.get(f"{RABBITIZE_SERVER_URL}/", timeout=2)
+        response = requests.get(f"{RABBITIZE_SERVER_URL}/health", timeout=2)
         log_message(None, "system", "Rabbitize server is already running",
                    metadata={"tool": "rabbitize", "status": "running"})
         return True
@@ -183,7 +253,7 @@ def _ensure_server_running() -> bool:
         for i in range(20):
             time.sleep(0.5)
             try:
-                response = requests.get(f"{RABBITIZE_SERVER_URL}/", timeout=1)
+                response = requests.get(f"{RABBITIZE_SERVER_URL}/health", timeout=1)
                 log_message(None, "system", f"Rabbitize server started successfully",
                            metadata={"tool": "rabbitize", "status": "started", "startup_time": i*0.5})
                 return True
@@ -206,7 +276,19 @@ def _get_windlass_session_id() -> Optional[str]:
 
 
 def _get_rabbitize_session_id() -> Optional[str]:
-    """Get current Rabbitize session ID from Windlass state."""
+    """
+    Get current Rabbitize session ID.
+
+    Checks in order:
+    1. Managed session (_browser_session_id from runner's browser config)
+    2. Legacy session (rabbitize_session_id from tool-based start)
+    """
+    # Check for managed session first
+    managed = _get_managed_session_info()
+    if managed:
+        return managed["session_id"]
+
+    # Fall back to legacy tool-based session
     windlass_sid = _get_windlass_session_id()
     if not windlass_sid:
         return None
@@ -408,6 +490,10 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
     The browser session persists across commands until you call rabbitize_close().
     Automatically captures screenshots and starts video recording.
 
+    NOTE: If this phase has `browser` config, the session is ALREADY started by the
+    runner. This tool will confirm the session is ready and return the initial state.
+    For phases with browser config, you typically don't need to call this tool at all.
+
     Args:
         url: URL to navigate to
         session_name: Optional custom name for this session (default: auto-generated)
@@ -415,6 +501,38 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
     Returns:
         Dict with content and initial screenshot image
     """
+    # Check for managed session (runner already started it)
+    managed = _get_managed_session_info()
+    if managed:
+        session_id = managed["session_id"]
+        log_message(None, "system", f"Using managed browser session: {session_id}",
+                   metadata={"tool": "rabbitize_start", "managed": True, "session_id": session_id})
+
+        # For managed sessions, the runner already navigated to the configured URL
+        # If the user is calling rabbitize_start with a different URL, navigate to it
+        artifacts = managed.get("artifacts", {})
+        screenshot = None
+
+        # Check if URL is different from what was configured (would need to navigate)
+        # For now, just return current state
+        if artifacts:
+            screenshot_dir = artifacts.get("screenshots")
+            if screenshot_dir:
+                screenshot = _get_latest_screenshot(session_id)
+
+        content = f"✅ Browser session active (managed): {session_id}\n"
+        content += f"📍 Session started by phase browser config\n"
+        content += f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}\n"
+        content += f"🎥 Video: {artifacts.get('video', 'N/A')}\n"
+        content += f"\nUse rabbitize_execute() to interact with the browser."
+
+        result_dict = {"content": content}
+        if screenshot:
+            result_dict["images"] = [screenshot]
+
+        return result_dict
+
+    # Legacy mode: start session manually
     if not _ensure_server_running():
         # Check if it's an installation issue or just server not running
         is_installed, install_msg = _check_rabbitize_installed()
@@ -428,6 +546,7 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
                 "content": f"❌ Rabbitize server is not running.\n\n" +
                           f"Please start it with: npx rabbitize\n\n" +
                           f"Or enable auto-start: export RABBITIZE_AUTO_START=true\n\n" +
+                          f"Or add `browser` config to your phase for automatic management.\n\n" +
                           f"Server should be running at: {RABBITIZE_SERVER_URL}"
             }
 
@@ -444,8 +563,9 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
             rabbitize_close()
 
         # Start new session
+        server_url = _get_server_url()
         response = requests.post(
-            f"{RABBITIZE_SERVER_URL}/start",
+            f"{server_url}/start",
             json={"url": url, "sessionName": session_name},
             timeout=30
         )
@@ -501,7 +621,7 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
 
 
 @simple_eddy
-def rabbitize_execute(command: str, include_metadata: bool = False) -> dict:
+def rabbitize_execute(command: Union[str, List], include_metadata: bool = False) -> dict:
     """
     Execute a browser action and get VISUAL FEEDBACK (before/after screenshots).
 
@@ -589,16 +709,22 @@ def rabbitize_execute(command: str, include_metadata: bool = False) -> dict:
                metadata={"tool": "rabbitize_execute", "session_id": session_id, "command": command})
 
     try:
-        # Parse command
-        try:
-            cmd_array = json.loads(command)
-        except json.JSONDecodeError:
-            return {"content": f"Error: Invalid JSON command format. Expected array like [':move', ':to', 100, 200]"}
+        # Parse command - handle both string (JSON) and list inputs
+        if isinstance(command, list):
+            cmd_array = command
+        elif isinstance(command, str):
+            try:
+                cmd_array = json.loads(command)
+            except json.JSONDecodeError:
+                return {"content": f"Error: Invalid JSON command format. Expected array like [':move', ':to', 100, 200]"}
+        else:
+            return {"content": f"Error: Command must be a JSON string or list, got {type(command).__name__}"}
 
         # Execute command
+        server_url = _get_server_url()
         response = requests.post(
-            f"{RABBITIZE_SERVER_URL}/execute",
-            json={"sessionId": session_id, "command": cmd_array},
+            f"{server_url}/execute",
+            json={"command": cmd_array},  # Session ID not needed - server tracks it
             timeout=60
         )
         response.raise_for_status()
@@ -672,9 +798,10 @@ def rabbitize_extract() -> dict:
 
     try:
         # Execute extract-page command
+        server_url = _get_server_url()
         response = requests.post(
-            f"{RABBITIZE_SERVER_URL}/execute",
-            json={"sessionId": session_id, "command": [":extract-page"]},
+            f"{server_url}/execute",
+            json={"command": [":extract-page"]},  # Session ID not needed - server tracks it
             timeout=60
         )
         response.raise_for_status()
@@ -732,6 +859,10 @@ def rabbitize_close() -> str:
     This saves the video file and cleans up resources.
     Always call this when you're done navigating!
 
+    NOTE: For managed sessions (phases with `browser` config), the runner handles
+    cleanup automatically when the phase ends. Calling this tool is not required
+    and will just return status information.
+
     Returns:
         Status message with video/screenshot locations
     """
@@ -740,14 +871,31 @@ def rabbitize_close() -> str:
     if not session_id:
         return "No active Rabbitize session to close."
 
+    # Check if this is a managed session
+    managed = _get_managed_session_info()
+    if managed:
+        # Don't close managed sessions - runner handles lifecycle
+        log_message(None, "system", f"Managed session {session_id} will be closed by runner",
+                   metadata={"tool": "rabbitize_close", "session_id": session_id, "managed": True})
+
+        artifacts = managed.get("artifacts", {})
+        result = f"ℹ️  Browser session is managed by phase config: {session_id}\n"
+        result += f"📝 Session will be automatically closed when phase ends.\n"
+        result += f"🎥 Video will be saved to: {artifacts.get('video', 'N/A')}\n"
+        result += f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}\n"
+        result += f"\nNo action needed - runner handles cleanup."
+
+        return result
+
+    # Legacy mode: close session manually
     log_message(None, "system", f"Closing Rabbitize session: {session_id}",
                metadata={"tool": "rabbitize_close", "session_id": session_id})
 
     try:
         # Close session on server
+        server_url = _get_server_url()
         response = requests.post(
-            f"{RABBITIZE_SERVER_URL}/end",
-            json={"sessionId": session_id},
+            f"{server_url}/end",
             timeout=30
         )
         response.raise_for_status()
@@ -798,15 +946,31 @@ def rabbitize_status() -> str:
     session_id = _get_rabbitize_session_id()
 
     if not session_id:
-        return "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin."
+        return "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin, or add `browser` config to your phase."
 
     try:
-        metadata = _read_metadata_files(session_id)
-
         lines = []
-        lines.append(f"🌐 Active Session: {session_id}")
-        lines.append(f"📂 Data directory: {RABBITIZE_RUNS_DIR}/{session_id}/")
+
+        # Check if managed
+        managed = _get_managed_session_info()
+        if managed:
+            lines.append(f"🌐 Active Session (managed): {session_id}")
+            lines.append(f"📡 Server: {managed['base_url']} (subprocess)")
+            artifacts = managed.get("artifacts", {})
+            if artifacts:
+                lines.append(f"📂 Artifacts: {artifacts.get('basePath', 'N/A')}")
+                lines.append(f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}")
+                lines.append(f"🎥 Video: {artifacts.get('video', 'N/A')}")
+            lines.append(f"🔄 Lifecycle: Managed by runner (auto-cleanup on phase end)")
+        else:
+            lines.append(f"🌐 Active Session (legacy): {session_id}")
+            lines.append(f"📡 Server: {RABBITIZE_SERVER_URL}")
+            lines.append(f"📂 Data directory: {RABBITIZE_RUNS_DIR}/{session_id}/")
+            lines.append(f"🔄 Lifecycle: Manual (call rabbitize_close() when done)")
+
         lines.append("")
+
+        metadata = _read_metadata_files(session_id)
         lines.append(_format_metadata_summary(metadata))
 
         return "\n".join(lines)

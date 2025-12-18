@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rabbitize Theme Demo</title>
+    <link rel="stylesheet" href="theme-variables.css">
+    <link rel="stylesheet" href="theme-styles.css">
+    <link rel="stylesheet" href="theme-switcher.css">
+    <style>
+        /* Demo styles using theme variables */
+        body {
+            background: var(--bg-base);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            color: var(--color-primary);
+            text-shadow: 0 0 20px var(--glow-primary);
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+        
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .color-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-primary);
+            padding: 20px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        .color-card:hover {
+            background: var(--bg-surface-2);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+        
+        .color-swatch {
+            width: 100%;
+            height: 60px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+        }
+        
+        .color-swatch:hover {
+            transform: scale(1.05);
+        }
+        
+        .component-demo {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-secondary);
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: 1px solid var(--color-primary);
+            background: transparent;
+            color: var(--color-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .btn:hover {
+            background: var(--color-primary);
+            color: var(--bg-base);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+        
+        .btn-secondary {
+            border-color: var(--color-secondary);
+            color: var(--color-secondary);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--color-secondary);
+            box-shadow: 0 0 20px var(--glow-secondary);
+        }
+        
+        .btn-accent {
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+        }
+        
+        .btn-accent:hover {
+            background: var(--color-accent);
+            box-shadow: 0 0 20px var(--glow-accent);
+        }
+        
+        .status-indicators {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .text-samples {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .surface-demo {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .surface-box {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-muted);
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>Rabbitize Theme System</h1>
+        <p class="subtitle">Switch themes using the dropdown in the top-right corner or press Ctrl+Shift+T</p>
+        
+        <!-- Color Palette -->
+        <h2 style="color: var(--color-primary);">Color Palette</h2>
+        <div class="color-grid">
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-primary); color: var(--bg-base);">Primary</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-primary</div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-secondary); color: var(--bg-base);">Secondary</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-secondary</div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-accent); color: var(--bg-base);">Accent</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-accent</div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-success); color: var(--bg-base);">Success</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-success</div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-warning); color: var(--bg-base);">Warning</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-warning</div>
+            </div>
+            <div class="color-card">
+                <div class="color-swatch" style="background: var(--color-error); color: var(--text-primary);">Error</div>
+                <div style="color: var(--text-muted); font-size: 12px;">--color-error</div>
+            </div>
+        </div>
+        
+        <!-- Surface Elevations -->
+        <h2 style="color: var(--color-primary);">Surface Elevations</h2>
+        <div class="component-demo">
+            <div class="surface-demo">
+                <div class="surface-box" style="background: var(--bg-base);">Base</div>
+                <div class="surface-box" style="background: var(--bg-surface);">Surface</div>
+                <div class="surface-box" style="background: var(--bg-surface-2);">Surface 2</div>
+                <div class="surface-box" style="background: var(--bg-surface-3);">Surface 3</div>
+                <div class="surface-box" style="background: var(--bg-surface-4);">Surface 4</div>
+            </div>
+        </div>
+        
+        <!-- UI Components -->
+        <h2 style="color: var(--color-primary);">UI Components</h2>
+        <div class="component-demo">
+            <h3 style="color: var(--color-secondary);">Buttons</h3>
+            <div class="button-group">
+                <button class="btn">Primary Button</button>
+                <button class="btn btn-secondary">Secondary Button</button>
+                <button class="btn btn-accent">Accent Button</button>
+            </div>
+            
+            <h3 style="color: var(--color-secondary);">Status Indicators</h3>
+            <div class="status-indicators">
+                <div><span class="status-dot" style="background: var(--status-active);"></span>Active</div>
+                <div><span class="status-dot" style="background: var(--status-inactive);"></span>Inactive</div>
+                <div><span class="status-dot" style="background: var(--color-warning);"></span>Warning</div>
+                <div><span class="status-dot" style="background: var(--color-error);"></span>Error</div>
+            </div>
+        </div>
+        
+        <!-- Text Hierarchy -->
+        <h2 style="color: var(--color-primary);">Text Hierarchy</h2>
+        <div class="component-demo">
+            <div class="text-samples">
+                <div style="color: var(--text-primary); font-size: 18px;">Primary Text - Main content and headings</div>
+                <div style="color: var(--text-secondary);">Secondary Text - Subtitles and descriptions</div>
+                <div style="color: var(--text-muted);">Muted Text - Less important information</div>
+                <div style="color: var(--text-disabled);">Disabled Text - Inactive elements</div>
+            </div>
+        </div>
+        
+        <!-- Special Effects -->
+        <h2 style="color: var(--color-primary);">Special Effects</h2>
+        <div class="component-demo" style="background: var(--bg-surface-2);">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: center;">
+                <div>
+                    <div style="color: var(--color-primary); text-shadow: 0 0 20px var(--glow-primary); font-size: 24px;">Primary Glow</div>
+                </div>
+                <div>
+                    <div style="color: var(--color-secondary); text-shadow: 0 0 20px var(--glow-secondary); font-size: 24px;">Secondary Glow</div>
+                </div>
+                <div>
+                    <div style="color: var(--color-accent); text-shadow: 0 0 20px var(--glow-accent); font-size: 24px;">Accent Glow</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="theme-switcher.js"></script>
+</body>
+</html>

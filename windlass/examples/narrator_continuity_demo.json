@@ -1,0 +1,32 @@
+{
+  "cascade_id": "narrator_continuity_demo",
+  "description": "Demonstrates narrator continuity - the narrator remembers what it said before and builds on it",
+  "narrator": {
+    "enabled": true,
+    "model": "google/gemini-2.5-flash-lite",
+    "on_events": ["phase_complete", "cascade_complete"],
+    "min_interval_seconds": 2.0
+  },
+  "inputs_schema": {
+    "topic": "A topic to research in multiple phases"
+  },
+  "phases": [
+    {
+      "name": "overview",
+      "instructions": "Provide a brief 2-3 sentence overview of '{{ input.topic }}'. Keep it high-level.",
+      "rules": {"max_turns": 1},
+      "handoffs": ["deep_dive"]
+    },
+    {
+      "name": "deep_dive",
+      "instructions": "Now provide 2-3 specific technical details or interesting facts about '{{ input.topic }}' that weren't covered in the overview.",
+      "rules": {"max_turns": 1},
+      "handoffs": ["future"]
+    },
+    {
+      "name": "future",
+      "instructions": "Finally, discuss 1-2 future trends or developments related to '{{ input.topic }}'.",
+      "rules": {"max_turns": 1}
+    }
+  ]
+}

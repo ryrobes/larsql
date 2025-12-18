@@ -103,6 +103,19 @@ register_tackle("rabbitize_extract", rabbitize_extract)
 register_tackle("rabbitize_close", rabbitize_close)
 register_tackle("rabbitize_status", rabbitize_status)
 
+# Browser session management (first-class browser integration)
+from .browser_manager import (
+    BrowserSession,
+    BrowserSessionManager,
+    BrowserArtifacts,
+    BrowserStreams,
+    create_browser_session,
+    close_browser_session,
+    close_all_browser_sessions,
+    get_browser_manager
+)
+from .cascade import BrowserConfig
+
 # Signals - Cross-cascade communication
 from .eddies.signal_tools import await_signal, fire_signal, list_signals as signal_list_signals
 register_tackle("await_signal", await_signal)
@@ -120,4 +133,14 @@ __all__ = [
     "generate_mermaid_string",
     "generate_state_diagram",
     "generate_state_diagram_string",
+    # Browser session management
+    "BrowserSession",
+    "BrowserSessionManager",
+    "BrowserArtifacts",
+    "BrowserStreams",
+    "BrowserConfig",
+    "create_browser_session",
+    "close_browser_session",
+    "close_all_browser_sessions",
+    "get_browser_manager",
 ]

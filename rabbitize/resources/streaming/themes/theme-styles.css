@@ -1,0 +1,671 @@
+/* ===== THEME-SPECIFIC STYLES ===== */
+/* Each theme has unique visual characteristics beyond colors */
+
+/* Import unique fonts for each theme */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;700;900&family=Rubik:wght@300;400;500;700&display=swap');
+
+/* ===== GITHUB DARK THEME ===== */
+[data-theme="github-dark"] {
+  /* Clean, minimal, professional look */
+  --border-radius: 6px;
+  --border-width: 1px;
+  --shadow-style: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --text-transform: none;
+  --letter-spacing: -0.01em;
+}
+
+[data-theme="github-dark"] body {
+  font-family: var(--font-family);
+  font-weight: 400;
+}
+
+/* Remove ALL borders and use subtle shadows instead */
+[data-theme="github-dark"] .card {
+  border: none !important;
+  border-radius: var(--border-radius);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1), var(--shadow-style);
+  background: var(--bg-surface);
+}
+
+[data-theme="github-dark"] .card-header {
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+  background: var(--bg-base);
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+[data-theme="github-dark"] button,
+[data-theme="github-dark"] .action-btn {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--border-radius);
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 5px 16px;
+  background: var(--bg-surface);
+  transition: all 0.2s ease;
+}
+
+[data-theme="github-dark"] button:hover {
+  background: var(--bg-surface-2);
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+/* Clean inputs */
+[data-theme="github-dark"] input,
+[data-theme="github-dark"] select,
+[data-theme="github-dark"] textarea {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--border-radius);
+  background: var(--bg-base);
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+/* Remove glitch effects */
+[data-theme="github-dark"] .glitch::before,
+[data-theme="github-dark"] .glitch::after {
+  display: none;
+}
+
+[data-theme="github-dark"] .glitch {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Remove scanlines */
+[data-theme="github-dark"] body::before {
+  display: none;
+}
+
+/* Clean tables */
+[data-theme="github-dark"] table {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+[data-theme="github-dark"] th,
+[data-theme="github-dark"] td {
+  border: 1px solid rgba(255,255,255,0.05);
+  padding: 8px 12px;
+}
+
+/* ===== MATRIX TERMINAL THEME ===== */
+[data-theme="matrix"] {
+  --border-radius: 0;
+  --border-width: 1px;
+  --font-family: 'JetBrains Mono', "Courier New", Consolas, monospace;
+  --text-transform: uppercase;
+  --letter-spacing: 0.05em;
+  --matrix-glow: 0 0 5px var(--color-primary);
+}
+
+[data-theme="matrix"] body {
+  font-family: var(--font-family);
+  font-weight: 300;
+  text-shadow: 0 0 2px var(--color-primary);
+}
+
+/* Double borders with ASCII style */
+[data-theme="matrix"] .card {
+  border: none !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  position: relative;
+  padding: 3px;
+  background: var(--bg-base);
+}
+
+[data-theme="matrix"] .card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 1px solid var(--color-primary);
+  box-shadow: 
+    inset 0 0 0 3px var(--bg-base),
+    inset 0 0 0 4px var(--color-primary);
+  pointer-events: none;
+}
+
+/* ASCII-style headers */
+[data-theme="matrix"] .card-header {
+  background: var(--bg-base);
+  border: none;
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 500;
+  position: relative;
+  padding: 10px 15px;
+  margin-bottom: 10px;
+}
+
+[data-theme="matrix"] .card-header::before {
+  content: "[";
+  position: absolute;
+  left: 5px;
+  color: var(--color-primary);
+}
+
+[data-theme="matrix"] .card-header::after {
+  content: "]";
+  position: absolute;
+  right: 5px;
+  color: var(--color-primary);
+}
+
+/* Terminal-style buttons */
+[data-theme="matrix"] button,
+[data-theme="matrix"] .action-btn {
+  border: 1px solid var(--color-primary);
+  border-radius: 0;
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-family: var(--font-family);
+  font-weight: 400;
+  position: relative;
+  background: var(--bg-base);
+  padding: 8px 20px;
+}
+
+[data-theme="matrix"] button::before {
+  content: "> ";
+  position: absolute;
+  left: 8px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+[data-theme="matrix"] button:hover {
+  padding-left: 25px;
+  background: rgba(0, 255, 0, 0.1);
+  box-shadow: var(--matrix-glow);
+  text-shadow: 0 0 5px var(--color-primary);
+}
+
+[data-theme="matrix"] button:hover::before {
+  opacity: 1;
+}
+
+/* Terminal cursor blink */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+[data-theme="matrix"] input:focus::after {
+  content: "_";
+  animation: blink 1s infinite;
+  color: var(--color-primary);
+}
+
+/* Matrix rain effect with characters */
+[data-theme="matrix"] body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 20px,
+      rgba(0, 255, 0, 0.03) 20px,
+      rgba(0, 255, 0, 0.03) 21px
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ASCII tables */
+[data-theme="matrix"] table {
+  border: none;
+  font-family: var(--font-family);
+  font-size: 12px;
+}
+
+[data-theme="matrix"] th,
+[data-theme="matrix"] td {
+  border: 1px dashed var(--color-primary);
+  padding: 6px 10px;
+}
+
+/* ===== SYNTHWAVE RETRO THEME ===== */
+[data-theme="synthwave"] {
+  --border-radius: 0;
+  --border-width: 4px;
+  --font-family: 'Orbitron', "Arial Black", sans-serif;
+  --text-transform: uppercase;
+  --letter-spacing: 0.15em;
+  --neon-glow: 0 0 10px var(--color-primary), 0 0 20px var(--color-secondary), 0 0 30px var(--color-accent);
+}
+
+[data-theme="synthwave"] body {
+  font-family: var(--font-family);
+  font-weight: 700;
+  background-image: 
+    linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 0, 255, 0.1) 2px,
+      rgba(255, 0, 255, 0.1) 4px
+    );
+}
+
+/* Thick neon borders with double outline */
+[data-theme="synthwave"] .card {
+  border: var(--border-width) solid var(--color-primary) !important;
+  border-radius: 0;
+  box-shadow: 
+    var(--neon-glow),
+    inset 0 0 20px rgba(255, 0, 255, 0.2);
+  background: linear-gradient(135deg, rgba(255, 0, 255, 0.1), rgba(0, 255, 255, 0.1));
+  position: relative;
+  transform: perspective(300px) rotateX(2deg);
+}
+
+/* Diagonal corner cuts */
+[data-theme="synthwave"] .card::before,
+[data-theme="synthwave"] .card::after {
+  content: "";
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  background: var(--bg-base);
+  z-index: 1;
+}
+
+[data-theme="synthwave"] .card::before {
+  top: -2px;
+  right: -2px;
+  transform: rotate(45deg);
+  border-left: var(--border-width) solid var(--color-primary);
+}
+
+[data-theme="synthwave"] .card::after {
+  bottom: -2px;
+  left: -2px;
+  transform: rotate(45deg);
+  border-right: var(--border-width) solid var(--color-primary);
+}
+
+/* Gradient headers with heavy shadows */
+[data-theme="synthwave"] .card-header {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent));
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 900;
+  text-shadow: 
+    3px 3px 0 rgba(0,0,0,1),
+    4px 4px 0 rgba(255,0,255,0.5),
+    5px 5px 0 rgba(0,255,255,0.5);
+  padding: 15px 20px;
+  margin: -1px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated gradient buttons */
+[data-theme="synthwave"] button,
+[data-theme="synthwave"] .action-btn {
+  border: var(--border-width) solid var(--color-primary);
+  border-radius: 0;
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 900;
+  background: linear-gradient(45deg, var(--color-primary), var(--color-secondary), var(--color-accent), var(--color-primary));
+  background-size: 300% 300%;
+  text-shadow: 2px 2px 0 rgba(0,0,0,1);
+  position: relative;
+  overflow: hidden;
+  padding: 12px 30px;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+[data-theme="synthwave"] button:hover {
+  animation-duration: 0.5s;
+  box-shadow: var(--neon-glow);
+  transform: scale(1.1) rotate(-2deg);
+}
+
+/* Retro inputs */
+[data-theme="synthwave"] input,
+[data-theme="synthwave"] select,
+[data-theme="synthwave"] textarea {
+  border: 3px solid var(--color-primary);
+  border-radius: 0;
+  background: rgba(0,0,0,0.8);
+  font-family: var(--font-family);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 10px;
+  box-shadow: inset 0 0 10px rgba(255,0,255,0.3);
+}
+
+/* Grid floor effect */
+[data-theme="synthwave"] body::before {
+  content: "";
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200%;
+  height: 50%;
+  background-image: 
+    linear-gradient(transparent 0%, rgba(255, 0, 255, 0.6) 100%),
+    repeating-linear-gradient(
+      90deg,
+      var(--color-primary) 0px,
+      var(--color-primary) 2px,
+      transparent 2px,
+      transparent 60px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      var(--color-primary) 0px,
+      var(--color-primary) 2px,
+      transparent 2px,
+      transparent 60px
+    );
+  transform: perspective(500px) rotateX(80deg) translateX(-50%);
+  transform-origin: center bottom;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.6;
+}
+
+/* ===== DEEP OCEAN THEME ===== */
+[data-theme="ocean"] {
+  --border-radius: 30px;
+  --border-width: 0;
+  --font-family: 'Rubik', "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --text-transform: none;
+  --letter-spacing: 0;
+  --ocean-glow: 0 8px 32px rgba(0, 150, 255, 0.3);
+}
+
+[data-theme="ocean"] body {
+  font-family: var(--font-family);
+  font-weight: 400;
+  background-image: 
+    radial-gradient(ellipse at top, rgba(0, 50, 100, 0.4), transparent),
+    radial-gradient(ellipse at bottom, rgba(0, 100, 150, 0.4), transparent);
+}
+
+/* No borders, pure glass morphism */
+[data-theme="ocean"] .card {
+  border: none !important;
+  border-radius: var(--border-radius);
+  box-shadow: var(--ocean-glow);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Soft gradient overlays */
+[data-theme="ocean"] .card::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Floating headers */
+[data-theme="ocean"] .card-header {
+  background: none;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 300;
+  font-size: 18px;
+  padding: 20px 30px;
+  position: relative;
+}
+
+[data-theme="ocean"] .card-header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 30px;
+  right: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+}
+
+/* Pill-shaped buttons */
+[data-theme="ocean"] button,
+[data-theme="ocean"] .action-btn {
+  border: none;
+  border-radius: 50px;
+  text-transform: var(--text-transform);
+  letter-spacing: var(--letter-spacing);
+  font-weight: 500;
+  background: linear-gradient(135deg, rgba(0, 150, 255, 0.2), rgba(0, 200, 255, 0.2));
+  backdrop-filter: blur(10px);
+  padding: 12px 30px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Ripple effect on hover */
+[data-theme="ocean"] button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+[data-theme="ocean"] button:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+[data-theme="ocean"] button:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 12px 40px rgba(0, 150, 255, 0.4);
+}
+
+/* Soft inputs */
+[data-theme="ocean"] input,
+[data-theme="ocean"] select,
+[data-theme="ocean"] textarea {
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  padding: 12px 20px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+[data-theme="ocean"] input:focus,
+[data-theme="ocean"] select:focus,
+[data-theme="ocean"] textarea:focus {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+/* Bubble animation */
+@keyframes bubble {
+  0% {
+    transform: translateY(100vh) scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(-100vh) scale(1.5) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Multiple bubble layers */
+[data-theme="ocean"] body::after,
+[data-theme="ocean"] body::before {
+  content: "";
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+[data-theme="ocean"] body::after {
+  background-image: 
+    radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 2%),
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,0.08) 0%, transparent 2.5%),
+    radial-gradient(circle at 40% 40%, rgba(255,255,255,0.06) 0%, transparent 2%);
+  background-size: 15% 15%, 20% 20%, 18% 18%;
+  animation: bubble 20s linear infinite;
+}
+
+[data-theme="ocean"] body::before {
+  background-image: 
+    radial-gradient(circle at 90% 10%, rgba(255,255,255,0.07) 0%, transparent 2%),
+    radial-gradient(circle at 10% 90%, rgba(255,255,255,0.09) 0%, transparent 2.2%);
+  background-size: 12% 12%, 16% 16%;
+  animation: bubble 25s linear infinite reverse;
+  z-index: 0;
+}
+
+/* Smooth wave effect on cards */
+@keyframes wave {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-8px) rotate(-0.5deg);
+  }
+  75% {
+    transform: translateY(-5px) rotate(0.5deg);
+  }
+}
+
+[data-theme="ocean"] .card {
+  animation: wave 8s ease-in-out infinite;
+}
+
+[data-theme="ocean"] .card:nth-child(even) {
+  animation-delay: -4s;
+}
+
+/* Remove harsh glitch effects */
+[data-theme="ocean"] .glitch::before,
+[data-theme="ocean"] .glitch::after {
+  display: none;
+}
+
+[data-theme="ocean"] .glitch {
+  font-weight: 300;
+  text-shadow: none;
+  position: relative;
+}
+
+/* Gentle glow animation */
+@keyframes gentle-glow {
+  0%, 100% {
+    opacity: 0.5;
+    filter: blur(10px);
+  }
+  50% {
+    opacity: 0.8;
+    filter: blur(20px);
+  }
+}
+
+[data-theme="ocean"] .glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--color-primary);
+  display: block;
+  z-index: -1;
+  filter: blur(10px);
+  animation: gentle-glow 4s ease-in-out infinite;
+}
+
+/* Smooth rounded tables */
+[data-theme="ocean"] table {
+  border: none;
+  border-radius: 20px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+}
+
+[data-theme="ocean"] th,
+[data-theme="ocean"] td {
+  border: none;
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+[data-theme="ocean"] tr:last-child td {
+  border-bottom: none;
+}
+
+/* ===== RESPONSIVE ADJUSTMENTS ===== */
+@media (max-width: 768px) {
+  [data-theme="synthwave"] body::before {
+    height: 30%;
+    opacity: 0.4;
+  }
+  
+  [data-theme="ocean"] .card {
+    animation: none;
+  }
+  
+  [data-theme="ocean"] button {
+    border-radius: 25px;
+    padding: 10px 20px;
+  }
+  
+  [data-theme="github-dark"] .card-header {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+  
+  [data-theme="matrix"] .card::before {
+    box-shadow: 
+      inset 0 0 0 2px var(--bg-base),
+      inset 0 0 0 3px var(--color-primary);
+  }
+}

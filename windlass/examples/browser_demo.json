@@ -1,0 +1,27 @@
+{
+  "cascade_id": "browser_demo",
+  "description": "Demonstrates first-class browser automation. The phase's `browser` config automatically spawns a headless browser subprocess, navigates to the URL, and cleans up when the phase ends. No manual server management needed.",
+  "inputs_schema": {
+    "url": "URL to browse (e.g., https://example.com)"
+  },
+  "phases": [
+    {
+      "name": "browse",
+      "instructions": "You are browsing {{ input.url }} in a headless browser.\n\nThe browser session is ALREADY STARTED and navigated to the URL.\nYou can see the initial screenshot.\n\nYour task:\n1. Examine the screenshot to understand the page layout\n2. Use rabbitize_extract to get the page content and clickable element coordinates\n3. Interact with the page using rabbitize_execute\n4. Report what you found\n\nRemember the workflow:\n- Move mouse to target: [\":move-mouse\", \":to\", x, y]\n- Then click: [\":click\"]\n- Type text: [\":type\", \"hello\"]\n- Scroll: [\":scroll-wheel-down\", 3]\n\nThe browser will be automatically closed when this phase ends.",
+      "browser": {
+        "url": "{{ input.url }}",
+        "stability_detection": true,
+        "stability_wait": 2.0,
+        "show_overlay": true
+      },
+      "tackle": [
+        "rabbitize_execute",
+        "rabbitize_extract",
+        "rabbitize_status"
+      ],
+      "rules": {
+        "max_turns": 10
+      }
+    }
+  ]
+}

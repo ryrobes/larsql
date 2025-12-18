@@ -12,6 +12,11 @@ import WorkshopPage from './workshop/WorkshopPage';
 import ToolBrowserView from './components/ToolBrowserView';
 import SearchView from './components/SearchView';
 import ResearchCockpit from './components/ResearchCockpit';
+import BrowserSessionsView from './components/BrowserSessionsView';
+import BrowserSessionDetail from './components/BrowserSessionDetail';
+import FlowBuilderView from './components/FlowBuilderView';
+import FlowRegistryView from './components/FlowRegistryView';
+import SessionsView from './components/SessionsView';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -22,9 +27,10 @@ import GlobalVoiceInput from './components/GlobalVoiceInput';
 import './App.css';
 
 function App() {
-  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint' | 'sextant'
+  const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint' | 'sextant' | 'browser' | 'browser-detail'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [activeCheckpointId, setActiveCheckpointId] = useState(null);  // Currently viewing checkpoint
+  const [browserSessionPath, setBrowserSessionPath] = useState(null);  // Browser session path for detail view
   const [selectedCascadeData, setSelectedCascadeData] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
   const [messageFlowSessionId, setMessageFlowSessionId] = useState(null);
@@ -93,6 +99,22 @@ function App() {
         // /#/cockpit → research cockpit (launches picker)
         return { view: 'cockpit', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
+      if (parts[0] === 'browser') {
+        // /#/browser → browser sessions view
+        return { view: 'browser', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, browserPath: null };
+      }
+      if (parts[0] === 'flow-builder') {
+        // /#/flow-builder → flow builder view
+        return { view: 'flow-builder', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, browserPath: null };
+      }
+      if (parts[0] === 'flow-registry') {
+        // /#/flow-registry → flow registry view
+        return { view: 'flow-registry', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, browserPath: null };
+      }
+      if (parts[0] === 'sessions') {
+        // /#/sessions → unified sessions view
+        return { view: 'sessions', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, browserPath: null };
+      }
       if (parts[0] === 'tools') {
         // /#/tools → tool browser
         return { view: 'tools', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
@@ -121,6 +143,12 @@ function App() {
         // /#/cockpit/session_id → research cockpit with session
         return { view: 'cockpit', cascadeId: null, sessionId: parts[1], checkpointId: null, artifactId: null };
       }
+      if (parts[0] === 'browser') {
+        // /#/browser/client_id/test_id/session_id → browser session detail
+        // The path after /browser/ can have multiple segments
+        const browserPath = parts.slice(1).join('/');
+        return { view: 'browser-detail', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, browserPath };
+      }
       if (parts[0] === 'search') {
         // /#/search/rag → search view with specific tab
         return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
@@ -148,6 +176,17 @@ function App() {
       } else {
         window.location.hash = '#/cockpit';
       }
+    } else if (view === 'browser') {
+      window.location.hash = '#/browser';
+    } else if (view === 'flow-builder') {
+      window.location.hash = '#/flow-builder';
+    } else if (view === 'flow-registry') {
+      window.location.hash = '#/flow-registry';
+    } else if (view === 'sessions') {
+      window.location.hash = '#/sessions';
+    } else if (view === 'browser-detail' && arguments[4]) {
+      // browserPath is passed as 5th argument
+      window.location.hash = `#/browser/${arguments[4]}`;
     } else if (view === 'tools') {
       window.location.hash = '#/tools';
     } else if (view === 'search') {
@@ -286,6 +325,24 @@ function App() {
         setCurrentView('cockpit');
         setSelectedCascadeId(null);
         setDetailSessionId(route.sessionId || null);
+      } else if (route.view === 'browser') {
+        setCurrentView('browser');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+        setBrowserSessionPath(null);
+      } else if (route.view === 'browser-detail') {
+        setCurrentView('browser-detail');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+        setBrowserSessionPath(route.browserPath);
+      } else if (route.view === 'flow-builder') {
+        setCurrentView('flow-builder');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'flow-registry') {
+        setCurrentView('flow-registry');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
       } else if (route.view === 'tools') {
         setCurrentView('tools');
         setSelectedCascadeId(null);
@@ -827,6 +884,14 @@ function App() {
             setCurrentView('artifacts');
             window.location.hash = '#/artifacts';
           }}
+          onBrowser={() => {
+            setCurrentView('browser');
+            updateHash('browser');
+          }}
+          onSessions={() => {
+            setCurrentView('sessions');
+            updateHash('sessions');
+          }}
           blockedCount={blockedCount}
           refreshTrigger={refreshTrigger}
           runningCascades={runningCascades}
@@ -1059,6 +1124,89 @@ function App() {
           onBack={() => {
             setCurrentView('cascades');
             updateHash('cascades');
+          }}
+        />
+      )}
+
+      {currentView === 'browser' && (
+        <BrowserSessionsView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+          onSelectSession={(sessionPath) => {
+            setBrowserSessionPath(sessionPath);
+            setCurrentView('browser-detail');
+            updateHash('browser-detail', null, null, null, sessionPath);
+          }}
+          onOpenFlowBuilder={() => {
+            setCurrentView('flow-builder');
+            updateHash('flow-builder');
+          }}
+          onOpenFlowRegistry={() => {
+            setCurrentView('flow-registry');
+            updateHash('flow-registry');
+          }}
+        />
+      )}
+
+      {currentView === 'browser-detail' && browserSessionPath && (
+        <BrowserSessionDetail
+          sessionPath={browserSessionPath}
+          onBack={() => {
+            setCurrentView('browser');
+            updateHash('browser');
+          }}
+        />
+      )}
+
+      {currentView === 'flow-builder' && (
+        <FlowBuilderView
+          onBack={() => {
+            setCurrentView('browser');
+            updateHash('browser');
+          }}
+          onSaveFlow={(flow) => {
+            console.log('Flow saved:', flow);
+            // Optionally navigate to flow registry after save
+          }}
+        />
+      )}
+
+      {currentView === 'flow-registry' && (
+        <FlowRegistryView
+          onBack={() => {
+            setCurrentView('browser');
+            updateHash('browser');
+          }}
+          onEditFlow={(flow) => {
+            // Could navigate to flow builder with flow data
+            console.log('Edit flow:', flow);
+          }}
+          onTestFlow={(flow) => {
+            // Could open flow builder in test mode
+            console.log('Test flow:', flow);
+          }}
+        />
+      )}
+
+      {currentView === 'sessions' && (
+        <SessionsView
+          onBack={() => {
+            setCurrentView('cascades');
+            updateHash('cascades');
+          }}
+          onAttachSession={(session) => {
+            // Navigate to FlowBuilder with session attached
+            // Store session info for FlowBuilder to pick up
+            window.sessionStorage.setItem('attachSession', JSON.stringify(session));
+            setCurrentView('flow-builder');
+            updateHash('flow-builder');
+          }}
+          onViewArtifacts={(browserPath) => {
+            setBrowserSessionPath(browserPath);
+            setCurrentView('browser-detail');
+            updateHash('browser-detail', null, null, null, browserPath);
           }}
         />
       )}

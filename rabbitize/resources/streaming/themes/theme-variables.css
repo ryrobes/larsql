@@ -1,0 +1,204 @@
+/* ===== RABBITIZE THEME SYSTEM ===== */
+/* 
+ * CSS Custom Properties for theming
+ * Include this file before your main stylesheets
+ */
+
+/* Default Theme: Cyberpunk */
+:root,
+[data-theme="cyberpunk"] {
+  /* Core Colors */
+  --color-primary: #0ff;        /* Cyan */
+  --color-secondary: #f0f;      /* Magenta */
+  --color-accent: #ff0;         /* Yellow */
+  --color-success: #0f0;        /* Green */
+  --color-warning: #fa0;        /* Orange */
+  --color-error: #f00;          /* Red */
+  
+  /* Background Colors */
+  --bg-base: #000;              /* Main background */
+  --bg-surface: #0a0a0a;        /* Card backgrounds */
+  --bg-surface-2: #1a1a1a;      /* Elevated surfaces */
+  --bg-surface-3: #2a2a2a;      /* Higher elevation */
+  --bg-surface-4: #3a3a3a;      /* Highest elevation */
+  
+  /* Text Colors */
+  --text-primary: #fff;         /* Main text */
+  --text-secondary: #ccc;       /* Secondary text */
+  --text-muted: #666;           /* Muted text */
+  --text-disabled: #444;        /* Disabled text */
+  
+  /* Border Colors */
+  --border-primary: #0ff;       /* Primary borders */
+  --border-secondary: #333;     /* Secondary borders */
+  --border-muted: #222;         /* Muted borders */
+  
+  /* Special Effects */
+  --glow-primary: rgba(0, 255, 255, 0.5);
+  --glow-secondary: rgba(255, 0, 255, 0.5);
+  --glow-accent: rgba(255, 255, 0, 0.5);
+  
+  /* Overlay Colors */
+  --overlay-dark: rgba(0, 0, 0, 0.8);
+  --overlay-light: rgba(255, 255, 255, 0.1);
+  
+  /* Component Specific */
+  --timing-bar: #0ff;
+  --timing-gap: #444;
+  --status-active: #0f0;
+  --status-inactive: #666;
+  --external-indicator: #f0f;
+  
+  /* Transitions */
+  --transition-speed: 0.3s;
+  --transition-easing: ease;
+}
+
+/* GitHub Dark Theme */
+[data-theme="github-dark"] {
+  --color-primary: #58a6ff;     /* GitHub blue */
+  --color-secondary: #bc8cff;   /* GitHub purple */
+  --color-accent: #f0883e;      /* GitHub orange */
+  --color-success: #3fb950;     /* GitHub green */
+  --color-warning: #d29922;     /* GitHub yellow */
+  --color-error: #f85149;       /* GitHub red */
+  
+  --bg-base: #0d1117;           /* GitHub dark bg */
+  --bg-surface: #161b22;        /* GitHub surface */
+  --bg-surface-2: #21262d;      
+  --bg-surface-3: #30363d;
+  --bg-surface-4: #3c434d;
+  
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --text-disabled: #484f58;
+  
+  --border-primary: #30363d;
+  --border-secondary: #21262d;
+  --border-muted: #161b22;
+  
+  --glow-primary: rgba(88, 166, 255, 0.4);
+  --glow-secondary: rgba(188, 140, 255, 0.4);
+  --glow-accent: rgba(240, 136, 62, 0.4);
+  
+  --timing-bar: #58a6ff;
+  --external-indicator: #bc8cff;
+}
+
+/* Matrix Terminal Theme */
+[data-theme="matrix"] {
+  --color-primary: #00ff00;     /* Matrix green */
+  --color-secondary: #00cc00;   /* Darker green */
+  --color-accent: #00ff88;      /* Bright green */
+  --color-success: #00ff00;
+  --color-warning: #88ff00;
+  --color-error: #ff0000;
+  
+  --bg-base: #000000;
+  --bg-surface: #001100;
+  --bg-surface-2: #002200;
+  --bg-surface-3: #003300;
+  --bg-surface-4: #004400;
+  
+  --text-primary: #00ff00;
+  --text-secondary: #00cc00;
+  --text-muted: #008800;
+  --text-disabled: #005500;
+  
+  --border-primary: #00ff00;
+  --border-secondary: #006600;
+  --border-muted: #003300;
+  
+  --glow-primary: rgba(0, 255, 0, 0.6);
+  --glow-secondary: rgba(0, 204, 0, 0.6);
+  --glow-accent: rgba(0, 255, 136, 0.6);
+  
+  --timing-bar: #00ff00;
+  --external-indicator: #00ff88;
+}
+
+/* Synthwave Retro Theme */
+[data-theme="synthwave"] {
+  --color-primary: #ff006e;     /* Hot pink */
+  --color-secondary: #8338ec;   /* Purple */
+  --color-accent: #ffbe0b;      /* Golden yellow */
+  --color-success: #06ffa5;     /* Mint green */
+  --color-warning: #fb5607;     /* Orange */
+  --color-error: #ff006e;
+  
+  --bg-base: #0a0014;           /* Deep purple black */
+  --bg-surface: #14001f;
+  --bg-surface-2: #1f0033;
+  --bg-surface-3: #2a0047;
+  --bg-surface-4: #35005c;
+  
+  --text-primary: #f72585;
+  --text-secondary: #b5179e;
+  --text-muted: #7209b7;
+  --text-disabled: #560bad;
+  
+  --border-primary: #ff006e;
+  --border-secondary: #8338ec;
+  --border-muted: #3a0ca3;
+  
+  --glow-primary: rgba(255, 0, 110, 0.6);
+  --glow-secondary: rgba(131, 56, 236, 0.6);
+  --glow-accent: rgba(255, 190, 11, 0.6);
+  
+  --timing-bar: #ff006e;
+  --external-indicator: #8338ec;
+}
+
+/* Deep Ocean Theme */
+[data-theme="ocean"] {
+  --color-primary: #00d9ff;     /* Bright cyan */
+  --color-secondary: #0096c7;   /* Ocean blue */
+  --color-accent: #90e0ef;      /* Light blue */
+  --color-success: #52b788;     /* Sea green */
+  --color-warning: #f77f00;     /* Sunset orange */
+  --color-error: #d62828;
+  
+  --bg-base: #03045e;           /* Deep ocean */
+  --bg-surface: #023e8a;
+  --bg-surface-2: #0077b6;
+  --bg-surface-3: #0096c7;
+  --bg-surface-4: #00b4d8;
+  
+  --text-primary: #caf0f8;
+  --text-secondary: #90e0ef;
+  --text-muted: #48cae4;
+  --text-disabled: #0096c7;
+  
+  --border-primary: #00d9ff;
+  --border-secondary: #0096c7;
+  --border-muted: #0077b6;
+  
+  --glow-primary: rgba(0, 217, 255, 0.5);
+  --glow-secondary: rgba(0, 150, 199, 0.5);
+  --glow-accent: rgba(144, 224, 239, 0.5);
+  
+  --timing-bar: #00d9ff;
+  --external-indicator: #90e0ef;
+}
+
+/* Smooth transitions when switching themes */
+/* Apply transitions only to specific properties to avoid conflicts */
+body,
+.session-card,
+.modal,
+.btn,
+.theme-dropdown-toggle,
+.theme-option {
+  transition: 
+    background-color var(--transition-speed) var(--transition-easing),
+    border-color var(--transition-speed) var(--transition-easing),
+    color var(--transition-speed) var(--transition-easing),
+    box-shadow var(--transition-speed) var(--transition-easing);
+}
+
+/* Disable transitions during theme switch for performance */
+.theme-transitioning,
+.theme-transitioning * {
+  transition: none !important;
+}

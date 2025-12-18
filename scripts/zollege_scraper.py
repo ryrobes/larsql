@@ -352,7 +352,16 @@ def insert_payment_plans(conn, course_id: str, run_id: str, school_url: str,
 def insert_courses(conn, courses: list[dict], run_id: str, scraped_at: datetime):
     """Insert courses into DuckDB."""
 
+    # Deduplicate by hubspot_ticket_id (some schools have duplicate entries)
+    seen_tickets = set()
+    unique_courses = []
     for course in courses:
+        ticket_id = course.get('hubspot_ticket_id', '')
+        if ticket_id not in seen_tickets:
+            seen_tickets.add(ticket_id)
+            unique_courses.append(course)
+
+    for course in unique_courses:
         try:
             school_url = course.get('_school_url', '')
             ticket_id = course.get('hubspot_ticket_id', '')

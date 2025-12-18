@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{CLIENT_ID}}/{{TEST_ID}} - RABBITIZE SESSION</title>
+    <link rel="stylesheet" href="/resources/streaming/themes/theme-variables.css">
+    <link rel="stylesheet" href="/resources/streaming/themes/theme-styles.css">
+    <link rel="stylesheet" href="/resources/streaming/cyberpunk.css">
+    <link rel="stylesheet" href="/resources/streaming/themes/theme-switcher.css">
+    <link rel="icon" type="image/x-icon" href="/resources/streaming/favicon.png">
+</head>
+<body>
+    <a href="/streaming" class="back-link">[ ← BACK TO ALL SESSIONS ]</a>
+
+    <div class="single-session-container">
+        <div class="header">
+            <h1 class="glitch" data-text="{{CLIENT_ID}} /// {{TEST_ID}}">{{CLIENT_ID}} /// {{TEST_ID}}</h1>
+            <div class="subtitle">SESSION: {{SESSION_ID}}</div>
+        </div>
+
+        <div id="session-container">
+            <!-- Session content will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Reuse step overlay from dashboard -->
+    <div id="step-overlay" class="step-overlay">
+        <span class="step-overlay-close" onclick="closeStepOverlay()">&times;</span>
+        <div class="step-overlay-content" id="step-overlay-content">
+            <!-- Content will be dynamically loaded here -->
+        </div>
+    </div>
+
+    <!-- Logs modal -->
+    <div id="logs-modal" class="modal">
+        <div class="modal-content" style="max-width: 80%; max-height: 80%;">
+            <div class="modal-header">
+                <h2 class="modal-title">SESSION LOGS</h2>
+                <span class="close-btn" onclick="closeLogsModal()">&times;</span>
+            </div>
+            <div class="modal-body" style="overflow: auto;">
+                <div id="spawn-command-section" style="display: none;">
+                    <h3 style="color: #0ff;">SPAWN COMMAND</h3>
+                    <pre id="spawn-command-content" class="log-content" style="background: #1a1a1a; border: 1px solid #0ff; padding: 15px; margin-bottom: 20px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);"></pre>
+                </div>
+                <h3>STDOUT</h3>
+                <pre id="stdout-content" class="log-content"></pre>
+                <h3>STDERR</h3>
+                <pre id="stderr-content" class="log-content"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commands/Details modal -->
+    <div id="details-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">REPLAY COMMANDS</h2>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Content will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Re-run confirmation modal -->
+    <div id="rerun-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">CONFIRM RE-RUN</h2>
+                <span class="close-btn" onclick="closeRerunModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="rerun-modal-body">
+                <!-- Content will be dynamically loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const clientId = '{{CLIENT_ID}}';
+        const testId = '{{TEST_ID}}';
+        const sessionId = '{{SESSION_ID}}';
+        const sessionKey = `${clientId}/${testId}/${sessionId}`;
+        let previousStatus = null;
+        let checksAfterFinish = 0;
+
+        // Load and render single session
+        async function loadSingleSession(fullRefresh = true) {
+            try {
+                // Fetch session list to get full session data
+                const response = await fetch('/api/sessions');
+                const sessions = await response.json();
+
+                // Find our specific session
+                const session = sessions.find(s =>
+                    s.clientId === clientId &&
+                    s.testId === testId &&
+                    s.sessionId === sessionId
+                );
+
+                if (!session) {
+                    if (fullRefresh) {
+                        document.getElementById('session-container').innerHTML =
+                            '<div class="no-sessions">Session not found</div>';
+                    }
+                    return;
+                }
+
+                // Debug logging for external sessions
+                if (session.isExternal) {
+                    console.log('External session detected:', {
+                        sessionId: session.sessionId,
+                        port: session.port,
+                        isExternal: session.isExternal,
+                        status: session.status
+                    });
+                }
+
+                // Check if we need to update just the GIF
+                if (!fullRefresh && previousStatus === 'active' && session.status === 'finished') {
+                    // Just update the GIF
+                    const gifElement = document.getElementById('session-gif');
+                    if (gifElement) {
+                        const newSrc = `/rabbitize-runs/${session.clientId}/${session.testId}/${session.sessionId}/video/cover.gif`;
+                        // Force reload by adding timestamp
+                        gifElement.src = newSrc + '?t=' + Date.now();
+                    }
+
+                    // Update status indicator
+                    const statusElement = document.querySelector('.info-value .status-indicator');
+                    if (statusElement) {
+                        statusElement.className = 'status-indicator-finished';
+                        statusElement.nextSibling.textContent = 'FINISHED';
+                    }
+
+                    // Update other dynamic elements
+                    const uptimeElement = document.querySelector('.uptime');
+                    if (uptimeElement) {
+                        uptimeElement.textContent = Math.floor((session.duration || 0) / 1000) + 's';
+                    }
+
+                    previousStatus = session.status;
+                    return;
+                }
+
+                // Fetch detailed info
+                const detailsResponse = await fetch(`/api/session/${clientId}/${testId}/${sessionId}`);
+                const details = await detailsResponse.json();
+
+                // Render the session card
+                const statusClass = session.status === 'active' ? 'status-indicator' : 'status-indicator-finished';
+                const statusText = session.status.toUpperCase();
+                const uptime = session.status === 'active' ?
+                    Math.floor((Date.now() - session.startTime) / 1000) + 's' :
+                    Math.floor((session.duration || 0) / 1000) + 's';
+                const isHistorical = session.phase === 'legacy' || session.phase === 'unknown';
+
+                let html = `
+                    <div class="session-card ${isHistorical ? 'historical' : ''}" data-session-id="${session.sessionId}" data-session-key="${sessionKey}">
+                        <div class="timestamp">${new Date(session.startTime).toISOString()}</div>
+                        <div class="session-info">
+                            <div class="session-cover-inline" style="margin-bottom: 15px;">
+                                <img id="session-gif"
+                                     src="${session.status === 'finished' || session.phase === 'completed'
+                                    ? `/rabbitize-runs/${session.clientId}/${session.testId}/${session.sessionId}/video/cover.gif`
+                                    : '/resources/streaming/images/running.gif'}"
+                                     alt="Session preview"
+                                     onerror="this.style.display='none'"
+                                     style="width: 200px; height: 200px; object-fit: contain; display: block;">
+                            </div>
+                            ${session.initialUrl ? `
+                            <div class="info-item url-item">
+                                <div class="info-label">URL</div>
+                                <div class="info-value url-value" title="${session.initialUrl}">${session.initialUrl}</div>
+                            </div>
+                            ` : ''}
+                            <div class="info-item">
+                                <div class="info-label">Status</div>
+                                <div class="info-value"><span class="${statusClass}"></span>${statusText}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Steps</div>
+                                <div class="info-value command-count">${session.commandCount}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Phase</div>
+                                <div class="info-value phase">${session.phase || 'unknown'}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Uptime</div>
+                                <div class="info-value uptime">${uptime}</div>
+                            </div>
+                            ${session.isExternal ? `
+                            <div class="info-item">
+                                <div class="info-label">External</div>
+                                <div class="info-value"><span style="color: #f0f;">Port ${session.port || 'Unknown'}</span></div>
+                            </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- AI Monologue Panel for active sessions -->
+                        ${session.status === 'active' ? `
+                        <div id="ai-monologue-panel" class="ai-monologue-panel">
+                            <div class="ai-monologue-header">
+                                <div class="ai-monologue-title">AI INNER MONOLOGUE</div>
+                                <div class="ai-monologue-status" id="ai-monologue-status">CHECKING...</div>
+                            </div>
+                            <div id="ai-objective-container" class="ai-objective-container" style="display: none;">
+                                <div class="ai-objective-label">🎯 CURRENT OBJECTIVE</div>
+                                <div id="ai-objective-text" class="ai-objective-text"></div>
+                            </div>
+                            <div class="ai-monologue-content">
+                                <div class="ai-message-box user">
+                                    <div class="ai-message-label user">SYSTEM → AI</div>
+                                    <div id="ai-user-message" class="ai-message-content">
+                                        <div class="ai-no-data">Waiting for AI input...</div>
+                                    </div>
+                                    <div id="ai-user-metadata" class="ai-metadata-container"></div>
+                                </div>
+                                <div class="ai-message-box model">
+                                    <div class="ai-message-label model">AI → ACTION</div>
+                                    <div id="ai-model-message" class="ai-message-content">
+                                        <div class="ai-no-data">Waiting for AI response...</div>
+                                    </div>
+                                    <div id="ai-model-metadata" class="ai-metadata-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Add larger preview for active sessions -->
+                        ${session.status === 'active' ? `
+                        <div style="margin: 20px 0; text-align: center;" id="live-stream-container">
+                            <img id="live-stream-img"
+                                 src="${session.port ? `http://${window.location.hostname}:${session.port}` : ''}/stream/${session.clientId}/${session.testId}/${session.sessionId}?cid=single-${Date.now()}-${Math.random().toString(36).substr(2, 5)}"
+                                 style="max-width: 100%;"
+                                 alt="Live stream"
+                                 onerror="this.src='/rabbitize-runs/${session.clientId}/${session.testId}/${session.sessionId}/latest.jpg'; this.onerror=null;">
+                        </div>
+                        ` : ''}
+
+                        <div class="zoom-preview-container" data-session-key="${sessionKey}">
+                            ${details.zoomImages && details.zoomImages.length > 0 ? `
+                                <div class="zoom-preview-grid">
+                                    ${details.zoomImages.map(img => `
+                                        <img class="zoom-thumb"
+                                             src="${img.url}"
+                                             alt="Step ${img.index}"
+                                             title="Step ${img.index}"
+                                             data-index="${img.index}"
+                                             loading="lazy"
+                                             onclick="showStepDetails('${clientId}', '${testId}', '${sessionId}', ${img.index})">
+                                    `).join('')}
+                                </div>
+                            ` : '<div class="zoom-preview-empty">No preview images</div>'}
+                        </div>
+
+                        <div class="timing-chart-container" data-session-key="${sessionKey}">
+                            ${details.timingData ? renderTimingChart(details.timingData, details.totalDuration) : ''}
+                        </div>
+
+                        <div class="actions">
+                            ${session.status === 'active' ? `
+                                <a href="${session.port ? `http://${window.location.hostname}:${session.port}` : ''}/stream/${session.clientId}/${session.testId}/${session.sessionId}"
+                                   class="action-link" target="_blank">
+                                    [ DIRECT STREAM ]
+                                </a>
+                                <a href="/stream-viewer/${session.clientId}/${session.testId}/${session.sessionId}"
+                                   class="action-link" target="_blank">
+                                    [ WEB VIEWER ]
+                                </a>
+                            ` : `
+                                <a href="/stream-viewer/${session.clientId}/${session.testId}/${session.sessionId}"
+                                   class="action-link" target="_blank">
+                                    [ WATCH VIDEO ]
+                                </a>
+                            `}
+                            <button class="action-link details-btn" onclick="showSessionDetails('${session.clientId}', '${session.testId}', '${session.sessionId}')">
+                                [ COMMANDS ]
+                            </button>
+                            <button class="action-link logs-btn" onclick="showSessionLogs('${session.clientId}', '${session.testId}', '${session.sessionId}')">
+                                [ LOGS ]
+                            </button>
+                            <button class="action-link rerun-btn" onclick="confirmRerun('${session.clientId}', '${session.testId}', '${session.sessionId}')">
+                                [ RE-RUN ]
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                if (fullRefresh) {
+                    document.getElementById('session-container').innerHTML = html;
+
+                    // Setup hover interactions
+                    setupHoverInteractions();
+                }
+
+                // Update previous status
+                previousStatus = session.status;
+
+                // Continue refreshing
+                if (session.status === 'active') {
+                    // While active, do partial refreshes
+                    setTimeout(() => loadSingleSession(false), 1000);
+                } else if (previousStatus === 'active' || checksAfterFinish < 5) {
+                    // Keep checking for a few seconds after finishing to ensure GIF is generated
+                    checksAfterFinish++;
+                    setTimeout(() => loadSingleSession(false), 2000);
+                }
+
+            } catch (error) {
+                console.error('Failed to load session:', error);
+                document.getElementById('session-container').innerHTML =
+                    '<div class="no-sessions">Failed to load session</div>';
+            }
+        }
+
+        // Copy timing chart render function
+        function renderTimingChart(timingData, totalDuration) {
+            if (!timingData || timingData.length === 0) {
+                return '<div class="timing-chart-empty">No timing data available</div>';
+            }
+
+            let html = '<div class="timing-chart">';
+
+            timingData.forEach((item, index) => {
+                const startPercent = (item.relativeStart / totalDuration) * 100;
+                const widthPercent = (item.duration / totalDuration) * 100;
+
+                if (item.gapBefore > 0) {
+                    const gapStartPercent = ((item.relativeStart - item.gapBefore) / totalDuration) * 100;
+                    const gapWidthPercent = (item.gapBefore / totalDuration) * 100;
+                    html += `<div class="timing-gap" style="left: ${gapStartPercent}%; width: ${gapWidthPercent}%;"></div>`;
+                }
+
+                const barLabel = widthPercent > 5 ? `${index}` : '';
+                html += `
+                    <div class="timing-bar"
+                         data-command="${item.command}"
+                         data-index="${index}"
+                         style="left: ${startPercent}%; width: ${widthPercent}%;"
+                         title="${item.command} - ${item.duration}ms"
+                         onclick="showStepDetails('${clientId}', '${testId}', '${sessionId}', ${index})">
+                        ${barLabel}
+                        <div class="timing-tooltip">
+                            Step ${index}: ${item.command}<br>
+                            Duration: ${(item.duration / 1000).toFixed(2)}s
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+
+            const totalSeconds = (totalDuration / 1000).toFixed(2);
+            const avgDuration = (timingData.reduce((sum, item) => sum + item.duration, 0) / timingData.length / 1000).toFixed(2);
+
+            html += `
+                <div class="timing-stats">
+                    <div class="timing-stat">
+                        <span class="timing-stat-label">Total:</span>
+                        <span>${totalSeconds}s</span>
+                    </div>
+                    <div class="timing-stat">
+                        <span class="timing-stat-label">Steps:</span>
+                        <span>${timingData.length}</span>
+                    </div>
+                    <div class="timing-stat">
+                        <span class="timing-stat-label">Avg:</span>
+                        <span>${avgDuration}s</span>
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
+        // Copy hover interaction setup
+        function setupHoverInteractions() {
+            document.addEventListener('mouseover', (e) => {
+                if (e.target.classList.contains('zoom-thumb')) {
+                    const index = e.target.dataset.index;
+                    if (index !== undefined) {
+                        const timingBar = document.querySelector(`.timing-bar[data-index="${index}"]`);
+                        if (timingBar) {
+                            timingBar.classList.add('highlight');
+                        }
+                    }
+                }
+
+                if (e.target.classList.contains('timing-bar')) {
+                    const index = e.target.dataset.index;
+                    if (index !== undefined) {
+                        const zoomThumb = document.querySelector(`.zoom-thumb[data-index="${index}"]`);
+                        if (zoomThumb) {
+                            zoomThumb.classList.add('highlight');
+                        }
+                    }
+                }
+            });
+
+            document.addEventListener('mouseout', (e) => {
+                if (e.target.classList.contains('zoom-thumb')) {
+                    const index = e.target.dataset.index;
+                    if (index !== undefined) {
+                        const timingBar = document.querySelector(`.timing-bar[data-index="${index}"]`);
+                        if (timingBar) {
+                            timingBar.classList.remove('highlight');
+                        }
+                    }
+                }
+
+                if (e.target.classList.contains('timing-bar')) {
+                    const index = e.target.dataset.index;
+                    if (index !== undefined) {
+                        const zoomThumb = document.querySelector(`.zoom-thumb[data-index="${index}"]`);
+                        if (zoomThumb) {
+                            zoomThumb.classList.remove('highlight');
+                        }
+                    }
+                }
+            });
+        }
+
+        // Copy step details functions
+        async function showStepDetails(clientId, testId, sessionId, stepIndex) {
+            try {
+                const response = await fetch(`/api/session/${clientId}/${testId}/${sessionId}/step/${stepIndex}`);
+                const stepData = await response.json();
+
+                let content = `
+                    <div class="step-screenshot-section">
+                `;
+
+                if (stepData.screenshots.pre) {
+                    content += `
+                        <div class="step-screenshot">
+                            <img src="${stepData.screenshots.pre}" alt="Pre-command state">
+                            <div class="step-screenshot-label">Before</div>
+                        </div>
+                    `;
+                }
+                if (stepData.screenshots.post) {
+                    content += `
+                        <div class="step-screenshot">
+                            <img src="${stepData.screenshots.post}" alt="Post-command state">
+                            <div class="step-screenshot-label">After</div>
+                        </div>
+                    `;
+                }
+
+                content += `</div><div class="step-info-section">`;
+
+                content += `
+                    <div class="step-header">
+                        <div class="step-title">Step ${stepIndex}</div>
+                        <div class="step-command-display">${JSON.stringify(stepData.command)}</div>
+                    </div>
+                `;
+
+                // Metrics
+                if (stepData.timing || stepData.metrics) {
+                    content += '<div class="step-metrics">';
+
+                    if (stepData.timing) {
+                        content += `
+                            <div class="step-metric">
+                                <div class="step-metric-label">Duration</div>
+                                <div class="step-metric-value">${(stepData.timing.duration / 1000).toFixed(2)}s</div>
+                            </div>
+                        `;
+                    }
+
+                    if (stepData.metrics?.pre?.cpu) {
+                        content += `
+                            <div class="step-metric">
+                                <div class="step-metric-label">CPU (Pre → Post)</div>
+                                <div class="step-metric-value">${stepData.metrics.pre.cpu}% → ${stepData.metrics.post.cpu}%</div>
+                            </div>
+                        `;
+                    }
+
+                    if (stepData.metrics?.pre?.memory) {
+                        content += `
+                            <div class="step-metric">
+                                <div class="step-metric-label">Memory (Pre → Post)</div>
+                                <div class="step-metric-value">${stepData.metrics.pre.memory}MB → ${stepData.metrics.post.memory}MB</div>
+                            </div>
+                        `;
+                    }
+
+                    content += '</div>';
+                }
+
+                // DOM preview
+                if (stepData.dom) {
+                    content += `
+                        <div class="step-dom-preview">${stepData.dom.substring(0, 500)}${stepData.dom.length > 500 ? '...' : ''}</div>
+                    `;
+                }
+
+                content += '</div>';
+
+                if (stepData.videoClip) {
+                    content += `
+                        <div class="step-video-section">
+                            <video class="step-video" controls autoplay loop>
+                                <source src="${stepData.videoClip}" type="video/mp4">
+                            </video>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('step-overlay-content').innerHTML = content;
+                document.getElementById('step-overlay').classList.add('active');
+
+            } catch (error) {
+                console.error('Failed to load step details:', error);
+                alert('Failed to load step details');
+            }
+        }
+
+        function closeStepOverlay() {
+            document.getElementById('step-overlay').classList.remove('active');
+        }
+
+        // Show session details in modal
+        async function showSessionDetails(clientId, testId, sessionId) {
+            try {
+                const response = await fetch(`/api/session/${clientId}/${testId}/${sessionId}`);
+                const details = await response.json();
+
+                // Build modal content
+                let content = `<div class="details-section">`;
+
+                // Command reconstruction
+                if (details.hasCommands) {
+                    const cliCommand = generateCLICommand(details);
+                    const curlCommands = generateCURLCommands(details);
+
+                    content += `
+                        <h3>REPLAY COMMANDS</h3>
+
+                        <div class="command-section">
+                            <h4>CLI BATCH MODE</h4>
+                            <pre class="command-box"><code>${cliCommand}</code></pre>
+                            <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">[ COPY ]</button>
+                        </div>
+
+                        <div class="command-section">
+                            <h4>CURL SEQUENCE</h4>
+                            <pre class="command-box"><code>${curlCommands}</code></pre>
+                            <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">[ COPY ]</button>
+                        </div>
+                    `;
+                } else {
+                    content += `<p style="text-align: center; opacity: 0.6;">No commands found for this session</p>`;
+                }
+
+                content += `</div>`;
+
+                document.getElementById('modal-body').innerHTML = content;
+                document.getElementById('details-modal').style.display = 'block';
+
+            } catch (error) {
+                console.error('Failed to load session details:', error);
+                alert('Failed to load session details');
+            }
+        }
+
+        // Generate CLI command
+        function generateCLICommand(details) {
+            const commands = details.commands.map(cmd =>
+                '    ' + JSON.stringify(cmd)
+            ).join(',\n');
+
+            return `node src/index.js \\
+  --client-id "${details.clientId || clientId}" \\
+  --test-id "${details.testId || testId}" \\
+  --exit-on-end true \\
+  --process-video true \\
+  --batch-url "${details.initialUrl || 'https://ryrob.es'}" \\
+  --batch-commands='[
+${commands}
+  ]'`;
+        }
+
+        // Generate CURL commands
+        function generateCURLCommands(details) {
+            let commands = [];
+
+            // Start command
+            commands.push(`curl -s -X POST http://${window.location.hostname}:3037/start \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "${details.initialUrl || 'https://ryrob.es'}"}' | jq`);
+
+            // Execute commands
+            details.commands.forEach(cmd => {
+                commands.push(`curl -s -X POST http://${window.location.hostname}:3037/execute \\
+  -H "Content-Type: application/json" \\
+  -d '{"command": ${JSON.stringify(cmd)}}' | jq`);
+            });
+
+            // End command
+            commands.push(`curl -s -X POST http://${window.location.hostname}:3037/end | jq`);
+
+            return commands.join('\n');
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('details-modal').style.display = 'none';
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Visual feedback
+                event.target.textContent = '[ COPIED! ]';
+                setTimeout(() => {
+                    event.target.textContent = '[ COPY ]';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        // Re-run functionality
+        let pendingRerun = null;
+
+        async function confirmRerun(clientId, testId, sessionId) {
+            try {
+                const response = await fetch(`/api/session/${clientId}/${testId}/${sessionId}`);
+                const details = await response.json();
+
+                console.log('Loaded session details:', details);
+
+                if (!details.hasCommands || !details.commands || details.commands.length === 0) {
+                    alert('No commands found for this session');
+                    return;
+                }
+
+                // Store the rerun details
+                pendingRerun = {
+                    clientId,
+                    testId,
+                    sessionId,
+                    commands: details.commands,
+                    initialUrl: details.initialUrl
+                };
+
+                // Build modal content
+                let content = `
+                    <div class="confirm-warning">
+                        <strong>⚠️ WARNING:</strong> This will start a new browser automation session.
+                        The run may take several minutes and consume system resources.
+                    </div>
+
+                    <div class="confirm-info">
+                        <div class="confirm-info-item"><strong>Client ID:</strong> ${clientId}</div>
+                        <div class="confirm-info-item"><strong>Test ID:</strong> ${testId}</div>
+                        <div class="confirm-info-item"><strong>Original Session:</strong> ${sessionId}</div>
+                        <div class="confirm-info-item"><strong>URL:</strong> ${details.initialUrl || 'Unknown'}</div>
+                        <div class="confirm-info-item"><strong>Steps:</strong> ${details.commands.length}</div>
+                        <div class="confirm-info-item"><strong>Estimated Duration:</strong> ${
+                            details.timingData ?
+                            Math.ceil(details.totalDuration / 1000) + 's' :
+                            'Unknown'
+                        }</div>
+                    </div>
+
+                    <div class="confirm-actions">
+                        <button class="cancel-btn" onclick="closeRerunModal()">[ CANCEL ]</button>
+                        <button class="confirm-btn" onclick="executeRerun()">[ START RE-RUN ]</button>
+                    </div>
+                `;
+
+                document.getElementById('rerun-modal-body').innerHTML = content;
+                document.getElementById('rerun-modal').style.display = 'block';
+
+            } catch (error) {
+                console.error('Failed to load session details:', error);
+                alert('Failed to load session details for re-run');
+            }
+        }
+
+        function closeRerunModal() {
+            document.getElementById('rerun-modal').style.display = 'none';
+            pendingRerun = null;
+        }
+
+        async function executeRerun() {
+            if (!pendingRerun) {
+                console.error('No pending rerun');
+                alert('No pending rerun data');
+                return;
+            }
+
+            // Save the data before closing modal
+            const rerunData = {
+                clientId: pendingRerun.clientId,
+                testId: pendingRerun.testId,
+                url: pendingRerun.initialUrl,
+                commands: pendingRerun.commands
+            };
+
+            try {
+                // Log the data we're sending
+                console.log('Executing re-run with data:', rerunData);
+
+                // Close the modal immediately
+                closeRerunModal();
+
+                // Make API call to start the re-run
+                const bodyStr = JSON.stringify(rerunData);
+                console.log('Sending request body:', bodyStr);
+
+                const response = await fetch('/api/rerun', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': bodyStr.length
+                    },
+                    body: bodyStr
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Server error response:', errorText);
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Server response:', result);
+
+                if (result.success) {
+                    // Show success notification
+                    console.log('Re-run started successfully:', result);
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #0f0; color: #000; padding: 15px; border: 2px solid #0f0; z-index: 10000;';
+                    successMsg.innerHTML = `Re-run started successfully!<br>Port: ${result.port || 'Unknown'}`;
+                    document.body.appendChild(successMsg);
+                    setTimeout(() => successMsg.remove(), 5000);
+                } else {
+                    alert('Failed to start re-run: ' + (result.error || 'Unknown error'));
+                }
+
+            } catch (error) {
+                console.error('Failed to execute re-run:', error);
+                alert('Failed to start re-run: ' + error.message);
+            }
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const detailsModal = document.getElementById('details-modal');
+            const rerunModal = document.getElementById('rerun-modal');
+            const logsModal = document.getElementById('logs-modal');
+
+            if (event.target === detailsModal) {
+                closeModal();
+            }
+            if (event.target === rerunModal) {
+                closeRerunModal();
+            }
+            if (event.target === logsModal) {
+                closeLogsModal();
+            }
+        }
+
+        // ANSI to HTML converter
+        function ansiToHtml(text) {
+            if (!text) return 'No output';
+
+            // ANSI color codes mapping
+            const colors = {
+                '30': 'color: #000',
+                '31': 'color: #f00',
+                '32': 'color: #0f0',
+                '33': 'color: #ff0',
+                '34': 'color: #00f',
+                '35': 'color: #f0f',
+                '36': 'color: #0ff',
+                '37': 'color: #fff',
+                '90': 'color: #666',
+                '91': 'color: #f66',
+                '92': 'color: #6f6',
+                '93': 'color: #ff6',
+                '94': 'color: #66f',
+                '95': 'color: #f6f',
+                '96': 'color: #6ff',
+                '97': 'color: #fff',
+                // Background colors
+                '40': 'background-color: #000',
+                '41': 'background-color: #f00',
+                '42': 'background-color: #0f0',
+                '43': 'background-color: #ff0',
+                '44': 'background-color: #00f',
+                '45': 'background-color: #f0f',
+                '46': 'background-color: #0ff',
+                '47': 'background-color: #fff'
+            };
+
+            // Escape HTML
+            text = text.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;')
+                      .replace(/'/g, '&#039;');
+
+            // Convert ANSI codes to HTML
+            text = text.replace(/\x1b\[([0-9;]+)m/g, (match, codes) => {
+                const codeList = codes.split(';');
+                let styles = [];
+
+                for (const code of codeList) {
+                    if (code === '0') {
+                        // Reset
+                        return '</span>';
+                    } else if (code === '1') {
+                        styles.push('font-weight: bold');
+                    } else if (code === '3') {
+                        styles.push('font-style: italic');
+                    } else if (code === '4') {
+                        styles.push('text-decoration: underline');
+                    } else if (colors[code]) {
+                        styles.push(colors[code]);
+                    }
+                }
+
+                return styles.length > 0 ? `<span style="${styles.join('; ')}">` : '';
+            });
+
+            // Clean up any unclosed spans
+            const openSpans = (text.match(/<span/g) || []).length;
+            const closeSpans = (text.match(/<\/span>/g) || []).length;
+            for (let i = 0; i < openSpans - closeSpans; i++) {
+                text += '</span>';
+            }
+
+            // Convert newlines to <br> for better formatting
+            text = text.replace(/\n/g, '<br>');
+
+            return text;
+        }
+
+        // Show session logs
+        async function showSessionLogs(clientId, testId, sessionId) {
+            try {
+                // Check if this is an external process with logs
+                const logsPath = `/rabbitize-runs/${clientId}/${testId}/${sessionId}/logs`;
+                const stdoutPath = `${logsPath}/stdout.log`;
+                const stderrPath = `${logsPath}/stderr.log`;
+                const spawnCommandPath = `/rabbitize-runs/${clientId}/${testId}/${sessionId}/spawn-command.txt`;
+
+                // Try to fetch the spawn command
+                let spawnCommandContent = '';
+                try {
+                    const spawnCommandResponse = await fetch(spawnCommandPath);
+                    if (spawnCommandResponse.ok) {
+                        spawnCommandContent = await spawnCommandResponse.text();
+                        document.getElementById('spawn-command-content').textContent = spawnCommandContent;
+                        document.getElementById('spawn-command-section').style.display = 'block';
+                    } else {
+                        document.getElementById('spawn-command-section').style.display = 'none';
+                    }
+                } catch (e) {
+                    // Spawn command file doesn't exist
+                    document.getElementById('spawn-command-section').style.display = 'none';
+                }
+
+                // Try to fetch the logs
+                let stdoutContent = '';
+                let stderrContent = '';
+
+                try {
+                    const stdoutResponse = await fetch(stdoutPath);
+                    if (stdoutResponse.ok) {
+                        stdoutContent = await stdoutResponse.text();
+                    }
+                } catch (e) {
+                    // Log file doesn't exist
+                }
+
+                try {
+                    const stderrResponse = await fetch(stderrPath);
+                    if (stderrResponse.ok) {
+                        stderrContent = await stderrResponse.text();
+                    }
+                } catch (e) {
+                    // Log file doesn't exist
+                }
+
+                // Check process tracking for external processes
+                try {
+                    const trackingResponse = await fetch('/api/processes');
+                    const tracking = await trackingResponse.json();
+
+                    // Find if this session has a tracked process
+                    const proc = tracking.processes.find(p =>
+                        p.clientId === clientId && p.testId === testId && p.sessionId === sessionId
+                    );
+
+                    if (proc && proc.pid) {
+                        // Try to get logs from the API
+                        const logsResponse = await fetch(`/api/process/${proc.pid}/logs`);
+                        if (logsResponse.ok) {
+                            const logs = await logsResponse.json();
+                            if (logs.stdout) stdoutContent = logs.stdout;
+                            if (logs.stderr) stderrContent = logs.stderr;
+                        }
+                    }
+                } catch (e) {
+                    // Process tracking not available
+                }
+
+                // Display the logs
+                document.getElementById('stdout-content').innerHTML = ansiToHtml(stdoutContent || 'No stdout output available');
+                document.getElementById('stderr-content').innerHTML = ansiToHtml(stderrContent || 'No stderr output available');
+                document.getElementById('logs-modal').style.display = 'block';
+
+            } catch (error) {
+                console.error('Failed to load session logs:', error);
+                alert('Failed to load session logs');
+            }
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logs-modal').style.display = 'none';
+        }
+
+        // AI Monologue Panel Functions
+        let lastUserMessageTimestamp = null;
+        let lastModelMessageTimestamp = null;
+        let feedbackPollInterval = null;
+        let lastRefreshTime = 0;
+
+        async function checkAndLoadObjective() {
+            try {
+                const response = await fetch(`/api/session/${clientId}/${testId}/${sessionId}/feedback?operator=objective`);
+                const data = await response.json();
+
+                if (data.exists && data.latestUser) {
+                    const objective = data.latestUser.payload.objective;
+                    if (objective) {
+                        document.getElementById('ai-objective-text').textContent = objective;
+                        document.getElementById('ai-objective-container').style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load objective:', error);
+            }
+        }
+
+        async function checkAndLoadFeedback() {
+            try {
+                const response = await fetch(`/api/session/${clientId}/${testId}/${sessionId}/feedback?operator=actor`);
+                const data = await response.json();
+
+                if (data.exists) {
+                    // Show the panel
+                    const panel = document.getElementById('ai-monologue-panel');
+                    if (panel) {
+                        panel.style.display = 'block';
+                        document.getElementById('ai-monologue-status').textContent =
+                            `${data.totalUserMessages} prompts • ${data.totalModelMessages} responses`;
+                    }
+
+                    // Update user message if new
+                    if (data.latestUser && data.latestUser.timestamp !== lastUserMessageTimestamp) {
+                        lastUserMessageTimestamp = data.latestUser.timestamp;
+                        updateUserMessage(data.latestUser);
+
+                        // Trigger partial refresh to update thumbnails/storyboard (with debounce)
+                        const now = Date.now();
+                        if (now - lastRefreshTime > 2000) {
+                            lastRefreshTime = now;
+                            loadSingleSession(false);
+                        }
+                    }
+
+                    // Update model message if new
+                    if (data.latestModel && data.latestModel.timestamp !== lastModelMessageTimestamp) {
+                        lastModelMessageTimestamp = data.latestModel.timestamp;
+                        updateModelMessage(data.latestModel);
+
+                        // Trigger partial refresh to update thumbnails/storyboard (with debounce)
+                        const now = Date.now();
+                        if (now - lastRefreshTime > 2000) {
+                            lastRefreshTime = now;
+                            loadSingleSession(false);
+                        }
+                    }
+                } else {
+                    // Hide the panel if no feedback exists
+                    const panel = document.getElementById('ai-monologue-panel');
+                    if (panel) {
+                        panel.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load feedback:', error);
+            }
+        }
+
+        function parseMessageParts(messageParts, isUserMessage = false) {
+            try {
+                const parts = JSON.parse(messageParts);
+                let content = '';
+
+                parts.forEach(part => {
+                    if (part.text) {
+                        let text = part.text;
+
+                        // For user messages, remove the repetitive parts
+                        if (isUserMessage) {
+                            // First, add paragraph break before "Since you executed"
+                            if (text.includes('Since you executed')) {
+                                text = text.replace('Since you executed', '\n\nSince you executed');
+                            }
+
+                            // Remove the coordinate reminder and replace with paragraph breaks
+                            const coordReminder = 'Remember that x is HORIZONTAL (left to right, 0-1920) and y is VERTICAL (top to bottom, 0-1080).';
+                            if (text.includes(coordReminder)) {
+                                text = text.replace(coordReminder, '\n\n');
+                            }
+
+                            // Then, remove everything from "What do you see" onwards
+                            const cutoffIndex = text.indexOf('What do you see');
+                            if (cutoffIndex !== -1) {
+                                text = text.substring(0, cutoffIndex).trim();
+                            }
+                        }
+
+                        content += text + '\n\n';
+                    }
+                    if (part.functionCall) {
+                        content += `<span class="function-call">⚡ ${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})</span>\n\n`;
+                    }
+                    if (part.inlineData && part.inlineData.data) {
+                        // Extract saved image filename if present
+                        const match = part.inlineData.data.match(/\[IMAGE_SAVED: ([^\]]+)\]/);
+                        if (match) {
+                            content += `<div style="color: #0ff; font-size: 11px;">📸 ${match[1]}</div>\n\n`;
+                        } else {
+                            content += `<div style="color: #0ff; font-size: 11px;">📸 [Image attached]</div>\n\n`;
+                        }
+                    }
+                });
+
+                return content.trim();
+            } catch (e) {
+                return messageParts;
+            }
+        }
+
+        function updateUserMessage(entry) {
+            const container = document.getElementById('ai-user-message');
+            const metadataContainer = document.getElementById('ai-user-metadata');
+            const box = container.parentElement;
+
+            // Add animation
+            box.classList.add('updating');
+            setTimeout(() => box.classList.remove('updating'), 500);
+
+            let content = '';
+
+            // Parse message parts
+            if (entry.payload.message_parts_json) {
+                content = parseMessageParts(entry.payload.message_parts_json, true);
+            }
+
+            container.innerHTML = content || '<div class="ai-no-data">No content</div>';
+
+            // Add timestamp
+            const timestamp = new Date(entry.timestamp).toLocaleTimeString();
+            container.innerHTML += `<div class="ai-message-timestamp">${timestamp}</div>`;
+
+            // Handle metadata separately in a table
+            metadataContainer.innerHTML = '';
+            if (entry.payload.metadata_json) {
+                try {
+                    const metadata = JSON.parse(entry.payload.metadata_json);
+                    if (Object.keys(metadata).length > 0) {
+                        let tableHtml = '<table class="ai-metadata-table">';
+                        for (const [key, value] of Object.entries(metadata)) {
+                            tableHtml += `<tr><td>${key}</td><td>${value}</td></tr>`;
+                        }
+                        tableHtml += '</table>';
+                        metadataContainer.innerHTML = tableHtml;
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+
+        function updateModelMessage(entry) {
+            const container = document.getElementById('ai-model-message');
+            const metadataContainer = document.getElementById('ai-model-metadata');
+            const box = container.parentElement;
+
+            // Add animation
+            box.classList.add('updating');
+            setTimeout(() => box.classList.remove('updating'), 500);
+
+            let content = '';
+
+            // Parse message parts
+            if (entry.payload.message_parts_json) {
+                content = parseMessageParts(entry.payload.message_parts_json);
+            }
+
+            container.innerHTML = content || '<div class="ai-no-data">No content</div>';
+
+            // Add timestamp
+            const timestamp = new Date(entry.timestamp).toLocaleTimeString();
+            container.innerHTML += `<div class="ai-message-timestamp">${timestamp}</div>`;
+
+            // Handle metadata separately in a table
+            metadataContainer.innerHTML = '';
+            if (entry.payload.metadata_json) {
+                try {
+                    const metadata = JSON.parse(entry.payload.metadata_json);
+                    if (Object.keys(metadata).length > 0) {
+                        let tableHtml = '<table class="ai-metadata-table">';
+                        for (const [key, value] of Object.entries(metadata)) {
+                            tableHtml += `<tr><td>${key}</td><td>${value}</td></tr>`;
+                        }
+                        tableHtml += '</table>';
+                        metadataContainer.innerHTML = tableHtml;
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+
+        // Modified loadSingleSession to handle feedback polling
+        const originalLoadSingleSession = loadSingleSession;
+        loadSingleSession = async function(fullRefresh = true) {
+            await originalLoadSingleSession(fullRefresh);
+
+            // Start or stop feedback polling based on session status
+            if (previousStatus === 'active') {
+                // Start polling if not already
+                if (!feedbackPollInterval) {
+                    checkAndLoadObjective(); // Load objective once
+                    checkAndLoadFeedback(); // Initial load
+                    feedbackPollInterval = setInterval(checkAndLoadFeedback, 1000); // Poll every second
+                    objectiveInterval = setInterval(checkAndLoadObjective, 5000);
+                }
+            } else {
+                // Stop polling if session is not active
+                if (feedbackPollInterval) {
+                    clearInterval(feedbackPollInterval);
+                    feedbackPollInterval = null;
+                    clearInterval(objectiveInterval);
+                    objectiveInterval = null;
+                }
+            }
+        };
+
+        // Start loading
+        loadSingleSession();
+    </script>
+    <script src="/resources/streaming/dock.js"></script>
+    <script src="/resources/streaming/themes/theme-switcher.js"></script>
+</body>
+</html>

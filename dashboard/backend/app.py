@@ -55,6 +55,7 @@ from artifacts_api import artifacts_bp
 from tool_browser_api import tool_browser_bp
 from search_api import search_bp
 from analytics_api import analytics_bp
+from browser_sessions_api import browser_sessions_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -65,6 +66,7 @@ app.register_blueprint(artifacts_bp)
 app.register_blueprint(tool_browser_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
+app.register_blueprint(browser_sessions_bp)
 # Track query statistics
 import threading
 _query_lock = threading.Lock()
