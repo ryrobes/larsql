@@ -25,7 +25,9 @@
 /* Main Content Area - Only scrolling element */
 .cockpit-main {
   flex: 1;
-  padding: 24px;
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-bottom: 24px;
   overflow-y: auto;  /* This is the ONLY scrolling element */
   overflow-x: hidden;
   background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
@@ -667,6 +669,7 @@
   display: flex;
   flex-direction: column;
   gap: 0px;
+  
 }
 
 .context-label {

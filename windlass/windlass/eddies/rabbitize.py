@@ -621,7 +621,7 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
 
 
 @simple_eddy
-def rabbitize_execute(command: Union[str, List], include_metadata: bool = False) -> dict:
+def control_browser(command: Union[str, List], include_metadata: bool = False) -> dict:
     """
     Execute a browser action and get VISUAL FEEDBACK (before/after screenshots).
 
@@ -705,8 +705,8 @@ def rabbitize_execute(command: Union[str, List], include_metadata: bool = False)
             "content": "Error: No active Rabbitize session. Use rabbitize_start() first."
         }
 
-    log_message(None, "system", f"Executing Rabbitize command: {command}",
-               metadata={"tool": "rabbitize_execute", "session_id": session_id, "command": command})
+    log_message(None, "system", f"Executing browser command: {command}",
+               metadata={"tool": "control_browser", "session_id": session_id, "command": command})
 
     try:
         # Parse command - handle both string (JSON) and list inputs
@@ -762,21 +762,21 @@ def rabbitize_execute(command: Union[str, List], include_metadata: bool = False)
         if screenshots:
             result_dict["images"] = screenshots
 
-        log_message(None, "system", f"Rabbitize command executed successfully",
-                   metadata={"tool": "rabbitize_execute", "session_id": session_id,
+        log_message(None, "system", f"Browser command executed successfully",
+                   metadata={"tool": "control_browser", "session_id": session_id,
                             "screenshots": len(screenshots)})
 
         return result_dict
 
     except Exception as e:
-        error_msg = f"Error executing Rabbitize command: {type(e).__name__}: {e}"
+        error_msg = f"Error executing browser command: {type(e).__name__}: {e}"
         log_message(None, "system", error_msg,
-                   metadata={"tool": "rabbitize_execute", "session_id": session_id, "error": str(e)})
+                   metadata={"tool": "control_browser", "session_id": session_id, "error": str(e)})
         return {"content": error_msg}
 
 
 @simple_eddy
-def rabbitize_extract() -> dict:
+def extract_page_content() -> dict:
     """
     Extract all page content as markdown and get DOM coordinates.
 
@@ -793,8 +793,8 @@ def rabbitize_extract() -> dict:
             "content": "Error: No active Rabbitize session. Use rabbitize_start() first."
         }
 
-    log_message(None, "system", "Extracting page content from Rabbitize",
-               metadata={"tool": "rabbitize_extract", "session_id": session_id})
+    log_message(None, "system", "Extracting page content from browser",
+               metadata={"tool": "extract_page_content", "session_id": session_id})
 
     try:
         # Execute extract-page command
@@ -839,7 +839,7 @@ def rabbitize_extract() -> dict:
             result_dict["images"] = [screenshot]
 
         log_message(None, "system", "Page content extracted successfully",
-                   metadata={"tool": "rabbitize_extract", "session_id": session_id,
+                   metadata={"tool": "extract_page_content", "session_id": session_id,
                             "content_length": len(content_lines)})
 
         return result_dict
@@ -847,7 +847,7 @@ def rabbitize_extract() -> dict:
     except Exception as e:
         error_msg = f"Error extracting page content: {type(e).__name__}: {e}"
         log_message(None, "system", error_msg,
-                   metadata={"tool": "rabbitize_extract", "session_id": session_id, "error": str(e)})
+                   metadata={"tool": "extract_page_content", "session_id": session_id, "error": str(e)})
         return {"content": error_msg}
 
 
@@ -934,9 +934,9 @@ def rabbitize_close() -> str:
 
 
 @simple_eddy
-def rabbitize_status() -> str:
+def get_browser_status() -> str:
     """
-    Get status of current Rabbitize session.
+    Get status of current browser session.
 
     Shows session ID, number of actions taken, and available metadata.
 
@@ -977,3 +977,9 @@ def rabbitize_status() -> str:
 
     except Exception as e:
         return f"Error getting session status: {e}"
+
+
+# Backward compatibility aliases (deprecated but still work)
+rabbitize_execute = control_browser
+rabbitize_extract = extract_page_content
+rabbitize_status = get_browser_status

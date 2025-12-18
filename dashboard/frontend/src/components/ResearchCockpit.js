@@ -42,10 +42,10 @@ function ResearchCockpit({
 
   // Update sessionId when initialSessionId prop changes (e.g., navigating to saved session)
   useEffect(() => {
-    console.log('[ResearchCockpit] initialSessionId changed:', initialSessionId);
+    //console.log('[ResearchCockpit] initialSessionId changed:', initialSessionId);
 
     if (initialSessionId) {
-      console.log('[ResearchCockpit] Loading session:', initialSessionId);
+      //console.log('[ResearchCockpit] Loading session:', initialSessionId);
       setSessionId(initialSessionId);
       setShowPicker(false);
       setCascadeId(null); // Will be fetched from session data
@@ -65,7 +65,7 @@ function ResearchCockpit({
         soundings: null
       });
     } else {
-      console.log('[ResearchCockpit] No initial session, showing picker');
+      //console.log('[ResearchCockpit] No initial session, showing picker');
       setShowPicker(true);
     }
   }, [initialSessionId]);
@@ -107,21 +107,21 @@ function ResearchCockpit({
         const saved = data.sessions.find(s => s.original_session_id === sessionId);
 
         if (saved) {
-          console.log('[ResearchCockpit] Found saved session:', saved);
+          //console.log('[ResearchCockpit] Found saved session:', saved);
 
           // Fetch full details
           const detailRes = await fetch(`http://localhost:5001/api/research-sessions/${saved.id}`);
           const detailData = await detailRes.json();
 
           if (!detailData.error) {
-            console.log('[ResearchCockpit] Loaded full saved session with', detailData.checkpoints_data?.length, 'checkpoints');
+            //console.log('[ResearchCockpit] Loaded full saved session with', detailData.checkpoints_data?.length, 'checkpoints');
 
             // Check if this is a new branch (has parent but no checkpoints yet)
             const isNewBranch = detailData.parent_session_id &&
                                (!detailData.checkpoints_data || detailData.checkpoints_data.length === 0);
 
             if (isNewBranch) {
-              console.log('[ResearchCockpit] Detected new branch - cascade is starting');
+              //console.log('[ResearchCockpit] Detected new branch - cascade is starting');
             }
 
             setSavedSessionData(detailData);
@@ -290,11 +290,13 @@ function ResearchCockpit({
       const res = await fetch(`http://localhost:5001/api/checkpoints?session_id=${sessionId}&include_all=true`);
       const data = await res.json();
 
-      console.log('[ResearchCockpit] Checkpoint fetch result:', {
-        sessionId,
-        checkpointCount: data.checkpoints?.length,
-        hasPending: data.checkpoints?.some(cp => cp.status === 'pending')
-      });
+      //console.log('[ResearchCockpit] Checkpoint fetch result:'
+      // , 
+      // {
+      //   sessionId,
+      //   checkpointCount: data.checkpoints?.length,
+      //   hasPending: data.checkpoints?.some(cp => cp.status === 'pending')
+      // });
 
       if (!data.error) {
         const allCheckpoints = data.checkpoints || [];
@@ -309,16 +311,16 @@ function ResearchCockpit({
 
         const respondedCount = sortedCheckpoints.filter(cp => cp.status === 'responded').length;
         const pendingCount = sortedCheckpoints.filter(cp => cp.status === 'pending').length;
-        console.log('[ResearchCockpit] Updated checkpoint history:', {
-          total: sortedCheckpoints.length,
-          responded: respondedCount,
-          pending: pendingCount,
-          checkpointIds: sortedCheckpoints.map(c => c.id.slice(0, 8))
-        });
+        //console.log('[ResearchCockpit] Updated checkpoint history:', {
+        //   total: sortedCheckpoints.length,
+        //   responded: respondedCount,
+        //   pending: pendingCount,
+        //   checkpointIds: sortedCheckpoints.map(c => c.id.slice(0, 8))
+        // });
 
         // Set current pending checkpoint (if any)
         if (pending && (!checkpoint || pending.id !== checkpoint.id)) {
-          console.log('[ResearchCockpit] ✓ Setting checkpoint:', pending.id);
+          //console.log('[ResearchCockpit] ✓ Setting checkpoint:', pending.id);
           setCheckpoint(pending);
 
           // Update status
@@ -327,9 +329,9 @@ function ResearchCockpit({
             status: 'waiting_human'
           }));
         } else if (pending) {
-          console.log('[ResearchCockpit] Checkpoint unchanged:', pending.id);
+          //console.log('[ResearchCockpit] Checkpoint unchanged:', pending.id);
         } else {
-          console.log('[ResearchCockpit] No pending checkpoint found');
+          //console.log('[ResearchCockpit] No pending checkpoint found');
           setCheckpoint(null); // Clear if no pending
         }
       }
@@ -352,11 +354,11 @@ function ResearchCockpit({
         // Only process events for our session
         if (event.session_id !== sessionId) return;
 
-        console.log('[ResearchCockpit] SSE event:', event.type, event.data);
+        //console.log('[ResearchCockpit] SSE event:', event.type, event.data);
 
         switch (event.type) {
           case 'cascade_start':
-            console.log('[ResearchCockpit] Cascade started');
+            //console.log('[ResearchCockpit] Cascade started');
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking'
@@ -364,7 +366,7 @@ function ResearchCockpit({
             break;
 
           case 'phase_start':
-            console.log('[ResearchCockpit] Phase started:', event.data);
+            //console.log('[ResearchCockpit] Phase started:', event.data);
             setOrchestrationState(prev => ({
               ...prev,
               currentPhase: event.data.phase_name,
@@ -379,7 +381,7 @@ function ResearchCockpit({
             break;
 
           case 'turn_start':
-            console.log('[ResearchCockpit] Turn started:', event.data);
+            //console.log('[ResearchCockpit] Turn started:', event.data);
             // Clear round events at start of new turn
             setRoundEvents([]);
             setOrchestrationState(prev => ({
@@ -389,7 +391,7 @@ function ResearchCockpit({
             break;
 
           case 'llm_request':
-            console.log('[ResearchCockpit] LLM request:', event.data);
+            //console.log('[ResearchCockpit] LLM request:', event.data);
             setRoundEvents(prev => [...prev, {
               type: 'llm_request',
               model: event.data.model?.split('/').pop() || 'LLM',
@@ -404,7 +406,7 @@ function ResearchCockpit({
             break;
 
           case 'llm_response':
-            console.log('[ResearchCockpit] LLM response received');
+            //console.log('[ResearchCockpit] LLM response received');
             setRoundEvents(prev => [...prev, {
               type: 'llm_response',
               timestamp: Date.now(),
@@ -418,12 +420,12 @@ function ResearchCockpit({
             break;
 
           case 'phase_complete':
-            console.log('[ResearchCockpit] Phase completed');
+            //console.log('[ResearchCockpit] Phase completed');
             fetchSessionData(); // Refresh for updated costs
             break;
 
           case 'tool_call':
-            console.log('[ResearchCockpit] Tool call:', event.data);
+            //console.log('[ResearchCockpit] Tool call:', event.data);
             setRoundEvents(prev => [...prev, {
               type: 'tool_call',
               tool: event.data.tool_name,
@@ -438,7 +440,7 @@ function ResearchCockpit({
             break;
 
           case 'tool_result':
-            console.log('[ResearchCockpit] Tool result received');
+            //console.log('[ResearchCockpit] Tool result received');
             setRoundEvents(prev => [...prev, {
               type: 'tool_result',
               tool: event.data.tool_name,
@@ -453,13 +455,13 @@ function ResearchCockpit({
             break;
 
           case 'cost_update':
-            console.log('[ResearchCockpit] Cost update:', event.data);
+            //console.log('[ResearchCockpit] Cost update:', event.data);
             fetchSessionData(); // Refresh for new cost
             break;
 
           case 'checkpoint_created':
           case 'checkpoint_waiting':
-            console.log('[ResearchCockpit] Checkpoint created/waiting - clearing ghost messages');
+            //console.log('[ResearchCockpit] Checkpoint created/waiting - clearing ghost messages');
             // Clear ghost messages and round events when checkpoint arrives
             setGhostMessages([]);
             setRoundEvents([]); // Clear round events - checkpoint marks end of agent work
@@ -471,7 +473,7 @@ function ResearchCockpit({
             break;
 
           case 'checkpoint_responded':
-            console.log('[ResearchCockpit] Checkpoint responded');
+            //console.log('[ResearchCockpit] Checkpoint responded');
             // Refresh checkpoint history to show the newly responded checkpoint as collapsed
             fetchCheckpoint();
             setOrchestrationState(prev => ({
@@ -481,7 +483,7 @@ function ResearchCockpit({
             break;
 
           case 'cascade_complete':
-            console.log('[ResearchCockpit] Cascade complete');
+            //console.log('[ResearchCockpit] Cascade complete');
             setRoundEvents([]); // Clear round events on cascade complete
             setOrchestrationState(prev => ({
               ...prev,
@@ -491,7 +493,7 @@ function ResearchCockpit({
             break;
 
           case 'cascade_error':
-            console.log('[ResearchCockpit] Cascade error:', event.data);
+            //console.log('[ResearchCockpit] Cascade error:', event.data);
             setOrchestrationState(prev => ({
               ...prev,
               status: 'idle'
@@ -499,7 +501,7 @@ function ResearchCockpit({
             break;
 
           default:
-            console.log('[ResearchCockpit] Unhandled event:', event.type, event.data);
+            //console.log('[ResearchCockpit] Unhandled event:', event.type, event.data);
             break;
         }
       } catch (err) {
@@ -659,14 +661,14 @@ function ResearchCockpit({
 
   // Handle branch creation from checkpoint (works for both saved and live sessions)
   const handleCreateBranch = async (checkpointIndex, newResponse) => {
-    console.log('[ResearchCockpit] Creating branch from checkpoint', checkpointIndex, 'with response:', newResponse);
+    //console.log('[ResearchCockpit] Creating branch from checkpoint', checkpointIndex, 'with response:', newResponse);
 
     try {
       // If this is a live session (not saved yet), trigger a save first
       let researchSessionId = savedSessionData?.id;
 
       if (!researchSessionId) {
-        console.log('[ResearchCockpit] Live session - fetching/creating saved session first...');
+        //console.log('[ResearchCockpit] Live session - fetching/creating saved session first...');
 
         // Check if session was auto-saved already
         const checkRes = await fetch(`http://localhost:5001/api/research-sessions?limit=100`);
@@ -676,7 +678,7 @@ function ResearchCockpit({
           const existing = checkData.sessions.find(s => s.original_session_id === sessionId);
           if (existing) {
             researchSessionId = existing.id;
-            console.log('[ResearchCockpit] Found auto-saved session:', researchSessionId);
+            //console.log('[ResearchCockpit] Found auto-saved session:', researchSessionId);
           }
         }
 
@@ -704,7 +706,7 @@ function ResearchCockpit({
         return;
       }
 
-      console.log('[ResearchCockpit] ✓ Branch created:', data.new_session_id);
+      //console.log('[ResearchCockpit] ✓ Branch created:', data.new_session_id);
 
       // Navigate to the new branch
       window.location.hash = `#/cockpit/${data.new_session_id}`;
@@ -902,11 +904,11 @@ function ResearchCockpit({
                 {checkpointHistory
                   .filter(cp => cp.status === 'responded')
                   .map((checkpointData, idx) => {
-                    console.log('[ResearchCockpit] Rendering responded checkpoint:', {
-                      id: checkpointData.id?.slice(0, 8),
-                      status: checkpointData.status,
-                      index: idx
-                    });
+                    // console.log('[ResearchCockpit] Rendering responded checkpoint:', {
+                    //   id: checkpointData.id?.slice(0, 8),
+                    //   status: checkpointData.status,
+                    //   index: idx
+                    // });
                     return (
                       <ExpandableCheckpoint
                         key={checkpointData.id || idx}
@@ -917,7 +919,8 @@ function ResearchCockpit({
                         onBranch={handleCreateBranch}
                       />
                     );
-                  })}
+                  })
+                  }
 
                 {/* Current pending checkpoint (expanded, at bottom) */}
                 {checkpoint && checkpoint.ui_spec && (

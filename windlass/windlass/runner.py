@@ -6709,7 +6709,7 @@ Refinement directive: {reforge_config.honing_prompt}
                         stability_wait=phase.browser.stability_wait,
                         show_overlay=phase.browser.show_overlay,
                         # Cascade context for unified session registry
-                        cascade_id=self.cascade_config.cascade_id,
+                        cascade_id=self.config.cascade_id,
                         phase_name=phase.name,
                         windlass_session_id=self.session_id
                     )

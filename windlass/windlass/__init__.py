@@ -89,18 +89,30 @@ if stt_available():
     register_tackle("listen", voice_listen)
     register_tackle("process_voice_recording", process_voice_recording)
 
-# Rabbitize - Visual browser automation
+# Browser automation - Visual browser control
 from .eddies.rabbitize import (
     rabbitize_start,
+    rabbitize_close,
+    control_browser,
+    extract_page_content,
+    get_browser_status,
+    # Backward compatibility aliases
     rabbitize_execute,
     rabbitize_extract,
-    rabbitize_close,
     rabbitize_status
 )
+# Register with new descriptive names
+register_tackle("control_browser", control_browser)
+register_tackle("extract_page_content", extract_page_content)
+register_tackle("get_browser_status", get_browser_status)
+
+# Keep old session management tools (still relevant names)
 register_tackle("rabbitize_start", rabbitize_start)
+register_tackle("rabbitize_close", rabbitize_close)
+
+# Backward compatibility (deprecated but still work)
 register_tackle("rabbitize_execute", rabbitize_execute)
 register_tackle("rabbitize_extract", rabbitize_extract)
-register_tackle("rabbitize_close", rabbitize_close)
 register_tackle("rabbitize_status", rabbitize_status)
 
 # Browser session management (first-class browser integration)
