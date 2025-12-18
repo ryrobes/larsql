@@ -1,0 +1,22 @@
+{
+  "cascade_id": "narrator_test_ui",
+  "description": "Simple test cascade for browser-based narration",
+  "narrator": {
+    "enabled": true,
+    "on_events": ["phase_complete", "cascade_complete"],
+    "min_interval_seconds": 3.0
+  },
+  "inputs_schema": {
+    "topic": "What topic should I research?"
+  },
+  "phases": [
+    {
+      "name": "research",
+      "instructions": "You are researching {{ input.topic }}. Provide a brief 2-3 sentence summary of key facts.",
+      "tackle": [],
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

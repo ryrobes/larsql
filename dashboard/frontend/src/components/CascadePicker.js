@@ -433,24 +433,33 @@ function CascadePicker({ onSelect, onCancel, onResumeSession }) {
                         <Icon icon="mdi:form-textbox" width="18" />
                         <span>Initial Input</span>
                       </div>
-                      {Object.entries(selectedCascade.inputs_schema).map(([key, description]) => (
-                        <div key={key} className="input-field">
-                          <label htmlFor={key}>
-                            {key}
-                            <span className="field-description">{description}</span>
-                          </label>
-                          <input
-                            id={key}
-                            type="text"
-                            value={inputValues[key] || ''}
-                            onChange={(e) => setInputValues({
-                              ...inputValues,
-                              [key]: e.target.value
-                            })}
-                            placeholder={`Enter ${key}...`}
-                          />
-                        </div>
-                      ))}
+                      {Object.entries(selectedCascade.inputs_schema).map(([key, description]) => {
+                        // Safety: convert description to string if it's an object
+                        const descStr = typeof description === 'string'
+                          ? description
+                          : (typeof description === 'object'
+                              ? JSON.stringify(description)
+                              : String(description));
+
+                        return (
+                          <div key={key} className="input-field">
+                            <label htmlFor={key}>
+                              {key}
+                              <span className="field-description">{descStr}</span>
+                            </label>
+                            <input
+                              id={key}
+                              type="text"
+                              value={inputValues[key] || ''}
+                              onChange={(e) => setInputValues({
+                                ...inputValues,
+                                [key]: e.target.value
+                              })}
+                              placeholder={`Enter ${key}...`}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="no-input-needed">

@@ -2,6 +2,7 @@ import os
 import sys
 import json
 from typing import Dict, Any, Optional, List, Union, Callable
+from contextvars import ContextVar
 import logging
 import litellm
 from rich.console import Console
@@ -9,6 +10,17 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 import threading
+
+# Context variable for current hooks - allows tools to call hook methods
+_current_hooks: ContextVar[Optional['WindlassHooks']] = ContextVar('current_hooks', default=None)
+
+def get_current_hooks() -> Optional['WindlassHooks']:
+    """Get the current hooks from context."""
+    return _current_hooks.get()
+
+def set_current_hooks(hooks: Optional['WindlassHooks']):
+    """Set the current hooks in context."""
+    _current_hooks.set(hooks)
 
 # We assume these imports exist or are provided by the environment
 try:
@@ -94,7 +106,7 @@ class WindlassHooks:
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                phase_name: str, message: str = None) -> dict:
+                                phase_name: str, message: str = None, cascade_id: str = None) -> dict:
         """Called when cascade is suspended waiting for human input"""
         return {"action": HookAction.CONTINUE}
 
@@ -285,6 +297,7 @@ class WindlassRunner:
                 cascade_id=self.config.cascade_id,
                 parent_session_id=self.parent_session_id,
                 cascade_input=input_data,  # Pass original cascade input for template access
+                echo=self.echo,  # Pass echo for polling mode
             )
             self._narrator_service.start(get_event_bus())
             log_message(self.session_id, "narrator", "Narrator service started",
@@ -709,7 +722,8 @@ class WindlassRunner:
             checkpoint.id,
             CheckpointType.AUDIBLE.value,
             phase.name,
-            "Waiting for audible feedback"
+            "Waiting for audible feedback",
+            cascade_id=self.config.cascade_id
         )
 
         # Wait for response (blocking)
@@ -3326,6 +3340,9 @@ Refinement directive: {reforge_config.honing_prompt}
             # Don't fail cascade if session state creation fails (backward compat)
             logger = logging.getLogger(__name__)
             logger.debug(f"Could not create session state: {e}")
+
+        # Set hooks context for tools (allows checkpoint callbacks)
+        set_current_hooks(self.hooks)
 
         # Start heartbeat thread
         self._start_heartbeat()
@@ -7896,6 +7913,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     self._update_graph()
 
                     # Publish turn_complete event (for narrator and other subscribers)
+                    # Include recent conversation history so narrator has full context
+                    recent_history = self.echo.history[-10:] if len(self.echo.history) > 0 else []
                     self._publish_event("turn_complete", {
                         "phase_name": phase.name,
                         "cascade_id": self.config.cascade_id,
@@ -7903,6 +7922,8 @@ Refinement directive: {reforge_config.honing_prompt}
                         "max_turns": max_turns,
                         "tool_calls": [{"name": tc.get("function", {}).get("name", "unknown")} for tc in (tool_calls or [])],
                         "trace_id": turn_trace.id if turn_trace else None,
+                        "recent_history": recent_history,  # Last 10 messages from echo
+                        "assistant_response": content,  # The response content from this turn
                     })
 
                     response_content = content
@@ -8033,10 +8054,12 @@ Refinement directive: {reforge_config.honing_prompt}
                                  console.print(f"{indent}    [dim cyan][DEBUG] tool_outputs.append() - now has {len(tool_outputs)} item(s)[/dim cyan]")
 
                                  # Publish tool_complete event (for narrator and other subscribers)
+                                 # Include tool result so narrator knows what the tool did
                                  self._publish_event("tool_complete", {
                                      "phase_name": phase.name,
                                      "cascade_id": self.config.cascade_id,
                                      "tool_name": func_name,
+                                     "tool_result": str(result)[:500],  # First 500 chars of result
                                      "turn_number": i + 1,
                                      "max_turns": max_turns,
                                      "trace_id": turn_trace.id if turn_trace else None,
@@ -8292,10 +8315,12 @@ Refinement directive: {reforge_config.honing_prompt}
                                         })
 
                                         # Publish tool_complete event (follow-up)
+                                        # Include tool result so narrator knows what the tool did
                                         self._publish_event("tool_complete", {
                                             "phase_name": phase.name,
                                             "cascade_id": self.config.cascade_id,
                                             "tool_name": func_name,
+                                            "tool_result": str(result)[:500],  # First 500 chars of result
                                             "turn_number": i + 1,
                                             "max_turns": max_turns,
                                             "trace_id": turn_trace.id if turn_trace else None,

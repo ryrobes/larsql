@@ -49,23 +49,30 @@ def sanitize_name(name: str) -> str:
 class DatabaseConnector:
     """Handle DuckDB ATTACH for various database types."""
 
-    def __init__(self):
+    def __init__(self, use_cache: bool = True):
         # Use persistent DuckDB file to cache materialized CSVs
         # This avoids re-importing on every tool call
+        # For .duckdb files, use in-memory (no caching needed - they're already fast)
         import os
         from pathlib import Path
 
-        # Get data directory from config (or default)
-        data_dir = os.getenv('WINDLASS_DATA_DIR', os.path.join(os.getcwd(), 'data'))
-        os.makedirs(data_dir, exist_ok=True)
-
-        duckdb_path = os.path.join(data_dir, 'sql_cache.duckdb')
-
-        # Connect to persistent DuckDB file (creates if doesn't exist)
-        self.conn = duckdb.connect(duckdb_path)
         self._attached = set()
+        self._use_cache = use_cache
 
-        print(f"[SQL] Using DuckDB cache: {duckdb_path}")
+        if use_cache:
+            # Get data directory from config (or default)
+            data_dir = os.getenv('WINDLASS_DATA_DIR', os.path.join(os.getcwd(), 'data'))
+            os.makedirs(data_dir, exist_ok=True)
+
+            duckdb_path = os.path.join(data_dir, 'sql_cache.duckdb')
+
+            # Connect to persistent DuckDB file (creates if doesn't exist)
+            self.conn = duckdb.connect(duckdb_path)
+            print(f"[SQL] Using DuckDB cache: {duckdb_path}")
+        else:
+            # In-memory DuckDB (for .duckdb files - no caching needed)
+            self.conn = duckdb.connect(':memory:')
+            print(f"[SQL] Using in-memory DuckDB (no cache)")
 
     def attach(self, config: SqlConnectionConfig) -> str:
         """

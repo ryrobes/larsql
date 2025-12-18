@@ -289,8 +289,11 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
     conn_config = connections[connection]
 
     try:
-        # Connect and attach
-        connector = DatabaseConnector()
+        # For duckdb_folder (research_dbs), use in-memory (no cache needed - .duckdb is already fast)
+        # For csv_folder, use cache (materializes CSVs to avoid slow re-imports)
+        use_cache = conn_config.type != "duckdb_folder"
+
+        connector = DatabaseConnector(use_cache=use_cache)
         connector.attach(conn_config)
 
         # Add LIMIT if not present and limit specified
@@ -301,9 +304,11 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         # Execute
         df = connector.fetch_df(sql_with_limit)
 
-        # Convert to JSON and sanitize NaN/Infinity values
-        # (pandas converts SQL NULLs to float('nan') for numeric columns)
+        # Convert to both formats for compatibility
+        # - results: array of objects (legacy format for LLM tools)
+        # - rows: array of arrays (compact format for HTML/HTMX rendering)
         results = sanitize_for_json(df.to_dict('records'))
+        rows = [list(row.values()) for row in results]
 
         connector.close()
 
@@ -312,7 +317,8 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
             "connection": connection,
             "row_count": len(results),
             "columns": list(df.columns),
-            "results": results
+            "results": results,  # Array of objects: [{"col1": val1, ...}, ...]
+            "rows": rows         # Array of arrays: [[val1, val2, ...], ...]
         }, indent=2, default=str)
 
     except Exception as e:
@@ -320,7 +326,11 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
             "error": str(e),
             "sql": sql,
             "connection": connection,
-            "hint": "Check table names are qualified correctly (e.g., csv_files.bigfoot_sightings)"
+            "hint": "Check table names are qualified correctly (e.g., csv_files.bigfoot_sightings)",
+            "columns": [],      # Safe defaults for HTML rendering
+            "rows": [],
+            "results": [],
+            "row_count": 0
         })
 
 

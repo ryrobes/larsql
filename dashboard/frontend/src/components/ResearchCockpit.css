@@ -499,6 +499,33 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
+/* Sticky active session header */
+.cockpit-active-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(180deg, #0a0a0a 0%, #0a0a0a 85%, rgba(10, 10, 10, 0) 100%);
+  border-bottom: 1px solid rgba(167, 139, 250, 0.15);
+  margin-bottom: 12px;
+}
+
+.cockpit-active-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.cockpit-active-header p {
+  margin: 4px 0 0 0;
+  font-size: 0.875rem;
+  color: #888;
+}
+
 /* Ghost Messages - Translucent live activity */
 .ghost-messages {
   display: flex;
@@ -650,6 +677,61 @@
   line-height: 1.4;
 }
 
+/* Tool result data grid */
+.ghost-result-body {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(167, 139, 250, 0.1);
+}
+
+.ghost-data-grid {
+  overflow-x: auto;
+  font-size: 0.7rem;
+}
+
+.ghost-data-grid table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.ghost-data-grid th {
+  background: rgba(167, 139, 250, 0.08);
+  color: #a78bfa;
+  padding: 4px 8px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.2);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.ghost-data-grid td {
+  padding: 4px 8px;
+  color: #ccc;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.05);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-grid-more {
+  margin-top: 6px;
+  font-size: 0.65rem;
+  color: #888;
+  font-style: italic;
+  text-align: center;
+}
+
+.ghost-result-text {
+  color: #888;
+  font-size: 0.7rem;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Cascade Context Header - Sticky header showing inputs and feedback */
 .cascade-context-header {
   position: sticky;
@@ -711,24 +793,31 @@
 .input-value {
   color: #f3f4f6;
   font-weight: 600;
-  font-size: 1rem;
-  line-height: 1.4;
+  /* font-size: 1rem;
+  line-height: 1.4; */
   text-align: right;
+  padding-left: 30px;
+  margin-top: -18px;
   flex: 1;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  word-break: break-word;
+  /* word-break: break-word; */
   hyphens: auto;
+  white-space: pre-wrap;  /* Preserve newlines for pretty-printed JSON */
+  font-family: 'Inter', 'IBM Plex Mono', monospace;
+  font-size: 1.1rem;
 }
 
 .input-value.single {
-  font-size: 1.05rem;
+  font-size: 0.9rem;
   color: #f9fafb;
   font-weight: 600;
   text-align: left;
   word-wrap: break-word;
   overflow-wrap: break-word;
   word-break: break-word;
+  white-space: pre-wrap;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .context-feedback-section {

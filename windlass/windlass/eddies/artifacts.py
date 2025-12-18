@@ -43,11 +43,18 @@ def create_artifact(
       # Use sql_search() to find tables
       sql_search("bigfoot sightings data")
 
-      # Test the query with run_sql() to see actual column names and data structure
-      run_sql("SELECT state, COUNT(*) as count FROM bigfoot_sightings GROUP BY state LIMIT 5", "csv_files")
-      # Returns: {columns: ['state', 'count'], rows: [['WA', 632], ...]}
+      # Test the query with sql_query() to see actual column names
+      sql_query(sql="SELECT * FROM csv_files.bigfoot_sightings LIMIT 1", connection="csv_files")
+      # Returns: {columns: ['state', 'class', 'county', ...], rows: [...], "error": null}
 
-    Step 2: Write HTML using the EXACT column names from your test
+      # CHECK RESPONSE.ERROR! If not null, query failed - fix it!
+      # Example error: {"error": "Column not found", "columns": [], "rows": []}
+
+      # Once you have real columns, test your aggregation
+      sql_query(sql="SELECT state, COUNT(*) as count FROM csv_files.bigfoot_sightings GROUP BY state", connection="csv_files")
+      # Check error field again! Only proceed to HTML if error is null.
+
+    Step 2: Write HTML using EXACT column names from SUCCESSFUL test (error=null)
       fetch('http://localhost:5001/api/sql/query', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -57,6 +64,14 @@ def create_artifact(
           limit: 1000
         })
       }).then(r => r.json()).then(result => {
+        // ALWAYS check for errors first!
+        if (result.error) {
+          console.error('SQL error:', result.error);
+          document.getElementById('chart').innerHTML =
+            '<div style="color:#ef4444;padding:20px;">Error: ' + result.error + '</div>';
+          return;
+        }
+
         // result.columns = ['state', 'count']  // Matches your test!
         // result.rows = [['WA', 632], ['CA', 445], ...]
 
@@ -75,6 +90,10 @@ def create_artifact(
           plot_bgcolor: '#0a0a0a',
           font: {color: '#e5e7eb'}
         });
+      }).catch(err => {
+        console.error('Fetch error:', err);
+        document.getElementById('chart').innerHTML =
+          '<div style="color:#ef4444;padding:20px;">Network error</div>';
       });
 
     Transform to objects for Vega-Lite (needs {key: value} format):
@@ -99,9 +118,9 @@ def create_artifact(
         Plotly.react('chart', [{x: result.rows.map(r => r[0]), y: result.rows.map(r => r[1]), type: 'bar'}], layout);
       }
 
-    Discovery tools: sql_search(), list_sql_connections(), run_sql()
+    Discovery tools: sql_search(), list_sql_connections(), sql_query()
 
-    KEY POINT: Always run_sql() first to verify column names before writing fetch() code!
+    KEY POINT: Always sql_query() first to verify column names AND check for errors before writing fetch() code!
 
     Arguments:
         html: Full HTML content for the artifact. Can include inline JavaScript,

@@ -97,7 +97,56 @@ def say(text: str) -> str:
         log_message(None, "system", f"say: saved audio to temp file {temp_audio_path}",
                     metadata={"tool": "say", "temp_path": temp_audio_path})
 
-        # Decode MP3 and play using miniaudio
+        # Check if we're in UI mode (research mode with EventPublishingHooks)
+        try:
+            from ..runner import get_current_hooks
+            from ..event_hooks import EventPublishingHooks, CompositeHooks
+            from ..events import get_event_bus, Event
+            from .state_tools import get_current_session_id
+            from datetime import datetime
+
+            hooks = get_current_hooks()
+            is_ui_mode = False
+
+            log_message(None, "system", f"say: UI mode detection - hooks={type(hooks).__name__ if hooks else 'None'}",
+                        metadata={"tool": "say", "hooks_type": type(hooks).__name__ if hooks else None})
+
+            if hooks:
+                # Check if hooks is EventPublishingHooks or contains it (CompositeHooks)
+                if isinstance(hooks, EventPublishingHooks):
+                    is_ui_mode = True
+                    log_message(None, "system", f"say: Detected EventPublishingHooks directly",
+                                metadata={"tool": "say", "ui_mode": True})
+                elif isinstance(hooks, CompositeHooks):
+                    # CompositeHooks has a 'hooks' attribute that is a tuple of hook instances
+                    is_ui_mode = any(isinstance(h, EventPublishingHooks) for h in hooks.hooks)
+                    log_message(None, "system", f"say: Detected CompositeHooks with EventPublishingHooks={is_ui_mode}",
+                                metadata={"tool": "say", "ui_mode": is_ui_mode, "composite_hooks": [type(h).__name__ for h in hooks.hooks]})
+
+            if is_ui_mode:
+                # UI mode: Skip playback, return audio info for event emission
+                # The narrator service will emit the event with the correct parent session_id
+                decoded = miniaudio.decode(audio_data, output_format=miniaudio.SampleFormat.SIGNED16)
+                duration_seconds = len(decoded.samples) / (decoded.sample_rate * decoded.nchannels)
+
+                log_message(None, "system", f"say: UI mode - returning audio info for browser playback",
+                            metadata={"tool": "say", "duration_seconds": duration_seconds, "ui_mode": True, "audio_path": temp_audio_path})
+
+                # Return special format that narrator service can detect and emit event for
+                return json.dumps({
+                    "content": f'Spoke: "{text_preview}" (browser playback)',
+                    "audio": [temp_audio_path],
+                    "ui_mode_playback": True,  # Flag for narrator service
+                    "duration_seconds": duration_seconds,
+                    "text_spoken": text  # Full text for event data
+                })
+
+        except Exception as e:
+            # If UI mode detection fails, fall back to regular playback
+            log_message(None, "system", f"say: UI mode detection failed, falling back to playback: {e}",
+                        metadata={"tool": "say", "error": str(e)})
+
+        # CLI mode: Decode MP3 and play using miniaudio
         decoded = miniaudio.decode(audio_data, output_format=miniaudio.SampleFormat.SIGNED16)
 
         # Apply volume scaling (default 70% to avoid being too loud)

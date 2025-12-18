@@ -180,7 +180,7 @@ class EventPublishingHooks(WindlassHooks):
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                phase_name: str, message: str = None) -> dict:
+                                phase_name: str, message: str = None, cascade_id: str = None) -> dict:
         """Called when cascade is suspended waiting for human input."""
         self.bus.publish(Event(
             type="checkpoint_suspended",
@@ -191,7 +191,7 @@ class EventPublishingHooks(WindlassHooks):
                 "checkpoint_type": checkpoint_type,
                 "phase_name": phase_name,
                 "message": message,
-                "cascade_id": self._current_cascade_id,
+                "cascade_id": cascade_id or self._current_cascade_id,
             }
         ))
         return {"action": HookAction.CONTINUE}
@@ -265,10 +265,10 @@ class CompositeHooks(WindlassHooks):
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                phase_name: str, message: str = None) -> dict:
+                                phase_name: str, message: str = None, cascade_id: str = None) -> dict:
         for hook in self.hooks:
             if hasattr(hook, 'on_checkpoint_suspended'):
-                hook.on_checkpoint_suspended(session_id, checkpoint_id, checkpoint_type, phase_name, message)
+                hook.on_checkpoint_suspended(session_id, checkpoint_id, checkpoint_type, phase_name, message, cascade_id)
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, phase_name: str,
@@ -508,20 +508,28 @@ Return ONLY the title, nothing else."""
                 print(f"[ResearchAutoSave] No entries yet for {session_id}, skipping")
                 return
 
-            # Get cascade_id from entries if not provided
-            if cascade_id == "unknown" and entries:
-                cascade_id = entries[0].get('cascade_id', 'unknown')
+            # Get cascade_id from entries if not provided or is None/unknown
+            if (cascade_id is None or cascade_id == "unknown") and entries:
+                cascade_id = entries[0].get('cascade_id') or 'unknown'
                 print(f"[ResearchAutoSave] Detected cascade_id from entries: {cascade_id}")
+
+            # Ensure cascade_id is never None (ClickHouse String columns don't accept None)
+            if cascade_id is None:
+                cascade_id = "unknown"
 
             checkpoints = _fetch_checkpoints_for_session(session_id)
             metrics = _compute_session_metrics(entries)
-            mermaid = _fetch_mermaid_graph(session_id)
+            mermaid = _fetch_mermaid_graph(session_id) or ""  # Ensure not None
 
             print(f"[ResearchAutoSave] Fetched data for {session_id}: {len(entries)} entries, {len(checkpoints)} checkpoints")
 
             # Get smart title (uses LLM to generate from checkpoint summaries)
-            title = self._get_smart_title(session_id, checkpoints)
+            title = self._get_smart_title(session_id, checkpoints) or f"Research Session - {session_id[:12]}"
             description = f"Research session with {len(checkpoints)} interactions" if checkpoints else "Auto-saved research session"
+
+            # Ensure all string fields have defaults (ClickHouse String columns don't accept None)
+            title = title or f"Research Session - {session_id[:12]}"
+            description = description or "Auto-saved research session"
 
             # Check if session already exists
             research_id = f"research_session_{session_id}"
@@ -529,7 +537,13 @@ Return ONLY the title, nothing else."""
             # Use unified db adapter
             now = datetime.utcnow()
             first_entry = entries[0] if entries else {}
-            created_at = first_entry.get('timestamp', now)
+            created_at = first_entry.get('timestamp') or now
+            # Ensure created_at is a datetime
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                except:
+                    created_at = now
 
             # Check if exists
             existing_result = db.query(f"SELECT id FROM research_sessions WHERE original_session_id = '{session_id}' LIMIT 1")
@@ -625,15 +639,15 @@ Return ONLY the title, nothing else."""
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                phase_name: str, message: str = None) -> dict:
+                                phase_name: str, message: str = None, cascade_id: str = None) -> dict:
         """Called when cascade is suspended waiting for checkpoint response."""
         if self._is_research_session(session_id):
-            print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint created")
+            print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint created (cascade_id={cascade_id})")
             # Update in background to capture the checkpoint
             import threading
             thread = threading.Thread(
                 target=self._save_or_update_session,
-                args=(session_id, "unknown", "active")  # Will detect cascade_id from entries
+                args=(session_id, cascade_id or "unknown", "active")  # Use cascade_id from checkpoint
             )
             thread.daemon = True
             thread.start()

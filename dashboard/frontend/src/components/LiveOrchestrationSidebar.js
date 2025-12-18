@@ -25,12 +25,20 @@ function LiveOrchestrationSidebar({
   cascadeId,
   orchestrationState,
   sessionData,
-  roundEvents = []
+  roundEvents = [],
+  narrationAmplitude = 0
 }) {
   const [costAnimation, setCostAnimation] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [previousSessions, setPreviousSessions] = useState([]);
   const [sessionsCollapsed, setSessionsCollapsed] = useState(true);
+
+  // Debug narration amplitude
+  // useEffect(() => {
+  //   if (narrationAmplitude > 0.01) {
+  //     console.log('[LiveOrchestrationSidebar] Narration amplitude:', narrationAmplitude);
+  //   }
+  // }, [narrationAmplitude]);
   const [cancellingSession, setCancellingSession] = useState(false);
 
   // Animate cost changes
@@ -124,7 +132,7 @@ function LiveOrchestrationSidebar({
       if (data.error) {
         console.error('[LiveOrchestrationSidebar] Failed to cancel:', data.error);
       } else {
-        console.log('[LiveOrchestrationSidebar] Cancellation requested:', data);
+        //console.log('[LiveOrchestrationSidebar] Cancellation requested:', data);
       }
     } catch (err) {
       console.error('[LiveOrchestrationSidebar] Cancel request failed:', err);
@@ -136,22 +144,22 @@ function LiveOrchestrationSidebar({
 
   // Debug logging
   useEffect(() => {
-    console.log('[LiveOrchestrationSidebar] State update:', {
-      status: orchestrationState.status,
-      currentPhase: orchestrationState.currentPhase,
-      totalCost: orchestrationState.totalCost,
-      turnCount: orchestrationState.turnCount,
-      currentModel: orchestrationState.currentModel
-    });
+    // console.log('[LiveOrchestrationSidebar] State update:', {
+    //   status: orchestrationState.status,
+    //   currentPhase: orchestrationState.currentPhase,
+    //   totalCost: orchestrationState.totalCost,
+    //   turnCount: orchestrationState.turnCount,
+    //   currentModel: orchestrationState.currentModel
+    // });
   }, [orchestrationState]);
 
   useEffect(() => {
-    console.log('[LiveOrchestrationSidebar] Session data update:', {
-      totalCost: sessionData?.total_cost,
-      phaseCosts: sessionData?.phase_costs,
-      inputTokens: sessionData?.total_input_tokens,
-      outputTokens: sessionData?.total_output_tokens
-    });
+    // console.log('[LiveOrchestrationSidebar] Session data update:', {
+    //   totalCost: sessionData?.total_cost,
+    //   phaseCosts: sessionData?.phase_costs,
+    //   inputTokens: sessionData?.total_input_tokens,
+    //   outputTokens: sessionData?.total_output_tokens
+    // });
   }, [sessionData]);
 
 
@@ -210,15 +218,51 @@ function LiveOrchestrationSidebar({
             })}
           </div>
 
-          {/* Main status indicator */}
+          {/* Main status indicator - remove pulse class when narrating to avoid box-shadow conflict */}
           <div
-            className={`status-indicator-large ${currentStatus.pulse ? 'pulse' : ''}`}
-            style={{ borderColor: currentStatus.color }}
+            className={`status-indicator-large ${narrationAmplitude > 0.02 ? '' : (currentStatus.pulse ? 'pulse' : '')}`}
+            style={{
+              borderColor: currentStatus.color,
+              // Narration glow - remapped range for maximum variation visibility
+              boxShadow: (() => {
+                if (narrationAmplitude <= 0.02) return undefined;
+
+                // Remap typical speech range (0.2-0.6) to visual range (0-1)
+                // This makes variations in normal speech much more visible
+                const minAmp = 0.2;
+                const maxAmp = 0.6;
+                const remapped = Math.max(0, Math.min(1, (narrationAmplitude - minAmp) / (maxAmp - minAmp)));
+
+                // Apply gentle curve for even better feel (x^1.2)
+                const curved = Math.pow(remapped, 1.2);
+
+                return `
+                  /* Multi-layer glow - remapped to show speech variations */
+                  0 0 ${15 + curved * 100}px ${8 + curved * 50}px ${currentStatus.color}85,
+                  0 0 ${25 + curved * 140}px ${12 + curved * 70}px ${currentStatus.color}65,
+                  0 0 ${40 + curved * 180}px ${20 + curved * 90}px ${currentStatus.color}45,
+                  0 0 ${60 + curved * 220}px ${30 + curved * 110}px ${currentStatus.color}25,
+                  /* Inner glow for depth */
+                  inset 0 0 ${12 + curved * 45}px ${6 + curved * 22}px ${currentStatus.color}55,
+                  /* Sharp border highlight */
+                  0 0 0 ${2 + curved * 4}px ${currentStatus.color}90
+                `;
+              })()
+              // No transition here - smoothing happens in React state
+            }}
           >
             <Icon
               icon={currentStatus.icon}
               width="32"
-              style={{ color: currentStatus.color }}
+              style={{
+                color: currentStatus.color,
+                // Icon glows intensely with narration
+                filter: narrationAmplitude > 0.05
+                  ? `drop-shadow(0 0 ${8 + narrationAmplitude * 20}px ${currentStatus.color})
+                     brightness(${1 + narrationAmplitude * 0.3})`
+                  : undefined,
+                transition: 'filter 0.05s ease-out'
+              }}
               className={currentStatus.pulse ? 'spinning' : ''}
             />
           </div>

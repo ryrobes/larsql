@@ -8,6 +8,10 @@ Windlass is a production-grade agent framework for **long-running, iterative wor
 
 **NEW: Visual browser automation!** Give your agents eyes and hands for the web. First-class Playwright integration with automatic screenshot capture, video recording, and visual coordinate-based interaction. [See Browser Automation →](#browser-automation)
 
+**NEW: Generative UI & HITL!** Block execution with rich interactive UIs - charts, tables, custom HTML/HTMX forms. Agent creates the UI, you interact, execution resumes with your response. [See Human-in-the-Loop →](#human-in-the-loop-hitl)
+
+**NEW: Research Databases!** Cascade-specific DuckDB persistence for data accumulation across runs. Perfect for web scraping, competitive intelligence, and iterative research. [See Research Databases →](#research-databases)
+
 ## The Retry Loop Problem Everyone Faces
 
 You start with clean code. Six months later, you're debugging this:
@@ -1377,50 +1381,631 @@ Async cascades are fully traced with parent linkage.
 
 ## Built-in Tools (Tackle)
 
-### `smart_sql_run`
-Query CSV/Parquet/databases with DuckDB:
+### Core Tools
+
+**`smart_sql_run`** - Query CSV/Parquet/databases with DuckDB:
 ```python
 smart_sql_run(query="SELECT region, SUM(sales) FROM data.csv GROUP BY region")
 ```
 
-### `create_chart`
-Generate matplotlib charts:
+**`create_chart`** - Generate matplotlib charts:
 ```python
 create_chart(title="Sales Trends", data="10,20,30,40")
 # Returns: {"content": "Chart created", "images": ["/path/to/chart.png"]}
 ```
 
-### `run_code`
-Execute Python code (use sandboxing in production):
+**`run_code`** - Execute Python code (use sandboxing in production):
 ```python
 run_code(code="print(sum([1,2,3,4,5]))")
 ```
 
-### `set_state`
-Persist key-value pairs:
+**`set_state`** - Persist key-value pairs:
 ```python
 set_state(key="progress", value="50%")
 # Access later: {{ state.progress }}
 ```
 
-### `ask_human`
-Human-in-the-loop via CLI:
-```python
-ask_human(question="Should I proceed with deletion?")
-```
-
-### `spawn_cascade`
-Programmatically launch cascades:
+**`spawn_cascade`** - Programmatically launch cascades:
 ```python
 spawn_cascade(cascade_path="validator.json", input_data='{"file": "output.txt"}')
 ```
 
-### `take_screenshot`
-Capture web pages (requires Playwright):
+**`take_screenshot`** - Capture web pages (requires Playwright):
 ```python
 take_screenshot(url="https://example.com")
 # Returns: {"content": "Screenshot saved", "images": ["/path/to/screenshot.png"]}
 ```
+
+### Human-in-the-Loop Tools
+
+**`ask_human(question)`** - Simple blocking questions with auto-generated UI
+**`ask_human_custom(...)`** - Rich blocking UI with images, data, layouts
+**`request_decision(...)`** - Structured decisions with full HTMX support
+
+[See Human-in-the-Loop section for details →](#human-in-the-loop-hitl)
+
+### Generative UI & Artifacts
+
+**`show_ui(html)`** - Non-blocking display of interactive content
+**`create_artifact(html, title, ...)`** - Persistent dashboards and reports
+**`list_artifacts(...)`** - Query saved artifacts with filtering
+**`get_artifact(artifact_id)`** - Retrieve specific artifact by ID
+
+[See Generative UI section for details →](#generative-ui--persistent-artifacts)
+
+### Browser Automation Tools
+
+**`control_browser(command)`** - Execute browser actions with visual feedback
+**`extract_page_content()`** - Get page content and clickable coordinates
+**`get_browser_status()`** - Check session state and artifacts
+
+[See Browser Automation section for details →](#browser-automation)
+
+### Research Database Tools
+
+**`research_query(sql)`** - Execute SELECT queries on cascade database
+**`research_execute(sql)`** - Execute DDL/DML statements
+
+[See Research Databases section for details →](#research-databases)
+
+## Human-in-the-Loop (HITL)
+
+**Block cascade execution and wait for human input** with auto-generated UIs. Windlass provides three tools for different HITL scenarios:
+
+### `ask_human(question)`
+Simple blocking question with auto-generated UI.
+
+```python
+ask_human(question="Should I proceed with deletion?")
+# Returns: "yes" or "no"
+
+ask_human(question="Pick format: JSON or XML")
+# Returns: "JSON" or "XML"
+
+ask_human(question="Rate this output 1-5")
+# Returns: "4"
+```
+
+**What it does:**
+- Analyzes the question using an LLM classifier
+- Generates the appropriate UI type:
+  - Yes/No questions → Confirmation buttons
+  - "Pick A, B, or C" → Radio buttons
+  - "Rate this" → Star rating
+  - Open-ended → Text input
+- Blocks execution until human responds
+- Stores response in `state.{phase_name}` for later access
+
+**CLI mode:** Terminal prompt
+**UI mode:** Rich generated UI in Web dashboard
+
+### `ask_human_custom(question, ...)`
+Rich blocking UI with images, data tables, and custom layouts.
+
+```python
+# Chart review with data
+ask_human_custom(
+    question="Does this chart accurately represent the data?",
+    images=["/images/session/chart.png"],
+    data={"metrics": [
+        {"name": "Revenue", "value": "$1.2M", "change": "+12%"},
+        {"name": "Users", "value": "50K", "change": "+8%"}
+    ]},
+    ui_hint="confirmation"
+)
+
+# Deployment strategy selection
+ask_human_custom(
+    question="Which deployment strategy?",
+    options=[
+        {
+            "id": "blue_green",
+            "title": "Blue-Green",
+            "content": "Run two identical environments...",
+            "metadata": {"risk": "Low", "cost": "High"}
+        },
+        {
+            "id": "canary",
+            "title": "Canary",
+            "content": "Gradually roll out...",
+            "metadata": {"risk": "Medium", "cost": "Low"}
+        }
+    ],
+    layout_hint="card-grid"
+)
+```
+
+**Features:**
+- **Auto-detection**: Automatically includes phase images and data from context
+- **Rich layouts**: Card grids, two-column, tabs
+- **Multi-modal**: Display charts, tables, images
+- **Structured options**: Present choices as rich cards with metadata
+
+**Arguments:**
+- `question` - The question to ask
+- `context` - Text context (markdown supported)
+- `images` - List of image paths to display
+- `data` - Structured data for tables
+- `options` - Rich option cards
+- `ui_hint` - Force UI type ("confirmation", "choice", "rating", "text")
+- `layout_hint` - Suggest layout ("simple", "two-column", "card-grid")
+- `auto_detect` - Auto-include phase images/data (default: true)
+
+### `request_decision(question, options, ...)`
+**The most powerful HITL tool** - structured decision points with full HTMX support.
+
+```python
+request_decision(
+    question="Should we deploy this model to production?",
+    options=[
+        {"id": "approve", "label": "Approve", "style": "primary"},
+        {"id": "reject", "label": "Reject", "style": "danger"},
+        {"id": "revise", "label": "Request Revisions"}
+    ],
+    context="Model accuracy: 94.2%, False positive rate: 0.3%",
+    severity="warning",
+    allow_custom=True
+)
+# Returns: {"selected": "approve", "reasoning": "..."}
+```
+
+**Advanced: Custom HTML/HTMX UIs**
+
+For complete control, provide custom HTML with HTMX interactivity:
+
+```python
+request_decision(
+    question="Approve this dashboard?",
+    options=[],  # Not used when html provided
+    html="""
+    <div style="padding: 24px;">
+      <h2>Sales Dashboard Preview</h2>
+      <div id="chart" style="height:400px;"></div>
+      <script>
+        // Fetch live data from SQL
+        fetch('http://localhost:5001/api/sql/query', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            connection: 'analytics_db',
+            sql: 'SELECT region, SUM(revenue) as total FROM sales GROUP BY region'
+          })
+        }).then(r => r.json()).then(result => {
+          const stateIdx = result.columns.indexOf('region');
+          const valueIdx = result.columns.indexOf('total');
+
+          Plotly.newPlot('chart', [{
+            x: result.rows.map(r => r[stateIdx]),
+            y: result.rows.map(r => r[valueIdx]),
+            type: 'bar',
+            marker: {color: '#a78bfa'}
+          }], {
+            paper_bgcolor: '#1a1a1a',
+            plot_bgcolor: '#0a0a0a',
+            font: {color: '#e5e7eb'}
+          });
+        });
+      </script>
+
+      <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
+            hx-ext="json-enc"
+            hx-swap="outerHTML">
+        <input type="hidden" name="response[selected]" value="approve" id="decision" />
+        <button type="submit" onclick="document.getElementById('decision').value='approve'">
+          ✓ Approve Dashboard
+        </button>
+        <button type="button" onclick="document.getElementById('decision').value='reject'; this.form.requestSubmit();">
+          ✗ Reject
+        </button>
+      </form>
+    </div>
+    """
+)
+```
+
+**Available in HTML:**
+- **Plotly.js** - Interactive charts (`Plotly.newPlot()`)
+- **Vega-Lite** - Grammar of graphics (`vegaEmbed()`)
+- **AG Grid** - Professional data tables with sorting/filtering
+- **HTMX** - Dynamic interactions without full page reloads
+- **SQL Data Fetching** - Query databases via `/api/sql/query` endpoint
+
+**System-Provided Extras** (auto-injected into forms):
+- Notes textarea (`response[notes]`) - User can add context
+- Screenshot checkbox (`response[include_screenshot]`) - Attaches visual
+
+**Returns:** Full form data as JSON
+```json
+{
+  "selected": "approve",
+  "notes": "Changed colors for accessibility",
+  "include_screenshot": "true",
+  "_screenshot_metadata": {"path": "...", "url": "..."}
+}
+```
+
+**Important:** Fields with `_` prefix are metadata, not logical response data.
+
+### Research Cockpit Integration
+
+When running cascades in **Research Cockpit mode** (interactive research UI):
+
+```bash
+# Start Research Cockpit
+cd dashboard && ./start.sh
+# Navigate to Research Cockpit in the UI
+```
+
+**Features:**
+- Real-time execution monitoring
+- Inline checkpoint UIs (decisions appear in conversation flow)
+- Live MJPEG streams for browser sessions
+- Parallel sounding decisions displayed side-by-side
+- Screenshot capture of all HTMX content
+
+**Workflow:**
+1. Agent calls `request_decision()` with custom HTML
+2. Checkpoint created with embedded UI
+3. UI renders inline in Research Cockpit conversation
+4. Human interacts (clicks buttons, fills forms, etc.)
+5. Response sent back, execution resumes
+6. Screenshot automatically captured for audit trail
+
+## Generative UI & Persistent Artifacts
+
+**Display rich interactive content** without blocking execution, or create persistent dashboards.
+
+### `show_ui(html)`
+Non-blocking display - render interactive content inline.
+
+```python
+show_ui(
+    html="""
+    <div id="sales-chart" style="height:400px;"></div>
+    <script>
+      Plotly.newPlot('sales-chart', [{
+        x: ['Q1', 'Q2', 'Q3', 'Q4'],
+        y: [120, 150, 170, 190],
+        type: 'bar',
+        marker: {color: '#a78bfa'}
+      }], {
+        title: 'Quarterly Sales',
+        paper_bgcolor: '#1a1a1a',
+        plot_bgcolor: '#0a0a0a',
+        font: {color: '#e5e7eb'}
+      });
+    </script>
+    """,
+    title="Sales Trend Analysis",
+    description="Based on Q1-Q4 data from 2024"
+)
+# Returns immediately: {"displayed": true}
+```
+
+**Use cases:**
+- Progress updates with charts
+- Intermediate analysis displays
+- Debug visualizations
+- Building progressive narratives (call multiple times)
+
+**Difference from `request_decision`:**
+- ✅ Returns immediately (doesn't block)
+- ✅ No user interaction needed
+- ✅ Good for showing progress/analysis
+- ❌ Can't wait for user input
+
+### `create_artifact(html, title, ...)`
+Create persistent interactive dashboards.
+
+```python
+create_artifact(
+    html="""
+    <div style="padding:24px;">
+      <h1>Q4 Sales Dashboard</h1>
+      <div id="revenue-chart" style="height:400px;"></div>
+      <script>
+        // Fetch live data from database
+        fetch('http://localhost:5001/api/sql/query', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            connection: 'analytics',
+            sql: 'SELECT month, SUM(revenue) as total FROM sales WHERE quarter = 4 GROUP BY month'
+          })
+        }).then(r => r.json()).then(result => {
+          Plotly.newPlot('revenue-chart', [{
+            x: result.rows.map(r => r[0]),
+            y: result.rows.map(r => r[1]),
+            type: 'bar'
+          }], {
+            paper_bgcolor: '#1a1a1a',
+            plot_bgcolor: '#0a0a0a'
+          });
+        });
+      </script>
+    </div>
+    """,
+    title="Q4 Sales Dashboard",
+    artifact_type="dashboard",
+    description="Revenue and growth analysis for Q4 2024",
+    tags=["sales", "Q4", "dashboard"]
+)
+# Returns: {"artifact_id": "art_abc123", "url": "/artifacts/art_abc123"}
+```
+
+**Features:**
+- ✅ Saved to database (persists after cascade completes)
+- ✅ Browseable in Artifacts gallery
+- ✅ Full interactivity (filters, sorts, live data fetching)
+- ✅ Thumbnail auto-captured for gallery preview
+- ✅ Linked from session detail view
+
+**Artifact Types:**
+- `dashboard` - Multi-chart dashboards
+- `report` - Text reports with visualizations
+- `chart` - Single chart/graph
+- `table` - Interactive data tables
+- `analysis` - Analytical outputs
+- `custom` - Other
+
+**Pattern: Iterative Approval → Publication**
+```json
+{
+  "phases": [
+    {
+      "name": "iterate_dashboard",
+      "instructions": "Create a sales dashboard. Use request_decision to iterate until approved.",
+      "tackle": ["sql_query", "request_decision"],
+      "rules": {"max_turns": 10}
+    },
+    {
+      "name": "publish",
+      "instructions": "Dashboard approved. Use create_artifact to publish final version.",
+      "tackle": ["create_artifact"],
+      "context": {"from": ["previous"]}
+    }
+  ]
+}
+```
+
+### SQL Data Fetching in HTML
+
+**Always test queries first:**
+
+```python
+# Step 1: Test your query with sql_query
+sql_query(sql="SELECT state, COUNT(*) as count FROM sightings GROUP BY state LIMIT 5", connection="csv_files")
+# Returns: {columns: ['state', 'count'], rows: [['WA', 632], ...], "error": null}
+# CRITICAL: Check for "error" field! If present, query failed - fix it before HTML!
+
+# Step 2: Use EXACT column names from successful test in your HTML
+html = """
+<div id="chart"></div>
+<script>
+  fetch('http://localhost:5001/api/sql/query', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      connection: 'csv_files',
+      sql: 'SELECT state, COUNT(*) as count FROM sightings GROUP BY state'
+    })
+  }).then(r => r.json()).then(result => {
+    // Find columns by name (safer than hardcoding indices)
+    const stateIdx = result.columns.indexOf('state');
+    const countIdx = result.columns.indexOf('count');
+
+    Plotly.newPlot('chart', [{
+      x: result.rows.map(r => r[stateIdx]),
+      y: result.rows.map(r => r[countIdx]),
+      type: 'bar'
+    }]);
+  });
+</script>
+"""
+```
+
+**Discovery tools:**
+- `sql_search()` - Find tables semantically
+- `list_sql_connections()` - Show available databases
+- `sql_query()` - Test queries and verify column names (check for "error" field!)
+
+## Research Databases
+
+**Cascade-specific DuckDB persistence** for structured data storage and querying.
+
+### Configuration
+
+Declare a research database at the cascade level:
+
+```json
+{
+  "cascade_id": "market_research",
+  "research_db": "market_research",
+  "phases": [...]
+}
+```
+
+**What this enables:**
+- Persistent DuckDB database for this cascade
+- Multiple cascades can share the same database
+- Database file saved to: `research_dbs/{db_name}.duckdb`
+- LLM tools automatically use the configured database
+
+### `research_execute(sql)`
+Execute DDL/DML statements (CREATE, INSERT, UPDATE, DELETE).
+
+```python
+# Create table
+research_execute("""
+    CREATE TABLE IF NOT EXISTS programs (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        provider TEXT,
+        cost DECIMAL,
+        duration_weeks INTEGER
+    )
+""")
+
+# Insert data
+research_execute("""
+    INSERT INTO programs VALUES
+    (1, 'Data Science Bootcamp', 'CompetitorA', 15000, 12),
+    (2, 'Web Development', 'CompetitorB', 12000, 16)
+""")
+```
+
+**Returns:** Success message with affected row count
+
+### `research_query(sql)`
+Execute SELECT queries and get results as JSON.
+
+```python
+research_query("SELECT * FROM programs WHERE cost < 20000 LIMIT 10")
+# Returns: [
+#   {"id": 1, "name": "Data Science Bootcamp", "provider": "CompetitorA", ...},
+#   {"id": 2, "name": "Web Development", "provider": "CompetitorB", ...}
+# ]
+
+research_query("SELECT provider, AVG(cost) as avg_cost FROM programs GROUP BY provider")
+# Returns: [{"provider": "CompetitorA", "avg_cost": 14500}, ...]
+```
+
+**Returns:** JSON array of result objects
+
+### Real-World Example: Competitive Analysis
+
+```json
+{
+  "cascade_id": "competitor_analysis",
+  "research_db": "market_research",
+  "phases": [
+    {
+      "name": "scrape_competitors",
+      "instructions": "Scrape competitor websites and store program data",
+      "browser": {"url": "{{ input.competitor_url }}"},
+      "tackle": ["control_browser", "extract_page_content", "research_execute"],
+      "rules": {"max_turns": 20}
+    },
+    {
+      "name": "analyze",
+      "instructions": "Query the research database and create analysis",
+      "tackle": ["research_query", "create_chart", "create_artifact"],
+      "context": {"from": ["previous"]}
+    }
+  ]
+}
+```
+
+**Workflow:**
+1. **Scrape phase**: Browser automation extracts data → stores in DuckDB via `research_execute()`
+2. **Analyze phase**: Queries database via `research_query()` → creates charts
+3. Data persists in `research_dbs/market_research.duckdb`
+4. Run again → data accumulates across executions
+5. Query from CLI: `windlass sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb`
+
+### Database Lifecycle
+
+**Automatic fallback:** If no `research_db` is set, falls back to `cascade_id` as database name.
+
+```json
+{
+  "cascade_id": "my_research"
+  // research_db not set → uses "my_research.duckdb" automatically
+}
+```
+
+**Sharing databases across cascades:**
+```json
+// Cascade 1
+{"cascade_id": "scraper_a", "research_db": "market_data"}
+
+// Cascade 2
+{"cascade_id": "scraper_b", "research_db": "market_data"}
+
+// Both write to same database: research_dbs/market_data.duckdb
+```
+
+**Manual querying:**
+```bash
+# Via SQL CLI
+duckdb research_dbs/market_research.duckdb "SELECT COUNT(*) FROM programs"
+
+# Via Windlass SQL wrapper
+windlass sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb
+```
+
+### Research Cockpit
+
+**Interactive research UI** for live cascade orchestration with inline decisions.
+
+**Start the dashboard:**
+```bash
+cd dashboard && ./start.sh
+# Navigate to: http://localhost:5550/
+# Click "Research Cockpit"
+```
+
+**Features:**
+- **Live execution** - See agent thinking in real-time
+- **Inline checkpoints** - `request_decision()` UIs render in conversation
+- **MJPEG browser streams** - Watch browser automation live
+- **Parallel soundings** - See multiple attempts side-by-side
+- **Data exploration** - Query research databases interactively
+- **Artifact preview** - View generated dashboards inline
+
+**Typical workflow:**
+1. Configure cascade with `research_db` and HITL tools
+2. Start cascade from Research Cockpit UI
+3. Agent explores, creates visualizations, asks for feedback
+4. You approve/reject/revise via inline UIs
+5. Agent refines based on your input
+6. Final artifacts published to gallery
+7. Research data persists in DuckDB for future runs
+
+**Environment flag:**
+```bash
+export WINDLASS_USE_CHECKPOINTS=true  # Enables UI checkpoints
+export WINDLASS_RESEARCH_MODE=true    # Tags checkpoints as research-specific
+```
+
+### HITL + Browser + Research Pattern
+
+**The complete workflow:**
+
+```json
+{
+  "cascade_id": "market_intelligence",
+  "research_db": "market_data",
+  "phases": [
+    {
+      "name": "scrape",
+      "instructions": "Browse competitor sites, extract program data, store in research DB",
+      "browser": {"url": "{{ input.url }}"},
+      "tackle": ["control_browser", "extract_page_content", "research_execute"]
+    },
+    {
+      "name": "visualize",
+      "instructions": "Query research DB, create dashboard, get approval before publishing",
+      "tackle": ["research_query", "request_decision", "create_artifact"],
+      "context": {"from": ["previous"]}
+    }
+  ]
+}
+```
+
+**What happens:**
+1. Agent browses competitor sites with visual feedback
+2. Extracts data and stores via `research_execute()`
+3. Queries aggregated data via `research_query()`
+4. Creates interactive dashboard
+5. Shows via `request_decision()` with live SQL charts
+6. You approve/reject/request changes
+7. Agent refines until approved
+8. Final version published via `create_artifact()`
+9. Dashboard persists in Artifacts gallery
+10. Research data persists in DuckDB
+
+**This is the "Artifact Refinement Autopilot" pattern with persistent storage.**
 
 ## Browser Automation
 
@@ -2326,10 +2911,14 @@ Build tool libraries from cascades for unlimited composability.
 - **Long-running iterative workflows** (hours, not seconds)
 - **Artifact generation with refinement** (dashboards, reports, code)
 - **Vision-based feedback loops** (charts, UI, design)
-- **Complex multi-phase workflows** (research → analyze → report)
-- **Production systems requiring observability** (audit logs, compliance)
+- **Human-in-the-loop workflows** (approval gates, iterative refinement with feedback)
+- **Interactive research and data exploration** (Research Cockpit with live orchestration)
+- **Web automation with visual feedback** (browser control with coordinate-based interaction)
+- **Complex multi-phase workflows** (scrape → store → analyze → visualize → approve)
+- **Production systems requiring observability** (audit logs, compliance, full traces)
 - **Validation and error filtering** (LLM outputs are unpredictable)
 - **Exploring solution spaces** (soundings for multiple approaches)
+- **Persistent data collection** (research databases for multi-run accumulation)
 
 ### ❌ Consider Alternatives For:
 
@@ -2341,11 +2930,26 @@ Build tool libraries from cascades for unlimited composability.
 
 ### 🎯 Perfect For:
 
-**Researchers:** Exploring prompt strategies, comparing approaches (soundings), reproducible experiments
+**Researchers:**
+- Exploring prompt strategies with soundings
+- Interactive data exploration with Research Cockpit
+- Web scraping with visual automation
+- Building research databases that persist across runs
+- Reproducible experiments with full audit trails
 
-**Enterprises:** Compliance requirements (wards, audit logs), cost tracking, observable AI systems
+**Enterprises:**
+- Compliance workflows with approval gates (HITL + wards)
+- Audit trails with full observability
+- Cost tracking and budget enforcement
+- Interactive dashboards with stakeholder feedback loops
+- Competitive intelligence gathering (browser automation + research DBs)
 
-**Developers:** Building AI features that refine outputs, multi-modal applications, production LLM systems
+**Developers:**
+- AI features with human approval checkpoints
+- Multi-modal applications (vision + browser + charts)
+- Production LLM systems with error filtering
+- Generative UI for dynamic frontends
+- Web automation agents with persistent storage
 
 ---
 
@@ -2732,6 +3336,10 @@ windlass/
 - **Wards**: Protective barriers for validation
 - **Manifest**: Tool library, charted by the Quartermaster
 - **Quartermaster**: Agent that selects appropriate tools
+- **Harbor**: Registry for HuggingFace Spaces integrations
+- **Berth**: A specific HF Space connection
+- **Sextant**: Prompt observatory for prompt engineering
+- **Cockpit**: Interactive research interface with live orchestration
 
 ## License
 
@@ -2803,9 +3411,13 @@ windlass analyze examples/flow.json
 3. **Production-Grade Primitives** - Wards for validation, cost tracking, error filtering
 4. **Parallel Universe Execution** - Cascade-level soundings explore complete solution spaces
 5. **Vision-First Multi-Modal** - Images as first-class citizens, automatic persistence
-6. **Scales to Unlimited Tools** - Manifest system for dynamic tool selection
-7. **Self-Evolving** - Workflows orchestrate themselves, tests write themselves, prompts optimize themselves
-8. **No Magic** - Prompts are prompts, tools are functions, no framework magic
+6. **Visual Browser Automation** - Coordinate-based web control with screenshot feedback
+7. **Generative HITL** - LLM-generated UIs with HTMX for rich human interaction
+8. **Research Databases** - Persistent DuckDB storage for data accumulation across runs
+9. **Research Cockpit** - Interactive UI for live orchestration with inline decisions
+10. **Scales to Unlimited Tools** - Manifest system for dynamic tool selection
+11. **Self-Evolving** - Workflows orchestrate themselves, tests write themselves, prompts optimize themselves
+12. **No Magic** - Prompts are prompts, tools are functions, no framework magic
 
 **Built from production experience, not academic research.** Windlass emerged from building a data analytics autopilot that required orchestrating complex, iterative workflows with vision feedback, validation, and error filtering.
 

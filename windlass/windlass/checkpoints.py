@@ -280,6 +280,19 @@ class CheckpointManager:
         # Generate summary asynchronously (non-blocking)
         self._generate_summary_async(checkpoint_id, session_id, phase_output)
 
+        # Call hooks if available (for auto-save etc.)
+        try:
+            from .runner import get_current_hooks
+            hooks = get_current_hooks()
+            if hooks and hasattr(hooks, 'on_checkpoint_suspended'):
+                hooks.on_checkpoint_suspended(
+                    session_id, checkpoint_id, checkpoint_type.value, phase_name,
+                    phase_output[:500] if phase_output else None,
+                    cascade_id=cascade_id  # Pass cascade_id for auto-save
+                )
+        except Exception as hook_err:
+            print(f"[Checkpoints] Warning: Hook call failed: {hook_err}")
+
         return checkpoint
 
     def get_checkpoint(self, checkpoint_id: str) -> Optional[Checkpoint]:
@@ -438,6 +451,18 @@ class CheckpointManager:
                 "winner_index": checkpoint.winner_index
             }
         ))
+
+        # Call hooks if available (for auto-save etc.)
+        try:
+            from .runner import get_current_hooks
+            hooks = get_current_hooks()
+            if hooks and hasattr(hooks, 'on_checkpoint_resumed'):
+                hooks.on_checkpoint_resumed(
+                    checkpoint.session_id, checkpoint_id, checkpoint.phase_name,
+                    response, checkpoint.cascade_id
+                )
+        except Exception as hook_err:
+            print(f"[Checkpoints] Warning: Hook call failed on response: {hook_err}")
 
         return checkpoint
 

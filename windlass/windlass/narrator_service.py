@@ -92,10 +92,11 @@ class PendingNarration:
 
 class NarratorService:
     """
-    Event-driven narrator service.
+    Narrator service with two modes:
+    1. Event-driven: Subscribes to specific cascade events
+    2. Polling: Checks echo.history periodically for changes
 
-    Subscribes to cascade events and spawns narrator cascades to provide
-    voice commentary. Handles debouncing, overlap prevention, and staleness.
+    Polling mode is more reliable as it catches ALL activity regardless of events.
     """
 
     def __init__(
@@ -105,12 +106,18 @@ class NarratorService:
         cascade_id: str,
         parent_session_id: Optional[str] = None,
         cascade_input: Optional[Dict[str, Any]] = None,
+        echo = None,  # For polling mode: direct access to Echo object
     ):
         self.config = config
         self.session_id = session_id
         self.cascade_id = cascade_id
         self.parent_session_id = parent_session_id or session_id
         self.cascade_input = cascade_input or {}  # Original cascade input for template access
+
+        # Capture hooks from current context for UI mode detection
+        # Must be captured here (main thread) because ContextVars don't cross thread boundaries
+        from .runner import get_current_hooks
+        self._parent_hooks = get_current_hooks()
 
         # State
         self._running = False
@@ -125,6 +132,13 @@ class NarratorService:
         self._narration_history: List[Dict[str, str]] = []
         self._max_history_items = 5  # Keep last N narrations for context
 
+        # Polling mode state
+        self._mode = getattr(config, 'mode', 'event')  # 'event' or 'poll'
+        self._echo = echo  # Reference to runner's Echo object (for polling)
+        self._last_narrated_index = 0  # Track which echo.history index we last narrated
+        self._poll_interval = getattr(config, 'poll_interval_seconds', 3.0)  # How often to check
+        self._context_turns = getattr(config, 'context_turns', 5)  # How many messages to include
+
         # Map event types to our internal names
         self._event_map = {
             "phase_start": "phase_start",
@@ -135,36 +149,56 @@ class NarratorService:
             "tool_complete": "tool_call",
         }
 
-        # Which events we care about (from config.effective_on_events)
+        # Which events we care about (from config.effective_on_events) - for event mode only
         self._subscribed_events: Set[str] = set()
-        events_to_subscribe = config.effective_on_events if hasattr(config, 'effective_on_events') else ["phase_complete"]
-        for evt in events_to_subscribe:
-            # Map our config names to event bus names
-            if evt == "turn":
-                self._subscribed_events.add("turn_complete")
-            elif evt == "tool_call":
-                self._subscribed_events.add("tool_complete")
-            elif evt in ("phase_start", "phase_complete", "cascade_start", "cascade_complete"):
-                self._subscribed_events.add(evt)
+        if self._mode == 'event':
+            events_to_subscribe = config.effective_on_events if hasattr(config, 'effective_on_events') else ["phase_complete"]
+            for evt in events_to_subscribe:
+                # Map our config names to event bus names
+                if evt == "turn":
+                    self._subscribed_events.add("turn_complete")
+                elif evt == "tool_call":
+                    self._subscribed_events.add("tool_complete")
+                elif evt in ("phase_start", "phase_complete", "cascade_start", "cascade_complete"):
+                    self._subscribed_events.add(evt)
 
     def start(self, event_bus: EventBus):
-        """Start listening for events."""
+        """Start narrator service (event or polling mode)."""
         if self._running:
             return
 
         self._running = True
-        self._event_queue = event_bus.subscribe()
 
-        # Start worker thread that processes events
-        self._worker_thread = threading.Thread(
-            target=self._event_loop,
-            daemon=True,
-            name=f"narrator-{self.session_id[:8]}"
-        )
-        self._worker_thread.start()
+        if self._mode == 'poll':
+            # Polling mode: check echo.history periodically
+            if not self._echo:
+                log_message(self.session_id, "narrator_error",
+                           "Polling mode requires echo object but none was provided")
+                return
 
-        log_message(self.session_id, "narrator", "Narrator service started",
-                   metadata={"subscribed_events": list(self._subscribed_events)})
+            self._worker_thread = threading.Thread(
+                target=self._poll_loop,
+                daemon=True,
+                name=f"narrator-poll-{self.session_id[:8]}"
+            )
+            self._worker_thread.start()
+
+            log_message(self.session_id, "narrator", "Narrator service started (polling mode)",
+                       metadata={"poll_interval": self._poll_interval,
+                                "min_interval": self.config.min_interval_seconds if self.config else 10.0})
+        else:
+            # Event mode: subscribe to event bus
+            self._event_queue = event_bus.subscribe()
+
+            self._worker_thread = threading.Thread(
+                target=self._event_loop,
+                daemon=True,
+                name=f"narrator-event-{self.session_id[:8]}"
+            )
+            self._worker_thread.start()
+
+            log_message(self.session_id, "narrator", "Narrator service started (event mode)",
+                       metadata={"subscribed_events": list(self._subscribed_events)})
 
     def stop(self, wait_timeout: float = 30.0):
         """
@@ -229,8 +263,82 @@ class NarratorService:
                 log_message(self.session_id, "narrator_error",
                            f"Event loop error: {type(e).__name__}: {e}")
 
+    def _poll_loop(self):
+        """Polling loop - checks echo.history for changes."""
+        log_message(self.session_id, "narrator", "Poll loop started",
+                   metadata={"poll_interval": self._poll_interval, "context_turns": self._context_turns})
+
+        while self._running:
+            try:
+                time.sleep(self._poll_interval)
+
+                if not self._running:
+                    break
+
+                # Check if history has new messages since last narration
+                current_length = len(self._echo.history) if self._echo else 0
+
+                if current_length <= self._last_narrated_index:
+                    # No new messages
+                    continue
+
+                # New messages available! Check if enough time has passed
+                time_since_last = time.time() - self._last_narration_time
+                min_interval = self.config.min_interval_seconds if self.config else 10.0
+
+                if time_since_last < min_interval:
+                    # Too soon, will check again on next poll
+                    log_message(self.session_id, "narrator",
+                               f"New messages detected but waiting {min_interval - time_since_last:.1f}s more",
+                               metadata={"new_messages": current_length - self._last_narrated_index})
+                    continue
+
+                # Ready to narrate! Check if we're already narrating
+                with self._lock:
+                    if self._is_narrating:
+                        # Already narrating, will catch up on next poll
+                        log_message(self.session_id, "narrator", "Skipping poll - already narrating")
+                        continue
+
+                    # Build context from recent echo history
+                    context = self._build_context_from_echo()
+
+                    # Log what we're about to narrate
+                    log_message(self.session_id, "narrator",
+                               f"Narrating messages {self._last_narrated_index} to {current_length}",
+                               metadata={"message_count": current_length - self._last_narrated_index})
+
+                    # Update index BEFORE starting narration (so we don't re-narrate if it fails)
+                    self._last_narrated_index = current_length
+
+                    # Create a synthetic event for the narration system
+                    from .events import Event
+                    from datetime import datetime
+                    synthetic_event = Event(
+                        type="history_changed",
+                        session_id=self.session_id,
+                        timestamp=datetime.now().isoformat(),
+                        data=context
+                    )
+
+                    pending = PendingNarration(
+                        event=synthetic_event,
+                        context=context,
+                        received_at=time.time()
+                    )
+
+                    self._start_narration(pending)
+
+            except Exception as e:
+                log_message(self.session_id, "narrator_error",
+                           f"Poll loop error: {type(e).__name__}: {e}")
+
     def _handle_event(self, event: Event):
         """Handle an incoming event."""
+        log_message(self.session_id, "narrator",
+                   f"Narrator received event: {event.type}",
+                   metadata={"event_type": event.type, "session_id": event.session_id})
+
         # Build context from event data
         context = self._build_context(event)
 
@@ -352,11 +460,13 @@ class NarratorService:
 
         try:
             # Create runner for narrator cascade (pass dict directly to config_path)
+            # CRITICAL: Pass hooks captured from parent context (ContextVars don't work across threads)
             runner = WindlassRunner(
                 config_path=cascade_dict,
                 session_id=narrator_session,
                 parent_session_id=self.parent_session_id,
                 depth=1,  # Mark as sub-cascade
+                hooks=self._parent_hooks,  # Use hooks captured in __init__ (main thread)
             )
 
             # Run the narrator cascade
@@ -366,6 +476,28 @@ class NarratorService:
             spoken_text = self._extract_spoken_text(result)
             if spoken_text:
                 self._add_to_history(event_type_friendly, spoken_text)
+
+            # Check if say tool was called in UI mode (browser playback)
+            # If so, emit narration_audio event with parent session_id so ResearchCockpit receives it
+            audio_info = self._extract_audio_info(result)
+            if audio_info:
+                from .events import get_event_bus, Event
+                from datetime import datetime
+
+                event_bus = get_event_bus()
+                event_bus.publish(Event(
+                    type="narration_audio",
+                    session_id=self.parent_session_id,  # Use PARENT session_id so ResearchCockpit receives it
+                    timestamp=datetime.now().isoformat(),
+                    data={
+                        "audio_path": audio_info["audio_path"],
+                        "text": audio_info["text"],
+                        "duration_seconds": audio_info["duration_seconds"]
+                    }
+                ))
+                log_message(self.session_id, "narrator",
+                           f"Emitted narration_audio event to parent session {self.parent_session_id}",
+                           metadata={"audio_path": audio_info["audio_path"]})
 
             log_message(self.session_id, "narrator",
                        f"Narration complete for {event.type}",
@@ -380,11 +512,113 @@ class NarratorService:
                        f"Narrator cascade failed: {type(e).__name__}: {e}")
             raise
 
+    def _build_context_from_echo(self) -> Dict[str, Any]:
+        """Build context directly from echo.history (polling mode)."""
+        if not self._echo:
+            return {
+                "phase_name": "unknown",
+                "cascade_id": self.cascade_id,
+                "summary": "No echo history available",
+            }
+
+        # Get recent history based on context_turns setting
+        # This gives us the last N "conversation turns" of context
+        total_messages = len(self._echo.history)
+
+        # Start from context_turns "turns" ago, but at minimum show last 20 messages
+        # A "turn" might have multiple messages (tool calls, results, etc)
+        messages_to_show = max(20, self._context_turns * 4)  # Assume ~4 messages per turn
+        start_idx = max(0, total_messages - messages_to_show)
+
+        recent_entries = self._echo.history[start_idx:]
+
+        # Build detailed summary from ALL messages (don't filter, show everything)
+        summary_parts = []
+        tools_used = []
+        current_phase = "unknown"
+        turn_number = None
+        max_turns = None
+
+        for entry in recent_entries:
+            role = entry.get("role")
+            content = entry.get("content", "")
+            metadata = entry.get("metadata", {})
+
+            # Extract phase/turn info from metadata
+            if "phase_name" in metadata:
+                current_phase = metadata["phase_name"]
+            if "turn_number" in metadata:
+                turn_number = metadata["turn_number"]
+            if "max_turns" in metadata:
+                max_turns = metadata["max_turns"]
+
+            # Skip ONLY structural entries (they're just markers)
+            if role == "structure":
+                continue
+
+            # Show ALL other message types with their full content
+            if role == "system":
+                # System messages (usually phase instructions)
+                content_preview = str(content)[:150]
+                summary_parts.append(f"📋 System: {content_preview}")
+
+            elif role == "user":
+                # User input or tool results
+                content_str = str(content)
+                if "Tool Result" in content_str:
+                    # Tool result - show it with more detail
+                    result_preview = content_str[:400]
+                    summary_parts.append(f"📥 {result_preview}")
+                else:
+                    # Regular user input
+                    content_preview = content_str[:300]
+                    summary_parts.append(f"👤 User: {content_preview}")
+
+            elif role == "assistant":
+                # Assistant's response - show full content
+                content_preview = str(content)[:400]
+                summary_parts.append(f"🤖 Assistant: {content_preview}")
+
+            elif role == "tool_call":
+                # Tool being called
+                tool_name = entry.get("tool_name", "unknown")
+                args = entry.get("arguments", {})
+                tools_used.append(tool_name)
+
+                # Format args with more detail
+                args_items = list(args.items())
+                if len(args_items) <= 2:
+                    # Show all args if there are only 1-2
+                    args_str = ", ".join(f"{k}={repr(v)[:50]}" for k, v in args_items)
+                else:
+                    # Show first 2 args + count
+                    args_str = ", ".join(f"{k}={repr(v)[:50]}" for k, v in args_items[:2])
+                    args_str += f" ... (+{len(args_items)-2} more)"
+
+                summary_parts.append(f"🔧 {tool_name}({args_str})")
+
+        # Include ALL summary parts (don't limit) so narrator has full context
+        summary_text = "\n".join(summary_parts) if summary_parts else "Working..."
+
+        log_message(self.session_id, "narrator",
+                   f"Built context from echo: {len(summary_parts)} messages, {len(summary_text)} chars",
+                   metadata={"message_count": len(summary_parts), "char_count": len(summary_text)})
+
+        return {
+            "phase_name": current_phase,
+            "cascade_id": self.cascade_id,
+            "turn_number": turn_number,
+            "max_turns": max_turns,
+            "tools_used": list(set(tools_used)),  # Unique tools
+            "summary": summary_text,
+            "message_count": len(summary_parts),  # How many messages we're showing
+        }
+
     def _build_context(self, event: Event) -> Dict[str, Any]:
         """Build context dictionary from event data."""
         data = event.data or {}
 
-        # Build a human-readable summary
+        # Build a human-readable summary from recent history
         summary_parts = []
 
         phase_name = data.get("phase_name", "unknown")
@@ -404,13 +638,44 @@ class NarratorService:
         elif event.type == "turn_complete":
             turn = data.get("turn_number", "?")
             max_turns = data.get("max_turns", "?")
-            summary_parts.append(f"Turn {turn}/{max_turns} in phase '{phase_name}'")
-            if data.get("tool_calls"):
-                tools = [tc.get("name", "unknown") for tc in data["tool_calls"][:3]]
-                summary_parts.append(f"Tools used: {', '.join(tools)}")
+
+            # Format recent history into a readable narrative
+            recent_history = data.get("recent_history", [])
+            if recent_history:
+                # Filter to show only relevant messages (assistant, tool results, user messages)
+                for entry in recent_history[-5:]:  # Last 5 entries for brevity
+                    role = entry.get("role")
+                    content = entry.get("content", "")
+
+                    if role == "assistant":
+                        # Assistant's response
+                        content_preview = str(content)[:200]
+                        summary_parts.append(f"Assistant: {content_preview}")
+                    elif role == "tool_call":
+                        # Tool being called
+                        tool_name = entry.get("tool_name", "unknown")
+                        args = entry.get("arguments", {})
+                        summary_parts.append(f"Calling tool '{tool_name}' with args: {str(args)[:100]}")
+                    elif role in ("tool", "user") and "Tool Result" in str(content):
+                        # Tool result
+                        result_preview = str(content)[:200]
+                        summary_parts.append(f"Tool result: {result_preview}")
+            else:
+                # Fallback to basic summary if no history provided
+                summary_parts.append(f"Turn {turn}/{max_turns} in phase '{phase_name}'")
+                if data.get("assistant_response"):
+                    response = str(data["assistant_response"])[:200]
+                    summary_parts.append(f"Assistant said: {response}")
+                if data.get("tool_calls"):
+                    tools = [tc.get("name", "unknown") for tc in data["tool_calls"][:3]]
+                    summary_parts.append(f"Will use tools: {', '.join(tools)}")
+
         elif event.type == "tool_complete":
             tool_name = data.get("tool_name", "unknown")
-            summary_parts.append(f"Tool '{tool_name}' completed in phase '{phase_name}'")
+            tool_result = data.get("tool_result", "")
+            summary_parts.append(f"Tool '{tool_name}' completed")
+            if tool_result:
+                summary_parts.append(f"Result: {tool_result[:200]}")
 
         return {
             "phase_name": phase_name,
@@ -421,6 +686,65 @@ class NarratorService:
             "summary": "\n".join(summary_parts) if summary_parts else f"Event: {event.type}",
             "raw_data": data,
         }
+
+    def _extract_audio_info(self, result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract audio playback info from say tool result (UI mode).
+
+        Returns dict with audio_path, text, duration_seconds if UI mode, else None.
+        """
+        import json
+
+        if not result or not isinstance(result, dict):
+            return None
+
+        history = result.get("history", [])
+
+        # Look for assistant messages that contain tool calls to 'say'
+        for entry in history:
+            if entry.get("role") != "assistant":
+                continue
+
+            content = entry.get("content", "")
+            if not content or "say" not in content:
+                continue
+
+            # Try to extract JSON tool call from the content
+            try:
+                # Find JSON blocks
+                import re
+                json_matches = re.findall(r'```json\s*(\{.*?\})\s*```', content, re.DOTALL)
+                for json_str in json_matches:
+                    try:
+                        tool_call = json.loads(json_str)
+                        if tool_call.get("tool") == "say":
+                            text = tool_call.get("arguments", {}).get("text")
+                            if text:
+                                # Look for corresponding tool result with ui_mode_playback flag
+                                for hist_entry in history:
+                                    if hist_entry.get("role") in ("user", "tool"):
+                                        hist_content = hist_entry.get("content", "")
+                                        if "Tool Result (say)" in hist_content or "say" in hist_content:
+                                            # Try to parse JSON from result
+                                            try:
+                                                # Extract JSON from content
+                                                result_json_match = re.search(r'\{.*?"ui_mode_playback"\s*:\s*true.*?\}', hist_content, re.DOTALL)
+                                                if result_json_match:
+                                                    result_data = json.loads(result_json_match.group(0))
+                                                    if result_data.get("ui_mode_playback"):
+                                                        return {
+                                                            "audio_path": result_data.get("audio", [None])[0],
+                                                            "text": result_data.get("text_spoken", text),
+                                                            "duration_seconds": result_data.get("duration_seconds", 0)
+                                                        }
+                                            except:
+                                                continue
+                    except json.JSONDecodeError:
+                        continue
+            except Exception:
+                continue
+
+        return None
 
     def _extract_spoken_text(self, result: Dict[str, Any]) -> Optional[str]:
         """

@@ -692,7 +692,7 @@
 
 .session-title {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 1.0rem;
   font-weight: 600;
   color: #e5e7eb;
   line-height: 1.3;
@@ -758,7 +758,7 @@
 }
 
 .bret-victor-quote {
-  display: flex;
+  display: none;
   align-items: flex-start;
   gap: 8px;
   padding: 12px;

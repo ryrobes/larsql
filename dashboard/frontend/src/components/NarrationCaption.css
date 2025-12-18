@@ -1,0 +1,85 @@
+/* Live narration caption with word-by-word highlighting */
+.narration-caption {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 900px;
+  width: auto;
+  min-width: 300px;
+  max-height: 40vh; /* Allow up to 40% of viewport height */
+  z-index: 1000;
+  pointer-events: none; /* Don't block interaction */
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+  display: flex;
+  justify-content: center;
+}
+
+.narration-caption.active {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.narration-caption.fading {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+}
+
+.caption-text {
+  background: linear-gradient(135deg, rgba(10, 10, 10, 0.95), rgba(18, 18, 18, 0.95));
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 12px;
+  padding: 20px 32px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 20px rgba(167, 139, 250, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-size: 1.625rem;
+  line-height: 1.8;
+  text-align: center;
+  font-weight: 400;
+  max-height: 40vh;
+  overflow-y: auto;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  width: fit-content;
+  max-width: 100%;
+  min-height: fit-content;
+}
+
+.caption-word {
+  display: inline-block;
+  color: #666;
+  transition: color 0.2s ease-out, text-shadow 0.2s ease-out;
+  margin-right: 0.35em;
+  word-break: keep-all;
+}
+
+.caption-word.spoken {
+  color: #e0e0e0;
+  text-shadow: 0 0 4px rgba(167, 139, 250, 0.3);
+}
+
+.caption-word.current {
+  color: #a78bfa;
+  font-weight: 600;
+  transition: transform 0.05s ease-out, text-shadow 0.05s ease-out;
+}
+
+/* Animation when caption appears */
+@keyframes caption-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.narration-caption.active .caption-text {
+  animation: caption-slide-in 0.4s ease-out;
+}

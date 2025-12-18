@@ -5,6 +5,8 @@ import CascadePicker from './CascadePicker';
 import LiveOrchestrationSidebar from './LiveOrchestrationSidebar';
 import HTMLSection from './sections/HTMLSection';
 import RichMarkdown from './RichMarkdown';
+import { useNarrationPlayer } from './NarrationPlayer';
+import NarrationCaption from './NarrationCaption';
 import './ResearchCockpit.css';
 
 /**
@@ -90,9 +92,79 @@ function ResearchCockpit({
     soundings: null
   });
   const [roundEvents, setRoundEvents] = useState([]); // Events accumulated during current agent round
+  const [narrationAmplitude, setNarrationAmplitude] = useState(0); // Raw amplitude from narration audio (0-1)
+  const [smoothedAmplitude, setSmoothedAmplitude] = useState(0); // Smoothed/tweened amplitude for animation
+  const [narrationText, setNarrationText] = useState(''); // Current narration text for captions
+  const [narrationDuration, setNarrationDuration] = useState(0); // Duration for word timing
+  const [isNarrating, setIsNarrating] = useState(false); // Is audio currently playing
 
   // SSE for real-time updates
   const eventSourceRef = useRef(null);
+
+  // Smooth amplitude changes for natural animation (lerp/tween)
+  useEffect(() => {
+    let animationFrameId;
+
+    const smoothAmplitude = () => {
+      setSmoothedAmplitude(current => {
+        const delta = narrationAmplitude - current;
+
+        // Adaptive smoothing: fast when far from target, smooth when close
+        let smoothingFactor;
+        const absDelta = Math.abs(delta);
+
+        if (absDelta > 0.1) {
+          // Large change: catch up quickly (0.4 = aggressive)
+          smoothingFactor = 0.4;
+        } else if (absDelta > 0.05) {
+          // Medium change: moderate speed
+          smoothingFactor = narrationAmplitude > current ? 0.3 : 0.2; // Rise faster than fall
+        } else {
+          // Small variations: smooth and responsive
+          smoothingFactor = narrationAmplitude > current ? 0.25 : 0.15; // Rise faster than fall
+        }
+
+        const newValue = current + delta * smoothingFactor;
+
+        // Stop animating when very close (within 0.005 for tighter tracking)
+        if (absDelta < 0.005) {
+          return narrationAmplitude;
+        }
+
+        return newValue;
+      });
+
+      animationFrameId = requestAnimationFrame(smoothAmplitude);
+    };
+
+    animationFrameId = requestAnimationFrame(smoothAmplitude);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [narrationAmplitude]);
+
+  // Narration player for browser-based TTS playback
+  const narrationPlayer = useNarrationPlayer({
+    onAmplitudeChange: (amplitude) => {
+      // if (amplitude > 0.01) {
+      //   console.log('[ResearchCockpit] Amplitude update:', amplitude);
+      // }
+      setNarrationAmplitude(amplitude);
+    },
+    onPlaybackStart: () => {
+      console.log('[ResearchCockpit] Narration playback started');
+      setIsNarrating(true);
+    },
+    onPlaybackEnd: () => {
+      console.log('[ResearchCockpit] Narration playback ended');
+      setNarrationAmplitude(0);
+      setIsNarrating(false);
+      // Text will fade out after 2s (handled by NarrationCaption)
+    }
+  });
 
   // Fetch saved session data (if exists)
   const fetchSavedSession = useCallback(async () => {
@@ -344,17 +416,27 @@ function ResearchCockpit({
   useEffect(() => {
     if (!sessionId) return;
 
+    console.log('[ResearchCockpit] Setting up SSE connection for session:', sessionId);
     const eventSource = new EventSource('http://localhost:5001/api/events/stream');
     eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      console.log('[ResearchCockpit] SSE connected');
+    };
 
     eventSource.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data);
 
+        // Debug: show all non-heartbeat events
+        if (event.type !== 'heartbeat') {
+          console.log('[ResearchCockpit] SSE:', event.type, 'session match:', event.session_id === sessionId, '(ours:', sessionId, 'event:', event.session_id, ')');
+        }
+
         // Only process events for our session
         if (event.session_id !== sessionId) return;
 
-        //console.log('[ResearchCockpit] SSE event:', event.type, event.data);
+        console.log('[ResearchCockpit] ✓ Processing:', event.type);
 
         switch (event.type) {
           case 'cascade_start':
@@ -432,6 +514,21 @@ function ResearchCockpit({
               timestamp: Date.now(),
               id: `tool_${Date.now()}_${event.data.tool_name}`
             }]);
+
+            // Add to ghost messages with arguments
+            if (event.data.tool_name && event.data.args) {
+              setGhostMessages(prev => {
+                const newGhost = {
+                  type: 'tool_call',
+                  tool: event.data.tool_name,
+                  arguments: event.data.args,
+                  timestamp: event.timestamp || new Date().toISOString(),
+                  id: `ghost_tool_${Date.now()}_${event.data.tool_name}`
+                };
+                return [...prev, newGhost];
+              });
+            }
+
             setOrchestrationState(prev => ({
               ...prev,
               status: 'tool_running',
@@ -447,11 +544,46 @@ function ResearchCockpit({
               timestamp: Date.now(),
               id: `result_${Date.now()}`
             }]);
+
+            // Add tool result to ghost messages
+            if (event.data.tool_name && event.data.result_preview) {
+              setGhostMessages(prev => {
+                const newGhost = {
+                  type: 'tool_result',
+                  tool: event.data.tool_name,
+                  result: event.data.result_preview,
+                  timestamp: event.timestamp || new Date().toISOString(),
+                  id: `ghost_result_${Date.now()}_${event.data.tool_name}`
+                };
+                return [...prev, newGhost];
+              });
+            }
+
             setOrchestrationState(prev => ({
               ...prev,
               status: 'thinking',
               lastToolCall: null
             }));
+            break;
+
+          case 'tool_complete':
+            // Tool completed - just update state (ghost message already added on tool_call)
+            setOrchestrationState(prev => ({
+              ...prev,
+              status: 'thinking',
+              lastToolCall: null
+            }));
+            break;
+
+          case 'turn_complete':
+            // Turn completed - refresh data
+            fetchSessionData();
+            break;
+
+          case 'session_status_changed':
+          case 'session_started':
+            // Session state changes - refresh
+            fetchSessionData();
             break;
 
           case 'cost_update':
@@ -500,6 +632,17 @@ function ResearchCockpit({
             }));
             break;
 
+          case 'narration_audio':
+            // Browser-based narration playback (research mode)
+            console.log('[ResearchCockpit] Narration audio event:', event.data);
+            if (event.data.audio_path && narrationPlayer) {
+              // Set caption data before playing
+              setNarrationText(event.data.text || '');
+              setNarrationDuration(event.data.duration_seconds || 0);
+              narrationPlayer.play(event.data.audio_path);
+            }
+            break;
+
           default:
             //console.log('[ResearchCockpit] Unhandled event:', event.type, event.data);
             break;
@@ -512,6 +655,8 @@ function ResearchCockpit({
     return () => {
       eventSource.close();
     };
+    // Note: narrationPlayer is NOT in dependencies - we capture it via closure in the event handler
+    // Adding it would cause SSE reconnections on every render since it's a new object each time
   }, [sessionId, fetchSessionData, fetchCheckpoint]);
 
   // Poll for updates (more aggressive for live feel)
@@ -827,16 +972,7 @@ function ResearchCockpit({
               savedSessionData={savedSessionData}
             />
 
-            {console.log('[ResearchCockpit] Render decision:', {
-              isSavedSession,
-              savedStatus: savedSessionData?.status,
-              hasCheckpoint: !!checkpoint,
-              checkpointId: checkpoint?.id,
-              savedCheckpointsCount: savedSessionData?.checkpoints_data?.length,
-              checkpointHistoryCount: checkpointHistory.length,
-              willShowSavedTimeline: isSavedSession && savedSessionData?.status === 'completed',
-              willShowLiveTimeline: (!isSavedSession || savedSessionData?.status === 'active') && checkpointHistory.length > 0
-            })}
+
             {/* Saved Session Timeline (ONLY for completed sessions) */}
             {isSavedSession && savedSessionData && savedSessionData.status === 'completed' && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
               <div className="saved-session-timeline">
@@ -877,8 +1013,22 @@ function ResearchCockpit({
               </div>
             )}
 
+            {/* Sticky "Session Active" header when live session has activity */}
+            {!checkpoint &&
+             checkpointHistory.length === 0 &&
+             timeline.length === 0 &&
+             ghostMessages.length > 0 && (
+              <div className="cockpit-active-header">
+                <Icon icon="mdi:compass" width="40" className="empty-icon" />
+                <div>
+                  <h3>Session Active</h3>
+                  <p>Cascade is executing...</p>
+                </div>
+              </div>
+            )}
+
             {/* Ghost Messages - Show live thinking/tool activity */}
-            {!isSavedSession && ghostMessages.length > 0 && (
+            {ghostMessages.length > 0 && (
               <div className="ghost-messages">
                 {ghostMessages.map(ghost => (
                   <GhostMessage key={ghost.id} ghost={ghost} />
@@ -890,16 +1040,7 @@ function ResearchCockpit({
             {/* Show for: unsaved sessions OR active saved sessions */}
             {(!isSavedSession || savedSessionData?.status === 'active') && checkpointHistory.length > 0 && (
               <div className="live-checkpoint-timeline">
-                {console.log('[ResearchCockpit] RENDER TIME - Live timeline:', {
-                  totalCheckpoints: checkpointHistory.length,
-                  respondedCheckpoints: checkpointHistory.filter(cp => cp.status === 'responded').length,
-                  pendingCheckpoints: checkpointHistory.filter(cp => cp.status === 'pending').length,
-                  allStatuses: checkpointHistory.map(cp => ({
-                    id: cp.id?.slice(0, 8),
-                    status: cp.status,
-                    created: cp.created_at
-                  }))
-                })}
+
                 {/* Responded checkpoints (collapsed by default, expandable for branching) */}
                 {checkpointHistory
                   .filter(cp => cp.status === 'responded')
@@ -1021,10 +1162,11 @@ function ResearchCockpit({
               </div>
             )}
 
-            {/* Empty state - ONLY for brand new sessions with no checkpoints or timeline */}
+            {/* Empty state - ONLY for brand new sessions with no checkpoints, timeline, or ghost messages */}
             {!checkpoint &&
              checkpointHistory.length === 0 &&
              timeline.length === 0 &&
+             ghostMessages.length === 0 &&
              (!savedSessionData || (savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length === 0)) && (
               <div className="cockpit-empty-state">
                 {savedSessionData?.parent_session_id && savedSessionData?.status === 'active' ? (
@@ -1069,9 +1211,18 @@ function ResearchCockpit({
             orchestrationState={orchestrationState}
             sessionData={sessionData}
             roundEvents={roundEvents}
+            narrationAmplitude={smoothedAmplitude}
           />
         </div>
       )}
+
+      {/* Live Narration Caption - Fixed at bottom with word-by-word highlighting */}
+      <NarrationCaption
+        text={narrationText}
+        duration={narrationDuration}
+        isPlaying={isNarrating}
+        amplitude={smoothedAmplitude}
+      />
     </div>
   );
 }
@@ -1232,13 +1383,9 @@ function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, sav
     // Handle object inputs
     return Object.entries(inputs).map(([key, value]) => {
       const displayValue = typeof value === 'object'
-        ? JSON.stringify(value)
+        ? JSON.stringify(value, null, 2)  // Pretty print objects
         : String(value);
-      // Truncate long values
-      const truncated = displayValue.length > 150
-        ? displayValue.slice(0, 150) + '...'
-        : displayValue;
-      return { key, value: truncated };
+      return { key, value: displayValue };
     });
   };
 
@@ -1251,7 +1398,7 @@ function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, sav
         <div className="context-inputs-section">
           <div className="context-label">
             <Icon icon="mdi:input" width="14" />
-            <span>Initial Input</span>
+            <span>Input</span>
           </div>
           <div className="context-inputs">
             {Array.isArray(formattedInputs) ? (
@@ -1415,6 +1562,83 @@ function GhostMessage({ ghost }) {
     }
   };
 
+  // Render truncated data grid for tool results
+  const renderDataGrid = (result) => {
+    try {
+      // Safety: ensure result is a string
+      const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+
+      // Try to parse as JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(resultStr);
+      } catch (e) {
+        // Not JSON, show as truncated text
+        const truncated = resultStr.slice(0, 200);
+        return <div className="ghost-result-text">{truncated}</div>;
+      }
+
+      // Handle array of objects (SQL results, etc.)
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+        const headers = Object.keys(parsed[0]);
+        const rows = parsed.slice(0, 3); // Show first 3 rows
+
+        return (
+          <div className="ghost-data-grid">
+            <table>
+              <thead>
+                <tr>
+                  {headers.map(h => <th key={h}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => (
+                  <tr key={idx}>
+                    {headers.map(h => {
+                      // CRITICAL: Convert to string to avoid rendering objects
+                      let cellValue = row[h];
+                      if (typeof cellValue === 'object' && cellValue !== null) {
+                        cellValue = JSON.stringify(cellValue);
+                      } else if (cellValue === null || cellValue === undefined) {
+                        cellValue = '';
+                      } else {
+                        cellValue = String(cellValue);
+                      }
+                      const truncated = cellValue.length > 50 ? cellValue.slice(0, 50) + '...' : cellValue;
+                      return <td key={h}>{truncated}</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {parsed.length > 3 && (
+              <div className="ghost-grid-more">+{parsed.length - 3} more rows</div>
+            )}
+          </div>
+        );
+      }
+
+      // Handle single object
+      if (typeof parsed === 'object' && parsed !== null) {
+        return (
+          <pre className="ghost-json">
+            {JSON.stringify(parsed, null, 2).slice(0, 300)}
+          </pre>
+        );
+      }
+
+      // Fallback: show as text
+      const truncated = String(parsed).slice(0, 200);
+      return <div className="ghost-result-text">{truncated}</div>;
+
+    } catch (e) {
+      // Catch-all: stringify the result
+      const safeStr = typeof result === 'object' ? JSON.stringify(result) : String(result);
+      const truncated = safeStr.slice(0, 200);
+      return <div className="ghost-result-text">{truncated}</div>;
+    }
+  };
+
   return (
     <div className={`ghost-message ghost-${ghost.type}`}>
       <div className="ghost-header">
@@ -1429,6 +1653,40 @@ function GhostMessage({ ghost }) {
       {ghost.content && (
         <div className="ghost-body">
           {formatContent(ghost.content)}
+        </div>
+      )}
+      {ghost.arguments && Object.keys(ghost.arguments).length > 0 && (
+        <div className="ghost-tool-args">
+          {Object.entries(ghost.arguments).slice(0, 3).map(([key, value]) => {
+            // Convert value to string safely
+            let displayValue;
+            if (typeof value === 'string') {
+              displayValue = value;
+            } else if (typeof value === 'number' || typeof value === 'boolean') {
+              displayValue = String(value);
+            } else if (value === null || value === undefined) {
+              displayValue = 'null';
+            } else {
+              // Object or array - stringify it
+              try {
+                displayValue = JSON.stringify(value);
+              } catch (e) {
+                displayValue = '[Object]';
+              }
+            }
+            const truncated = displayValue.length > 100 ? displayValue.slice(0, 100) + '...' : displayValue;
+            return (
+              <div key={key} className="ghost-arg">
+                <span className="ghost-arg-key">{key}:</span>
+                <span className="ghost-arg-value">{truncated}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {ghost.result && (
+        <div className="ghost-result-body">
+          {renderDataGrid(ghost.result)}
         </div>
       )}
     </div>

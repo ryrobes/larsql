@@ -385,49 +385,58 @@ class AudibleConfig(BaseModel):
 
 class NarratorConfig(BaseModel):
     """
-    Configuration for event-driven voice narrator during cascade execution.
+    Configuration for voice narrator during cascade execution.
 
-    The narrator subscribes to cascade events and spawns background narrator
-    cascades that use the 'say' tool to provide real-time audio commentary.
-    The LLM in the narrator cascade decides how to format text for speech,
-    including ElevenLabs v3 tags like [excited], [curious], etc.
+    The narrator spawns background narrator cascades that use the 'say' tool to
+    provide real-time audio commentary. The LLM in the narrator cascade decides
+    how to format text for speech, including ElevenLabs v3 tags like [excited], [curious], etc.
+
+    TWO MODES:
+    1. Event mode (default): Subscribes to specific events (on_events config)
+    2. Poll mode (recommended): Checks echo.history periodically for ANY changes
+
+    Poll mode is more reliable - it catches ALL activity (tool calls, responses, etc.)
+    regardless of event configuration.
 
     Key features:
-    - Event-driven: Subscribes to phase/cascade events
     - Singleton: Only one narrator runs at a time per session (no audio overlap)
-    - Latest-wins: If events queue up, only the most recent is processed (no stale audio)
+    - Debouncing: Respects min_interval_seconds between narrations
+    - Full context: In poll mode, narrator sees last context_turns of conversation
     - LLM-formatted speech: The narrator cascade uses 'say' as a tool
     - Proper logging: All narrator activity tracked in unified_logs
 
     Available Jinja2 template variables in 'instructions':
     - {{ input.phase_name }}        - Current phase name
-    - {{ input.event_type }}        - Event that triggered narration (turn, phase_start, etc.)
+    - {{ input.event_type }}        - Event type ("history_changed" in poll mode)
     - {{ input.turn_number }}       - Current turn number within phase
     - {{ input.max_turns }}         - Maximum turns configured for phase
-    - {{ input.tools_used }}        - List of tools called (e.g., [{"name": "web_search"}])
-    - {{ input.context }}           - Human-readable summary of recent activity
+    - {{ input.tools_used }}        - List of tools called recently
+    - {{ input.context }}           - Detailed summary of recent activity (ALL messages in poll mode)
+    - {{ input.message_count }}     - Number of messages in context (poll mode only)
     - {{ input.cascade_complete }}  - Boolean, true if cascade just finished
     - {{ input.previous_narrations }} - List of previous narrations for continuity
     - {{ input.original_input }}    - Original cascade input (e.g., {{ input.original_input.initial_query }})
 
-    Usage (cascade-level):
+    Usage (poll mode - recommended):
     {
         "narrator": {
             "enabled": true,
-            "instructions": "You are an enthusiastic narrator. Phase: {{ input.phase_name }}. Context: {{ input.context }}. Call say().",
-            "on_events": ["phase_complete", "cascade_complete"]
+            "mode": "poll",
+            "poll_interval_seconds": 3.0,
+            "min_interval_seconds": 5.0,
+            "context_turns": 5,
+            "instructions": "Brief 1-2 sentence update. Context: {{ input.context }}. Call say()."
         }
     }
 
-    Usage (phase-level override):
+    Usage (event mode):
     {
-        "phases": [{
-            "name": "research",
-            "narrator": {
-                "enabled": true,
-                "instructions": "Technical update for {{ input.phase_name }}... then call say()."
-            }
-        }]
+        "narrator": {
+            "enabled": true,
+            "mode": "event",
+            "on_events": ["phase_complete", "cascade_complete"],
+            "instructions": "Phase: {{ input.phase_name }}. Context: {{ input.context }}. Call say()."
+        }
     }
     """
     enabled: bool = True
@@ -448,8 +457,16 @@ class NarratorConfig(BaseModel):
 
     min_interval_seconds: float = 10.0  # Minimum gap between narrations (debounce)
 
-    # Legacy field - no longer used but kept for backwards compatibility
-    context_turns: int = 3
+    # Narrator mode: 'event' (default) or 'poll'
+    # - event: Trigger on specific events (on_events/triggers config)
+    # - poll: Check echo.history periodically for changes (more reliable, catches all activity)
+    mode: Literal["event", "poll"] = "event"
+    poll_interval_seconds: float = 3.0  # How often to check for changes (poll mode only)
+
+    # How many conversation "turns" of context to include in narration
+    # In poll mode: includes last (context_turns * 4) messages from echo.history
+    # Set higher (e.g., 10) to give narrator more context about recent activity
+    context_turns: int = 5
 
     @property
     def effective_on_events(self) -> List[str]:

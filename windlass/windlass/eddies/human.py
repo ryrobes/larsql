@@ -627,6 +627,16 @@ def request_decision(
     Use this when you need human input to continue - the decision will be
     returned directly and you can act on it immediately.
 
+    ⚠️ CRITICAL PRE-EXECUTION VALIDATION:
+    Before calling request_decision with custom HTML that uses SQL data:
+    1. Examine ALL previous sql_query results in this turn
+    2. Check every result for "error" field
+    3. If ANY query failed, you MUST fix those queries first
+    4. DO NOT call request_decision with broken queries embedded
+
+    The tool will automatically check your recent sql_query calls and reject
+    if any failed. This prevents broken HTML from being displayed.
+
     Arguments:
         question: The decision question to present to the human
         options: Array of option objects. Each option has:
@@ -640,6 +650,8 @@ def request_decision(
         html: Custom HTML/HTMX for the decision UI (advanced). When provided:
               - Renders raw HTML with HTMX support for maximum flexibility
               - Template variables available: {{ checkpoint_id }}, {{ session_id }}
+              - ⚠️ CRITICAL: If using SQL data, test ALL queries with sql_query() first!
+                Check every response for "error" field. DO NOT embed broken queries in HTML!
               - CRITICAL: Forms MUST use hx-ext="json-enc" to send JSON
               - Forms MUST post to: /api/checkpoints/{{ checkpoint_id }}/respond
               - Use name="response[key]" for form fields - json-enc converts to nested JSON
@@ -658,13 +670,33 @@ def request_decision(
                 * AG Grid - Professional data tables with sorting/filtering (agGrid.createGrid('#grid', gridOptions))
                 * Use dark theme: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
                 * AG Grid: Use 'ag-theme-quartz-dark' class for dark mode styling
-              - SQL DATA FETCHING (test queries first!):
-                * STEP 1 - Test your query with run_sql() BEFORE writing HTML:
-                  run_sql("SELECT state, COUNT(*) as count FROM table GROUP BY state LIMIT 5", "csv_files")
-                  # Returns: {columns: ['state', 'count'], rows: [['WA', 632], ...]}
-                  # Note the exact column names and order!
+              - SQL DATA FETCHING (CRITICAL - test queries first!):
+                * STEP 1 - ALWAYS test your query with sql_query() BEFORE writing HTML:
+                  sql_query(sql="SELECT * FROM database.table LIMIT 1", connection="research_dbs")
+                  # First get schema - see what columns actually exist!
 
-                * STEP 2 - Use those EXACT column names in your fetch() code:
+                * STEP 1b - CHECK FOR ERRORS (MANDATORY):
+                  EVERY sql_query response has this format:
+                  SUCCESS: {"columns": [...], "rows": [...], "error": null}
+                  FAILURE: {"error": "Column not found...", "columns": [], "rows": []}
+
+                  IF "error" field is present and not null → query FAILED
+                  You MUST fix the query and test again. DO NOT write HTML with broken queries!
+
+                  Common failures:
+                  - Wrong column names → Use SELECT * LIMIT 1 to see actual schema first
+                  - Wrong table name → Use list_sql_connections() or sql_search()
+                  - Wrong database qualifier → Check connection name in list_sql_connections()
+
+                  WORKFLOW THAT WORKS:
+                  1. sql_query("SELECT * FROM database.table LIMIT 1") → get schema
+                  2. Check response.error → if not null, stop and fix!
+                  3. Note response.columns → ["actual", "column", "names"]
+                  4. sql_query with real query → test aggregation/filtering
+                  5. Check response.error again → if not null, fix!
+                  6. NOW write HTML using response.columns from successful test
+
+                * STEP 2 - Use those EXACT column names from successful test in your fetch() code:
                   fetch('http://localhost:5001/api/sql/query', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -674,6 +706,14 @@ def request_decision(
                       limit: 1000
                     })
                   }).then(r => r.json()).then(result => {
+                    // ALWAYS check for errors first!
+                    if (result.error) {
+                      console.error('Query failed:', result.error);
+                      document.getElementById('chart').innerHTML =
+                        '<div style="color:#ef4444;padding:20px;">Error: ' + result.error + '</div>';
+                      return;
+                    }
+
                     // result.columns = ['state', 'count']  // From your test!
                     // result.rows = [['WA', 632], ['CA', 445], ...]
 
@@ -692,11 +732,15 @@ def request_decision(
                     const data = result.rows.map(row =>
                       Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
                     );
+                  }).catch(err => {
+                    console.error('Fetch failed:', err);
+                    document.getElementById('chart').innerHTML =
+                      '<div style="color:#ef4444;padding:20px;">Network error</div>';
                   });
 
-                * Discovery tools: sql_search(), list_sql_connections(), run_sql()
+                * Discovery tools: sql_search(), list_sql_connections(), sql_query()
                 * Filters: Rebuild SQL with WHERE clause and re-fetch
-                * CRITICAL: Always test queries with run_sql() first to verify column names!
+                * CRITICAL: Always test queries with sql_query() first AND check for errors!
               - Example (basic form):
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
                       hx-ext="json-enc"
@@ -762,6 +806,52 @@ def request_decision(
     console = Console()
     phase_name = get_current_phase_name()
     session_id = get_current_session_id()
+
+    # =========================================================================
+    # PRE-EXECUTION VALIDATION: Check for failed SQL queries in recent history
+    # =========================================================================
+    if html and session_id:
+        try:
+            from ..echo import get_echo
+
+            echo = get_echo(session_id)
+            failed_queries = []
+
+            # Check last 10 history entries for sql_query tool results
+            recent_history = echo.history[-10:] if echo.history else []
+            for msg in reversed(recent_history):
+                if msg.get('role') == 'tool' and 'sql_query' in msg.get('name', ''):
+                    content = msg.get('content', '')
+                    try:
+                        # Try to parse as JSON
+                        if isinstance(content, str):
+                            result = json.loads(content)
+                            if result.get('error'):
+                                failed_queries.append({
+                                    'sql': result.get('sql', 'unknown'),
+                                    'error': result['error'][:200]  # Truncate long errors
+                                })
+                    except:
+                        pass
+
+            if failed_queries:
+                error_msg = "❌ Cannot create decision UI - your SQL queries have errors!\n\n"
+                error_msg += "You called sql_query() but some queries FAILED. Fix these before calling request_decision:\n\n"
+                for i, fail in enumerate(failed_queries[:3], 1):  # Show first 3
+                    error_msg += f"{i}. Query: {fail['sql'][:100]}...\n"
+                    error_msg += f"   Error: {fail['error']}\n\n"
+                error_msg += "WORKFLOW:\n"
+                error_msg += "1. Check the error messages above\n"
+                error_msg += "2. Fix your SQL queries (use SELECT * LIMIT 1 to see actual columns)\n"
+                error_msg += "3. Test queries again with sql_query()\n"
+                error_msg += "4. Verify all responses have error=null\n"
+                error_msg += "5. THEN call request_decision with corrected HTML\n"
+
+                console.print(f"[red]⚠️  Blocked request_decision: {len(failed_queries)} SQL queries failed[/red]")
+                return {"error": error_msg, "blocked": True}
+        except Exception as e:
+            # Don't fail if validation fails - just warn
+            console.print(f"[yellow]⚠️  Could not validate SQL queries: {e}[/yellow]")
 
     # ALWAYS use checkpoint mode if we have a session
     # CLI and UI should work the same way - both create checkpoints and block
