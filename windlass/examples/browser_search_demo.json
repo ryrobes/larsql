@@ -7,7 +7,7 @@
   "phases": [
     {
       "name": "search",
-      "instructions": "You have a browser open to DuckDuckGo.\n\nYour task:\n1. First, use rabbitize_extract to understand the page layout\n2. Find the search input field (look at DOM coordinates)\n3. Click on the search field\n4. Type the search query: {{ input.query }}\n5. Press Enter to submit\n6. Wait for results to load\n7. Extract the search results\n\nUse these commands:\n- Move mouse: [\":move-mouse\", \":to\", x, y]\n- Click: [\":click\"]\n- Type: [\":type\", \"{{ input.query }}\"]\n- Press Enter: [\":keypress\", \"Enter\"]\n- Wait: [\":wait\", 2]\n- Scroll: [\":scroll-wheel-down\", 3]\n\nThe browser session is automatically managed - it started before this phase and will be cleaned up after.",
+      "instructions": "You have a browser open to DuckDuckGo.\n\nYour task:\n1. First, use extract_page_content to understand the page layout\n2. Find the search input field (look at DOM coordinates)\n3. Click on the search field\n4. Type the search query: {{ input.query }}\n5. Press Enter to submit\n6. Wait for results to load\n7. Extract the search results\n\nUse these commands:\n- Move mouse: [\":move-mouse\", \":to\", x, y]\n- Click: [\":click\"]\n- Type: [\":type\", \"{{ input.query }}\"]\n- Press Enter: [\":keypress\", \"Enter\"]\n- Wait: [\":wait\", 2]\n- Scroll: [\":scroll-wheel-down\", 3]\n\nThe browser session is automatically managed - it started before this phase and will be cleaned up after.",
       "browser": {
         "url": "https://duckduckgo.com",
         "stability_detection": true,
@@ -15,9 +15,9 @@
         "show_overlay": true
       },
       "tackle": [
-        "rabbitize_execute",
-        "rabbitize_extract",
-        "rabbitize_status"
+        "control_browser",
+        "extract_page_content",
+        "get_browser_status"
       ],
       "rules": {
         "max_turns": 15

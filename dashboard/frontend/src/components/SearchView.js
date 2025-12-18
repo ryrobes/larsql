@@ -5,9 +5,26 @@ import SqlSearchTab from './SqlSearchTab';
 import MemorySearchTab from './MemorySearchTab';
 import MessageSearchTab from './MessageSearchTab';
 import RagTestTab from './RagTestTab';
+import Header from './Header';
 import './SearchView.css';
 
-function SearchView({ onBack, searchTab }) {
+function SearchView({
+  onBack,
+  searchTab,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [activeTab, setActiveTab] = useState(searchTab || 'rag');
 
   // Update active tab when searchTab prop changes (from URL hash)
@@ -33,19 +50,31 @@ function SearchView({ onBack, searchTab }) {
 
   return (
     <div className="search-view-container">
-      {/* Header */}
-      <div className="search-view-header">
-        <div className="header-left">
-          <button className="back-button" onClick={onBack}>
-            <Icon icon="mdi:arrow-left" width="20" />
-          </button>
-          <Icon icon="mdi:database-search" width="32" className="search-icon" />
-          <div className="header-title">
-            <h1>Search & RAG Testing</h1>
-            <span className="subtitle">Semantic search across documents, schemas, and conversations</span>
-          </div>
-        </div>
-      </div>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:database-search" width="24" />
+            <span className="header-stat">Search & RAG Testing</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat stat-dim">Semantic search</span>
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Tab Navigation */}
       <div className="search-tabs">

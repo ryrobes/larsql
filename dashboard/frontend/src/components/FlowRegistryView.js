@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import Header from './Header';
 import './FlowRegistryView.css';
 
 /**
@@ -12,7 +13,24 @@ import './FlowRegistryView.css';
  * - Register flows as Windlass tools
  * - Test flow execution
  */
-function FlowRegistryView({ onBack, onEditFlow, onTestFlow }) {
+function FlowRegistryView({
+  onBack,
+  onEditFlow,
+  onTestFlow,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [flows, setFlows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -153,58 +171,76 @@ function FlowRegistryView({ onBack, onEditFlow, onTestFlow }) {
 
   return (
     <div className="flow-registry-view">
-      {/* Header */}
-      <header className="flow-registry-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={onBack}>
-            <Icon icon="mdi:arrow-left" width="20" />
-            Back
-          </button>
-          <h1>
-            <Icon icon="mdi:sitemap" width="28" />
-            Flow Registry
-          </h1>
-          <span className="flow-count">{flows.length} flows</span>
-        </div>
-
-        <div className="header-controls">
-          <div className="search-box">
-            <Icon icon="mdi:magnify" width="18" />
-            <input
-              type="text"
-              placeholder="Search flows..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="clear-search">
-                <Icon icon="mdi:close" width="16" />
-              </button>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:sitemap" width="24" />
+            <span className="header-stat">Flow Registry</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{flows.length} <span className="stat-dim">flows</span></span>
+            {filteredFlows.length < flows.length && (
+              <>
+                <span className="header-divider">·</span>
+                <span className="header-stat stat-dim">{filteredFlows.length} filtered</span>
+              </>
             )}
-          </div>
+          </>
+        }
+        customButtons={
+          <>
+            <div className="search-box">
+              <Icon icon="mdi:magnify" width="18" />
+              <input
+                type="text"
+                placeholder="Search flows..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="clear-search">
+                  <Icon icon="mdi:close" width="16" />
+                </button>
+              )}
+            </div>
 
-          <div className="view-toggle">
-            <button
-              className={viewMode === 'grid' ? 'active' : ''}
-              onClick={() => setViewMode('grid')}
-              title="Grid view"
-            >
-              <Icon icon="mdi:view-grid" width="20" />
-            </button>
-            <button
-              className={viewMode === 'list' ? 'active' : ''}
-              onClick={() => setViewMode('list')}
-              title="List view"
-            >
-              <Icon icon="mdi:view-list" width="20" />
-            </button>
-          </div>
+            <div className="view-toggle">
+              <button
+                className={viewMode === 'grid' ? 'active' : ''}
+                onClick={() => setViewMode('grid')}
+                title="Grid view"
+              >
+                <Icon icon="mdi:view-grid" width="20" />
+              </button>
+              <button
+                className={viewMode === 'list' ? 'active' : ''}
+                onClick={() => setViewMode('list')}
+                title="List view"
+              >
+                <Icon icon="mdi:view-list" width="20" />
+              </button>
+            </div>
 
-          <button className="refresh-btn" onClick={fetchFlows} title="Refresh">
-            <Icon icon="mdi:refresh" width="20" />
-          </button>
-        </div>
-      </header>
+            <button className="refresh-btn" onClick={fetchFlows} title="Refresh">
+              <Icon icon="mdi:refresh" width="20" />
+            </button>
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Error display */}
       {error && (

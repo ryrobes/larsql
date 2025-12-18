@@ -110,18 +110,22 @@ def get_cost_timeline():
         # Determine bucket
         bucket_type, bucket_expression = _determine_time_bucket(earliest, latest)
 
-        # Query cost grouped by time bucket and model_requested
-        # Use model_requested (cleaner, no version dates) instead of model
+        # Query cost grouped by time bucket and model
+        # Use model_requested (cleaner), fallback to model with timestamp stripped
+        # Pattern: strip trailing -YYYYMMDD or -YYYYMMDD[timestamp] suffixes from model field
         cost_query = f"""
             SELECT
                 {bucket_expression} as time_bucket,
-                model_requested,
+                COALESCE(
+                    model_requested,
+                    replaceRegexpOne(model, '-\\d{{8}}.*$', '')
+                ) as effective_model,
                 SUM(cost) as total_cost,
                 SUM(tokens_in) as tokens_in,
                 SUM(tokens_out) as tokens_out
             FROM unified_logs
             WHERE {where_clause}
-            GROUP BY time_bucket, model_requested
+            GROUP BY time_bucket, effective_model
             ORDER BY time_bucket DESC
             LIMIT {limit * 10}
         """
@@ -137,7 +141,7 @@ def get_cost_timeline():
 
         for row in cost_result:
             time_bucket_raw = row.get('time_bucket')
-            model_raw = row.get('model_requested')
+            model_raw = row.get('effective_model')
             # Handle None/NULL values
             model = model_raw if model_raw else 'Unknown'
             cost = float(row.get('total_cost', 0))

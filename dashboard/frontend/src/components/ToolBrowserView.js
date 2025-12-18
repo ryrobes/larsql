@@ -3,11 +3,27 @@ import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import ToolList from './ToolList';
 import ToolDetailPanel from './ToolDetailPanel';
+import Header from './Header';
 import './ToolBrowserView.css';
 
 const API_BASE_URL = 'http://localhost:5001/api';
 
-function ToolBrowserView({ onBack }) {
+function ToolBrowserView({
+  onBack,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [tools, setTools] = useState({});
   const [selectedTool, setSelectedTool] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,29 +71,33 @@ function ToolBrowserView({ onBack }) {
 
   return (
     <div className="tool-browser-container">
-      {/* Header */}
-      <div className="tool-browser-header">
-        <div className="header-left">
-          <button className="back-button" onClick={onBack}>
-            <Icon icon="mdi:arrow-left" width="20" />
-          </button>
-          <Icon icon="mdi:toolbox" width="32" className="toolbox-icon" />
-          <div className="header-title">
-            <h1>Tool Browser</h1>
-            <span className="subtitle">Test and explore available tools</span>
-          </div>
-        </div>
-        <div className="header-stats">
-          <span className="stat">
-            <Icon icon="mdi:hammer-wrench" width="16" />
-            {Object.keys(tools).length} tools
-          </span>
-          <span className="stat">
-            <Icon icon="mdi:filter" width="16" />
-            {filteredTools.length} visible
-          </span>
-        </div>
-      </div>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:toolbox" width="24" />
+            <span className="header-stat">Tool Browser</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{Object.keys(tools).length} <span className="stat-dim">tools</span></span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{filteredTools.length} <span className="stat-dim">visible</span></span>
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Main Split Pane */}
       <Split

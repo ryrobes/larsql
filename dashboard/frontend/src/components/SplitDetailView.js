@@ -3,7 +3,8 @@ import axios from 'axios';
 import { Icon } from '@iconify/react';
 import InstanceCard from './InstanceCard';
 import MessageFlowView from './MessageFlowView';
-import CostTimelineChart from './CostTimelineChart';
+import SessionCostChart from './SessionCostChart';
+import Header from './Header';
 import './SplitDetailView.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001';
@@ -18,7 +19,18 @@ function SplitDetailView({
   sessionStartTimes = {},
   runningSoundings = {},
   onBlocked,
-  blockedCount = 0
+  blockedCount = 0,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  sseConnected
 }) {
   const [splitPosition, setSplitPosition] = useState(40); // Default 40% for left pane
   const [isDragging, setIsDragging] = useState(false);
@@ -152,41 +164,43 @@ function SplitDetailView({
 
   return (
     <div className="split-detail-view" ref={containerRef}>
-      {/* Header */}
-      <div className="split-detail-header">
-        <div className="header-left">
-          <img
-            src="/windlass-transparent-square.png"
-            alt="Back to instances"
-            className="brand-logo"
-            onClick={onBack}
-            title="Back to instances"
-          />
-          <div className="session-info">
-            <span className="session-label">Session:</span>
-            <span className="session-id-display">{sessionId}</span>
-          </div>
-        </div>
-        <div className="header-right">
-          {onBlocked && (
-            <button
-              className={`blocked-btn ${blockedCount > 0 ? 'has-blocked' : ''}`}
-              onClick={onBlocked}
-              title="Blocked Sessions - Waiting for signals/input"
-            >
-              <Icon icon="mdi:pause-circle-outline" width="18" />
-              Blocked
-              {blockedCount > 0 && (
-                <span className="blocked-count-badge">{blockedCount}</span>
-              )}
-            </button>
-          )}
-          <span className="view-hint">
+      <Header
+        onBack={onBack}
+        backLabel="Back to Instances"
+        centerContent={
+          <>
+            <Icon icon="mdi:file-document-outline" width="24" />
+            <span className="header-stat">Session Detail</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat stat-dim">{sessionId.substring(0, 16)}...</span>
+          </>
+        }
+        customButtons={
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#a8b5c8',
+            fontSize: '0.85rem'
+          }}>
             <Icon icon="mdi:drag-horizontal-variant" width="16" />
             Drag divider to resize
           </span>
-        </div>
-      </div>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Split Content */}
       <div className="split-content">
@@ -229,7 +243,7 @@ function SplitDetailView({
           className="split-pane right-pane"
           style={{ width: `${100 - splitPosition}%` }}
         >
-          <CostTimelineChart
+          <SessionCostChart
             messages={messageFlowData?.all_messages || []}
             isRunning={isRunning}
             onBarClick={handleBarClick}

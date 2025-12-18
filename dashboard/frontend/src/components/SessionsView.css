@@ -4,90 +4,10 @@
   padding: 24px;
 }
 
-.sessions-header {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.sessions-header .back-button {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(74, 158, 221, 0.1);
-  border: 1px solid rgba(74, 158, 221, 0.3);
-  color: #4A9EDD;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.sessions-header .back-button:hover {
-  background: rgba(74, 158, 221, 0.2);
-  border-color: rgba(74, 158, 221, 0.5);
-}
-
-.sessions-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #fff;
-  font-size: 24px;
-  font-weight: 600;
-  flex: 1;
-}
-
-.sessions-header h1 .session-count {
-  background: rgba(94, 234, 212, 0.2);
-  color: #5EEAD4;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.sessions-header h1 .discovered-count {
-  background: rgba(248, 113, 113, 0.2);
-  color: #f87171;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.scan-button,
 .refresh-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #aaa;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.scan-button:hover,
-.refresh-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.scan-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Loading / Error States */

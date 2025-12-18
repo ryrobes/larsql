@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import Header from './Header';
 import './SessionsView.css';
 
 /**
@@ -18,7 +19,24 @@ import './SessionsView.css';
  * - View session artifacts
  * - Discover orphan sessions
  */
-function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
+function SessionsView({
+  onBack,
+  onAttachSession,
+  onViewArtifacts,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [sessions, setSessions] = useState([]);
   const [discoveredSessions, setDiscoveredSessions] = useState([]); // Unregistered sessions found by scanning
   const [loading, setLoading] = useState(true);
@@ -222,16 +240,29 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
   if (loading && sessions.length === 0) {
     return (
       <div className="sessions-view">
-        <div className="sessions-header">
-          <button className="back-button" onClick={onBack}>
-            <Icon icon="mdi:arrow-left" width="20" />
-            Back
-          </button>
-          <h1>
-            <Icon icon="mdi:monitor-multiple" width="28" />
-            Active Browser Sessions
-          </h1>
-        </div>
+        <Header
+          onBack={onBack}
+          backLabel="Back"
+          centerContent={
+            <>
+              <Icon icon="mdi:monitor-multiple" width="24" />
+              <span className="header-stat">Active Browser Sessions</span>
+            </>
+          }
+          onMessageFlow={onMessageFlow}
+          onCockpit={onCockpit}
+          onSextant={onSextant}
+          onWorkshop={onWorkshop}
+          onTools={onTools}
+          onSearch={onSearch}
+          onSqlQuery={onSqlQuery}
+          onArtifacts={onArtifacts}
+          onBrowser={onBrowser}
+          onSessions={onSessions}
+          onBlocked={onBlocked}
+          blockedCount={blockedCount}
+          sseConnected={sseConnected}
+        />
         <div className="loading-state">
           <Icon icon="mdi:loading" width="32" className="spin" />
           <span>Loading sessions...</span>
@@ -242,32 +273,63 @@ function SessionsView({ onBack, onAttachSession, onViewArtifacts }) {
 
   return (
     <div className="sessions-view">
-      <div className="sessions-header">
-        <button className="back-button" onClick={onBack}>
-          <Icon icon="mdi:arrow-left" width="20" />
-          Back
-        </button>
-        <h1>
-          <Icon icon="mdi:monitor-multiple" width="28" />
-          Active Browser Sessions
-          <span className="session-count">{allSessions.length}</span>
-          {discoveredSessions.length > 0 && (
-            <span className="discovered-count" title="Unregistered sessions found">
-              +{discoveredSessions.length} discovered
-            </span>
-          )}
-        </h1>
-        <div className="header-actions">
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:monitor-multiple" width="24" />
+            <span className="header-stat">Active Browser Sessions</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{allSessions.length} <span className="stat-dim">sessions</span></span>
+            {discoveredSessions.length > 0 && (
+              <>
+                <span className="header-divider">·</span>
+                <span className="header-stat stat-dim" title="Unregistered sessions found">
+                  +{discoveredSessions.length} discovered
+                </span>
+              </>
+            )}
+          </>
+        }
+        customButtons={
           <button
             className="refresh-button"
             onClick={() => { clearStreamErrors(); manualRescan(); }}
             disabled={scanningForSessions}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              background: 'linear-gradient(135deg, rgba(74, 158, 221, 0.1), rgba(94, 234, 212, 0.1))',
+              border: '1px solid rgba(74, 158, 221, 0.25)',
+              borderRadius: '8px',
+              color: '#4A9EDD',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              cursor: scanningForSessions ? 'wait' : 'pointer',
+              opacity: scanningForSessions ? 0.7 : 1,
+            }}
           >
             <Icon icon={scanningForSessions ? "mdi:loading" : "mdi:refresh"} width="18" className={scanningForSessions ? 'spin' : ''} />
             Refresh
           </button>
-        </div>
-      </div>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {error && (
         <div className="error-banner">

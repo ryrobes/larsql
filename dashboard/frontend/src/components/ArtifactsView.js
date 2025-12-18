@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+import Header from './Header';
 import './ArtifactsView.css';
 
 /**
@@ -9,7 +10,23 @@ import './ArtifactsView.css';
  * Artifacts are interactive dashboards, charts, reports, tables persisted
  * after cascade completion.
  */
-function ArtifactsView({ onBack, initialCascadeFilter = null }) {
+function ArtifactsView({
+  onBack,
+  initialCascadeFilter = null,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [artifacts, setArtifacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,47 +95,41 @@ function ArtifactsView({ onBack, initialCascadeFilter = null }) {
 
   return (
     <div className="artifacts-container">
-      {/* Header */}
-      <header className="artifacts-header">
-        <div className="header-left">
-          <img
-            src="/windlass-transparent-square.png"
-            alt="Windlass"
-            className="brand-logo"
-            onClick={() => window.location.hash = ''}
-          />
-          <div className="header-title">
-            <h1>Artifacts</h1>
-            <span className="subtitle">Interactive Dashboards & Reports</span>
-          </div>
-        </div>
-
-        <div className="header-stats">
-          <span className="stat-item">
-            <Icon icon="mdi:file-multiple" width="18" />
-            {filteredArtifacts.length} artifacts
-          </span>
-          {Object.keys(artifactsByType).length > 1 && (
-            <span className="stat-item types-summary">
-              {Object.entries(artifactsByType).map(([type, count]) => (
-                <span key={type} className="type-pill">
-                  <Icon icon={typeIcons[type] || 'mdi:file'} width="14" />
-                  {count}
-                </span>
-              ))}
-            </span>
-          )}
-        </div>
-
-        <div className="header-right">
-          {onBack && (
-            <button className="back-btn" onClick={onBack}>
-              <Icon icon="mdi:arrow-left" width="20" />
-              Back
-            </button>
-          )}
-        </div>
-      </header>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:file-multiple" width="24" />
+            <span className="header-stat">Artifacts</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{filteredArtifacts.length} <span className="stat-dim">artifacts</span></span>
+            {Object.keys(artifactsByType).length > 1 && (
+              <>
+                <span className="header-divider">·</span>
+                {Object.entries(artifactsByType).slice(0, 3).map(([type, count]) => (
+                  <span key={type} className="header-stat stat-dim">
+                    {count} {type}
+                  </span>
+                ))}
+              </>
+            )}
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Filters */}
       <div className="artifacts-filters">

@@ -6,7 +6,7 @@ Windlass is a production-grade agent framework for **long-running, iterative wor
 
 **NEW: Automatic prompt optimization!** Rewrite mutations now learn from previous winners automatically. Each run builds on the last 5 winning prompts (same config). View the full genetic lineage in the Web UI's Evolution Tree (🧬). Zero configuration required. [See Passive Prompt Optimization →](#passive-prompt-optimization-winner-learning)
 
-**NEW: Visual browser automation with Rabbitize!** Give your agents eyes and hands for the web. [See RABBITIZE_INTEGRATION.md →](RABBITIZE_INTEGRATION.md)
+**NEW: Visual browser automation!** Give your agents eyes and hands for the web. First-class Playwright integration with automatic screenshot capture, video recording, and visual coordinate-based interaction. [See Browser Automation →](#browser-automation)
 
 ## The Retry Loop Problem Everyone Faces
 
@@ -1422,6 +1422,270 @@ take_screenshot(url="https://example.com")
 # Returns: {"content": "Screenshot saved", "images": ["/path/to/screenshot.png"]}
 ```
 
+## Browser Automation
+
+**Windlass includes first-class visual browser automation** - give your agents eyes and hands to interact with the web. No external services required.
+
+### Zero-Config Browser Sessions
+
+Add a `browser` config to any phase and the framework handles everything:
+
+```json
+{
+  "name": "browse",
+  "instructions": "Research the latest AI developments on example.com",
+  "browser": {
+    "url": "{{ input.url }}",
+    "stability_detection": true,
+    "stability_wait": 2.0,
+    "show_overlay": true
+  },
+  "tackle": ["control_browser", "extract_page_content", "get_browser_status"]
+}
+```
+
+**What happens automatically:**
+1. ✅ Headless browser subprocess spawned on dedicated port
+2. ✅ Browser navigates to URL
+3. ✅ Screenshot captured and shown to agent
+4. ✅ Video recording started
+5. ✅ Agent interacts using visual coordinates
+6. ✅ Every action captured (before/after screenshots)
+7. ✅ Session cleaned up when phase ends
+8. ✅ Video saved with command overlay
+
+**No server management, no manual lifecycle - it just works.**
+
+### Browser Tools
+
+Three simple tools for full browser control:
+
+#### `control_browser(command)`
+Execute browser actions with visual feedback.
+
+```python
+# Move mouse and click (coordinate-based)
+control_browser(command='[":move-mouse", ":to", 500, 300]')
+control_browser(command='[":click"]')
+
+# Type text
+control_browser(command='[":type", "search query"]')
+control_browser(command='[":keypress", "Enter"]')
+
+# Scroll
+control_browser(command='[":scroll-wheel-down", 3]')
+
+# Navigate
+control_browser(command='[":url", "https://example.com"]')
+control_browser(command='[":back"]')
+```
+
+**Returns:** Action result + before/after screenshots (automatic visual feedback)
+
+#### `extract_page_content()`
+Get page structure, text, and clickable element coordinates.
+
+```python
+extract_page_content()
+# Returns:
+# - Full page content as markdown
+# - List of clickable elements with (x, y) coordinates
+# - Current screenshot
+```
+
+**Perfect for:** Understanding page layout before interacting
+
+#### `get_browser_status()`
+Check current session state, artifacts, metadata.
+
+```python
+get_browser_status()
+# Returns:
+# - Session ID and port
+# - Screenshot/video paths
+# - Command count and metrics
+```
+
+### Visual Coordinate-Based Automation
+
+Unlike traditional DOM selectors (fragile and break constantly), browser automation uses **visual coordinates** - just like a human would:
+
+```json
+{
+  "instructions": "Go to example.com, find the search box, and search for 'AI'"
+}
+```
+
+**Agent's workflow:**
+1. Calls `extract_page_content()` - sees page structure + coordinates
+2. Calls `control_browser('[":move-mouse", ":to", 800, 200]')` - moves to search box
+3. Calls `control_browser('[":click"]')` - clicks
+4. Calls `control_browser('[":type", "AI"]')` - types search term
+5. Calls `control_browser('[":keypress", "Enter"]')` - submits
+
+**Each step returns before/after screenshots** so the agent "sees" exactly what happened.
+
+### Available Commands
+
+**Mouse Actions:**
+```python
+[":move-mouse", ":to", x, y]     # Move cursor (REQUIRED before click!)
+[":click"]                        # Click at current position
+[":right-click"]                  # Right-click
+[":double-click"]                 # Double-click
+[":drag", ":from", x1, y1, ":to", x2, y2]  # Drag from A to B
+```
+
+**Keyboard:**
+```python
+[":type", "text"]                 # Type text
+[":keypress", "Enter"]            # Single key
+[":keypress", "Control+c"]        # Key combo
+```
+
+**Scrolling:**
+```python
+[":scroll-wheel-down", 3]         # Scroll down 3 clicks
+[":scroll-wheel-up", 5]           # Scroll up
+```
+
+**Navigation:**
+```python
+[":url", "https://example.com"]   # Navigate
+[":back"]                         # Browser back
+[":forward"]                      # Browser forward
+```
+
+**Page Extraction:**
+```python
+[":extract-page"]                 # Full page content
+[":extract", x1, y1, x2, y2]     # Extract text from rectangle
+```
+
+**Utilities:**
+```python
+[":wait", 2]                      # Wait 2 seconds
+[":width", 1920]                  # Set viewport width
+[":height", 1080]                 # Set viewport height
+[":print-pdf"]                    # Save as PDF
+```
+
+### Configuration Options
+
+```json
+{
+  "browser": {
+    "url": "{{ input.url }}",              // Starting URL (Jinja2 templated)
+    "stability_detection": true,            // Wait for page idle after actions
+    "stability_wait": 2.0,                  // Seconds to wait for stability
+    "show_overlay": true                    // Show command overlay in video
+  }
+}
+```
+
+### Artifacts & Outputs
+
+**Automatic directory structure:**
+```
+rabbitize-runs/{client_id}/{test_id}/{session_id}/
+├── screenshots/              # Before/after for every action
+│   ├── 000_before.jpg
+│   ├── 000_after.jpg
+│   └── ...
+├── video.webm               # Full session recording with overlay
+├── dom_snapshots/           # Page structure at each step
+│   └── dom_0.md
+├── dom_coords/              # Clickable element coordinates
+│   └── coords_0.json
+├── commands.json            # Full command audit trail
+├── metrics.json             # Performance data
+└── status.json              # Session metadata
+```
+
+**Access in cascade:**
+```python
+# Artifacts available in echo.state after initialization
+artifacts = echo.state["_browser_artifacts"]
+screenshots = artifacts["screenshots"]  # Directory path
+video = artifacts["video"]              # Video file path
+```
+
+### Real-World Example
+
+```json
+{
+  "cascade_id": "web_research",
+  "inputs_schema": {
+    "topic": "Research topic to investigate"
+  },
+  "phases": [
+    {
+      "name": "search",
+      "instructions": "Search Google for '{{ input.topic }}' and collect the top 5 results",
+      "browser": {
+        "url": "https://google.com",
+        "stability_detection": true,
+        "stability_wait": 1.5
+      },
+      "tackle": ["control_browser", "extract_page_content"],
+      "rules": {"max_turns": 8},
+      "handoffs": ["analyze"]
+    },
+    {
+      "name": "analyze",
+      "instructions": "Analyze the search results and create a summary",
+      "context": {"from": ["previous"]},
+      "tackle": ["create_chart"],
+      "soundings": {
+        "factor": 3,
+        "evaluator_instructions": "Pick the most comprehensive analysis"
+      }
+    }
+  ]
+}
+```
+
+**What this does:**
+1. Spawns headless browser on dedicated port
+2. Agent navigates Google, performs search
+3. Agent extracts results (sees screenshots at each step)
+4. Browser auto-closes when search phase completes
+5. Analyze phase creates visualizations from collected data
+6. Full video + screenshots saved for audit
+
+### Live Session Monitoring
+
+**Web UI integration** - view all active browser sessions:
+
+```bash
+cd dashboard && ./start.sh
+# Navigate to: http://localhost:5550/#/sessions
+```
+
+**Features:**
+- **Live MJPEG streams** - watch browser in real-time
+- **Session registry** - tracks UI, cascade, and CLI sessions
+- **Auto-discovery** - finds unregistered sessions on ports 13000-14000
+- **Attach to sessions** - reconnect to running browsers from any source
+- **Artifact browser** - explore screenshots, videos, DOM snapshots
+
+### When to Use Browser Automation
+
+**Perfect for:**
+- Web scraping with visual confirmation
+- Form filling and data entry
+- Competitive analysis (browse competitor sites)
+- Integration testing (visual regression)
+- Research gathering (navigate and extract)
+- E2E workflows (login → navigate → extract → analyze)
+
+**Why visual coordinates work better than DOM selectors:**
+- ✅ Never breaks when site changes styling/classes
+- ✅ Works on dynamically rendered content (React, Vue, etc.)
+- ✅ Agent "sees" what it's clicking (just like a human)
+- ✅ Hover effects visible in screenshots
+- ✅ More robust across site updates
+
 ## Declarative Tools (`.tool.json`)
 
 Define tools in JSON without writing Python code. Perfect for CLI wrappers, API integrations, and tool composition.
@@ -2375,6 +2639,10 @@ The `examples/` directory contains reference implementations:
 - `loop_flow.json`: Iterative refinement
 - `memory_flow.json`: Context persistence
 - `tool_flow.json`: Using built-in tools
+
+**Browser Automation:**
+- `browser_demo.json`: Basic browser session with visual interaction
+- `browser_search_demo.json`: Web search and data extraction
 
 **Advanced:**
 - `soundings_flow.json`: Phase-level Tree of Thought

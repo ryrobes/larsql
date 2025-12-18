@@ -156,7 +156,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, blockedCount }) {
+function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, onMessageFlow, onCockpit, onSextant, onWorkshop, onTools, onSearch, onSqlQuery, onArtifacts, onBrowser, onSessions, blockedCount }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1216,11 +1216,15 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
           </>
         }
         onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
         onTools={onTools}
         onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
         onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
         onBlocked={onBlocked}
         blockedCount={blockedCount}
         sseConnected={sseConnected}

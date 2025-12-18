@@ -6,72 +6,12 @@
   height: 100vh;
   background: var(--midnight-fjord, #0d1b2a);
   color: var(--arctic-mist, #e0e8f0);
+  padding: 2rem;
+  overflow: hidden;
 }
 
-/* Header */
-.flow-registry-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: rgba(13, 27, 42, 0.95);
-  border-bottom: 1px solid rgba(46, 134, 171, 0.3);
-  backdrop-filter: blur(10px);
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.flow-registry-header .header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.flow-registry-header .back-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: rgba(46, 134, 171, 0.15);
-  border: 1px solid rgba(46, 134, 171, 0.3);
-  border-radius: 6px;
-  color: var(--ocean-primary, #2e86ab);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.flow-registry-header .back-btn:hover {
-  background: rgba(46, 134, 171, 0.25);
-  border-color: var(--ocean-primary);
-}
-
-.flow-registry-header h1 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--arctic-mist);
-}
-
-.flow-registry-header .flow-count {
-  padding: 4px 10px;
-  background: rgba(46, 134, 171, 0.15);
-  border-radius: 12px;
-  font-size: 13px;
-  color: var(--ocean-primary);
-}
-
-.flow-registry-header .header-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Search box */
-.flow-registry-header .search-box {
+/* Search box (used in Header customButtons) */
+.flow-registry-view .search-box {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -82,7 +22,7 @@
   min-width: 250px;
 }
 
-.flow-registry-header .search-box input {
+.flow-registry-view .search-box input {
   flex: 1;
   background: none;
   border: none;
@@ -91,11 +31,11 @@
   outline: none;
 }
 
-.flow-registry-header .search-box input::placeholder {
+.flow-registry-view .search-box input::placeholder {
   color: rgba(224, 232, 240, 0.4);
 }
 
-.flow-registry-header .clear-search {
+.flow-registry-view .clear-search {
   background: none;
   border: none;
   color: rgba(224, 232, 240, 0.5);
@@ -104,19 +44,19 @@
   display: flex;
 }
 
-.flow-registry-header .clear-search:hover {
+.flow-registry-view .clear-search:hover {
   color: var(--arctic-mist);
 }
 
-/* View toggle */
-.flow-registry-header .view-toggle {
+/* View toggle (used in Header customButtons) */
+.flow-registry-view .view-toggle {
   display: flex;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   overflow: hidden;
 }
 
-.flow-registry-header .view-toggle button {
+.flow-registry-view .view-toggle button {
   padding: 8px 10px;
   background: none;
   border: none;
@@ -125,13 +65,13 @@
   transition: all 0.2s ease;
 }
 
-.flow-registry-header .view-toggle button.active,
-.flow-registry-header .view-toggle button:hover {
+.flow-registry-view .view-toggle button.active,
+.flow-registry-view .view-toggle button:hover {
   color: var(--ocean-primary);
   background: rgba(46, 134, 171, 0.15);
 }
 
-.flow-registry-header .refresh-btn {
+.flow-registry-view .refresh-btn {
   padding: 8px;
   background: rgba(46, 134, 171, 0.15);
   border: 1px solid rgba(46, 134, 171, 0.3);
@@ -141,7 +81,7 @@
   transition: all 0.2s ease;
 }
 
-.flow-registry-header .refresh-btn:hover {
+.flow-registry-view .refresh-btn:hover {
   background: rgba(46, 134, 171, 0.25);
 }
 

@@ -132,9 +132,9 @@ class BrowserConfig(BaseModel):
     Configuration for browser automation in a phase.
 
     When a phase has browser config, Windlass will:
-    1. Spawn a dedicated Rabbitize subprocess on an available port
+    1. Spawn a dedicated browser subprocess on an available port
     2. Initialize the browser and navigate to the specified URL
-    3. Inject browser tools (rabbitize_execute, etc.) into the phase
+    3. Inject browser tools (control_browser, extract_page_content, etc.) into the phase
     4. Clean up the browser session when the phase completes
 
     Usage:
@@ -145,7 +145,7 @@ class BrowserConfig(BaseModel):
                 "stability_detection": true
             },
             "instructions": "Find the pricing page",
-            "tackle": ["rabbitize_execute"]
+            "tackle": ["control_browser", "extract_page_content"]
         }
     """
     url: str  # Starting URL (supports Jinja2 templating: {{ input.url }})

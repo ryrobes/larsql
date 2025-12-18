@@ -1,5 +1,6 @@
 .sql-query-page {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   background-color: #0a0a0a;
   color: #cbd5e1;
@@ -11,7 +12,6 @@
   display: flex;
   flex-direction: row;
   flex: 1;
-  height: 100%;
   overflow: hidden;
 }
 

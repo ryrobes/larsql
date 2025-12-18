@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import Header from './Header';
 import './BrowserSessionsView.css';
 
 /**
@@ -8,7 +9,26 @@ import './BrowserSessionsView.css';
  * Shows all Rabbitize browser sessions from rabbitize-runs/.
  * Each session card shows thumbnail, command count, duration, video status.
  */
-function BrowserSessionsView({ onBack, onSelectSession, onOpenFlowBuilder, onOpenFlowRegistry, onOpenLiveSessions }) {
+function BrowserSessionsView({
+  onBack,
+  onSelectSession,
+  onOpenFlowBuilder,
+  onOpenFlowRegistry,
+  onOpenLiveSessions,
+  onMessageFlow,
+  onCockpit,
+  onSextant,
+  onWorkshop,
+  onTools,
+  onSearch,
+  onSqlQuery,
+  onArtifacts,
+  onBrowser,
+  onSessions,
+  onBlocked,
+  blockedCount,
+  sseConnected
+}) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -133,70 +153,112 @@ function BrowserSessionsView({ onBack, onSelectSession, onOpenFlowBuilder, onOpe
 
   return (
     <div className="browser-sessions-container">
-      {/* Header */}
-      <header className="browser-sessions-header">
-        <div className="header-left">
-          <img
-            src="/windlass-transparent-square.png"
-            alt="Windlass"
-            className="brand-logo"
-            onClick={() => window.location.hash = ''}
-          />
-          <div className="header-title">
-            <h1>
-              <Icon icon="mdi:web" width="28" />
-              Browser Sessions
-            </h1>
-            <span className="subtitle">Visual Browser Automation</span>
-          </div>
-        </div>
-
-        <div className="header-stats">
-          <span className="stat-item">
-            <Icon icon="mdi:folder-multiple" width="18" />
-            {sessions.length} sessions
-          </span>
-          <span className="stat-item">
-            <Icon icon="mdi:cursor-default-click" width="18" />
-            {totalCommands} commands
-          </span>
-          <span className="stat-item">
-            <Icon icon="mdi:video" width="18" />
-            {totalVideos} videos
-          </span>
-          <span className="stat-item">
-            <Icon icon="mdi:camera" width="18" />
-            {totalScreenshots} screenshots
-          </span>
-        </div>
-
-        <div className="header-right">
-          {onOpenLiveSessions && (
-            <button className="live-sessions-btn" onClick={onOpenLiveSessions}>
-              <Icon icon="mdi:monitor-multiple" width="20" />
-              Live Sessions
-            </button>
-          )}
-          {onOpenFlowRegistry && (
-            <button className="flow-registry-btn" onClick={onOpenFlowRegistry}>
-              <Icon icon="mdi:sitemap" width="20" />
-              Flow Registry
-            </button>
-          )}
-          {onOpenFlowBuilder && (
-            <button className="flow-builder-btn" onClick={onOpenFlowBuilder}>
-              <Icon icon="mdi:plus" width="20" />
-              Flow Builder
-            </button>
-          )}
-          {onBack && (
-            <button className="back-btn" onClick={onBack}>
-              <Icon icon="mdi:arrow-left" width="20" />
-              Back
-            </button>
-          )}
-        </div>
-      </header>
+      <Header
+        onBack={onBack}
+        backLabel="Back"
+        centerContent={
+          <>
+            <Icon icon="mdi:web" width="24" />
+            <span className="header-stat">Browser Sessions</span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{sessions.length} <span className="stat-dim">sessions</span></span>
+            <span className="header-divider">·</span>
+            <span className="header-stat">{totalCommands} <span className="stat-dim">commands</span></span>
+            {totalVideos > 0 && (
+              <>
+                <span className="header-divider">·</span>
+                <span className="header-stat">{totalVideos} <span className="stat-dim">videos</span></span>
+              </>
+            )}
+          </>
+        }
+        customButtons={
+          <>
+            {onOpenLiveSessions && (
+              <button
+                className="header-action-btn live-sessions-btn"
+                onClick={onOpenLiveSessions}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: 'linear-gradient(135deg, rgba(94, 234, 212, 0.15), rgba(74, 158, 221, 0.15))',
+                  border: '1px solid rgba(94, 234, 212, 0.3)',
+                  borderRadius: '8px',
+                  color: '#5EEAD4',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Icon icon="mdi:monitor-multiple" width="18" />
+                Live Sessions
+              </button>
+            )}
+            {onOpenFlowRegistry && (
+              <button
+                className="header-action-btn flow-registry-btn"
+                onClick={onOpenFlowRegistry}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: 'linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(74, 158, 221, 0.15))',
+                  border: '1px solid rgba(167, 139, 250, 0.3)',
+                  borderRadius: '8px',
+                  color: '#a78bfa',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Icon icon="mdi:sitemap" width="18" />
+                Flow Registry
+              </button>
+            )}
+            {onOpenFlowBuilder && (
+              <button
+                className="header-action-btn flow-builder-btn"
+                onClick={onOpenFlowBuilder}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: 'linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(94, 234, 212, 0.15))',
+                  border: '1px solid rgba(74, 158, 221, 0.3)',
+                  borderRadius: '8px',
+                  color: '#4A9EDD',
+                  fontSize: '0.85rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Icon icon="mdi:plus-circle" width="18" />
+                Flow Builder
+              </button>
+            )}
+          </>
+        }
+        onMessageFlow={onMessageFlow}
+        onCockpit={onCockpit}
+        onSextant={onSextant}
+        onWorkshop={onWorkshop}
+        onTools={onTools}
+        onSearch={onSearch}
+        onSqlQuery={onSqlQuery}
+        onArtifacts={onArtifacts}
+        onBrowser={onBrowser}
+        onSessions={onSessions}
+        onBlocked={onBlocked}
+        blockedCount={blockedCount}
+        sseConnected={sseConnected}
+      />
 
       {/* Toolbar */}
       <div className="browser-sessions-toolbar">

@@ -358,7 +358,7 @@ class TestBrowserCascadeLoading:
                         "stability_detection": True,
                         "stability_wait": 2.0
                     },
-                    "tackle": ["rabbitize_execute"],
+                    "tackle": ["control_browser"],
                     "rules": {"max_turns": 5}
                 }
             ]

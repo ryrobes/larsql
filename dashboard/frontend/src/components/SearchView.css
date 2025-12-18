@@ -5,57 +5,8 @@
   height: 100vh;
   background: #0B1219;
   color: #e5e7eb;
-}
-
-/* Header */
-.search-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid #1f2937;
-  background: #0a0a0a;
-  flex-shrink: 0;
-}
-
-.search-view-header .header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.search-view-header .back-button {
-  padding: 0.5rem 0.75rem;
-  background: rgba(96, 165, 250, 0.1);
-  border: 1px solid rgba(96, 165, 250, 0.3);
-  border-radius: 0.375rem;
-  color: #60a5fa;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.search-view-header .back-button:hover {
-  background: rgba(96, 165, 250, 0.2);
-  border-color: rgba(96, 165, 250, 0.5);
-}
-
-.search-view-header .search-icon {
-  color: #22d3d1;
-}
-
-.search-view-header .header-title h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-  color: #f0f4f8;
-}
-
-.search-view-header .subtitle {
-  font-size: 0.875rem;
-  color: #8b92a0;
+  padding: 2rem;
+  overflow: hidden;
 }
 
 /* Tab Navigation */

@@ -854,6 +854,57 @@ function App() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  // Standard navigation props for unified Header component
+  // Provides consistent navigation handlers and state to all pages
+  const getStandardNavigationProps = () => ({
+    onMessageFlow: () => {
+      setCurrentView('messageflow');
+      updateHash('messageflow');
+    },
+    onCockpit: () => {
+      setCurrentView('cockpit');
+      updateHash('cockpit');
+    },
+    onSextant: () => {
+      setCurrentView('sextant');
+      updateHash('sextant');
+    },
+    onWorkshop: () => {
+      setCurrentView('workshop');
+      updateHash('workshop');
+    },
+    onTools: () => {
+      setCurrentView('tools');
+      updateHash('tools');
+    },
+    onSearch: () => {
+      setCurrentView('search');
+      updateHash('search', null, null, 'rag');
+    },
+    onSqlQuery: () => {
+      setCurrentView('sql-query');
+      window.location.hash = '#/sql-query';
+    },
+    onArtifacts: () => {
+      setCurrentView('artifacts');
+      window.location.hash = '#/artifacts';
+    },
+    onBrowser: () => {
+      setCurrentView('browser');
+      updateHash('browser');
+    },
+    onSessions: () => {
+      setCurrentView('sessions');
+      updateHash('sessions');
+    },
+    onBlocked: () => {
+      setCurrentView('blocked');
+      updateHash('blocked');
+    },
+    blockedCount,
+    sseConnected,
+  });
+
   return (
     <div className="app">
       {currentView === 'cascades' && (
@@ -929,40 +980,7 @@ function App() {
           sessionMetadata={sessionMetadata}
           sessionUpdates={sessionUpdates}
           sessionStartTimes={sessionStartTimes}
-          sseConnected={sseConnected}
-          onBlocked={() => {
-            setCurrentView('blocked');
-            updateHash('blocked');
-          }}
-          onMessageFlow={() => {
-            setCurrentView('messageflow');
-            updateHash('messageflow');
-          }}
-          onCockpit={() => {
-            setCurrentView('cockpit');
-            updateHash('cockpit');
-          }}
-          onSextant={() => {
-            setCurrentView('sextant');
-            updateHash('sextant');
-          }}
-          onWorkshop={() => {
-            setCurrentView('workshop');
-            updateHash('workshop');
-          }}
-          onTools={() => {
-            setCurrentView('tools');
-            updateHash('tools');
-          }}
-          onSearch={() => {
-            setCurrentView('search');
-            updateHash('search', null, null, 'rag');
-          }}
-          onArtifacts={() => {
-            setCurrentView('artifacts');
-            window.location.hash = '#/artifacts';
-          }}
-          blockedCount={blockedCount}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -976,11 +994,7 @@ function App() {
           sessionUpdates={sessionUpdates}
           sessionStartTimes={sessionStartTimes}
           runningSoundings={runningSoundings}
-          onBlocked={() => {
-            setCurrentView('blocked');
-            updateHash('blocked');
-          }}
-          blockedCount={blockedCount}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -1138,11 +1152,12 @@ function App() {
             setCurrentView('cascades');
             updateHash('cascades');
           }}
+          {...getStandardNavigationProps()}
         />
       )}
 
       {currentView === 'sql-query' && (
-        <SqlQueryPage />
+        <SqlQueryPage {...getStandardNavigationProps()} />
       )}
 
       {currentView === 'browser' && (
@@ -1168,6 +1183,7 @@ function App() {
             setCurrentView('sessions');
             updateHash('sessions');
           }}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -1208,6 +1224,7 @@ function App() {
             // Could open flow builder in test mode
             console.log('Test flow:', flow);
           }}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -1229,6 +1246,7 @@ function App() {
             setCurrentView('browser-detail');
             updateHash('browser-detail', null, null, null, browserPath);
           }}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -1239,6 +1257,7 @@ function App() {
             updateHash('cascades');
           }}
           searchTab={searchTab}
+          {...getStandardNavigationProps()}
         />
       )}
 
@@ -1248,6 +1267,7 @@ function App() {
             setCurrentView('cascades');
             updateHash('cascades');
           }}
+          {...getStandardNavigationProps()}
         />
       )}
 
