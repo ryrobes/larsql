@@ -27,6 +27,7 @@ Legacy Mode (Backwards Compatible):
 - Requires manual server management
 """
 
+import re
 import requests
 import subprocess
 import time
@@ -38,6 +39,7 @@ from .base import simple_eddy
 from ..echo import get_echo
 from .state_tools import current_session_context
 from ..logs import log_message
+from ..config import get_config
 
 # Configuration
 RABBITIZE_SERVER_URL = os.getenv("RABBITIZE_SERVER_URL", "http://localhost:3037")
@@ -91,21 +93,39 @@ def _get_server_url() -> str:
     return RABBITIZE_SERVER_URL
 
 # RABBITIZE_RUNS_DIR should be absolute to work from any working directory
-# Search for existing rabbitize-runs directory up the tree
+# Use config.root_dir as primary location (where managed sessions store artifacts)
 def _find_rabbitize_runs_dir():
-    """Find rabbitize-runs directory by searching up from cwd."""
+    """
+    Find rabbitize-runs directory.
+
+    Priority:
+    1. RABBITIZE_RUNS_DIR environment variable
+    2. {config.root_dir}/rabbitize-runs (where managed sessions store artifacts)
+    3. Search up from cwd for existing rabbitize-runs (legacy compatibility)
+    """
     if "RABBITIZE_RUNS_DIR" in os.environ:
         return os.environ["RABBITIZE_RUNS_DIR"]
 
-    # Start from cwd and search upwards (but check parents first, then current)
+    # Primary: Use windlass root_dir (matches where managed browser subprocess runs)
+    try:
+        config = get_config()
+        root_runs = Path(config.root_dir) / "rabbitize-runs"
+        if root_runs.exists() and root_runs.is_dir():
+            return str(root_runs)
+        # Even if it doesn't exist yet, use this as the canonical location
+        # (managed sessions will create it here)
+        return str(root_runs)
+    except Exception:
+        pass
+
+    # Fallback: Search from cwd (legacy compatibility)
     current = Path(os.getcwd()).resolve()
 
     # Search parents first (prefer project root over nested directories)
     for parent in list(current.parents):
         candidate = parent / "rabbitize-runs"
         if candidate.exists() and candidate.is_dir():
-            # Check if it has actual session data (not empty)
-            subdirs = list(candidate.glob("*/*"))  # Check for session dirs
+            subdirs = list(candidate.glob("*/*"))
             if subdirs:
                 return str(candidate)
 
@@ -114,7 +134,7 @@ def _find_rabbitize_runs_dir():
     if candidate.exists() and candidate.is_dir():
         return str(candidate)
 
-    # Fallback: use cwd
+    # Final fallback: use cwd
     return str(current / "rabbitize-runs")
 
 RABBITIZE_RUNS_DIR = _find_rabbitize_runs_dir()
@@ -317,36 +337,93 @@ def _clear_rabbitize_session_id():
             del echo.state["rabbitize_session_id"]
 
 
-def _get_latest_screenshot(session_id: str) -> Optional[str]:
-    """Get path to most recent screenshot for a session."""
-    # Rabbitize creates nested directory structure: rabbitize-runs/interactive/interactive/{session_id}
-    # We need to search for the session directory since it might be nested
-    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
+def _get_screenshots_dir() -> Optional[Path]:
+    """
+    Get the screenshots directory for the current session.
 
-    # Find the session directory (could be at various levels)
+    For managed sessions, uses the known artifact path.
+    For legacy sessions, searches RABBITIZE_RUNS_DIR.
+
+    Returns:
+        Path to screenshots directory, or None if not found
+    """
+    # For managed sessions, use the known artifact path
+    windlass_sid = _get_windlass_session_id()
+    print(f"[RABBITIZE DEBUG] _get_screenshots_dir: windlass_sid={windlass_sid}")
+
+    managed = _get_managed_session_info()
+    print(f"[RABBITIZE DEBUG] _get_screenshots_dir: managed={managed}")
+    log_message(None, "system", f"[DEBUG] _get_screenshots_dir: managed={managed is not None}",
+               metadata={"tool": "rabbitize", "debug": "screenshots_dir"})
+
+    if managed and managed.get("artifacts"):
+        screenshots_path = managed["artifacts"].get("screenshots")
+        if screenshots_path:
+            screenshots_dir = Path(screenshots_path)
+            # If path is relative, make it absolute relative to config.root_dir
+            if not screenshots_dir.is_absolute():
+                try:
+                    config = get_config()
+                    screenshots_dir = Path(config.root_dir) / screenshots_path
+                except Exception:
+                    pass
+            print(f"[RABBITIZE DEBUG] screenshots_dir after absolutize: {screenshots_dir}")
+            if screenshots_dir.exists():
+                print(f"[RABBITIZE DEBUG] screenshots_dir EXISTS, returning it")
+                return screenshots_dir
+            else:
+                print(f"[RABBITIZE DEBUG] screenshots_dir does NOT exist")
+
+    # Fall back to searching RABBITIZE_RUNS_DIR for legacy sessions
+    session_id = _get_rabbitize_session_id()
+    log_message(None, "system", f"[DEBUG] Fallback search: session_id={session_id}, RABBITIZE_RUNS_DIR={RABBITIZE_RUNS_DIR}",
+               metadata={"tool": "rabbitize", "debug": "screenshots_dir"})
+
+    if not session_id:
+        return None
+
+    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
     session_dirs = list(base_runs_dir.glob(f"**/{session_id}"))
+    log_message(None, "system", f"[DEBUG] Found {len(session_dirs)} session dirs matching {session_id}",
+               metadata={"tool": "rabbitize", "debug": "screenshots_dir", "count": len(session_dirs)})
 
     if not session_dirs:
         return None
 
-    # Use the first match (should only be one)
-    session_dir = session_dirs[0]
-
-    # Try screenshots directory first
-    screenshots_dir = session_dir / "screenshots"
+    screenshots_dir = session_dirs[0] / "screenshots"
     if screenshots_dir.exists():
+        log_message(None, "system", f"[DEBUG] Using fallback screenshots dir: {screenshots_dir}",
+                   metadata={"tool": "rabbitize", "debug": "screenshots_dir"})
+        return screenshots_dir
+
+    return None
+
+
+def _get_latest_screenshot(session_id: str) -> Optional[str]:
+    """Get path to most recent screenshot for a session."""
+    # Use the unified screenshots directory lookup
+    screenshots_dir = _get_screenshots_dir()
+
+    if screenshots_dir and screenshots_dir.exists():
+        # Only want main index screenshots: {index}.jpg or start.jpg
+        index_pattern = re.compile(r'^(\d+|start)\.(jpg|png)$')
+        all_files = list(screenshots_dir.glob("*.jpg")) + list(screenshots_dir.glob("*.png"))
         screenshots = sorted(
-            screenshots_dir.glob("*.jpg"),
+            [f for f in all_files if index_pattern.match(f.name)],
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
         if screenshots:
             return str(screenshots[0].resolve())
 
-    # Fallback: check for latest.jpg at session root
-    latest_jpg = session_dir / "latest.jpg"
-    if latest_jpg.exists():
-        return str(latest_jpg.resolve())
+    # Fallback: search for session directory and check for latest.jpg
+    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
+    session_dirs = list(base_runs_dir.glob(f"**/{session_id}"))
+
+    if session_dirs:
+        latest_jpg = session_dirs[0] / "latest.jpg"
+        if latest_jpg.exists():
+            return str(latest_jpg.resolve())
 
     return None
 
@@ -354,35 +431,88 @@ def _get_latest_screenshot(session_id: str) -> Optional[str]:
 def _get_action_screenshots(session_id: str, action_name: str = None) -> List[str]:
     """
     Get before/after screenshots for the most recent action.
-    Returns list of paths [before, after].
+    Returns list of paths [after, before] (most recent first).
     """
-    # Find the session directory (could be nested)
-    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
-    session_dirs = list(base_runs_dir.glob(f"**/{session_id}"))
+    print(f"[RABBITIZE DEBUG] _get_action_screenshots called with session_id={session_id}")
 
-    if not session_dirs:
+    # Use the unified screenshots directory lookup (handles managed vs legacy)
+    screenshots_dir = _get_screenshots_dir()
+
+    print(f"[RABBITIZE DEBUG] screenshots_dir = {screenshots_dir}")
+    log_message(None, "system", f"[DEBUG] _get_action_screenshots: dir={screenshots_dir}",
+               metadata={"tool": "rabbitize", "debug": "action_screenshots"})
+
+    if not screenshots_dir or not screenshots_dir.exists():
+        log_message(None, "system", f"[DEBUG] Screenshots dir not found or doesn't exist",
+                   metadata={"tool": "rabbitize", "debug": "action_screenshots"})
         return []
 
-    session_dir = session_dirs[0]
-    screenshots_dir = session_dir / "screenshots"
-
-    if not screenshots_dir.exists():
-        return []
-
-    # Get all screenshots sorted by time
+    # Get all screenshots sorted by time (supports both jpg and png)
+    # Only want main index screenshots: {index}.jpg or start.jpg
+    # Filter out: *_thumb.jpg, *_zoom.jpg, *-pre-*.jpg, *-post-*.jpg
+    index_pattern = re.compile(r'^(\d+|start)\.(jpg|png)$')
+    all_files = list(screenshots_dir.glob("*.jpg")) + list(screenshots_dir.glob("*.png"))
     all_screenshots = sorted(
-        screenshots_dir.glob("*.jpg"),
+        [f for f in all_files if index_pattern.match(f.name)],
         key=lambda p: p.stat().st_mtime,
         reverse=True
     )
 
+    log_message(None, "system", f"[DEBUG] Found {len(all_screenshots)} total screenshots",
+               metadata={"tool": "rabbitize", "debug": "action_screenshots", "count": len(all_screenshots)})
+
     if len(all_screenshots) >= 2:
-        # Return most recent two (after, before) - absolute paths
-        return [str(all_screenshots[0].resolve()), str(all_screenshots[1].resolve())]
+        result = [str(all_screenshots[0].resolve()), str(all_screenshots[1].resolve())]
+        log_message(None, "system", f"[DEBUG] Returning 2 screenshots: {result}",
+                   metadata={"tool": "rabbitize", "debug": "action_screenshots"})
+        return result
     elif len(all_screenshots) == 1:
-        return [str(all_screenshots[0].resolve())]
+        result = [str(all_screenshots[0].resolve())]
+        log_message(None, "system", f"[DEBUG] Returning 1 screenshot: {result}",
+                   metadata={"tool": "rabbitize", "debug": "action_screenshots"})
+        return result
 
     return []
+
+
+def _get_session_base_dir() -> Optional[Path]:
+    """
+    Get the base directory for the current session's artifacts.
+
+    For managed sessions, uses the known artifact base_path.
+    For legacy sessions, searches RABBITIZE_RUNS_DIR.
+
+    Returns:
+        Path to session base directory, or None if not found
+    """
+    # For managed sessions, use the known artifact path
+    managed = _get_managed_session_info()
+    if managed and managed.get("artifacts"):
+        base_path = managed["artifacts"].get("base_path")  # Note: snake_case, set by runner.py
+        if base_path:
+            base_dir = Path(base_path)
+            # If path is relative, make it absolute relative to config.root_dir
+            if not base_dir.is_absolute():
+                try:
+                    config = get_config()
+                    base_dir = Path(config.root_dir) / base_path
+                except Exception:
+                    pass
+            if base_dir.exists():
+                return base_dir
+
+    # Fall back to searching RABBITIZE_RUNS_DIR for legacy sessions
+    session_id = _get_rabbitize_session_id()
+    if not session_id:
+        return None
+
+    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
+    session_dirs = list(base_runs_dir.glob(f"**/{session_id}"))
+
+    if session_dirs:
+        return session_dirs[0]
+
+    return None
 
 
 def _read_metadata_files(session_id: str) -> Dict[str, Any]:
@@ -390,14 +520,12 @@ def _read_metadata_files(session_id: str) -> Dict[str, Any]:
     Read all metadata files Rabbitize generates.
     Returns dict with commands, metrics, latest DOM, etc.
     """
-    # Find the session directory (could be nested)
-    base_runs_dir = Path(RABBITIZE_RUNS_DIR)
-    session_dirs = list(base_runs_dir.glob(f"**/{session_id}"))
+    # Use the unified session directory lookup (handles managed vs legacy)
+    base_dir = _get_session_base_dir()
 
-    if not session_dirs:
+    if not base_dir:
         return {}
 
-    base_dir = session_dirs[0]
     metadata = {}
 
     # Read commands.json (audit trail)
@@ -741,8 +869,10 @@ def control_browser(command: Union[str, List], include_metadata: bool = False) -
             content_lines.append(f"⚠️  Action result: {result.get('message', 'Unknown')}")
 
         # Get screenshots for this action
+        print(f"[RABBITIZE DEBUG] About to call _get_action_screenshots for session: {session_id}")
         time.sleep(0.5)  # Brief wait for files to be written
         screenshots = _get_action_screenshots(session_id)
+        print(f"[RABBITIZE DEBUG] _get_action_screenshots returned: {screenshots}")
 
         if screenshots:
             content_lines.append(f"📸 Captured {len(screenshots)} screenshot(s)")
@@ -761,6 +891,11 @@ def control_browser(command: Union[str, List], include_metadata: bool = False) -
         # Add screenshots
         if screenshots:
             result_dict["images"] = screenshots
+            log_message(None, "system", f"[DEBUG] control_browser returning with {len(screenshots)} images: {screenshots}",
+                       metadata={"tool": "control_browser", "debug": "return_images", "images": screenshots})
+        else:
+            log_message(None, "system", f"[DEBUG] control_browser returning WITHOUT images",
+                       metadata={"tool": "control_browser", "debug": "return_images"})
 
         log_message(None, "system", f"Browser command executed successfully",
                    metadata={"tool": "control_browser", "session_id": session_id,
@@ -934,19 +1069,22 @@ def rabbitize_close() -> str:
 
 
 @simple_eddy
-def get_browser_status() -> str:
+def get_browser_status() -> dict:
     """
-    Get status of current browser session.
+    Get status of current browser session with current screenshot.
 
-    Shows session ID, number of actions taken, and available metadata.
+    Shows session ID, number of actions taken, available metadata,
+    and the current browser screenshot for visual context.
 
     Returns:
-        Status summary string
+        Dict with content and current screenshot image
     """
     session_id = _get_rabbitize_session_id()
 
     if not session_id:
-        return "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin, or add `browser` config to your phase."
+        return {
+            "content": "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin, or add `browser` config to your phase."
+        }
 
     try:
         lines = []
@@ -958,7 +1096,7 @@ def get_browser_status() -> str:
             lines.append(f"📡 Server: {managed['base_url']} (subprocess)")
             artifacts = managed.get("artifacts", {})
             if artifacts:
-                lines.append(f"📂 Artifacts: {artifacts.get('basePath', 'N/A')}")
+                lines.append(f"📂 Artifacts: {artifacts.get('base_path', 'N/A')}")
                 lines.append(f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}")
                 lines.append(f"🎥 Video: {artifacts.get('video', 'N/A')}")
             lines.append(f"🔄 Lifecycle: Managed by runner (auto-cleanup on phase end)")
@@ -973,10 +1111,25 @@ def get_browser_status() -> str:
         metadata = _read_metadata_files(session_id)
         lines.append(_format_metadata_summary(metadata))
 
-        return "\n".join(lines)
+        # Get latest screenshot for visual context
+        screenshot = _get_latest_screenshot(session_id)
+        print(f"[RABBITIZE DEBUG] get_browser_status: _get_latest_screenshot returned: {screenshot}")
+
+        if screenshot:
+            lines.append(f"\n📷 Current screenshot attached")
+
+        result_dict = {"content": "\n".join(lines)}
+
+        if screenshot:
+            result_dict["images"] = [screenshot]
+            print(f"[RABBITIZE DEBUG] get_browser_status returning with image: {screenshot}")
+        else:
+            print(f"[RABBITIZE DEBUG] get_browser_status returning WITHOUT image")
+
+        return result_dict
 
     except Exception as e:
-        return f"Error getting session status: {e}"
+        return {"content": f"Error getting session status: {e}"}
 
 
 # Backward compatibility aliases (deprecated but still work)

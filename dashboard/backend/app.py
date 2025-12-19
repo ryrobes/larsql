@@ -1252,6 +1252,30 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch phases query: {e}")
 
+        # Batch 13: Get session states from session_state table (source of truth for status)
+        session_states_by_id = {}
+        if session_ids:
+            try:
+                # Use FINAL to get deduplicated session states (ReplacingMergeTree)
+                session_state_query = """
+                SELECT
+                    session_id,
+                    status,
+                    completed_at,
+                    error_message
+                FROM session_state FINAL
+                WHERE session_id IN ({})
+                """.format(','.join('?' * len(session_ids)))
+                state_results = conn.execute(session_state_query, session_ids).fetchall()
+                for sid, status, completed_at, error_msg in state_results:
+                    session_states_by_id[sid] = {
+                        'status': status,
+                        'completed_at': completed_at,
+                        'error_message': error_msg
+                    }
+            except Exception as e:
+                print(f"[ERROR] Batch session states query: {e}")
+
         instances = []
         for session_row in session_results:
             session_id, session_cascade_id, species_hashes, parent_session_id, depth, start_time, end_time, duration, total_cost = session_row
@@ -1324,9 +1348,11 @@ def get_cascade_instances(cascade_id):
                 # Determine status based on node_type AND role
                 is_phase_complete = (p_node_type == "phase_complete") or (p_node_type == "phase" and p_role == "phase_complete")
                 is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
+                # Cascade-level soundings have _orchestration phase that completes with cascade_soundings_result
+                is_cascade_complete = p_node_type in ("cascade_soundings_result", "cascade_completed", "cascade_evaluator")
                 is_error = p_node_type == "error" or (p_node_type and "error" in str(p_node_type).lower())
 
-                if is_phase_complete or is_agent_output:
+                if is_phase_complete or is_agent_output or is_cascade_complete:
                     status = "completed"
                     if p_content and isinstance(p_content, str):
                         try:
@@ -1388,25 +1414,50 @@ def get_cascade_instances(cascade_id):
             error_list = errors_by_session.get(session_id, [])
             error_count = len(error_list)
 
-            # Determine cascade status: failed > running > success
-            has_running_phase = any(p.get("status") == "running" for p in phases_map.values())
-            if error_count > 0:
-                cascade_status = "failed"
-            elif has_running_phase:
-                cascade_status = "running"
+            # Determine cascade status - use session_state (ClickHouse) as source of truth
+            # Fall back to phase-based derivation if session_state not available
+            durable_state = session_states_by_id.get(session_id)
+            if durable_state:
+                # Map session_state status to UI status
+                durable_status = durable_state.get('status')
+                if durable_status == 'completed':
+                    cascade_status = "success"
+                elif durable_status == 'error':
+                    cascade_status = "failed"
+                elif durable_status == 'cancelled':
+                    cascade_status = "cancelled"
+                elif durable_status == 'orphaned':
+                    cascade_status = "orphaned"
+                elif durable_status in ('running', 'starting', 'blocked'):
+                    cascade_status = "running"
+                else:
+                    # Unknown status - fall back to phase-based
+                    cascade_status = None
             else:
-                cascade_status = "success"
+                cascade_status = None
 
-            # Check state file for status
-            try:
-                state_path = os.path.join(STATE_DIR, f"{session_id}.json")
-                if os.path.exists(state_path):
-                    with open(state_path) as f:
-                        state_data = json.load(f)
-                        if state_data.get("status") == "failed":
-                            cascade_status = "failed"
-            except:
-                pass
+            # Fall back to phase-based status derivation if durable state not available
+            if cascade_status is None:
+                has_running_phase = any(p.get("status") == "running" for p in phases_map.values())
+                if error_count > 0:
+                    cascade_status = "failed"
+                elif has_running_phase:
+                    cascade_status = "running"
+                else:
+                    cascade_status = "success"
+
+                # Check state file for status (legacy fallback)
+                try:
+                    state_path = os.path.join(STATE_DIR, f"{session_id}.json")
+                    if os.path.exists(state_path):
+                        with open(state_path) as f:
+                            state_data = json.load(f)
+                            if state_data.get("status") == "failed":
+                                cascade_status = "failed"
+                            elif state_data.get("status") == "completed":
+                                cascade_status = "success"
+                except:
+                    pass
 
             # Check if any phase has soundings
             has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())

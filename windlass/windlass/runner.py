@@ -2828,6 +2828,22 @@ To call this tool, output a JSON code block:
 
             console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
 
+            # Create session state in ClickHouse for the sub-cascade sounding
+            # This ensures the UI can track sub-cascade sessions correctly
+            try:
+                create_session_state(
+                    session_id=sounding_session_id,
+                    cascade_id=self.config.cascade_id,
+                    parent_session_id=self.session_id,
+                    depth=self.depth,
+                    metadata={"cascade_sounding": True, "sounding_index": i, "factor": factor}
+                )
+                update_session_status(sounding_session_id, SessionStatus.RUNNING)
+            except Exception as state_err:
+                # Don't fail the sounding if session state creation fails
+                import logging
+                logging.getLogger(__name__).debug(f"Could not create session state for cascade sounding: {state_err}")
+
             # Emit sounding_start event for real-time UI tracking
             event_bus = get_event_bus()
             event_bus.publish(Event(
@@ -2859,6 +2875,17 @@ To call this tool, output a JSON code block:
 
                 # Run the cascade with sounding metadata
                 result = sounding_runner._run_cascade_internal(input_data)
+
+                # Update session status to COMPLETED in ClickHouse
+                try:
+                    final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
+                    update_session_status(
+                        sounding_session_id,
+                        final_status,
+                        error_message=str(result.get("errors", [])[:1]) if result.get("has_errors") else None
+                    )
+                except Exception:
+                    pass  # Don't fail if status update fails
 
                 # Extract final result from echo
                 final_output = result.get("final_output", str(result))
@@ -2892,6 +2919,16 @@ To call this tool, output a JSON code block:
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Cascade Sounding {i+1} failed: {e}[/red]")
+
+                # Update session status to ERROR in ClickHouse
+                try:
+                    update_session_status(
+                        sounding_session_id,
+                        SessionStatus.ERROR,
+                        error_message=str(e)[:500]
+                    )
+                except Exception:
+                    pass  # Don't fail if status update fails
 
                 # Emit sounding_complete event for real-time UI tracking (error case)
                 event_bus.publish(Event(
@@ -2990,18 +3027,56 @@ To call this tool, output a JSON code block:
 
         console.print(f"{indent}  [bold magenta]Cascade Evaluator:[/bold magenta] {eval_content[:200]}...")
 
-        # Add evaluator to echo history for visualization (auto-logs via unified_logs)
+        # Log evaluator LLM call with cost data (this ensures parent session has costs)
+        from .unified_logs import log_unified
+        eval_model = eval_response.get("model", self.model)
+        eval_cost = eval_response.get("cost")
+        eval_tokens_in = eval_response.get("tokens_in", 0)
+        eval_tokens_out = eval_response.get("tokens_out", 0)
+        eval_request_id = eval_response.get("id")
+        eval_provider = eval_response.get("provider", "unknown")
+        eval_full_request = eval_response.get("full_request")
+        eval_full_response = eval_response.get("full_response")
+
+        log_unified(
+            session_id=self.session_id,
+            parent_session_id=getattr(self, 'parent_session_id', None),
+            trace_id=evaluator_trace.id,
+            parent_id=soundings_trace.id,
+            node_type="cascade_evaluator",
+            role="assistant",
+            depth=self.depth,
+            cascade_id=self.config.cascade_id,
+            phase_name="_orchestration",
+            model=eval_model,
+            request_id=eval_request_id,
+            provider=eval_provider,
+            tokens_in=eval_tokens_in,
+            tokens_out=eval_tokens_out,
+            cost=eval_cost,
+            content=eval_content,
+            full_request=eval_full_request,
+            full_response=eval_full_response,
+            metadata={
+                "factor": factor,
+                "semantic_actor": "evaluator",
+                "semantic_purpose": "evaluation_output"
+            }
+        )
+
+        # Also add to echo history for visualization (skip unified log since we just logged above)
         self.echo.add_history({
             "role": "cascade_evaluator",
-            "content": eval_content if eval_content else "Evaluating...",  # Full content, no truncation
+            "content": eval_content if eval_content else "Evaluating...",
             "node_type": "cascade_evaluator"
         }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
            metadata=self._get_metadata({
                "cascade_id": self.config.cascade_id,
-               "phase_name": "_orchestration",  # Ensure UI can query this
+               "phase_name": "_orchestration",
                "factor": factor,
-               "model": self.model
-           }, semantic_actor="evaluator", semantic_purpose="evaluation_output"))
+               "model": eval_model
+           }, semantic_actor="evaluator", semantic_purpose="evaluation_output"),
+           skip_unified_log=True)
 
         # Extract winner index from evaluation
         winner_index = 0
@@ -3245,9 +3320,19 @@ Refinement directive: {reforge_config.honing_prompt}
 
             console.print(f"{indent}    [bold magenta]Evaluator:[/bold magenta] {eval_content[:150]}...")
 
+            # Log with cost data from the evaluator LLM call
+            eval_model = eval_response.get("model", self.model)
+            eval_cost = eval_response.get("cost")
+            eval_tokens_in = eval_response.get("tokens_in", 0)
+            eval_tokens_out = eval_response.get("tokens_out", 0)
+            eval_request_id = eval_response.get("id")
+
             log_message(self.session_id, "cascade_reforge_evaluation", eval_content,
                        trace_id=evaluator_trace.id, parent_id=reforge_trace.id,
-                       node_type="evaluation", depth=self.depth, reforge_step=step)
+                       node_type="reforge_evaluator", depth=self.depth, reforge_step=step,
+                       model=eval_model, cost=eval_cost, tokens_in=eval_tokens_in,
+                       tokens_out=eval_tokens_out, request_id=eval_request_id,
+                       cascade_id=self.config.cascade_id, phase_name="_orchestration")
 
             # Extract winner
             import re
@@ -3538,6 +3623,30 @@ Refinement directive: {reforge_config.honing_prompt}
                 )
             except Exception:
                 pass  # Don't fail if status update fails
+
+            # For cascade soundings, emit cascade_complete event here since
+            # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent
+            if self.config.soundings and self.config.soundings.factor > 1:
+                final_status_str = "error" if result.get("has_errors") else "completed"
+
+                # Hook: Cascade Complete
+                if result.get("has_errors"):
+                    cascade_error = Exception(f"Cascade completed with {len(result.get('errors', []))} error(s)")
+                    self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
+                self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
+
+                # Publish cascade_complete event (for narrator, UI, and other subscribers)
+                self._publish_event("cascade_complete", {
+                    "cascade_id": self.config.cascade_id,
+                    "status": final_status_str,
+                    "final_output": str(result.get("final_output", ""))[:500] if result else None,
+                    "error_count": len(result.get("errors", [])) if result else 0,
+                })
+
+                # Log cascade completion with status
+                log_message(self.session_id, "system", f"Cascade {final_status_str}: {self.config.cascade_id}",
+                           metadata={"status": final_status_str, "error_count": len(result.get("errors", []))},
+                           node_type=f"cascade_{final_status_str}", parent_session_id=self.parent_session_id)
 
             return result
 
@@ -6717,9 +6826,19 @@ Refinement directive: {reforge_config.honing_prompt}
 
             console.print(f"{indent}    [bold magenta]Evaluator:[/bold magenta] {eval_content[:150]}...")
 
+            # Log with cost data from the evaluator LLM call
+            eval_model = eval_response.get("model", self.model)
+            eval_cost = eval_response.get("cost")
+            eval_tokens_in = eval_response.get("tokens_in", 0)
+            eval_tokens_out = eval_response.get("tokens_out", 0)
+            eval_request_id = eval_response.get("id")
+
             log_message(self.session_id, "reforge_evaluation", eval_content,
                        trace_id=evaluator_trace.id, parent_id=reforge_trace.id,
-                       node_type="evaluation", depth=self.depth, reforge_step=step)
+                       node_type="reforge_evaluator", depth=self.depth, reforge_step=step,
+                       model=eval_model, cost=eval_cost, tokens_in=eval_tokens_in,
+                       tokens_out=eval_tokens_out, request_id=eval_request_id,
+                       phase_name=phase.name)
 
             # Build evaluator input summary for observability (like soundings)
             total_images_evaluated = sum(len(r.get('images', [])) for r in reforge_results)
