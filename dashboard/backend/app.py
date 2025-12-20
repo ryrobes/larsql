@@ -62,6 +62,7 @@ from search_api import search_bp
 from analytics_api import analytics_bp
 from browser_sessions_api import browser_sessions_bp
 from sql_query_api import sql_query_bp
+from notebook_api import notebook_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -74,6 +75,7 @@ app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
 app.register_blueprint(sql_query_bp)
+app.register_blueprint(notebook_bp)
 
 
 # Set query context for each request (tracks which endpoint/page made the query)
@@ -3052,14 +3054,15 @@ def run_cascade():
         # If cascade_yaml provided, write to temp file
         temp_file = None
         if cascade_yaml and not cascade_path:
-            # Create temp file in the workshop temp directory
-            workshop_temp_dir = os.path.join(os.path.dirname(__file__), 'workshop_temp')
-            os.makedirs(workshop_temp_dir, exist_ok=True)
+            # Create temp file in playground_scratchpad directory (easier debugging)
+            scratchpad_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
+            os.makedirs(scratchpad_dir, exist_ok=True)
 
-            temp_file = os.path.join(workshop_temp_dir, f"{session_id}.yaml")
+            temp_file = os.path.join(scratchpad_dir, f"{session_id}.yaml")
             with open(temp_file, 'w') as f:
                 f.write(cascade_yaml)
             cascade_path = temp_file
+            print(f"[Playground] Saved cascade to: {temp_file}")
 
         import threading
         from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks

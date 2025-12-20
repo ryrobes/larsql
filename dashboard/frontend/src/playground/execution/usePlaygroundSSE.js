@@ -60,21 +60,32 @@ export function usePlaygroundSSE() {
 
   // Process buffered events when sessionId becomes known
   useEffect(() => {
-    if (!sessionId || processedSessionsRef.current.has(sessionId)) {
+    if (!sessionId) {
+      return;
+    }
+
+    // Check if already processed this session
+    if (processedSessionsRef.current.has(sessionId)) {
+      console.log('[Playground SSE] Session already processed:', sessionId);
       return;
     }
 
     // Process any buffered events for this session
     const matchingEvents = eventBufferRef.current.filter(e => e.session_id === sessionId);
+    console.log(`[Playground SSE] SessionId set: ${sessionId}, buffered events: ${eventBufferRef.current.length}, matching: ${matchingEvents.length}`);
+
     if (matchingEvents.length > 0) {
       console.log(`[Playground SSE] Processing ${matchingEvents.length} buffered events for session:`, sessionId);
-      matchingEvents.forEach(event => handleEvent(event, sessionId));
+      matchingEvents.forEach(event => {
+        console.log('[Playground SSE] Processing buffered event:', event.type, event.data);
+        handleEvent(event, sessionId);
+      });
     }
 
-    // Mark this session as processed
+    // Mark this session as processed (for buffer replay, not for new events)
     processedSessionsRef.current.add(sessionId);
 
-    // Clear old events from buffer (keep only recent)
+    // Clear old events from buffer (keep only for current session)
     eventBufferRef.current = eventBufferRef.current.filter(e => e.session_id === sessionId);
   }, [sessionId, handleEvent]);
 

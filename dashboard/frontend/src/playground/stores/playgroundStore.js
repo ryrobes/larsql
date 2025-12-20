@@ -104,10 +104,14 @@ const usePlaygroundStore = create(
 
     // Update node data
     updateNodeData: (nodeId, data) => set((state) => {
-      const node = state.nodes.find(n => n.id === nodeId);
-      if (node) {
-        node.data = { ...node.data, ...data };
-      }
+      // Create new nodes array to ensure React Flow detects change
+      state.nodes = state.nodes.map(n => {
+        if (n.id !== nodeId) return n;
+        return {
+          ...n,
+          data: { ...n.data, ...data },
+        };
+      });
     }),
 
     // Update node position
@@ -352,12 +356,34 @@ const usePlaygroundStore = create(
 
     // Handle phase completion from SSE
     handlePhaseComplete: (phaseName, result) => set((state) => {
-      const node = state.nodes.find(n => n.id === phaseName);
-      if (node) {
-        node.data.status = 'completed';
-        node.data.images = result.images || [];
-        node.data.cost = result.cost;
-        node.data.duration = result.duration;
+      console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images);
+
+      const nodeIndex = state.nodes.findIndex(n => n.id === phaseName);
+      if (nodeIndex !== -1) {
+        const node = state.nodes[nodeIndex];
+        // Only update images if this result has them (avoid overwriting with empty)
+        const newImages = result.images && result.images.length > 0 ? result.images : node.data.images;
+
+        console.log('[Store] Found node:', node.id, 'current images:', node.data.images, 'new images:', newImages);
+
+        // Create a completely new nodes array to ensure React Flow detects the change
+        state.nodes = state.nodes.map((n, i) => {
+          if (i !== nodeIndex) return n;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              status: 'completed',
+              images: newImages,
+              cost: result.cost || n.data.cost,
+              duration: result.duration || n.data.duration,
+            },
+          };
+        });
+
+        console.log('[Store] After update, node images:', state.nodes[nodeIndex].data.images);
+      } else {
+        console.log('[Store] Node not found for phase:', phaseName, 'available nodes:', state.nodes.map(n => n.id));
       }
 
       state.phaseResults[phaseName] = result;

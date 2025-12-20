@@ -178,3 +178,50 @@
   font-size: 14px;
   text-align: center;
 }
+
+/* ============================================
+   MODE TOGGLE
+   ============================================ */
+
+.sql-mode-toggle {
+  display: flex;
+  align-items: center;
+  background-color: #0b1219;
+  border: 1px solid #1a2028;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.sql-mode-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sql-mode-btn:hover:not(.active) {
+  color: #94a3b8;
+}
+
+.sql-mode-btn.active {
+  background-color: #2dd4bf;
+  color: #0a0a0a;
+}
+
+/* ============================================
+   NOTEBOOK AREA
+   ============================================ */
+
+.sql-query-notebook-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0a0a0a;
+}

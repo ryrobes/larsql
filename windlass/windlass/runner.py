@@ -355,6 +355,268 @@ class WindlassRunner:
             logger.debug(f"Cancellation check failed for {self.session_id}: {e}")
         return False
 
+    # =========================================================================
+    # Parallel Phase Execution
+    # =========================================================================
+
+    def _analyze_phase_dependencies(self) -> Dict[str, set]:
+        """
+        Analyze all phases to build a dependency graph.
+
+        Returns:
+            Dict mapping phase_name -> set of phase names it depends on.
+            A phase with an empty set has no dependencies (can run immediately).
+
+        Dependencies are detected from:
+        1. context.from - explicit phase references
+        2. Template variables - {{ outputs.phase_name }} or {{ state.output_phase_name }}
+        3. Handoffs pointing TO this phase (reverse lookup)
+        """
+        import re
+
+        dependencies = {}
+        phase_names = {p.name for p in self.config.phases}
+
+        # Pattern to match template variables referencing outputs
+        # Matches: {{ outputs.phase_name }} or {{ state.output_phase_name }}
+        outputs_pattern = re.compile(r'\{\{\s*outputs\.(\w+)\s*\}\}')
+        state_output_pattern = re.compile(r'\{\{\s*state\.output_(\w+)\s*\}\}')
+
+        for phase in self.config.phases:
+            deps = set()
+
+            # 1. Check context.from for explicit dependencies
+            if phase.context and phase.context.from_:
+                for source in phase.context.from_:
+                    source_name = source if isinstance(source, str) else getattr(source, 'phase', None)
+                    if source_name:
+                        # Handle special keywords
+                        if source_name == "all":
+                            # Depends on ALL prior phases in definition order
+                            for p in self.config.phases:
+                                if p.name == phase.name:
+                                    break
+                                deps.add(p.name)
+                        elif source_name == "previous":
+                            # Find the phase defined before this one
+                            prev_phase = None
+                            for p in self.config.phases:
+                                if p.name == phase.name:
+                                    break
+                                prev_phase = p.name
+                            if prev_phase:
+                                deps.add(prev_phase)
+                        elif source_name == "first":
+                            # First phase
+                            if self.config.phases:
+                                deps.add(self.config.phases[0].name)
+                        elif source_name in phase_names:
+                            deps.add(source_name)
+
+            # 2. Check instructions for template variable references
+            if phase.instructions:
+                # Find {{ outputs.X }} references
+                for match in outputs_pattern.finditer(phase.instructions):
+                    ref_phase = match.group(1)
+                    if ref_phase in phase_names and ref_phase != phase.name:
+                        deps.add(ref_phase)
+
+                # Find {{ state.output_X }} references
+                for match in state_output_pattern.finditer(phase.instructions):
+                    ref_phase = match.group(1)
+                    if ref_phase in phase_names and ref_phase != phase.name:
+                        deps.add(ref_phase)
+
+            dependencies[phase.name] = deps
+
+        return dependencies
+
+    def _can_run_phases_parallel(self) -> bool:
+        """
+        Check if this cascade can benefit from parallel phase execution.
+
+        Returns True if:
+        - There are multiple phases
+        - No phases have handoffs (handoffs imply sequential/routing logic)
+        - At least 2 phases have no dependencies on each other
+
+        Returns False if:
+        - Single phase cascade
+        - Any phase has handoffs (explicit routing)
+        - All phases depend on previous phases (linear chain)
+        """
+        phases = self.config.phases
+        if len(phases) <= 1:
+            return False
+
+        # If any phase has handoffs, use sequential execution
+        for phase in phases:
+            if phase.handoffs:
+                return False
+
+        # Analyze dependencies
+        deps = self._analyze_phase_dependencies()
+
+        # Count phases with no dependencies
+        root_phases = [name for name, dep_set in deps.items() if not dep_set]
+
+        # If we have 2+ root phases, parallel execution makes sense
+        return len(root_phases) >= 2
+
+    def _execute_phases_parallel(self, input_data: dict) -> dict:
+        """
+        Execute phases in parallel based on their dependencies.
+
+        Uses a DAG-based execution model:
+        1. Find all phases with satisfied dependencies (initially: root phases)
+        2. Execute them in parallel using ThreadPoolExecutor
+        3. When phases complete, check if new phases are unblocked
+        4. Continue until all phases complete
+
+        Returns the combined echo result.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import copy
+
+        indent = "  " * self.depth
+        console.print(f"{indent}[bold magenta]⚡ Parallel execution mode enabled[/bold magenta]")
+
+        # Build dependency graph
+        dependencies = self._analyze_phase_dependencies()
+        phase_map = {p.name: p for p in self.config.phases}
+
+        # Track state
+        completed = set()
+        results = {}  # phase_name -> result
+        running = {}  # phase_name -> Future
+
+        # Snapshot context for thread safety
+        echo_state_snapshot = copy.deepcopy(self.echo.state)
+
+        # Determine max workers (like soundings)
+        max_workers = min(len(self.config.phases), 5)
+
+        def execute_single_phase(phase_name: str, phase_input: dict) -> dict:
+            """Execute a single phase in a worker thread."""
+            phase = phase_map[phase_name]
+
+            # Set thread-local context vars
+            session_token = set_current_session_id(self.session_id)
+            phase_token = set_current_phase_name(phase.name)
+            cascade_token = set_current_cascade_id(self.config.cascade_id)
+
+            try:
+                # Create trace for this phase
+                phase_trace = self.trace.create_child("phase", phase.name)
+
+                # Hook: Phase Start (emits SSE event)
+                self.hooks.on_phase_start(phase.name, {
+                    "echo": self.echo,
+                    "input": phase_input,
+                    "parallel_execution": True,
+                })
+
+                # Publish phase_start event
+                self._publish_event("phase_start", {
+                    "phase_name": phase.name,
+                    "cascade_id": self.config.cascade_id,
+                    "parallel_execution": True,
+                })
+
+                # Log phase start
+                log_message(self.session_id, "system", f"Phase {phase.name} starting (parallel)",
+                           trace_id=phase_trace.id, parent_id=phase_trace.parent_id,
+                           node_type="phase", depth=self.depth, phase_name=phase.name,
+                           cascade_id=self.config.cascade_id)
+
+                # Execute the phase
+                result = self.execute_phase(phase, phase_input, phase_trace)
+
+                # Store in echo state (thread-safe for simple dict updates)
+                self.echo.state[f"output_{phase.name}"] = result
+
+                # Add to lineage
+                self.echo.add_lineage(phase.name, result, trace_id=phase_trace.id)
+
+                # Hook: Phase Complete (emits SSE event)
+                # For image phases, execute_phase already calls this via _execute_image_generation_phase
+                # For non-image phases, we need to call it here
+                phase_model = phase.model or self.model
+                if not Agent.is_image_generation_model(phase_model):
+                    self.hooks.on_phase_complete(phase.name, self.session_id, {"output": result})
+
+                return {
+                    "phase_name": phase.name,
+                    "result": result,
+                    "success": True,
+                }
+            except Exception as e:
+                console.print(f"{indent}  [red]✗ Phase {phase.name} failed: {e}[/red]")
+                return {
+                    "phase_name": phase.name,
+                    "error": str(e),
+                    "success": False,
+                }
+            finally:
+                # Reset context vars
+                set_current_session_id(None)
+                set_current_phase_name(None)
+                set_current_cascade_id(None)
+
+        def get_runnable_phases() -> List[str]:
+            """Find phases that can run (dependencies satisfied, not running/completed)."""
+            runnable = []
+            for phase_name, deps in dependencies.items():
+                if phase_name in completed:
+                    continue
+                if phase_name in running:
+                    continue
+                if deps.issubset(completed):
+                    runnable.append(phase_name)
+            return runnable
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while len(completed) < len(self.config.phases):
+                # Check for cancellation
+                if self._check_cancellation():
+                    console.print(f"{indent}[bold yellow]⚠ Cascade cancelled during parallel execution[/bold yellow]")
+                    break
+
+                # Find phases that can run now
+                runnable = get_runnable_phases()
+
+                # Submit runnable phases
+                for phase_name in runnable:
+                    console.print(f"{indent}  [cyan]▶ Starting: {phase_name}[/cyan]")
+                    future = executor.submit(execute_single_phase, phase_name, input_data)
+                    running[phase_name] = future
+
+                if not running:
+                    # No phases running and none runnable - we're done or stuck
+                    break
+
+                # Wait for at least one phase to complete
+                from concurrent.futures import wait, FIRST_COMPLETED
+                done, _ = wait(running.values(), return_when=FIRST_COMPLETED)
+
+                # Process completed phases
+                for future in done:
+                    result = future.result()
+                    phase_name = result["phase_name"]
+
+                    completed.add(phase_name)
+                    results[phase_name] = result
+                    del running[phase_name]
+
+                    if result["success"]:
+                        console.print(f"{indent}  [green]✓ Completed: {phase_name}[/green]")
+                    else:
+                        console.print(f"{indent}  [red]✗ Failed: {phase_name}[/red]")
+
+        console.print(f"{indent}[bold magenta]⚡ Parallel execution complete: {len(completed)}/{len(self.config.phases)} phases[/bold magenta]")
+
+        return self.echo.get_full_echo()
+
     def _get_metadata(self, extra: dict = None, semantic_actor: str = None, semantic_purpose: str = None) -> dict:
         """
         Helper to build metadata dict with sounding_index and semantic fields automatically included.
@@ -3764,6 +4026,31 @@ Refinement directive: {reforge_config.honing_prompt}
                      "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
         self._update_graph()
 
+        # Check if we can run phases in parallel (multiple independent phases)
+        if self._can_run_phases_parallel():
+            # Use parallel execution for independent phases
+            result = self._execute_phases_parallel(input_data)
+
+            # Update session state
+            final_status = "failed" if result.get("has_errors") else "completed"
+            update_session_state(self.session_id, self.config.cascade_id, final_status, "end", self.depth)
+
+            # Hooks
+            if result.get("has_errors"):
+                cascade_error = Exception(f"Cascade completed with {len(result['errors'])} error(s)")
+                self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
+            self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
+
+            # Publish event
+            self._publish_event("cascade_complete", {
+                "cascade_id": self.config.cascade_id,
+                "status": final_status,
+                "parallel_execution": True,
+            })
+
+            return result
+
+        # Sequential execution (original behavior)
         current_phase_name = self.config.phases[0].name
         chosen_next_phase = None # For dynamic handoff
 
@@ -3826,7 +4113,10 @@ Refinement directive: {reforge_config.honing_prompt}
                        parent_session_id=self.parent_session_id)
 
             # Hook: Phase Complete
-            self.hooks.on_phase_complete(phase.name, self.session_id, {"output": output_or_next_phase})
+            # Skip if this was an image generation phase (it already called hooks.on_phase_complete)
+            phase_model = phase.model or self.model
+            if not Agent.is_image_generation_model(phase_model):
+                self.hooks.on_phase_complete(phase.name, self.session_id, {"output": output_or_next_phase})
 
             if isinstance(output_or_next_phase, str) and output_or_next_phase in [h.target if isinstance(h, HandoffConfig) else h for h in phase.handoffs]:
                 chosen_next_phase = output_or_next_phase # Dynamic handoff chosen by agent
@@ -3844,12 +4134,22 @@ Refinement directive: {reforge_config.honing_prompt}
             if chosen_next_phase: # If agent decided next phase
                 current_phase_name = chosen_next_phase
                 chosen_next_phase = None # Reset for next phase's routing
-            elif phase.handoffs: # Else, follow linear if exists
+            elif phase.handoffs: # Else, follow explicit handoffs if exist
                 # Default to first handoff, or dynamically chosen
                 next_handoff_target = phase.handoffs[0].target if isinstance(phase.handoffs[0], HandoffConfig) else phase.handoffs[0]
                 current_phase_name = next_handoff_target
             else:
-                current_phase_name = None
+                # No handoffs - check if there's a next phase in definition order
+                # This enables simple linear cascades without explicit handoffs
+                phase_names = [p.name for p in self.config.phases]
+                try:
+                    current_idx = phase_names.index(phase.name)
+                    if current_idx + 1 < len(phase_names):
+                        current_phase_name = phase_names[current_idx + 1]
+                    else:
+                        current_phase_name = None  # Last phase, cascade ends
+                except ValueError:
+                    current_phase_name = None
 
         # Get final result with error status
         result = self.echo.get_full_echo()
@@ -7574,19 +7874,12 @@ Refinement directive: {reforge_config.honing_prompt}
             # Console output
             console.print(f"{indent}  [green]✓ Generated {len(saved_paths)} image(s)[/green]")
 
-            # Hook: Phase Complete
-            self.hooks.on_phase_complete(phase.name, self.session_id, result)
-
-            # Publish phase_complete event (for SSE, narrator, etc.)
-            self._publish_event("phase_complete", {
-                "phase_name": phase.name,
+            # Hook: Phase Complete (this also publishes event via EventPublishingHooks)
+            # Pass result with images so the hook publishes them correctly
+            self.hooks.on_phase_complete(phase.name, self.session_id, {
+                **result,
                 "phase_type": "image_generation",
-                "result": {
-                    "content": result.get("content", ""),
-                    "images": saved_paths,
-                    "model": phase_model,
-                    "duration_ms": duration_ms,
-                },
+                "duration_ms": duration_ms,
             })
 
             # Determine next phase from handoffs
