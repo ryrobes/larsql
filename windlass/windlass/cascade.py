@@ -360,6 +360,168 @@ class OutputExtractionConfig(BaseModel):
     format: Literal["text", "json", "code"] = "text"  # Parse extracted content
 
 
+class IntraPhaseContextConfig(BaseModel):
+    """
+    Configuration for intra-phase auto-context (per-turn context management).
+
+    This controls how context is managed within a single phase's turn loop.
+    The goal is to prevent context explosion in long-running phases by:
+    - Keeping recent turns in full fidelity (sliding window)
+    - Masking older tool results with placeholders
+    - Compressing loop retry contexts
+
+    Usage (minimal - enable with defaults):
+    {
+        "intra_context": {
+            "enabled": true
+        }
+    }
+
+    Usage (customized):
+    {
+        "intra_context": {
+            "enabled": true,
+            "window": 3,
+            "mask_observations_after": 2,
+            "compress_loops": true
+        }
+    }
+
+    Typical savings: 40-60% token reduction in long phases.
+    """
+    enabled: bool = True
+    window: int = 5                      # Last N turns in full fidelity
+    mask_observations_after: int = 3     # Mask tool results after N turns
+    compress_loops: bool = True          # Special handling for loop_until
+    loop_history_limit: int = 3          # Max prior attempts in loop context
+    preserve_reasoning: bool = True      # Keep assistant messages without tool_calls
+    preserve_errors: bool = True         # Keep messages mentioning errors
+    min_masked_size: int = 200           # Don't mask tiny results
+
+
+class AnchorConfig(BaseModel):
+    """
+    Configuration for always-included context (anchors).
+
+    Anchors are messages that are ALWAYS included in context, regardless
+    of selection strategy. This ensures critical context is never lost.
+
+    Usage:
+    {
+        "anchors": {
+            "window": 3,
+            "from_phases": ["previous"],
+            "include": ["output", "callouts", "input"]
+        }
+    }
+    """
+    window: int = 3  # Last N turns from current phase
+    from_phases: List[str] = Field(default_factory=lambda: ["previous"])
+    include: List[Literal["output", "callouts", "input", "errors"]] = Field(
+        default_factory=lambda: ["output", "callouts", "input"]
+    )
+
+
+class SelectionConfig(BaseModel):
+    """
+    Configuration for context selection strategy tuning.
+
+    Controls how messages are scored and selected for context injection.
+
+    Strategies:
+    - "heuristic": Keyword overlap + recency + callouts (no LLM, fast)
+    - "semantic": Embedding similarity search (vector ops, no LLM)
+    - "llm": Cheap model scans summaries and picks relevant ones
+    - "hybrid": Heuristic prefilter + LLM final selection (best quality)
+
+    Usage:
+    {
+        "selection": {
+            "strategy": "hybrid",
+            "max_tokens": 30000,
+            "recency_weight": 0.3,
+            "keyword_weight": 0.4,
+            "callout_weight": 0.3
+        }
+    }
+    """
+    strategy: Literal["heuristic", "semantic", "llm", "hybrid"] = "hybrid"
+    max_tokens: int = 30000  # Token budget for selected context
+    max_messages: int = 50   # Max messages to select
+
+    # Heuristic weights (must sum to ~1.0)
+    recency_weight: float = 0.3
+    keyword_weight: float = 0.4
+    callout_weight: float = 0.3
+
+    # Semantic threshold (for semantic/hybrid strategies)
+    similarity_threshold: float = 0.5
+
+
+class InterPhaseContextConfig(BaseModel):
+    """
+    Configuration for inter-phase auto-context (between phases).
+
+    This controls how context is automatically selected when moving
+    between phases. Instead of manually specifying context.from,
+    the system intelligently selects relevant prior messages.
+
+    Usage (enable with defaults):
+    {
+        "context": {
+            "mode": "auto"
+        }
+    }
+
+    Usage (customized):
+    {
+        "context": {
+            "mode": "auto",
+            "anchors": {
+                "from_phases": ["research", "analysis"],
+                "include": ["output", "callouts"]
+            },
+            "selection": {
+                "strategy": "semantic",
+                "max_tokens": 40000
+            }
+        }
+    }
+
+    Typical savings: 50-70% token reduction between phases.
+    """
+    enabled: bool = True
+    anchors: AnchorConfig = Field(default_factory=AnchorConfig)
+    selection: SelectionConfig = Field(default_factory=SelectionConfig)
+
+
+class AutoContextConfig(BaseModel):
+    """
+    Top-level auto-context configuration for a cascade.
+
+    Controls both intra-phase (per-turn) and inter-phase (between phases)
+    context management. Phase-level configs override these defaults.
+
+    Usage:
+    {
+        "auto_context": {
+            "intra_phase": {
+                "enabled": true,
+                "window": 5
+            },
+            "inter_phase": {
+                "enabled": true,
+                "selection": {
+                    "strategy": "hybrid"
+                }
+            }
+        }
+    }
+    """
+    intra_phase: Optional[IntraPhaseContextConfig] = None
+    inter_phase: Optional[InterPhaseContextConfig] = None
+
+
 class AudibleConfig(BaseModel):
     """
     Configuration for real-time feedback injection (Audible system).
@@ -643,12 +805,16 @@ class ContextConfig(BaseModel):
     Phases without a context config receive NO prior context (clean slate).
     Use context.from to explicitly declare what context this phase needs.
 
-    Keywords:
+    Modes:
+        - "explicit": Traditional mode - manually specify context.from (default)
+        - "auto": Auto-context mode - LLM selects relevant context from prior phases
+
+    Keywords (for explicit mode):
         - "all": All prior phases (explicit snowball)
         - "first": First executed phase
         - "previous" / "prev": Most recently completed phase
 
-    Usage:
+    Usage (explicit mode - default):
     {
         "context": {
             "from": ["all"],  // Explicit snowball
@@ -665,22 +831,35 @@ class ContextConfig(BaseModel):
         }
     }
 
-    Or with detailed configuration:
+    Usage (auto mode - LLM-assisted selection):
     {
         "context": {
-            "from": [
-                "phase_a",
-                {"phase": "phase_b", "include": ["messages"]}
-            ]
+            "mode": "auto",
+            "anchors": {
+                "from_phases": ["research"],
+                "include": ["output", "callouts"]
+            },
+            "selection": {
+                "strategy": "hybrid",
+                "max_tokens": 30000
+            }
         }
     }
     """
+    # Mode: explicit (manual from_) or auto (LLM-assisted selection)
+    mode: Literal["explicit", "auto"] = "explicit"
+
+    # Explicit mode fields
     from_: List[Union[str, ContextSourceConfig]] = Field(
         default_factory=list,
         alias="from"
     )
     exclude: List[str] = Field(default_factory=list)  # Phases to exclude (useful with "all")
     include_input: bool = True  # Include original cascade input
+
+    # Auto mode fields
+    anchors: Optional[AnchorConfig] = None
+    selection: Optional[SelectionConfig] = None
 
 class RetryConfig(BaseModel):
     """Retry configuration for deterministic phases."""
@@ -773,6 +952,11 @@ class PhaseConfig(BaseModel):
     # When set, Windlass spawns a dedicated Rabbitize browser subprocess for this phase
     # The browser lifecycle is tied to the phase - starts on phase start, ends on phase end
     browser: Optional[BrowserConfig] = None
+
+    # Intra-phase auto-context configuration
+    # Controls per-turn context management within this phase
+    # Overrides cascade-level auto_context.intra_phase settings
+    intra_context: Optional[IntraPhaseContextConfig] = None
 
     def is_deterministic(self) -> bool:
         """Check if this phase is deterministic (tool-based) vs LLM-based."""
@@ -942,6 +1126,11 @@ class CascadeConfig(BaseModel):
     # Generates spoken synopses of activity without blocking the main execution flow
     # Can be overridden at phase level
     narrator: Optional[NarratorConfig] = None
+
+    # Auto-context configuration for intelligent context management
+    # Controls both intra-phase (per-turn) and inter-phase (between phases) context
+    # Phase-level configs override these cascade-level defaults
+    auto_context: Optional[AutoContextConfig] = None
 
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is

@@ -47,6 +47,14 @@ class Config(BaseModel):
         )
     )
 
+    # Model for auto-context selection (used by InterPhaseContextBuilder LLM strategy)
+    # A fast, cheap model that can scan message summaries and select relevant context
+    context_selector_model: str = Field(
+        default_factory=lambda: os.getenv(
+            "WINDLASS_CONTEXT_SELECTOR_MODEL", "google/gemini-2.5-flash-lite"
+        )
+    )
+
     # =========================================================================
     # Speech-to-Text (STT) Configuration
     # =========================================================================

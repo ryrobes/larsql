@@ -28,7 +28,8 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig
+from .auto_context import IntraPhaseContextBuilder, IntraContextConfig, ContextSelectionStats
 import re
 from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
@@ -189,6 +190,10 @@ class WindlassRunner:
         # Narrator config (cascade-level, can be overridden per-phase)
         self.cascade_narrator = self.config.narrator if hasattr(self.config, 'narrator') else None
         self._narrator_service = None  # Will be initialized in run() if configured
+
+        # Auto-context system for intelligent context management
+        self._intra_context_builder: Optional[IntraPhaseContextBuilder] = None
+        self._loop_validation_failures: List[Dict] = []  # Track failures for loop compression
 
         # Heartbeat system for durable execution
         self._heartbeat_thread: Optional[threading.Thread] = None
@@ -516,6 +521,153 @@ class WindlassRunner:
             # Check for embedded base64 data URLs
             return "data:image/" in content
         return False
+
+    # ========== AUTO-CONTEXT SYSTEM ==========
+
+    def _get_intra_context_config(self, phase: PhaseConfig) -> IntraContextConfig:
+        """
+        Get the intra-phase auto-context config for a phase.
+
+        Priority:
+        1. Phase-level intra_context config
+        2. Cascade-level auto_context.intra_phase config
+        3. Default config (enabled with sensible defaults)
+
+        Args:
+            phase: The phase config
+
+        Returns:
+            IntraContextConfig dataclass for use with IntraPhaseContextBuilder
+        """
+        # Phase-level override takes precedence
+        if phase.intra_context:
+            return IntraContextConfig(
+                enabled=phase.intra_context.enabled,
+                window=phase.intra_context.window,
+                mask_observations_after=phase.intra_context.mask_observations_after,
+                compress_loops=phase.intra_context.compress_loops,
+                loop_history_limit=phase.intra_context.loop_history_limit,
+                preserve_reasoning=phase.intra_context.preserve_reasoning,
+                preserve_errors=phase.intra_context.preserve_errors,
+                min_masked_size=phase.intra_context.min_masked_size,
+            )
+
+        # Cascade-level default
+        if self.config.auto_context and self.config.auto_context.intra_phase:
+            cfg = self.config.auto_context.intra_phase
+            return IntraContextConfig(
+                enabled=cfg.enabled,
+                window=cfg.window,
+                mask_observations_after=cfg.mask_observations_after,
+                compress_loops=cfg.compress_loops,
+                loop_history_limit=cfg.loop_history_limit,
+                preserve_reasoning=cfg.preserve_reasoning,
+                preserve_errors=cfg.preserve_errors,
+                min_masked_size=cfg.min_masked_size,
+            )
+
+        # Default: disabled for now to ensure backward compatibility
+        # Users must explicitly enable via phase or cascade config
+        return IntraContextConfig(enabled=False)
+
+    def _get_or_create_intra_context_builder(self, phase: PhaseConfig) -> IntraPhaseContextBuilder:
+        """
+        Get or create the intra-phase context builder for a phase.
+
+        Creates a new builder with the phase's config if one doesn't exist
+        or if the config has changed.
+        """
+        config = self._get_intra_context_config(phase)
+
+        # Create or update builder
+        if self._intra_context_builder is None:
+            self._intra_context_builder = IntraPhaseContextBuilder(config)
+        else:
+            # Update config if it changed
+            self._intra_context_builder.config = config
+
+        return self._intra_context_builder
+
+    def _build_turn_context(
+        self,
+        phase: PhaseConfig,
+        turn_number: int,
+        is_loop_retry: bool = False
+    ) -> tuple:
+        """
+        Build context for a single turn using auto-context system.
+
+        This wraps the IntraPhaseContextBuilder and handles:
+        - Getting the right config for the phase
+        - Passing loop validation failures
+        - Logging context selection stats
+
+        Args:
+            phase: The phase config
+            turn_number: Current turn number (0-indexed)
+            is_loop_retry: Whether this is a loop_until retry
+
+        Returns:
+            Tuple of (context_messages, stats)
+        """
+        builder = self._get_or_create_intra_context_builder(phase)
+
+        # Build context
+        context, stats = builder.build_turn_context(
+            full_history=self.context_messages,
+            turn_number=turn_number,
+            is_loop_retry=is_loop_retry,
+            loop_validation_failures=self._loop_validation_failures
+        )
+
+        return context, stats
+
+    def _log_context_selection(
+        self,
+        phase: PhaseConfig,
+        turn_number: int,
+        stats: ContextSelectionStats,
+        trace: TraceNode
+    ):
+        """Log context selection decision for observability."""
+        # Add structural message for intra-phase context selection
+        compression_pct = round((1 - stats.compression_ratio) * 100) if stats.compression_ratio < 1 else 0
+        selection_emoji = "🗜️" if stats.selection_type == "standard" else "🔄" if stats.selection_type == "loop_retry" else "📝"
+
+        # Create a child trace for context selection to avoid token duplication
+        # (cost updates propagate by trace_id, so structural entries need their own ID)
+        ctx_trace = trace.create_child("intra_context", "selection") if trace else None
+
+        self.echo.add_history({
+            "role": "structure",
+            "content": (
+                f"{selection_emoji} Intra-Phase Auto-Context (Turn {turn_number + 1})\n"
+                f"   Type: {stats.selection_type}\n"
+                f"   Messages: {stats.context_size}/{stats.full_history_size} "
+                f"(masked: {stats.masked_count}, preserved: {stats.preserved_count})\n"
+                f"   Tokens: ~{stats.tokens_estimated_after:,}/{stats.tokens_estimated_before:,} "
+                f"(saved: ~{stats.tokens_saved:,}, {compression_pct}% reduction)"
+            ),
+            "node_type": "intra_context_selection"
+        }, trace_id=ctx_trace.id if ctx_trace else None, parent_id=trace.id if trace else None,
+           node_type="intra_context_selection",
+           metadata={
+               "phase_name": phase.name,
+               "cascade_id": self.config.cascade_id,
+               "turn_number": turn_number,
+               "semantic_actor": "auto_context",
+               "semantic_purpose": "intra_phase_selection",
+               "selection_type": stats.selection_type,
+               "full_history_size": stats.full_history_size,
+               "context_size": stats.context_size,
+               "masked_count": stats.masked_count,
+               "preserved_count": stats.preserved_count,
+               "tokens_before": stats.tokens_estimated_before,
+               "tokens_after": stats.tokens_estimated_after,
+               "tokens_saved": stats.tokens_saved,
+               "compression_ratio": stats.compression_ratio,
+               "compression_pct": compression_pct
+           })
 
     # ========== AUDIBLE SYSTEM ==========
     # These methods implement real-time feedback injection, allowing users to
@@ -1186,6 +1338,7 @@ class WindlassRunner:
 
         SELECTIVE-BY-DEFAULT: Phases without a context config get NO prior context (clean slate).
         Use context.from: ["all"] for explicit snowball behavior.
+        Use context.mode: "auto" for LLM-assisted context selection.
 
         Args:
             phase: Phase configuration
@@ -1199,6 +1352,10 @@ class WindlassRunner:
         if not phase.context:
             console.print(f"  [dim]No context config → clean slate[/dim]")
             return []
+
+        # AUTO MODE: Use InterPhaseContextBuilder for intelligent selection
+        if phase.context.mode == "auto":
+            return self._build_auto_context(phase, input_data, trace)
 
         console.print(f"  [bold cyan]📦 Building context from config...[/bold cyan]")
         messages = []
@@ -1272,6 +1429,156 @@ class WindlassRunner:
                         messages.extend(injection_messages)
 
         console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
+        return messages
+
+    def _build_auto_context(self, phase: PhaseConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
+        """
+        Build context using LLM-assisted auto-selection.
+
+        This is the "crowning jewel" - uses context cards (summaries + embeddings)
+        to intelligently select the most relevant prior messages for the current task.
+
+        Args:
+            phase: Phase configuration
+            input_data: Original cascade input
+            trace: Current trace node
+
+        Returns:
+            List of selected context messages
+        """
+        from .auto_context import InterPhaseContextBuilder
+        from .cascade import InterPhaseContextConfig
+
+        console.print(f"  [bold magenta]🧠 Auto-context mode: intelligent selection...[/bold magenta]")
+
+        # Log auto-context start as structural message
+        auto_ctx_trace = trace.create_child("auto_context", "inter_phase_selection")
+        self.echo.add_history({
+            "role": "structure",
+            "content": f"🧠 Auto-Context: Inter-Phase Selection",
+            "node_type": "auto_context_start"
+        }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_start",
+           metadata={
+               "phase_name": phase.name,
+               "cascade_id": self.config.cascade_id,
+               "semantic_actor": "auto_context",
+               "semantic_purpose": "inter_phase_selection",
+               "mode": "auto"
+           })
+
+        # Get inter-phase config from cascade or phase
+        inter_phase_config = None
+        selection_strategy = "hybrid"  # default
+        if self.config.auto_context and self.config.auto_context.inter_phase:
+            inter_phase_config = InterPhaseContextConfig(
+                enabled=self.config.auto_context.inter_phase.enabled,
+                anchors=self.config.auto_context.inter_phase.anchors,
+                selection=self.config.auto_context.inter_phase.selection
+            )
+            if inter_phase_config.selection:
+                selection_strategy = inter_phase_config.selection.strategy
+
+        # Phase-level override
+        if phase.context and phase.context.selection:
+            selection_strategy = phase.context.selection.strategy
+
+        # Build list of executed phases
+        executed_phases = [
+            entry["phase"] for entry in self.echo.lineage
+            if entry.get("phase") and entry["phase"] != phase.name
+        ]
+
+        # Log source phases
+        self.echo.add_history({
+            "role": "structure",
+            "content": f"📦 Source Phases: {', '.join(executed_phases) if executed_phases else '(none)'}",
+            "node_type": "auto_context_sources"
+        }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_sources",
+           metadata={
+               "phase_name": phase.name,
+               "cascade_id": self.config.cascade_id,
+               "executed_phases": executed_phases,
+               "strategy": selection_strategy,
+               "semantic_actor": "auto_context",
+               "semantic_purpose": "source_identification"
+           })
+
+        # Create builder
+        builder = InterPhaseContextBuilder(
+            session_id=self.session_id,
+            echo=self.echo,
+            config=inter_phase_config
+        )
+
+        # Build context
+        messages, stats = builder.build_phase_context(
+            current_phase=phase,
+            input_data=input_data,
+            executed_phases=executed_phases
+        )
+
+        # Log selection stats
+        strategy = stats.strategy
+        console.print(f"  [dim cyan]Strategy: {strategy} | "
+                     f"Anchors: {stats.anchor_count} | "
+                     f"Selected: {stats.selected_count}/{stats.candidate_count} | "
+                     f"Tokens: ~{stats.tokens_used} | "
+                     f"Time: {stats.selection_time_ms}ms[/dim cyan]")
+
+        # Log selection result as structural message
+        self.echo.add_history({
+            "role": "structure",
+            "content": (
+                f"✅ Auto-Context Selection Complete\n"
+                f"   Strategy: {stats.strategy}\n"
+                f"   Anchors: {stats.anchor_count} messages\n"
+                f"   Candidates: {stats.candidate_count} from context cards\n"
+                f"   Selected: {stats.selected_count} messages\n"
+                f"   Tokens: ~{stats.tokens_used}/{stats.tokens_budget} budget\n"
+                f"   Time: {stats.selection_time_ms}ms"
+            ),
+            "node_type": "auto_context_result"
+        }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_result",
+           metadata={
+               "phase_name": phase.name,
+               "cascade_id": self.config.cascade_id,
+               "strategy": stats.strategy,
+               "anchor_count": stats.anchor_count,
+               "candidate_count": stats.candidate_count,
+               "selected_count": stats.selected_count,
+               "tokens_budget": stats.tokens_budget,
+               "tokens_used": stats.tokens_used,
+               "tokens_saved": stats.tokens_budget - stats.tokens_used,
+               "selection_time_ms": stats.selection_time_ms,
+               "semantic_actor": "auto_context",
+               "semantic_purpose": "selection_complete"
+           })
+
+        # Log each injected message for debugging
+        for i, msg in enumerate(messages):
+            anchor_type = msg.get("_anchor_type", "selected")
+            source = msg.get("_source_phase", msg.get("_content_hash", "unknown")[:8] if msg.get("_content_hash") else "unknown")
+            role = msg.get("role", "unknown")
+            content_preview = str(msg.get("content", ""))[:100]
+
+            self.echo.add_history({
+                "role": "structure",
+                "content": f"💉 Context #{i+1}: [{anchor_type}] {role} from {source}\n   {content_preview}...",
+                "node_type": "auto_context_injection"
+            }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_injection",
+               metadata={
+                   "phase_name": phase.name,
+                   "cascade_id": self.config.cascade_id,
+                   "injection_index": i,
+                   "anchor_type": anchor_type,
+                   "source": source,
+                   "role": role,
+                   "content_preview": content_preview,
+                   "is_anchor": msg.get("_anchor", False),
+                   "semantic_actor": "auto_context",
+                   "semantic_purpose": "context_injection"
+               })
+
         return messages
 
     def _update_graph(self):
@@ -7264,6 +7571,9 @@ Refinement directive: {reforge_config.honing_prompt}
         # Set current phase name for tools like ask_human to use
         set_current_phase_name(phase.name)
 
+        # Reset auto-context loop tracking for this phase
+        self._loop_validation_failures = []
+
         # Set current sounding index if we're in a sounding (for parallel sounding decisions)
         if self.current_phase_sounding_index is not None:
             set_current_sounding_index(self.current_phase_sounding_index)
@@ -7997,13 +8307,33 @@ Refinement directive: {reforge_config.honing_prompt}
                                         }
                                     )
 
+                            # AUTO-CONTEXT: Build bounded context for this turn
+                            # Check if this is a loop retry (attempt > 0 means we're retrying)
+                            is_loop_retry = (
+                                phase.rules.loop_until and
+                                attempt > 0  # attempt variable tracks validation retries
+                            )
+
+                            # Build turn context (may be compressed if auto-context enabled)
+                            turn_context, context_stats = self._build_turn_context(
+                                phase=phase,
+                                turn_number=i,
+                                is_loop_retry=is_loop_retry
+                            )
+
+                            # Log context selection if auto-context did something
+                            if context_stats.selection_type != "disabled":
+                                self._log_context_selection(phase, i, context_stats, turn_trace)
+                                if context_stats.tokens_saved > 0:
+                                    console.print(f"{indent}  [dim cyan]🗜️  Auto-context: {context_stats.context_size}/{context_stats.full_history_size} msgs, ~{context_stats.tokens_saved} tokens saved[/dim cyan]")
+
                             if self.depth == 0 and is_main_thread:
                                 with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status:
-                                    response_dict = agent.run(current_input, context_messages=self.context_messages)
+                                    response_dict = agent.run(current_input, context_messages=turn_context)
                             else:
                                 # For sub-cascades, no spinner to avoid Rich Live conflicts
                                 console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
-                                response_dict = agent.run(current_input, context_messages=self.context_messages)
+                                response_dict = agent.run(current_input, context_messages=turn_context)
 
                             content = response_dict.get("content")
                             tool_calls = response_dict.get("tool_calls")
@@ -8516,12 +8846,19 @@ Refinement directive: {reforge_config.honing_prompt}
                         # Rationale: Agent already saw old images, they're saved to disk, only need latest for refinement
                         self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=1)
 
+                        # AUTO-CONTEXT: Rebuild context for follow-up (after tool results added)
+                        followup_context, followup_stats = self._build_turn_context(
+                            phase=phase,
+                            turn_number=i,
+                            is_loop_retry=False  # Follow-ups are not loop retries
+                        )
+
                         if self.depth == 0 and is_main_thread:
                             with console.status(f"{indent}[bold green]Agent processing results...[/bold green]", spinner="dots") as status:
-                                follow_up = agent.run(None, context_messages=self.context_messages)
+                                follow_up = agent.run(None, context_messages=followup_context)
                         else:
                             console.print(f"{indent}[dim]Agent processing results (depth {self.depth})...[/dim]")
-                            follow_up = agent.run(None, context_messages=self.context_messages)
+                            follow_up = agent.run(None, context_messages=followup_context)
                          
                         content = follow_up.get("content")
                         request_id = follow_up.get("id")
@@ -9163,6 +9500,13 @@ Refinement directive: {reforge_config.honing_prompt}
                     # Store error in state for retry instructions template
                     self.echo.update_state("last_validation_error", reason)
                     validation_passed = False
+
+                    # Track for auto-context loop compression
+                    self._loop_validation_failures.append({
+                        "attempt": attempt + 1,
+                        "output": response_content[:500] if response_content else "",
+                        "validation_reason": reason
+                    })
 
                     # If this was the last attempt, we're done
                     if attempt + 1 >= max_attempts:

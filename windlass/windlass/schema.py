@@ -629,6 +629,115 @@ PARTITION BY toYYYYMM(frozen_at);
 
 
 # =============================================================================
+# CONTEXT CARDS TABLE - Auto-Context Summaries
+# =============================================================================
+# Stores message summaries and embeddings for intelligent context management.
+# Joined with unified_logs via (session_id, content_hash) for original content retrieval.
+# Used by the auto-context system for intra-phase and inter-phase context selection.
+
+CONTEXT_CARDS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS context_cards (
+    -- Identity (composite key - joins with unified_logs)
+    session_id String,
+    content_hash String,  -- FK to unified_logs.content_hash (16-char SHA256 prefix)
+
+    -- Summary content
+    summary String,                         -- 1-2 sentence summary of the message
+    keywords Array(String) DEFAULT [],      -- Extracted keywords for heuristic matching
+
+    -- Embedding for semantic search
+    embedding Array(Float32) DEFAULT [],    -- 768-1536 dimensions
+    embedding_model LowCardinality(Nullable(String)),
+    embedding_dim Nullable(UInt16),
+
+    -- Metadata for selection
+    estimated_tokens UInt32 DEFAULT 0,      -- Token count of original message
+    role LowCardinality(String),            -- user/assistant/tool/system
+    phase_name Nullable(String),            -- Phase this message belongs to
+    turn_number Nullable(UInt32),           -- Turn within phase
+
+    -- Importance markers
+    is_anchor Bool DEFAULT false,           -- Always include in context
+    is_callout Bool DEFAULT false,          -- User-marked as important
+    callout_name Nullable(String),
+
+    -- Generation metadata
+    generated_at DateTime64(3) DEFAULT now64(3),
+    generator_model LowCardinality(Nullable(String)),  -- Model used for summarization
+
+    -- Message timestamp (for recency scoring)
+    message_timestamp DateTime64(3) DEFAULT now64(3),
+
+    -- Cascade context
+    cascade_id Nullable(String),
+
+    -- Indexes for common query patterns
+    INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_phase phase_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_content_hash content_hash TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_is_anchor is_anchor TYPE set(2) GRANULARITY 1,
+    INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1,
+    INDEX idx_keywords keywords TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_timestamp message_timestamp TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(generated_at)
+ORDER BY (session_id, content_hash)
+PARTITION BY toYYYYMM(message_timestamp)
+TTL message_timestamp + INTERVAL 90 DAY;
+"""
+
+
+# =============================================================================
+# UI SQL LOG TABLE - Query Performance Tracking
+# =============================================================================
+# Stores all SQL queries made by the UI backend for performance analysis.
+# Uses fire-and-forget async inserts to avoid slowing down the main query path.
+# Short TTL (7 days) to keep table small - just for debugging/optimization.
+
+UI_SQL_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ui_sql_log (
+    -- Timing
+    timestamp DateTime64(6) DEFAULT now64(6),
+
+    -- Query info
+    query_type LowCardinality(String),  -- 'query', 'execute', 'insert_rows', 'insert_df', 'update', 'vector_search'
+    sql_preview String,                  -- First 500 chars of SQL (or table name for inserts)
+    sql_hash String,                     -- MD5 hash for grouping similar queries
+
+    -- Metrics
+    duration_ms Float64,
+    rows_returned Nullable(Int32),       -- NULL for write operations
+    rows_affected Nullable(Int32),       -- For insert/update operations
+
+    -- Context
+    source LowCardinality(String) DEFAULT 'unknown',  -- 'ui_backend', 'windlass_core', etc.
+    caller Nullable(String),             -- Function/endpoint that made the call
+    request_path Nullable(String),       -- API path (e.g., /api/sextant/species/abc123)
+    page_ref Nullable(String),           -- Browser page from Referer header (e.g., /#/cascade_id/session_id)
+
+    -- Error tracking
+    success Bool DEFAULT true,
+    error_message Nullable(String),
+
+    -- Indexes for analysis queries
+    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+    INDEX idx_duration duration_ms TYPE minmax GRANULARITY 1,
+    INDEX idx_query_type query_type TYPE set(20) GRANULARITY 1,
+    INDEX idx_sql_hash sql_hash TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_source source TYPE set(20) GRANULARITY 1,
+    INDEX idx_success success TYPE set(2) GRANULARITY 1,
+    INDEX idx_page_ref page_ref TYPE bloom_filter GRANULARITY 1
+)
+ENGINE = MergeTree()
+ORDER BY (timestamp, query_type)
+PARTITION BY toYYYYMMDD(timestamp)
+TTL timestamp + INTERVAL 7 DAY
+SETTINGS index_granularity = 8192;
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -698,6 +807,8 @@ def get_all_schemas() -> dict:
         "signals": SIGNALS_SCHEMA,
         "session_state": SESSION_STATE_SCHEMA,
         "research_sessions": RESEARCH_SESSIONS_SCHEMA,
+        "context_cards": CONTEXT_CARDS_SCHEMA,
+        "ui_sql_log": UI_SQL_LOG_SCHEMA,
     }
 
 

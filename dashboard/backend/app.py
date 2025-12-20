@@ -24,9 +24,13 @@ from queue import Empty
 
 # Add windlass to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from windlass.db_adapter import get_db
+from windlass.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
 from windlass.config import get_clickhouse_url
 from windlass.loaders import load_config_file
+from urllib.parse import urlparse
+
+# Set query source for all queries from the UI backend
+set_query_source('ui_backend')
 
 # Supported cascade file extensions
 CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
@@ -70,6 +74,35 @@ app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
 app.register_blueprint(sql_query_bp)
+
+
+# Set query context for each request (tracks which endpoint/page made the query)
+@app.before_request
+def set_request_context():
+    """Set query context variables based on the current request."""
+    # Capture the endpoint name (e.g., 'sextant.get_species_data')
+    if request.endpoint:
+        set_query_caller(request.endpoint)
+
+    # Capture the API path (e.g., '/api/sextant/species/abc123')
+    if request.path:
+        set_query_request_path(request.path)
+
+    # Extract page reference from Referer header
+    # e.g., 'http://localhost:5550/#/cascade_id/session_id' -> '/#/cascade_id/session_id'
+    referer = request.headers.get('Referer')
+    if referer:
+        try:
+            parsed = urlparse(referer)
+            # Combine path and fragment (hash) for the page ref
+            page_ref = parsed.path
+            if parsed.fragment:
+                page_ref = f"{page_ref}#{parsed.fragment}"
+            set_query_page_ref(page_ref)
+        except Exception:
+            pass
+
+
 # Track query statistics
 import threading
 _query_lock = threading.Lock()

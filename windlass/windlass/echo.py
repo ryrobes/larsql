@@ -39,6 +39,39 @@ class Echo:
         """Set a callback to be called for each message added to history."""
         self._message_callback = callback
 
+    def _should_generate_context_card(self, node_type: str, role: Optional[str]) -> bool:
+        """
+        Determine if a message should get a context card.
+
+        Context cards are generated for substantive messages that would be
+        useful for context selection. We skip system messages, framework
+        internal messages, and structural entries.
+
+        Args:
+            node_type: Type of the message node
+            role: Message role (user, assistant, tool, system)
+
+        Returns:
+            True if a context card should be generated
+        """
+        # Skip system messages
+        if role == "system":
+            return False
+
+        # Skip structural/lifecycle entries
+        if node_type in ("context_injection", "context_selection", "lifecycle",
+                         "cascade", "phase", "turn", "structure"):
+            return False
+
+        # Skip validation infrastructure
+        if node_type in ("validation_start", "validation_error"):
+            return False
+
+        # Generate for substantive content
+        return node_type in ("agent", "tool", "tool_result", "tool_call",
+                             "user", "message", "turn_input", "evaluator",
+                             "sounding_attempt")
+
     def update_state(self, key: str, value: Any):
         self.state[key] = value
 
@@ -219,6 +252,32 @@ class Echo:
                     ))
                 except Exception:
                     pass  # Don't fail if event emission has issues
+
+            # Queue context card generation for auto-context system
+            # Only for substantive messages that would be useful for context selection
+            if self._should_generate_context_card(node_type, role):
+                try:
+                    from .context_cards import queue_context_card
+                    from .unified_logs import compute_content_hash
+                    from datetime import datetime
+
+                    content_hash = compute_content_hash(role, content)
+
+                    queue_context_card(
+                        session_id=self.session_id,
+                        content_hash=content_hash,
+                        role=role or "",
+                        content=content,
+                        phase_name=phase_name,
+                        cascade_id=cascade_id,
+                        turn_number=meta.get("turn_number"),
+                        is_callout=is_callout,
+                        callout_name=callout_name,
+                        message_timestamp=datetime.now()
+                    )
+                except Exception:
+                    pass  # Don't fail if context card generation has issues
+
         except Exception as e:
             # Don't fail if logging has issues
             pass  # Silently ignore to avoid spam
