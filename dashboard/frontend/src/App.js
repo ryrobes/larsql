@@ -961,6 +961,10 @@ function App() {
             setCurrentView('workshop');
             updateHash('workshop');
           }}
+          onPlayground={() => {
+            setCurrentView('playground');
+            updateHash('playground');
+          }}
           onBlocked={() => {
             setCurrentView('blocked');
             updateHash('blocked');
@@ -1063,6 +1067,10 @@ function App() {
             setCurrentView('workshop');
             updateHash('workshop');
           }}
+          onPlayground={() => {
+            setCurrentView('playground');
+            updateHash('playground');
+          }}
           onTools={() => {
             setCurrentView('tools');
             updateHash('tools');
@@ -1105,6 +1113,10 @@ function App() {
           onWorkshop={() => {
             setCurrentView('workshop');
             updateHash('workshop');
+          }}
+          onPlayground={() => {
+            setCurrentView('playground');
+            updateHash('playground');
           }}
           onTools={() => {
             setCurrentView('tools');
@@ -1161,6 +1173,10 @@ function App() {
           onWorkshop={() => {
             setCurrentView('workshop');
             updateHash('workshop');
+          }}
+          onPlayground={() => {
+            setCurrentView('playground');
+            updateHash('playground');
           }}
           onTools={() => {
             setCurrentView('tools');
@@ -1334,6 +1350,10 @@ function App() {
           onWorkshop={() => {
             setCurrentView('workshop');
             updateHash('workshop');
+          }}
+          onPlayground={() => {
+            setCurrentView('playground');
+            updateHash('playground');
           }}
           onTools={() => {
             setCurrentView('tools');

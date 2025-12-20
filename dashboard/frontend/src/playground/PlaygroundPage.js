@@ -154,6 +154,13 @@ function PlaygroundPage() {
         {/* Header Toolbar */}
         <header className="playground-header">
           <div className="playground-header-left">
+            <button
+              className="toolbar-btn home-btn"
+              onClick={() => window.location.hash = '#/'}
+              title="Back to Dashboard"
+            >
+              <Icon icon="mdi:home" width="20" />
+            </button>
             <Icon icon="mdi:image-multiple" width="24" className="playground-logo" />
             <h1 className="playground-title">Image Playground</h1>
           </div>

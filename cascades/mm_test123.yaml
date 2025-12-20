@@ -1,0 +1,190 @@
+cascade_id: mm_test123
+description: Generated from Image Playground
+inputs_schema:
+  prompt: Prompt text for prompt
+phases:
+- name: llm_phase
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent. Please return ONLY the
+    enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4.1-fast
+  rules:
+    max_turns: 1
+- name: gemini_3_pro_image_preview
+  model: google/gemini-3-pro-image-preview
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: flux_2_pro
+  model: black-forest-labs/flux.2-pro
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: riverflow_v2_max_preview
+  model: sourceful/riverflow-v2-max-preview
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: gemini_3_pro_image_preview_1
+  model: google/gemini-3-pro-image-preview
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: riverflow_v2_max_preview_1
+  model: sourceful/riverflow-v2-max-preview
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: flux_2_max
+  model: black-forest-labs/flux.2-max
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+_playground:
+  version: 1
+  viewport:
+    x: 0
+    y: 0
+    zoom: 1
+  nodes:
+  - id: prompt_1
+    type: prompt
+    position:
+      x: -0.0
+      y: 224
+    data:
+      text: Beautiful buxom Irish woman standing by the ocean. Risque illustration
+        style, exaggerated pin-up. A profoundly Busty and striking vixen, yet dangerous.
+        Milk maid attire.
+      name: prompt
+  - id: image_2
+    type: image
+    position:
+      x: 480
+      y: -32
+    data:
+      paletteId: google_gemini_3_pro_image_preview
+      name: gemini_3_pro_image_preview
+      width: 368
+      height: 256
+  - id: image_3
+    type: image
+    position:
+      x: 368
+      y: 640
+    data:
+      paletteId: black_forest_labs_flux_2_pro
+      name: flux_2_pro
+      width: 608
+      height: 512
+  - id: image_4
+    type: image
+    position:
+      x: 960
+      y: 16
+    data:
+      paletteId: sourceful_riverflow_v2_max_preview
+      name: riverflow_v2_max_preview
+      width: 432
+      height: 496
+  - id: phase_5
+    type: phase
+    position:
+      x: 432
+      y: 320
+    data:
+      name: llm_phase
+      width: 432
+      height: 288
+      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image\
+        \ prompt, be vivid with lots of rich details, but staying true to the original\
+        \ intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{\
+        \ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 1\n  \n"
+      discoveredInputs:
+      - prompt
+  - id: image_6
+    type: image
+    position:
+      x: 1520
+      y: 320
+    data:
+      paletteId: google_gemini_3_pro_image_preview
+      name: gemini_3_pro_image_preview_1
+      width: 544
+      height: 352
+  - id: image_7
+    type: image
+    position:
+      x: 1440
+      y: 816
+    data:
+      paletteId: sourceful_riverflow_v2_max_preview
+      name: riverflow_v2_max_preview_1
+      height: 272
+  - id: image_8
+    type: image
+    position:
+      x: 1520
+      y: -176
+    data:
+      paletteId: black_forest_labs_flux_2_max
+      name: flux_2_max
+      width: 336
+      height: 400
+  edges:
+  - source: prompt_1
+    target: image_2
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: prompt_1
+    target: image_3
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: prompt_1
+    target: image_4
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: prompt_1
+    target: phase_5
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_5
+    target: image_6
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_5
+    target: image_7
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_5
+    target: image_8
+    sourceHandle: text-out
+    targetHandle: text-in
