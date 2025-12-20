@@ -5,6 +5,29 @@ import { immer } from 'zustand/middleware/immer';
 const API_BASE_URL = 'http://localhost:5001/api';
 
 /**
+ * Simple hash function for cell caching.
+ * Creates a fingerprint of the cell's inputs to detect changes.
+ */
+function hashCellInputs(phase, notebookInputs, priorOutputHashes) {
+  // Combine relevant inputs into a string
+  const inputStr = JSON.stringify({
+    tool: phase.tool,
+    inputs: phase.inputs,
+    notebookInputs,
+    // Include hashes of prior outputs to invalidate if upstream changed
+    priorOutputHashes
+  });
+
+  // Simple hash function (djb2)
+  let hash = 5381;
+  for (let i = 0; i < inputStr.length; i++) {
+    hash = ((hash << 5) + hash) + inputStr.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString(16);
+}
+
+/**
  * Notebook Store - State management for Data Cascade notebooks
  *
  * A notebook is a cascade with only deterministic phases (sql_data, python_data)
@@ -53,11 +76,88 @@ const useNotebookStore = create(
       sessionId: null,
 
       // ============================================
+      // UNDO/REDO HISTORY
+      // ============================================
+      undoStack: [],  // Stack of previous notebook states (phases snapshots)
+      redoStack: [],  // Stack of undone states
+      maxHistorySize: 50,  // Maximum history entries
+
+      // ============================================
       // NOTEBOOK LIST
       // ============================================
       notebooks: [],  // List of available notebooks
       notebooksLoading: false,
       notebooksError: null,
+
+      // ============================================
+      // UNDO/REDO HELPERS
+      // ============================================
+      _saveToUndoStack: () => {
+        const state = get();
+        if (!state.notebook?.phases) return;
+
+        // Create a deep copy of phases for the undo stack
+        const phasesSnapshot = JSON.parse(JSON.stringify(state.notebook.phases));
+
+        set(s => {
+          // Push current state to undo stack
+          s.undoStack.push(phasesSnapshot);
+
+          // Trim if exceeds max size
+          if (s.undoStack.length > s.maxHistorySize) {
+            s.undoStack.shift();
+          }
+
+          // Clear redo stack on new action
+          s.redoStack = [];
+        });
+      },
+
+      undo: () => {
+        const state = get();
+        if (!state.notebook || state.undoStack.length === 0) return false;
+
+        set(s => {
+          // Save current state to redo stack
+          const currentSnapshot = JSON.parse(JSON.stringify(s.notebook.phases));
+          s.redoStack.push(currentSnapshot);
+
+          // Pop previous state from undo stack
+          const previousState = s.undoStack.pop();
+          s.notebook.phases = previousState;
+          s.notebookDirty = true;
+        });
+
+        return true;
+      },
+
+      redo: () => {
+        const state = get();
+        if (!state.notebook || state.redoStack.length === 0) return false;
+
+        set(s => {
+          // Save current state to undo stack
+          const currentSnapshot = JSON.parse(JSON.stringify(s.notebook.phases));
+          s.undoStack.push(currentSnapshot);
+
+          // Pop next state from redo stack
+          const nextState = s.redoStack.pop();
+          s.notebook.phases = nextState;
+          s.notebookDirty = true;
+        });
+
+        return true;
+      },
+
+      canUndo: () => get().undoStack.length > 0,
+      canRedo: () => get().redoStack.length > 0,
+
+      clearHistory: () => {
+        set(s => {
+          s.undoStack = [];
+          s.redoStack = [];
+        });
+      },
 
       // ============================================
       // MODE ACTIONS
@@ -126,6 +226,9 @@ const useNotebookStore = create(
           state.cellStates = {};
           // Generate fresh session for new notebook
           state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+          // Clear undo/redo history
+          state.undoStack = [];
+          state.redoStack = [];
         });
       },
 
@@ -146,6 +249,9 @@ const useNotebookStore = create(
             state.cellStates = {};
             // Generate fresh session for loaded notebook
             state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+            // Clear undo/redo history
+            state.undoStack = [];
+            state.redoStack = [];
           });
 
           return data.notebook;
@@ -203,19 +309,27 @@ const useNotebookStore = create(
       // ============================================
       // CELL CRUD
       // ============================================
-      addCell: (type = 'sql_data', afterIndex = null) => {
+      addCell: (type = 'sql_data', afterIndex = null, templateCode = null) => {
+        // Save state before modification
+        get()._saveToUndoStack();
+
         set(state => {
           if (!state.notebook) return;
 
           const phases = state.notebook.phases;
           const cellCount = phases.length + 1;
 
+          // Default code if no template provided
+          const defaultCode = type === 'sql_data'
+            ? '-- Enter SQL here\n-- Reference prior cells with: SELECT * FROM _cell_name\nSELECT 1'
+            : '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}';
+
           const newCell = {
             name: `cell_${cellCount}`,
             tool: type,
             inputs: type === 'sql_data'
-              ? { query: '-- Enter SQL here\n-- Reference prior cells with: SELECT * FROM _cell_name\nSELECT 1' }
-              : { code: '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}' }
+              ? { query: templateCode || defaultCode }
+              : { code: templateCode || defaultCode }
           };
 
           // Add handoff to previous cell if exists
@@ -243,6 +357,9 @@ const useNotebookStore = create(
       },
 
       updateCell: (index, updates) => {
+        // Save state before modification
+        get()._saveToUndoStack();
+
         set(state => {
           if (!state.notebook || !state.notebook.phases[index]) return;
 
@@ -278,6 +395,9 @@ const useNotebookStore = create(
       },
 
       removeCell: (index) => {
+        // Save state before modification
+        get()._saveToUndoStack();
+
         set(state => {
           if (!state.notebook || state.notebook.phases.length <= 1) return;
 
@@ -302,6 +422,9 @@ const useNotebookStore = create(
       },
 
       moveCell: (fromIndex, toIndex) => {
+        // Save state before modification
+        get()._saveToUndoStack();
+
         set(state => {
           if (!state.notebook) return;
 
@@ -375,7 +498,7 @@ const useNotebookStore = create(
       // ============================================
       // EXECUTION ACTIONS
       // ============================================
-      runCell: async (phaseName) => {
+      runCell: async (phaseName, forceRun = false) => {
         const state = get();
         if (!state.notebook) return;
 
@@ -390,8 +513,38 @@ const useNotebookStore = create(
           sessionId = get().generateSessionId();
         }
 
+        // Collect prior output hashes for cache invalidation
+        const priorOutputHashes = {};
+        for (let i = 0; i < phaseIndex; i++) {
+          const priorPhase = state.notebook.phases[i];
+          const priorState = state.cellStates[priorPhase.name];
+          if (priorState?.inputHash) {
+            priorOutputHashes[priorPhase.name] = priorState.inputHash;
+          }
+        }
+
+        // Compute hash of current inputs
+        const currentHash = hashCellInputs(phase, state.notebookInputs, priorOutputHashes);
+        const existingState = state.cellStates[phaseName];
+
+        // Check cache: if hash matches and we have a successful result, skip execution
+        if (!forceRun &&
+            existingState?.status === 'success' &&
+            existingState?.inputHash === currentHash &&
+            existingState?.result) {
+          // Cache hit - mark as cached and return
+          set(s => {
+            s.cellStates[phaseName] = {
+              ...existingState,
+              cached: true
+            };
+          });
+          console.log(`[Cache] Hit for ${phaseName} (hash: ${currentHash})`);
+          return;
+        }
+
         set(s => {
-          s.cellStates[phaseName] = { status: 'running', result: null, error: null };
+          s.cellStates[phaseName] = { status: 'running', result: null, error: null, cached: false };
         });
 
         const startTime = performance.now();
@@ -426,7 +579,9 @@ const useNotebookStore = create(
               s.cellStates[phaseName] = {
                 status: 'error',
                 error: data.error,
-                duration
+                duration,
+                inputHash: currentHash,
+                cached: false
               };
             });
           } else {
@@ -434,7 +589,9 @@ const useNotebookStore = create(
               s.cellStates[phaseName] = {
                 status: 'success',
                 result: data,
-                duration
+                duration,
+                inputHash: currentHash,
+                cached: false
               };
             });
 
@@ -447,7 +604,9 @@ const useNotebookStore = create(
             s.cellStates[phaseName] = {
               status: 'error',
               error: err.message,
-              duration
+              duration,
+              inputHash: currentHash,
+              cached: false
             };
           });
         }

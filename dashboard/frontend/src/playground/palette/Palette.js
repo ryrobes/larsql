@@ -13,18 +13,18 @@ import './Palette.css';
  */
 function Palette() {
   const { palette } = usePlaygroundStore();
-  const [modelCosts, setModelCosts] = useState({});
+  const [modelStats, setModelStats] = useState({});
 
-  // Fetch model costs on mount
+  // Fetch model stats (cost + duration) on mount
   useEffect(() => {
     fetch('http://localhost:5001/api/playground/model-costs')
       .then(res => res.json())
       .then(data => {
         if (!data.error) {
-          setModelCosts(data);
+          setModelStats(data);
         }
       })
-      .catch(err => console.error('[Palette] Failed to fetch model costs:', err));
+      .catch(err => console.error('[Palette] Failed to fetch model stats:', err));
   }, []);
 
   // Format cost for display
@@ -36,11 +36,22 @@ function Palette() {
     return `$${cost.toFixed(2)}`;
   };
 
-  // Get cost for a palette item
-  const getItemCost = (item) => {
-    if (!item.openrouter?.model) return null;
-    const cost = modelCosts[item.openrouter.model];
-    return formatCost(cost);
+  // Format duration for display
+  const formatDuration = (seconds) => {
+    if (!seconds) return null;
+    if (seconds < 1) return '<1s';
+    return `${seconds.toFixed(1)}s`;
+  };
+
+  // Get stats for a palette item
+  const getItemStats = (item) => {
+    if (!item.openrouter?.model) return { cost: null, duration: null };
+    const stats = modelStats[item.openrouter.model];
+    if (!stats) return { cost: null, duration: null };
+    return {
+      cost: formatCost(stats.cost),
+      duration: formatDuration(stats.duration),
+    };
   };
 
   // Group palette items by category
@@ -109,7 +120,8 @@ function Palette() {
             </div>
             <div className="palette-items">
               {category.items.map(item => {
-                const itemCost = getItemCost(item);
+                const { cost, duration } = getItemStats(item);
+                const hasStats = cost || duration;
                 return (
                   <div
                     key={item.id}
@@ -129,8 +141,11 @@ function Palette() {
                     </div>
                     <div className="palette-item-info">
                       <div className="palette-item-label">{item.name}</div>
-                      {itemCost && (
-                        <div className="palette-item-cost">{itemCost}</div>
+                      {hasStats && (
+                        <div className="palette-item-stats">
+                          {duration && <span className="stat-duration">{duration}</span>}
+                          {cost && <span className="stat-cost">{cost}</span>}
+                        </div>
                       )}
                     </div>
                   </div>

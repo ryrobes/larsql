@@ -88,9 +88,12 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
     updateCell(index, { inputs: { ...phase.inputs, connection: e.target.value || undefined } });
   };
 
-  const handleRun = () => {
-    runCell(phase.name);
+  const handleRun = (forceRun = false) => {
+    runCell(phase.name, forceRun);
   };
+
+  // Check if result is cached
+  const isCached = cellState?.cached === true;
 
   const handleDelete = () => {
     if (window.confirm(`Delete cell "${phase.name}"?`)) {
@@ -503,11 +506,17 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
           {result?.row_count !== undefined && (
             <span className="cell-row-count">{result.row_count} rows</span>
           )}
+          {/* Cached indicator */}
+          {isCached && status === 'success' && (
+            <span className="cell-cached-badge" title="Result from cache - Shift+Click to force re-run">
+              cached
+            </span>
+          )}
           <button
             className="cell-action-btn"
-            onClick={handleRun}
+            onClick={(e) => handleRun(e.shiftKey)}
             disabled={status === 'running'}
-            title="Run cell"
+            title={isCached ? "Run cell (Shift+Click to force re-run)" : "Run cell"}
           >
             {status === 'running' ? (
               <span className="cell-spinner" />
@@ -525,9 +534,13 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
           <div className="cell-menu">
             <button className="cell-menu-btn" title="More actions">⋮</button>
             <div className="cell-menu-dropdown">
+              <button onClick={() => handleRun(true)}>
+                Force Run (bypass cache)
+              </button>
               <button onClick={handleRunFromHere}>
                 Run from here
               </button>
+              <hr />
               <button onClick={handleToggleType}>
                 Convert to {isSql ? 'Python' : 'SQL'}
               </button>

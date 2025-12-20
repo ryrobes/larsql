@@ -92,11 +92,20 @@
   text-overflow: ellipsis;
 }
 
-.palette-item-cost {
+.palette-item-stats {
+  display: flex;
+  gap: 8px;
   font-size: 10px;
   font-weight: 500;
-  color: #10b981;
   opacity: 0.8;
+}
+
+.stat-duration {
+  color: var(--text-muted);
+}
+
+.stat-cost {
+  color: #10b981;
 }
 
 .palette-footer {

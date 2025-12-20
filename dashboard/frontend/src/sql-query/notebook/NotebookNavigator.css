@@ -225,6 +225,17 @@
   white-space: nowrap;
 }
 
+.nav-phase-cached {
+  font-size: 9px;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
 /* ============================================
    PHASE COLUMNS (Expandable)
    ============================================ */

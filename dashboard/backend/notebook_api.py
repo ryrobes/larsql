@@ -44,6 +44,7 @@ WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
 TACKLE_DIR = os.path.join(WINDLASS_ROOT, "tackle")
 CASCADES_DIR = os.path.join(WINDLASS_ROOT, "cascades")
 EXAMPLES_DIR = os.path.join(WINDLASS_ROOT, "examples")
+PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
 def sanitize_for_json(obj):
@@ -134,7 +135,8 @@ def list_notebooks():
         for base_dir, prefix in [
             (TACKLE_DIR, 'tackle/'),
             (CASCADES_DIR, 'cascades/'),
-            (EXAMPLES_DIR, 'examples/')
+            (EXAMPLES_DIR, 'examples/'),
+            (PLAYGROUND_SCRATCHPAD_DIR, 'playground/'),
         ]:
             found = scan_directory_for_notebooks(base_dir, prefix.rstrip('/'))
             notebooks.extend(found)

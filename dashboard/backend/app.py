@@ -193,6 +193,8 @@ TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDL
 CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
 # Also search inside the windlass package for examples (supports YAML cascade files)
 PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(WINDLASS_ROOT, "windlass", "examples"))
+# Playground scratchpad for auto-generated cascades from the image playground
+PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 # Orphan cascade detection threshold (seconds since last activity)
 ORPHAN_THRESHOLD_SECONDS = int(os.getenv('WINDLASS_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
@@ -451,6 +453,7 @@ def get_cascade_definitions():
             TACKLE_DIR,
             CASCADES_DIR,
             PACKAGE_EXAMPLES_DIR,
+            PLAYGROUND_SCRATCHPAD_DIR,
         ]
 
         for search_dir in search_paths:
@@ -2953,6 +2956,7 @@ def find_cascade_file(cascade_id):
         EXAMPLES_DIR,
         TACKLE_DIR,
         PACKAGE_EXAMPLES_DIR,
+        PLAYGROUND_SCRATCHPAD_DIR,
     ]
 
     for search_dir in search_paths:
@@ -2981,6 +2985,7 @@ def get_cascade_files():
             CASCADES_DIR,
             EXAMPLES_DIR,
             PACKAGE_EXAMPLES_DIR,
+            PLAYGROUND_SCRATCHPAD_DIR,
         ]
 
         for search_dir in search_paths:
@@ -3257,9 +3262,10 @@ def playground_run_from():
 
 @app.route('/api/playground/model-costs', methods=['GET'])
 def get_model_costs():
-    """Get average cost per model from historical data.
+    """Get average cost and duration per model from historical data.
 
-    Returns a dictionary mapping model names to their average cost.
+    Returns a dictionary mapping model names to their stats:
+    { "model_name": { "cost": avg_cost, "duration": avg_duration_seconds } }
     Only includes models that have been used with cost > 0.
     """
     try:
@@ -3268,6 +3274,7 @@ def get_model_costs():
             SELECT
                 model,
                 avg(cost) as avg_cost,
+                avg(duration_ms) as avg_duration_ms,
                 count(*) as usage_count
             FROM unified_logs
             WHERE cost > 0 AND model IS NOT NULL
@@ -3276,15 +3283,19 @@ def get_model_costs():
         """
         result = db.query(query)
 
-        # Convert to dict: model -> avg_cost
-        costs = {}
+        # Convert to dict: model -> { cost, duration }
+        stats = {}
         for row in result:
             model = row.get('model')
             avg_cost = row.get('avg_cost')
+            avg_duration_ms = row.get('avg_duration_ms')
             if model and avg_cost is not None:
-                costs[model] = round(float(avg_cost), 6)
+                stats[model] = {
+                    'cost': round(float(avg_cost), 6),
+                    'duration': round(float(avg_duration_ms) / 1000, 1) if avg_duration_ms else None
+                }
 
-        return jsonify(costs)
+        return jsonify(stats)
 
     except Exception as e:
         import traceback

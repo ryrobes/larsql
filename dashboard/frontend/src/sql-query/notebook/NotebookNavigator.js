@@ -150,8 +150,13 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
         <StatusIcon status={status} />
         <Icon icon={toolIcon} className="nav-tool-icon" style={{ color: toolColor }} />
         <span className="nav-phase-name">{phase.name}</span>
-        {/* Stats: row count and duration */}
+        {/* Stats: row count, duration, and cache indicator */}
         <div className="nav-phase-stats">
+          {cellState?.cached && (
+            <span className="nav-phase-cached" title="Result from cache">
+              cached
+            </span>
+          )}
           {hasResult && rowCount > 0 && (
             <span className="nav-phase-rows" title={`${rowCount} rows`}>
               {formatRowCount(rowCount)} rows
