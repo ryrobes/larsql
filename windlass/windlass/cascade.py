@@ -868,6 +868,37 @@ class RetryConfig(BaseModel):
     backoff_base_seconds: float = 1.0
 
 
+class AutoFixConfig(BaseModel):
+    """
+    Auto-fix configuration for self-healing deterministic phases.
+
+    When a tool execution fails, uses an LLM to analyze the error and
+    generate a fixed version of the code, then re-runs the tool.
+
+    Usage (simple - defaults):
+        on_error: auto_fix
+
+    Usage (customized):
+        on_error:
+          auto_fix:
+            max_attempts: 2
+            model: anthropic/claude-sonnet-4
+            prompt: |
+              Fix this code. Error: {{ error }}
+              Original: {{ original_code }}
+
+    Template variables available in prompt:
+        - {{ tool_type }}: "SQL" or "Python"
+        - {{ error }}: The error message
+        - {{ original_code }}: The code that failed
+        - {{ inputs }}: All inputs to the tool
+    """
+    enabled: bool = True
+    max_attempts: int = 2  # How many fix attempts before giving up
+    model: str = "google/gemini-2.5-flash-lite"  # Default to cheap/fast model
+    prompt: Optional[str] = None  # Custom prompt template (uses default if None)
+
+
 class ImageConfig(BaseModel):
     """
     Configuration for image generation phases.
@@ -926,7 +957,11 @@ class PhaseConfig(BaseModel):
     routing: Optional[Dict[str, str]] = None
 
     # Error handling for deterministic phases
-    # Can be a phase name (string) or inline LLM phase config (dict) for hybrid fallback
+    # Can be:
+    #   - "phase_name": Route to error handler phase
+    #   - "auto_fix": Enable auto-fix with LLM (uses defaults)
+    #   - {"auto_fix": {...}}: Customized auto-fix config
+    #   - {"instructions": "..."}: Inline LLM fallback phase
     on_error: Optional[Union[str, Dict[str, Any]]] = None
 
     # Retry configuration for transient errors

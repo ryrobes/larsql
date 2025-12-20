@@ -40,10 +40,18 @@ const cellGridTheme = themeQuartz.withParams({
  * Shows Monaco editor for code, inline results preview, and execution controls.
  */
 const NotebookCell = ({ id, phase, index, cellState, connections }) => {
-  const { updateCell, removeCell, runCell, runFromCell, moveCell, notebook } = useNotebookStore();
+  const {
+    updateCell, removeCell, runCell, runFromCell, moveCell, notebook,
+    autoFixConfig, cellAutoFixOverrides, setCellAutoFix, clearCellAutoFix, getEffectiveAutoFixConfig
+  } = useNotebookStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [showResults, setShowResults] = useState(true);
+  const [showAutoFixSettings, setShowAutoFixSettings] = useState(false);
   const editorRef = useRef(null);
+
+  // Get effective auto-fix config for this cell
+  const effectiveAutoFix = getEffectiveAutoFixConfig(phase.name);
+  const hasAutoFixOverride = !!cellAutoFixOverrides[phase.name];
 
   // Sortable setup
   const {
@@ -571,6 +579,22 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
               cached
             </span>
           )}
+          {/* Auto-fixed indicator */}
+          {cellState?.autoFixed && status === 'success' && (
+            <span className="cell-autofixed-badge" title={`Auto-fixed after ${cellState.fixAttempts?.length || 1} attempt(s)`}>
+              🔧 fixed
+            </span>
+          )}
+          {/* Auto-fix enabled indicator */}
+          {effectiveAutoFix?.enabled && (
+            <span
+              className={`cell-autofix-indicator ${hasAutoFixOverride ? 'cell-autofix-override' : ''}`}
+              title={`Auto-fix: ${effectiveAutoFix.model}${hasAutoFixOverride ? ' (custom)' : ''}`}
+              onClick={() => setShowAutoFixSettings(true)}
+            >
+              🔧
+            </span>
+          )}
           <button
             className="cell-action-btn"
             onClick={(e) => handleRun(e.shiftKey)}
@@ -602,6 +626,9 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
               <hr />
               <button onClick={handleToggleType}>
                 Convert to {isSql ? 'Python' : 'SQL'}
+              </button>
+              <button onClick={() => setShowAutoFixSettings(true)}>
+                Auto-fix settings...
               </button>
               <hr />
               <button onClick={handleMoveUp} disabled={index === 0}>
@@ -679,6 +706,76 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
               Show output ({result?.row_count || 'error'})
             </button>
           )}
+        </div>
+      )}
+
+      {/* Auto-fix Settings Modal */}
+      {showAutoFixSettings && (
+        <div className="cell-autofix-modal-backdrop" onClick={() => setShowAutoFixSettings(false)}>
+          <div className="cell-autofix-modal" onClick={e => e.stopPropagation()}>
+            <div className="cell-autofix-modal-header">
+              <h3>Auto-fix Settings</h3>
+              <button onClick={() => setShowAutoFixSettings(false)}>×</button>
+            </div>
+            <div className="cell-autofix-modal-body">
+              <div className="cell-autofix-option">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={effectiveAutoFix?.enabled ?? true}
+                    onChange={(e) => setCellAutoFix(phase.name, { enabled: e.target.checked })}
+                  />
+                  Enable auto-fix for this cell
+                </label>
+              </div>
+
+              <div className="cell-autofix-option">
+                <label>Model:</label>
+                <select
+                  value={effectiveAutoFix?.model || 'google/gemini-2.5-flash-lite'}
+                  onChange={(e) => setCellAutoFix(phase.name, { model: e.target.value })}
+                >
+                  <option value="google/gemini-2.5-flash-lite">Gemini Flash Lite (fast/cheap)</option>
+                  <option value="google/gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+                  <option value="anthropic/claude-opus-4">Claude Opus 4</option>
+                  <option value="openai/gpt-4o">GPT-4o</option>
+                </select>
+              </div>
+
+              <div className="cell-autofix-option">
+                <label>Max attempts:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={effectiveAutoFix?.max_attempts || 2}
+                  onChange={(e) => setCellAutoFix(phase.name, { max_attempts: parseInt(e.target.value) || 2 })}
+                />
+              </div>
+
+              <div className="cell-autofix-option">
+                <label>Custom prompt (optional):</label>
+                <textarea
+                  placeholder="Leave empty for default prompt. Use {error} and {original_code} placeholders."
+                  value={cellAutoFixOverrides[phase.name]?.prompt || ''}
+                  onChange={(e) => setCellAutoFix(phase.name, { prompt: e.target.value || null })}
+                  rows={4}
+                />
+              </div>
+
+              {hasAutoFixOverride && (
+                <button
+                  className="cell-autofix-reset-btn"
+                  onClick={() => {
+                    clearCellAutoFix(phase.name);
+                  }}
+                >
+                  Reset to global defaults
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

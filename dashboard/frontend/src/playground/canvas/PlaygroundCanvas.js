@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -133,6 +133,20 @@ function PlaygroundCanvas() {
     }
   }, [nodes, removeNode]);
 
+  // Compute edges with dynamic animation based on node running status
+  // An edge animates when its source or target node is running
+  const animatedEdges = useMemo(() => {
+    const nodeStatusMap = new Map(
+      nodes.map(n => [n.id, n.data?.status])
+    );
+
+    return edges.map(edge => ({
+      ...edge,
+      animated: nodeStatusMap.get(edge.source) === 'running' ||
+                nodeStatusMap.get(edge.target) === 'running',
+    }));
+  }, [nodes, edges]);
+
   return (
     <div
       ref={reactFlowWrapper}
@@ -142,7 +156,7 @@ function PlaygroundCanvas() {
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={animatedEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -155,7 +169,6 @@ function PlaygroundCanvas() {
         snapGrid={[16, 16]}
         deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{
-          animated: true,
           style: { stroke: 'var(--ocean-primary)', strokeWidth: 2 },
         }}
       >

@@ -28,7 +28,7 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig, AutoFixConfig
 from .auto_context import IntraPhaseContextBuilder, IntraContextConfig, ContextSelectionStats
 import re
 from .echo import get_echo, Echo
@@ -7951,6 +7951,233 @@ Refinement directive: {reforge_config.honing_prompt}
             console.print(f"{indent}  [red]✗ Image generation failed: {e}[/red]")
             raise
 
+    def _auto_fix_and_retry(
+        self,
+        phase: PhaseConfig,
+        error: Exception,
+        input_data: dict,
+        trace: TraceNode,
+        config: AutoFixConfig,
+        depth: int = 0
+    ) -> Any:
+        """
+        Attempt to auto-fix a failed deterministic phase using LLM.
+
+        Uses an LLM to analyze the error and generate fixed code,
+        then re-runs the tool with the fixed inputs.
+
+        Args:
+            phase: The phase that failed
+            error: The exception that occurred
+            input_data: Original input data
+            trace: Trace node for logging
+            config: Auto-fix configuration
+            depth: Execution depth for logging
+
+        Returns:
+            The result from the successfully fixed tool execution
+
+        Raises:
+            Exception: If all fix attempts fail
+        """
+        from .deterministic import resolve_tool_function, render_inputs, execute_with_retry
+        from .unified_logs import log_unified
+        from .prompts import render_instruction
+
+        indent = "  " * depth
+
+        # Get original code/query from error inputs
+        original_inputs = getattr(error, 'inputs', {}) or {}
+        if phase.tool == "sql_data":
+            original_code = original_inputs.get("query", "")
+            tool_type = "SQL"
+            code_key = "query"
+        elif phase.tool == "python_data":
+            original_code = original_inputs.get("code", "")
+            tool_type = "Python"
+            code_key = "code"
+        else:
+            # Unsupported tool type for auto-fix
+            raise error
+
+        error_message = str(getattr(error, 'original_error', error))
+
+        # Default prompts for SQL and Python
+        default_prompts = {
+            "SQL": """Fix this SQL query that failed with an error.
+
+Error: {{ error }}
+
+Original query:
+```sql
+{{ original_code }}
+```
+
+Return ONLY the corrected SQL query. No explanations, no markdown code blocks, just the raw SQL.""",
+
+            "Python": """Fix this Python code that failed with an error.
+
+Error: {{ error }}
+
+Original code:
+```python
+{{ original_code }}
+```
+
+The code should set a `result` variable with the output (DataFrame, dict, or scalar).
+Available: `data.phase_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+
+Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code."""
+        }
+
+        # Use custom prompt or default
+        prompt_template = config.prompt or default_prompts.get(tool_type, default_prompts["Python"])
+
+        last_error = error
+        for attempt in range(config.max_attempts):
+            console.print(f"{indent}    [dim]Fix attempt {attempt + 1}/{config.max_attempts}...[/dim]")
+
+            # Render the fix prompt
+            fix_context = {
+                "tool_type": tool_type,
+                "error": error_message,
+                "original_code": original_code,
+                "inputs": original_inputs,
+            }
+            rendered_prompt = render_instruction(prompt_template, fix_context)
+
+            # Create fix trace
+            fix_trace = trace.create_child("auto_fix", f"{phase.name}_fix_{attempt + 1}")
+
+            # Call LLM for fix (uses session_id for cost tracking)
+            try:
+                from .agent import Agent
+
+                agent = Agent(
+                    model=config.model,
+                    system_prompt=f"You are a {tool_type} code fixer. Return ONLY the fixed code, no explanations.",
+                    max_turns=1,
+                    temperature=0.0,
+                )
+
+                # Execute agent to get fix
+                fix_result = agent.complete(
+                    rendered_prompt,
+                    session_id=self.session_id,
+                    trace_id=fix_trace.id,
+                    parent_id=trace.id,
+                    depth=self.depth + 1
+                )
+
+                # Clean the response (remove markdown code blocks)
+                fixed_code = fix_result.strip()
+                if fixed_code.startswith("```"):
+                    # Remove opening ``` line
+                    lines = fixed_code.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    # Remove closing ```
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    fixed_code = "\n".join(lines)
+
+                console.print(f"{indent}    [dim]Generated fix ({len(fixed_code)} chars)[/dim]")
+
+                # Log the fix attempt
+                log_unified(
+                    session_id=self.session_id,
+                    trace_id=fix_trace.id,
+                    parent_id=trace.id,
+                    node_type="auto_fix_attempt",
+                    role="system",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    phase_name=phase.name,
+                    content=f"Auto-fix attempt {attempt + 1}: Generated {len(fixed_code)} char fix",
+                    metadata={
+                        "attempt": attempt + 1,
+                        "model": config.model,
+                        "original_error": error_message,
+                        "fixed_code_preview": fixed_code[:200] + "..." if len(fixed_code) > 200 else fixed_code
+                    }
+                )
+
+                # Build new inputs with fixed code
+                fixed_inputs = dict(original_inputs)
+                fixed_inputs[code_key] = fixed_code
+
+                # Re-run the tool
+                tool_func = resolve_tool_function(phase.tool)
+
+                # Inject context for data tools
+                if phase.tool in ("sql_data", "python_data"):
+                    fixed_inputs["_phase_name"] = phase.name
+                    fixed_inputs["_session_id"] = self.echo.session_id
+
+                    if phase.tool == "python_data":
+                        # Build outputs dict
+                        outputs = {}
+                        for item in self.echo.lineage:
+                            output = item.get("output")
+                            if isinstance(output, dict):
+                                outputs[item["phase"]] = output
+                        fixed_inputs["_outputs"] = outputs
+                        fixed_inputs["_state"] = self.echo.state
+                        fixed_inputs["_input"] = input_data
+
+                result = tool_func(**fixed_inputs)
+
+                # Success!
+                console.print(f"{indent}    [green]✓ Auto-fix succeeded on attempt {attempt + 1}[/green]")
+
+                # Log success
+                log_unified(
+                    session_id=self.session_id,
+                    trace_id=fix_trace.id,
+                    parent_id=trace.id,
+                    node_type="auto_fix_success",
+                    role="system",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    phase_name=phase.name,
+                    content=f"Auto-fix succeeded on attempt {attempt + 1}",
+                    metadata={
+                        "attempt": attempt + 1,
+                        "model": config.model,
+                    }
+                )
+
+                # Update lineage with the successful result
+                self.echo.add_lineage(phase.name, result, trace.id)
+
+                return result
+
+            except Exception as retry_error:
+                last_error = retry_error
+                error_message = str(retry_error)  # Update error message for next attempt
+                console.print(f"{indent}    [yellow]Fix attempt {attempt + 1} failed: {str(retry_error)[:100]}[/yellow]")
+
+                # Log failure
+                log_unified(
+                    session_id=self.session_id,
+                    trace_id=fix_trace.id,
+                    parent_id=trace.id,
+                    node_type="auto_fix_failed",
+                    role="system",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    phase_name=phase.name,
+                    content=f"Auto-fix attempt {attempt + 1} failed: {str(retry_error)}",
+                    metadata={
+                        "attempt": attempt + 1,
+                        "model": config.model,
+                        "error": str(retry_error)
+                    }
+                )
+
+        # All attempts failed
+        raise last_error
+
     def _execute_deterministic_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
         """
         Execute a deterministic (tool-based) phase without LLM mediation.
@@ -7960,7 +8187,8 @@ Refinement directive: {reforge_config.honing_prompt}
         """
         from .deterministic import (
             execute_deterministic_phase,
-            DeterministicExecutionError
+            DeterministicExecutionError,
+            determine_routing
         )
         from .unified_logs import log_unified
         import time
@@ -8059,18 +8287,54 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Handle on_error routing
             if phase.on_error:
-                if isinstance(phase.on_error, str):
+                # Check for auto_fix mode
+                auto_fix_config = None
+                if phase.on_error == "auto_fix":
+                    # Simple mode: on_error: auto_fix
+                    auto_fix_config = AutoFixConfig()
+                elif isinstance(phase.on_error, dict) and "auto_fix" in phase.on_error:
+                    # Customized mode: on_error: {auto_fix: {...}}
+                    if isinstance(phase.on_error["auto_fix"], dict):
+                        auto_fix_config = AutoFixConfig(**phase.on_error["auto_fix"])
+                    else:
+                        auto_fix_config = AutoFixConfig()
+
+                if auto_fix_config and auto_fix_config.enabled:
+                    # Attempt auto-fix
+                    console.print(f"{indent}  [yellow]🔧 Attempting auto-fix...[/yellow]")
+                    try:
+                        result = self._auto_fix_and_retry(
+                            phase=phase,
+                            error=e,
+                            input_data=input_data,
+                            trace=trace,
+                            config=auto_fix_config,
+                            depth=depth
+                        )
+                        # Success - determine routing and return
+                        handoffs = phase.handoffs or []
+                        next_phase = determine_routing(result, phase.routing, handoffs)
+                        if next_phase:
+                            console.print(f"{indent}  [magenta]→ Routing to: {next_phase}[/magenta]")
+                            return next_phase
+                        return result
+                    except Exception as fix_error:
+                        # Auto-fix failed after all attempts - continue to other error handling or re-raise
+                        console.print(f"{indent}  [red]✗ Auto-fix exhausted all attempts[/red]")
+                        e = fix_error  # Use the last error for further handling
+
+                if isinstance(phase.on_error, str) and phase.on_error != "auto_fix":
                     # Route to error handler phase
                     console.print(f"{indent}  [yellow]→ Routing to error handler: {phase.on_error}[/yellow]")
                     # Store error info in state for error handler to access
                     self.echo.state["last_deterministic_error"] = {
                         "phase": phase.name,
                         "tool": phase.tool,
-                        "error": str(e.original_error) if e.original_error else str(e),
-                        "inputs": e.inputs
+                        "error": str(e.original_error) if hasattr(e, 'original_error') and e.original_error else str(e),
+                        "inputs": e.inputs if hasattr(e, 'inputs') else {}
                     }
                     return phase.on_error
-                elif isinstance(phase.on_error, dict):
+                elif isinstance(phase.on_error, dict) and "instructions" in phase.on_error:
                     # Inline LLM fallback - create temporary phase and execute
                     console.print(f"{indent}  [yellow]→ Falling back to LLM handler[/yellow]")
 
@@ -8085,8 +8349,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     self.echo.state["last_deterministic_error"] = {
                         "phase": phase.name,
                         "tool": phase.tool,
-                        "error": str(e.original_error) if e.original_error else str(e),
-                        "inputs": e.inputs
+                        "error": str(e.original_error) if hasattr(e, 'original_error') and e.original_error else str(e),
+                        "inputs": e.inputs if hasattr(e, 'inputs') else {}
                     }
 
                     # Create and execute fallback phase

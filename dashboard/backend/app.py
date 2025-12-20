@@ -3348,6 +3348,103 @@ def load_playground_cascade(session_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/playground/save-as', methods=['POST'])
+def save_playground_cascade_as():
+    """Save a playground cascade as a named tool or cascade.
+
+    This enables playground-built workflows to be reused as:
+    - Tools (saved to tackle/) - callable from other cascades via tackle: ["name"]
+    - Cascades (saved to cascades/) - runnable standalone workflows
+
+    Request body:
+        cascade_id: The name for the cascade (required, becomes tool name)
+        description: Optional description
+        save_to: "tackle" or "cascades" (default: "tackle")
+        cascade_yaml: The YAML content to save
+        keep_metadata: Whether to preserve _playground metadata for re-editing (default: true)
+
+    Returns:
+        success: boolean
+        filepath: path where saved
+        cascade_id: the saved cascade ID
+    """
+    try:
+        import yaml as yaml_module
+
+        data = request.json
+        cascade_id = data.get('cascade_id', '').strip()
+        description = data.get('description', '').strip()
+        save_to = data.get('save_to', 'tackle')
+        cascade_yaml = data.get('cascade_yaml')
+        keep_metadata = data.get('keep_metadata', True)
+
+        # Validate cascade_id
+        if not cascade_id:
+            return jsonify({'error': 'cascade_id is required'}), 400
+
+        # Validate cascade_id format (alphanumeric + underscore, starts with letter)
+        import re
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', cascade_id):
+            return jsonify({
+                'error': 'cascade_id must start with a letter and contain only letters, numbers, and underscores'
+            }), 400
+
+        if not cascade_yaml:
+            return jsonify({'error': 'cascade_yaml is required'}), 400
+
+        # Determine target directory
+        if save_to == 'tackle':
+            target_dir = TACKLE_DIR
+        elif save_to == 'cascades':
+            target_dir = CASCADES_DIR
+        else:
+            return jsonify({'error': f'Invalid save_to value: {save_to}. Use "tackle" or "cascades"'}), 400
+
+        # Ensure target directory exists
+        os.makedirs(target_dir, exist_ok=True)
+
+        # Parse the YAML to modify it
+        cascade_data = yaml_module.safe_load(cascade_yaml)
+
+        # Update cascade_id and description
+        cascade_data['cascade_id'] = cascade_id
+        if description:
+            cascade_data['description'] = description
+
+        # Optionally strip _playground metadata
+        if not keep_metadata and '_playground' in cascade_data:
+            del cascade_data['_playground']
+
+        # Check for existing file
+        filepath = os.path.join(target_dir, f"{cascade_id}.yaml")
+        if os.path.exists(filepath):
+            # Check if it's the same cascade being updated
+            existing = load_config_file(filepath)
+            existing_id = existing.get('cascade_id')
+            if existing_id != cascade_id:
+                return jsonify({
+                    'error': f'A different cascade already exists at {filepath}'
+                }), 409
+
+        # Save the file
+        with open(filepath, 'w') as f:
+            yaml_module.dump(cascade_data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+        print(f"[Playground SaveAs] Saved cascade '{cascade_id}' to {filepath}")
+
+        return jsonify({
+            'success': True,
+            'filepath': filepath,
+            'cascade_id': cascade_id,
+            'save_to': save_to
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/playground/model-costs', methods=['GET'])
 def get_model_costs():
     """Get average cost and duration per model from historical data.

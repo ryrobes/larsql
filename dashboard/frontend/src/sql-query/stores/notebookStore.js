@@ -76,6 +76,19 @@ const useNotebookStore = create(
       sessionId: null,
 
       // ============================================
+      // AUTO-FIX CONFIGURATION
+      // ============================================
+      // Global auto-fix settings (can be overridden per-cell)
+      autoFixConfig: {
+        enabled: true,  // Enable auto-fix by default
+        max_attempts: 2,
+        model: 'google/gemini-2.5-flash-lite',
+        prompt: null,  // Use default prompt
+      },
+      // Per-cell auto-fix overrides: { [phaseName]: { enabled, model, prompt } }
+      cellAutoFixOverrides: {},
+
+      // ============================================
       // UNDO/REDO HISTORY
       // ============================================
       undoStack: [],  // Stack of previous notebook states (phases snapshots)
@@ -496,6 +509,40 @@ const useNotebookStore = create(
       },
 
       // ============================================
+      // AUTO-FIX ACTIONS
+      // ============================================
+      setGlobalAutoFix: (config) => {
+        set(state => {
+          state.autoFixConfig = { ...state.autoFixConfig, ...config };
+        });
+      },
+
+      setCellAutoFix: (phaseName, config) => {
+        set(state => {
+          state.cellAutoFixOverrides[phaseName] = {
+            ...(state.cellAutoFixOverrides[phaseName] || {}),
+            ...config
+          };
+        });
+      },
+
+      clearCellAutoFix: (phaseName) => {
+        set(state => {
+          delete state.cellAutoFixOverrides[phaseName];
+        });
+      },
+
+      // Get effective auto-fix config for a cell (merges global + per-cell overrides)
+      getEffectiveAutoFixConfig: (phaseName) => {
+        const state = get();
+        const override = state.cellAutoFixOverrides[phaseName];
+        if (override) {
+          return { ...state.autoFixConfig, ...override };
+        }
+        return state.autoFixConfig;
+      },
+
+      // ============================================
       // EXECUTION ACTIONS
       // ============================================
       runCell: async (phaseName, forceRun = false) => {
@@ -560,6 +607,9 @@ const useNotebookStore = create(
             }
           }
 
+          // Get effective auto-fix config for this cell
+          const autoFixConfig = get().getEffectiveAutoFixConfig(phaseName);
+
           const res = await fetch(`${API_BASE_URL}/notebook/run-cell`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -567,7 +617,8 @@ const useNotebookStore = create(
               cell: phase,
               inputs: state.notebookInputs,
               prior_outputs: priorOutputs,
-              session_id: sessionId
+              session_id: sessionId,
+              auto_fix: autoFixConfig
             })
           });
 
@@ -579,6 +630,7 @@ const useNotebookStore = create(
               s.cellStates[phaseName] = {
                 status: 'error',
                 error: data.error,
+                autoFixError: data.auto_fix_error,
                 duration,
                 inputHash: currentHash,
                 cached: false
@@ -591,7 +643,11 @@ const useNotebookStore = create(
                 result: data,
                 duration,
                 inputHash: currentHash,
-                cached: false
+                cached: false,
+                // Track if this result came from auto-fix
+                autoFixed: data._auto_fixed || false,
+                fixAttempts: data._fix_attempts || null,
+                fixedCode: data._fixed_code || null
               };
             });
 

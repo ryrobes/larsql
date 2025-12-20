@@ -152,7 +152,7 @@ const usePlaygroundStore = create(
           target: edge.target,
           sourceHandle: edge.sourceHandle,
           targetHandle: edge.targetHandle,
-          animated: true,
+          // animated is computed dynamically in PlaygroundCanvas based on node running status
         });
       }
     }),
@@ -328,6 +328,55 @@ const usePlaygroundStore = create(
         yaml: yaml.dump(cascade, { lineWidth: -1 }),
         inputs,
       };
+    },
+
+    // Save cascade as a named tool or cascade
+    saveCascadeAs: async (options) => {
+      const { cascadeId, description, saveTo = 'tackle', keepMetadata = true } = options;
+      const state = get();
+      const { yaml: cascadeYaml } = state.generateCascade();
+
+      if (!cascadeYaml) {
+        return { success: false, error: 'Failed to generate cascade' };
+      }
+
+      try {
+        const response = await fetch('http://localhost:5001/api/playground/save-as', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cascade_id: cascadeId,
+            description,
+            save_to: saveTo,
+            cascade_yaml: cascadeYaml,
+            keep_metadata: keepMetadata,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          return { success: false, error: data.error };
+        }
+
+        // Update the loaded cascade ID so future saves update this cascade
+        set((state) => {
+          state.loadedCascadeId = cascadeId;
+        });
+
+        console.log(`[Store] Saved cascade as '${cascadeId}' to ${data.filepath}`);
+
+        return {
+          success: true,
+          cascadeId: data.cascade_id,
+          filepath: data.filepath,
+          saveTo: data.save_to,
+        };
+
+      } catch (err) {
+        console.error('[Store] Save cascade failed:', err);
+        return { success: false, error: err.message };
+      }
     },
 
     // ============================================
@@ -699,7 +748,7 @@ const usePlaygroundStore = create(
             target: e.target,
             sourceHandle,
             targetHandle,
-            animated: true,
+            // animated is computed dynamically in PlaygroundCanvas based on node running status
           };
         });
 
