@@ -11,47 +11,20 @@ description: |
 inputs_schema:
   initial_query: "Your first research question (optional)"
 
-# narrator:
-#     enabled: true
-#     #model: openai/gpt-5.2
-#     #model: anthropic/claude-haiku-4.5
-#     model: anthropic/claude-sonnet-4.5
-#     instructions: |
-#       You a sassy research assistant narrator providing real-time updates.
-
-#       Persona is a sassy, foul mouthed, street kid turned corpo expert data analyst. 
-#       Yet a beautiful and dangerous vixen, none the less.
-
-#       Generate very brief 1-2 sentence details of the status.
-
-#       Don't describe exactly what is happening, but just a contextual overview.
-#       Don't repeat the input parameters if we are already into the context loop and you have recent activity.
-#       Conversational, not clinical.
-
-#       Metadata:
-#       - Input: {{ input.original_input.initial_query }}
-#       - Current phase: {{ input.phase_name }}
-#       - Turn: {{ input.turn_number }}/{{ input.max_turns }}
-#       - Tools used: {{ input.tools_used }}
-#       - Recent activity: {{ input.context }}
-
-#     #triggers: [phase_start, tool_call, phase_complete]
-#     triggers: [phase_start, turn, phase_complete]
-#     min_interval_seconds: 5.0
-#     context_turns: 5
-
 narrator:                                                                                       
     enabled: true                                                                               
     mode: poll                                                                                  
     poll_interval_seconds: 5.0                                                                  
-    min_interval_seconds: 5.0                                                                   
+    min_interval_seconds: 8.0                                                                   
     context_turns: 15                                                                           
-    model: anthropic/claude-sonnet-4.5                                                          
+    #model: anthropic/claude-sonnet-4.5  
+    model: x-ai/grok-4-fast                                                    
     instructions: |                                                                             
       You a sassy research assistant narrator providing real-time updates.                      
                                                                                                 
       Persona is a sassy, foul mouthed, street kid turned corpo expert data analyst.            
-      Yet a beautiful and dangerous vixen, none the less.                                       
+      Yet a beautiful and dangerous vixen, none the less. 
+      You think that UFO sightings are dumb, BUT you begrudgingly will do the analysis since the boss says so.                            
                                                                                                 
       Generate very brief 1-2 sentence update about what JUST happened.                         
                                                                                                 
@@ -73,15 +46,18 @@ narrator:
 
 phases:
   - name: research_loop
-    ui_mode: research_cockpit  # Triggers automatic UI scaffolding injection
-    tackle: manifest  # Auto-select appropriate tools
+    ui_mode: research_cockpit  # Triggers automatic UI scaffolding injection (non-headless)
+    tackle: manifest  # Manifest agent will auto-select appropriate tools for system prompt injection 
+    #model: qwen/qwen-plus-2025-07-28:thinking
     #model: anthropic/claude-sonnet-4.5
     #model: google/gemini-3-pro-preview
-    #model: openai/gpt-5.2
-    model: anthropic/claude-opus-4.5 
+    model: openai/gpt-5.2
+    #model: anthropic/claude-opus-4.5 
+    #model: x-ai/grok-4.1-fast
+    #model: x-ai/grok-4
 
     rules:
-      max_turns: 100  # Allow long research sessions
+      max_turns: 100  # Allow long research sessions, HITL blocking prevents runaway anways
 
     handoffs:
       - research_loop  # Loop to self
@@ -189,6 +165,7 @@ phases:
       - ALWAYS check `result.error` before using `result.rows`
       - Form must: `hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc"`
       - Use `name="response[key]"` for form fields
+      - Please use the FULL responsive WIDTH instead of constraining it.
 
       ## Example Flow
 

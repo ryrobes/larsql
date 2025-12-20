@@ -23,6 +23,105 @@ import './ResearchCockpit.css';
  *
  * Unlike Perplexity: You SEE the orchestration, costs, tool selection, multi-model thinking
  */
+
+/**
+ * Build complete HTML document for artifact (mirrors buildIframeDocument from HTMLSection.js)
+ * Shared by ResearchCockpit and ExpandableCheckpoint for saving checkpoints as artifacts
+ */
+function buildArtifactHTML(bodyHTML) {
+  const baseCSS = `
+:root {
+  --bg-darkest: #0a0a0a;
+  --bg-dark: #121212;
+  --bg-card: #1a1a1a;
+  --border-default: #333;
+  --border-subtle: #222;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent-purple: #a78bfa;
+  --accent-blue: #4A9EDD;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--accent-purple);
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+}
+
+h1 { font-size: 1.875rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+
+p { margin: 0 0 0.75rem 0; }
+
+input, select, textarea {
+  background: var(--bg-darkest);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+button {
+  background: var(--accent-purple);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+code, pre {
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--bg-darkest);
+  border-radius: 4px;
+}
+
+code { padding: 2px 6px; font-size: 0.875em; }
+pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); }
+`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>${baseCSS}</style>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+</head>
+<body>
+${bodyHTML}
+</body>
+</html>`;
+}
+
 function ResearchCockpit({
   initialSessionId = null,
   onBack,
@@ -74,6 +173,8 @@ function ResearchCockpit({
 
   // Live data
   const [checkpoint, setCheckpoint] = useState(null);
+  const [currentCheckpointSaving, setCurrentCheckpointSaving] = useState(false);
+  const [currentCheckpointSaved, setCurrentCheckpointSaved] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [timeline, setTimeline] = useState([]); // History of interactions
   const [checkpointHistory, setCheckpointHistory] = useState([]); // ALL checkpoints for live session (both pending and responded)
@@ -100,6 +201,17 @@ function ResearchCockpit({
 
   // SSE for real-time updates
   const eventSourceRef = useRef(null);
+
+  // Refs to track state without causing useCallback recreation (prevents SSE reconnection loops)
+  const checkpointRef = useRef(null);
+  useEffect(() => {
+    checkpointRef.current = checkpoint;
+  }, [checkpoint]);
+
+  const savedSessionDataRef = useRef(null);
+  useEffect(() => {
+    savedSessionDataRef.current = savedSessionData;
+  }, [savedSessionData]);
 
   // Smooth amplitude changes for natural animation (lerp/tween)
   useEffect(() => {
@@ -313,8 +425,14 @@ function ResearchCockpit({
       if (!data.error && data.entries) {
         setSessionData(data);
 
-        // Extract ghost messages for live sessions, preserving createdAt/exiting state
-        if (!isSavedSession) {
+        // Extract ghost messages ONLY for COMPLETED saved sessions (historical replay)
+        // Live/active sessions receive ghost messages via SSE events - polling would create duplicates
+        // with different IDs, causing the "appearing/disappearing repeatedly" bug
+        // Note: A session can be saved (auto-saved) but still active - check status!
+        // Use ref to avoid dependency that causes SSE reconnection loops
+        const currentSavedData = savedSessionDataRef.current;
+        const isCompletedSavedSession = isSavedSession && currentSavedData?.status === 'completed';
+        if (isCompletedSavedSession) {
           setGhostMessages(prev => extractGhostMessages(data.entries, prev));
         }
 
@@ -383,7 +501,7 @@ function ResearchCockpit({
     } catch (err) {
       console.error('[ResearchCockpit] Failed to fetch session:', err);
     }
-  }, [sessionId, isSavedSession, extractGhostMessages]);
+  }, [sessionId, isSavedSession, extractGhostMessages]); // Note: savedSessionData accessed via ref to prevent SSE reconnection loops
 
   // Fetch pending checkpoint
   const fetchCheckpoint = useCallback(async () => {
@@ -423,9 +541,12 @@ function ResearchCockpit({
         // });
 
         // Set current pending checkpoint (if any)
-        if (pending && (!checkpoint || pending.id !== checkpoint.id)) {
+        // Use checkpointRef to avoid dependency cycle that causes SSE reconnections
+        const currentCheckpoint = checkpointRef.current;
+        if (pending && (!currentCheckpoint || pending.id !== currentCheckpoint.id)) {
           //console.log('[ResearchCockpit] ✓ Setting checkpoint:', pending.id);
           setCheckpoint(pending);
+          setCurrentCheckpointSaved(false); // Reset saved state for new checkpoint
 
           // Update status
           setOrchestrationState(prev => ({
@@ -442,7 +563,7 @@ function ResearchCockpit({
     } catch (err) {
       console.error('[ResearchCockpit] Failed to fetch checkpoint:', err);
     }
-  }, [sessionId, checkpoint]);
+  }, [sessionId]); // Removed checkpoint dependency - use checkpointRef instead
 
   // Setup SSE for real-time events
   useEffect(() => {
@@ -468,7 +589,7 @@ function ResearchCockpit({
         // Only process events for our session
         if (event.session_id !== sessionId) return;
 
-        console.log('[ResearchCockpit] ✓ Processing:', event.type);
+        //console.log('[ResearchCockpit] ✓ Processing:', event.type);
 
         switch (event.type) {
           case 'cascade_start':
@@ -559,6 +680,7 @@ function ResearchCockpit({
                   createdAt: Date.now(),
                   exiting: false
                 };
+                //console.log('[Ghost] + tool_call:', newGhost.id, 'total:', prev.length + 1);
                 return [...prev, newGhost];
               });
             }
@@ -591,6 +713,7 @@ function ResearchCockpit({
                   createdAt: Date.now(),
                   exiting: false
                 };
+                //console.log('[Ghost] + tool_result:', newGhost.id, 'total:', prev.length + 1);
                 return [...prev, newGhost];
               });
             }
@@ -629,7 +752,7 @@ function ResearchCockpit({
 
           case 'checkpoint_created':
           case 'checkpoint_waiting':
-            //console.log('[ResearchCockpit] Checkpoint created/waiting - clearing ghost messages');
+            //console.log('[Ghost] CLEAR: checkpoint_created/waiting event');
             // Clear ghost messages and round events when checkpoint arrives
             setGhostMessages([]);
             setRoundEvents([]); // Clear round events - checkpoint marks end of agent work
@@ -748,6 +871,10 @@ function ResearchCockpit({
 
       // Remove ghosts that have finished their exit animation
       setGhostMessages(prev => {
+        const toRemove = prev.filter(ghost => ghost.exiting && ghost.exitStartedAt && (now - ghost.exitStartedAt) >= EXIT_ANIMATION_MS);
+        if (toRemove.length > 0) {
+          //console.log('[Ghost] REMOVE (exit animation done):', toRemove.map(g => g.id));
+        }
         return prev.filter(ghost => {
           if (ghost.exiting && ghost.exitStartedAt) {
             return (now - ghost.exitStartedAt) < EXIT_ANIMATION_MS;
@@ -878,6 +1005,64 @@ function ResearchCockpit({
   // - cascade_start (initial record)
   // - checkpoint_resumed (incremental updates)
   // - cascade_complete (finalize)
+
+  // Save current checkpoint as artifact
+  const handleSaveCurrentCheckpointAsArtifact = async () => {
+    if (!checkpoint || currentCheckpointSaving || currentCheckpointSaved) return;
+
+    setCurrentCheckpointSaving(true);
+
+    try {
+      // Parse ui_spec if needed
+      let uiSpec = checkpoint.ui_spec;
+      if (typeof uiSpec === 'string') {
+        try {
+          uiSpec = JSON.parse(uiSpec);
+        } catch (e) {
+          uiSpec = null;
+        }
+      }
+
+      const htmlSection = uiSpec?.sections?.find(s => s.type === 'html');
+      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.phase_output || '<div>No content available</div>';
+
+      // Wrap with full HTML document
+      const htmlContent = buildArtifactHTML(bodyContent);
+
+      // Compute title
+      const phaseName = checkpoint.phase_name || 'decision';
+      const summary = checkpoint.summary || checkpoint.phase_output || '';
+      const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
+      const title = summarySnippet ? `${phaseName}: ${summarySnippet}` : `${phaseName} - Decision`;
+
+      const response = await fetch('http://localhost:5001/api/artifacts/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          cascade_id: checkpoint.cascade_id || cascadeId || 'unknown',
+          phase_name: checkpoint.phase_name || 'unknown',
+          title: title,
+          artifact_type: 'decision',
+          description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',
+          html_content: htmlContent,
+          tags: ['decision', 'checkpoint', checkpoint.checkpoint_type || 'general']
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.created) {
+        setCurrentCheckpointSaved(true);
+      } else {
+        console.error('Failed to save artifact:', data.error);
+      }
+    } catch (err) {
+      console.error('Error saving artifact:', err);
+    } finally {
+      setCurrentCheckpointSaving(false);
+    }
+  };
 
   // Handle branch creation from checkpoint (works for both saved and live sessions)
   const handleCreateBranch = async (checkpointIndex, newResponse) => {
@@ -1037,9 +1222,9 @@ function ResearchCockpit({
       {/* Main Layout */}
       {sessionId && !showPicker && (
         <div className="cockpit-layout">
-          {/* Main Content Area - Timeline */}
-          <div className="cockpit-main">
-            {/* Sticky Context Header - Shows initial inputs and latest checkpoint feedback */}
+          {/* Main Content Column - Header + Scrollable Content */}
+          <div className="cockpit-main-column">
+            {/* Context Header - Fixed at top, not scrolling */}
             <CascadeContextHeader
               cascadeInputs={cascadeInputs}
               checkpointHistory={checkpointHistory}
@@ -1047,8 +1232,9 @@ function ResearchCockpit({
               savedSessionData={savedSessionData}
             />
 
-
-            {/* Saved Session Timeline (ONLY for completed sessions) */}
+            {/* Scrollable Content Area */}
+            <div className="cockpit-main">
+              {/* Saved Session Timeline (ONLY for completed sessions) */}
             {isSavedSession && savedSessionData && savedSessionData.status === 'completed' && savedSessionData.checkpoints_data && savedSessionData.checkpoints_data.length > 0 && (
               <div className="saved-session-timeline">
                 <div className="timeline-header-section">
@@ -1141,6 +1327,18 @@ function ResearchCockpit({
                 {/* Current pending checkpoint (expanded, at bottom) */}
                 {checkpoint && checkpoint.ui_spec && (
                   <div className="checkpoint-container current">
+                    <button
+                      className={`checkpoint-save-btn ${currentCheckpointSaved ? 'saved' : ''}`}
+                      onClick={handleSaveCurrentCheckpointAsArtifact}
+                      disabled={currentCheckpointSaving || currentCheckpointSaved}
+                      title={currentCheckpointSaved ? 'Saved to Artifacts' : 'Save as Artifact'}
+                    >
+                      <Icon
+                        icon={currentCheckpointSaved ? 'mdi:check' : currentCheckpointSaving ? 'mdi:loading' : 'mdi:content-save-outline'}
+                        width="16"
+                        className={currentCheckpointSaving ? 'spinning' : ''}
+                      />
+                    </button>
                     {(() => {
                       const hasHTMLSection = checkpoint.ui_spec.sections?.some(s => s.type === 'html');
                       const htmlSection = checkpoint.ui_spec.sections?.find(s => s.type === 'html');
@@ -1277,6 +1475,7 @@ function ResearchCockpit({
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Right Sidebar - Live Orchestration Visualization */}
@@ -1309,6 +1508,76 @@ function ResearchCockpit({
  */
 function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, onBranch }) {
   const [expanded, setExpanded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+
+  // Compute artifact name from checkpoint data
+  const computeArtifactName = () => {
+    const phaseName = checkpoint.phase_name || 'decision';
+    const summary = checkpoint.summary || checkpoint.phase_output || '';
+    // Take first 50 chars of summary, clean up
+    const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    if (summarySnippet) {
+      return `${phaseName}: ${summarySnippet}`;
+    }
+    return `${phaseName} - Decision ${index + 1}`;
+  };
+
+  // Save checkpoint as artifact
+  const handleSaveAsArtifact = async (e) => {
+    e.stopPropagation(); // Prevent expand toggle
+
+    if (isSaving || isSaved) return;
+
+    setIsSaving(true);
+
+    try {
+      // Get the HTML content from the checkpoint
+      let uiSpec = checkpoint.ui_spec;
+      if (typeof uiSpec === 'string') {
+        try {
+          uiSpec = JSON.parse(uiSpec);
+        } catch (e) {
+          uiSpec = null;
+        }
+      }
+
+      const htmlSection = uiSpec?.sections?.find(s => s.type === 'html');
+      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.phase_output || '<div>No content available</div>';
+
+      // Wrap with full HTML document (same as artifact viewer expects)
+      const htmlContent = buildArtifactHTML(bodyContent);
+
+      const title = computeArtifactName();
+
+      const response = await fetch('http://localhost:5001/api/artifacts/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          cascade_id: checkpoint.cascade_id || savedSessionData?.cascade_id || 'unknown',
+          phase_name: checkpoint.phase_name || 'unknown',
+          title: title,
+          artifact_type: 'decision',
+          description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',
+          html_content: htmlContent,
+          tags: ['decision', 'checkpoint', checkpoint.checkpoint_type || 'general']
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.created) {
+        setIsSaved(true);
+      } else {
+        console.error('Failed to save artifact:', data.error);
+      }
+    } catch (err) {
+      console.error('Error saving artifact:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Handle form submission from HTMX iframe - create branch!
   const handleBranchSubmit = (response) => {
@@ -1366,6 +1635,18 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
             </span>
           </div>
         </div>
+        <button
+          className={`save-artifact-btn ${isSaved ? 'saved' : ''}`}
+          onClick={handleSaveAsArtifact}
+          disabled={isSaving || isSaved}
+          title={isSaved ? 'Saved to Artifacts' : 'Save as Artifact'}
+        >
+          <Icon
+            icon={isSaved ? 'mdi:check' : isSaving ? 'mdi:loading' : 'mdi:content-save-outline'}
+            width="16"
+            className={isSaving ? 'spinning' : ''}
+          />
+        </button>
         <Icon
           icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
           width="24"
@@ -1431,6 +1712,8 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
  * Provides persistent context for the user about the current cascade session
  */
 function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, savedSessionData }) {
+  const [isInputsCollapsed, setIsInputsCollapsed] = useState(false);
+
   // Combine checkpoints from live session and saved session
   const allCheckpoints = savedSessionData?.checkpoints_data?.length > 0
     ? savedSessionData.checkpoints_data
@@ -1470,12 +1753,20 @@ function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, sav
     <div className="cascade-context-header">
       {/* Initial Inputs Section */}
       {cascadeInputs && (
-        <div className="context-inputs-section">
-          <div className="context-label">
+        <div className={`context-inputs-section ${isInputsCollapsed ? 'collapsed' : ''}`}>
+          <div
+            className="context-label clickable"
+            onClick={() => setIsInputsCollapsed(!isInputsCollapsed)}
+          >
+            <Icon
+              icon="mdi:chevron-down"
+              width="16"
+              className={`accordion-chevron ${isInputsCollapsed ? 'collapsed' : ''}`}
+            />
             <Icon icon="mdi:input" width="14" />
             <span>Input</span>
           </div>
-          <div className="context-inputs">
+          <div className={`context-inputs ${isInputsCollapsed ? 'collapsed' : ''}`}>
             {Array.isArray(formattedInputs) ? (
               formattedInputs.map(({ key, value }) => (
                 <div key={key} className="input-item">

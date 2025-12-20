@@ -480,6 +480,8 @@ class ClickHouseAdapter:
                 update_data['tokens_in'] = update['tokens_in']
             if 'tokens_out' in update and update['tokens_out'] is not None:
                 update_data['tokens_out'] = update['tokens_out']
+            if 'tokens_reasoning' in update and update['tokens_reasoning'] is not None:
+                update_data['tokens_reasoning'] = update['tokens_reasoning']
             if 'provider' in update and update['provider']:
                 update_data['provider'] = update['provider']
             if 'model' in update and update['model']:

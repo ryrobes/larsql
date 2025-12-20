@@ -270,7 +270,7 @@ def is_research_cockpit_mode(phase: PhaseConfig, env_override: bool = None) -> b
     # Characteristics: self-loop + high max_turns + likely uses request_decision
     # This is a best-guess, explicit marker is preferred
     has_self_loop = hasattr(phase, 'handoffs') and phase.handoffs and phase.name in phase.handoffs
-    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and getattr(phase.rules, 'max_turns', 0) >= 20
+    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and (getattr(phase.rules, 'max_turns', 0) or 0) >= 20
 
     # We can't easily check if request_decision is in tackle since it might be in manifest
     # So we use self-loop + high max_turns as signal
@@ -324,7 +324,7 @@ def get_detection_reason(phase: PhaseConfig) -> str:
         return "WINDLASS_RESEARCH_MODE env var"
 
     has_self_loop = hasattr(phase, 'handoffs') and phase.handoffs and phase.name in phase.handoffs
-    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and getattr(phase.rules, 'max_turns', 0) >= 20
+    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and (getattr(phase.rules, 'max_turns', 0) or 0) >= 20
 
     if has_self_loop and has_high_max_turns:
         return f"heuristic (self-loop + max_turns={getattr(phase.rules, 'max_turns', 0)})"

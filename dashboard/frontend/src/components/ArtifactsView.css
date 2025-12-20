@@ -7,6 +7,80 @@
   padding: 2rem;
 }
 
+/* Selection Toolbar */
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(74, 158, 221, 0.1));
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.selection-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #2C3B4B;
+  color: #9AA5B1;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.selection-btn:hover:not(:disabled) {
+  background: rgba(74, 158, 221, 0.1);
+  border-color: #4A9EDD;
+  color: #4A9EDD;
+}
+
+.selection-btn.secondary {
+  background: rgba(74, 158, 221, 0.15);
+  border: 1px solid rgba(74, 158, 221, 0.4);
+  color: #4A9EDD;
+  font-weight: 600;
+}
+
+.selection-btn.secondary:hover:not(:disabled) {
+  background: rgba(74, 158, 221, 0.25);
+  border-color: #4A9EDD;
+}
+
+.selection-btn.primary {
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  border: none;
+  color: white;
+  font-weight: 600;
+}
+
+.selection-btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+
+.selection-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Filters */
 .artifacts-filters {
   display: flex;
@@ -132,11 +206,147 @@
   margin: 0.25rem 0;
 }
 
-/* Grid */
+/* Grid (flat view - legacy) */
 .artifacts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.5rem;
+}
+
+/* Grouped View */
+.artifacts-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Cascade Group */
+.cascade-group {
+  background: #16202A;
+  border: 1px solid #2C3B4B;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cascade-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.1), rgba(74, 158, 221, 0.05));
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.cascade-group-header:hover {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(74, 158, 221, 0.1));
+}
+
+.cascade-group-header .group-chevron {
+  color: #9ca3af;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.cascade-group-header .group-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.cascade-group-header .cascade-icon {
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.cascade-group-header .cascade-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #F0F4F8;
+  flex: 1;
+}
+
+.cascade-group-header .cascade-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #64748B;
+}
+
+.cascade-stats .stat-divider {
+  color: #4B5563;
+}
+
+/* Sessions Container */
+.cascade-sessions {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Session Group */
+.session-group {
+  border-top: 1px solid #2C3B4B;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  padding-left: 2.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.session-group-header:hover {
+  background: rgba(74, 158, 221, 0.08);
+}
+
+.session-group-header .group-chevron {
+  color: #6b7280;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.session-group-header .group-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.session-group-header .session-icon {
+  color: #4A9EDD;
+  flex-shrink: 0;
+}
+
+.session-group-header .session-id {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #9AA5B1;
+  font-family: 'IBM Plex Mono', monospace;
+  flex: 1;
+}
+
+.session-group-header .session-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+.session-stats .date {
+  color: #4A9EDD;
+}
+
+/* Session Artifacts Grid */
+.session-artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  padding-left: 2.5rem;
+  background: rgba(0, 0, 0, 0.15);
 }
 
 /* Artifact Card with glassmorphic background */
@@ -174,6 +384,45 @@
   transform: translateY(-4px);
   border-color: #4A9EDD;
   box-shadow: 0 12px 32px rgba(74, 158, 221, 0.25);
+}
+
+.artifact-card.selected {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.4);
+}
+
+/* Selection checkbox */
+.artifact-checkbox {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.artifact-card:hover .artifact-checkbox,
+.artifact-checkbox.checked {
+  opacity: 1;
+}
+
+.artifact-checkbox:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: #a78bfa;
+}
+
+.artifact-checkbox.checked {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.2);
 }
 
 /* Glassmorphic overlay (all content goes here) */

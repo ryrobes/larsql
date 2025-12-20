@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     total_tokens Nullable(Int32),
     cost Nullable(Float64),
 
+    -- Reasoning Tokens (OpenRouter extended thinking)
+    reasoning_enabled Nullable(Bool),
+    reasoning_effort LowCardinality(Nullable(String)),
+    reasoning_max_tokens Nullable(Int32),
+    tokens_reasoning Nullable(Int32),
+
     -- Content (stored as JSON strings for flexibility)
     content_json Nullable(String),
     full_request_json Nullable(String) CODEC(ZSTD(3)),
@@ -630,18 +636,21 @@ PARTITION BY toYYYYMM(frozen_at);
 SESSION_SUMMARY_MV_SCHEMA = """
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_session_summary
 ENGINE = SummingMergeTree()
-ORDER BY (session_id, cascade_id)
+ORDER BY (session_id, cascade_id_key)
 AS SELECT
     session_id,
+    coalesce(cascade_id, '') as cascade_id_key,
     cascade_id,
     min(timestamp) as start_time,
     max(timestamp) as end_time,
     sum(cost) as total_cost,
     sum(tokens_in) as total_tokens_in,
     sum(tokens_out) as total_tokens_out,
+    sum(tokens_reasoning) as total_tokens_reasoning,
     count() as message_count,
     countIf(role = 'assistant') as assistant_messages,
-    countIf(node_type = 'tool_call') as tool_calls
+    countIf(node_type = 'tool_call') as tool_calls,
+    countIf(reasoning_enabled = true) as reasoning_calls
 FROM unified_logs
 GROUP BY session_id, cascade_id;
 """

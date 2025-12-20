@@ -128,6 +128,157 @@ class ScreenshotService:
             traceback.print_exc()
             return False
 
+    async def capture_pdf_async(
+        self,
+        html: str,
+        output_path: str,
+        wait_for_charts: bool = True,
+        wait_seconds: float = 3.0
+    ) -> bool:
+        """
+        Render HTML and capture as PDF (async).
+
+        Args:
+            html: Complete HTML document to render
+            output_path: Where to save PDF
+            wait_for_charts: If True, wait for Plotly/Vega-Lite to finish
+            wait_seconds: How long to wait for rendering (default 3s)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self._ensure_browser()
+
+            # Create new page
+            page = await self._context.new_page()
+
+            try:
+                # Set HTML content
+                await page.set_content(html, wait_until='networkidle', timeout=10000)
+
+                # Wait for visualization libraries if needed
+                if wait_for_charts:
+                    # Wait for Plotly charts
+                    try:
+                        await page.wait_for_function(
+                            "typeof Plotly !== 'undefined' && Plotly._redrawCount !== undefined",
+                            timeout=2000
+                        )
+                    except:
+                        pass  # Plotly might not be used
+
+                    # Wait for Vega-Lite
+                    try:
+                        await page.wait_for_function(
+                            "typeof vegaEmbed !== 'undefined'",
+                            timeout=2000
+                        )
+                    except:
+                        pass  # Vega might not be used
+
+                    # Additional wait for charts to finish rendering
+                    await asyncio.sleep(wait_seconds)
+
+                # Ensure output directory exists
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+                # Capture as PDF
+                await page.pdf(
+                    path=output_path,
+                    format='A4',
+                    print_background=True,
+                    margin={'top': '0.5in', 'bottom': '0.5in', 'left': '0.5in', 'right': '0.5in'}
+                )
+
+                print(f"[Screenshots] PDF captured: {output_path}")
+                return True
+
+            finally:
+                await page.close()
+
+        except Exception as e:
+            print(f"[Screenshots] ERROR: Failed to capture PDF: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    async def capture_pdfs_and_merge(
+        self,
+        html_contents: list,
+        output_path: str,
+        wait_for_charts: bool = True,
+        wait_seconds: float = 2.0
+    ) -> bool:
+        """
+        Render multiple HTML documents and merge into a single PDF.
+
+        Args:
+            html_contents: List of (title, html) tuples
+            output_path: Where to save merged PDF
+            wait_for_charts: If True, wait for Plotly/Vega-Lite to finish
+            wait_seconds: How long to wait for each page rendering
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import tempfile
+        try:
+            from pypdf import PdfMerger
+        except ImportError:
+            print("[Screenshots] ERROR: pypdf not installed. Run: pip install pypdf")
+            return False
+
+        temp_pdfs = []
+        merger = PdfMerger()
+
+        try:
+            await self._ensure_browser()
+
+            for i, (title, html) in enumerate(html_contents):
+                # Create temp file for each PDF
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf')
+                os.close(temp_fd)
+                temp_pdfs.append(temp_path)
+
+                # Capture PDF
+                success = await self.capture_pdf_async(
+                    html=html,
+                    output_path=temp_path,
+                    wait_for_charts=wait_for_charts,
+                    wait_seconds=wait_seconds
+                )
+
+                if success:
+                    merger.append(temp_path)
+                    print(f"[Screenshots] Added PDF {i+1}/{len(html_contents)}: {title}")
+                else:
+                    print(f"[Screenshots] WARNING: Failed to capture PDF for: {title}")
+
+            # Ensure output directory exists
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            # Write merged PDF
+            merger.write(output_path)
+            merger.close()
+
+            print(f"[Screenshots] Merged PDF saved: {output_path}")
+            return True
+
+        except Exception as e:
+            print(f"[Screenshots] ERROR: Failed to merge PDFs: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+        finally:
+            # Cleanup temp files
+            for temp_path in temp_pdfs:
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
     def capture_htmx_render(
         self,
         html: str,

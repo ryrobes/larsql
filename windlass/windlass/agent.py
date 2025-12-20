@@ -4,6 +4,7 @@ import litellm
 from .echo import Echo
 from .logs import log_message
 from .config import get_config
+from .reasoning import parse_model_with_reasoning, ReasoningConfig
 
 class Agent:
     """
@@ -12,7 +13,14 @@ class Agent:
     allowing us to swap the backend easily.
     """
     def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None, use_native_tools: bool = False):
-        self.model = model
+        # Parse model string for reasoning config (e.g., "xai/grok-4::high(8000)")
+        # This separates the clean model name from reasoning configuration
+        clean_model, reasoning_config = parse_model_with_reasoning(model)
+
+        self.model = clean_model  # Clean model name for API calls
+        self.model_requested = model  # Original model string with reasoning spec for logging
+        self.reasoning_config = reasoning_config  # ReasoningConfig or None
+
         self.system_prompt = system_prompt
         self.tools = tools or []
         self.base_url = base_url
@@ -70,7 +78,7 @@ class Agent:
             "base_url": self.base_url,
             "api_key": self.api_key
         }
-        
+
         # Explicitly set provider for OpenRouter to avoid ambiguity
         if self.base_url and "openrouter" in self.base_url:
              args["custom_llm_provider"] = "openai"
@@ -84,6 +92,14 @@ class Agent:
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"
+
+        # Inject reasoning config if present (OpenRouter extended thinking)
+        # See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+        if self.reasoning_config:
+            reasoning_dict = self.reasoning_config.to_api_dict()
+            if reasoning_dict:
+                # LiteLLM passes extra_body to the provider as-is
+                args["extra_body"] = {"reasoning": reasoning_dict}
 
         # Sanitize messages: Remove Echo fields and ensure API compliance
         # LLM APIs only accept: role, content, tool_calls, tool_call_id, name
@@ -137,7 +153,8 @@ class Agent:
             "model": self.model,
             "messages": messages,  # Complete history
             "tools": self.tools if self.tools else None,
-            "tool_choice": "auto" if self.tools else None
+            "tool_choice": "auto" if self.tools else None,
+            "reasoning": self.reasoning_config.to_api_dict() if self.reasoning_config else None
         }
 
         retries = 2
@@ -188,15 +205,31 @@ class Agent:
                 from .blocking_cost import extract_provider_from_model
                 provider = extract_provider_from_model(self.model)
 
+                # Extract reasoning tokens from response if available
+                # OpenRouter returns reasoning_tokens in usage for models that support it
+                tokens_reasoning = None
+                if hasattr(response, 'usage'):
+                    # Try different field names that providers might use
+                    if hasattr(response.usage, 'reasoning_tokens'):
+                        tokens_reasoning = response.usage.reasoning_tokens
+                    elif hasattr(response.usage, 'thinking_tokens'):
+                        tokens_reasoning = response.usage.thinking_tokens
+
                 # Add metadata to response - cost will be fetched later by unified logger
                 msg_dict.update({
                     "full_request": full_request,
                     "full_response": full_response,
                     "model": response.model if hasattr(response, 'model') else self.model,
+                    "model_requested": self.model_requested,  # Original model string with reasoning spec
                     "cost": None,  # Will be fetched by unified logger
                     "tokens_in": 0,  # Will be fetched by unified logger
                     "tokens_out": 0,  # Will be fetched by unified logger
-                    "provider": provider
+                    "tokens_reasoning": tokens_reasoning,
+                    "provider": provider,
+                    # Reasoning config info for logging
+                    "reasoning_enabled": self.reasoning_config is not None,
+                    "reasoning_effort": self.reasoning_config.effort if self.reasoning_config else None,
+                    "reasoning_max_tokens": self.reasoning_config.max_tokens if self.reasoning_config else None,
                 })
 
                 return msg_dict

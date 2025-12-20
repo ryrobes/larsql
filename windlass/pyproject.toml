@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "litellm",
     "chdb",
+    "pypdf",
     "duckdb",  # Still used by smart_sql_run tool for agent queries
     "pandas",
     "pyarrow",

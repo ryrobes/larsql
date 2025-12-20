@@ -37,6 +37,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
             "cost": None,
             "tokens_in": 0,
             "tokens_out": 0,
+            "tokens_reasoning": None,
             "provider": "unknown"
         }
 
@@ -46,6 +47,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
             "cost": None,
             "tokens_in": 0,
             "tokens_out": 0,
+            "tokens_reasoning": None,
             "provider": "unknown"
         }
 
@@ -65,6 +67,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                 "cost": None,
                 "tokens_in": 0,
                 "tokens_out": 0,
+                "tokens_reasoning": None,
                 "provider": "unknown"
             }
 
@@ -79,13 +82,24 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                 tokens_out = data.get("native_tokens_completion", 0) or data.get("tokens_completion", 0)
                 provider = data.get("provider", "unknown")
 
+                # Extract reasoning/thinking tokens if available
+                # OpenRouter may return these as native_tokens_reasoning or tokens_reasoning
+                tokens_reasoning = (
+                    data.get("native_tokens_reasoning") or
+                    data.get("tokens_reasoning") or
+                    data.get("reasoning_tokens") or
+                    None
+                )
+
                 # Check if we have actual data (cost > 0 or tokens > 0)
                 if cost > 0 or tokens_in > 0 or tokens_out > 0:
-                    print(f"[Cost] Fetched for {request_id}: ${cost} ({tokens_in}+{tokens_out} tokens)")
+                    reasoning_msg = f", {tokens_reasoning} reasoning" if tokens_reasoning else ""
+                    print(f"[Cost] Fetched for {request_id}: ${cost} ({tokens_in}+{tokens_out} tokens{reasoning_msg})")
                     return {
                         "cost": cost,
                         "tokens_in": tokens_in,
                         "tokens_out": tokens_out,
+                        "tokens_reasoning": tokens_reasoning,
                         "provider": provider
                     }
                 else:
@@ -102,6 +116,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                             "cost": None,
                             "tokens_in": 0,
                             "tokens_out": 0,
+                            "tokens_reasoning": None,
                             "provider": provider or "unknown"
                         }
             elif resp.status_code == 404:
@@ -122,6 +137,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                         "cost": None,
                         "tokens_in": 0,
                         "tokens_out": 0,
+                        "tokens_reasoning": None,
                         "provider": "unknown"
                     }
             else:
@@ -131,6 +147,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                     "cost": None,
                     "tokens_in": 0,
                     "tokens_out": 0,
+                    "tokens_reasoning": None,
                     "provider": "unknown"
                 }
 
@@ -140,6 +157,7 @@ def fetch_cost_blocking(request_id: str, max_wait_seconds: float = 10.0) -> Dict
                 "cost": None,
                 "tokens_in": 0,
                 "tokens_out": 0,
+                "tokens_reasoning": None,
                 "provider": "unknown"
             }
 

@@ -22,12 +22,20 @@
   position: relative;
 }
 
-/* Main Content Area - Only scrolling element */
+/* Main Content Column - Contains fixed header + scrollable content */
+.cockpit-main-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;  /* Contain children */
+  min-width: 0;  /* Allow flex shrinking */
+}
+
+/* Main Content Area - Scrolling element below the header */
 .cockpit-main {
   flex: 1;
-  padding-left: 24px;
-  padding-right: 24px;
-  padding-bottom: 24px;
+  padding: 24px;
+  padding-top: 16px;  /* Less top padding since header is above */
   overflow-y: auto;  /* This is the ONLY scrolling element */
   overflow-x: hidden;
   background: linear-gradient(180deg, #0a0a0a 0%, #0f0f0f 100%);
@@ -45,9 +53,47 @@
 
 /* Current pending checkpoint - highlighted */
 .checkpoint-container.current {
+  position: relative;
   border: 2px solid #a78bfa;
   background: linear-gradient(135deg, #1a1a1a, #222);
   box-shadow: 0 8px 24px rgba(167, 139, 250, 0.2);
+}
+
+/* Save button for current checkpoint */
+.checkpoint-save-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background: rgba(26, 26, 26, 0.9);
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.checkpoint-save-btn:hover:not(:disabled) {
+  opacity: 1;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
+  border-color: rgba(167, 139, 250, 0.5);
+}
+
+.checkpoint-save-btn:disabled {
+  cursor: default;
+}
+
+.checkpoint-save-btn.saved {
+  opacity: 1;
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .checkpoint-html-view {
@@ -389,6 +435,39 @@
 
 .expandable-checkpoint.expanded .expand-icon {
   transform: rotate(180deg);
+}
+
+/* Save as Artifact Button */
+.save-artifact-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.5;
+}
+
+.save-artifact-btn:hover:not(:disabled) {
+  opacity: 1;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.save-artifact-btn:disabled {
+  cursor: default;
+}
+
+.save-artifact-btn.saved {
+  opacity: 1;
+  color: #10b981;
 }
 
 /* Expanded Content */
@@ -760,16 +839,13 @@
   word-break: break-word;
 }
 
-/* Cascade Context Header - Sticky header showing inputs and feedback */
+/* Cascade Context Header - Fixed header above scrolling content */
 .cascade-context-header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;  /* Don't shrink */
   z-index: 100;
-  background: linear-gradient(180deg, #0f0f0f 0%, rgba(15, 15, 15, 0.95) 100%);
-  backdrop-filter: blur(8px);
+  background: linear-gradient(180deg, #0f0f0f 0%, rgba(15, 15, 15, 0.98) 100%);
   border-bottom: 1px solid rgba(167, 139, 250, 0.15);
   padding: 14px 24px;
-  margin: -24px -24px 20px -24px; /* Extend to edges of cockpit-main, flush with header */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -793,10 +869,39 @@
   color: #a78bfa;
 }
 
+.context-label.clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.context-label.clickable:hover {
+  opacity: 0.8;
+}
+
+.accordion-chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.accordion-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
 .context-inputs {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
+  opacity: 1;
+}
+
+.context-inputs.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
 }
 
 .input-item {
@@ -819,10 +924,12 @@
 }
 
 .input-value {
-  color: #f3f4f6;
-  font-weight: 600;
-  /* font-size: 1rem;
-  line-height: 1.4; */
+  /* color: #f3f4f6; */
+  opacity: 0.65;
+  color: #6b7280;
+  font-weight: 700;
+  /* font-size: 1rem; */
+  line-height: 1.4; 
   text-align: right;
   padding-left: 30px;
   margin-top: -18px;
@@ -832,8 +939,8 @@
   /* word-break: break-word; */
   hyphens: auto;
   white-space: pre-wrap;  /* Preserve newlines for pretty-printed JSON */
-  font-family: 'Inter', 'IBM Plex Mono', monospace;
-  font-size: 1.1rem;
+  font-family: 'Merriweather', 'IBM Plex Mono', monospace;
+  font-size: 0.9rem;
 }
 
 .input-value.single {

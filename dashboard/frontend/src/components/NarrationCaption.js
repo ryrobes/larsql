@@ -80,9 +80,11 @@ function NarrationCaption({ text, duration, isPlaying, amplitude }) {
               key={index}
               className={`caption-word ${isSpoken ? 'spoken' : ''} ${isCurrent ? 'current' : ''}`}
               style={isCurrent ? {
-                // Pulse current word with amplitude
-                transform: `scale(${1 + amplitude * 0.15})`,
-                textShadow: `0 0 ${8 + amplitude * 12}px rgba(167, 139, 250, ${0.6 + amplitude * 0.4})`
+                // Pulse glow with amplitude - no transform to avoid layout shift
+                textShadow: `
+                  0 0 ${8 + amplitude * 20}px rgba(167, 139, 250, ${0.6 + amplitude * 0.4}),
+                  0 0 ${4 + amplitude * 10}px rgba(167, 139, 250, ${0.8 + amplitude * 0.2})
+                `
               } : undefined}
             >
               {word}

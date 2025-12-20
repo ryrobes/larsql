@@ -199,7 +199,7 @@ class UnifiedLogger:
     def _fetch_cost_with_retry(self, request_id: str, api_key: str) -> Dict:
         """Fetch cost data from OpenRouter with retries on 404."""
         if not api_key or not request_id:
-            return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown", "model": None}
+            return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
 
         headers = {"Authorization": f"Bearer {api_key}"}
         url = f"https://openrouter.ai/api/v1/generation?id={request_id}"
@@ -222,12 +222,21 @@ class UnifiedLogger:
                     tokens_out = data.get("native_tokens_completion") or data.get("tokens_completion") or 0
                     provider = data.get("provider") or "unknown"
 
+                    # Extract reasoning/thinking tokens if available
+                    tokens_reasoning = (
+                        data.get("native_tokens_reasoning") or
+                        data.get("tokens_reasoning") or
+                        data.get("reasoning_tokens") or
+                        None
+                    )
+
                     if cost > 0 or tokens_in > 0 or tokens_out > 0:
                         model = data.get("model")  # OpenRouter returns the model used
                         return {
                             "cost": cost,
                             "tokens_in": tokens_in,
                             "tokens_out": tokens_out,
+                            "tokens_reasoning": tokens_reasoning,
                             "provider": provider,
                             "model": model
                         }
@@ -248,7 +257,7 @@ class UnifiedLogger:
                 continue
 
         # All retries exhausted
-        return {"cost": None, "tokens_in": 0, "tokens_out": 0, "provider": "unknown", "model": None}
+        return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
 
     def _publish_cost_event(self, item: Dict, cost_data: Dict):
         """Publish cost_update event to event bus for real-time UI updates."""
@@ -331,6 +340,12 @@ class UnifiedLogger:
         tokens_in: int = None,
         tokens_out: int = None,
         cost: float = None,
+
+        # Reasoning tokens (OpenRouter extended thinking)
+        reasoning_enabled: bool = None,
+        reasoning_effort: str = None,
+        reasoning_max_tokens: int = None,
+        tokens_reasoning: int = None,
 
         # Content
         content: Any = None,
@@ -445,6 +460,12 @@ class UnifiedLogger:
             "tokens_out": tokens_out,
             "total_tokens": total_tokens,
             "cost": cost,
+
+            # Reasoning tokens
+            "reasoning_enabled": reasoning_enabled,
+            "reasoning_effort": reasoning_effort,
+            "reasoning_max_tokens": reasoning_max_tokens,
+            "tokens_reasoning": tokens_reasoning,
 
             # Content (JSON blobs)
             "content_json": safe_json(content),
@@ -595,6 +616,10 @@ def log_unified(
     tokens_in: int = None,
     tokens_out: int = None,
     cost: float = None,
+    reasoning_enabled: bool = None,
+    reasoning_effort: str = None,
+    reasoning_max_tokens: int = None,
+    tokens_reasoning: int = None,
     content: Any = None,
     full_request: dict = None,
     full_response: dict = None,
@@ -647,6 +672,10 @@ def log_unified(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         cost=cost,
+        reasoning_enabled=reasoning_enabled,
+        reasoning_effort=reasoning_effort,
+        reasoning_max_tokens=reasoning_max_tokens,
+        tokens_reasoning=tokens_reasoning,
         content=content,
         full_request=full_request,
         full_response=full_response,

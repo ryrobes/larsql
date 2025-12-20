@@ -80,6 +80,7 @@ soundings:
 
 phases:
   - name: ideate_plans
+    #model: "anthropic/claude-sonnet-4.5"
     instructions: |
       ## Design Challenge
 
@@ -122,24 +123,20 @@ phases:
       ### Success Criteria
       [How we know this worked]
 
-    tackle: []
+    tackle: ["create_artifact"]
 
     # INNER LEVEL: 10 parallel plans across multiple models
     soundings:
-      factor: 10
-      max_parallel: 5
+      factor: 6
 
       # Multi-model configuration - the "big 3" plus wildcards
       models:
-        # The Big 3
-        "anthropic/claude-sonnet-4": { factor: 2 }
-        "openai/gpt-4.1": { factor: 2 }
-        "google/gemini-2.5-flash": { factor: 2 }
-        # Wildcards - for shiggles
-        "x-ai/grok-3-mini": { factor: 2 }
-        "deepseek/deepseek-chat-v3-0324": { factor: 2 }
+        #- anthropic/claude-sonnet-4.5
+        - anthropic/claude-opus-4.5
+        - openai/gpt-5.2
+        - x-ai/grok-4
 
-      model_strategy: round_robin
+      model_strategy: round-robin
       mutate: true
       mutation_mode: approach  # Use different thinking strategies
 
@@ -184,6 +181,7 @@ phases:
 
       # REFORGE: Iterate the winner 3 times for depth
       reforge:
+        model: anthropic/claude-sonnet-4.5 
         steps: 3
         factor_per_step: 2
         mutate: false  # Keep consistent during refinement
@@ -233,6 +231,7 @@ phases:
       max_turns: 1  # Single generation per sounding
 
   - name: final_polish
+    model: anthropic/claude-sonnet-4.5
     instructions: |
       ## The Winning Plan
 
@@ -249,7 +248,10 @@ phases:
 
       Do NOT change the substance. This is cosmetic only.
 
-    tackle: []
+      Create the plan as an artifact when done please! 
+      And when you make the artifact please make sure you tag it as the winner and perhaps indicate that in the title briefly.
+
+    tackle: ["create_artifact"]
     context:
       from: [previous]
     rules:

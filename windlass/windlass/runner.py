@@ -3038,6 +3038,12 @@ To call this tool, output a JSON code block:
         eval_full_request = eval_response.get("full_request")
         eval_full_response = eval_response.get("full_response")
 
+        # Extract reasoning token data (OpenRouter extended thinking)
+        eval_reasoning_enabled = eval_response.get("reasoning_enabled")
+        eval_reasoning_effort = eval_response.get("reasoning_effort")
+        eval_reasoning_max_tokens = eval_response.get("reasoning_max_tokens")
+        eval_tokens_reasoning = eval_response.get("tokens_reasoning")
+
         log_unified(
             session_id=self.session_id,
             parent_session_id=getattr(self, 'parent_session_id', None),
@@ -3054,6 +3060,10 @@ To call this tool, output a JSON code block:
             tokens_in=eval_tokens_in,
             tokens_out=eval_tokens_out,
             cost=eval_cost,
+            reasoning_enabled=eval_reasoning_enabled,
+            reasoning_effort=eval_reasoning_effort,
+            reasoning_max_tokens=eval_reasoning_max_tokens,
+            tokens_reasoning=eval_tokens_reasoning,
             content=eval_content,
             full_request=eval_full_request,
             full_response=eval_full_response,
@@ -8100,6 +8110,12 @@ Refinement directive: {reforge_config.honing_prompt}
                     tokens_out = response_dict.get("tokens_out", 0)
                     provider = response_dict.get("provider", "unknown")
 
+                    # Extract reasoning token data (OpenRouter extended thinking)
+                    reasoning_enabled = response_dict.get("reasoning_enabled")
+                    reasoning_effort = response_dict.get("reasoning_effort")
+                    reasoning_max_tokens = response_dict.get("reasoning_max_tokens")
+                    tokens_reasoning = response_dict.get("tokens_reasoning")
+
                     # Build metadata
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
@@ -8152,6 +8168,10 @@ Refinement directive: {reforge_config.honing_prompt}
                         tokens_in=tokens_in,
                         tokens_out=tokens_out,
                         cost=cost,
+                        reasoning_enabled=reasoning_enabled,
+                        reasoning_effort=reasoning_effort,
+                        reasoning_max_tokens=reasoning_max_tokens,
+                        tokens_reasoning=tokens_reasoning,
                         content=content,
                         full_request=full_request,
                         full_response=full_response,
@@ -8510,6 +8530,12 @@ Refinement directive: {reforge_config.honing_prompt}
                         full_request = follow_up.get("full_request")  # Capture full request
                         full_response = follow_up.get("full_response")  # Capture full response
 
+                        # Extract reasoning token data (OpenRouter extended thinking)
+                        followup_reasoning_enabled = follow_up.get("reasoning_enabled")
+                        followup_reasoning_effort = follow_up.get("reasoning_effort")
+                        followup_reasoning_max_tokens = follow_up.get("reasoning_max_tokens")
+                        followup_tokens_reasoning = follow_up.get("tokens_reasoning")
+
                         # NOTE: Don't call track_request() - old async cost system is deprecated
                         # Cost tracking now handled by unified_logs.py non-blocking worker
 
@@ -8544,6 +8570,10 @@ Refinement directive: {reforge_config.honing_prompt}
                                 full_response=full_response,  # ADD: Include complete response
                                 sounding_index=self.current_phase_sounding_index or self.sounding_index,  # FIX: Tag with sounding
                                 reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
+                                reasoning_enabled=followup_reasoning_enabled,
+                                reasoning_effort=followup_reasoning_effort,
+                                reasoning_max_tokens=followup_reasoning_max_tokens,
+                                tokens_reasoning=followup_tokens_reasoning,
                                 metadata=self._get_metadata({"is_follow_up": True, "turn_number": self.current_turn_number})
                             )
 

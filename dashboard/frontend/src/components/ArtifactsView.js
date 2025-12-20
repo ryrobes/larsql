@@ -33,6 +33,9 @@ function ArtifactsView({
   const [cascadeFilter, setCascadeFilter] = useState(initialCascadeFilter);
   const [typeFilter, setTypeFilter] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedArtifacts, setSelectedArtifacts] = useState(new Set());
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingHTML, setIsExportingHTML] = useState(false);
 
   // Fetch artifacts
   useEffect(() => {
@@ -83,6 +86,185 @@ function ArtifactsView({
     return acc;
   }, {});
 
+  // Group artifacts by cascade, then by session
+  const groupedArtifacts = filteredArtifacts.reduce((acc, art) => {
+    const cascadeId = art.cascade_id || 'unknown';
+    const sessionId = art.session_id || 'unknown';
+
+    if (!acc[cascadeId]) {
+      acc[cascadeId] = {
+        sessions: {},
+        totalCount: 0
+      };
+    }
+
+    if (!acc[cascadeId].sessions[sessionId]) {
+      acc[cascadeId].sessions[sessionId] = {
+        artifacts: [],
+        latestDate: null
+      };
+    }
+
+    acc[cascadeId].sessions[sessionId].artifacts.push(art);
+    acc[cascadeId].totalCount++;
+
+    // Track latest date for sorting
+    const artDate = art.created_at ? new Date(art.created_at) : null;
+    if (artDate && (!acc[cascadeId].sessions[sessionId].latestDate ||
+        artDate > acc[cascadeId].sessions[sessionId].latestDate)) {
+      acc[cascadeId].sessions[sessionId].latestDate = artDate;
+    }
+
+    return acc;
+  }, {});
+
+  // Convert to sorted arrays
+  const cascadeGroups = Object.entries(groupedArtifacts)
+    .map(([cascadeId, data]) => ({
+      cascadeId,
+      sessions: Object.entries(data.sessions)
+        .map(([sessionId, sessionData]) => ({
+          sessionId,
+          artifacts: sessionData.artifacts.sort((a, b) =>
+            new Date(b.created_at) - new Date(a.created_at)
+          ),
+          latestDate: sessionData.latestDate
+        }))
+        .sort((a, b) => (b.latestDate || 0) - (a.latestDate || 0)),
+      totalCount: data.totalCount
+    }))
+    .sort((a, b) => {
+      // Sort cascades by their most recent artifact
+      const aLatest = a.sessions[0]?.latestDate || 0;
+      const bLatest = b.sessions[0]?.latestDate || 0;
+      return bLatest - aLatest;
+    });
+
+  // Collapse state for cascade and session groups
+  const [collapsedCascades, setCollapsedCascades] = useState({});
+  const [collapsedSessions, setCollapsedSessions] = useState({});
+
+  const toggleCascade = (cascadeId) => {
+    setCollapsedCascades(prev => ({
+      ...prev,
+      [cascadeId]: !prev[cascadeId]
+    }));
+  };
+
+  const toggleSession = (sessionId) => {
+    setCollapsedSessions(prev => ({
+      ...prev,
+      [sessionId]: !prev[sessionId]
+    }));
+  };
+
+  // Selection handlers
+  const toggleArtifactSelection = (artifactId, e) => {
+    e.stopPropagation(); // Prevent card click
+    setSelectedArtifacts(prev => {
+      const next = new Set(prev);
+      if (next.has(artifactId)) {
+        next.delete(artifactId);
+      } else {
+        next.add(artifactId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedArtifacts(new Set());
+  };
+
+  const selectAllVisible = () => {
+    const allIds = filteredArtifacts.map(a => a.id);
+    setSelectedArtifacts(new Set(allIds));
+  };
+
+  // PDF Export
+  const handleExportPDF = async () => {
+    if (selectedArtifacts.size === 0) return;
+
+    setIsExportingPDF(true);
+
+    try {
+      const response = await fetch('http://localhost:5001/api/artifacts/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artifact_ids: Array.from(selectedArtifacts)
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Export failed');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `artifacts_export_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      // Clear selection after successful export
+      clearSelection();
+
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert(`PDF export failed: ${err.message}`);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // HTML Bundle Export
+  const handleExportHTML = async () => {
+    if (selectedArtifacts.size === 0) return;
+
+    setIsExportingHTML(true);
+
+    try {
+      const response = await fetch('http://localhost:5001/api/artifacts/export-html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artifact_ids: Array.from(selectedArtifacts)
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Export failed');
+      }
+
+      // Download the zip
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `artifacts_bundle_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      // Clear selection after successful export
+      clearSelection();
+
+    } catch (err) {
+      console.error('HTML export failed:', err);
+      alert(`HTML export failed: ${err.message}`);
+    } finally {
+      setIsExportingHTML(false);
+    }
+  };
+
   // Type icons
   const typeIcons = {
     dashboard: 'mdi:view-dashboard',
@@ -90,6 +272,7 @@ function ArtifactsView({
     chart: 'mdi:chart-line',
     table: 'mdi:table',
     analysis: 'mdi:brain',
+    decision: 'mdi:help-circle-outline',
     custom: 'mdi:file-code'
   };
 
@@ -131,6 +314,42 @@ function ArtifactsView({
         sseConnected={sseConnected}
       />
 
+      {/* Selection Toolbar - appears when items selected */}
+      {selectedArtifacts.size > 0 && (
+        <div className="selection-toolbar">
+          <div className="selection-info">
+            <Icon icon="mdi:checkbox-marked" width="20" />
+            <span>{selectedArtifacts.size} artifact{selectedArtifacts.size !== 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="selection-actions">
+            <button className="selection-btn" onClick={selectAllVisible}>
+              <Icon icon="mdi:select-all" width="16" />
+              Select All
+            </button>
+            <button className="selection-btn" onClick={clearSelection}>
+              <Icon icon="mdi:close" width="16" />
+              Clear
+            </button>
+            <button
+              className="selection-btn secondary"
+              onClick={handleExportHTML}
+              disabled={isExportingHTML || isExportingPDF}
+            >
+              <Icon icon={isExportingHTML ? "mdi:loading" : "mdi:language-html5"} width="18" className={isExportingHTML ? 'spinning' : ''} />
+              {isExportingHTML ? 'Exporting...' : 'HTML Bundle'}
+            </button>
+            <button
+              className="selection-btn primary"
+              onClick={handleExportPDF}
+              disabled={isExportingPDF || isExportingHTML}
+            >
+              <Icon icon={isExportingPDF ? "mdi:loading" : "mdi:file-pdf-box"} width="18" className={isExportingPDF ? 'spinning' : ''} />
+              {isExportingPDF ? 'Exporting...' : 'Export PDF'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="artifacts-filters">
         <div className="search-bar">
@@ -150,7 +369,7 @@ function ArtifactsView({
           >
             All Types
           </button>
-          {['dashboard', 'report', 'chart', 'table', 'analysis'].map(type => (
+          {['dashboard', 'report', 'chart', 'table', 'analysis', 'decision'].map(type => (
             <button
               key={type}
               className={`filter-pill ${typeFilter === type ? 'active' : ''}`}
@@ -192,13 +411,77 @@ function ArtifactsView({
       )}
 
       {!loading && !error && filteredArtifacts.length > 0 && (
-        <div className="artifacts-grid">
-          {filteredArtifacts.map(artifact => (
-            <ArtifactCard
-              key={artifact.id}
-              artifact={artifact}
-              onClick={() => window.location.hash = `#/artifact/${artifact.id}`}
-            />
+        <div className="artifacts-grouped">
+          {cascadeGroups.map(cascadeGroup => (
+            <div key={cascadeGroup.cascadeId} className="cascade-group">
+              {/* Cascade Header */}
+              <div
+                className={`cascade-group-header ${collapsedCascades[cascadeGroup.cascadeId] ? 'collapsed' : ''}`}
+                onClick={() => toggleCascade(cascadeGroup.cascadeId)}
+              >
+                <Icon
+                  icon="mdi:chevron-down"
+                  width="20"
+                  className={`group-chevron ${collapsedCascades[cascadeGroup.cascadeId] ? 'collapsed' : ''}`}
+                />
+                <Icon icon="mdi:source-branch" width="20" className="cascade-icon" />
+                <span className="cascade-name">{cascadeGroup.cascadeId}</span>
+                <span className="cascade-stats">
+                  <span className="stat">{cascadeGroup.totalCount} artifact{cascadeGroup.totalCount !== 1 ? 's' : ''}</span>
+                  <span className="stat-divider">·</span>
+                  <span className="stat">{cascadeGroup.sessions.length} session{cascadeGroup.sessions.length !== 1 ? 's' : ''}</span>
+                </span>
+              </div>
+
+              {/* Sessions within Cascade */}
+              {!collapsedCascades[cascadeGroup.cascadeId] && (
+                <div className="cascade-sessions">
+                  {cascadeGroup.sessions.map(session => (
+                    <div key={session.sessionId} className="session-group">
+                      {/* Session Header */}
+                      <div
+                        className={`session-group-header ${collapsedSessions[session.sessionId] ? 'collapsed' : ''}`}
+                        onClick={() => toggleSession(session.sessionId)}
+                      >
+                        <Icon
+                          icon="mdi:chevron-down"
+                          width="16"
+                          className={`group-chevron ${collapsedSessions[session.sessionId] ? 'collapsed' : ''}`}
+                        />
+                        <Icon icon="mdi:identifier" width="16" className="session-icon" />
+                        <span className="session-id">{session.sessionId.slice(0, 20)}{session.sessionId.length > 20 ? '...' : ''}</span>
+                        <span className="session-stats">
+                          <span className="stat">{session.artifacts.length} artifact{session.artifacts.length !== 1 ? 's' : ''}</span>
+                          {session.latestDate && (
+                            <>
+                              <span className="stat-divider">·</span>
+                              <span className="stat date">
+                                {session.latestDate.toLocaleDateString()}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Artifacts Grid within Session */}
+                      {!collapsedSessions[session.sessionId] && (
+                        <div className="session-artifacts-grid">
+                          {session.artifacts.map(artifact => (
+                            <ArtifactCard
+                              key={artifact.id}
+                              artifact={artifact}
+                              isSelected={selectedArtifacts.has(artifact.id)}
+                              onToggleSelect={(e) => toggleArtifactSelection(artifact.id, e)}
+                              onClick={() => window.location.hash = `#/artifact/${artifact.id}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -209,13 +492,14 @@ function ArtifactsView({
 /**
  * ArtifactCard - Preview card for an artifact
  */
-function ArtifactCard({ artifact, onClick }) {
+function ArtifactCard({ artifact, onClick, isSelected, onToggleSelect }) {
   const typeIcons = {
     dashboard: 'mdi:view-dashboard',
     report: 'mdi:file-document',
     chart: 'mdi:chart-line',
     table: 'mdi:table',
     analysis: 'mdi:brain',
+    decision: 'mdi:help-circle-outline',
     custom: 'mdi:file-code'
   };
 
@@ -225,6 +509,7 @@ function ArtifactCard({ artifact, onClick }) {
     chart: '#10b981',
     table: '#fbbf24',
     analysis: '#ef4444',
+    decision: '#f97316',
     custom: '#9ca3af'
   };
 
@@ -258,7 +543,7 @@ function ArtifactCard({ artifact, onClick }) {
 
   return (
     <div
-      className="artifact-card"
+      className={`artifact-card ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
       style={{
         backgroundImage: imageError ? 'none' : `url(${thumbnailUrl})`,
@@ -266,6 +551,14 @@ function ArtifactCard({ artifact, onClick }) {
         backgroundPosition: 'center'
       }}
     >
+      {/* Selection checkbox */}
+      <div
+        className={`artifact-checkbox ${isSelected ? 'checked' : ''}`}
+        onClick={onToggleSelect}
+      >
+        <Icon icon={isSelected ? 'mdi:checkbox-marked' : 'mdi:checkbox-blank-outline'} width="22" />
+      </div>
+
       {/* Glassmorphic overlay */}
       <div className="artifact-card-glass">
         <div className="artifact-card-header">
@@ -299,12 +592,9 @@ function ArtifactCard({ artifact, onClick }) {
 
         {artifact.tags && artifact.tags.length > 0 && (
           <div className="artifact-tags">
-            {artifact.tags.slice(0, 3).map((tag, idx) => (
+            {artifact.tags.map((tag, idx) => (
               <span key={idx} className="tag">{tag}</span>
             ))}
-            {artifact.tags.length > 3 && (
-              <span className="tag more">+{artifact.tags.length - 3}</span>
-            )}
           </div>
         )}
       </div>

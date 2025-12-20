@@ -364,6 +364,30 @@ function LiveOrchestrationSidebar({
             </div>
           </div>
 
+          {/* Messages */}
+          <div className="overview-item messages">
+            <div className="overview-label">
+              <Icon icon="mdi:message-text" width="14" />
+              <span>Messages</span>
+            </div>
+            <div className={`overview-value messages-value ${(sessionData?.entries?.length || 0) === 0 ? 'zero' : ''}`}>
+              {sessionData?.entries?.length || 0}
+            </div>
+          </div>
+
+          {/* Duration */}
+          <div className="overview-item duration">
+            <div className="overview-label">
+              <Icon icon="mdi:clock-outline" width="14" />
+              <span>Duration</span>
+            </div>
+            <div className={`overview-value duration-value ${(sessionData?.duration_seconds || 0) === 0 ? 'zero' : ''}`}>
+              {sessionData?.duration_seconds > 0
+                ? `${Math.floor(sessionData.duration_seconds / 60)}m ${Math.floor(sessionData.duration_seconds % 60)}s`
+                : '0s'}
+            </div>
+          </div>
+
           {/* Session ID */}
           <div className="overview-item session-id">
             <div className="overview-label">
@@ -374,19 +398,6 @@ function LiveOrchestrationSidebar({
               {sessionId?.slice(0, 12)}...
             </div>
           </div>
-
-          {/* Duration */}
-          {sessionData?.duration_seconds > 0 && (
-            <div className="overview-item duration">
-              <div className="overview-label">
-                <Icon icon="mdi:clock-outline" width="14" />
-                <span>Duration</span>
-              </div>
-              <div className="overview-value">
-                {Math.floor(sessionData.duration_seconds / 60)}m {Math.floor(sessionData.duration_seconds % 60)}s
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
