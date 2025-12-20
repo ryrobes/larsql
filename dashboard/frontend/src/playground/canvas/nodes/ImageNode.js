@@ -1,8 +1,13 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState, useRef, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { Icon } from '@iconify/react';
 import usePlaygroundStore from '../../stores/playgroundStore';
+import useNodeResize from '../hooks/useNodeResize';
 import './ImageNode.css';
+
+// Default dimensions (grid-aligned to 16px)
+const DEFAULT_WIDTH = 208;  // 13 * 16
+const DEFAULT_HEIGHT = 192; // 12 * 16
 
 /**
  * ImageNode - Image generation/transformation node
@@ -14,13 +19,15 @@ import './ImageNode.css';
  * - Cost and duration (when available)
  * - Play button for "run from here" (when cached results available)
  *
- * Handles:
- * - Target (left-top) for prompt input
- * - Target (left-bottom) for image input (optional, for image-to-image)
- * - Source (right) for image output
+ * Handles (typed for connection validation):
+ * - Target (left-top): text-in - for prompt input (green)
+ * - Target (left-bottom): image-in - for image input (purple)
+ * - Source (right): image-out - for image output (purple)
  */
 function ImageNode({ id, data, selected }) {
   const runFromNode = usePlaygroundStore((state) => state.runFromNode);
+  const removeNode = usePlaygroundStore((state) => state.removeNode);
+  const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
   const lastSuccessfulSessionId = usePlaygroundStore((state) => state.lastSuccessfulSessionId);
   const executionStatus = usePlaygroundStore((state) => state.executionStatus);
 
@@ -33,6 +40,12 @@ function ImageNode({ id, data, selected }) {
     }
   }, [id, runFromNode]);
 
+  // Handle delete
+  const handleDelete = useCallback((e) => {
+    e.stopPropagation();
+    removeNode(id);
+  }, [id, removeNode]);
+
   const {
     paletteName,
     paletteIcon,
@@ -41,7 +54,68 @@ function ImageNode({ id, data, selected }) {
     images = [],
     cost,
     duration,
+    width: dataWidth,
+    height: dataHeight,
+    name: customName,
   } = data;
+
+  // Editable name state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState('');
+  const nameInputRef = useRef(null);
+
+  // Get display name (custom name or fallback to palette name)
+  const displayName = customName || paletteName || 'Image';
+
+  // Get dimensions from data or use defaults
+  const width = dataWidth || DEFAULT_WIDTH;
+  const height = dataHeight || DEFAULT_HEIGHT;
+
+  // Resize hook (grid-aligned constraints)
+  const { onResizeStart } = useNodeResize(id, {
+    minWidth: 160,  // 10 * 16
+    minHeight: 144, // 9 * 16
+    maxWidth: 608,  // 38 * 16
+    maxHeight: 608, // 38 * 16
+  });
+
+  // Name editing handlers
+  const startEditingName = useCallback((e) => {
+    e.stopPropagation();
+    setEditingNameValue(customName || '');
+    setIsEditingName(true);
+  }, [customName]);
+
+  const saveName = useCallback(() => {
+    const trimmedName = editingNameValue.trim();
+    // Only save if valid (alphanumeric + underscore, starts with letter)
+    if (trimmedName && /^[a-zA-Z][a-zA-Z0-9_]*$/.test(trimmedName)) {
+      updateNodeData(id, { name: trimmedName });
+    }
+    setIsEditingName(false);
+  }, [id, editingNameValue, updateNodeData]);
+
+  const cancelEditingName = useCallback(() => {
+    setIsEditingName(false);
+  }, []);
+
+  const handleNameKeyDown = useCallback((e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      saveName();
+    } else if (e.key === 'Escape') {
+      cancelEditingName();
+    }
+  }, [saveName, cancelEditingName]);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [isEditingName]);
+
 
   // Format cost for display
   const formatCost = (cost) => {
@@ -77,8 +151,17 @@ function ImageNode({ id, data, selected }) {
   return (
     <div
       className={`image-node ${selected ? 'selected' : ''} status-${status}`}
-      style={{ borderColor: paletteColor }}
+      style={{ borderColor: paletteColor, width, height }}
     >
+      {/* Delete button */}
+      <button
+        className="node-delete-button"
+        onClick={handleDelete}
+        title="Delete node"
+      >
+        <Icon icon="mdi:close" width="12" />
+      </button>
+
       {/* Play button - run from this node using cached upstream results */}
       {canRunFromHere && (
         <button
@@ -90,22 +173,22 @@ function ImageNode({ id, data, selected }) {
         </button>
       )}
 
-      {/* Target handle for prompt input (top-left) */}
+      {/* Target handle for text/prompt input (top-left) - green for text */}
       <Handle
         type="target"
         position={Position.Left}
-        id="prompt"
-        className="image-handle input-handle prompt-handle"
+        id="text-in"
+        className="image-handle input-handle handle-text"
         style={{ top: '30%' }}
-        title="Prompt input"
+        title="Text input (prompt)"
       />
 
-      {/* Target handle for image input (bottom-left) - for image-to-image */}
+      {/* Target handle for image input (bottom-left) - purple for image */}
       <Handle
         type="target"
         position={Position.Left}
-        id="image"
-        className="image-handle input-handle image-input-handle"
+        id="image-in"
+        className="image-handle input-handle handle-image"
         style={{ top: '70%' }}
         title="Image input (optional)"
       />
@@ -117,7 +200,27 @@ function ImageNode({ id, data, selected }) {
         >
           <Icon icon={paletteIcon || 'mdi:image'} width="18" />
         </div>
-        <span className="image-node-title">{paletteName || 'Image'}</span>
+        {isEditingName ? (
+          <input
+            ref={nameInputRef}
+            type="text"
+            className="node-name-input nodrag"
+            value={editingNameValue}
+            onChange={(e) => setEditingNameValue(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={handleNameKeyDown}
+            placeholder="Enter name..."
+            style={{ borderColor: paletteColor }}
+          />
+        ) : (
+          <span
+            className="image-node-title"
+            onDoubleClick={startEditingName}
+            title="Double-click to rename"
+          >
+            {displayName}
+          </span>
+        )}
         <div className={`image-node-status ${statusInfo.className}`}>
           <Icon
             icon={statusInfo.icon}
@@ -165,13 +268,19 @@ function ImageNode({ id, data, selected }) {
         </div>
       )}
 
-      {/* Source handle for image output */}
+      {/* Source handle for image output - purple for image */}
       <Handle
         type="source"
         position={Position.Right}
-        id="output"
-        className="image-handle output-handle"
-        style={{ backgroundColor: paletteColor }}
+        id="image-out"
+        className="image-handle output-handle handle-image"
+        title="Image output"
+      />
+
+      {/* Resize handle - nodrag class prevents React Flow from dragging */}
+      <div
+        className="node-resize-handle nodrag"
+        onPointerDown={onResizeStart}
       />
     </div>
   );

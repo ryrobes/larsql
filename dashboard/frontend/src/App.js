@@ -90,8 +90,9 @@ function App() {
         return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'playground') {
-        // /#/playground → image playground
-        return { view: 'playground', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+        // /#/playground or /#/playground/:sessionId → image playground
+        // Session ID is handled by PlaygroundPage's loadFromUrl
+        return { view: 'playground', cascadeId: null, sessionId: parts[1] || null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'blocked') {
         // /#/blocked → blocked sessions view
@@ -137,6 +138,10 @@ function App() {
       // /#/cascade_id → instances view
       return { view: 'instances', cascadeId: parts[0], sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
     } else if (parts.length === 2) {
+      if (parts[0] === 'playground') {
+        // /#/playground/session_id → playground with loaded cascade
+        return { view: 'playground', cascadeId: null, sessionId: parts[1], checkpointId: null, artifactId: null };
+      }
       if (parts[0] === 'checkpoint') {
         // /#/checkpoint/checkpoint_id → checkpoint view
         return { view: 'checkpoint', cascadeId: null, sessionId: null, checkpointId: parts[1], artifactId: null };

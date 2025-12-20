@@ -1,0 +1,195 @@
+cascade_id: visualization_demo
+description: Demo of multi-modal outputs - matplotlib, plotly, and PIL images
+
+inputs_schema:
+  num_points: "Number of data points to generate (default: 100)"
+
+phases:
+  # Generate sample data
+  - name: generate_data
+    tool: python_data
+    inputs:
+      code: |
+        import numpy as np
+
+        n = int(input.get('num_points', 100))
+
+        # Generate sample data
+        np.random.seed(42)
+        categories = ['Electronics', 'Clothing', 'Food', 'Books', 'Home']
+
+        df = pd.DataFrame({
+            'date': pd.date_range('2024-01-01', periods=n, freq='D'),
+            'category': np.random.choice(categories, n),
+            'sales': np.random.exponential(1000, n),
+            'quantity': np.random.poisson(10, n),
+            'rating': np.random.uniform(1, 5, n)
+        })
+
+        result = df
+
+  # Matplotlib line chart
+  - name: matplotlib_chart
+    tool: python_data
+    context:
+      from: [generate_data]  # Wait for data generation
+    inputs:
+      code: |
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+        import matplotlib.pyplot as plt
+
+        # Get data from previous cell
+        df = data.generate_data
+
+        # Create matplotlib figure
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        fig.suptitle('Sales Analysis Dashboard', fontsize=16, color='white')
+
+        # Style for dark theme
+        plt.style.use('dark_background')
+
+        # Plot 1: Time series
+        daily = df.groupby('date')['sales'].sum().reset_index()
+        axes[0, 0].plot(daily['date'], daily['sales'], color='#2dd4bf', linewidth=2)
+        axes[0, 0].fill_between(daily['date'], daily['sales'], alpha=0.3, color='#2dd4bf')
+        axes[0, 0].set_title('Daily Sales', color='white')
+        axes[0, 0].set_xlabel('Date', color='#94a3b8')
+        axes[0, 0].set_ylabel('Sales ($)', color='#94a3b8')
+        axes[0, 0].tick_params(colors='#64748b')
+
+        # Plot 2: Category breakdown
+        cat_sales = df.groupby('category')['sales'].sum().sort_values(ascending=True)
+        colors = ['#a78bfa', '#60a5fa', '#2dd4bf', '#fbbf24', '#f87171']
+        axes[0, 1].barh(cat_sales.index, cat_sales.values, color=colors)
+        axes[0, 1].set_title('Sales by Category', color='white')
+        axes[0, 1].set_xlabel('Total Sales ($)', color='#94a3b8')
+        axes[0, 1].tick_params(colors='#64748b')
+
+        # Plot 3: Distribution
+        axes[1, 0].hist(df['sales'], bins=30, color='#60a5fa', alpha=0.7, edgecolor='#1a2028')
+        axes[1, 0].set_title('Sales Distribution', color='white')
+        axes[1, 0].set_xlabel('Sales ($)', color='#94a3b8')
+        axes[1, 0].set_ylabel('Frequency', color='#94a3b8')
+        axes[1, 0].tick_params(colors='#64748b')
+
+        # Plot 4: Scatter
+        axes[1, 1].scatter(df['quantity'], df['sales'], c=df['rating'], cmap='viridis', alpha=0.6)
+        axes[1, 1].set_title('Quantity vs Sales (colored by rating)', color='white')
+        axes[1, 1].set_xlabel('Quantity', color='#94a3b8')
+        axes[1, 1].set_ylabel('Sales ($)', color='#94a3b8')
+        axes[1, 1].tick_params(colors='#64748b')
+
+        plt.tight_layout()
+        result = fig
+
+  # Plotly interactive chart
+  - name: plotly_chart
+    tool: python_data
+    context:
+      from: [generate_data]  # Wait for data generation
+    inputs:
+      code: |
+        import plotly.express as px
+
+        df = data.generate_data
+
+        # Create interactive Plotly chart
+        fig = px.scatter(
+            df,
+            x='quantity',
+            y='sales',
+            color='category',
+            size='rating',
+            hover_data=['date', 'rating'],
+            title='Interactive Sales Analysis',
+            labels={'quantity': 'Quantity Sold', 'sales': 'Sales ($)'}
+        )
+
+        fig.update_layout(
+            template='plotly_dark',
+            title_font_size=20,
+            legend_title_text='Category'
+        )
+
+        result = fig
+
+  # Another Plotly chart - bar chart
+  - name: plotly_bar
+    tool: python_data
+    context:
+      from: [generate_data]  # Wait for data generation
+    inputs:
+      code: |
+        import plotly.express as px
+
+        df = data.generate_data
+
+        # Aggregate by category
+        cat_stats = df.groupby('category').agg({
+            'sales': 'sum',
+            'quantity': 'sum',
+            'rating': 'mean'
+        }).reset_index()
+
+        fig = px.bar(
+            cat_stats,
+            x='category',
+            y='sales',
+            color='rating',
+            color_continuous_scale='Viridis',
+            title='Total Sales by Category',
+            labels={'sales': 'Total Sales ($)', 'rating': 'Avg Rating'}
+        )
+
+        fig.update_layout(template='plotly_dark')
+
+        result = fig
+
+  # PIL Image manipulation
+  - name: gradient_image
+    tool: python_data
+    inputs:
+      code: |
+        # Create a gradient image using numpy and PIL
+        from PIL import Image
+
+        # Create gradient
+        width, height = 400, 200
+        gradient = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Create a teal-to-purple gradient
+        for x in range(width):
+            r = int(45 + (167 - 45) * x / width)   # 45 -> 167 (teal to purple red)
+            g = int(212 + (139 - 212) * x / width) # 212 -> 139 (teal to purple green)
+            b = int(191 + (250 - 191) * x / width) # 191 -> 250 (teal to purple blue)
+            gradient[:, x] = [r, g, b]
+
+        # Add some noise for texture
+        noise = np.random.randint(0, 20, (height, width, 3), dtype=np.uint8)
+        gradient = np.clip(gradient.astype(np.int16) + noise.astype(np.int16) - 10, 0, 255).astype(np.uint8)
+
+        # Convert to PIL Image
+        img = Image.fromarray(gradient, mode='RGB')
+
+        result = img
+
+  # Summary
+  - name: summary
+    tool: python_data
+    context:
+      from: [generate_data]  # Wait for data generation
+    inputs:
+      code: |
+        df = data.generate_data
+
+        # Convert date column to datetime if it's strings
+        df['date'] = pd.to_datetime(df['date'])
+
+        result = {
+            "total_records": len(df),
+            "total_sales": round(df['sales'].sum(), 2),
+            "avg_rating": round(df['rating'].mean(), 2),
+            "top_category": df.groupby('category')['sales'].sum().idxmax(),
+            "date_range": f"{df['date'].min().strftime('%Y-%m-%d')} to {df['date'].max().strftime('%Y-%m-%d')}"
+        }

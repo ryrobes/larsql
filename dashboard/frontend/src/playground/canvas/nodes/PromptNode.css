@@ -1,13 +1,14 @@
 /* PromptNode - Text Input Node */
 
 .prompt-node {
-  min-width: 200px;
-  max-width: 300px;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-card);
   border: 2px solid #10b981;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.15s ease;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  overflow: hidden;
 }
 
 .prompt-node:hover {
@@ -44,15 +45,49 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
+  cursor: pointer;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-node-title:hover {
+  color: #10b981;
+}
+
+/* Name editing input */
+.prompt-node .node-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--bg-main);
+  border: 1px solid #10b981;
+  border-radius: 3px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.prompt-node .node-name-input::placeholder {
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 .prompt-node-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: 8px;
+  min-height: 0;
 }
 
 .prompt-textarea {
+  flex: 1;
   width: 100%;
-  min-height: 60px;
+  min-height: 40px;
   padding: 8px;
   background: var(--bg-main);
   border: 1px solid var(--border-default);
@@ -60,7 +95,7 @@
   color: var(--text-primary);
   font-size: 12px;
   font-family: inherit;
-  resize: vertical;
+  resize: none; /* Disable native resize - use node resize instead */
   transition: border-color 0.15s ease;
 }
 
@@ -73,7 +108,7 @@
   color: var(--text-muted);
 }
 
-/* Handle */
+/* Handle - Text type (green) */
 .prompt-handle {
   width: 12px !important;
   height: 12px !important;
@@ -85,4 +120,71 @@
 .prompt-handle:hover {
   background: #34d399 !important;
   transform: scale(1.2);
+}
+
+/* Delete button */
+.prompt-node {
+  position: relative;
+}
+
+.prompt-node .node-delete-button {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid var(--bg-card);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.prompt-node:hover .node-delete-button {
+  opacity: 1;
+}
+
+.prompt-node .node-delete-button:hover {
+  transform: scale(1.15);
+  background: #dc2626;
+}
+
+/* Resize handle - larger hit area, visual indicator in corner */
+.prompt-node .node-resize-handle {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+  /* Extend hit area beyond visual */
+  background: transparent;
+}
+
+.prompt-node .node-resize-handle::before {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #10b981;
+  border-bottom: 2px solid #10b981;
+  border-radius: 0 0 2px 0;
+  pointer-events: none;
+}
+
+.prompt-node:hover .node-resize-handle,
+.prompt-node .node-resize-handle:hover {
+  opacity: 1;
 }

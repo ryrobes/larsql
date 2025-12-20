@@ -4,8 +4,13 @@ import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import createPlotlyComponent from 'react-plotly.js/factory';
+import Plotly from 'plotly.js/dist/plotly';
 import useNotebookStore from '../stores/notebookStore';
 import './NotebookCell.css';
+
+// Create Plot component using factory pattern for better Plotly loading control
+const Plot = createPlotlyComponent(Plotly);
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -398,6 +403,60 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
         </div>
       );
     }
+
+    // === Multi-modal outputs ===
+
+    // Image result (matplotlib, PIL, numpy array)
+    // Supports both api_url (preferred) and base64 fallback
+    if (result?.type === 'image' && (result?.api_url || result?.base64)) {
+      const imgSrc = result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`;
+      return (
+        <div className="cell-result-image">
+          <img
+            src={imgSrc}
+            alt={result.content || "Cell output"}
+            style={{ maxWidth: '100%', height: 'auto' }}
+          />
+          {result.width && result.height && (
+            <div className="cell-result-image-info">
+              {result.width} × {result.height}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Plotly chart result
+    if (result?.type === 'plotly' && result?.data) {
+      // Deep clone data and layout to avoid "read only property" errors
+      // Plotly mutates these objects internally during rendering
+      const clonedData = JSON.parse(JSON.stringify(result.data));
+      const clonedLayout = JSON.parse(JSON.stringify(result.layout || {}));
+
+      // Apply dark theme to the cloned layout
+      const darkLayout = {
+        ...clonedLayout,
+        paper_bgcolor: '#080c12',
+        plot_bgcolor: '#080c12',
+        font: { ...clonedLayout.font, color: '#cbd5e1' },
+        xaxis: { ...clonedLayout.xaxis, gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
+        yaxis: { ...clonedLayout.yaxis, gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
+        legend: { ...clonedLayout.legend, bgcolor: 'rgba(0,0,0,0)' },
+      };
+
+      return (
+        <div className="cell-result-plotly">
+          <Plot
+            data={clonedData}
+            layout={darkLayout}
+            config={{ responsive: true, displayModeBar: true }}
+            style={{ width: '100%', height: '400px' }}
+          />
+        </div>
+      );
+    }
+
+    // === Standard data outputs ===
 
     // DataFrame result - use AG-Grid
     if (result?.rows && result?.columns) {

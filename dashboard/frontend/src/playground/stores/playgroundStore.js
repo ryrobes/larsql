@@ -29,15 +29,22 @@ const usePlaygroundStore = create(
     // ============================================
     sessionId: null,
     lastSuccessfulSessionId: null, // Cached session for "run from here"
+    loadedCascadeId: null, // The cascade_id of the loaded cascade (for updates)
+    loadedSessionId: null, // The session_id of the loaded cascade (for URL persistence)
     executionStatus: 'idle', // 'idle' | 'running' | 'completed' | 'error'
     executionError: null,
     phaseResults: {}, // nodeId -> { status, images: [], cost, duration }
+    totalSessionCost: 0, // Accumulated cost for the current session
 
     // ============================================
     // UI STATE
     // ============================================
     selectedNodeId: null,
     viewport: { x: 0, y: 0, zoom: 1 },
+
+    // Cascade browser state
+    availableCascades: [],
+    isLoadingCascades: false,
 
     // ============================================
     // NODE OPERATIONS
@@ -169,6 +176,9 @@ const usePlaygroundStore = create(
       const state = get();
       const { nodes, edges } = state;
 
+      // Helper to get the phase/input name for a node (custom name or fallback to id)
+      const getNodeName = (node) => node.data.name || node.id;
+
       // Build dependency graph and topological sort
       const nodeMap = new Map(nodes.map(n => [n.id, n]));
       const inDegree = new Map(nodes.map(n => [n.id, 0]));
@@ -196,11 +206,12 @@ const usePlaygroundStore = create(
         });
       }
 
-      // Build inputs from prompt nodes
+      // Build inputs from prompt nodes (using custom names)
       const inputs = {};
       const promptNodes = sortedNodes.filter(n => n.type === 'prompt');
       promptNodes.forEach(node => {
-        inputs[node.id] = node.data.text || '';
+        const inputName = getNodeName(node);
+        inputs[inputName] = node.data.text || '';
       });
 
       // Build phases from image nodes (generators, transformers, tools)
@@ -211,19 +222,19 @@ const usePlaygroundStore = create(
         const paletteConfig = node.data.paletteConfig;
         if (!paletteConfig) return;
 
-        // Find connected prompt node (via 'prompt' handle or legacy 'input' handle)
+        // Find connected prompt node (via 'text-in' handle or legacy 'prompt'/'input' handles)
         const promptEdge = edges.find(e =>
           e.target === node.id &&
-          (e.targetHandle === 'prompt' || e.targetHandle === 'input' || !e.targetHandle)
+          (e.targetHandle === 'text-in' || e.targetHandle === 'prompt' || e.targetHandle === 'input' || !e.targetHandle)
         );
         const promptNode = promptEdge ? nodeMap.get(promptEdge.source) : null;
         const promptRef = promptNode?.type === 'prompt'
-          ? `{{ input.${promptNode.id} }}`
+          ? `{{ input.${getNodeName(promptNode)} }}`
           : '';
 
-        // Find connected image input (via 'image' handle - for image-to-image)
+        // Find connected image input (via 'image-in' handle or legacy 'image' handle)
         const imageEdge = edges.find(e =>
-          e.target === node.id && e.targetHandle === 'image'
+          e.target === node.id && (e.targetHandle === 'image-in' || e.targetHandle === 'image')
         );
         const sourceImageNode = imageEdge ? nodeMap.get(imageEdge.source) : null;
         const hasImageInput = sourceImageNode?.type === 'image';
@@ -233,7 +244,7 @@ const usePlaygroundStore = create(
           // Runner detects image models and routes to _execute_image_generation_phase()
           // which uses normal Agent.run() with modalities=["text", "image"]
           const phase = {
-            name: node.id,
+            name: getNodeName(node),
             model: paletteConfig.openrouter.model,
             instructions: promptRef || 'Generate a beautiful image',
             image_config: {
@@ -245,7 +256,7 @@ const usePlaygroundStore = create(
           // If there's an image input, add context.from to inject that image
           if (hasImageInput) {
             phase.context = {
-              from: [sourceImageNode.id],
+              from: [getNodeName(sourceImageNode)],
             };
           }
 
@@ -256,11 +267,11 @@ const usePlaygroundStore = create(
           const inputImageEdge = imageEdge || edges.find(e => e.target === node.id);
           const inputSourceNode = inputImageEdge ? nodeMap.get(inputImageEdge.source) : null;
           const imageRef = inputSourceNode?.type === 'image'
-            ? `{{ state.output_${inputSourceNode.id}.images[0] }}`
+            ? `{{ state.output_${getNodeName(inputSourceNode)}.images[0] }}`
             : '';
 
           phases.push({
-            name: node.id,
+            name: getNodeName(node),
             tool: paletteConfig.harbor.tool,
             tool_inputs: {
               input_image: imageRef,
@@ -270,7 +281,7 @@ const usePlaygroundStore = create(
         } else if (paletteConfig.local) {
           // Local tool - deterministic phase
           phases.push({
-            name: node.id,
+            name: getNodeName(node),
             tool: paletteConfig.local.tool,
             tool_inputs: {
               // Tool-specific inputs would go here
@@ -279,12 +290,12 @@ const usePlaygroundStore = create(
         }
       });
 
-      // Build cascade object
+      // Build cascade object - reuse loaded cascade_id if available
       const cascade = {
-        cascade_id: `playground_${Date.now().toString(36)}`,
+        cascade_id: state.loadedCascadeId || `playground_${Date.now().toString(36)}`,
         description: 'Generated from Image Playground',
         inputs_schema: Object.fromEntries(
-          promptNodes.map(n => [n.id, `Prompt text for ${n.id}`])
+          promptNodes.map(n => [getNodeName(n), `Prompt text for ${getNodeName(n)}`])
         ),
         phases,
 
@@ -299,11 +310,16 @@ const usePlaygroundStore = create(
             data: {
               paletteId: n.data.paletteId,
               text: n.data.text,
+              name: n.data.name, // Persist custom names
+              width: n.data.width,
+              height: n.data.height,
             },
           })),
           edges: edges.map(e => ({
             source: e.source,
             target: e.target,
+            sourceHandle: e.sourceHandle,
+            targetHandle: e.targetHandle,
           })),
         },
       };
@@ -337,6 +353,7 @@ const usePlaygroundStore = create(
         });
         state.executionStatus = 'running';
         state.executionError = null;
+        state.totalSessionCost = 0; // Reset cost for new run
       });
 
       try {
@@ -387,6 +404,10 @@ const usePlaygroundStore = create(
         return { success: false, error: 'No cached session - run full cascade first' };
       }
 
+      // Get the phase name for this node (custom name or id)
+      const targetNode = state.nodes.find(n => n.id === nodeId);
+      const phaseName = targetNode?.data?.name || nodeId;
+
       // Set target node to 'pending', keep upstream nodes completed, clear downstream
       const nodeOrder = state.nodes
         .filter(n => n.type === 'image')
@@ -413,6 +434,7 @@ const usePlaygroundStore = create(
         });
         state.executionStatus = 'running';
         state.executionError = null;
+        state.totalSessionCost = 0; // Reset cost for new run
       });
 
       try {
@@ -420,7 +442,7 @@ const usePlaygroundStore = create(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            node_id: nodeId,
+            phase_name: phaseName, // Use phase name (custom name or id) to match cascade phases
             cached_session_id: state.lastSuccessfulSessionId,
             cascade_yaml: cascadeYaml,
             inputs,
@@ -456,7 +478,10 @@ const usePlaygroundStore = create(
     handlePhaseComplete: (phaseName, result) => set((state) => {
       console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images);
 
-      const nodeIndex = state.nodes.findIndex(n => n.id === phaseName);
+      // Find node by custom name OR by id (for backwards compatibility)
+      const nodeIndex = state.nodes.findIndex(n =>
+        n.data.name === phaseName || n.id === phaseName
+      );
       if (nodeIndex !== -1) {
         const node = state.nodes[nodeIndex];
         // Only update images if this result has them (avoid overwriting with empty)
@@ -486,6 +511,11 @@ const usePlaygroundStore = create(
       }
 
       state.phaseResults[phaseName] = result;
+
+      // Accumulate session cost
+      if (result.cost && typeof result.cost === 'number') {
+        state.totalSessionCost += result.cost;
+      }
     }),
 
     // Handle cascade completion
@@ -518,16 +548,186 @@ const usePlaygroundStore = create(
     }),
 
     // Reset the entire playground
-    resetPlayground: () => set((state) => {
-      state.nodes = [];
-      state.edges = [];
-      state.sessionId = null;
-      state.executionStatus = 'idle';
-      state.executionError = null;
-      state.phaseResults = {};
-      state.selectedNodeId = null;
-      nodeIdCounter = 0;
-    }),
+    resetPlayground: () => {
+      set((state) => {
+        state.nodes = [];
+        state.edges = [];
+        state.sessionId = null;
+        state.lastSuccessfulSessionId = null;
+        state.loadedCascadeId = null;
+        state.loadedSessionId = null;
+        state.executionStatus = 'idle';
+        state.executionError = null;
+        state.phaseResults = {};
+        state.selectedNodeId = null;
+        state.totalSessionCost = 0;
+        nodeIdCounter = 0;
+      });
+      // Clear URL hash
+      window.location.hash = '/playground';
+    },
+
+    // ============================================
+    // CASCADE BROWSER
+    // ============================================
+
+    // Load cascade from URL hash if present (e.g., #/playground/workshop_abc123)
+    loadFromUrl: async () => {
+      const hash = window.location.hash;
+      const match = hash.match(/^#\/playground\/(.+)$/);
+      if (match) {
+        const sessionId = match[1];
+        console.log('[Store] Loading cascade from URL:', sessionId);
+        return await get().loadCascade(sessionId);
+      }
+      return { success: false, error: 'No cascade in URL' };
+    },
+
+    // Fetch list of available playground cascades
+    fetchCascadeList: async () => {
+      set((state) => {
+        state.isLoadingCascades = true;
+      });
+
+      try {
+        const response = await fetch('http://localhost:5001/api/playground/list');
+        const cascades = await response.json();
+
+        set((state) => {
+          state.availableCascades = cascades;
+          state.isLoadingCascades = false;
+        });
+
+        return cascades;
+      } catch (err) {
+        console.error('[Store] Failed to fetch cascade list:', err);
+        set((state) => {
+          state.isLoadingCascades = false;
+        });
+        return [];
+      }
+    },
+
+    // Load a cascade by session ID and restore the graph
+    loadCascade: async (sessionId) => {
+      try {
+        const response = await fetch(`http://localhost:5001/api/playground/load/${sessionId}`);
+        const config = await response.json();
+
+        if (config.error) {
+          console.error('[Store] Failed to load cascade:', config.error);
+          return { success: false, error: config.error };
+        }
+
+        const playground = config._playground;
+        if (!playground) {
+          console.error('[Store] Cascade has no _playground metadata');
+          return { success: false, error: 'No playground metadata found' };
+        }
+
+        const palette = get().palette;
+
+        // Restore nodes with full palette config
+        const restoredNodes = playground.nodes.map(n => {
+          const paletteItem = n.data?.paletteId
+            ? palette.find(p => p.id === n.data.paletteId)
+            : null;
+
+          // Update nodeIdCounter to prevent ID collisions
+          const idNum = parseInt(n.id.split('_').pop());
+          if (!isNaN(idNum) && idNum >= nodeIdCounter) {
+            nodeIdCounter = idNum + 1;
+          }
+
+          if (n.type === 'prompt') {
+            return {
+              id: n.id,
+              type: 'prompt',
+              position: n.position,
+              data: {
+                text: n.data?.text || '',
+                name: n.data?.name, // Restore custom name
+                width: n.data?.width,
+                height: n.data?.height,
+              },
+            };
+          } else {
+            return {
+              id: n.id,
+              type: n.type,
+              position: n.position,
+              data: {
+                paletteId: n.data?.paletteId,
+                paletteName: paletteItem?.name || n.data?.paletteId,
+                paletteIcon: paletteItem?.icon || 'mdi:image',
+                paletteColor: paletteItem?.color || '#8b5cf6',
+                paletteConfig: paletteItem,
+                status: 'idle',
+                images: [],
+                prompt: '',
+                name: n.data?.name, // Restore custom name
+                width: n.data?.width,
+                height: n.data?.height,
+              },
+            };
+          }
+        });
+
+        // Restore edges with handle ID migration
+        const restoredEdges = (playground.edges || []).map(e => {
+          // Migrate old handle IDs to new typed IDs
+          let sourceHandle = e.sourceHandle;
+          let targetHandle = e.targetHandle;
+
+          // Migrate source handles
+          if (sourceHandle === 'output') {
+            // Determine type based on source node
+            const sourceNode = restoredNodes.find(n => n.id === e.source);
+            sourceHandle = sourceNode?.type === 'prompt' ? 'text-out' : 'image-out';
+          }
+
+          // Migrate target handles
+          if (targetHandle === 'prompt' || targetHandle === 'input') {
+            targetHandle = 'text-in';
+          } else if (targetHandle === 'image') {
+            targetHandle = 'image-in';
+          }
+
+          return {
+            id: `${e.source}-${e.target}`,
+            source: e.source,
+            target: e.target,
+            sourceHandle,
+            targetHandle,
+            animated: true,
+          };
+        });
+
+        set((state) => {
+          state.nodes = restoredNodes;
+          state.edges = restoredEdges;
+          state.sessionId = sessionId;
+          state.lastSuccessfulSessionId = sessionId;
+          state.loadedCascadeId = config.cascade_id; // Track for updates
+          state.loadedSessionId = sessionId; // Track for URL
+          state.executionStatus = 'idle';
+          state.executionError = null;
+          state.phaseResults = {};
+          state.selectedNodeId = null;
+          if (playground.viewport) {
+            state.viewport = playground.viewport;
+          }
+        });
+
+        // Update URL hash for persistence
+        window.location.hash = `/playground/${sessionId}`;
+
+        return { success: true, cascade: config };
+      } catch (err) {
+        console.error('[Store] Failed to load cascade:', err);
+        return { success: false, error: err.message };
+      }
+    },
 
     // ============================================
     // SELECTION

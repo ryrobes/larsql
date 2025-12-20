@@ -3110,28 +3110,29 @@ def run_cascade():
 
 @app.route('/api/playground/run-from', methods=['POST'])
 def playground_run_from():
-    """Run playground cascade starting from a specific node.
+    """Run playground cascade starting from a specific phase.
 
     Uses cached images from a previous run for upstream phases,
-    pre-populates Echo state, and only executes from the target node.
+    pre-populates Echo state, and only executes from the target phase.
 
     Request body:
-        node_id: The node to start execution from
+        phase_name: The phase to start execution from (or node_id for backwards compat)
         cached_session_id: Session ID with cached images for upstream phases
         cascade_yaml: Full cascade YAML
         inputs: Input values
     """
     try:
         data = request.json
-        node_id = data.get('node_id')
+        # Accept phase_name or node_id for backwards compatibility
+        phase_name = data.get('phase_name') or data.get('node_id')
         cached_session_id = data.get('cached_session_id')
         cascade_yaml = data.get('cascade_yaml')
         inputs = data.get('inputs', {})
 
-        print(f"[Playground RunFrom] node_id={node_id}, cached_session={cached_session_id}")
+        print(f"[Playground RunFrom] phase_name={phase_name}, cached_session={cached_session_id}")
 
-        if not node_id or not cascade_yaml:
-            return jsonify({'error': 'node_id and cascade_yaml required'}), 400
+        if not phase_name or not cascade_yaml:
+            return jsonify({'error': 'phase_name and cascade_yaml required'}), 400
 
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
@@ -3153,10 +3154,10 @@ def playground_run_from():
         print(f"[Playground RunFrom] Cascade phases: {phase_names}")
 
         # Find target phase index
-        if node_id not in phase_names:
-            return jsonify({'error': f'Node {node_id} not found in cascade phases'}), 400
+        if phase_name not in phase_names:
+            return jsonify({'error': f'Phase {phase_name} not found in cascade phases'}), 400
 
-        target_idx = phase_names.index(node_id)
+        target_idx = phase_names.index(phase_name)
         upstream_phases = phase_names[:target_idx]
         target_and_downstream = phase_names[target_idx:]
 
@@ -3253,6 +3254,93 @@ def playground_run_from():
             'starting_from': node_id,
             'message': f'Cascade started from {node_id}'
         })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/playground/list', methods=['GET'])
+def list_playground_cascades():
+    """List all playground cascades with their metadata.
+
+    Returns a list of cascades from playground_scratchpad with:
+    - cascade_id
+    - session_id (derived from filename)
+    - created_at (file modification time)
+    - node_count (from _playground metadata)
+    """
+    try:
+        cascades = []
+
+        if not os.path.exists(PLAYGROUND_SCRATCHPAD_DIR):
+            return jsonify([])
+
+        for ext in CASCADE_EXTENSIONS:
+            for filepath in glob.glob(f"{PLAYGROUND_SCRATCHPAD_DIR}/*.{ext}"):
+                try:
+                    config = load_config_file(filepath)
+                    cascade_id = config.get('cascade_id')
+                    playground_meta = config.get('_playground', {})
+
+                    if cascade_id:
+                        # Get file modification time
+                        mtime = os.path.getmtime(filepath)
+                        created_at = datetime.fromtimestamp(mtime).isoformat()
+
+                        # Extract session ID from filename (e.g., workshop_abc123.yaml)
+                        filename = os.path.basename(filepath)
+                        session_id = os.path.splitext(filename)[0]
+
+                        # Count nodes from metadata
+                        nodes = playground_meta.get('nodes', [])
+                        image_nodes = [n for n in nodes if n.get('type') == 'image']
+                        prompt_nodes = [n for n in nodes if n.get('type') == 'prompt']
+
+                        cascades.append({
+                            'cascade_id': cascade_id,
+                            'session_id': session_id,
+                            'filepath': filepath,
+                            'created_at': created_at,
+                            'node_count': len(nodes),
+                            'image_node_count': len(image_nodes),
+                            'prompt_node_count': len(prompt_nodes),
+                            'description': config.get('description', ''),
+                        })
+                except Exception as e:
+                    continue
+
+        # Sort by creation time (newest first)
+        cascades.sort(key=lambda x: x['created_at'], reverse=True)
+
+        return jsonify(cascades)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/playground/load/<session_id>', methods=['GET'])
+def load_playground_cascade(session_id):
+    """Load a playground cascade by session ID.
+
+    Returns the full cascade config including _playground metadata
+    for restoring the graph state.
+    """
+    try:
+        filepath = os.path.join(PLAYGROUND_SCRATCHPAD_DIR, f"{session_id}.yaml")
+
+        if not os.path.exists(filepath):
+            # Try JSON
+            filepath = os.path.join(PLAYGROUND_SCRATCHPAD_DIR, f"{session_id}.json")
+
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'Cascade not found: {session_id}'}), 404
+
+        config = load_config_file(filepath)
+        return jsonify(config)
 
     except Exception as e:
         import traceback

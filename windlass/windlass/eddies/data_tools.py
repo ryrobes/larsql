@@ -3,14 +3,25 @@ Data-focused tools for SQL notebooks / data cascades.
 
 These tools support the "notebook" pattern where phases produce DataFrames
 that can be referenced by downstream phases via temp tables.
+
+Supports multi-modal outputs:
+- DataFrames (tables)
+- Images (matplotlib, PIL, OpenCV)
+- Charts (Plotly, Altair)
+- Markdown text
 """
 
 import json
+import os
+import io
+import base64
 import pandas as pd
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 from .base import simple_eddy
 from ..sql_tools.session_db import get_session_db
+from ..config import get_config
 
 
 def _get_session_duckdb(session_id: str):
@@ -18,6 +29,183 @@ def _get_session_duckdb(session_id: str):
     if not session_id:
         return None
     return get_session_db(session_id)
+
+
+def _serialize_for_json(obj):
+    """Convert non-JSON-serializable types to serializable equivalents."""
+    import numpy as np
+
+    if isinstance(obj, dict):
+        return {k: _serialize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_serialize_for_json(v) for v in obj]
+    elif isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()  # Convert numpy types to Python types
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    elif hasattr(obj, 'isoformat'):  # datetime-like objects
+        return obj.isoformat()
+    else:
+        # Check for matplotlib Figure that slipped through
+        type_name = type(obj).__name__
+        type_module = getattr(type(obj), '__module__', '')
+        if type_name == 'Figure' and 'matplotlib' in type_module:
+            return f"<matplotlib.Figure object - not serialized>"
+        return obj
+
+
+def _get_image_dir():
+    """Get the directory for storing generated images."""
+    config = get_config()
+    image_dir = config.image_dir
+    os.makedirs(image_dir, exist_ok=True)
+    return image_dir
+
+
+def _save_matplotlib_figure(fig, session_id: str, phase_name: str) -> Dict[str, Any]:
+    """Save a matplotlib figure to file and return metadata.
+
+    Returns standard image protocol format for consistency with other tools:
+    {"content": "description", "images": ["/path/to/image.png"], ...}
+
+    Images are saved in IMAGE_DIR/{session_id}/{phase_name}_{timestamp}.png
+    to match the API endpoint structure.
+    """
+    base_image_dir = _get_image_dir()
+    session_dir = os.path.join(base_image_dir, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
+    filename = f"{phase_name}_{datetime.now().strftime('%H%M%S')}.png"
+    filepath = os.path.join(session_dir, filename)
+
+    # Save figure
+    fig.savefig(filepath, dpi=150, bbox_inches='tight', facecolor='#0a0a0a', edgecolor='none')
+
+    # Close the figure to free memory
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+
+    # Return standard image protocol format
+    # API URL format: /api/images/{session_id}/{filename}
+    return {
+        "type": "image",
+        "content": f"Generated matplotlib figure: {phase_name}",
+        "images": [filepath],
+        "format": "png",
+        "path": filepath,
+        "filename": filename,
+        "session_id": session_id,
+        "api_url": f"/api/images/{session_id}/{filename}",
+        "_route": "success"
+    }
+
+
+def _save_pil_image(img, session_id: str, phase_name: str) -> Dict[str, Any]:
+    """Save a PIL Image to file and return metadata.
+
+    Returns standard image protocol format for consistency with other tools:
+    {"content": "description", "images": ["/path/to/image.png"], ...}
+
+    Images are saved in IMAGE_DIR/{session_id}/{phase_name}_{timestamp}.png
+    to match the API endpoint structure.
+    """
+    base_image_dir = _get_image_dir()
+    session_dir = os.path.join(base_image_dir, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
+    filename = f"{phase_name}_{datetime.now().strftime('%H%M%S')}.png"
+    filepath = os.path.join(session_dir, filename)
+
+    # Save image
+    img.save(filepath)
+
+    # Return standard image protocol format
+    # API URL format: /api/images/{session_id}/{filename}
+    return {
+        "type": "image",
+        "content": f"Generated PIL image: {phase_name} ({img.width}x{img.height})",
+        "images": [filepath],
+        "format": "png",
+        "path": filepath,
+        "filename": filename,
+        "session_id": session_id,
+        "api_url": f"/api/images/{session_id}/{filename}",
+        "width": img.width,
+        "height": img.height,
+        "_route": "success"
+    }
+
+
+def _convert_plotly_figure(fig, phase_name: str = "chart") -> Dict[str, Any]:
+    """Convert a Plotly figure to JSON for frontend rendering.
+
+    Returns a consistent format with content field for system compatibility.
+    """
+    # Get the figure as JSON
+    fig_json = fig.to_json()
+    fig_dict = json.loads(fig_json)
+
+    return {
+        "type": "plotly",
+        "content": f"Generated Plotly chart: {phase_name}",
+        "data": fig_dict.get("data", []),
+        "layout": fig_dict.get("layout", {}),
+        "_route": "success"
+    }
+
+
+def _is_matplotlib_figure(obj) -> bool:
+    """Check if object is a matplotlib Figure."""
+    try:
+        import matplotlib.figure
+        if isinstance(obj, matplotlib.figure.Figure):
+            return True
+    except ImportError:
+        pass
+
+    # Fallback: check type name for cases where import paths differ
+    type_name = type(obj).__name__
+    type_module = getattr(type(obj), '__module__', '')
+    if type_name == 'Figure' and 'matplotlib' in type_module:
+        return True
+
+    return False
+
+
+def _is_pil_image(obj) -> bool:
+    """Check if object is a PIL Image."""
+    try:
+        from PIL import Image
+        return isinstance(obj, Image.Image)
+    except ImportError:
+        return False
+
+
+def _is_plotly_figure(obj) -> bool:
+    """Check if object is a Plotly figure."""
+    try:
+        import plotly.graph_objects as go
+        if isinstance(obj, go.Figure):
+            return True
+        # Also check for plotly express figures
+        if hasattr(obj, 'to_json') and 'plotly' in str(type(obj).__module__):
+            return True
+        return False
+    except ImportError:
+        return False
+
+
+def _is_numpy_array(obj) -> bool:
+    """Check if object is a numpy array (potential image)."""
+    try:
+        import numpy as np
+        return isinstance(obj, np.ndarray)
+    except ImportError:
+        return False
 
 
 def _run_sql_with_connection(sql: str, connection: str, limit: int = 10000) -> Dict[str, Any]:
@@ -257,7 +445,7 @@ def python_data(
         # Build data namespace
         data = DataNamespace(_outputs or {}, session_db)
 
-        # Build execution environment
+        # Build execution environment with common libraries
         exec_globals = {
             'data': data,
             'state': _state or {},
@@ -268,6 +456,10 @@ def python_data(
             # Common utilities
             'print': print,  # Allow debugging
         }
+
+        # Note: Visualization libraries (matplotlib, plotly, PIL) are NOT pre-imported.
+        # Each cell should import what it needs, just like in Jupyter.
+        # Only data access (data.*), pandas (pd), numpy (np), and json are pre-loaded.
         exec_locals = {}
 
         # Execute the code
@@ -283,6 +475,48 @@ def python_data(
         result = exec_locals['result']
 
         # Determine result type and format response
+
+        # === Multi-modal outputs ===
+
+        # Matplotlib figure
+        if _is_matplotlib_figure(result):
+            return _save_matplotlib_figure(result, _session_id or "unknown", _phase_name or "cell")
+
+        # PIL Image
+        if _is_pil_image(result):
+            return _save_pil_image(result, _session_id or "unknown", _phase_name or "cell")
+
+        # Plotly figure
+        if _is_plotly_figure(result):
+            return _convert_plotly_figure(result, _phase_name or "chart")
+
+        # Numpy array (treat as image if it looks like one)
+        if _is_numpy_array(result):
+            import numpy as np
+            # Check if it looks like an image (2D or 3D array with reasonable dimensions)
+            if len(result.shape) in [2, 3] and result.shape[0] > 1 and result.shape[1] > 1:
+                if result.shape[0] < 10000 and result.shape[1] < 10000:  # Sanity check
+                    try:
+                        from PIL import Image
+                        # Convert numpy array to PIL Image
+                        if len(result.shape) == 2:
+                            # Grayscale
+                            if result.dtype != np.uint8:
+                                result = ((result - result.min()) / (result.max() - result.min()) * 255).astype(np.uint8)
+                            img = Image.fromarray(result, mode='L')
+                        else:
+                            # RGB or RGBA
+                            if result.dtype != np.uint8:
+                                result = ((result - result.min()) / (result.max() - result.min()) * 255).astype(np.uint8)
+                            mode = 'RGBA' if result.shape[2] == 4 else 'RGB'
+                            img = Image.fromarray(result, mode=mode)
+                        return _save_pil_image(img, _session_id or "unknown", _phase_name or "cell")
+                    except Exception:
+                        pass  # Fall through to treat as data
+
+        # === Standard data outputs ===
+
+        # DataFrame
         if isinstance(result, pd.DataFrame):
             # Materialize as temp table
             if _phase_name and session_db:
@@ -293,8 +527,10 @@ def python_data(
 
             # Note: We don't include 'dataframe' or 'result' as they're not JSON-serializable
             # Downstream phases access data via temp tables or by reconstructing from 'rows'
+            # Serialize rows to convert Timestamps and numpy types to JSON-serializable values
+            rows = _serialize_for_json(result.to_dict('records'))
             return {
-                "rows": result.to_dict('records'),
+                "rows": rows,
                 "columns": list(result.columns),
                 "row_count": len(result),
                 "type": "dataframe",
@@ -303,21 +539,21 @@ def python_data(
 
         elif isinstance(result, dict):
             return {
-                "result": result,
+                "result": _serialize_for_json(result),
                 "type": "dict",
                 "_route": "success"
             }
 
         elif isinstance(result, list):
             return {
-                "result": result,
+                "result": _serialize_for_json(result),
                 "type": "list",
                 "_route": "success"
             }
 
         else:
             return {
-                "result": result,
+                "result": _serialize_for_json(result),
                 "type": "scalar",
                 "_route": "success"
             }

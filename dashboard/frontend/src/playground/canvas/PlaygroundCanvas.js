@@ -64,10 +64,32 @@ function PlaygroundCanvas() {
     });
   }, []);
 
+  // Validate connection types (text → text-in, image → image-in)
+  const isValidConnection = useCallback((connection) => {
+    const { sourceHandle, targetHandle } = connection;
+
+    // Extract types from handle IDs
+    // Source handles: 'text-out', 'image-out'
+    // Target handles: 'text-in', 'image-in'
+    const sourceType = sourceHandle?.replace('-out', '');
+    const targetType = targetHandle?.replace('-in', '');
+
+    // Only allow matching types
+    if (sourceType && targetType) {
+      return sourceType === targetType;
+    }
+
+    // Fallback: allow if we can't determine types
+    return true;
+  }, []);
+
   // Handle new connections
   const onConnect = useCallback((params) => {
-    storeAddEdge(params);
-  }, [storeAddEdge]);
+    // Double-check validation before adding
+    if (isValidConnection(params)) {
+      storeAddEdge(params);
+    }
+  }, [storeAddEdge, isValidConnection]);
 
   // Handle drag over for drop zone
   const onDragOver = useCallback((event) => {
@@ -127,19 +149,20 @@ function PlaygroundCanvas() {
         onDragOver={onDragOver}
         onDrop={onDrop}
         nodeTypes={nodeTypes}
+        isValidConnection={isValidConnection}
         fitView
         snapToGrid
         snapGrid={[16, 16]}
+        deleteKeyCode={['Backspace', 'Delete']}
         defaultEdgeOptions={{
           animated: true,
           style: { stroke: 'var(--ocean-primary)', strokeWidth: 2 },
         }}
       >
         <Background
-          variant="dots"
+          variant="lines"
           gap={16}
-          size={1}
-          color="var(--border-default)"
+          color="rgba(255, 255, 255, 0.08)"
         />
         <Controls />
         <MiniMap
