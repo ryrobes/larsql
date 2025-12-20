@@ -435,7 +435,14 @@ def execute_deterministic_phase(
         )
 
     # Build render context
-    outputs = {item["phase"]: item["output"] for item in echo.lineage}
+    # Filter lineage to only include actual tool outputs (not routing messages)
+    # Routing messages are strings like "Dynamically routed to: phase_name"
+    outputs = {}
+    for item in echo.lineage:
+        output = item.get("output")
+        # Only include dict outputs (actual tool results), not string routing messages
+        if isinstance(output, dict):
+            outputs[item["phase"]] = output
     render_context = {
         "input": input_data,
         "state": echo.state,
@@ -455,6 +462,17 @@ def execute_deterministic_phase(
             tool=phase.tool,
             original_error=e
         )
+
+    # Inject context for data tools (sql_data, python_data)
+    if phase.tool in ("sql_data", "python_data"):
+        rendered_inputs["_phase_name"] = phase.name
+        rendered_inputs["_session_id"] = echo.session_id
+
+        # python_data needs access to outputs and state
+        if phase.tool == "python_data":
+            rendered_inputs["_outputs"] = outputs  # Dict of phase_name -> output
+            rendered_inputs["_state"] = echo.state
+            rendered_inputs["_input"] = input_data
 
     # Parse timeout
     timeout_seconds = parse_timeout(phase.timeout)

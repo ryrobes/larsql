@@ -6,10 +6,15 @@ import usePlaygroundStore from '../stores/playgroundStore';
  *
  * Connects to the SSE endpoint and updates playground nodes with execution results.
  * Only processes events matching the current sessionId.
+ *
+ * Handles race condition: events may arrive before sessionId is known.
+ * Solution: buffer recent events and process them when sessionId becomes available.
  */
 export function usePlaygroundSSE() {
   const eventSourceRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const eventBufferRef = useRef([]); // Buffer events until sessionId is known
+  const processedSessionsRef = useRef(new Set()); // Track processed sessions to avoid duplicates
 
   const sessionId = usePlaygroundStore((state) => state.sessionId);
   const executionStatus = usePlaygroundStore((state) => state.executionStatus);
@@ -20,51 +25,106 @@ export function usePlaygroundSSE() {
   const handleCascadeError = usePlaygroundStore((state) => state.handleCascadeError);
   const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
 
+  // Process a single event (extracted for reuse)
+  const handleEvent = useCallback((event, targetSessionId) => {
+    const data = event.data || {};
+
+    switch (event.type) {
+      case 'cascade_start':
+        console.log('[Playground SSE] Cascade started:', event.session_id);
+        break;
+
+      case 'phase_start':
+        console.log('[Playground SSE] Phase start:', data.phase_name);
+        updateNodeData(data.phase_name, { status: 'running' });
+        break;
+
+      case 'phase_complete':
+        console.log('[Playground SSE] Phase complete:', data.phase_name, 'result:', data.result);
+        console.log('[Playground SSE] Images in result:', data.result?.images);
+        handlePhaseComplete(data.phase_name, data.result || {});
+        break;
+
+      case 'cascade_complete':
+        handleCascadeComplete();
+        break;
+
+      case 'cascade_error':
+        handleCascadeError(data.error || 'Unknown error');
+        break;
+
+      default:
+        console.log('[Playground SSE] Event:', event.type);
+    }
+  }, [handlePhaseComplete, handleCascadeComplete, handleCascadeError, updateNodeData]);
+
+  // Process buffered events when sessionId becomes known
+  useEffect(() => {
+    if (!sessionId || processedSessionsRef.current.has(sessionId)) {
+      return;
+    }
+
+    // Process any buffered events for this session
+    const matchingEvents = eventBufferRef.current.filter(e => e.session_id === sessionId);
+    if (matchingEvents.length > 0) {
+      console.log(`[Playground SSE] Processing ${matchingEvents.length} buffered events for session:`, sessionId);
+      matchingEvents.forEach(event => handleEvent(event, sessionId));
+    }
+
+    // Mark this session as processed
+    processedSessionsRef.current.add(sessionId);
+
+    // Clear old events from buffer (keep only recent)
+    eventBufferRef.current = eventBufferRef.current.filter(e => e.session_id === sessionId);
+  }, [sessionId, handleEvent]);
+
   const processEvent = useCallback(
     (event) => {
-      // Skip heartbeats and events for other sessions
+      // Skip heartbeats and connection events
       if (event.type === 'heartbeat') return;
       if (event.type === 'connected') return;
 
-      // Only process events for our session
-      if (event.session_id !== sessionId) return;
+      // Get current sessionId from store (not from closure, to avoid stale value)
+      const currentSessionId = usePlaygroundStore.getState().sessionId;
 
-      const data = event.data || {};
+      // Debug: log all non-heartbeat events
+      console.log('[Playground SSE] Event received:', event.type, 'session:', event.session_id, 'our session:', currentSessionId);
 
-      switch (event.type) {
-        case 'cascade_start':
-          console.log('[Playground SSE] Cascade started:', event.session_id);
-          break;
-
-        case 'phase_start':
-          // Mark node as running
-          updateNodeData(data.phase_name, { status: 'running' });
-          break;
-
-        case 'phase_complete':
-          console.log('[Playground SSE] Phase complete:', data.phase_name, 'result:', data.result);
-          handlePhaseComplete(data.phase_name, data.result || {});
-          break;
-
-        case 'cascade_complete':
-          handleCascadeComplete();
-          break;
-
-        case 'cascade_error':
-          handleCascadeError(data.error || 'Unknown error');
-          break;
-
-        default:
-          // Log unknown events for debugging
-          console.log('[Playground SSE] Event:', event.type);
+      // If sessionId not known yet, buffer the event
+      if (!currentSessionId) {
+        console.log('[Playground SSE] Buffering event (sessionId not yet known)');
+        eventBufferRef.current.push(event);
+        // Keep buffer size reasonable
+        if (eventBufferRef.current.length > 100) {
+          eventBufferRef.current = eventBufferRef.current.slice(-50);
+        }
+        return;
       }
+
+      // Skip events for other sessions
+      if (event.session_id !== currentSessionId) {
+        console.log('[Playground SSE] Skipping - session mismatch');
+        return;
+      }
+
+      // Process the event
+      handleEvent(event, currentSessionId);
     },
-    [sessionId, handlePhaseComplete, handleCascadeComplete, handleCascadeError, updateNodeData]
+    [handleEvent]
   );
 
+  // Clear buffers when execution ends
   useEffect(() => {
-    // Only connect if we have a session and are running
-    if (!sessionId || executionStatus !== 'running') {
+    if (executionStatus !== 'running') {
+      eventBufferRef.current = [];
+      processedSessionsRef.current.clear();
+    }
+  }, [executionStatus]);
+
+  useEffect(() => {
+    // Connect as soon as execution starts - we'll filter events by sessionId
+    // This fixes the race condition where events arrive before sessionId is set
+    if (executionStatus !== 'running') {
       return;
     }
 
@@ -118,7 +178,7 @@ export function usePlaygroundSSE() {
         eventSourceRef.current = null;
       }
     };
-  }, [sessionId, executionStatus, processEvent]);
+  }, [executionStatus, processEvent]);
 
   return {
     connected: !!eventSourceRef.current,

@@ -1,34 +1,34 @@
 {
   "palette": [
     {
-      "id": "flux_schnell",
-      "name": "FLUX.1 Schnell",
+      "id": "gemini_image",
+      "name": "Gemini 2.5 Flash Image",
       "category": "generator",
-      "openrouter": { "model": "black-forest-labs/FLUX-1-schnell" },
+      "openrouter": { "model": "google/gemini-2.5-flash-image" },
+      "inputs": { "prompt": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:creation",
+      "color": "#4285f4"
+    },
+    {
+      "id": "gemini_3_pro_image",
+      "name": "Gemini 3 Pro Image",
+      "category": "generator",
+      "openrouter": { "model": "google/gemini-3-pro-image-preview" },
+      "inputs": { "prompt": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:star-four-points",
+      "color": "#ea4335"
+    },
+    {
+      "id": "gemini_image_preview",
+      "name": "Gemini 2.5 Flash Image Preview",
+      "category": "generator",
+      "openrouter": { "model": "google/gemini-2.5-flash-image-preview" },
       "inputs": { "prompt": true },
       "outputs": { "mode": "single" },
       "icon": "mdi:lightning-bolt",
-      "color": "#7c3aed"
-    },
-    {
-      "id": "flux_dev",
-      "name": "FLUX.1 Dev",
-      "category": "generator",
-      "openrouter": { "model": "black-forest-labs/FLUX-1-dev" },
-      "inputs": { "prompt": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:palette",
-      "color": "#7c3aed"
-    },
-    {
-      "id": "sdxl_lightning",
-      "name": "SDXL Lightning",
-      "category": "generator",
-      "openrouter": { "model": "bytedance/sdxl-lightning-4step" },
-      "inputs": { "prompt": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:lightning-bolt",
-      "color": "#f59e0b"
+      "color": "#34a853"
     },
     {
       "id": "decompose",

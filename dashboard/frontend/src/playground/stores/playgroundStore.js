@@ -215,7 +215,8 @@ const usePlaygroundStore = create(
 
         if (paletteConfig.openrouter) {
           // OpenRouter image model - use model-based phase (same as LLM phases)
-          // Runner detects image models (FLUX, SDXL) and routes to Agent.generate_image()
+          // Runner detects image models and routes to _execute_image_generation_phase()
+          // which uses normal Agent.run() with modalities=["text", "image"]
           phases.push({
             name: node.id,
             model: paletteConfig.openrouter.model,

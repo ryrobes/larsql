@@ -31,7 +31,7 @@ from .eddies.system import spawn_cascade
 from .eddies.research_db import research_query, research_execute
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
 from .eddies.filesystem import read_file, write_file, append_file, list_files, file_info
-# Image generation is handled via Agent.generate_image() in runner.py
+# Image generation uses normal Agent.run() with modalities=["text", "image"]
 # No separate tool needed - phases with image models are auto-detected
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
 
@@ -73,6 +73,11 @@ register_tackle("sql_search", sql_search)  # Elasticsearch hybrid search (defaul
 register_tackle("sql_rag_search", sql_rag_search)  # ClickHouse RAG fallback (legacy)
 register_tackle("sql_query", sql_run_sql)  # Named sql_query to avoid conflict with smart_sql_run
 register_tackle("list_sql_connections", list_sql_connections)
+
+# Data Cascade tools (SQL notebooks / data pipelines)
+from .eddies.data_tools import sql_data, python_data
+register_tackle("sql_data", sql_data)
+register_tackle("python_data", python_data)
 
 # Conditional: ElevenLabs TTS (only if API key and voice ID are configured)
 from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_available

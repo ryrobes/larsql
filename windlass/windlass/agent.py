@@ -12,7 +12,7 @@ class Agent:
     This mimics the interface of 'openai-agents-python' or similar libraries,
     allowing us to swap the backend easily.
     """
-    def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None, use_native_tools: bool = False):
+    def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None, use_native_tools: bool = False, modalities: List[str] = None):
         # Parse model string for reasoning config (e.g., "xai/grok-4::high(8000)")
         # This separates the clean model name from reasoning configuration
         clean_model, reasoning_config = parse_model_with_reasoning(model)
@@ -26,6 +26,7 @@ class Agent:
         self.base_url = base_url
         self.api_key = api_key
         self.use_native_tools = use_native_tools
+        self.modalities = modalities  # For image generation: ["text", "image"]
         self.history = []
 
     def run(self, input_message: str = None, context_messages: List[Dict] = None) -> Dict[str, Any]:
@@ -100,6 +101,13 @@ class Agent:
             if reasoning_dict:
                 # LiteLLM passes extra_body to the provider as-is
                 args["extra_body"] = {"reasoning": reasoning_dict}
+
+        # Inject modalities for image generation models
+        # OpenRouter uses modalities: ["text", "image"] for image generation
+        if self.modalities:
+            if "extra_body" not in args:
+                args["extra_body"] = {}
+            args["extra_body"]["modalities"] = self.modalities
 
         # Sanitize messages: Remove Echo fields and ensure API compliance
         # LLM APIs only accept: role, content, tool_calls, tool_call_id, name
@@ -181,6 +189,11 @@ class Agent:
                         }
                         for tc in message.tool_calls
                     ]
+
+                # Handle images from image generation models
+                # OpenRouter returns images in message.images as list of {"type": "image_url", "image_url": {"url": "data:..."}}
+                if hasattr(message, "images") and message.images:
+                    msg_dict["images"] = message.images
 
                 # Capture full response
                 full_response = {
@@ -771,6 +784,10 @@ class Agent:
         "bytedance/sdxl",
         "stability/",
         "stabilityai/",
+        # Gemini image generation models
+        "google/gemini-2.5-flash-image",
+        "google/gemini-3-pro-image",
+        "google/gemini-2.0-flash-exp",  # Also supports image generation
     ]
 
     @classmethod

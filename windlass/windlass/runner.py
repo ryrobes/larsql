@@ -3987,6 +3987,12 @@ Refinement directive: {reforge_config.honing_prompt}
             self._stop_heartbeat()
             # Stop narrator service if running
             self._stop_narrator_service()
+            # Clean up session DuckDB for data cascades
+            try:
+                from .sql_tools.session_db import cleanup_session_db
+                cleanup_session_db(self.session_id, delete_file=True)
+            except Exception:
+                pass  # Don't fail cascade if cleanup fails
 
     def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
@@ -7417,16 +7423,20 @@ Refinement directive: {reforge_config.honing_prompt}
 
     def _execute_image_generation_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
         """
-        Execute an image generation phase using Agent.generate_image().
+        Execute an image generation phase using normal Agent with modalities.
 
-        Image generation phases use models like FLUX, SDXL that generate images
-        instead of text. They go through the same observability pipeline but
-        use a different API (image_generation vs completion).
+        Image generation phases use models like Gemini that support image output.
+        Uses the same Agent.run() path as text models, just with modalities=["text", "image"].
+        This ensures full observability: cost tracking, unified logging, events.
 
         The phase.instructions becomes the image prompt (rendered with Jinja2).
         """
         from .unified_logs import log_unified
+        from .utils import get_next_image_index
         import time
+        import os
+        import base64
+        import uuid
 
         indent = "  " * self.depth
         start_time = time.time()
@@ -7445,39 +7455,87 @@ Refinement directive: {reforge_config.honing_prompt}
             stage="image_generation"
         )
 
+        # Build outputs dict from lineage (same pattern as other phase methods)
+        outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+
         # Render the prompt from instructions using Jinja2
         prompt = render_instruction(phase.instructions, {
             "input": input_data,
             "state": self.echo.state,
-            "outputs": self._get_outputs_dict(),
+            "outputs": outputs,
+            "lineage": self.echo.lineage,
         })
 
         console.print(f"{indent}[bold magenta]🎨 Image Generation: {phase.name}[/bold magenta]")
         console.print(f"{indent}  Model: {phase_model}")
         console.print(f"{indent}  Prompt: {prompt[:100]}...")
 
-        # Get image config (defaults if not specified)
-        image_config = phase.image_config
-        width = image_config.width if image_config else 1024
-        height = image_config.height if image_config else 1024
-        n = image_config.n if image_config else 1
-
         try:
-            # Call Agent.generate_image() - same observability as other Agent methods
-            result = Agent.generate_image(
-                prompt=prompt,
+            # Create Agent with modalities for image generation
+            # This uses the SAME Agent.run() path as text models
+            agent = Agent(
                 model=phase_model,
-                width=width,
-                height=height,
-                n=n,
-                session_id=self.session_id,
-                trace_id=trace.id,
-                parent_id=trace.parent_id,
-                phase_name=phase.name,
-                cascade_id=self.config.cascade_id,
+                system_prompt="Generate the requested image.",
+                tools=[],
+                base_url=self.base_url,
+                api_key=self.api_key,
+                modalities=["text", "image"],  # Enable image output
             )
 
+            # Run the agent - same as any other LLM call
+            response = agent.run(input_message=prompt)
+
             duration_ms = (time.time() - start_time) * 1000
+
+            # Extract and save images from response
+            saved_paths = []
+            raw_images = response.get("images", [])
+
+            if raw_images:
+                config = get_config()
+                image_dir = os.path.join(config.image_dir, self.session_id, phase.name)
+                os.makedirs(image_dir, exist_ok=True)
+
+                for img_data in raw_images:
+                    # OpenRouter returns: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+                    if isinstance(img_data, dict):
+                        url = img_data.get("image_url", {}).get("url", "")
+                        if url.startswith("data:"):
+                            # Extract base64 data from data URL
+                            # Format: data:image/png;base64,<data>
+                            try:
+                                header, b64_data = url.split(",", 1)
+                                # Determine extension from mime type
+                                ext = ".png"
+                                if "jpeg" in header or "jpg" in header:
+                                    ext = ".jpg"
+                                elif "webp" in header:
+                                    ext = ".webp"
+
+                                image_idx = get_next_image_index(self.session_id, phase.name)
+                                filename = f"image_{image_idx}{ext}"
+                                filepath = os.path.join(image_dir, filename)
+
+                                # Decode and save
+                                image_bytes = base64.b64decode(b64_data)
+                                with open(filepath, 'wb') as f:
+                                    f.write(image_bytes)
+
+                                # API-servable path
+                                relative_path = f"/api/images/{self.session_id}/{phase.name}/{filename}"
+                                saved_paths.append(relative_path)
+
+                                console.print(f"{indent}    📷 Saved: {relative_path}")
+                            except Exception as e:
+                                console.print(f"{indent}    [yellow]⚠ Failed to save image: {e}[/yellow]")
+
+            # Build result in standard multimodal format
+            result = {
+                "content": response.get("content", f"Generated {len(saved_paths)} image(s)"),
+                "images": saved_paths,
+                "model": phase_model,
+                "request_id": response.get("id"),
+            }
 
             # Add to lineage
             self.echo.lineage.append({
@@ -7485,18 +7543,36 @@ Refinement directive: {reforge_config.honing_prompt}
                 "output": result,
                 "type": "image_generation",
                 "model": phase_model,
-                "images": result.get("images", []),
+                "images": saved_paths,
                 "duration_ms": duration_ms
             })
 
             # Store output in state for subsequent phases
             self.echo.state[f"output_{phase.name}"] = result
 
+            # Log to unified logs
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                parent_session_id=self.parent_session_id,
+                node_type="image_generation",
+                role="assistant",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                model=phase_model,
+                request_id=response.get("id"),
+                duration_ms=duration_ms,
+                content=f"Generated {len(saved_paths)} image(s)",
+                metadata={
+                    "phase_type": "image_generation",
+                    "images": saved_paths,
+                }
+            )
+
             # Console output
-            images = result.get("images", [])
-            console.print(f"{indent}  [green]✓ Generated {len(images)} image(s)[/green]")
-            for img_path in images:
-                console.print(f"{indent}    📷 {img_path}")
+            console.print(f"{indent}  [green]✓ Generated {len(saved_paths)} image(s)[/green]")
 
             # Hook: Phase Complete
             self.hooks.on_phase_complete(phase.name, self.session_id, result)
@@ -7507,7 +7583,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 "phase_type": "image_generation",
                 "result": {
                     "content": result.get("content", ""),
-                    "images": images,
+                    "images": saved_paths,
                     "model": phase_model,
                     "duration_ms": duration_ms,
                 },
@@ -7516,7 +7592,6 @@ Refinement directive: {reforge_config.honing_prompt}
             # Determine next phase from handoffs
             next_phase = None
             if phase.handoffs and len(phase.handoffs) > 0:
-                # Use first handoff as default next phase
                 first_handoff = phase.handoffs[0]
                 if isinstance(first_handoff, str):
                     next_phase = first_handoff
