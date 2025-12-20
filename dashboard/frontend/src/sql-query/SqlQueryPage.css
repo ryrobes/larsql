@@ -32,6 +32,11 @@
   height: 100%;
 }
 
+/* Notebook mode - no header needed, navigator handles it */
+.sql-query-schema-panel.notebook-mode {
+  background-color: #0a0a0a;
+}
+
 .sql-query-schema-header {
   display: flex;
   align-items: center;

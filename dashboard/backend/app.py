@@ -3038,6 +3038,10 @@ def run_cascade():
         inputs = data.get('inputs') or data.get('input', {})
         session_id = data.get('session_id')
 
+        # Debug logging
+        print(f"[run-cascade] cascade_path={cascade_path}, has_yaml={bool(cascade_yaml)}, len_yaml={len(cascade_yaml) if cascade_yaml else 0}")
+        print(f"[run-cascade] session_id={session_id}, inputs={inputs}")
+
         if not cascade_path and not cascade_yaml:
             return jsonify({'error': 'cascade_path or cascade_yaml required'}), 400
 
@@ -3092,6 +3096,195 @@ def run_cascade():
             'session_id': session_id,
             'message': 'Cascade started in background'
         })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/playground/run-from', methods=['POST'])
+def playground_run_from():
+    """Run playground cascade starting from a specific node.
+
+    Uses cached images from a previous run for upstream phases,
+    pre-populates Echo state, and only executes from the target node.
+
+    Request body:
+        node_id: The node to start execution from
+        cached_session_id: Session ID with cached images for upstream phases
+        cascade_yaml: Full cascade YAML
+        inputs: Input values
+    """
+    try:
+        data = request.json
+        node_id = data.get('node_id')
+        cached_session_id = data.get('cached_session_id')
+        cascade_yaml = data.get('cascade_yaml')
+        inputs = data.get('inputs', {})
+
+        print(f"[Playground RunFrom] node_id={node_id}, cached_session={cached_session_id}")
+
+        if not node_id or not cascade_yaml:
+            return jsonify({'error': 'node_id and cascade_yaml required'}), 400
+
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+
+        from windlass import run_cascade as execute_cascade
+        from windlass.echo import Echo, _session_manager
+        from windlass.loaders import load_config_string
+        from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        import uuid
+        import shutil
+        import threading
+        import yaml as yaml_module
+
+        # Parse cascade to understand phase dependencies
+        cascade_data = yaml_module.safe_load(cascade_yaml)
+        phases = cascade_data.get('phases', [])
+        phase_names = [p['name'] for p in phases]
+
+        print(f"[Playground RunFrom] Cascade phases: {phase_names}")
+
+        # Find target phase index
+        if node_id not in phase_names:
+            return jsonify({'error': f'Node {node_id} not found in cascade phases'}), 400
+
+        target_idx = phase_names.index(node_id)
+        upstream_phases = phase_names[:target_idx]
+        target_and_downstream = phase_names[target_idx:]
+
+        print(f"[Playground RunFrom] Upstream: {upstream_phases}, Target+downstream: {target_and_downstream}")
+
+        # Create new session ID
+        new_session_id = f"workshop_{uuid.uuid4().hex[:12]}"
+
+        # Copy images from cached session to new session for upstream phases
+        if cached_session_id and upstream_phases:
+            src_dir = os.path.join(IMAGE_DIR, cached_session_id)
+            dst_dir = os.path.join(IMAGE_DIR, new_session_id)
+
+            if os.path.exists(src_dir):
+                os.makedirs(dst_dir, exist_ok=True)
+
+                for phase_name in upstream_phases:
+                    phase_src = os.path.join(src_dir, phase_name)
+                    phase_dst = os.path.join(dst_dir, phase_name)
+
+                    if os.path.exists(phase_src):
+                        shutil.copytree(phase_src, phase_dst)
+                        print(f"[Playground RunFrom] Copied images: {phase_name}")
+            else:
+                print(f"[Playground RunFrom] Warning: cached session dir not found: {src_dir}")
+
+        # Build Echo with pre-populated state for upstream phases
+        echo = Echo(session_id=new_session_id, initial_state={'input': inputs})
+
+        # Add output_* entries for each upstream phase with image references
+        for phase_name in upstream_phases:
+            phase_img_dir = os.path.join(IMAGE_DIR, new_session_id, phase_name)
+            images = []
+
+            if os.path.exists(phase_img_dir):
+                for img_file in sorted(os.listdir(phase_img_dir)):
+                    if img_file.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                        # Use API URL format that runner expects
+                        img_url = f"/api/images/{new_session_id}/{phase_name}/{img_file}"
+                        images.append(img_url)
+
+            # Set output state that downstream phases can reference
+            echo.state[f'output_{phase_name}'] = {
+                'images': images,
+                'status': 'completed',
+                '_cached_from': cached_session_id
+            }
+            print(f"[Playground RunFrom] State output_{phase_name}: {len(images)} images")
+
+        # Register Echo in session manager (key pattern from branching.py)
+        _session_manager.sessions[new_session_id] = echo
+
+        # Modify cascade to only include target + downstream phases
+        cascade_data['phases'] = [p for p in phases if p['name'] in target_and_downstream]
+        modified_yaml = yaml_module.dump(cascade_data, default_flow_style=False)
+
+        print(f"[Playground RunFrom] Modified cascade has {len(cascade_data['phases'])} phases")
+
+        # Save modified cascade to scratchpad
+        scratchpad_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
+        os.makedirs(scratchpad_dir, exist_ok=True)
+        cascade_path = os.path.join(scratchpad_dir, f"{new_session_id}.yaml")
+
+        with open(cascade_path, 'w') as f:
+            f.write(modified_yaml)
+        print(f"[Playground RunFrom] Saved cascade to: {cascade_path}")
+
+        # Run in background
+        def run_in_background():
+            try:
+                os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
+
+                hooks = CompositeHooks(
+                    EventPublishingHooks(),
+                    ResearchSessionAutoSaveHooks()
+                )
+
+                print(f"[Playground RunFrom] Starting cascade from {node_id}")
+                execute_cascade(cascade_path, inputs, new_session_id, hooks=hooks)
+                print(f"[Playground RunFrom] Cascade completed: {new_session_id}")
+
+            except Exception as e:
+                print(f"[Playground RunFrom] Cascade error: {e}")
+                import traceback
+                traceback.print_exc()
+
+        thread = threading.Thread(target=run_in_background, daemon=True)
+        thread.start()
+
+        return jsonify({
+            'success': True,
+            'session_id': new_session_id,
+            'cached_from': cached_session_id,
+            'starting_from': node_id,
+            'message': f'Cascade started from {node_id}'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/playground/model-costs', methods=['GET'])
+def get_model_costs():
+    """Get average cost per model from historical data.
+
+    Returns a dictionary mapping model names to their average cost.
+    Only includes models that have been used with cost > 0.
+    """
+    try:
+        db = get_db()
+        query = """
+            SELECT
+                model,
+                avg(cost) as avg_cost,
+                count(*) as usage_count
+            FROM unified_logs
+            WHERE cost > 0 AND model IS NOT NULL
+            GROUP BY model
+            ORDER BY usage_count DESC
+        """
+        result = db.query(query)
+
+        # Convert to dict: model -> avg_cost
+        costs = {}
+        for row in result:
+            model = row.get('model')
+            avg_cost = row.get('avg_cost')
+            if model and avg_cost is not None:
+                costs[model] = round(float(avg_cost), 6)
+
+        return jsonify(costs)
 
     except Exception as e:
         import traceback

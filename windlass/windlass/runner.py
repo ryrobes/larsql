@@ -7770,6 +7770,20 @@ Refinement directive: {reforge_config.honing_prompt}
         console.print(f"{indent}  Model: {phase_model}")
         console.print(f"{indent}  Prompt: {prompt[:100]}...")
 
+        # Check if this phase has context.from for image-to-image
+        context_images = []
+        if phase.context and phase.context.from_:
+            from .cascade import ContextSourceConfig
+            for source in phase.context.from_:
+                source_name = source if isinstance(source, str) else getattr(source, 'phase', None)
+                if source_name:
+                    # Create a config for loading images
+                    source_config = source if isinstance(source, ContextSourceConfig) else ContextSourceConfig(phase=source_name)
+                    source_images = self._load_phase_images(source_name, source_config)
+                    context_images.extend(source_images)
+                    if source_images:
+                        console.print(f"{indent}  [cyan]📷 Loaded {len(source_images)} image(s) from phase '{source_name}'[/cyan]")
+
         try:
             # Create Agent with modalities for image generation
             # This uses the SAME Agent.run() path as text models
@@ -7782,8 +7796,26 @@ Refinement directive: {reforge_config.honing_prompt}
                 modalities=["text", "image"],  # Enable image output
             )
 
-            # Run the agent - same as any other LLM call
-            response = agent.run(input_message=prompt)
+            # Build input - if we have context images, create multimodal message
+            if context_images:
+                # Build multimodal content: images FIRST, then text prompt
+                # This is more natural for image-to-image: "Here's the image, now do X with it"
+                multimodal_content = []
+                for img_url in context_images:
+                    multimodal_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url}
+                    })
+                # Add text prompt after images - prefix with instruction context
+                edit_prompt = f"Using the image(s) above as reference, {prompt}"
+                multimodal_content.append({"type": "text", "text": edit_prompt})
+                console.print(f"{indent}  Edit prompt: {edit_prompt[:80]}...")
+                # Create context with multimodal message
+                context_messages = [{"role": "user", "content": multimodal_content}]
+                response = agent.run(context_messages=context_messages)
+            else:
+                # Simple text-to-image
+                response = agent.run(input_message=prompt)
 
             duration_ms = (time.time() - start_time) * 1000
 
@@ -8339,8 +8371,17 @@ Refinement directive: {reforge_config.honing_prompt}
                     tools_schema.append(get_tool_schema(memory_tool, name=t_name))
                     tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
                 else:
-                    # Tool not found
-                    pass
+                    # Check if this is a cascade tool (triggers registration if needed)
+                    from .tackle_manifest import get_tackle_manifest
+                    manifest = get_tackle_manifest()
+                    if t_name in manifest and manifest[t_name].get("type") == "cascade":
+                        # Try to get the now-registered tool
+                        cascade_tool = get_tackle(t_name)
+                        if cascade_tool:
+                            tool_map[t_name] = cascade_tool
+                            tools_schema.append(get_tool_schema(cascade_tool, name=t_name))
+                            tool_descriptions.append(self._generate_tool_description(cascade_tool, t_name))
+                    # else: Tool not found
 
         # Inject 'route_to' tool if routing enabled
         chosen_next_phase_by_agent = None

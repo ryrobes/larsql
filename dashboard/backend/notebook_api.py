@@ -372,3 +372,27 @@ def run_cell():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+@notebook_bp.route('/cleanup-session', methods=['POST'])
+def cleanup_session():
+    """
+    Clean up a notebook session's temporary DuckDB database.
+
+    Request body:
+        - session_id: Session ID to clean up
+
+    Returns:
+        JSON with success status
+    """
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+
+        if session_id:
+            cleanup_session_db(session_id, delete_file=True)
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

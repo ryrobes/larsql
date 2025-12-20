@@ -53,8 +53,19 @@ export function usePlaygroundSSE() {
         handleCascadeError(data.error || 'Unknown error');
         break;
 
+      case 'cost_update':
+        // Cost data arrives asynchronously after phase completion
+        if (data.phase_name && data.cost !== undefined) {
+          console.log('[Playground SSE] Cost update:', data.phase_name, 'cost:', data.cost);
+          updateNodeData(data.phase_name, { cost: data.cost });
+        }
+        break;
+
       default:
-        console.log('[Playground SSE] Event:', event.type);
+        // Don't log heartbeats
+        if (event.type !== 'heartbeat') {
+          console.log('[Playground SSE] Event:', event.type);
+        }
     }
   }, [handlePhaseComplete, handleCascadeComplete, handleCascadeError, updateNodeData]);
 

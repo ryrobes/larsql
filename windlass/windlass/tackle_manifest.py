@@ -71,6 +71,9 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
         }
 
     # 2. Scan cascade directories for cascade tools
+    # Import registration function for cascade tools
+    from .tackle import register_cascade_as_tool, get_tackle
+
     config = get_config()
     for tackle_dir in config.tackle_dirs:
         # Support both absolute and relative paths
@@ -111,6 +114,14 @@ def get_tackle_manifest(refresh: bool = False) -> Dict[str, Any]:
                             "inputs": cascade_config.inputs_schema,
                             "path": cascade_path
                         }
+
+                        # Register cascade as callable tool if not already registered
+                        if not get_tackle(cascade_config.cascade_id):
+                            try:
+                                register_cascade_as_tool(cascade_path)
+                            except Exception as reg_error:
+                                # Log but don't fail - tool will be discoverable but not callable
+                                pass
                 except Exception as e:
                     # Skip invalid cascade files
                     continue

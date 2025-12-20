@@ -28,6 +28,7 @@ const usePlaygroundStore = create(
     // EXECUTION STATE
     // ============================================
     sessionId: null,
+    lastSuccessfulSessionId: null, // Cached session for "run from here"
     executionStatus: 'idle', // 'idle' | 'running' | 'completed' | 'error'
     executionError: null,
     phaseResults: {}, // nodeId -> { status, images: [], cost, duration }
@@ -210,18 +211,28 @@ const usePlaygroundStore = create(
         const paletteConfig = node.data.paletteConfig;
         if (!paletteConfig) return;
 
-        // Find connected prompt node
-        const promptEdge = edges.find(e => e.target === node.id);
+        // Find connected prompt node (via 'prompt' handle or legacy 'input' handle)
+        const promptEdge = edges.find(e =>
+          e.target === node.id &&
+          (e.targetHandle === 'prompt' || e.targetHandle === 'input' || !e.targetHandle)
+        );
         const promptNode = promptEdge ? nodeMap.get(promptEdge.source) : null;
         const promptRef = promptNode?.type === 'prompt'
           ? `{{ input.${promptNode.id} }}`
           : '';
 
+        // Find connected image input (via 'image' handle - for image-to-image)
+        const imageEdge = edges.find(e =>
+          e.target === node.id && e.targetHandle === 'image'
+        );
+        const sourceImageNode = imageEdge ? nodeMap.get(imageEdge.source) : null;
+        const hasImageInput = sourceImageNode?.type === 'image';
+
         if (paletteConfig.openrouter) {
           // OpenRouter image model - use model-based phase (same as LLM phases)
           // Runner detects image models and routes to _execute_image_generation_phase()
           // which uses normal Agent.run() with modalities=["text", "image"]
-          phases.push({
+          const phase = {
             name: node.id,
             model: paletteConfig.openrouter.model,
             instructions: promptRef || 'Generate a beautiful image',
@@ -229,14 +240,23 @@ const usePlaygroundStore = create(
               width: 1024,
               height: 1024,
             },
-          });
+          };
+
+          // If there's an image input, add context.from to inject that image
+          if (hasImageInput) {
+            phase.context = {
+              from: [sourceImageNode.id],
+            };
+          }
+
+          phases.push(phase);
         } else if (paletteConfig.harbor) {
           // Harbor tool (HuggingFace Space) - deterministic phase
-          // Find connected image node for input
-          const imageEdge = edges.find(e => e.target === node.id);
-          const sourceNode = imageEdge ? nodeMap.get(imageEdge.source) : null;
-          const imageRef = sourceNode?.type === 'image'
-            ? `{{ state.output_${sourceNode.id}.images[0] }}`
+          // For harbor tools, use the image handle connection
+          const inputImageEdge = imageEdge || edges.find(e => e.target === node.id);
+          const inputSourceNode = inputImageEdge ? nodeMap.get(inputImageEdge.source) : null;
+          const imageRef = inputSourceNode?.type === 'image'
+            ? `{{ state.output_${inputSourceNode.id}.images[0] }}`
             : '';
 
           phases.push({
@@ -354,6 +374,84 @@ const usePlaygroundStore = create(
       }
     },
 
+    // Run cascade starting from a specific node (uses cached images for upstream)
+    runFromNode: async (nodeId) => {
+      const state = get();
+      const { yaml: cascadeYaml, inputs } = state.generateCascade();
+
+      if (!cascadeYaml) {
+        return { success: false, error: 'Failed to generate cascade' };
+      }
+
+      if (!state.lastSuccessfulSessionId) {
+        return { success: false, error: 'No cached session - run full cascade first' };
+      }
+
+      // Set target node to 'pending', keep upstream nodes completed, clear downstream
+      const nodeOrder = state.nodes
+        .filter(n => n.type === 'image')
+        .map(n => n.id);
+      const targetIdx = nodeOrder.indexOf(nodeId);
+
+      set((state) => {
+        state.nodes.forEach(node => {
+          if (node.type === 'image') {
+            const nodeIdx = nodeOrder.indexOf(node.id);
+            if (nodeIdx < targetIdx) {
+              // Upstream: keep as completed with cached images
+              node.data.status = 'completed';
+            } else if (nodeIdx === targetIdx) {
+              // Target: mark as pending
+              node.data.status = 'pending';
+              node.data.images = [];
+            } else {
+              // Downstream: mark as pending
+              node.data.status = 'pending';
+              node.data.images = [];
+            }
+          }
+        });
+        state.executionStatus = 'running';
+        state.executionError = null;
+      });
+
+      try {
+        const response = await fetch('http://localhost:5001/api/playground/run-from', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            node_id: nodeId,
+            cached_session_id: state.lastSuccessfulSessionId,
+            cascade_yaml: cascadeYaml,
+            inputs,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          set((state) => {
+            state.executionStatus = 'error';
+            state.executionError = data.error;
+          });
+          return { success: false, error: data.error };
+        }
+
+        set((state) => {
+          state.sessionId = data.session_id;
+        });
+
+        return { success: true, sessionId: data.session_id, startingFrom: nodeId };
+
+      } catch (err) {
+        set((state) => {
+          state.executionStatus = 'error';
+          state.executionError = err.message;
+        });
+        return { success: false, error: err.message };
+      }
+    },
+
     // Handle phase completion from SSE
     handlePhaseComplete: (phaseName, result) => set((state) => {
       console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images);
@@ -367,6 +465,7 @@ const usePlaygroundStore = create(
         console.log('[Store] Found node:', node.id, 'current images:', node.data.images, 'new images:', newImages);
 
         // Create a completely new nodes array to ensure React Flow detects the change
+        // Note: runner sends duration_ms, not duration
         state.nodes = state.nodes.map((n, i) => {
           if (i !== nodeIndex) return n;
           return {
@@ -376,7 +475,7 @@ const usePlaygroundStore = create(
               status: 'completed',
               images: newImages,
               cost: result.cost || n.data.cost,
-              duration: result.duration || n.data.duration,
+              duration: result.duration_ms || result.duration || n.data.duration,
             },
           };
         });
@@ -392,6 +491,10 @@ const usePlaygroundStore = create(
     // Handle cascade completion
     handleCascadeComplete: () => set((state) => {
       state.executionStatus = 'completed';
+      // Cache session ID for "run from here" feature
+      if (state.sessionId) {
+        state.lastSuccessfulSessionId = state.sessionId;
+      }
     }),
 
     // Handle cascade error

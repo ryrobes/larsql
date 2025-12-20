@@ -47,7 +47,10 @@ const useNotebookStore = create(
       // status: 'pending' | 'running' | 'success' | 'error' | 'stale'
 
       isRunningAll: false,  // Full notebook execution in progress
-      executionSessionId: null,  // Current execution session
+
+      // Session ID for temp table persistence across cell executions
+      // Generated when notebook loads, persists until restart/reload
+      sessionId: null,
 
       // ============================================
       // NOTEBOOK LIST
@@ -66,6 +69,47 @@ const useNotebookStore = create(
       },
 
       // ============================================
+      // SESSION MANAGEMENT
+      // ============================================
+      generateSessionId: () => {
+        const id = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        set(state => {
+          state.sessionId = id;
+        });
+        return id;
+      },
+
+      restartSession: async () => {
+        const state = get();
+        const oldSessionId = state.sessionId;
+
+        // Clean up old session on backend
+        if (oldSessionId) {
+          try {
+            await fetch(`${API_BASE_URL}/notebook/cleanup-session`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session_id: oldSessionId })
+            });
+          } catch (err) {
+            console.warn('Failed to cleanup old session:', err);
+          }
+        }
+
+        // Generate new session and clear states
+        set(s => {
+          s.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+          s.cellStates = {};
+          // Reset all cells to pending
+          if (s.notebook?.phases) {
+            s.notebook.phases.forEach(phase => {
+              s.cellStates[phase.name] = { status: 'pending' };
+            });
+          }
+        });
+      },
+
+      // ============================================
       // NOTEBOOK CRUD
       // ============================================
       newNotebook: () => {
@@ -80,6 +124,8 @@ const useNotebookStore = create(
           state.notebookDirty = false;
           state.notebookInputs = {};
           state.cellStates = {};
+          // Generate fresh session for new notebook
+          state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
         });
       },
 
@@ -98,6 +144,8 @@ const useNotebookStore = create(
             state.notebookDirty = false;
             state.notebookInputs = {};
             state.cellStates = {};
+            // Generate fresh session for loaded notebook
+            state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
           });
 
           return data.notebook;
@@ -336,6 +384,12 @@ const useNotebookStore = create(
 
         const phase = state.notebook.phases[phaseIndex];
 
+        // Ensure we have a session ID
+        let sessionId = state.sessionId;
+        if (!sessionId) {
+          sessionId = get().generateSessionId();
+        }
+
         set(s => {
           s.cellStates[phaseName] = { status: 'running', result: null, error: null };
         });
@@ -360,7 +414,7 @@ const useNotebookStore = create(
               cell: phase,
               inputs: state.notebookInputs,
               prior_outputs: priorOutputs,
-              session_id: state.executionSessionId
+              session_id: sessionId
             })
           });
 
@@ -403,52 +457,30 @@ const useNotebookStore = create(
         const state = get();
         if (!state.notebook || state.isRunningAll) return;
 
+        // Ensure we have a session ID (generate fresh for run all)
         set(s => {
           s.isRunningAll = true;
-          s.executionSessionId = `notebook_${Date.now()}`;
-          // Reset all cell states
+          s.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+          // Reset all cell states to pending
           s.notebook.phases.forEach(phase => {
             s.cellStates[phase.name] = { status: 'pending' };
           });
         });
 
         try {
-          const res = await fetch(`${API_BASE_URL}/notebook/run`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              notebook: get().notebook,
-              inputs: get().notebookInputs
-            })
-          });
+          // Run cells sequentially using runCell to maintain session
+          for (const phase of get().notebook.phases) {
+            await get().runCell(phase.name);
 
-          const data = await res.json();
-
-          if (data.error) {
-            throw new Error(data.error);
-          }
-
-          // Update cell states from execution results
-          set(s => {
-            if (data.phases) {
-              Object.entries(data.phases).forEach(([phaseName, phaseResult]) => {
-                s.cellStates[phaseName] = {
-                  status: phaseResult.error ? 'error' : 'success',
-                  result: phaseResult.result || phaseResult,
-                  error: phaseResult.error,
-                  duration: phaseResult.duration_ms
-                };
-              });
+            // Stop if cell failed
+            if (get().cellStates[phase.name]?.status === 'error') {
+              break;
             }
-            s.isRunningAll = false;
-          });
-
-          return data;
-        } catch (err) {
+          }
+        } finally {
           set(s => {
             s.isRunningAll = false;
           });
-          throw err;
         }
       },
 
@@ -458,6 +490,11 @@ const useNotebookStore = create(
 
         const startIndex = state.notebook.phases.findIndex(p => p.name === phaseName);
         if (startIndex === -1) return;
+
+        // Ensure session ID exists
+        if (!state.sessionId) {
+          get().generateSessionId();
+        }
 
         // Run cells sequentially from startIndex
         for (let i = startIndex; i < state.notebook.phases.length; i++) {

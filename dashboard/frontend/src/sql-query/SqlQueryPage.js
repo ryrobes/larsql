@@ -8,7 +8,7 @@ import QueryTabManager from './components/QueryTabManager';
 import SqlEditor from './components/SqlEditor';
 import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
-import { NotebookEditor } from './notebook';
+import { NotebookEditor, NotebookNavigator } from './notebook';
 import Header from '../components/Header';
 import './SqlQueryPage.css';
 
@@ -106,12 +106,9 @@ function SqlQueryPage({
           gutterAlign="center"
           direction="horizontal"
         >
-          {/* Left Sidebar - Schema Browser */}
-          <div className="sql-query-schema-panel">
-            <div className="sql-query-schema-header">
-              <span className="sql-query-schema-title">Schema Browser</span>
-            </div>
-            <SchemaTree />
+          {/* Left Sidebar - Notebook Navigator */}
+          <div className="sql-query-schema-panel notebook-mode">
+            <NotebookNavigator />
           </div>
 
           {/* Notebook Editor */}

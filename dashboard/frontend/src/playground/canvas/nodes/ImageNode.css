@@ -153,6 +153,33 @@
   color: white;
 }
 
+/* Footer with cost/duration */
+.image-node-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-main);
+  border-radius: 0 0 6px 6px;
+}
+
+.footer-stat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.footer-stat.duration {
+  color: var(--text-secondary);
+}
+
+.footer-stat.cost {
+  color: #10b981;
+}
+
 /* Handles */
 .image-handle {
   width: 12px !important;
@@ -165,10 +192,50 @@
   background: var(--ocean-primary) !important;
 }
 
+/* Prompt input handle (top) */
+.prompt-handle {
+  background: var(--ocean-primary) !important;
+}
+
+/* Image input handle (bottom) - different color to distinguish */
+.image-input-handle {
+  background: #a78bfa !important;
+}
+
 .output-handle {
   right: -6px !important;
 }
 
 .image-handle:hover {
   transform: scale(1.2);
+}
+
+/* Play button - positioned at top-right corner */
+.node-play-button {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 2px solid var(--bg-card);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.node-play-button:hover {
+  transform: scale(1.15);
+  background: #059669;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+.node-play-button:active {
+  transform: scale(1.05);
 }

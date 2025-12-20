@@ -75,10 +75,28 @@
   flex-shrink: 0;
 }
 
+.palette-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
 .palette-item-label {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-item-cost {
+  font-size: 10px;
+  font-weight: 500;
+  color: #10b981;
+  opacity: 0.8;
 }
 
 .palette-footer {

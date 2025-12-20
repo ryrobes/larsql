@@ -134,6 +134,28 @@
   color: #2dd4bf;
 }
 
+.notebook-btn-tool {
+  background-color: rgba(167, 139, 250, 0.1);
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.notebook-btn-tool:hover:not(:disabled) {
+  background-color: rgba(167, 139, 250, 0.2);
+  border-color: #a78bfa;
+}
+
+.notebook-btn-restart {
+  background-color: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.notebook-btn-restart:hover:not(:disabled) {
+  background-color: rgba(251, 191, 36, 0.2);
+  border-color: #fbbf24;
+}
+
 /* ============================================
    DESCRIPTION ROW
    ============================================ */
@@ -174,10 +196,8 @@
 .notebook-cells {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 /* ============================================

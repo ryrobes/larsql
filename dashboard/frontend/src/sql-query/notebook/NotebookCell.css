@@ -2,12 +2,16 @@
   background-color: #0f1821;
   border: 1px solid #1a2028;
   border-radius: 8px;
-  overflow: hidden;
+  margin-bottom: 12px;  /* Space between cells */
   transition: border-color 0.15s ease;
 }
 
 .notebook-cell:hover {
   border-color: #2a3038;
+}
+
+.notebook-cell-dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* Status-based border colors */
@@ -22,6 +26,21 @@
 
 .notebook-cell-error {
   border-color: #f87171;
+}
+
+/* Highlight effect when navigating to cell from mini-map */
+.notebook-cell.cell-highlight {
+  animation: cell-nav-glow 1.5s ease-out;
+}
+
+@keyframes cell-nav-glow {
+  0% {
+    box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.6);
+    border-color: #2dd4bf;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0);
+  }
 }
 
 .notebook-cell-stale {
@@ -57,6 +76,33 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Drag Handle */
+.cell-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-size: 14px;
+  cursor: grab;
+  padding: 0;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.cell-drag-handle:hover {
+  color: #94a3b8;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.cell-drag-handle:active {
+  cursor: grabbing;
+  color: #2dd4bf;
 }
 
 /* Status Icons */
@@ -289,13 +335,11 @@
    ============================================ */
 
 .cell-body {
-  display: flex;
-  flex-direction: column;
+  display: block;  /* Natural flow, not flex */
 }
 
 .cell-editor {
   background-color: #0b1219;
-  overflow: hidden;
 }
 
 /* ============================================
@@ -305,6 +349,7 @@
 .cell-results {
   border-top: 1px solid #1a2028;
   background-color: #080c12;
+  overflow: visible;  /* Allow content to show fully */
 }
 
 .cell-results-header {
@@ -317,6 +362,28 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid #1a2028;
+}
+
+.cell-results-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-results-btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid #1a2028;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cell-results-btn:hover {
+  border-color: #2dd4bf;
+  color: #2dd4bf;
 }
 
 .cell-results-toggle {
@@ -349,7 +416,8 @@
 
 /* Error Display */
 .cell-result-error {
-  padding: 12px;
+  padding: 8px 12px;
+  min-height: 100px;
 }
 
 .cell-result-error-label {
@@ -362,71 +430,36 @@
   margin-bottom: 8px;
 }
 
-.cell-result-error-text {
-  margin: 0;
-  padding: 8px;
-  background-color: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.2);
-  border-radius: 4px;
-  color: #fca5a5;
-  font-size: 12px;
-  font-family: 'IBM Plex Mono', monospace;
-  white-space: pre-wrap;
-  overflow-x: auto;
-}
-
-/* Table Display */
-.cell-result-table-container {
-  overflow-x: auto;
-}
-
-.cell-result-table {
+/* AG-Grid Container for DataFrame results */
+.cell-result-grid-container {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+  min-height: 200px;
 }
 
-.cell-result-table th {
+.cell-result-grid-container .ag-root-wrapper {
+  border: none !important;
+}
+
+.cell-result-truncated {
   padding: 8px 12px;
-  background-color: #0b1219;
-  color: #94a3b8;
-  font-weight: 600;
-  text-align: left;
-  border-bottom: 1px solid #1a2028;
-}
-
-.cell-result-table td {
-  padding: 6px 12px;
-  color: #cbd5e1;
-  border-bottom: 1px solid #0f1821;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cell-result-table tr:hover td {
-  background-color: rgba(45, 212, 191, 0.05);
-}
-
-.cell-result-more {
-  padding: 8px 12px;
+  font-size: 11px;
   color: #64748b;
-  font-size: 12px;
-  font-style: italic;
+  background-color: #0b1219;
+  border-top: 1px solid #1a2028;
 }
 
-/* JSON Display */
-.cell-result-json {
-  padding: 12px;
+/* JSON/Monaco Container for dict/scalar results */
+.cell-result-json-container {
+  width: 100%;
+  min-height: 150px;
+  border-radius: 0;
+  overflow: hidden;
 }
 
-.cell-result-json pre {
-  margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  color: #94a3b8;
-  white-space: pre-wrap;
+/* Inline JSON in grid cells */
+.cell-json-inline {
+  color: #a78bfa;
+  font-size: 11px;
 }
 
 /* Null Value */

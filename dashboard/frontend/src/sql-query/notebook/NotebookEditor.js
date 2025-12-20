@@ -1,4 +1,17 @@
 import React, { useEffect, useRef } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import useNotebookStore from '../stores/notebookStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
 import NotebookCell from './NotebookCell';
@@ -18,9 +31,12 @@ const NotebookEditor = () => {
     notebookDirty,
     cellStates,
     isRunningAll,
+    sessionId,
     newNotebook,
     addCell,
+    moveCell,
     runAllCells,
+    restartSession,
     fetchNotebooks,
     notebooks,
     loadNotebook,
@@ -30,6 +46,32 @@ const NotebookEditor = () => {
 
   const { connections, fetchConnections } = useSqlQueryStore();
   const scrollRef = useRef(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,  // Require 8px of movement before starting drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const phases = notebook?.phases || [];
+      const oldIndex = phases.findIndex(p => p.name === active.id);
+      const newIndex = phases.findIndex(p => p.name === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        moveCell(oldIndex, newIndex);
+      }
+    }
+  };
 
   // Load connections on mount
   useEffect(() => {
@@ -63,6 +105,27 @@ const NotebookEditor = () => {
       }
     } else {
       await saveNotebook();
+    }
+  };
+
+  const handleSaveAsTool = async () => {
+    // Validate notebook has a valid ID
+    const toolName = notebook?.cascade_id?.replace(/[^a-z0-9_]/gi, '_') || 'notebook';
+    const path = `tackle/${toolName}.yaml`;
+
+    if (window.confirm(`Save as tool at ${path}?\n\nThis will make the notebook callable from any cascade using:\n  tool: "${toolName}"`)) {
+      try {
+        await saveNotebook(path);
+        alert(`Saved as tool: ${toolName}\n\nYou can now use this in any cascade with:\n  tool: "${toolName}"`);
+      } catch (err) {
+        alert(`Failed to save: ${err.message}`);
+      }
+    }
+  };
+
+  const handleRestart = async () => {
+    if (window.confirm('Restart session? This will clear all cell outputs and temp tables.')) {
+      await restartSession();
     }
   };
 
@@ -132,6 +195,22 @@ const NotebookEditor = () => {
           </button>
 
           <button
+            className="notebook-btn notebook-btn-tool"
+            onClick={handleSaveAsTool}
+            title="Save to tackle/ directory as a callable tool"
+          >
+            Save as Tool
+          </button>
+
+          <button
+            className="notebook-btn notebook-btn-restart"
+            onClick={handleRestart}
+            title="Clear all outputs and restart session"
+          >
+            Restart
+          </button>
+
+          <button
             className="notebook-btn notebook-btn-primary"
             onClick={handleRunAll}
             disabled={isRunningAll || cellCount === 0}
@@ -168,15 +247,27 @@ const NotebookEditor = () => {
 
       {/* Cells Container */}
       <div className="notebook-cells" ref={scrollRef}>
-        {notebook.phases?.map((phase, index) => (
-          <NotebookCell
-            key={phase.name}
-            phase={phase}
-            index={index}
-            cellState={cellStates[phase.name]}
-            connections={connections}
-          />
-        ))}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={notebook.phases?.map(p => p.name) || []}
+            strategy={verticalListSortingStrategy}
+          >
+            {notebook.phases?.map((phase, index) => (
+              <NotebookCell
+                key={phase.name}
+                id={phase.name}
+                phase={phase}
+                index={index}
+                cellState={cellStates[phase.name]}
+                connections={connections}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
 
         {/* Add Cell Button */}
         <div className="notebook-add-cell-row">

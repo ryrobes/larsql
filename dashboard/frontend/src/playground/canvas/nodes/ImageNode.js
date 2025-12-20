@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
+import React, { memo, useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
 import { Icon } from '@iconify/react';
+import usePlaygroundStore from '../../stores/playgroundStore';
 import './ImageNode.css';
 
 /**
@@ -10,19 +11,51 @@ import './ImageNode.css';
  * - Node type icon and name from palette
  * - Status indicator (idle/running/completed/error)
  * - Generated image thumbnail (when completed)
+ * - Cost and duration (when available)
+ * - Play button for "run from here" (when cached results available)
  *
  * Handles:
- * - Target (left) for prompt input
+ * - Target (left-top) for prompt input
+ * - Target (left-bottom) for image input (optional, for image-to-image)
  * - Source (right) for image output
  */
 function ImageNode({ id, data, selected }) {
+  const runFromNode = usePlaygroundStore((state) => state.runFromNode);
+  const lastSuccessfulSessionId = usePlaygroundStore((state) => state.lastSuccessfulSessionId);
+  const executionStatus = usePlaygroundStore((state) => state.executionStatus);
+
+  // Handle "Run from here" action
+  const handleRunFromHere = useCallback(async (e) => {
+    e.stopPropagation(); // Prevent node selection
+    const result = await runFromNode(id);
+    if (!result.success) {
+      console.error('[ImageNode] Run from here failed:', result.error);
+    }
+  }, [id, runFromNode]);
+
   const {
     paletteName,
     paletteIcon,
     paletteColor,
     status = 'idle',
     images = [],
+    cost,
+    duration,
   } = data;
+
+  // Format cost for display
+  const formatCost = (cost) => {
+    if (!cost) return null;
+    if (cost < 0.01) return '<$0.01';
+    return `$${cost.toFixed(3)}`;
+  };
+
+  // Format duration for display
+  const formatDuration = (ms) => {
+    if (!ms) return null;
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
 
   const statusConfig = {
     idle: { icon: 'mdi:circle-outline', label: 'Ready', className: 'idle' },
@@ -35,17 +68,46 @@ function ImageNode({ id, data, selected }) {
   const statusInfo = statusConfig[status] || statusConfig.idle;
   const hasImages = images.length > 0;
 
+  const formattedCost = formatCost(cost);
+  const formattedDuration = formatDuration(duration);
+  const showFooter = status === 'completed' && (formattedCost || formattedDuration);
+
+  const canRunFromHere = lastSuccessfulSessionId && executionStatus !== 'running';
+
   return (
     <div
       className={`image-node ${selected ? 'selected' : ''} status-${status}`}
       style={{ borderColor: paletteColor }}
     >
-      {/* Target handle for prompt input */}
+      {/* Play button - run from this node using cached upstream results */}
+      {canRunFromHere && (
+        <button
+          className="node-play-button"
+          onClick={handleRunFromHere}
+          title="Run from here (use cached upstream results)"
+        >
+          <Icon icon="mdi:play" width="14" />
+        </button>
+      )}
+
+      {/* Target handle for prompt input (top-left) */}
       <Handle
         type="target"
         position={Position.Left}
-        id="input"
-        className="image-handle input-handle"
+        id="prompt"
+        className="image-handle input-handle prompt-handle"
+        style={{ top: '30%' }}
+        title="Prompt input"
+      />
+
+      {/* Target handle for image input (bottom-left) - for image-to-image */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="image"
+        className="image-handle input-handle image-input-handle"
+        style={{ top: '70%' }}
+        title="Image input (optional)"
       />
 
       <div className="image-node-header" style={{ backgroundColor: `${paletteColor}15` }}>
@@ -84,6 +146,24 @@ function ImageNode({ id, data, selected }) {
           </div>
         )}
       </div>
+
+      {/* Footer with cost/duration - only shown when completed */}
+      {showFooter && (
+        <div className="image-node-footer">
+          {formattedDuration && (
+            <span className="footer-stat duration">
+              <Icon icon="mdi:timer-outline" width="12" />
+              {formattedDuration}
+            </span>
+          )}
+          {formattedCost && (
+            <span className="footer-stat cost">
+              <Icon icon="mdi:currency-usd" width="12" />
+              {formattedCost}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Source handle for image output */}
       <Handle

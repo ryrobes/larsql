@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import usePlaygroundStore from '../stores/playgroundStore';
 import './Palette.css';
@@ -8,9 +8,40 @@ import './Palette.css';
  *
  * Groups node types by category (generators, transformers, tools, utility)
  * and allows drag-and-drop onto the canvas.
+ *
+ * Displays average cost per model based on historical usage data.
  */
 function Palette() {
   const { palette } = usePlaygroundStore();
+  const [modelCosts, setModelCosts] = useState({});
+
+  // Fetch model costs on mount
+  useEffect(() => {
+    fetch('http://localhost:5001/api/playground/model-costs')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          setModelCosts(data);
+        }
+      })
+      .catch(err => console.error('[Palette] Failed to fetch model costs:', err));
+  }, []);
+
+  // Format cost for display
+  const formatCost = (cost) => {
+    if (!cost || cost === 0) return null;
+    if (cost < 0.001) return '<$0.001';
+    if (cost < 0.01) return `$${cost.toFixed(3)}`;
+    if (cost < 0.10) return `$${cost.toFixed(2)}`;
+    return `$${cost.toFixed(2)}`;
+  };
+
+  // Get cost for a palette item
+  const getItemCost = (item) => {
+    if (!item.openrouter?.model) return null;
+    const cost = modelCosts[item.openrouter.model];
+    return formatCost(cost);
+  };
 
   // Group palette items by category
   const categories = {
@@ -77,26 +108,34 @@ function Palette() {
               <span>{category.label}</span>
             </div>
             <div className="palette-items">
-              {category.items.map(item => (
-                <div
-                  key={item.id}
-                  className="palette-item"
-                  draggable
-                  onDragStart={(e) => onDragStart(e, item.id, 'image')}
-                  style={{ borderColor: item.color }}
-                >
+              {category.items.map(item => {
+                const itemCost = getItemCost(item);
+                return (
                   <div
-                    className="palette-item-icon"
-                    style={{
-                      backgroundColor: `${item.color}20`,
-                      color: item.color,
-                    }}
+                    key={item.id}
+                    className="palette-item"
+                    draggable
+                    onDragStart={(e) => onDragStart(e, item.id, 'image')}
+                    style={{ borderColor: item.color }}
                   >
-                    <Icon icon={item.icon} width="20" />
+                    <div
+                      className="palette-item-icon"
+                      style={{
+                        backgroundColor: `${item.color}20`,
+                        color: item.color,
+                      }}
+                    >
+                      <Icon icon={item.icon} width="20" />
+                    </div>
+                    <div className="palette-item-info">
+                      <div className="palette-item-label">{item.name}</div>
+                      {itemCost && (
+                        <div className="palette-item-cost">{itemCost}</div>
+                      )}
+                    </div>
                   </div>
-                  <div className="palette-item-label">{item.name}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
