@@ -83,20 +83,20 @@ class ModelRegistry:
 
     # Known unlisted image generation models
     # These work but don't appear in /models endpoint
+    # NOTE: Defunct models removed 2025-12 after verification via /models/{id}/endpoints API:
+    #   - black-forest-labs/flux-1-schnell (404)
+    #   - black-forest-labs/flux-1-dev (404)
+    #   - stability/sdxl (404)
+    #   - stabilityai/stable-diffusion-xl (404)
     UNLISTED_IMAGE_MODELS = [
-        # Black Forest Labs FLUX models
+        # Black Forest Labs FLUX.2 models (verified active)
         "black-forest-labs/flux.2-max",
         "black-forest-labs/flux.2-pro",
         "black-forest-labs/flux.2-flex",
-        "black-forest-labs/flux-1-schnell",
-        "black-forest-labs/flux-1-dev",
-        # Sourceful Riverflow models
+        # Sourceful Riverflow V2 models (verified active)
         "sourceful/riverflow-v2-max-preview",
         "sourceful/riverflow-v2-standard-preview",
         "sourceful/riverflow-v2-fast-preview",
-        # Stability AI
-        "stability/sdxl",
-        "stabilityai/stable-diffusion-xl",
     ]
 
     def __init__(self):
@@ -198,6 +198,42 @@ class ModelRegistry:
         except Exception as e:
             logger.warning(f"Failed to save model cache: {e}")
 
+    def _validate_unlisted_model(self, model_id: str) -> bool:
+        """
+        Check if an unlisted model actually exists on OpenRouter.
+
+        Uses the /models/{id}/endpoints API which returns 404 for defunct models.
+        This helps filter out models that have been removed from OpenRouter.
+
+        Args:
+            model_id: Full model ID (e.g., "black-forest-labs/flux.2-max")
+
+        Returns:
+            True if model exists (has endpoints), False if defunct (404)
+        """
+        import httpx
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(
+                    f"https://openrouter.ai/api/v1/models/{model_id}/endpoints"
+                )
+
+                if response.status_code == 404:
+                    return False
+
+                # Model exists if we get a successful response
+                data = response.json()
+                if "error" in data:
+                    return False
+
+                return True
+
+        except Exception as e:
+            # On error, assume model exists (don't filter it out)
+            logger.debug(f"Could not validate model {model_id}: {e}")
+            return True
+
     def _fetch_from_api(self) -> bool:
         """Fetch models from OpenRouter API. Returns True on success."""
         import httpx
@@ -239,23 +275,41 @@ class ModelRegistry:
                 if model.can_output_images:
                     self._image_output_models.add(model.id)
 
-            # Add unlisted image models
+            # Add unlisted image models (with validation)
+            # These are models that work but don't appear in /models endpoint
+            validated_unlisted = 0
+            defunct_unlisted = []
+
             for model_id in self.UNLISTED_IMAGE_MODELS:
-                self._image_output_models.add(model_id)
-                # Create placeholder ModelInfo if not already present
-                if model_id not in self._models:
-                    self._models[model_id] = ModelInfo(
-                        id=model_id,
-                        name=model_id.split("/")[-1].replace("-", " ").title(),
-                        description="Image generation model (unlisted)",
-                        output_modalities=["image"],
-                        input_modalities=["text"],
-                    )
+                # Validate that the model still exists on OpenRouter
+                if self._validate_unlisted_model(model_id):
+                    validated_unlisted += 1
+                    self._image_output_models.add(model_id)
+                    # Create placeholder ModelInfo if not already present
+                    if model_id not in self._models:
+                        self._models[model_id] = ModelInfo(
+                            id=model_id,
+                            name=model_id.split("/")[-1].replace("-", " ").title(),
+                            description="Image generation model (unlisted)",
+                            output_modalities=["image"],
+                            input_modalities=["text"],
+                        )
+                else:
+                    defunct_unlisted.append(model_id)
+                    logger.warning(f"Unlisted model no longer exists: {model_id}")
+
+            if defunct_unlisted:
+                logger.warning(
+                    f"Filtered out {len(defunct_unlisted)} defunct unlisted models: {defunct_unlisted}"
+                )
 
             self._last_fetch = time.time()
             self._save_cache(models_data)
 
-            logger.info(f"Fetched {len(self._models)} models from API ({len(self._image_output_models)} image output)")
+            logger.info(
+                f"Fetched {len(self._models)} models from API "
+                f"({len(self._image_output_models)} image output, {validated_unlisted} unlisted)"
+            )
             return True
 
         except Exception as e:

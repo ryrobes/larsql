@@ -200,6 +200,9 @@ function PromptNode({ id, data, selected }) {
             </div>
           )}
           <Editor
+            // Key based on node id + name ensures editor remounts when loading new cascade
+            // (prevents stale content when React reuses component with same node id)
+            key={`${id}-${data.name || 'prompt'}`}
             height="100%"
             defaultLanguage="plaintext"
             value={data.text || ''}
