@@ -1,0 +1,161 @@
+/* PlaygroundPage - Image Playground Layout */
+
+.playground-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* ============================================
+   HEADER TOOLBAR
+   ============================================ */
+
+.playground-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.playground-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.playground-logo {
+  color: var(--ocean-primary);
+}
+
+.playground-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.playground-header-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.playground-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toolbar Buttons */
+.playground-header .toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.playground-header .toolbar-btn:hover {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+  border-color: var(--ocean-secondary);
+}
+
+.playground-header .toolbar-btn:active {
+  transform: scale(0.98);
+}
+
+.playground-header .toolbar-btn.primary {
+  background: var(--ocean-primary);
+  border-color: var(--ocean-primary);
+  color: var(--midnight-fjord);
+  font-weight: 500;
+}
+
+.playground-header .toolbar-btn.primary:hover {
+  background: var(--ocean-secondary);
+  border-color: var(--ocean-secondary);
+}
+
+.playground-header .toolbar-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playground-header .toolbar-btn.running {
+  background: var(--compass-brass);
+  border-color: var(--compass-brass);
+  color: var(--midnight-fjord);
+}
+
+.session-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--storm-cloud);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-muted);
+}
+
+/* Spinning animation for loading icon */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================
+   SPLIT PANE LAYOUT
+   ============================================ */
+
+.playground-split {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.playground-split > .gutter {
+  background: var(--border-default);
+  cursor: col-resize;
+}
+
+.playground-split > .gutter:hover {
+  background: var(--ocean-primary);
+}
+
+.playground-pane {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Palette Pane */
+.palette-pane {
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-default);
+}
+
+/* Canvas Pane */
+.canvas-pane {
+  background: var(--bg-main);
+  position: relative;
+}

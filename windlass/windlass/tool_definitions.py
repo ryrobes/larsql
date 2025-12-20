@@ -583,6 +583,46 @@ def _process_single_gradio_result(result: Any, config) -> Any:
         else:
             return f"File output: {result}"
 
+    # Gradio Gallery format: list of dicts with 'image' or 'video' keys
+    # Each item has {"image": {"path": "/local/path/..."}, "caption": "..."}
+    if isinstance(result, list) and len(result) > 0:
+        first_item = result[0]
+        if isinstance(first_item, dict):
+            # Gallery of images
+            if "image" in first_item and isinstance(first_item["image"], dict):
+                images = []
+                captions = []
+                for item in result:
+                    img_data = item.get("image", {})
+                    path = img_data.get("path")
+                    caption = item.get("caption", "")
+                    if path and os.path.isfile(path):
+                        ext = os.path.splitext(path)[1].lower() or ".png"
+                        filename = f"gradio_{uuid.uuid4().hex[:8]}{ext}"
+                        dest = os.path.join(config.image_dir, filename)
+                        os.makedirs(config.image_dir, exist_ok=True)
+                        shutil.copy2(path, dest)
+                        images.append(dest)
+                        if caption:
+                            captions.append(caption)
+                if images:
+                    content = f"Gallery: {len(images)} images"
+                    if captions:
+                        content += f" ({', '.join(captions)})"
+                    return {"content": content, "images": images}
+
+            # Gallery of videos (similar pattern)
+            elif "video" in first_item and isinstance(first_item["video"], dict):
+                # Just return paths for now - video handling can be added later
+                video_paths = []
+                for item in result:
+                    vid_data = item.get("video", {})
+                    path = vid_data.get("path")
+                    if path and os.path.isfile(path):
+                        video_paths.append(path)
+                if video_paths:
+                    return {"content": f"Gallery: {len(video_paths)} videos", "videos": video_paths}
+
     # Dict/list results - JSON serialize
     if isinstance(result, (dict, list)):
         return json.dumps(result, indent=2)

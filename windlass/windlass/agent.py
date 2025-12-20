@@ -761,3 +761,219 @@ class Agent:
 
             raise RuntimeError(f"Transcription failed: {type(e).__name__}: {e}") from e
 
+    # =========================================================================
+    # Image Generation
+    # =========================================================================
+
+    # Known image generation model prefixes
+    IMAGE_GENERATION_MODEL_PREFIXES = [
+        "black-forest-labs/FLUX",
+        "bytedance/sdxl",
+        "stability/",
+        "stabilityai/",
+    ]
+
+    @classmethod
+    def is_image_generation_model(cls, model: str) -> bool:
+        """
+        Check if a model is an image generation model (vs text/chat).
+
+        Image generation models use a different API (image_generation vs completion)
+        and return images instead of text.
+
+        Args:
+            model: Model identifier (e.g., "black-forest-labs/FLUX-1-schnell")
+
+        Returns:
+            True if this is an image generation model
+        """
+        if not model:
+            return False
+        model_lower = model.lower()
+        return any(prefix.lower() in model_lower for prefix in cls.IMAGE_GENERATION_MODEL_PREFIXES)
+
+    @classmethod
+    def generate_image(
+        cls,
+        prompt: str,
+        model: str,
+        width: int = 1024,
+        height: int = 1024,
+        n: int = 1,
+        session_id: str = None,
+        trace_id: str = None,
+        parent_id: str = None,
+        phase_name: str = None,
+        cascade_id: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate images using OpenRouter image models (FLUX, SDXL, etc.).
+
+        Uses litellm.image_generation() but integrates with Windlass observability:
+        - Logs to unified_logs for cost tracking
+        - Saves images to IMAGE_DIR
+        - Returns structured result with image paths
+
+        Args:
+            prompt: Text description of the image to generate
+            model: OpenRouter model ID (e.g., "black-forest-labs/FLUX-1-schnell")
+            width: Image width in pixels (default: 1024)
+            height: Image height in pixels (default: 1024)
+            n: Number of images to generate (default: 1)
+            session_id: Session ID for logging
+            trace_id: Trace ID for logging
+            parent_id: Parent trace ID
+            phase_name: Phase name for cascade context
+            cascade_id: Cascade ID for cascade context
+
+        Returns:
+            dict with keys:
+                - content: Description of what was generated
+                - images: List of saved image paths (API-servable)
+                - model: Model used
+                - request_id: Provider request ID
+                - cost: Cost (if available)
+                - provider: Provider name
+        """
+        import time
+        import uuid
+        import os
+        import base64
+        import requests
+
+        cfg = get_config()
+
+        # Generate trace_id if not provided
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())
+
+        start_time = time.time()
+
+        # Build full request for logging
+        full_request = {
+            "model": model,
+            "prompt": prompt,
+            "n": n,
+            "size": f"{width}x{height}",
+        }
+
+        try:
+            # Call litellm image_generation
+            # OpenRouter models need "openrouter/" prefix for litellm
+            litellm_model = f"openrouter/{model}" if not model.startswith("openrouter/") else model
+
+            response = litellm.image_generation(
+                model=litellm_model,
+                prompt=prompt,
+                n=n,
+                size=f"{width}x{height}",
+                api_key=cfg.provider_api_key,
+                base_url=cfg.provider_base_url,
+            )
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Extract request_id from response
+            request_id = getattr(response, 'id', None) or str(uuid.uuid4())
+
+            # Extract image URLs/base64 from response
+            image_data = []
+            if hasattr(response, 'data'):
+                for item in response.data:
+                    if hasattr(item, 'url') and item.url:
+                        image_data.append(('url', item.url))
+                    elif hasattr(item, 'b64_json') and item.b64_json:
+                        image_data.append(('base64', item.b64_json))
+
+            # Save images to disk
+            saved_paths = []
+            image_dir = os.path.join(cfg.image_dir, session_id or "default", phase_name or "image_gen")
+            os.makedirs(image_dir, exist_ok=True)
+
+            from .utils import get_next_image_index
+
+            for i, (data_type, data) in enumerate(image_data):
+                image_idx = get_next_image_index(session_id or "default", phase_name or "image_gen")
+                filename = f"image_{image_idx}.png"
+                filepath = os.path.join(image_dir, filename)
+
+                if data_type == 'base64':
+                    # Decode and save base64 image
+                    image_bytes = base64.b64decode(data)
+                    with open(filepath, 'wb') as f:
+                        f.write(image_bytes)
+                else:
+                    # Download from URL
+                    img_response = requests.get(data, timeout=60)
+                    img_response.raise_for_status()
+                    with open(filepath, 'wb') as f:
+                        f.write(img_response.content)
+
+                # Store API-servable path
+                relative_path = f"/api/images/{session_id or 'default'}/{phase_name or 'image_gen'}/{filename}"
+                saved_paths.append(relative_path)
+
+            # Extract provider
+            from .blocking_cost import extract_provider_from_model
+            provider = extract_provider_from_model(model)
+
+            # Build full response for logging
+            full_response = {
+                "id": request_id,
+                "model": model,
+                "images": saved_paths,
+                "image_count": len(saved_paths),
+            }
+
+            # Log to unified system - same path as chat completions
+            from .unified_logs import log_unified
+            log_unified(
+                session_id=session_id,
+                trace_id=trace_id,
+                parent_id=parent_id,
+                node_type="image_generation",
+                role="assistant",
+                depth=0,
+                phase_name=phase_name,
+                cascade_id=cascade_id,
+                model=model,
+                provider=provider,
+                request_id=request_id,
+                duration_ms=duration_ms,
+                tokens_in=None,  # Image models don't use tokens
+                tokens_out=None,
+                cost=None,  # Will be fetched by unified logger via request_id
+                content=f"Generated {len(saved_paths)} image(s): {prompt[:100]}...",
+                full_request=full_request,
+                full_response=full_response,
+                metadata={
+                    "tool": "generate_image",
+                    "width": width,
+                    "height": height,
+                    "n": n,
+                    "images": saved_paths,
+                }
+            )
+
+            return {
+                "role": "assistant",
+                "content": f"Generated {len(saved_paths)} image(s) with {model}",
+                "images": saved_paths,
+                "model": model,
+                "request_id": request_id,
+                "cost": None,  # Will be fetched by unified logger
+                "provider": provider,
+                "duration_ms": duration_ms,
+                "full_request": full_request,
+                "full_response": full_response,
+            }
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log error
+            log_message(session_id, "system", f"Image generation error: {type(e).__name__}: {e}",
+                       metadata={"tool": "generate_image", "error": type(e).__name__, "duration_ms": duration_ms})
+
+            raise RuntimeError(f"Image generation failed: {type(e).__name__}: {e}") from e
+

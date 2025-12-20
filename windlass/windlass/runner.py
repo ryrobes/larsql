@@ -7286,6 +7286,11 @@ Refinement directive: {reforge_config.honing_prompt}
             if phase.is_deterministic():
                 return self._execute_deterministic_phase(phase, input_data, trace)
 
+            # Check if this is an image generation phase (uses image model like FLUX, SDXL)
+            phase_model = phase.model or self.model
+            if Agent.is_image_generation_model(phase_model):
+                return self._execute_image_generation_phase(phase, input_data, trace)
+
             # Check if soundings (Tree of Thought) is enabled
             if phase.soundings and phase.soundings.factor > 1:
                 return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
@@ -7409,6 +7414,142 @@ Refinement directive: {reforge_config.honing_prompt}
         except Exception as e:
             console.print(f"{indent}[yellow]⚠ Error closing browser: {e}[/yellow]")
             logging.warning(f"Browser session teardown failed: {e}")
+
+    def _execute_image_generation_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
+        """
+        Execute an image generation phase using Agent.generate_image().
+
+        Image generation phases use models like FLUX, SDXL that generate images
+        instead of text. They go through the same observability pipeline but
+        use a different API (image_generation vs completion).
+
+        The phase.instructions becomes the image prompt (rendered with Jinja2).
+        """
+        from .unified_logs import log_unified
+        import time
+
+        indent = "  " * self.depth
+        start_time = time.time()
+        phase_model = phase.model or self.model
+
+        # Log phase start
+        log_message(self.session_id, "phase_start", phase.name,
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="image_generation_phase",
+                    depth=self.depth, parent_session_id=self.parent_session_id,
+                    phase_name=phase.name, cascade_id=self.config.cascade_id,
+                    metadata={"phase_type": "image_generation", "model": phase_model})
+
+        # Update phase progress
+        update_phase_progress(
+            self.session_id, self.config.cascade_id, phase.name, self.depth,
+            stage="image_generation"
+        )
+
+        # Render the prompt from instructions using Jinja2
+        prompt = render_instruction(phase.instructions, {
+            "input": input_data,
+            "state": self.echo.state,
+            "outputs": self._get_outputs_dict(),
+        })
+
+        console.print(f"{indent}[bold magenta]🎨 Image Generation: {phase.name}[/bold magenta]")
+        console.print(f"{indent}  Model: {phase_model}")
+        console.print(f"{indent}  Prompt: {prompt[:100]}...")
+
+        # Get image config (defaults if not specified)
+        image_config = phase.image_config
+        width = image_config.width if image_config else 1024
+        height = image_config.height if image_config else 1024
+        n = image_config.n if image_config else 1
+
+        try:
+            # Call Agent.generate_image() - same observability as other Agent methods
+            result = Agent.generate_image(
+                prompt=prompt,
+                model=phase_model,
+                width=width,
+                height=height,
+                n=n,
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                phase_name=phase.name,
+                cascade_id=self.config.cascade_id,
+            )
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Add to lineage
+            self.echo.lineage.append({
+                "phase": phase.name,
+                "output": result,
+                "type": "image_generation",
+                "model": phase_model,
+                "images": result.get("images", []),
+                "duration_ms": duration_ms
+            })
+
+            # Store output in state for subsequent phases
+            self.echo.state[f"output_{phase.name}"] = result
+
+            # Console output
+            images = result.get("images", [])
+            console.print(f"{indent}  [green]✓ Generated {len(images)} image(s)[/green]")
+            for img_path in images:
+                console.print(f"{indent}    📷 {img_path}")
+
+            # Hook: Phase Complete
+            self.hooks.on_phase_complete(phase.name, self.session_id, result)
+
+            # Publish phase_complete event (for SSE, narrator, etc.)
+            self._publish_event("phase_complete", {
+                "phase_name": phase.name,
+                "phase_type": "image_generation",
+                "result": {
+                    "content": result.get("content", ""),
+                    "images": images,
+                    "model": phase_model,
+                    "duration_ms": duration_ms,
+                },
+            })
+
+            # Determine next phase from handoffs
+            next_phase = None
+            if phase.handoffs and len(phase.handoffs) > 0:
+                # Use first handoff as default next phase
+                first_handoff = phase.handoffs[0]
+                if isinstance(first_handoff, str):
+                    next_phase = first_handoff
+                elif hasattr(first_handoff, 'target'):
+                    next_phase = first_handoff.target
+
+            return next_phase
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log error
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                parent_session_id=self.parent_session_id,
+                node_type="image_generation_error",
+                role="system",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                content=f"Image generation failed: {str(e)}",
+                duration_ms=duration_ms,
+                metadata={
+                    "phase_type": "image_generation",
+                    "model": phase_model,
+                    "error": str(e)
+                }
+            )
+
+            console.print(f"{indent}  [red]✗ Image generation failed: {e}[/red]")
+            raise
 
     def _execute_deterministic_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
         """

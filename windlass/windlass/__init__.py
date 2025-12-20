@@ -31,6 +31,8 @@ from .eddies.system import spawn_cascade
 from .eddies.research_db import research_query, research_execute
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
 from .eddies.filesystem import read_file, write_file, append_file, list_files, file_info
+# Image generation is handled via Agent.generate_image() in runner.py
+# No separate tool needed - phases with image models are auto-detected
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
 
 register_tackle("smart_sql_run", run_sql)

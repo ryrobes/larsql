@@ -1,0 +1,20 @@
+{
+  "tool_id": "image_decompose",
+  "description": "Decompose an image into separate layers using Qwen vision model. Takes a single image and returns multiple layer images that can be composed together. Useful for separating foreground/background, extracting elements, and creating layered compositions.",
+  "type": "gradio",
+  "space": "ryrobes/Qwen-Image-Layered",
+  "api_name": "/infer_1",
+  "inputs_schema": {
+    "input_image": "Path to the image to decompose",
+    "seed": "Random seed (default: 0)",
+    "randomize_seed": "Randomize the seed (default: true)",
+    "prompt": "Optional prompt to guide decomposition",
+    "neg_prompt": "Negative prompt (default: empty)",
+    "true_guidance_scale": "Guidance scale (default: 4.0)",
+    "num_inference_steps": "Number of inference steps (default: 50)",
+    "layer": "Number of layers to extract (default: 4)",
+    "cfg_norm": "Use CFG normalization (default: true)",
+    "use_en_prompt": "Use English prompt (default: true)"
+  },
+  "timeout": 180
+}

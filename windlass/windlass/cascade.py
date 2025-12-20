@@ -868,6 +868,28 @@ class RetryConfig(BaseModel):
     backoff_base_seconds: float = 1.0
 
 
+class ImageConfig(BaseModel):
+    """
+    Configuration for image generation phases.
+
+    When a phase uses an image generation model (FLUX, SDXL, etc.),
+    this config controls the image parameters.
+
+    Usage:
+        phases:
+          - name: generate_banner
+            model: black-forest-labs/FLUX-1-schnell
+            instructions: "{{ input.prompt }}"
+            image_config:
+              width: 1024
+              height: 768
+              n: 2
+    """
+    width: int = 1024
+    height: int = 1024
+    n: int = 1  # Number of images to generate
+
+
 class PhaseConfig(BaseModel):
     name: str
 
@@ -877,6 +899,7 @@ class PhaseConfig(BaseModel):
     tackle: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
     model: Optional[str] = None  # Override default model for this phase
+    image_config: Optional[ImageConfig] = None  # Config for image generation models (FLUX, SDXL, etc.)
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)
     rules: RuleConfig = Field(default_factory=RuleConfig)
     soundings: Optional[SoundingsConfig] = None

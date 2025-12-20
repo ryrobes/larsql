@@ -1,0 +1,55 @@
+{
+  "palette": [
+    {
+      "id": "flux_schnell",
+      "name": "FLUX.1 Schnell",
+      "category": "generator",
+      "openrouter": { "model": "black-forest-labs/FLUX-1-schnell" },
+      "inputs": { "prompt": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:lightning-bolt",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "flux_dev",
+      "name": "FLUX.1 Dev",
+      "category": "generator",
+      "openrouter": { "model": "black-forest-labs/FLUX-1-dev" },
+      "inputs": { "prompt": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:palette",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "sdxl_lightning",
+      "name": "SDXL Lightning",
+      "category": "generator",
+      "openrouter": { "model": "bytedance/sdxl-lightning-4step" },
+      "inputs": { "prompt": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:lightning-bolt",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "decompose",
+      "name": "Decompose",
+      "category": "transformer",
+      "harbor": { "tool": "image_decompose" },
+      "inputs": { "image": true },
+      "outputs": { "mode": "gallery" },
+      "icon": "mdi:layers-outline",
+      "color": "#10b981",
+      "description": "Split image into layers"
+    },
+    {
+      "id": "compose",
+      "name": "Compose",
+      "category": "utility",
+      "local": { "tool": "image_compose" },
+      "inputs": { "images": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:layers-triple",
+      "color": "#8b5cf6"
+    }
+  ]
+}

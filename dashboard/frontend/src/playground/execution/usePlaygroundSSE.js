@@ -1,0 +1,128 @@
+import { useEffect, useRef, useCallback } from 'react';
+import usePlaygroundStore from '../stores/playgroundStore';
+
+/**
+ * usePlaygroundSSE - Hook for real-time cascade execution events
+ *
+ * Connects to the SSE endpoint and updates playground nodes with execution results.
+ * Only processes events matching the current sessionId.
+ */
+export function usePlaygroundSSE() {
+  const eventSourceRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+
+  const sessionId = usePlaygroundStore((state) => state.sessionId);
+  const executionStatus = usePlaygroundStore((state) => state.executionStatus);
+
+  // Get handlers directly from store (stable references)
+  const handlePhaseComplete = usePlaygroundStore((state) => state.handlePhaseComplete);
+  const handleCascadeComplete = usePlaygroundStore((state) => state.handleCascadeComplete);
+  const handleCascadeError = usePlaygroundStore((state) => state.handleCascadeError);
+  const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
+
+  const processEvent = useCallback(
+    (event) => {
+      // Skip heartbeats and events for other sessions
+      if (event.type === 'heartbeat') return;
+      if (event.type === 'connected') return;
+
+      // Only process events for our session
+      if (event.session_id !== sessionId) return;
+
+      const data = event.data || {};
+
+      switch (event.type) {
+        case 'cascade_start':
+          console.log('[Playground SSE] Cascade started:', event.session_id);
+          break;
+
+        case 'phase_start':
+          // Mark node as running
+          updateNodeData(data.phase_name, { status: 'running' });
+          break;
+
+        case 'phase_complete':
+          console.log('[Playground SSE] Phase complete:', data.phase_name, 'result:', data.result);
+          handlePhaseComplete(data.phase_name, data.result || {});
+          break;
+
+        case 'cascade_complete':
+          handleCascadeComplete();
+          break;
+
+        case 'cascade_error':
+          handleCascadeError(data.error || 'Unknown error');
+          break;
+
+        default:
+          // Log unknown events for debugging
+          console.log('[Playground SSE] Event:', event.type);
+      }
+    },
+    [sessionId, handlePhaseComplete, handleCascadeComplete, handleCascadeError, updateNodeData]
+  );
+
+  useEffect(() => {
+    // Only connect if we have a session and are running
+    if (!sessionId || executionStatus !== 'running') {
+      return;
+    }
+
+    const connect = () => {
+      // Close existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      console.log('[Playground SSE] Connecting for session:', sessionId);
+
+      const eventSource = new EventSource(
+        'http://localhost:5001/api/events/stream'
+      );
+
+      eventSource.onopen = () => {
+        console.log('[Playground SSE] Connected');
+      };
+
+      eventSource.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          processEvent(event);
+        } catch (err) {
+          console.error('[Playground SSE] Failed to parse event:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('[Playground SSE] Connection error:', err);
+        eventSource.close();
+
+        // Reconnect after 2 seconds if still running
+        if (usePlaygroundStore.getState().executionStatus === 'running') {
+          reconnectTimeoutRef.current = setTimeout(connect, 2000);
+        }
+      };
+
+      eventSourceRef.current = eventSource;
+    };
+
+    connect();
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (eventSourceRef.current) {
+        console.log('[Playground SSE] Disconnecting');
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, [sessionId, executionStatus, processEvent]);
+
+  return {
+    connected: !!eventSourceRef.current,
+  };
+}
+
+export default usePlaygroundSSE;

@@ -9,6 +9,7 @@ import BlockedSessionsView from './components/BlockedSessionsView';
 import ArtifactsView from './components/ArtifactsView';
 import ArtifactViewer from './components/ArtifactViewer';
 import WorkshopPage from './workshop/WorkshopPage';
+import PlaygroundPage from './playground/PlaygroundPage';
 import ToolBrowserView from './components/ToolBrowserView';
 import SearchView from './components/SearchView';
 import ResearchCockpit from './components/ResearchCockpit';
@@ -87,6 +88,10 @@ function App() {
       if (parts[0] === 'workshop') {
         // /#/workshop → workshop cascade editor
         return { view: 'workshop', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+      }
+      if (parts[0] === 'playground') {
+        // /#/playground → image playground
+        return { view: 'playground', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'blocked') {
         // /#/blocked → blocked sessions view
@@ -173,6 +178,8 @@ function App() {
       window.location.hash = '#/sextant';
     } else if (view === 'workshop') {
       window.location.hash = '#/workshop';
+    } else if (view === 'playground') {
+      window.location.hash = '#/playground';
     } else if (view === 'blocked') {
       window.location.hash = '#/blocked';
     } else if (view === 'cockpit') {
@@ -320,6 +327,10 @@ function App() {
         setDetailSessionId(null);
       } else if (route.view === 'workshop') {
         setCurrentView('workshop');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+      } else if (route.view === 'playground') {
+        setCurrentView('playground');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'blocked') {
@@ -873,6 +884,10 @@ function App() {
       setCurrentView('workshop');
       updateHash('workshop');
     },
+    onPlayground: () => {
+      setCurrentView('playground');
+      updateHash('playground');
+    },
     onTools: () => {
       setCurrentView('tools');
       updateHash('tools');
@@ -1096,6 +1111,10 @@ function App() {
 
       {currentView === 'workshop' && (
         <WorkshopPage />
+      )}
+
+      {currentView === 'playground' && (
+        <PlaygroundPage />
       )}
 
       {currentView === 'blocked' && (
