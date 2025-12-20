@@ -1150,6 +1150,38 @@ def windlass_data(
         if isinstance(phase_output, dict) and 'output' in phase_output:
             phase_output = phase_output['output']
 
+        # Handle markdown code fences - LLMs sometimes wrap JSON in ```json ... ```
+        # Also handles preamble text like "Here's the analysis:\n\n```json\n..."
+        if isinstance(phase_output, str):
+            import json as json_module
+            import re
+
+            content = phase_output.strip()
+
+            # Try to extract content from code fences anywhere in the string
+            # Matches ```json, ```JSON, ``` followed by content and closing ```
+            fence_pattern = r'```(?:json|JSON)?\s*\n([\s\S]*?)\n\s*```'
+            fence_match = re.search(fence_pattern, content)
+
+            if fence_match:
+                # Extract just the content inside the fences
+                content = fence_match.group(1).strip()
+
+            # Try to parse as JSON
+            try:
+                phase_output = json_module.loads(content)
+            except (json_module.JSONDecodeError, ValueError):
+                # If that failed, try to find JSON array or object directly
+                # Look for [ ... ] or { ... } pattern
+                json_pattern = r'(\[[\s\S]*\]|\{[\s\S]*\})'
+                json_match = re.search(json_pattern, content)
+                if json_match:
+                    try:
+                        phase_output = json_module.loads(json_match.group(1))
+                    except (json_module.JSONDecodeError, ValueError):
+                        # Still not valid JSON, keep as string
+                        pass
+
         # Handle case where we couldn't find output
         if phase_output is None:
             return {

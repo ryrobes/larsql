@@ -134,13 +134,22 @@ function SqlEditor() {
       inherit: true,
       rules: [
         { token: 'keyword', foreground: 'ff9eb8', fontStyle: 'bold' },  // pastel pink
-        { token: 'string', foreground: 'a5d6ff' },                      // pastel blue
-        { token: 'string.sql', foreground: 'a5d6ff' },
+        // Comprehensive string coverage for SQL
+        { token: 'string', foreground: '9be9a8' },                      // subtle pastel green
+        { token: 'string.sql', foreground: '9be9a8' },
+        { token: 'string.double', foreground: '9be9a8' },
+        { token: 'string.single', foreground: '9be9a8' },
+        { token: 'string.quoted', foreground: '9be9a8' },
+        { token: 'string.quoted.single', foreground: '9be9a8' },
+        { token: 'string.quoted.double', foreground: '9be9a8' },
+        { token: 'string.quoted.single.sql', foreground: '9be9a8' },
+        { token: 'string.quoted.double.sql', foreground: '9be9a8' },
+        { token: 'string.escape', foreground: '9be9a8' },
         { token: 'number', foreground: 'd2a8ff' },                      // pastel purple
         { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
         { token: 'operator', foreground: 'ffc9e3' },                    // pastel rose
         { token: 'identifier', foreground: '79c0ff' },                  // pastel cyan
-        { token: 'type', foreground: '7ee787' },                        // pastel green
+        { token: 'type', foreground: '79c0ff' },                        // pastel cyan
       ],
       colors: {
         'editor.background': '#000000',                                 // pure black

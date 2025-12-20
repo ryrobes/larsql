@@ -80,8 +80,9 @@ function MonacoYamlEditor({
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'key', foreground: '7ee787' },           // pastel green
-        { token: 'string.yaml', foreground: 'a5d6ff' },   // pastel blue
+        { token: 'key', foreground: '79c0ff' },           // pastel cyan (keys)
+        { token: 'string', foreground: '9be9a8' },        // subtle pastel green
+        { token: 'string.yaml', foreground: '9be9a8' },   // subtle pastel green
         { token: 'number', foreground: 'd2a8ff' },        // pastel purple
         { token: 'keyword', foreground: 'ff9eb8' },       // pastel pink
         { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },

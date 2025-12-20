@@ -887,7 +887,61 @@ rules:
       state.phaseResults[phaseName] = result;
       // Note: Session cost is now polled from database via fetchSessionCost()
       // to avoid double-counting (SSE events can have duplicate cost values)
+
+      // Auto-size image nodes when they receive new images
+      if (nodeIndex !== -1 && result.images && result.images.length > 0) {
+        const node = state.nodes[nodeIndex];
+        if (node.type === 'image') {
+          // Schedule async image loading and resizing (can't be done in setter)
+          setTimeout(() => {
+            get().autoSizeImageNode(node.id, result.images[0]);
+          }, 0);
+        }
+      }
     }),
+
+    // Auto-size image node to fit image aspect ratio
+    autoSizeImageNode: (nodeId, imagePath) => {
+      const img = new Image();
+      img.onload = () => {
+        const aspectRatio = img.naturalWidth / img.naturalHeight;
+        const state = get();
+        const node = state.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        // Calculate new dimensions maintaining aspect ratio
+        // Use current width as base, adjust height to match aspect
+        const currentWidth = node.data.width || 208;
+        const GRID_SIZE = 16;
+        const HEADER_HEIGHT = 32; // Approximate header height
+        const FOOTER_HEIGHT = 28; // Approximate footer height
+
+        // Calculate content area height for the image
+        const contentHeight = Math.round(currentWidth / aspectRatio);
+        const totalHeight = contentHeight + HEADER_HEIGHT + FOOTER_HEIGHT;
+
+        // Snap to grid
+        const snappedHeight = Math.round(totalHeight / GRID_SIZE) * GRID_SIZE;
+        const clampedHeight = Math.min(608, Math.max(144, snappedHeight));
+
+        console.log('[Store] Auto-sizing image node:', nodeId, 'aspect:', aspectRatio.toFixed(2), 'new height:', clampedHeight);
+
+        set((state) => {
+          state.nodes = state.nodes.map(n => {
+            if (n.id !== nodeId) return n;
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                height: clampedHeight,
+                aspectRatio, // Store for aspect-locked resizing
+              },
+            };
+          });
+        });
+      };
+      img.src = `http://localhost:5001${imagePath}`;
+    },
 
     // Handle cascade completion
     handleCascadeComplete: () => {
@@ -913,6 +967,50 @@ rules:
       // Stop polling on error
       get().stopCostPolling();
     },
+
+    // Handle phase start from SSE - set node status to 'running'
+    handlePhaseStart: (phaseName) => set((state) => {
+      // Find node by custom name, node id, or parsed phase name (same matching as handlePhaseComplete)
+      const nodeIndex = state.nodes.findIndex(n => {
+        if (n.data.name === phaseName || n.id === phaseName) return true;
+        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        return false;
+      });
+
+      if (nodeIndex !== -1) {
+        console.log('[Store] Phase start for node:', state.nodes[nodeIndex].id);
+        state.nodes = state.nodes.map((n, i) => {
+          if (i !== nodeIndex) return n;
+          return {
+            ...n,
+            data: { ...n.data, status: 'running' },
+          };
+        });
+      } else {
+        console.log('[Store] Phase start - node not found for phase:', phaseName);
+      }
+    }),
+
+    // Handle cost update from SSE
+    handleCostUpdate: (phaseName, cost) => set((state) => {
+      // Find node by custom name, node id, or parsed phase name (same matching as handlePhaseComplete)
+      const nodeIndex = state.nodes.findIndex(n => {
+        if (n.data.name === phaseName || n.id === phaseName) return true;
+        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        return false;
+      });
+
+      if (nodeIndex !== -1) {
+        console.log('[Store] Cost update for node:', state.nodes[nodeIndex].id, 'cost:', cost);
+        state.nodes = state.nodes.map((n, i) => {
+          if (i !== nodeIndex) return n;
+          return {
+            ...n,
+            data: { ...n.data, cost },
+          };
+        });
+      }
+    }),
 
     // Clear execution state
     clearExecution: () => {

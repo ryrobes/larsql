@@ -7,9 +7,7 @@
   outline: none;
 }
 
-.playground-canvas-wrapper .react-flow__renderer {
-  background: var(--bg-main);
-}
+/* Grid lines are rendered by the Background component - don't override */
 
 /* Controls styling */
 .playground-canvas-wrapper .react-flow__controls {

@@ -3,6 +3,8 @@ import usePlaygroundStore from '../../stores/playgroundStore';
 
 // Grid size must match PlaygroundCanvas snapGrid
 const GRID_SIZE = 16;
+const HEADER_HEIGHT = 32; // Approximate header height for image nodes
+const FOOTER_HEIGHT = 28; // Approximate footer height for image nodes
 
 /**
  * useNodeResize - Custom hook for node resize functionality
@@ -10,6 +12,9 @@ const GRID_SIZE = 16;
  * Enables dragging the bottom-right corner to resize nodes.
  * Prevents node dragging while resizing using React Flow's 'nodrag' class
  * and pointer event handling. Snaps to grid for consistency with node movement.
+ *
+ * When a node has an aspectRatio set (e.g., image nodes), resizing maintains
+ * the aspect ratio by adjusting height based on width changes.
  *
  * @param {string} nodeId - The node ID
  * @param {object} options - Configuration options
@@ -44,19 +49,36 @@ export default function useNodeResize(nodeId, options = {}) {
   const handlePointerMove = useCallback((e) => {
     if (!resizeState.current.isResizing) return;
 
-    const { startX, startY, startWidth, startHeight } = resizeState.current;
+    const { startX, startY, startWidth, startHeight, aspectRatio } = resizeState.current;
 
     // Calculate new dimensions
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
 
-    // Snap to grid, then clamp to min/max
-    const rawWidth = startWidth + deltaX;
-    const rawHeight = startHeight + deltaY;
-    const snappedWidth = snapToGrid(rawWidth);
-    const snappedHeight = snapToGrid(rawHeight);
-    const newWidth = Math.min(maxWidth, Math.max(minWidth, snappedWidth));
-    const newHeight = Math.min(maxHeight, Math.max(minHeight, snappedHeight));
+    let newWidth, newHeight;
+
+    if (aspectRatio) {
+      // Aspect-locked resizing for image nodes
+      // Use width delta as primary driver
+      const rawWidth = startWidth + deltaX;
+      const snappedWidth = snapToGrid(rawWidth);
+      newWidth = Math.min(maxWidth, Math.max(minWidth, snappedWidth));
+
+      // Calculate height to maintain aspect ratio
+      // Content height = width / aspectRatio, then add header/footer
+      const contentHeight = newWidth / aspectRatio;
+      const totalHeight = contentHeight + HEADER_HEIGHT + FOOTER_HEIGHT;
+      const snappedHeight = snapToGrid(totalHeight);
+      newHeight = Math.min(maxHeight, Math.max(minHeight, snappedHeight));
+    } else {
+      // Free resizing for non-image nodes
+      const rawWidth = startWidth + deltaX;
+      const rawHeight = startHeight + deltaY;
+      const snappedWidth = snapToGrid(rawWidth);
+      const snappedHeight = snapToGrid(rawHeight);
+      newWidth = Math.min(maxWidth, Math.max(minWidth, snappedWidth));
+      newHeight = Math.min(maxHeight, Math.max(minHeight, snappedHeight));
+    }
 
     // Update node data
     updateNodeData(nodeId, {
@@ -103,18 +125,23 @@ export default function useNodeResize(nodeId, options = {}) {
     const currentWidth = nodeElement?.offsetWidth || minWidth;
     const currentHeight = nodeElement?.offsetHeight || minHeight;
 
+    // Get aspect ratio from node data (if set, e.g., for image nodes)
+    const nodeData = usePlaygroundStore.getState().nodes.find(n => n.id === nodeId)?.data;
+    const aspectRatio = nodeData?.aspectRatio;
+
     resizeState.current = {
       isResizing: true,
       startX: e.clientX,
       startY: e.clientY,
       startWidth: currentWidth,
       startHeight: currentHeight,
+      aspectRatio, // Will be undefined for non-image nodes
     };
 
     // Set cursor during resize
     document.body.style.cursor = 'nwse-resize';
     document.body.style.userSelect = 'none';
-  }, [minWidth, minHeight]);
+  }, [nodeId, minWidth, minHeight]);
 
   return { onResizeStart };
 }

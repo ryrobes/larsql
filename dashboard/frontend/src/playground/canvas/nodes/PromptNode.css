@@ -1,6 +1,7 @@
-/* PromptNode - Text Input Node */
+/* PromptNode - Text Input Node for Playground Canvas */
+/* NOTE: Using .playground-prompt-node to avoid CSS conflicts with PromptPhylogeny.css */
 
-.prompt-node {
+.playground-prompt-node {
   display: flex;
   flex-direction: column;
   background: var(--bg-card);
@@ -12,36 +13,32 @@
   position: relative;
 }
 
-.prompt-node:hover {
+.playground-prompt-node:hover {
   box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
 }
 
-.prompt-node.selected {
+.playground-prompt-node.selected {
   border-color: #34d399;
   box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.3);
 }
 
-.prompt-node-header {
+.playground-prompt-node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: #10b98115;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #10b98110;
   border-bottom: 1px solid var(--border-default);
 }
 
-.prompt-node-icon {
+.playground-prompt-node-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: #10b98120;
-  border-radius: 4px;
   color: #10b981;
 }
 
-.prompt-node-title {
+.playground-prompt-node-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -52,12 +49,12 @@
   white-space: nowrap;
 }
 
-.prompt-node-title:hover {
+.playground-prompt-node-title:hover {
   color: #10b981;
 }
 
 /* Name editing input */
-.prompt-node .node-name-input {
+.playground-prompt-node .node-name-input {
   flex: 1;
   min-width: 0;
   padding: 2px 6px;
@@ -71,12 +68,12 @@
   outline: none;
 }
 
-.prompt-node .node-name-input::placeholder {
+.playground-prompt-node .node-name-input::placeholder {
   color: var(--text-muted);
   font-weight: normal;
 }
 
-.prompt-node-body {
+.playground-prompt-node-body {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -93,10 +90,11 @@
 }
 
 /* Placeholder overlay - shown when editor is empty */
+/* Position accounts for line number gutter (~36px) + padding (8px) */
 .prompt-placeholder {
   position: absolute;
   top: 8px;
-  left: 8px;
+  left: 44px; /* line number gutter width + padding */
   right: 8px;
   color: #555;
   font-size: 12px;
@@ -108,11 +106,11 @@
 }
 
 /* Override Monaco's default styles for better integration */
-.prompt-node .monaco-editor {
+.playground-prompt-node .monaco-editor {
   border-radius: 0 0 6px 6px;
 }
 
-.prompt-node .monaco-editor .margin {
+.playground-prompt-node .monaco-editor .margin {
   background: transparent !important;
 }
 
@@ -145,11 +143,10 @@
 
 .prompt-handle:hover {
   background: #34d399 !important;
-  transform: scale(1.2);
 }
 
 /* Delete button */
-.prompt-node .node-delete-button {
+.playground-prompt-node .node-delete-button {
   position: absolute;
   top: -8px;
   left: -8px;
@@ -169,17 +166,17 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.prompt-node:hover .node-delete-button {
+.playground-prompt-node:hover .node-delete-button {
   opacity: 1;
 }
 
-.prompt-node .node-delete-button:hover {
+.playground-prompt-node .node-delete-button:hover {
   transform: scale(1.15);
   background: #dc2626;
 }
 
 /* Resize handle - larger hit area, visual indicator in corner */
-.prompt-node .node-resize-handle {
+.playground-prompt-node .node-resize-handle {
   position: absolute;
   bottom: -2px;
   right: -2px;
@@ -193,7 +190,7 @@
   background: transparent;
 }
 
-.prompt-node .node-resize-handle::before {
+.playground-prompt-node .node-resize-handle::before {
   content: '';
   position: absolute;
   bottom: 5px;
@@ -206,7 +203,7 @@
   pointer-events: none;
 }
 
-.prompt-node:hover .node-resize-handle,
-.prompt-node .node-resize-handle:hover {
+.playground-prompt-node:hover .node-resize-handle,
+.playground-prompt-node .node-resize-handle:hover {
   opacity: 1;
 }

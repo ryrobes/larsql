@@ -55,21 +55,6 @@ function PhaseNode({ id, data, selected }) {
   // Track last synced value to detect external changes (new cascade loaded)
   const lastSyncedYamlRef = useRef(data.yaml);
 
-  // Sync localYaml when data.yaml changes externally (e.g., new cascade loaded)
-  // This handles the case where React reuses the component (same node ID)
-  useEffect(() => {
-    // Only sync if data.yaml changed and it wasn't from our own edit
-    if (data.yaml !== lastSyncedYamlRef.current && data.yaml !== localYaml) {
-      setLocalYaml(data.yaml || DEFAULT_YAML);
-      lastSyncedYamlRef.current = data.yaml;
-
-      // Re-discover inputs for the new YAML
-      const inputs = discoverInputs(data.yaml || DEFAULT_YAML);
-      setDiscoveredInputs(inputs);
-      setParseError(null);
-    }
-  }, [data.yaml, localYaml, discoverInputs]);
-
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -134,6 +119,21 @@ function PhaseNode({ id, data, selected }) {
     const inputs = [...new Set(matches.map(m => m[1]))];
     return inputs;
   }, []);
+
+  // Sync localYaml when data.yaml changes externally (e.g., new cascade loaded)
+  // This handles the case where React reuses the component (same node ID)
+  useEffect(() => {
+    // Only sync if data.yaml changed and it wasn't from our own edit
+    if (data.yaml !== lastSyncedYamlRef.current && data.yaml !== localYaml) {
+      setLocalYaml(data.yaml || DEFAULT_YAML);
+      lastSyncedYamlRef.current = data.yaml;
+
+      // Re-discover inputs for the new YAML
+      const inputs = discoverInputs(data.yaml || DEFAULT_YAML);
+      setDiscoveredInputs(inputs);
+      setParseError(null);
+    }
+  }, [data.yaml, localYaml, discoverInputs]);
 
   // Parse and validate YAML on change (debounced in Monaco)
   const handleYamlChange = useCallback((newValue) => {
@@ -244,8 +244,9 @@ function PhaseNode({ id, data, selected }) {
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'key', foreground: '7ee787' },           // pastel green
-        { token: 'string.yaml', foreground: 'a5d6ff' },   // pastel blue
+        { token: 'key', foreground: '79c0ff' },           // pastel cyan (keys)
+        { token: 'string', foreground: '9be9a8' },        // subtle pastel green
+        { token: 'string.yaml', foreground: '9be9a8' },   // subtle pastel green
         { token: 'number', foreground: 'd2a8ff' },        // pastel purple
         { token: 'keyword', foreground: 'ff9eb8' },       // pastel pink
         { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },

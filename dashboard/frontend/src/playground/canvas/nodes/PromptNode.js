@@ -123,8 +123,9 @@ function PromptNode({ id, data, selected }) {
     minimap: { enabled: false },
     fontSize: 12,
     fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-    lineNumbers: 'off',
-    renderLineHighlight: 'none',
+    lineNumbers: 'on',  // Show line numbers for consistency with YAML editor
+    lineNumbersMinChars: 2,
+    renderLineHighlight: 'line',
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     wrappingStrategy: 'advanced',
@@ -133,8 +134,7 @@ function PromptNode({ id, data, selected }) {
     insertSpaces: true,
     folding: false,
     glyphMargin: false,
-    lineDecorationsWidth: 0,
-    lineNumbersMinChars: 0,
+    lineDecorationsWidth: 8, // Padding between line numbers and content
     padding: { top: 8, bottom: 8 },
     scrollbar: {
       vertical: 'auto',
@@ -144,11 +144,13 @@ function PromptNode({ id, data, selected }) {
     overviewRulerLanes: 0,
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
+    // Prevent layout jitter by fixing content widget positions
+    fixedOverflowWidgets: true,
   };
 
   return (
     <div
-      className={`prompt-node ${selected ? 'selected' : ''}`}
+      className={`playground-prompt-node ${selected ? 'selected' : ''}`}
       style={{ width, height }}
     >
       {/* Delete button */}
@@ -160,8 +162,8 @@ function PromptNode({ id, data, selected }) {
         <Icon icon="mdi:close" width="12" />
       </button>
 
-      <div className="prompt-node-header">
-        <div className="prompt-node-icon">
+      <div className="playground-prompt-node-header">
+        <div className="playground-prompt-node-icon">
           <Icon icon="mdi:text-box" width="16" />
         </div>
         {isEditingName ? (
@@ -177,7 +179,7 @@ function PromptNode({ id, data, selected }) {
           />
         ) : (
           <span
-            className="prompt-node-title"
+            className="playground-prompt-node-title"
             onDoubleClick={startEditingName}
             title="Double-click to rename"
           >
@@ -187,7 +189,7 @@ function PromptNode({ id, data, selected }) {
       </div>
 
       <div
-        className="prompt-node-body nodrag"
+        className="playground-prompt-node-body nodrag"
         onKeyDown={(e) => e.stopPropagation()}
         onKeyUp={(e) => e.stopPropagation()}
         onKeyPress={(e) => e.stopPropagation()}

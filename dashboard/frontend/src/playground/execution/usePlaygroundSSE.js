@@ -20,9 +20,11 @@ export function usePlaygroundSSE() {
   const executionStatus = usePlaygroundStore((state) => state.executionStatus);
 
   // Get handlers directly from store (stable references)
+  const handlePhaseStart = usePlaygroundStore((state) => state.handlePhaseStart);
   const handlePhaseComplete = usePlaygroundStore((state) => state.handlePhaseComplete);
   const handleCascadeComplete = usePlaygroundStore((state) => state.handleCascadeComplete);
   const handleCascadeError = usePlaygroundStore((state) => state.handleCascadeError);
+  const handleCostUpdate = usePlaygroundStore((state) => state.handleCostUpdate);
   const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
 
   // Process a single event (extracted for reuse)
@@ -36,7 +38,7 @@ export function usePlaygroundSSE() {
 
       case 'phase_start':
         console.log('[Playground SSE] Phase start:', data.phase_name);
-        updateNodeData(data.phase_name, { status: 'running' });
+        handlePhaseStart(data.phase_name);
         break;
 
       case 'phase_complete':
@@ -57,7 +59,7 @@ export function usePlaygroundSSE() {
         // Cost data arrives asynchronously after phase completion
         if (data.phase_name && data.cost !== undefined) {
           console.log('[Playground SSE] Cost update:', data.phase_name, 'cost:', data.cost);
-          updateNodeData(data.phase_name, { cost: data.cost });
+          handleCostUpdate(data.phase_name, data.cost);
         }
         break;
 
@@ -67,7 +69,7 @@ export function usePlaygroundSSE() {
           console.log('[Playground SSE] Event:', event.type);
         }
     }
-  }, [handlePhaseComplete, handleCascadeComplete, handleCascadeError, updateNodeData]);
+  }, [handlePhaseStart, handlePhaseComplete, handleCascadeComplete, handleCascadeError, handleCostUpdate, updateNodeData]);
 
   // Process buffered events when sessionId becomes known
   useEffect(() => {

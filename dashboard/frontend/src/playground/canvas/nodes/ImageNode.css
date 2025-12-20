@@ -41,8 +41,8 @@
 .image-node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -50,9 +50,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
   flex-shrink: 0;
 }
 
@@ -246,9 +243,7 @@
   right: -6px !important;
 }
 
-.image-handle:hover {
-  transform: scale(1.2);
-}
+/* Handle hover - just color change, no transform to avoid movement */
 
 /* Play button - positioned at top-right corner */
 .node-play-button {

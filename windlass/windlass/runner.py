@@ -529,8 +529,11 @@ class WindlassRunner:
                            node_type="phase", depth=self.depth, phase_name=phase.name,
                            cascade_id=self.config.cascade_id)
 
-                # Execute the phase
+                # Execute the phase with timing
+                import time as time_module
+                phase_start_time = time_module.time()
                 result = self.execute_phase(phase, phase_input, phase_trace)
+                phase_duration_ms = (time_module.time() - phase_start_time) * 1000
 
                 # Store in echo state (thread-safe for simple dict updates)
                 self.echo.state[f"output_{phase.name}"] = result
@@ -543,7 +546,10 @@ class WindlassRunner:
                 # For non-image phases, we need to call it here
                 phase_model = phase.model or self.model
                 if not Agent.is_image_generation_model(phase_model):
-                    self.hooks.on_phase_complete(phase.name, self.session_id, {"output": result})
+                    self.hooks.on_phase_complete(phase.name, self.session_id, {
+                        "output": result,
+                        "duration_ms": phase_duration_ms,
+                    })
 
                 return {
                     "phase_name": phase.name,
@@ -4104,7 +4110,10 @@ Refinement directive: {reforge_config.honing_prompt}
             }, trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
                metadata=phase_meta)
 
+            import time as time_module
+            phase_start_time = time_module.time()
             output_or_next_phase = self.execute_phase(phase, input_data, phase_trace, initial_injection=hook_result)
+            phase_duration_ms = (time_module.time() - phase_start_time) * 1000
 
             # Log phase completion for UI visibility
             log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
@@ -4116,7 +4125,10 @@ Refinement directive: {reforge_config.honing_prompt}
             # Skip if this was an image generation phase (it already called hooks.on_phase_complete)
             phase_model = phase.model or self.model
             if not Agent.is_image_generation_model(phase_model):
-                self.hooks.on_phase_complete(phase.name, self.session_id, {"output": output_or_next_phase})
+                self.hooks.on_phase_complete(phase.name, self.session_id, {
+                    "output": output_or_next_phase,
+                    "duration_ms": phase_duration_ms,
+                })
 
             if isinstance(output_or_next_phase, str) and output_or_next_phase in [h.target if isinstance(h, HandoffConfig) else h for h in phase.handoffs]:
                 chosen_next_phase = output_or_next_phase # Dynamic handoff chosen by agent
@@ -8256,7 +8268,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             )
 
             # Hook: Phase Complete
-            self.hooks.on_phase_complete(phase.name, self.session_id, {"output": result})
+            self.hooks.on_phase_complete(phase.name, self.session_id, {
+                "output": result,
+                "duration_ms": duration_ms,
+            })
 
             # Return next phase name or result
             if next_phase:

@@ -43,9 +43,9 @@
 .phase-node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: rgba(6, 182, 212, 0.08);
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(6, 182, 212, 0.06);
   border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;
 }
@@ -54,10 +54,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: rgba(6, 182, 212, 0.15);
-  border-radius: 4px;
   color: #06b6d4;
   flex-shrink: 0;
 }
@@ -314,9 +310,7 @@
   background: #c4b5fd !important;
 }
 
-.phase-handle:hover {
-  transform: scale(1.2);
-}
+/* Handle hover - just color change, no transform to avoid movement */
 
 /* Play button - run from this node */
 .phase-node .node-play-button {
