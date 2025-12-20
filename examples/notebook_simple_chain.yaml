@@ -1,0 +1,51 @@
+cascade_id: simple_polyglot_chain
+description: "Minimal polyglot example: SQL generates data, each language adds one field, SQL queries the result."
+inputs_schema: {}
+
+phases:
+  - name: numbers
+    tool: sql_data
+    inputs:
+      query: "SELECT * FROM (VALUES (1), (2), (3), (4), (5)) AS t(n)"
+    handoffs: [python_square]
+
+  - name: python_square
+    tool: python_data
+    inputs:
+      code: |
+        df = data.numbers.copy()
+        df['squared'] = df['n'] ** 2
+        result = df
+    handoffs: [js_cube]
+
+  - name: js_cube
+    tool: js_data
+    inputs:
+      code: |
+        result = data.python_square.map(row => ({
+          ...row,
+          cubed: row.n ** 3
+        }));
+    handoffs: [clj_factorial]
+
+  - name: clj_factorial
+    tool: clojure_data
+    inputs:
+      code: |
+        ;; Note: phase names are keywords in kebab-case (js_cube -> :js-cube)
+        (defn factorial [n]
+          (reduce * 1 (range 1 (inc n))))
+
+        (mapv
+          (fn [row]
+            (assoc row :factorial (factorial (:n row))))
+          (:js-cube data))
+    handoffs: [final_query]
+
+  - name: final_query
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT n, squared, cubed, factorial
+        FROM _clj_factorial
+        ORDER BY n

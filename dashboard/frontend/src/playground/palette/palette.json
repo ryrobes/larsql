@@ -1,114 +1,39 @@
 {
-  "palette": [
+  "categories": [
     {
-      "id": "gemini_image",
-      "name": "Gemini 2.5 Flash Image",
-      "category": "generator",
-      "openrouter": { "model": "google/gemini-2.5-flash-image" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
+      "id": "generator",
+      "name": "Generators",
       "icon": "mdi:creation",
-      "color": "#4285f4"
-    },
-    {
-      "id": "gemini_3_pro_image",
-      "name": "Gemini 3 Pro Image",
-      "category": "generator",
-      "openrouter": { "model": "google/gemini-3-pro-image-preview" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:star-four-points",
-      "color": "#ea4335"
-    },
-    {
-      "id": "gemini_image_preview",
-      "name": "Gemini 2.5 Flash Image Preview",
-      "category": "generator",
-      "openrouter": { "model": "google/gemini-2.5-flash-image-preview" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:lightning-bolt",
-      "color": "#34a853"
-    },
-    {
-      "id": "flux_2_max",
-      "name": "FLUX.2 Max",
-      "category": "generator",
-      "openrouter": { "model": "black-forest-labs/flux.2-max" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:fire",
-      "color": "#7c3aed"
-    },
-    {
-      "id": "flux_2_pro",
-      "name": "FLUX.2 Pro",
-      "category": "generator",
-      "openrouter": { "model": "black-forest-labs/flux.2-pro" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:flash",
-      "color": "#8b5cf6"
-    },
-    {
-      "id": "flux_2_flex",
-      "name": "FLUX.2 Flex",
-      "category": "generator",
-      "openrouter": { "model": "black-forest-labs/flux.2-flex" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:shape",
       "color": "#a78bfa"
     },
     {
-      "id": "riverflow_max",
-      "name": "Riverflow v2 Max",
-      "category": "generator",
-      "openrouter": { "model": "sourceful/riverflow-v2-max-preview" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:waves",
-      "color": "#06b6d4"
+      "id": "transformer",
+      "name": "Transformers",
+      "icon": "mdi:auto-fix",
+      "color": "#10b981"
     },
     {
-      "id": "riverflow_standard",
-      "name": "Riverflow v2 Standard",
-      "category": "generator",
-      "openrouter": { "model": "sourceful/riverflow-v2-standard-preview" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:wave",
-      "color": "#22d3ee"
+      "id": "utility",
+      "name": "Utilities",
+      "icon": "mdi:tools",
+      "color": "#8b5cf6"
     },
     {
-      "id": "riverflow_fast",
-      "name": "Riverflow v2 Fast",
-      "category": "generator",
-      "openrouter": { "model": "sourceful/riverflow-v2-fast-preview" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:lightning-bolt-outline",
-      "color": "#67e8f9"
-    },
-    {
-      "id": "gpt5_image",
-      "name": "GPT-5 Image",
-      "category": "generator",
-      "openrouter": { "model": "openai/gpt-5-image" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
+      "id": "agent",
+      "name": "Agent",
       "icon": "mdi:robot",
-      "color": "#10a37f"
-    },
+      "color": "#06b6d4"
+    }
+  ],
+  "palette": [
     {
-      "id": "gpt5_image_mini",
-      "name": "GPT-5 Image Mini",
-      "category": "generator",
-      "openrouter": { "model": "openai/gpt-5-image-mini" },
-      "inputs": { "prompt": true, "image": true },
-      "outputs": { "mode": "single" },
-      "icon": "mdi:robot-outline",
-      "color": "#1a7f64"
+      "id": "llm_phase",
+      "name": "LLM Phase",
+      "category": "agent",
+      "nodeType": "phase",
+      "icon": "mdi:cog-play",
+      "color": "#06b6d4",
+      "description": "Custom LLM phase with full YAML control"
     },
     {
       "id": "decompose",

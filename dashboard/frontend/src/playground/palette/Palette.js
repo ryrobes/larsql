@@ -12,8 +12,13 @@ import './Palette.css';
  * Displays average cost per model based on historical usage data.
  */
 function Palette() {
-  const { palette } = usePlaygroundStore();
+  const { palette, paletteLoading, refreshPalette } = usePlaygroundStore();
   const [modelStats, setModelStats] = useState({});
+
+  // Fetch dynamic image generation models on mount
+  useEffect(() => {
+    refreshPalette();
+  }, [refreshPalette]);
 
   // Fetch model stats (cost + duration) on mount
   useEffect(() => {
@@ -56,6 +61,7 @@ function Palette() {
 
   // Group palette items by category
   const categories = {
+    agent: { label: 'Agent', icon: 'mdi:robot', items: [] },
     generator: { label: 'Generators', icon: 'mdi:image-plus', items: [] },
     transformer: { label: 'Transformers', icon: 'mdi:image-edit', items: [] },
     tool: { label: 'Tools', icon: 'mdi:tools', items: [] },
@@ -69,10 +75,11 @@ function Palette() {
     }
   });
 
-  const onDragStart = useCallback((event, paletteId, paletteType) => {
+  const onDragStart = useCallback((event, paletteId, paletteType, nodeType) => {
     event.dataTransfer.setData('application/playground-node', JSON.stringify({
       paletteId,
       type: paletteType,
+      nodeType: nodeType || paletteType, // Pass nodeType for phase nodes
     }));
     event.dataTransfer.effectAllowed = 'move';
   }, []);
@@ -82,6 +89,7 @@ function Palette() {
       <div className="palette-header">
         <Icon icon="mdi:puzzle" width="18" />
         <span>Nodes</span>
+        {paletteLoading && <Icon icon="mdi:loading" className="spin" width="14" />}
       </div>
 
       {/* Special prompt node - always available */}
@@ -122,13 +130,16 @@ function Palette() {
               {category.items.map(item => {
                 const { cost, duration } = getItemStats(item);
                 const hasStats = cost || duration;
+                // Determine the type: use item.nodeType if specified, otherwise 'image'
+                const itemType = item.nodeType || 'image';
                 return (
                   <div
                     key={item.id}
                     className="palette-item"
                     draggable
-                    onDragStart={(e) => onDragStart(e, item.id, 'image')}
+                    onDragStart={(e) => onDragStart(e, item.id, itemType, item.nodeType)}
                     style={{ borderColor: item.color }}
+                    title={item.description}
                   >
                     <div
                       className="palette-item-icon"

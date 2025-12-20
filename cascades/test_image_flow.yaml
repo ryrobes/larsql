@@ -1,0 +1,141 @@
+cascade_id: test_image_flow
+description: We Drawin'
+inputs_schema:
+  prompt: Prompt text for prompt
+phases:
+- name: phase_1
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent. Please return ONLY the
+    enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4.1-fast
+  rules:
+    max_turns: 1
+- name: phase_1
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent - BUT feel free to change
+    the style of location if it suits the vibe. Please return ONLY the enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4::high
+  rules:
+    max_turns: 1
+_playground:
+  version: 1
+  viewport:
+    x: 0
+    y: 0
+    zoom: 1
+  nodes:
+  - id: phase_1
+    type: phase
+    position:
+      x: 432
+      y: 432
+    data:
+      width: 416
+      height: 304
+      yaml: "name: phase_1\ninstructions: |\n  Please rewrite and enhance this image\
+        \ prompt, be vivid with lots of rich details, but staying true to the original\
+        \ intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{\
+        \ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 1\n"
+      discoveredInputs:
+      - prompt
+  - id: prompt_2
+    type: prompt
+    position:
+      x: 64
+      y: 416
+    data:
+      text: 'Beautiful Irish woman standing by the ocean. Edgy illustration style,
+        American anime. A Busty and striking vixen, yet dangerous. '
+      name: prompt
+      width: 288
+      height: 224
+  - id: image_4
+    type: image
+    position:
+      x: 976
+      y: 256
+    data:
+      paletteId: flux_2_max
+      width: 432
+      height: 432
+  - id: phase_6
+    type: phase
+    position:
+      x: 432
+      y: 784
+    data:
+      width: 432
+      height: 336
+      yaml: "name: phase_1\ninstructions: |\n  Please rewrite and enhance this image\
+        \ prompt, be vivid with lots of rich details, but staying true to the original\
+        \ intent - BUT feel free to change the style of location if it suits the vibe.\
+        \ Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{ input.prompt\
+        \ }}\nmodel: x-ai/grok-4::high\nrules:\n  max_turns: 1\n"
+      discoveredInputs:
+      - prompt
+  - id: image_7
+    type: image
+    position:
+      x: 1008
+      y: 752
+    data:
+      paletteId: flux_2_flex
+      width: 464
+      height: 400
+  - id: image_8
+    type: image
+    position:
+      x: 976
+      y: 1232
+    data:
+      paletteId: gemini_3_pro_image
+      width: 464
+      height: 416
+  - id: image_9
+    type: image
+    position:
+      x: 1472
+      y: -0.0
+    data:
+      paletteId: gemini_3_pro_image
+      width: 512
+      height: 496
+  edges:
+  - source: prompt_2
+    target: phase_1
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_1
+    target: image_4
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: prompt_2
+    target: phase_6
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_6
+    target: image_7
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_6
+    target: image_8
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_1
+    target: image_9
+    sourceHandle: text-out
+    targetHandle: text-in

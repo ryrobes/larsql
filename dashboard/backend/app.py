@@ -564,7 +564,7 @@ def get_cascade_definitions():
                     session_id,
                     SUM(cost) as total_cost
                 FROM unified_logs
-                WHERE cost IS NOT NULL AND cost > 0
+                WHERE cost IS NOT NULL AND cost > 0 AND role = 'assistant'
                 GROUP BY cascade_id, session_id
             ),
             cascade_stats AS (
@@ -768,7 +768,7 @@ def get_cascade_instances(cascade_id):
                 session_id,
                 SUM(cost) as total_cost
             FROM unified_logs
-            WHERE cost IS NOT NULL AND cost > 0
+            WHERE cost IS NOT NULL AND cost > 0 AND role = 'assistant'
             GROUP BY session_id
         )
         SELECT
@@ -908,6 +908,7 @@ def get_cascade_instances(cascade_id):
                   AND phase_name IS NOT NULL
                   AND cost IS NOT NULL
                   AND cost > 0
+                  AND role = 'assistant'
                 GROUP BY session_id, phase_name
                 """.format(','.join('?' * len(session_ids)))
                 phase_cost_results = conn.execute(phase_costs_query, session_ids).fetchall()
@@ -998,6 +999,7 @@ def get_cascade_instances(cascade_id):
                         model_mapping[sid][resolved_model] = requested_model
 
                 # Step 2: Get aggregated costs by resolved model
+                # Only count 'assistant' role to avoid double-counting costs
                 model_costs_query = """
                 SELECT
                     session_id,
@@ -1007,6 +1009,7 @@ def get_cascade_instances(cascade_id):
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND model IS NOT NULL AND model != ''
+                  AND role = 'assistant'
                 GROUP BY session_id, model
                 ORDER BY session_id, total_cost DESC
                 """.format(','.join('?' * len(session_ids)))
@@ -1082,6 +1085,7 @@ def get_cascade_instances(cascade_id):
                 print(f"[ERROR] Batch input data query: {e}")
 
         # Batch 8: Get turn-level costs for all sessions
+        # Only count 'assistant' role to avoid double-counting costs
         turn_costs_by_session = {}
         if session_ids:
             try:
@@ -1096,6 +1100,7 @@ def get_cascade_instances(cascade_id):
                     FROM unified_logs
                     WHERE session_id IN ({})
                       AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                      AND role = 'assistant'
                     GROUP BY session_id, phase_name, sounding_index, turn_number
                     ORDER BY session_id, phase_name, sounding_index, turn_number
                     """.format(','.join('?' * len(session_ids)))
@@ -1110,6 +1115,7 @@ def get_cascade_instances(cascade_id):
                     FROM unified_logs
                     WHERE session_id IN ({})
                       AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                      AND role = 'assistant'
                     GROUP BY session_id, phase_name, sounding_index
                     ORDER BY session_id, phase_name, sounding_index
                     """.format(','.join('?' * len(session_ids)))
@@ -1173,6 +1179,7 @@ def get_cascade_instances(cascade_id):
                 print(f"[ERROR] Batch tool calls query: {e}")
 
         # Batch 10: Get sounding data for all sessions
+        # Only count 'assistant' role costs to avoid double-counting
         soundings_by_session = {}
         if session_ids:
             try:
@@ -1183,7 +1190,7 @@ def get_cascade_instances(cascade_id):
                     phase_name,
                     sounding_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
-                    SUM(cost) as total_cost,
+                    SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost,
                     {model_select}
                 FROM unified_logs
                 WHERE session_id IN ({','.join('?' * len(session_ids))})
@@ -1914,12 +1921,16 @@ def get_session_cost(session_id):
     try:
         conn = get_db_connection()
 
+        # Only sum costs from 'assistant' role rows to avoid double/triple counting
+        # The same cost value is propagated to system, phase_start, and assistant rows
+        # but we only want to count it once (the assistant row is the final response)
         query = """
             SELECT SUM(cost) as total_cost
             FROM unified_logs
             WHERE session_id = ?
               AND cost IS NOT NULL
               AND cost > 0
+              AND role = 'assistant'
         """
         result = conn.execute(query, [session_id]).fetchone()
         conn.close()
@@ -3322,6 +3333,140 @@ def list_playground_cascades():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/playground/browse', methods=['GET'])
+def browse_cascade_files():
+    """
+    Browse all available cascade/tool YAML files across multiple directories.
+
+    Returns files grouped by category:
+    - saved: Playground scratchpad (user-created)
+    - examples: Example cascades
+    - tools: Tackle/tool definitions
+    - cascades: User cascades directory
+
+    Only returns YAML files (phasing out JSON for cleaner prompt work).
+    """
+    try:
+        from cascade_introspector import introspect_cascade
+
+        categories = []
+
+        # Define browsable directories with metadata
+        browse_dirs = [
+            {
+                'id': 'saved',
+                'name': 'Saved Workflows',
+                'icon': 'mdi:content-save',
+                'path': PLAYGROUND_SCRATCHPAD_DIR,
+                'description': 'Your saved playground workflows',
+            },
+            {
+                'id': 'examples',
+                'name': 'Examples',
+                'icon': 'mdi:book-open-variant',
+                'path': EXAMPLES_DIR,
+                'description': 'Example cascades and workflows',
+            },
+            {
+                'id': 'tools',
+                'name': 'Tools (Tackle)',
+                'icon': 'mdi:tools',
+                'path': TACKLE_DIR,
+                'description': 'Reusable tool definitions',
+            },
+            {
+                'id': 'cascades',
+                'name': 'Cascades',
+                'icon': 'mdi:transit-connection-variant',
+                'path': CASCADES_DIR,
+                'description': 'User-defined cascades',
+            },
+        ]
+
+        for dir_info in browse_dirs:
+            dir_path = dir_info['path']
+            if not os.path.exists(dir_path):
+                continue
+
+            files = []
+
+            # Only YAML files
+            for filepath in sorted(glob.glob(f"{dir_path}/*.yaml")):
+                try:
+                    config = load_config_file(filepath)
+                    filename = os.path.basename(filepath)
+                    name = os.path.splitext(filename)[0]
+
+                    # Get file modification time
+                    mtime = os.path.getmtime(filepath)
+                    modified_at = datetime.fromtimestamp(mtime).isoformat()
+
+                    # Extract basic info
+                    cascade_id = config.get('cascade_id', name)
+                    description = config.get('description', '')
+                    phases = config.get('phases', [])
+                    inputs = config.get('inputs_schema', {})
+
+                    # Check for _playground metadata (already visualized)
+                    has_playground = '_playground' in config
+
+                    # Quick introspection for node count (without full layout)
+                    phase_count = len(phases)
+                    input_count = len(inputs)
+
+                    # Detect if it's an image-focused cascade
+                    is_image_cascade = False
+                    for phase in phases:
+                        model = phase.get('model', '')
+                        if model:
+                            try:
+                                from windlass.model_registry import ModelRegistry
+                                if ModelRegistry.is_image_output_model(model):
+                                    is_image_cascade = True
+                                    break
+                            except:
+                                if any(p in model.lower() for p in ['flux', 'image', 'sdxl', 'riverflow']):
+                                    is_image_cascade = True
+                                    break
+
+                    files.append({
+                        'filename': filename,
+                        'filepath': filepath,
+                        'name': cascade_id,
+                        'description': description[:100] if description else '',
+                        'modified_at': modified_at,
+                        'phase_count': phase_count,
+                        'input_count': input_count,
+                        'has_playground': has_playground,
+                        'is_image_cascade': is_image_cascade,
+                    })
+
+                except Exception as e:
+                    # Skip files that can't be parsed
+                    continue
+
+            if files:
+                categories.append({
+                    'id': dir_info['id'],
+                    'name': dir_info['name'],
+                    'icon': dir_info['icon'],
+                    'description': dir_info['description'],
+                    'path': dir_path,
+                    'files': files,
+                    'count': len(files),
+                })
+
+        return jsonify({
+            'categories': categories,
+            'total_files': sum(c['count'] for c in categories),
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/playground/load/<session_id>', methods=['GET'])
 def load_playground_cascade(session_id):
     """Load a playground cascade by session ID.
@@ -3481,6 +3626,77 @@ def get_model_costs():
                 }
 
         return jsonify(stats)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/playground/introspect', methods=['POST'])
+def introspect_cascade_endpoint():
+    """
+    Analyze a cascade and infer its graph structure for the playground.
+
+    When loading a cascade that doesn't have _playground metadata, this
+    endpoint reconstructs the visual graph from the cascade's implicit
+    dependencies (context.from, {{ outputs.X }}, {{ input.X }}).
+
+    Request body:
+    {
+        "cascade_yaml": "...",  // YAML or JSON string of the cascade
+        // OR
+        "cascade_file": "examples/my_cascade.yaml"  // Path to cascade file
+    }
+
+    Returns:
+    {
+        "nodes": [...],      // React Flow node definitions with positions
+        "edges": [...],      // React Flow edge definitions
+        "inputs": {...},     // Discovered inputs with descriptions
+        "viewport": {...}    // Suggested viewport
+    }
+    """
+    try:
+        from cascade_introspector import introspect_cascade, introspect_cascade_file
+
+        data = request.json or {}
+
+        if 'cascade_yaml' in data:
+            # Parse provided YAML/JSON
+            cascade_str = data['cascade_yaml']
+            try:
+                cascade = yaml.safe_load(cascade_str)
+            except:
+                cascade = json.loads(cascade_str)
+
+            result = introspect_cascade(cascade)
+
+        elif 'cascade_file' in data:
+            # Load from file
+            filepath = data['cascade_file']
+
+            # Security: only allow files from known directories
+            allowed_dirs = [EXAMPLES_DIR, TACKLE_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
+            filepath_abs = os.path.abspath(filepath)
+
+            # Also allow relative paths from WINDLASS_ROOT
+            if not filepath_abs.startswith('/'):
+                filepath_abs = os.path.abspath(os.path.join(WINDLASS_ROOT, filepath))
+
+            is_allowed = any(filepath_abs.startswith(os.path.abspath(d)) for d in allowed_dirs)
+            if not is_allowed:
+                return jsonify({'error': f'File path not in allowed directories'}), 403
+
+            if not os.path.exists(filepath_abs):
+                return jsonify({'error': f'File not found: {filepath}'}), 404
+
+            result = introspect_cascade_file(filepath_abs)
+
+        else:
+            return jsonify({'error': 'Either cascade_yaml or cascade_file is required'}), 400
+
+        return jsonify(result)
 
     except Exception as e:
         import traceback
@@ -4997,6 +5213,102 @@ def get_available_models():
         ]
         default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
         return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'cached': False})
+
+
+@app.route('/api/image-generation-models', methods=['GET'])
+def get_image_generation_models():
+    """
+    Get list of models that can generate images.
+
+    Uses the dynamic ModelRegistry which:
+    - Queries OpenRouter API for models with 'image' in output_modalities
+    - Caches results for 24 hours
+    - Includes unlisted models (FLUX, Riverflow) via known prefixes
+
+    Returns models formatted for the playground palette.
+    """
+    try:
+        from windlass.model_registry import ModelRegistry
+
+        # Get all image output models
+        image_models = ModelRegistry.get_image_output_models()
+
+        # Format for palette consumption
+        palette_items = []
+        for model in image_models:
+            # Determine icon and color based on provider
+            provider = model.provider.lower()
+            if 'google' in provider or 'gemini' in model.id.lower():
+                icon = 'mdi:google'
+                color = '#4285f4'
+            elif 'openai' in provider or 'gpt' in model.id.lower():
+                icon = 'mdi:robot'
+                color = '#10a37f'
+            elif 'flux' in model.id.lower() or 'black-forest' in provider:
+                icon = 'mdi:fire'
+                color = '#7c3aed'
+            elif 'riverflow' in model.id.lower() or 'sourceful' in provider:
+                icon = 'mdi:waves'
+                color = '#06b6d4'
+            elif 'stability' in provider or 'sdxl' in model.id.lower():
+                icon = 'mdi:image-filter-hdr'
+                color = '#8b5cf6'
+            else:
+                icon = 'mdi:creation'
+                color = '#a78bfa'
+
+            palette_items.append({
+                'id': model.id.replace('/', '_').replace('.', '_').replace('-', '_'),
+                'name': model.name,
+                'category': 'generator',
+                'openrouter': {'model': model.id},
+                'inputs': {'prompt': True, 'image': 'image' in model.input_modalities},
+                'outputs': {'mode': 'single'},
+                'icon': icon,
+                'color': color,
+                'description': model.description[:200] if model.description else f'Image generation via {model.provider}',
+                'pricing': model.pricing,
+            })
+
+        # Sort by name
+        palette_items.sort(key=lambda x: x['name'])
+
+        return jsonify({
+            'models': palette_items,
+            'count': len(palette_items),
+        })
+
+    except Exception as e:
+        # Return fallback models if registry fails
+        fallback_models = [
+            {
+                'id': 'gemini_2_5_flash_image',
+                'name': 'Gemini 2.5 Flash Image',
+                'category': 'generator',
+                'openrouter': {'model': 'google/gemini-2.5-flash-image'},
+                'inputs': {'prompt': True, 'image': True},
+                'outputs': {'mode': 'single'},
+                'icon': 'mdi:google',
+                'color': '#4285f4',
+                'description': 'Google Gemini image generation',
+            },
+            {
+                'id': 'gpt_5_image',
+                'name': 'GPT-5 Image',
+                'category': 'generator',
+                'openrouter': {'model': 'openai/gpt-5-image'},
+                'inputs': {'prompt': True, 'image': True},
+                'outputs': {'mode': 'single'},
+                'icon': 'mdi:robot',
+                'color': '#10a37f',
+                'description': 'OpenAI GPT-5 image generation',
+            },
+        ]
+        return jsonify({
+            'models': fallback_models,
+            'count': len(fallback_models),
+            'error': str(e),
+        })
 
 
 def log_connection_stats():

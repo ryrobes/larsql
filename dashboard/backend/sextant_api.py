@@ -47,7 +47,7 @@ def list_cascades_with_soundings():
                 COUNT(DISTINCT sounding_index) as sounding_diversity,
                 MIN(timestamp) as first_run,
                 MAX(timestamp) as last_run,
-                SUM(cost) as total_cost
+                SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
             FROM unified_logs
             WHERE sounding_index IS NOT NULL
               AND cascade_id IS NOT NULL
@@ -2772,7 +2772,7 @@ def get_species_info(session_id):
                     MAX(timestamp) as last_seen,
                     COUNT(DISTINCT sounding_index) as sounding_count,
                     SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
-                    SUM(cost) as total_cost
+                    SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                 AND phase_name = '{phase_name}'

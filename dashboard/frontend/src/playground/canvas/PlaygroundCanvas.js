@@ -8,6 +8,7 @@ import ReactFlow, {
 import usePlaygroundStore from '../stores/playgroundStore';
 import PromptNode from './nodes/PromptNode';
 import ImageNode from './nodes/ImageNode';
+import PhaseNode from './nodes/PhaseNode';
 import 'reactflow/dist/style.css';
 import './PlaygroundCanvas.css';
 
@@ -15,6 +16,7 @@ import './PlaygroundCanvas.css';
 const nodeTypes = {
   prompt: PromptNode,
   image: ImageNode,
+  phase: PhaseNode,
 };
 
 /**
@@ -70,9 +72,12 @@ function PlaygroundCanvas() {
 
     // Extract types from handle IDs
     // Source handles: 'text-out', 'image-out'
-    // Target handles: 'text-in', 'image-in'
-    const sourceType = sourceHandle?.replace('-out', '');
-    const targetType = targetHandle?.replace('-in', '');
+    // Target handles: 'text-in', 'image-in', 'text-in-prompt', 'text-in-style', etc.
+    const sourceType = sourceHandle?.split('-')[0]; // 'text' or 'image'
+
+    // For target handles, extract type: 'text-in' → 'text', 'text-in-prompt' → 'text'
+    const targetParts = targetHandle?.split('-');
+    const targetType = targetParts?.[0]; // 'text' or 'image'
 
     // Only allow matching types
     if (sourceType && targetType) {
@@ -85,7 +90,6 @@ function PlaygroundCanvas() {
 
   // Handle new connections
   const onConnect = useCallback((params) => {
-    // Double-check validation before adding
     if (isValidConnection(params)) {
       storeAddEdge(params);
     }
@@ -104,7 +108,7 @@ function PlaygroundCanvas() {
     const data = event.dataTransfer.getData('application/playground-node');
     if (!data) return;
 
-    const { paletteId, type } = JSON.parse(data);
+    const { paletteId, type, nodeType } = JSON.parse(data);
 
     // Get position relative to the canvas
     const reactFlowBounds = reactFlowWrapper.current?.getBoundingClientRect();
@@ -115,9 +119,12 @@ function PlaygroundCanvas() {
       y: event.clientY - reactFlowBounds.top,
     });
 
-    // Add the node
+    // Add the node based on type
     if (type === 'prompt') {
       addPromptNode(position);
+    } else if (nodeType === 'phase') {
+      // Phase node - use addPhaseNode from store
+      usePlaygroundStore.getState().addPhaseNode(position);
     } else {
       addNode(paletteId, position);
     }
@@ -181,6 +188,7 @@ function PlaygroundCanvas() {
         <MiniMap
           nodeColor={(node) => {
             if (node.type === 'prompt') return '#10b981';
+            if (node.type === 'phase') return '#06b6d4';
             if (node.data?.paletteColor) return node.data.paletteColor;
             return 'var(--ocean-primary)';
           }}

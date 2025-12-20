@@ -143,6 +143,9 @@
 
 /* Type Badge */
 .cell-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -159,6 +162,21 @@
 .cell-type-python {
   background-color: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
+}
+
+.cell-type-js {
+  background-color: rgba(247, 223, 30, 0.15);
+  color: #f7df1e;
+}
+
+.cell-type-clojure {
+  background-color: rgba(99, 177, 50, 0.15);
+  color: #63b132;
+}
+
+.cell-type-windlass {
+  background-color: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
 }
 
 /* Name Input */
@@ -341,6 +359,24 @@
   background-color: rgba(248, 113, 113, 0.1) !important;
 }
 
+/* Convert-to submenu */
+.cell-menu-submenu {
+  padding: 4px 0;
+}
+
+.cell-menu-label {
+  display: block;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cell-menu-submenu button {
+  padding-left: 20px;
+}
+
 /* ============================================
    CELL BODY
    ============================================ */
@@ -423,6 +459,57 @@
 .cell-show-results-btn:hover {
   color: #2dd4bf;
   background-color: rgba(45, 212, 191, 0.05);
+}
+
+/* Stdout/Stderr Display (for console.log/println debugging) */
+.cell-stdout-container {
+  border-bottom: 1px solid #1a2028;
+}
+
+.cell-stdout,
+.cell-stderr {
+  padding: 8px 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.cell-stdout {
+  background: rgba(96, 165, 250, 0.05);
+  border-left: 3px solid #60a5fa;
+}
+
+.cell-stderr {
+  background: rgba(251, 191, 36, 0.05);
+  border-left: 3px solid #fbbf24;
+}
+
+.cell-stdout-label,
+.cell-stderr-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 8px;
+  opacity: 0.7;
+}
+
+.cell-stdout-label {
+  color: #60a5fa;
+}
+
+.cell-stderr-label {
+  color: #fbbf24;
+}
+
+.cell-stdout-content,
+.cell-stderr-content {
+  margin: 0;
+  padding: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #94a3b8;
+  line-height: 1.5;
 }
 
 /* Error Display */
@@ -686,4 +773,173 @@
 .cell-autofix-reset-btn:hover {
   border-color: #f87171;
   color: #f87171;
+}
+
+/* ============================================
+   AUTO-FIX DIFF VIEW
+   ============================================ */
+
+.cell-diff-container {
+  margin-top: 12px;
+  border: 1px solid #2dd4bf40;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.03), rgba(45, 212, 191, 0.01));
+  overflow: hidden;
+}
+
+.cell-diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(45, 212, 191, 0.08);
+  border-bottom: 1px solid #2dd4bf30;
+}
+
+.cell-diff-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2dd4bf;
+}
+
+.cell-diff-icon {
+  font-size: 14px;
+}
+
+.cell-diff-model {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
+  padding-left: 8px;
+  border-left: 1px solid #1a2028;
+}
+
+.cell-diff-original-error {
+  padding: 8px 14px;
+  background: rgba(248, 113, 113, 0.08);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.2);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.cell-diff-error-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f87171;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.cell-diff-error-message {
+  font-size: 12px;
+  color: #fca5a5;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.cell-diff-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cell-diff-apply-btn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #2dd4bf, #14b8a6);
+  border: none;
+  border-radius: 4px;
+  color: #0a0a0a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cell-diff-apply-btn:hover {
+  background: linear-gradient(135deg, #5eead4, #2dd4bf);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.3);
+}
+
+.cell-diff-dismiss-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cell-diff-dismiss-btn:hover {
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+
+.cell-diff-editor {
+  padding: 0;
+}
+
+/* Monaco DiffEditor dark theme adjustments */
+.cell-diff-editor .monaco-editor,
+.cell-diff-editor .monaco-diff-editor {
+  background: #080c12 !important;
+}
+
+.cell-diff-editor .monaco-editor .margin {
+  background: #080c12 !important;
+}
+
+.cell-diff-legend {
+  display: flex;
+  gap: 16px;
+  padding: 8px 14px;
+  background: #0b1219;
+  border-top: 1px solid #1a2028;
+  font-size: 11px;
+}
+
+.cell-diff-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+}
+
+.cell-diff-legend-removed {
+  color: #f87171;
+}
+
+.cell-diff-legend-added {
+  color: #4ade80;
+}
+
+/* Show diff button when collapsed */
+.cell-diff-show-btn {
+  padding: 8px 14px;
+  background: rgba(45, 212, 191, 0.05);
+  border: 1px solid #2dd4bf30;
+  border-radius: 4px;
+  color: #2dd4bf;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cell-diff-show-btn:hover {
+  background: rgba(45, 212, 191, 0.1);
+  border-color: #2dd4bf50;
+}
+
+.cell-diff-show-btn::before {
+  content: '🔧';
 }

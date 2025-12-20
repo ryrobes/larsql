@@ -188,7 +188,7 @@
   background: #16202A;
   border: 2px solid #2C3B4B;
   border-radius: 8px;
-  padding: 14px;
+  /* padding: 14px; */
   width: 320px;  /* Reduced from 400px to fit better with 700px spacing */
   cursor: pointer;
   transition: all 0.2s ease;

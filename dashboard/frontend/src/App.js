@@ -37,6 +37,7 @@ function App() {
   const [detailSessionId, setDetailSessionId] = useState(null);
   const [messageFlowSessionId, setMessageFlowSessionId] = useState(null);
   const [searchTab, setSearchTab] = useState('rag');
+  const [initialNotebook, setInitialNotebook] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
@@ -167,6 +168,10 @@ function App() {
       if (parts[0] === 'search') {
         // /#/search/rag → search view with specific tab
         return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
+      }
+      if (parts[0] === 'sql-query') {
+        // /#/sql-query/notebook_name → SQL query page with notebook loaded
+        return { view: 'sql-query', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
       }
       // /#/cascade_id/session_id → detail view
       return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null, artifactId: null };
@@ -377,6 +382,14 @@ function App() {
         setSearchTab(route.searchTab || 'rag');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
+      } else if (route.view === 'sql-query') {
+        setCurrentView('sql-query');
+        setSelectedCascadeId(null);
+        setDetailSessionId(null);
+        // If notebook name provided, store it for SqlQueryPage to load
+        if (route.notebookName) {
+          setInitialNotebook(route.notebookName);
+        }
       } else if (route.view === 'messageflow') {
         setCurrentView('messageflow');
         setSelectedCascadeId(null);
@@ -1181,7 +1194,11 @@ function App() {
       )}
 
       {currentView === 'sql-query' && (
-        <SqlQueryPage {...getStandardNavigationProps()} />
+        <SqlQueryPage
+          {...getStandardNavigationProps()}
+          initialNotebook={initialNotebook}
+          onNotebookLoaded={() => setInitialNotebook(null)}
+        />
       )}
 
       {currentView === 'browser' && (

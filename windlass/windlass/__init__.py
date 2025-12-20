@@ -75,9 +75,11 @@ register_tackle("sql_query", sql_run_sql)  # Named sql_query to avoid conflict w
 register_tackle("list_sql_connections", list_sql_connections)
 
 # Data Cascade tools (SQL notebooks / data pipelines)
-from .eddies.data_tools import sql_data, python_data
+from .eddies.data_tools import sql_data, python_data, js_data, clojure_data
 register_tackle("sql_data", sql_data)
 register_tackle("python_data", python_data)
+register_tackle("js_data", js_data)
+register_tackle("clojure_data", clojure_data)
 
 # Conditional: ElevenLabs TTS (only if API key and voice ID are configured)
 from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_available

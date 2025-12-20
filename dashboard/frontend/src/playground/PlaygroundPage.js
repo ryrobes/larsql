@@ -6,6 +6,7 @@ import usePlaygroundStore from './stores/playgroundStore';
 import usePlaygroundSSE from './execution/usePlaygroundSSE';
 import Palette from './palette/Palette';
 import PlaygroundCanvas from './canvas/PlaygroundCanvas';
+import CascadeBrowser from './components/CascadeBrowser';
 import './PlaygroundPage.css';
 
 /**
@@ -23,16 +24,17 @@ function PlaygroundPage() {
     runCascade,
     clearExecution,
     resetPlayground,
-    availableCascades,
-    isLoadingCascades,
-    fetchCascadeList,
     loadCascade,
+    loadCascadeFromFile,
     loadFromUrl,
     totalSessionCost,
     loadedSessionId,
     loadedCascadeId,
     saveCascadeAs,
   } = usePlaygroundStore();
+
+  // Cascade browser modal state
+  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 
   // Subscribe to SSE events for real-time updates
   usePlaygroundSSE();
@@ -41,10 +43,6 @@ function PlaygroundPage() {
   useEffect(() => {
     loadFromUrl();
   }, [loadFromUrl]);
-
-  // Dropdown state
-  const [isLoadDropdownOpen, setIsLoadDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
 
   // Save As dialog state
   const [isSaveAsOpen, setIsSaveAsOpen] = useState(false);
@@ -55,34 +53,24 @@ function PlaygroundPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsLoadDropdownOpen(false);
+  // Handle file selection from browser modal
+  const handleBrowserLoad = useCallback(async (file) => {
+    // Determine how to load based on file location
+    if (file.has_playground) {
+      // Has playground metadata - use loadCascade with session ID
+      const sessionId = file.filename.replace('.yaml', '').replace('.json', '');
+      const result = await loadCascade(sessionId);
+      if (!result.success) {
+        alert(`Failed to load cascade: ${result.error}`);
       }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Fetch cascade list when dropdown opens
-  const handleOpenLoadDropdown = useCallback(async () => {
-    setIsLoadDropdownOpen(!isLoadDropdownOpen);
-    if (!isLoadDropdownOpen) {
-      await fetchCascadeList();
-    }
-  }, [isLoadDropdownOpen, fetchCascadeList]);
-
-  // Load a cascade
-  const handleLoadCascade = useCallback(async (cascadeSessionId) => {
-    const result = await loadCascade(cascadeSessionId);
-    if (result.success) {
-      setIsLoadDropdownOpen(false);
     } else {
-      alert(`Failed to load cascade: ${result.error}`);
+      // No playground metadata - use introspection via loadCascadeFromFile
+      const result = await loadCascadeFromFile(file.filepath);
+      if (!result.success) {
+        alert(`Failed to load cascade: ${result.error}`);
+      }
     }
-  }, [loadCascade]);
+  }, [loadCascade, loadCascadeFromFile]);
 
   // Run the cascade
   const handleRun = useCallback(async () => {
@@ -176,52 +164,14 @@ function PlaygroundPage() {
               <span>New</span>
             </button>
 
-            {/* Load Dropdown */}
-            <div className="load-dropdown-container" ref={dropdownRef}>
-              <button
-                className={`toolbar-btn ${isLoadDropdownOpen ? 'active' : ''}`}
-                onClick={handleOpenLoadDropdown}
-                title="Load Saved Cascade"
-              >
-                <Icon icon="mdi:folder-open" width="18" />
-                <span>Load</span>
-                <Icon icon="mdi:chevron-down" width="14" />
-              </button>
-              {isLoadDropdownOpen && (
-                <div className="load-dropdown-menu">
-                  {isLoadingCascades ? (
-                    <div className="load-dropdown-loading">
-                      <Icon icon="mdi:loading" className="spinning" width="16" />
-                      <span>Loading...</span>
-                    </div>
-                  ) : availableCascades.length === 0 ? (
-                    <div className="load-dropdown-empty">
-                      <Icon icon="mdi:file-hidden" width="16" />
-                      <span>No saved cascades</span>
-                    </div>
-                  ) : (
-                    availableCascades.map((cascade) => (
-                      <button
-                        key={cascade.session_id}
-                        className="load-dropdown-item"
-                        onClick={() => handleLoadCascade(cascade.session_id)}
-                      >
-                        <div className="load-dropdown-item-main">
-                          <Icon icon="mdi:graph" width="14" />
-                          <span className="load-dropdown-item-id">{cascade.session_id}</span>
-                        </div>
-                        <div className="load-dropdown-item-meta">
-                          <span>{cascade.image_node_count} nodes</span>
-                          <span className="load-dropdown-item-date">
-                            {new Date(cascade.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+            <button
+              className="toolbar-btn"
+              onClick={() => setIsBrowserOpen(true)}
+              title="Open Cascade"
+            >
+              <Icon icon="mdi:folder-open" width="18" />
+              <span>Open</span>
+            </button>
 
             <button className="toolbar-btn" onClick={handleClear} title="Clear Results">
               <Icon icon="mdi:eraser" width="18" />
@@ -269,8 +219,11 @@ function PlaygroundPage() {
               </span>
             )}
 
-            {executionStatus === 'completed' && totalSessionCost > 0 && (
-              <span className="cost-badge" title={`Total session cost: $${totalSessionCost.toFixed(4)}`}>
+            {(executionStatus === 'running' || executionStatus === 'completed') && totalSessionCost > 0 && (
+              <span
+                className={`cost-badge ${executionStatus === 'running' ? 'updating' : ''}`}
+                title={`Total session cost: $${totalSessionCost.toFixed(4)}${executionStatus === 'running' ? ' (updating...)' : ''}`}
+              >
                 <Icon icon="mdi:currency-usd" width="14" />
                 {formatCost(totalSessionCost)}
               </span>
@@ -427,6 +380,13 @@ function PlaygroundPage() {
             </div>
           </div>
         )}
+
+        {/* Cascade Browser Modal */}
+        <CascadeBrowser
+          isOpen={isBrowserOpen}
+          onClose={() => setIsBrowserOpen(false)}
+          onLoad={handleBrowserLoad}
+        />
       </div>
     </ReactFlowProvider>
   );

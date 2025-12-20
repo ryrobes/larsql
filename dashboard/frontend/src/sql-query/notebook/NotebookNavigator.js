@@ -132,8 +132,15 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
     onNavigate(phase.name);
   };
 
-  const toolIcon = phase.tool === 'sql_data' ? 'mdi:database' : 'mdi:language-python';
-  const toolColor = phase.tool === 'sql_data' ? '#60a5fa' : '#fbbf24';
+  // Icons and colors for each cell type
+  const toolStyles = {
+    sql_data: { icon: 'mdi:database', color: '#60a5fa' },
+    python_data: { icon: 'mdi:language-python', color: '#fbbf24' },
+    js_data: { icon: 'mdi:language-javascript', color: '#f7df1e' },
+    clojure_data: { icon: 'simple-icons:clojure', color: '#63b132' },
+    windlass_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
+  };
+  const { icon: toolIcon, color: toolColor } = toolStyles[phase.tool] || toolStyles.python_data;
 
   return (
     <div className={`nav-phase-node ${isActive ? 'active' : ''}`}>

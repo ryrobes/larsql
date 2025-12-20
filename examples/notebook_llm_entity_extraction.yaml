@@ -1,0 +1,127 @@
+cascade_id: llm_entity_extraction
+description: "Entity extraction pipeline with soundings: SQL → LLM (extract entities with best-of-3) → JS (transform) → SQL (analyze)."
+inputs_schema: {}
+
+phases:
+  - name: news_articles
+    tool: sql_data
+    inputs:
+      query: |
+        -- News article snippets for entity extraction
+        SELECT * FROM (
+          VALUES
+            ('A001', 'Tech', 'Apple announced the new iPhone 16 at their Cupertino headquarters. CEO Tim Cook presented the device alongside new AirPods.'),
+            ('A002', 'Finance', 'Tesla stock surged 15% after Elon Musk announced record Q4 deliveries. The Austin-based company beat analyst expectations.'),
+            ('A003', 'Tech', 'Microsoft and OpenAI expanded their partnership in San Francisco. Satya Nadella called it a defining moment for AI.'),
+            ('A004', 'Sports', 'LeBron James led the Lakers to victory at Crypto.com Arena. Coach Darvin Ham praised the teams defensive effort.'),
+            ('A005', 'Politics', 'President Biden met with European leaders in Brussels. The summit focused on climate policy and trade agreements.'),
+            ('A006', 'Tech', 'Google DeepMind unveiled Gemini 2 at their London office. Demis Hassabis demonstrated new reasoning capabilities.'),
+            ('A007', 'Finance', 'JPMorgan Chase reported strong earnings. Jamie Dimon warned about inflation risks from their New York headquarters.'),
+            ('A008', 'Entertainment', 'Taylor Swift broke Spotify records with her new album. The singer announced a world tour starting in Los Angeles.')
+        ) AS t(article_id, category, content)
+    handoffs: [llm_extract_entities]
+
+  - name: llm_extract_entities
+    tool: windlass_data
+    inputs:
+      code: |
+        instructions: |
+          Extract named entities from these news articles.
+
+          Articles:
+          {{outputs.news_articles}}
+
+          For each article, extract ALL entities you can find:
+          - people: Names of individuals mentioned
+          - organizations: Companies, institutions, teams
+          - locations: Cities, countries, venues
+          - products: Product names, services
+
+          Be thorough - extract every entity mentioned. Include titles (CEO, President) with names.
+
+        model: google/gemini-2.5-flash
+
+        # Use soundings to get best extraction
+        soundings:
+          factor: 3
+          evaluator_instructions: |
+            Pick the extraction that is most complete and accurate.
+            Prefer the response that:
+            1. Captures the most entities without duplicates
+            2. Correctly categorizes each entity
+            3. Includes proper context (titles, roles)
+
+        output_schema:
+          type: array
+          items:
+            type: object
+            properties:
+              article_id: { type: string }
+              category: { type: string }
+              people:
+                type: array
+                items: { type: string }
+              organizations:
+                type: array
+                items: { type: string }
+              locations:
+                type: array
+                items: { type: string }
+              products:
+                type: array
+                items: { type: string }
+            required: [article_id, people, organizations, locations, products]
+    handoffs: [js_flatten_entities]
+
+  - name: js_flatten_entities
+    tool: js_data
+    inputs:
+      code: |
+        // Flatten entity arrays into individual records for analysis
+        const articles = data.llm_extract_entities;
+
+        const flattened = [];
+
+        articles.forEach(article => {
+          // Helper to add entity records
+          const addEntities = (entities, type) => {
+            (entities || []).forEach(entity => {
+              flattened.push({
+                article_id: article.article_id,
+                category: article.category,
+                entity_type: type,
+                entity_name: entity
+              });
+            });
+          };
+
+          addEntities(article.people, 'person');
+          addEntities(article.organizations, 'organization');
+          addEntities(article.locations, 'location');
+          addEntities(article.products, 'product');
+        });
+
+        result = flattened;
+    handoffs: [entity_analysis]
+
+  - name: entity_analysis
+    tool: sql_data
+    inputs:
+      query: |
+        -- Analyze extracted entities
+        WITH entity_counts AS (
+          SELECT
+            entity_type,
+            entity_name,
+            COUNT(*) as mentions,
+            array_agg(DISTINCT category) as categories
+          FROM _js_flatten_entities
+          GROUP BY entity_type, entity_name
+        )
+        SELECT
+          entity_type,
+          entity_name,
+          mentions,
+          array_to_string(categories, ', ') as appears_in_categories
+        FROM entity_counts
+        ORDER BY mentions DESC, entity_type, entity_name

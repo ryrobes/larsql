@@ -1,0 +1,124 @@
+cascade_id: clojure_functional_demo
+description: "Demonstrates Clojure's elegant functional data processing with transducers, threading macros, and immutable transformations."
+inputs_schema: {}
+
+phases:
+  - name: source_data
+    tool: sql_data
+    inputs:
+      query: |
+        -- Generate order data for functional processing
+        SELECT * FROM (
+          VALUES
+            ('ORD001', 'alice@example.com', 'laptop', 1200.00, 1, 'shipped'),
+            ('ORD002', 'bob@example.com', 'mouse', 25.00, 2, 'delivered'),
+            ('ORD003', 'alice@example.com', 'keyboard', 75.00, 1, 'shipped'),
+            ('ORD004', 'charlie@example.com', 'monitor', 400.00, 1, 'pending'),
+            ('ORD005', 'bob@example.com', 'headphones', 150.00, 1, 'delivered'),
+            ('ORD006', 'diana@example.com', 'laptop', 1200.00, 2, 'shipped'),
+            ('ORD007', 'alice@example.com', 'webcam', 80.00, 1, 'delivered'),
+            ('ORD008', 'charlie@example.com', 'desk', 350.00, 1, 'pending'),
+            ('ORD009', 'diana@example.com', 'chair', 250.00, 2, 'shipped'),
+            ('ORD010', 'bob@example.com', 'monitor', 400.00, 1, 'cancelled')
+        ) AS t(order_id, email, product, price, quantity, status)
+    handoffs: [clojure_transform]
+
+  - name: clojure_transform
+    tool: clojure_data
+    inputs:
+      code: |
+        ;; Functional order processing with Clojure
+        ;; Note: phase names are keywords in kebab-case (source_data -> :source-data)
+        (let [orders (:source-data data)
+
+              ;; Add computed fields using threading macro
+              enriched-orders
+              (->> orders
+                   (map #(assoc %
+                           :total (* (:price %) (:quantity %))
+                           :customer (first (clojure.string/split (:email %) #"@")))))
+
+              ;; Filter active orders (not cancelled)
+              active-orders
+              (filter #(not= (:status %) "cancelled") enriched-orders)
+
+              ;; Group by customer with aggregations
+              by-customer
+              (reduce
+                (fn [acc order]
+                  (let [cust (:customer order)]
+                    (update acc cust
+                            (fnil (fn [prev]
+                                    {:customer cust
+                                     :email (:email order)
+                                     :order_count (inc (:order_count prev))
+                                     :total_spent (+ (:total_spent prev) (:total order))
+                                     :products (conj (:products prev) (:product order))
+                                     :statuses (conj (:statuses prev) (:status order))})
+                                  {:order_count 0 :total_spent 0 :products [] :statuses []}))))
+                {}
+                active-orders)]
+
+          ;; Return as vector sorted by total spent
+          (->> (vals by-customer)
+               (sort-by :total_spent >)
+               vec))
+    handoffs: [clojure_analytics]
+
+  - name: clojure_analytics
+    tool: clojure_data
+    inputs:
+      code: |
+        ;; Advanced analytics with reduce and transducers
+        (let [customers (:clojure-transform data)
+
+              ;; Calculate customer tiers using cond threading
+              with-tiers
+              (mapv
+                (fn [c]
+                  (let [spent (:total_spent c)
+                        tier (cond
+                               (>= spent 2000) {:tier "VIP" :discount 0.20}
+                               (>= spent 500)  {:tier "Gold" :discount 0.10}
+                               :else           {:tier "Standard" :discount 0.05})]
+                    (merge c tier {:unique_products (count (distinct (:products c)))})))
+                customers)
+
+              ;; Aggregate tier statistics
+              tier-stats
+              (->> with-tiers
+                   (group-by :tier)
+                   (map (fn [[tier members]]
+                          {:tier tier
+                           :customer_count (count members)
+                           :total_revenue (reduce + (map :total_spent members))
+                           :avg_order_count (float (/ (reduce + (map :order_count members))
+                                                      (count members)))})))
+
+              ;; Overall summary
+              summary {:tier_breakdown (vec tier-stats)
+                       :total_customers (count with-tiers)
+                       :total_revenue (reduce + (map :total_spent with-tiers))
+                       :customer_details with-tiers}]
+
+          summary)
+    handoffs: [final_sql]
+
+  - name: final_sql
+    tool: sql_data
+    inputs:
+      query: |
+        -- Query customer details from Clojure result
+        -- Dict results with nested arrays create tables: _phase_key
+        -- e.g., {customer_details: [...]} -> _clojure_analytics_customer_details
+
+        SELECT
+          customer,
+          tier,
+          ROUND(discount * 100) || '%' as discount,
+          order_count as orders,
+          total_spent,
+          unique_products,
+          products as product_list
+        FROM _clojure_analytics_customer_details
+        ORDER BY total_spent DESC

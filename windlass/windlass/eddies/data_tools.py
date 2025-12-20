@@ -300,8 +300,9 @@ def sql_data(
 
         # Note: We don't include 'dataframe' in return as it's not JSON-serializable
         # Downstream phases access data via temp tables or by reconstructing from 'rows'
+        # Use _serialize_for_json to handle numpy arrays (e.g., from DuckDB LIST columns)
         return {
-            "rows": df.to_dict('records'),
+            "rows": _serialize_for_json(df.to_dict('records')),
             "columns": list(df.columns),
             "row_count": len(df),
             "_route": "success"
@@ -355,26 +356,45 @@ class DataNamespace:
                     pass
             raise AttributeError(f"No data found for phase '{name}'")
 
-        # Extract DataFrame from various output formats
+        # Extract data from various output formats
         if isinstance(output, pd.DataFrame):
             df = output
         elif isinstance(output, dict):
             if 'dataframe' in output and isinstance(output['dataframe'], pd.DataFrame):
                 df = output['dataframe']
             elif 'rows' in output:
+                # DataFrame result (sql_data, python_data DataFrame, js_data array)
                 df = pd.DataFrame(output['rows'])
-            elif 'result' in output and isinstance(output['result'], pd.DataFrame):
-                df = output['result']
+            elif 'result' in output:
+                # Unwrap the result from API response format
+                result_val = output['result']
+                if isinstance(result_val, pd.DataFrame):
+                    df = result_val
+                elif isinstance(result_val, list) and result_val and isinstance(result_val[0], dict):
+                    # List of dicts -> DataFrame
+                    df = pd.DataFrame(result_val)
+                else:
+                    # Return dict/list/scalar as-is (don't force DataFrame conversion)
+                    self._cache[name] = result_val
+                    return result_val
             elif 'results' in output:
                 # Handle output from run_sql which uses 'results' key
                 df = pd.DataFrame(output['results'])
             else:
-                # Assume dict is the data itself
-                df = pd.DataFrame([output]) if not isinstance(output, list) else pd.DataFrame(output)
+                # Dict is the data itself - return as-is
+                self._cache[name] = output
+                return output
         elif isinstance(output, list):
-            df = pd.DataFrame(output)
+            if output and isinstance(output[0], dict):
+                df = pd.DataFrame(output)
+            else:
+                # Return list as-is
+                self._cache[name] = output
+                return output
         else:
-            raise TypeError(f"Cannot convert output of phase '{name}' to DataFrame")
+            # Return scalar as-is
+            self._cache[name] = output
+            return output
 
         self._cache[name] = df
         return df
@@ -538,6 +558,45 @@ def python_data(
             }
 
         elif isinstance(result, dict):
+            # Materialize dict results as temp tables
+            # Creates: _phase_name (scalars), _phase_name_key (for nested arrays/dicts)
+            if _phase_name and session_db:
+                # First, create parent table with scalar values
+                scalar_values = {}
+                for key, value in result.items():
+                    if isinstance(value, (str, int, float, bool, type(None))):
+                        scalar_values[key] = value
+                    elif isinstance(value, list) and value and isinstance(value[0], dict):
+                        # Array of objects -> separate table
+                        table_name = f"_{_phase_name}_{key}"
+                        try:
+                            nested_df = pd.DataFrame(value)
+                            session_db.register("_temp_df", nested_df)
+                            session_db.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _temp_df")
+                            session_db.unregister("_temp_df")
+                        except Exception:
+                            pass
+                    elif isinstance(value, dict):
+                        # Single dict -> single-row table
+                        table_name = f"_{_phase_name}_{key}"
+                        try:
+                            nested_df = pd.DataFrame([value])
+                            session_db.register("_temp_df", nested_df)
+                            session_db.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _temp_df")
+                            session_db.unregister("_temp_df")
+                        except Exception:
+                            pass
+
+                # Create parent table with scalars if any
+                if scalar_values:
+                    try:
+                        parent_df = pd.DataFrame([scalar_values])
+                        session_db.register("_temp_df", parent_df)
+                        session_db.execute(f"CREATE OR REPLACE TABLE _{_phase_name} AS SELECT * FROM _temp_df")
+                        session_db.unregister("_temp_df")
+                    except Exception:
+                        pass
+
             return {
                 "result": _serialize_for_json(result),
                 "type": "dict",
@@ -560,6 +619,558 @@ def python_data(
 
     except Exception as e:
         import traceback
+        return {
+            "_route": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+# ============================================================================
+# POLYGLOT DATA TOOLS - JavaScript and Clojure support
+# ============================================================================
+
+def _prepare_inputs_for_polyglot(outputs: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert prior phase outputs to a format suitable for other languages.
+
+    DataFrames become arrays of objects, everything else passes through as JSON.
+    """
+    inputs = {}
+    for name, output in (outputs or {}).items():
+        if isinstance(output, dict):
+            if 'rows' in output:
+                # DataFrame result - send as array of objects
+                inputs[name] = output['rows']
+            elif 'result' in output:
+                inputs[name] = output['result']
+            else:
+                inputs[name] = output
+        elif isinstance(output, pd.DataFrame):
+            inputs[name] = output.to_dict('records')
+        elif isinstance(output, list):
+            inputs[name] = output
+        else:
+            inputs[name] = output
+    return inputs
+
+
+def _format_polyglot_result(result: Any, phase_name: str, session_id: str) -> Dict[str, Any]:
+    """Format result from polyglot execution into standard format.
+
+    Also materializes DataFrames as temp tables if possible.
+    """
+    session_db = _get_session_duckdb(session_id)
+
+    # Array of objects -> DataFrame
+    if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+        df = pd.DataFrame(result)
+
+        # Materialize as temp table
+        if phase_name and session_db:
+            table_name = f"_{phase_name}"
+            session_db.register("_temp_df", df)
+            session_db.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _temp_df")
+            session_db.unregister("_temp_df")
+
+        return {
+            "rows": result[:1000],  # Limit for UI
+            "columns": list(df.columns),
+            "row_count": len(result),
+            "type": "dataframe",
+            "_route": "success"
+        }
+    elif isinstance(result, list):
+        return {
+            "result": result,
+            "type": "list",
+            "_route": "success"
+        }
+    elif isinstance(result, dict):
+        # Materialize dict results as temp tables
+        # Creates: _phase_name (scalars), _phase_name_key (for nested arrays/dicts)
+        if phase_name and session_db:
+            scalar_values = {}
+            for key, value in result.items():
+                if isinstance(value, (str, int, float, bool, type(None))):
+                    scalar_values[key] = value
+                elif isinstance(value, list) and value and isinstance(value[0], dict):
+                    # Array of objects -> table
+                    table_name = f"_{phase_name}_{key}"
+                    try:
+                        nested_df = pd.DataFrame(value)
+                        session_db.register("_temp_df", nested_df)
+                        session_db.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _temp_df")
+                        session_db.unregister("_temp_df")
+                    except Exception:
+                        pass
+                elif isinstance(value, dict):
+                    # Single dict -> single-row table
+                    table_name = f"_{phase_name}_{key}"
+                    try:
+                        nested_df = pd.DataFrame([value])
+                        session_db.register("_temp_df", nested_df)
+                        session_db.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _temp_df")
+                        session_db.unregister("_temp_df")
+                    except Exception:
+                        pass
+
+            # Create parent table with scalars if any
+            if scalar_values:
+                try:
+                    parent_df = pd.DataFrame([scalar_values])
+                    session_db.register("_temp_df", parent_df)
+                    session_db.execute(f"CREATE OR REPLACE TABLE _{phase_name} AS SELECT * FROM _temp_df")
+                    session_db.unregister("_temp_df")
+                except Exception:
+                    pass
+
+        return {
+            "result": result,
+            "type": "dict",
+            "_route": "success"
+        }
+    else:
+        return {
+            "result": result,
+            "type": "scalar",
+            "_route": "success"
+        }
+
+
+@simple_eddy
+def js_data(
+    code: str,
+    _outputs: Dict[str, Any] = None,
+    _state: Dict[str, Any] = None,
+    _input: Dict[str, Any] = None,
+    _phase_name: str = None,
+    _session_id: str = None,
+    timeout: int = 30
+) -> Dict[str, Any]:
+    """
+    Execute JavaScript/Node.js code with access to prior phase data.
+
+    The code environment includes:
+        - data.<phase_name>: Array of objects from prior phases
+        - data['phase_name']: Alternative bracket notation
+        - state: Current cascade state object
+        - input: Original cascade input object
+
+    The code MUST set a 'result' variable as its output.
+    If result is an array of objects, it becomes a DataFrame for downstream phases.
+
+    Args:
+        code: JavaScript code to execute
+        _outputs: Injected by runner - all prior phase outputs
+        _state: Injected by runner - current cascade state
+        _input: Injected by runner - original cascade input
+        _phase_name: Injected by runner - current phase name
+        _session_id: Injected by runner - session ID for temp tables
+        timeout: Execution timeout in seconds (default 30)
+
+    Returns:
+        {
+            "result": <the result value>,
+            "rows": List[Dict] (if result is array of objects),
+            "type": "dataframe" | "dict" | "list" | "scalar",
+            "_route": "success" | "error"
+        }
+
+    Example cascade usage:
+        phases:
+          - name: "transform"
+            tool: "js_data"
+            inputs:
+              code: |
+                const customers = data.raw_customers;
+                result = customers.map(c => ({
+                    ...c,
+                    tier: c.spend > 1000 ? 'gold' : 'silver'
+                }));
+    """
+    import subprocess
+    import json as json_module
+    import shutil
+
+    try:
+        # Check if Node.js is available
+        if not shutil.which('node'):
+            return {
+                "_route": "error",
+                "error": "Node.js not found. Install Node.js to use js_data cells."
+            }
+
+        # Prepare inputs for JavaScript
+        inputs = _prepare_inputs_for_polyglot(_outputs)
+
+        # Build the context object
+        context = {
+            "data": inputs,
+            "state": _state or {},
+            "input": _input or {}
+        }
+
+        # JavaScript runner - reads context from stdin, outputs result to stdout
+        runner_code = '''
+const context = JSON.parse(require("fs").readFileSync(0, "utf8"));
+const data = context.data;
+const state = context.state;
+const input = context.input;
+
+let result;
+
+// User code
+''' + code + '''
+
+// Output result
+if (result === undefined) {
+    console.error("Error: Code must set a 'result' variable");
+    process.exit(1);
+}
+console.log(JSON.stringify({ result }));
+'''
+
+        # Execute
+        proc = subprocess.run(
+            ['node', '-e', runner_code],
+            input=json_module.dumps(context),
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() or "JavaScript execution failed"
+            return {
+                "_route": "error",
+                "error": error_msg,
+                "stdout": proc.stdout.strip() if proc.stdout else None
+            }
+
+        # Parse output - last line is JSON result, everything before is console.log output
+        stdout_lines = proc.stdout.strip().split('\n') if proc.stdout else []
+        console_output = '\n'.join(stdout_lines[:-1]) if len(stdout_lines) > 1 else None
+        result_line = stdout_lines[-1] if stdout_lines else '{}'
+
+        try:
+            output = json_module.loads(result_line)
+            result = output.get('result')
+        except json_module.JSONDecodeError as e:
+            return {
+                "_route": "error",
+                "error": f"Failed to parse JavaScript output: {e}\nOutput: {proc.stdout[:500]}",
+                "stdout": console_output
+            }
+
+        formatted = _format_polyglot_result(result, _phase_name, _session_id)
+        if console_output:
+            formatted['stdout'] = console_output
+        if proc.stderr and proc.stderr.strip():
+            formatted['stderr'] = proc.stderr.strip()
+        return formatted
+
+    except subprocess.TimeoutExpired:
+        return {
+            "_route": "error",
+            "error": f"JavaScript execution timed out after {timeout} seconds"
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "_route": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+@simple_eddy
+def clojure_data(
+    code: str,
+    _outputs: Dict[str, Any] = None,
+    _state: Dict[str, Any] = None,
+    _input: Dict[str, Any] = None,
+    _phase_name: str = None,
+    _session_id: str = None,
+    timeout: int = 30
+) -> Dict[str, Any]:
+    """
+    Execute Clojure code using Babashka with access to prior phase data.
+
+    Babashka is a fast-starting Clojure interpreter (~10ms startup vs 2-3s for JVM).
+
+    The code environment includes:
+        - data: Map with prior phase outputs (keyword keys)
+            - (:phase-name data) or (data :phase-name)
+            - Phase names with underscores become kebab-case: raw_customers -> :raw-customers
+        - state: Current cascade state map
+        - input: Original cascade input map
+
+    The code should evaluate to the result value (last expression).
+    If result is a vector of maps, it becomes a DataFrame for downstream phases.
+
+    Args:
+        code: Clojure code to execute
+        _outputs: Injected by runner - all prior phase outputs
+        _state: Injected by runner - current cascade state
+        _input: Injected by runner - original cascade input
+        _phase_name: Injected by runner - current phase name
+        _session_id: Injected by runner - session ID for temp tables
+        timeout: Execution timeout in seconds (default 30)
+
+    Returns:
+        {
+            "result": <the result value>,
+            "rows": List[Dict] (if result is vector of maps),
+            "type": "dataframe" | "dict" | "list" | "scalar",
+            "_route": "success" | "error"
+        }
+
+    Example cascade usage:
+        phases:
+          - name: "transform"
+            tool: "clojure_data"
+            inputs:
+              code: |
+                (->> (:raw-customers data)
+                     (filter #(> (:spend %) 1000))
+                     (map #(assoc % :tier "gold")))
+    """
+    import subprocess
+    import json as json_module
+    import shutil
+
+    try:
+        # Check if Babashka is available
+        if not shutil.which('bb'):
+            return {
+                "_route": "error",
+                "error": "Babashka (bb) not found. Install: curl -sLO https://raw.githubusercontent.com/babashka/babashka/master/install && chmod +x install && ./install"
+            }
+
+        # Prepare inputs for Clojure (convert underscores to hyphens in keys)
+        inputs = _prepare_inputs_for_polyglot(_outputs)
+        clj_inputs = {}
+        for name, value in inputs.items():
+            clj_name = name.replace('_', '-')
+            clj_inputs[clj_name] = value
+
+        # Build the context
+        context = {
+            "data": clj_inputs,
+            "state": _state or {},
+            "input": _input or {}
+        }
+
+        # Babashka runner script
+        # Uses cheshire for JSON parsing (built into babashka)
+        runner_code = '''
+(require '[cheshire.core :as json])
+
+(def context (json/parse-string (slurp *in*) true))
+(def data (:data context))
+(def state (:state context))
+(def input (:input context))
+
+;; User code - should evaluate to result
+(def result (do
+''' + code + '''
+))
+
+;; Output as JSON
+(println (json/generate-string {:result result}))
+'''
+
+        # Execute
+        proc = subprocess.run(
+            ['bb', '-e', runner_code],
+            input=json_module.dumps(context),
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+
+        if proc.returncode != 0:
+            error_msg = proc.stderr.strip() or "Clojure execution failed"
+            return {
+                "_route": "error",
+                "error": error_msg,
+                "stdout": proc.stdout.strip() if proc.stdout else None
+            }
+
+        # Parse output - last line is JSON result, everything before is println output
+        stdout_lines = proc.stdout.strip().split('\n') if proc.stdout else []
+        println_output = '\n'.join(stdout_lines[:-1]) if len(stdout_lines) > 1 else None
+        result_line = stdout_lines[-1] if stdout_lines else '{}'
+
+        try:
+            output = json_module.loads(result_line)
+            result = output.get('result')
+        except json_module.JSONDecodeError as e:
+            return {
+                "_route": "error",
+                "error": f"Failed to parse Clojure output: {e}\nOutput: {proc.stdout[:500]}",
+                "stdout": println_output
+            }
+
+        formatted = _format_polyglot_result(result, _phase_name, _session_id)
+        if println_output:
+            formatted['stdout'] = println_output
+        if proc.stderr and proc.stderr.strip():
+            formatted['stderr'] = proc.stderr.strip()
+        return formatted
+
+    except subprocess.TimeoutExpired:
+        return {
+            "_route": "error",
+            "error": f"Clojure execution timed out after {timeout} seconds"
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "_route": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+@simple_eddy
+def windlass_data(
+    phase_yaml: str,
+    _phase_name: str = None,
+    _outputs: Dict[str, Any] = None,
+    _session_id: str = None,
+    _state: Dict[str, Any] = None,
+    _input: Dict[str, Any] = None,
+) -> Dict[str, Any]:
+    """
+    Execute a full Windlass LLM phase within a notebook cell.
+
+    The phase_yaml should be a valid phase definition with:
+    - instructions: The prompt template (can use {{outputs.phase_name}}, {{input.x}}, {{state.x}})
+    - model: Optional model override (default: system default)
+    - output_schema: JSON schema for structured output (REQUIRED - must return structured data)
+    - soundings: Optional soundings config for best-of-N attempts
+    - reforge: Optional iterative refinement config
+    - wards: Optional validation (pre/post)
+    - tackle: Optional tools to make available
+
+    Example phase_yaml:
+        instructions: |
+          Analyze the customer orders from {{outputs.raw_orders}} and classify each customer.
+        model: google/gemini-2.5-flash
+        output_schema:
+          type: array
+          items:
+            type: object
+            properties:
+              customer_id: { type: string }
+              tier: { type: string }
+              reason: { type: string }
+
+    Returns structured data that can be queried by downstream SQL cells.
+    """
+    import yaml
+    import traceback
+
+    try:
+        # Parse the phase YAML
+        phase_config = yaml.safe_load(phase_yaml)
+
+        if not phase_config:
+            return {
+                "_route": "error",
+                "error": "Empty or invalid YAML"
+            }
+
+        # Require output_schema for structured output
+        if 'output_schema' not in phase_config:
+            return {
+                "_route": "error",
+                "error": "LLM cells require 'output_schema' to return structured data. Add an output_schema definition."
+            }
+
+        # Set the phase name
+        phase_config['name'] = _phase_name or 'llm_cell'
+
+        # Create a mini cascade with just this phase
+        cascade_config = {
+            'cascade_id': f'notebook_{_phase_name}',
+            'description': 'Notebook LLM cell',
+            'phases': [phase_config]
+        }
+
+        # Import runner components
+        from ..runner import WindlassRunner
+        from ..echo import get_echo
+
+        # Create a unique session for this cell execution
+        cell_session_id = f"{_session_id}_llm_{_phase_name}" if _session_id else f"llm_{_phase_name}"
+
+        # Get the echo and pre-populate lineage with prior outputs
+        # This allows {{ outputs.phase_name }} to work in instructions
+        echo = get_echo(cell_session_id)
+
+        if _outputs:
+            for phase_name, output in _outputs.items():
+                # Add to lineage so {{ outputs.phase_name }} works
+                echo.lineage.append({
+                    'phase': phase_name,
+                    'output': output
+                })
+
+        # Pre-populate state if provided
+        if _state:
+            echo.state.update(_state)
+
+        # Create and run the runner
+        runner = WindlassRunner(
+            config_path=cascade_config,
+            session_id=cell_session_id,
+            depth=1  # Mark as sub-cascade to avoid graph generation
+        )
+
+        # Run with input data
+        result = runner.run(_input or {})
+
+        # Extract the structured output from the phase
+        # runner.run() returns the full echo: {session_id, state, history, lineage, errors, ...}
+        # The phase output is in lineage[-1]["output"]
+        phase_output = None
+        if isinstance(result, dict):
+            lineage = result.get('lineage', [])
+            if lineage and len(lineage) > 0:
+                # Get the last (and only) phase output
+                phase_output = lineage[-1].get('output')
+
+            # If not in lineage, try direct output key (fallback)
+            if phase_output is None:
+                phase_output = result.get('output')
+
+        # If the result is wrapped in another layer, unwrap it
+        if isinstance(phase_output, dict) and 'output' in phase_output:
+            phase_output = phase_output['output']
+
+        # Handle case where we couldn't find output
+        if phase_output is None:
+            return {
+                "_route": "error",
+                "error": "LLM phase did not produce output. Check the phase configuration.",
+                "debug_result_keys": list(result.keys()) if isinstance(result, dict) else str(type(result))
+            }
+
+        # Format result for notebook consumption
+        formatted = _format_polyglot_result(phase_output, _phase_name, _session_id)
+
+        # Add metadata about the LLM execution
+        formatted['_llm_execution'] = {
+            'model': phase_config.get('model', 'default'),
+            'had_soundings': 'soundings' in phase_config,
+            'had_reforge': 'reforge' in phase_config,
+        }
+
+        return formatted
+
+    except Exception as e:
         return {
             "_route": "error",
             "error": str(e),

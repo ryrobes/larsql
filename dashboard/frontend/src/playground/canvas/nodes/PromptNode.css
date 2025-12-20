@@ -8,7 +8,8 @@
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
-  overflow: hidden;
+  overflow: visible; /* Allow handles to overflow */
+  position: relative;
 }
 
 .prompt-node:hover {
@@ -24,10 +25,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: #10b98115;
   border-bottom: 1px solid var(--border-default);
-  border-radius: 6px 6px 0 0;
 }
 
 .prompt-node-icon {
@@ -80,32 +80,57 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 8px;
   min-height: 0;
 }
 
-.prompt-textarea {
+.prompt-editor-container {
   flex: 1;
-  width: 100%;
-  min-height: 40px;
-  padding: 8px;
-  background: var(--bg-main);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  color: var(--text-primary);
+  min-height: 0;
+  border-radius: 0 0 4px 4px;
+  overflow: hidden;
+  background: #000000; /* Match editor background */
+  position: relative;
+}
+
+/* Placeholder overlay - shown when editor is empty */
+.prompt-placeholder {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  color: #555;
   font-size: 12px;
-  font-family: inherit;
-  resize: none; /* Disable native resize - use node resize instead */
-  transition: border-color 0.15s ease;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  pointer-events: none;
+  z-index: 1;
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 
-.prompt-textarea:focus {
-  outline: none;
-  border-color: #10b981;
+/* Override Monaco's default styles for better integration */
+.prompt-node .monaco-editor {
+  border-radius: 0 0 6px 6px;
 }
 
-.prompt-textarea::placeholder {
+.prompt-node .monaco-editor .margin {
+  background: transparent !important;
+}
+
+.editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   color: var(--text-muted);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
 /* Handle - Text type (green) */
@@ -115,6 +140,7 @@
   background: #10b981 !important;
   border: 2px solid var(--bg-card) !important;
   right: -6px !important;
+  z-index: 20 !important; /* Above Monaco editor */
 }
 
 .prompt-handle:hover {
@@ -123,10 +149,6 @@
 }
 
 /* Delete button */
-.prompt-node {
-  position: relative;
-}
-
 .prompt-node .node-delete-button {
   position: absolute;
   top: -8px;

@@ -442,6 +442,33 @@ const NotebookEditor = () => {
               </div>
             )}
           </div>
+
+          {/* JavaScript Cell */}
+          <button
+            className="notebook-add-cell-btn notebook-add-cell-js"
+            onClick={() => addCell('js_data')}
+            title="Add JavaScript/Node.js cell"
+          >
+            + JS
+          </button>
+
+          {/* Clojure Cell */}
+          <button
+            className="notebook-add-cell-btn notebook-add-cell-clojure"
+            onClick={() => addCell('clojure_data')}
+            title="Add Clojure (Babashka) cell"
+          >
+            + Clj
+          </button>
+
+          {/* LLM Cell */}
+          <button
+            className="notebook-add-cell-btn notebook-add-cell-windlass"
+            onClick={() => addCell('windlass_data')}
+            title="Add LLM phase cell (full Windlass power: soundings, reforge, wards)"
+          >
+            + LLM
+          </button>
         </div>
       </div>
 

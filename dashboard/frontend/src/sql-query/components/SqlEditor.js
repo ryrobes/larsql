@@ -127,36 +127,36 @@ function SqlEditor() {
     }
   }, [activeTab, updateTab]);
 
-  // Define custom dark theme
+  // Define custom dark theme - GitHub Dark inspired, pastels on black
   const handleEditorWillMount = useCallback((monaco) => {
     monaco.editor.defineTheme('windlass-sql-dark', {
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'keyword', foreground: '2dd4bf', fontStyle: 'bold' },  // teal for keywords
-        { token: 'string', foreground: 'fbbf24' },                      // yellow for strings
-        { token: 'string.sql', foreground: 'fbbf24' },
-        { token: 'number', foreground: 'a78bfa' },                      // purple for numbers
-        { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
-        { token: 'operator', foreground: 'f472b6' },                    // pink for operators
-        { token: 'identifier', foreground: '60a5fa' },                  // blue for identifiers
-        { token: 'type', foreground: '34d399' },                        // green for types
+        { token: 'keyword', foreground: 'ff9eb8', fontStyle: 'bold' },  // pastel pink
+        { token: 'string', foreground: 'a5d6ff' },                      // pastel blue
+        { token: 'string.sql', foreground: 'a5d6ff' },
+        { token: 'number', foreground: 'd2a8ff' },                      // pastel purple
+        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+        { token: 'operator', foreground: 'ffc9e3' },                    // pastel rose
+        { token: 'identifier', foreground: '79c0ff' },                  // pastel cyan
+        { token: 'type', foreground: '7ee787' },                        // pastel green
       ],
       colors: {
-        'editor.background': '#0b1219',
-        'editor.foreground': '#e2e8f0',
-        'editor.lineHighlightBackground': '#1a2633',
-        'editor.selectionBackground': '#2d4a5e',
-        'editorLineNumber.foreground': '#4a5568',
-        'editorLineNumber.activeForeground': '#8c9cac',
-        'editorCursor.foreground': '#2dd4bf',
-        'editor.inactiveSelectionBackground': '#1e3a4d',
-        'editorIndentGuide.background': '#2c3b4b',
-        'editorIndentGuide.activeBackground': '#4a5568',
-        'editorGutter.background': '#0b1219',
-        'scrollbarSlider.background': '#2c3b4b80',
-        'scrollbarSlider.hoverBackground': '#3d4f61',
-        'scrollbarSlider.activeBackground': '#4a5f73',
+        'editor.background': '#000000',                                 // pure black
+        'editor.foreground': '#e6edf3',
+        'editor.lineHighlightBackground': '#161b22',
+        'editor.selectionBackground': '#264f78',
+        'editorLineNumber.foreground': '#6e7681',
+        'editorLineNumber.activeForeground': '#e6edf3',
+        'editorCursor.foreground': '#79c0ff',                           // pastel cyan
+        'editor.inactiveSelectionBackground': '#1d2d3e',
+        'editorIndentGuide.background': '#21262d',
+        'editorIndentGuide.activeBackground': '#30363d',
+        'editorGutter.background': '#000000',
+        'scrollbarSlider.background': '#6e768180',
+        'scrollbarSlider.hoverBackground': '#8b949e80',
+        'scrollbarSlider.activeBackground': '#8b949e',
       },
     });
   }, []);

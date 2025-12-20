@@ -25,7 +25,9 @@ function SqlQueryPage({
   onSessions,
   onBlocked,
   blockedCount,
-  sseConnected
+  sseConnected,
+  initialNotebook,
+  onNotebookLoaded
 }) {
   const {
     historyPanelOpen,
@@ -33,7 +35,7 @@ function SqlQueryPage({
     connections
   } = useSqlQueryStore();
 
-  const { mode, setMode } = useNotebookStore();
+  const { mode, setMode, notebooks, fetchNotebooks, loadNotebook } = useNotebookStore();
 
   // Fetch connections on mount
   useEffect(() => {
@@ -50,6 +52,30 @@ function SqlQueryPage({
       }
     }
   }, [connections]);
+
+  // Load notebook from URL parameter
+  useEffect(() => {
+    if (initialNotebook) {
+      // Ensure notebooks are fetched first
+      const tryLoadNotebook = async () => {
+        await fetchNotebooks();
+        // Get fresh state after fetch
+        const state = useNotebookStore.getState();
+        const nb = state.notebooks.find(n => n.cascade_id === initialNotebook);
+        if (nb) {
+          await loadNotebook(nb.path);
+          setMode('notebook');
+        } else {
+          console.warn('[SqlQueryPage] Notebook not found:', initialNotebook);
+        }
+        // Clear the initial notebook flag
+        if (onNotebookLoaded) {
+          onNotebookLoaded();
+        }
+      };
+      tryLoadNotebook();
+    }
+  }, [initialNotebook, fetchNotebooks, loadNotebook, setMode, onNotebookLoaded]);
 
   return (
     <div className="sql-query-page">

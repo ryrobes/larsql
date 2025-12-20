@@ -262,6 +262,27 @@
   background-color: rgba(45, 212, 191, 0.05);
 }
 
+/* JS button */
+.notebook-add-cell-js:hover {
+  border-color: #facc15;
+  color: #facc15;
+  background-color: rgba(250, 204, 21, 0.05);
+}
+
+/* Clojure button */
+.notebook-add-cell-clojure:hover {
+  border-color: #a78bfa;
+  color: #a78bfa;
+  background-color: rgba(167, 139, 250, 0.05);
+}
+
+/* LLM/Windlass button */
+.notebook-add-cell-windlass:hover {
+  border-color: #2dd4bf;
+  color: #2dd4bf;
+  background-color: rgba(45, 212, 191, 0.05);
+}
+
 /* Cell Template Dropdown */
 .notebook-add-cell-group {
   display: flex;

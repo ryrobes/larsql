@@ -1,16 +1,17 @@
 import React, { useCallback, useState, useRef, useEffect, memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { Icon } from '@iconify/react';
+import Editor from '@monaco-editor/react';
 import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
 import './PromptNode.css';
 
 // Default dimensions (grid-aligned to 16px)
-const DEFAULT_WIDTH = 224;  // 14 * 16
-const DEFAULT_HEIGHT = 128; // 8 * 16
+const DEFAULT_WIDTH = 256;  // 16 * 16
+const DEFAULT_HEIGHT = 160; // 10 * 16
 
 /**
- * PromptNode - Text input node for prompts
+ * PromptNode - Text input node for prompts with Monaco editor
  *
  * Has a source handle (right) to connect to generators.
  * Output type: text (green handle)
@@ -20,6 +21,8 @@ const DEFAULT_HEIGHT = 128; // 8 * 16
 function PromptNode({ id, data, selected }) {
   const updateNodeData = usePlaygroundStore(state => state.updateNodeData);
   const removeNode = usePlaygroundStore(state => state.removeNode);
+
+  const editorRef = useRef(null);
 
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -35,14 +38,14 @@ function PromptNode({ id, data, selected }) {
 
   // Resize hook (grid-aligned constraints)
   const { onResizeStart } = useNodeResize(id, {
-    minWidth: 176,  // 11 * 16
-    minHeight: 96,  // 6 * 16
+    minWidth: 192,  // 12 * 16
+    minHeight: 128, // 8 * 16
     maxWidth: 512,  // 32 * 16
     maxHeight: 400, // 25 * 16
   });
 
-  const handleTextChange = useCallback((e) => {
-    updateNodeData(id, { text: e.target.value });
+  const handleTextChange = useCallback((newValue) => {
+    updateNodeData(id, { text: newValue });
   }, [id, updateNodeData]);
 
   const handleDelete = useCallback((e) => {
@@ -87,6 +90,61 @@ function PromptNode({ id, data, selected }) {
     }
   }, [isEditingName]);
 
+  // Monaco editor configuration
+  const handleEditorDidMount = useCallback((editor) => {
+    editorRef.current = editor;
+    editor.updateOptions({
+      tabSize: 2,
+      insertSpaces: true,
+    });
+  }, []);
+
+  // Custom dark theme - GitHub Dark inspired, pastels on black
+  const handleEditorWillMount = useCallback((monaco) => {
+    monaco.editor.defineTheme('windlass-prompt', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#000000',                   // pure black
+        'editor.foreground': '#e6edf3',                   // light gray
+        'editor.lineHighlightBackground': '#161b22',
+        'editor.selectionBackground': '#264f78',
+        'editorLineNumber.foreground': '#6e7681',
+        'editorLineNumber.activeForeground': '#e6edf3',
+        'editorCursor.foreground': '#7ee787',             // pastel green (prompt accent)
+        'editorIndentGuide.background': '#21262d',
+        'editorGutter.background': '#000000',
+      },
+    });
+  }, []);
+
+  const editorOptions = {
+    minimap: { enabled: false },
+    fontSize: 12,
+    fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    lineNumbers: 'off',
+    renderLineHighlight: 'none',
+    scrollBeyondLastLine: false,
+    wordWrap: 'on',
+    wrappingStrategy: 'advanced',
+    automaticLayout: true,
+    tabSize: 2,
+    insertSpaces: true,
+    folding: false,
+    glyphMargin: false,
+    lineDecorationsWidth: 0,
+    lineNumbersMinChars: 0,
+    padding: { top: 8, bottom: 8 },
+    scrollbar: {
+      vertical: 'auto',
+      horizontal: 'hidden',
+      verticalScrollbarSize: 6,
+    },
+    overviewRulerLanes: 0,
+    hideCursorInOverviewRuler: true,
+    overviewRulerBorder: false,
+  };
 
   return (
     <div
@@ -128,14 +186,35 @@ function PromptNode({ id, data, selected }) {
         )}
       </div>
 
-      <div className="prompt-node-body">
-        <textarea
-          className="prompt-textarea"
-          value={data.text || ''}
-          onChange={handleTextChange}
-          placeholder="Enter your prompt..."
-          rows={3}
-        />
+      <div
+        className="prompt-node-body nodrag"
+        onKeyDown={(e) => e.stopPropagation()}
+        onKeyUp={(e) => e.stopPropagation()}
+        onKeyPress={(e) => e.stopPropagation()}
+      >
+        <div className="prompt-editor-container">
+          {/* Placeholder overlay - shown when text is empty */}
+          {(!data.text || data.text.trim() === '') && data.placeholder && (
+            <div className="prompt-placeholder">
+              {data.placeholder}
+            </div>
+          )}
+          <Editor
+            height="100%"
+            defaultLanguage="plaintext"
+            value={data.text || ''}
+            onChange={handleTextChange}
+            onMount={handleEditorDidMount}
+            beforeMount={handleEditorWillMount}
+            theme="windlass-prompt"
+            options={editorOptions}
+            loading={
+              <div className="editor-loading">
+                <Icon icon="mdi:loading" width="16" className="spinning" />
+              </div>
+            }
+          />
+        </div>
       </div>
 
       {/* Source handle for text output (green = text type) */}

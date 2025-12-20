@@ -846,6 +846,10 @@ class ClickHouseAdapter:
         This is more efficient than individual updates - ClickHouse processes
         as a single mutation operation.
 
+        IMPORTANT: Only updates rows with role='assistant' to avoid propagating
+        cost data to system/phase_start rows that share the same trace_id.
+        This prevents double/triple counting of costs in aggregate queries.
+
         Args:
             updates: List of dicts with keys: trace_id, cost, tokens_in, tokens_out, provider, model
         """
@@ -880,10 +884,12 @@ class ClickHouseAdapter:
                 update_data['total_tokens'] = tokens_in_val + tokens_out_val
 
             if update_data:
+                # Only update the assistant row - system/phase_start rows share trace_id
+                # but shouldn't have cost data (prevents double-counting in SUM queries)
                 self.update_row(
                     table,
                     update_data,
-                    f"trace_id = '{trace_id}'",
+                    f"trace_id = '{trace_id}' AND role = 'assistant'",
                     sync=False  # Don't wait for each individual update
                 )
 

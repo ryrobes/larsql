@@ -1,0 +1,335 @@
+cascade_id: test_image_flow2
+description: Generated from Image Playground
+inputs_schema:
+  prompt: Prompt text for prompt
+phases:
+- name: llm_phase
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent. Please return ONLY the
+    enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4.1-fast
+  rules:
+    max_turns: 2
+- name: llm_phase_1
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent - BUT feel free to change
+    the style of location if it suits the vibe. Please return ONLY the enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4::high
+  rules:
+    max_turns: 1
+- name: flux_1_dev
+  model: black-forest-labs/flux-1-dev
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: flux_1_schnell
+  model: black-forest-labs/flux-1-schnell
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: gpt_5_image_mini
+  model: openai/gpt-5-image-mini
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: riverflow_v2_fast_preview
+  model: sourceful/riverflow-v2-fast-preview
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: riverflow_v2_max_preview
+  model: sourceful/riverflow-v2-max-preview
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: sdxl
+  model: stability/sdxl
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase
+      include:
+      - output
+- name: gemini_3_pro_image_preview
+  model: google/gemini-3-pro-image-preview
+  instructions: '{{ outputs.llm_phase_1 }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase_1
+      include:
+      - output
+- name: gpt_5_image
+  model: openai/gpt-5-image
+  instructions: '{{ outputs.llm_phase_1 }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase_1
+      include:
+      - output
+- name: riverflow_v2_standard_preview
+  model: sourceful/riverflow-v2-standard-preview
+  instructions: '{{ outputs.llm_phase_1 }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase_1
+      include:
+      - output
+- name: stable_diffusion_xl
+  model: stabilityai/stable-diffusion-xl
+  instructions: '{{ outputs.llm_phase_1 }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - phase: llm_phase_1
+      include:
+      - output
+_playground:
+  version: 1
+  viewport:
+    x: 0
+    y: 0
+    zoom: 1
+  nodes:
+  - id: prompt_1
+    type: prompt
+    position:
+      x: 80
+      y: 320
+    data:
+      text: 'Beautiful Irish woman standing by the ocean. Edgy illustration style,
+        American anime. A Busty and striking vixen, yet dangerous. '
+      name: prompt
+      width: 352
+      height: 272
+  - id: phase_2
+    type: phase
+    position:
+      x: 544
+      y: 144
+    data:
+      name: llm_phase
+      width: 400
+      height: 320
+      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image\
+        \ prompt, be vivid with lots of rich details, but staying true to the original\
+        \ intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{\
+        \ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 2\n"
+      discoveredInputs:
+      - prompt
+  - id: phase_3
+    type: phase
+    position:
+      x: 544
+      y: 512
+    data:
+      name: llm_phase_1
+      width: 400
+      height: 416
+      yaml: "name: llm_phase_1\n\ninstructions: |\n  Please rewrite and enhance this\
+        \ image prompt, be vivid with lots of rich details, but staying true to the\
+        \ original intent - BUT feel free to change the style of location if it suits\
+        \ the vibe. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n \
+        \ {{ input.prompt }}\nmodel: x-ai/grok-4::high\nrules:\n  max_turns: 1"
+      discoveredInputs:
+      - prompt
+  - id: image_4
+    type: image
+    position:
+      x: 1216
+      y: -144
+    data:
+      paletteId: black_forest_labs_flux_1_dev
+      name: flux_1_dev
+      width: 352
+      height: 304
+  - id: image_5
+    type: image
+    position:
+      x: 1248
+      y: 240
+    data:
+      paletteId: black_forest_labs_flux_1_schnell
+      name: flux_1_schnell
+  - id: image_6
+    type: image
+    position:
+      x: 1344
+      y: 592
+    data:
+      paletteId: google_gemini_3_pro_image_preview
+      name: gemini_3_pro_image_preview
+      width: 288
+      height: 352
+  - id: image_7
+    type: image
+    position:
+      x: 1328
+      y: 976
+    data:
+      paletteId: openai_gpt_5_image
+      name: gpt_5_image
+      width: 288
+      height: 400
+  - id: image_8
+    type: image
+    position:
+      x: 1680
+      y: 224
+    data:
+      paletteId: openai_gpt_5_image_mini
+      name: gpt_5_image_mini
+      width: 288
+      height: 400
+  - id: image_9
+    type: image
+    position:
+      x: 2016
+      y: -112
+    data:
+      paletteId: sourceful_riverflow_v2_fast_preview
+      name: riverflow_v2_fast_preview
+      width: 304
+      height: 400
+  - id: image_10
+    type: image
+    position:
+      x: 1776
+      y: 656
+    data:
+      paletteId: sourceful_riverflow_v2_max_preview
+      name: riverflow_v2_max_preview
+      width: 288
+      height: 352
+  - id: image_11
+    type: image
+    position:
+      x: 1648
+      y: 992
+    data:
+      paletteId: sourceful_riverflow_v2_standard_preview
+      name: riverflow_v2_standard_preview
+      width: 256
+      height: 352
+  - id: image_12
+    type: image
+    position:
+      x: 2176
+      y: 336
+    data:
+      paletteId: stability_sdxl
+      name: sdxl
+  - id: image_13
+    type: image
+    position:
+      x: 2128
+      y: 816
+    data:
+      paletteId: stabilityai_stable_diffusion_xl
+      name: stable_diffusion_xl
+  edges:
+  - source: prompt_1
+    target: phase_2
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: prompt_1
+    target: phase_3
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_4
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_5
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_3
+    target: image_6
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_3
+    target: image_7
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_8
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_9
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_10
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_3
+    target: image_11
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_2
+    target: image_12
+    sourceHandle: text-out
+    targetHandle: text-in
+  - source: phase_3
+    target: image_13
+    sourceHandle: text-out
+    targetHandle: text-in

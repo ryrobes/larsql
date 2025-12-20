@@ -27,7 +27,7 @@ if _WINDLASS_DIR not in sys.path:
 try:
     from windlass import run_cascade
     from windlass.config import get_config
-    from windlass.eddies.data_tools import sql_data, python_data
+    from windlass.eddies.data_tools import sql_data, python_data, js_data, clojure_data, windlass_data
     from windlass.sql_tools.session_db import get_session_db, cleanup_session_db
     from windlass.agent import Agent
     from windlass.unified_logs import log_unified
@@ -37,6 +37,9 @@ except ImportError as e:
     get_config = None
     sql_data = None
     python_data = None
+    js_data = None
+    clojure_data = None
+    windlass_data = None
     Agent = None
     log_unified = None
 
@@ -89,7 +92,36 @@ Original code:
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
 Available: `data.phase_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
 
-Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code."""
+Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code.""",
+
+    "js_data": """Fix this JavaScript code that failed with an error.
+
+Error: {error}
+
+Original code:
+```javascript
+{original_code}
+```
+
+The code should set a `result` variable with the output (array of objects, object, or scalar).
+Available: `data.phase_name` for prior phase outputs (arrays of objects), `state`, `input`.
+
+Return ONLY the corrected JavaScript code. No explanations, no markdown code blocks, just the raw code.""",
+
+    "clojure_data": """Fix this Clojure code that failed with an error.
+
+Error: {error}
+
+Original code:
+```clojure
+{original_code}
+```
+
+The code should evaluate to the result (vector of maps for dataframes, or other Clojure values).
+Available: `(:phase-name data)` for prior phase outputs (vectors of maps), `state`, `input`.
+Note: Phase names use kebab-case (e.g., raw-customers instead of raw_customers).
+
+Return ONLY the corrected Clojure code. No explanations, no markdown code blocks, just the raw code."""
 }
 
 
@@ -123,12 +155,18 @@ def attempt_auto_fix(
         raise RuntimeError("Agent not available for auto-fix")
 
     max_attempts = auto_fix_config.get('max_attempts', 2)
-    model = auto_fix_config.get('model', 'google/gemini-2.5-flash-lite')
+    model = auto_fix_config.get('model', 'x-ai/grok-4.1-fast')
     custom_prompt = auto_fix_config.get('prompt')
 
     # Get code key based on tool
     code_key = 'query' if tool == 'sql_data' else 'code'
-    tool_type = 'SQL' if tool == 'sql_data' else 'Python'
+    tool_types = {
+        'sql_data': 'SQL',
+        'python_data': 'Python',
+        'js_data': 'JavaScript',
+        'clojure_data': 'Clojure'
+    }
+    tool_type = tool_types.get(tool, 'code')
 
     # Use custom prompt or default
     prompt_template = custom_prompt or DEFAULT_AUTO_FIX_PROMPTS.get(tool, DEFAULT_AUTO_FIX_PROMPTS['python_data'])
@@ -192,11 +230,34 @@ def attempt_auto_fix(
                     _phase_name=phase_name,
                     _session_id=session_id
                 )
+            elif tool == 'js_data':
+                result = js_data(
+                    code=fixed_code,
+                    _outputs=prior_outputs or {},
+                    _state={},
+                    _input=inputs or {},
+                    _phase_name=phase_name,
+                    _session_id=session_id
+                )
+            elif tool == 'clojure_data':
+                result = clojure_data(
+                    code=fixed_code,
+                    _outputs=prior_outputs or {},
+                    _state={},
+                    _input=inputs or {},
+                    _phase_name=phase_name,
+                    _session_id=session_id
+                )
+
+            # Check if result indicates error
+            if result and (result.get('error') or result.get('_route') == 'error'):
+                raise Exception(result.get('error', 'Execution failed'))
 
             # Success! Add fix info to result
             result['_auto_fixed'] = True
             result['_fix_attempts'] = fix_attempts
             result['_fixed_code'] = fixed_code
+            result['_original_error'] = error_message
 
             # Log success
             if log_unified:
@@ -250,7 +311,7 @@ def is_data_cascade(cascade_dict):
     if not phases:
         return False
 
-    data_tools = {'sql_data', 'python_data', 'set_state'}
+    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'windlass_data', 'set_state'}
     for phase in phases:
         tool = phase.get('tool')
         if not tool:
@@ -271,6 +332,18 @@ def load_yaml_file(path):
         return None
 
 
+def load_cascade_file(path):
+    """Load a cascade file (YAML or JSON) and return its content."""
+    try:
+        with open(path, 'r') as f:
+            if path.endswith('.json'):
+                return json.load(f)
+            else:
+                return yaml.safe_load(f)
+    except Exception as e:
+        return None
+
+
 def scan_directory_for_notebooks(directory, base_path=""):
     """Scan a directory for data cascade notebooks."""
     notebooks = []
@@ -281,8 +354,8 @@ def scan_directory_for_notebooks(directory, base_path=""):
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
 
-        if os.path.isfile(item_path) and (item.endswith('.yaml') or item.endswith('.yml')):
-            cascade = load_yaml_file(item_path)
+        if os.path.isfile(item_path) and (item.endswith('.yaml') or item.endswith('.yml') or item.endswith('.json')):
+            cascade = load_cascade_file(item_path)
             if cascade and is_data_cascade(cascade):
                 rel_path = os.path.join(base_path, item) if base_path else item
                 notebooks.append({
@@ -306,8 +379,8 @@ def list_notebooks():
     """
     List all available data cascade notebooks.
 
-    Scans tackle/, cascades/, and examples/ directories for YAML files
-    that only contain deterministic phases (sql_data, python_data).
+    Scans tackle/, cascades/, and examples/ directories for YAML/JSON files
+    that only contain deterministic phases (sql_data, python_data, js_data, clojure_data).
 
     Returns:
         JSON with list of notebooks and their metadata
@@ -555,6 +628,33 @@ def run_cell():
                     _phase_name=phase_name,
                     _session_id=session_id
                 )
+            elif tool == 'js_data':
+                result = js_data(
+                    code=rendered_inputs.get('code', ''),
+                    _outputs=prior_outputs,
+                    _state={},
+                    _input=inputs,
+                    _phase_name=phase_name,
+                    _session_id=session_id
+                )
+            elif tool == 'clojure_data':
+                result = clojure_data(
+                    code=rendered_inputs.get('code', ''),
+                    _outputs=prior_outputs,
+                    _state={},
+                    _input=inputs,
+                    _phase_name=phase_name,
+                    _session_id=session_id
+                )
+            elif tool == 'windlass_data':
+                result = windlass_data(
+                    phase_yaml=rendered_inputs.get('code', ''),
+                    _outputs=prior_outputs,
+                    _state={},
+                    _input=inputs,
+                    _phase_name=phase_name,
+                    _session_id=session_id
+                )
             else:
                 return jsonify({'error': f'Unknown tool: {tool}'}), 400
 
@@ -567,7 +667,8 @@ def run_cell():
             result = None  # Clear result so we attempt fix
 
         # If execution failed and auto-fix is enabled, try to fix
-        if execution_error and auto_fix_config.get('enabled', False):
+        # Skip auto-fix for windlass_data (LLM cells) - too meta
+        if execution_error and auto_fix_config.get('enabled', False) and tool != 'windlass_data':
             try:
                 result = attempt_auto_fix(
                     tool=tool,
@@ -594,7 +695,7 @@ def run_cell():
 
         # If there was an error and no auto-fix, raise it
         if execution_error:
-            raise execution_error
+            raise Exception(execution_error)
 
         return jsonify(sanitize_for_json(result))
 

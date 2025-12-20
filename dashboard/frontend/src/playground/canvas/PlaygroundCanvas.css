@@ -74,6 +74,32 @@
   background: var(--ocean-teal);
 }
 
+/* Reset ALL React Flow node wrapper styles for dense, consistent nodes */
+.playground-canvas-wrapper .react-flow__node,
+.playground-canvas-wrapper .react-flow__node.selectable,
+.playground-canvas-wrapper .react-flow__node.selected,
+.playground-canvas-wrapper .react-flow__node.dragging,
+.playground-canvas-wrapper .react-flow__node:hover,
+.playground-canvas-wrapper .react-flow__node:focus,
+.playground-canvas-wrapper .react-flow__node:focus-visible,
+.playground-canvas-wrapper .react-flow__node-prompt,
+.playground-canvas-wrapper .react-flow__node-phase,
+.playground-canvas-wrapper .react-flow__node-image {
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Ensure inner node content fills wrapper completely */
+.playground-canvas-wrapper .react-flow__node > div {
+  margin: 0;
+}
+
 /* Empty state */
 .canvas-empty-state {
   position: absolute;

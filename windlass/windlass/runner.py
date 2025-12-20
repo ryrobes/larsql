@@ -9151,11 +9151,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                             content = response_dict.get("content")
                             tool_calls = response_dict.get("tool_calls")
+                            images = response_dict.get("images")
                             request_id = response_dict.get("id")
 
                             # CRITICAL: Detect empty responses - this is an infrastructure error
                             # Empty responses indicate API issues, not validation failures
-                            if (not content or content.strip() == "") and not tool_calls:
+                            # BUT: Image generation models return empty content + images array
+                            # So we also check for images in the response
+                            if (not content or content.strip() == "") and not tool_calls and not images:
                                 error_msg = f"Agent returned empty response (0 tokens output). Model: {phase_model}"
                                 console.print(f"{indent}  [bold red]⚠️  Infrastructure Error: {error_msg}[/bold red]")
                                 last_infrastructure_error = error_msg
@@ -9190,6 +9193,15 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 else:
                                     console.print(f"{indent}  [yellow]Retrying due to empty response...[/yellow]")
                                     continue  # Retry infrastructure loop
+
+                            # Runtime detection of image models:
+                            # If we got images but no/empty content, this is an image generation model
+                            # that wasn't in our registry. Register it for future runs.
+                            if images and (not content or content.strip() == ""):
+                                from .model_registry import ModelRegistry
+                                if not ModelRegistry.is_image_output_model(phase_model):
+                                    console.print(f"{indent}  [cyan]📷 Runtime detected image model: {phase_model}[/cyan]")
+                                    ModelRegistry.register_runtime_image_model(phase_model)
 
                             # Successfully got response, break from infrastructure retry loop
                             break

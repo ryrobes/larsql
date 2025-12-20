@@ -131,6 +131,16 @@
   font-weight: 500;
   font-family: monospace;
   color: #10b981;
+  transition: opacity 0.3s ease;
+}
+
+.cost-badge.updating {
+  animation: pulse-cost 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-cost {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 /* ============================================

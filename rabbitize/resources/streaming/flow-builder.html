@@ -1187,21 +1187,26 @@
                     fontFamily: "'JetBrains Mono', 'Fira Code', monospace"
                 });
 
-                // Add custom theme
+                // Add custom theme - GitHub Dark inspired, pastels on black
                 monaco.editor.defineTheme('rabbitize-dark', {
                     base: 'vs-dark',
                     inherit: true,
                     rules: [
-                        { token: 'comment', foreground: '888888' },
-                        { token: 'string', foreground: '00ffff' },
-                        { token: 'keyword', foreground: 'ffff00' }
+                        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+                        { token: 'string', foreground: 'a5d6ff' },   // pastel blue
+                        { token: 'keyword', foreground: 'ff9eb8' },  // pastel pink
+                        { token: 'number', foreground: 'd2a8ff' },   // pastel purple
+                        { token: 'operator', foreground: 'ffc9e3' }  // pastel rose
                     ],
                     colors: {
-                        'editor.background': '#0a0a0a',
-                        'editor.foreground': '#ffffff',
-                        'editor.lineHighlightBackground': '#1a1a1a',
-                        'editorCursor.foreground': '#0ff',
-                        'editor.selectionBackground': '#0ff3'
+                        'editor.background': '#000000',              // pure black
+                        'editor.foreground': '#e6edf3',
+                        'editor.lineHighlightBackground': '#161b22',
+                        'editorCursor.foreground': '#79c0ff',        // pastel cyan
+                        'editor.selectionBackground': '#264f78',
+                        'editorLineNumber.foreground': '#6e7681',
+                        'editorLineNumber.activeForeground': '#e6edf3',
+                        'editorGutter.background': '#000000'
                     }
                 });
                 monaco.editor.setTheme('rabbitize-dark');

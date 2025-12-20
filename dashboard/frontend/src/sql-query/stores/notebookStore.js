@@ -30,8 +30,14 @@ function hashCellInputs(phase, notebookInputs, priorOutputHashes) {
 /**
  * Notebook Store - State management for Data Cascade notebooks
  *
- * A notebook is a cascade with only deterministic phases (sql_data, python_data)
- * that can be edited, run, and saved as reusable tools.
+ * A notebook is a cascade with only deterministic phases (sql_data, python_data,
+ * js_data, clojure_data) that can be edited, run, and saved as reusable tools.
+ *
+ * Polyglot support: Data flows between languages via JSON serialization.
+ * - SQL: rows as array of objects, accessed via _cell_name tables
+ * - Python: data.cell_name returns DataFrame
+ * - JavaScript: data.cell_name returns array of objects
+ * - Clojure: (:cell-name data) returns vector of maps
  */
 const useNotebookStore = create(
   persist(
@@ -82,7 +88,7 @@ const useNotebookStore = create(
       autoFixConfig: {
         enabled: true,  // Enable auto-fix by default
         max_attempts: 2,
-        model: 'google/gemini-2.5-flash-lite',
+        model: 'x-ai/grok-4.1-fast',
         prompt: null,  // Use default prompt
       },
       // Per-cell auto-fix overrides: { [phaseName]: { enabled, model, prompt } }
@@ -332,10 +338,39 @@ const useNotebookStore = create(
           const phases = state.notebook.phases;
           const cellCount = phases.length + 1;
 
-          // Default code if no template provided
-          const defaultCode = type === 'sql_data'
-            ? '-- Enter SQL here\n-- Reference prior cells with: SELECT * FROM _cell_name\nSELECT 1'
-            : '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}';
+          // Default code templates by language
+          const defaultTemplates = {
+            sql_data: '-- Enter SQL here\n-- Reference prior cells with: SELECT * FROM _cell_name\nSELECT 1',
+            python_data: '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}',
+            js_data: '// Access prior cell outputs:\n// const rows = data.cell_name;\n//\n// Set result to an array of objects or value:\nresult = [{ message: "Hello" }];',
+            clojure_data: '; Access prior cell outputs:\n; (:cell-name data)\n;\n; Return a vector of maps or value:\n[{:message "Hello"}]',
+            windlass_data: `# LLM Phase Cell
+# Access prior cells with: {{outputs.cell_name}}
+# Full Windlass power: soundings, reforge, wards, model selection
+
+instructions: |
+  Analyze the data and return structured results.
+
+  Available data:
+  - {{outputs.cell_name}}
+
+model: google/gemini-2.5-flash
+
+output_schema:
+  type: array
+  items:
+    type: object
+    properties:
+      id: { type: string }
+      result: { type: string }
+
+# Optional: Add soundings for best-of-N attempts
+# soundings:
+#   factor: 3
+#   evaluator_instructions: Pick the most accurate result
+`
+          };
+          const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
           const newCell = {
             name: `cell_${cellCount}`,
@@ -647,7 +682,8 @@ const useNotebookStore = create(
                 // Track if this result came from auto-fix
                 autoFixed: data._auto_fixed || false,
                 fixAttempts: data._fix_attempts || null,
-                fixedCode: data._fixed_code || null
+                fixedCode: data._fixed_code || null,
+                originalError: data._original_error || null
               };
             });
 

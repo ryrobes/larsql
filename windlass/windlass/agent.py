@@ -778,36 +778,31 @@ class Agent:
     # Image Generation
     # =========================================================================
 
-    # Known image generation model prefixes
-    IMAGE_GENERATION_MODEL_PREFIXES = [
-        "black-forest-labs/FLUX",
-        "bytedance/sdxl",
-        "stability/",
-        "stabilityai/",
-        # Gemini image generation models
-        "google/gemini-2.5-flash-image",
-        "google/gemini-3-pro-image",
-        "google/gemini-2.0-flash-exp",  # Also supports image generation
-    ]
-
     @classmethod
     def is_image_generation_model(cls, model: str) -> bool:
         """
         Check if a model is an image generation model (vs text/chat).
 
-        Image generation models use a different API (image_generation vs completion)
-        and return images instead of text.
+        Image generation models return images in the response instead of
+        (or in addition to) text content.
+
+        Uses the dynamic ModelRegistry which:
+        - Queries OpenRouter API for models with 'image' in output_modalities
+        - Caches results for 24 hours
+        - Handles unlisted models (FLUX, Riverflow) via known prefixes
+        - Supports runtime detection of new image models
 
         Args:
-            model: Model identifier (e.g., "black-forest-labs/FLUX-1-schnell")
+            model: Model identifier (e.g., "google/gemini-2.5-flash-image")
 
         Returns:
             True if this is an image generation model
         """
         if not model:
             return False
-        model_lower = model.lower()
-        return any(prefix.lower() in model_lower for prefix in cls.IMAGE_GENERATION_MODEL_PREFIXES)
+
+        from .model_registry import ModelRegistry
+        return ModelRegistry.is_image_output_model(model)
 
     @classmethod
     def generate_image(

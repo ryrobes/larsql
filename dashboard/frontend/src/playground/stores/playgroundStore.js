@@ -9,7 +9,68 @@ import paletteConfig from '../palette/palette.json';
  * Stores the visual graph (nodes/edges) and generates cascade YAML for execution.
  */
 
-// Generate unique IDs
+// ============================================
+// NAMING UTILITIES
+// ============================================
+
+/**
+ * Convert any string to a safe phase name (lowercase, underscores, alphanumeric)
+ * Examples:
+ *   "FLUX.1 Schnell" -> "flux_1_schnell"
+ *   "google/gemini-2.5-flash" -> "gemini_2_5_flash"
+ *   "My Prompt" -> "my_prompt"
+ */
+const toSafeName = (name) => {
+  if (!name) return 'unnamed';
+
+  // Extract just the model name if it's a path like "google/gemini-2.5-flash"
+  const baseName = name.includes('/') ? name.split('/').pop() : name;
+
+  return baseName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')  // Replace non-alphanumeric with underscores
+    .replace(/^_+|_+$/g, '')       // Trim leading/trailing underscores
+    .replace(/_+/g, '_')           // Collapse multiple underscores
+    || 'unnamed';
+};
+
+/**
+ * Generate a unique name by appending _1, _2, etc. if needed
+ * @param {string} baseName - The base name to use
+ * @param {Set<string>} existingNames - Set of names already in use
+ * @returns {string} A unique name
+ */
+const generateUniqueName = (baseName, existingNames) => {
+  const safeName = toSafeName(baseName);
+
+  if (!existingNames.has(safeName)) {
+    return safeName;
+  }
+
+  // Find the next available number
+  let counter = 1;
+  while (existingNames.has(`${safeName}_${counter}`)) {
+    counter++;
+  }
+  return `${safeName}_${counter}`;
+};
+
+/**
+ * Get all node names currently in use
+ * @param {Array} nodes - Current nodes array
+ * @returns {Set<string>} Set of names in use
+ */
+const getExistingNames = (nodes) => {
+  const names = new Set();
+  nodes.forEach(node => {
+    // Use custom name if set, otherwise use node id
+    const name = node.data?.name || node.id;
+    names.add(name);
+  });
+  return names;
+};
+
+// Generate unique IDs (internal, not the display name)
 let nodeIdCounter = 0;
 const generateNodeId = (type) => `${type}_${++nodeIdCounter}`;
 
@@ -21,8 +82,10 @@ const usePlaygroundStore = create(
     nodes: [],
     edges: [],
 
-    // Palette configuration
+    // Palette configuration - initially from static config, updated dynamically
     palette: paletteConfig.palette || [],
+    paletteLoading: false,
+    paletteError: null,
 
     // ============================================
     // EXECUTION STATE
@@ -35,6 +98,8 @@ const usePlaygroundStore = create(
     executionError: null,
     phaseResults: {}, // nodeId -> { status, images: [], cost, duration }
     totalSessionCost: 0, // Accumulated cost for the current session
+    costPollingTimer: null, // Timer ID for cost polling
+    costPollingStopTime: null, // When to stop polling after completion
 
     // ============================================
     // UI STATE
@@ -50,7 +115,7 @@ const usePlaygroundStore = create(
     // NODE OPERATIONS
     // ============================================
 
-    // Add a node from palette
+    // Add a node from palette (image generators, transformers, tools)
     addNode: (paletteId, position) => set((state) => {
       const paletteItem = state.palette.find(p => p.id === paletteId);
       if (!paletteItem) return;
@@ -63,6 +128,21 @@ const usePlaygroundStore = create(
 
       const nodeId = generateNodeId(nodeType);
 
+      // Derive base name from model/tool config
+      let baseName = paletteItem.name;
+      if (paletteItem.openrouter?.model) {
+        // Extract model name from "provider/model-name"
+        baseName = paletteItem.openrouter.model;
+      } else if (paletteItem.harbor?.tool) {
+        baseName = paletteItem.harbor.tool;
+      } else if (paletteItem.local?.tool) {
+        baseName = paletteItem.local.tool;
+      }
+
+      // Generate unique name
+      const existingNames = getExistingNames(state.nodes);
+      const uniqueName = generateUniqueName(baseName, existingNames);
+
       const newNode = {
         id: nodeId,
         type: nodeType,
@@ -73,6 +153,7 @@ const usePlaygroundStore = create(
           paletteIcon: paletteItem.icon,
           paletteColor: paletteItem.color,
           paletteConfig: paletteItem,
+          name: uniqueName, // Auto-assigned unique name
           status: 'idle', // 'idle' | 'running' | 'completed' | 'error'
           images: [],
           prompt: '', // For storing connected prompt text
@@ -87,12 +168,50 @@ const usePlaygroundStore = create(
     addPromptNode: (position) => set((state) => {
       const nodeId = generateNodeId('prompt');
 
+      // Generate unique name
+      const existingNames = getExistingNames(state.nodes);
+      const uniqueName = generateUniqueName('prompt', existingNames);
+
       const newNode = {
         id: nodeId,
         type: 'prompt',
         position,
         data: {
+          name: uniqueName, // Auto-assigned unique name
           text: '',
+        },
+      };
+
+      state.nodes.push(newNode);
+      state.selectedNodeId = nodeId;
+    }),
+
+    // Add a phase node (LLM Phase with YAML editor)
+    addPhaseNode: (position) => set((state) => {
+      const nodeId = generateNodeId('phase');
+
+      // Generate unique name
+      const existingNames = getExistingNames(state.nodes);
+      const uniqueName = generateUniqueName('llm_phase', existingNames);
+
+      const defaultYaml = `name: ${uniqueName}
+instructions: |
+  {{ input.prompt }}
+model: google/gemini-2.5-flash-lite
+rules:
+  max_turns: 1
+`;
+
+      const newNode = {
+        id: nodeId,
+        type: 'phase',
+        position,
+        data: {
+          name: uniqueName, // Auto-assigned unique name
+          yaml: defaultYaml,
+          discoveredInputs: ['prompt'], // Default input from template
+          status: 'idle',
+          output: '',
         },
       };
 
@@ -146,14 +265,15 @@ const usePlaygroundStore = create(
         e => e.source === edge.source && e.target === edge.target
       );
       if (!exists) {
-        state.edges.push({
+        const newEdge = {
           id: `${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
           sourceHandle: edge.sourceHandle,
           targetHandle: edge.targetHandle,
           // animated is computed dynamically in PlaygroundCanvas based on node running status
-        });
+        };
+        state.edges.push(newEdge);
       }
     }),
 
@@ -214,30 +334,111 @@ const usePlaygroundStore = create(
         inputs[inputName] = node.data.text || '';
       });
 
-      // Build phases from image nodes (generators, transformers, tools)
+      // Build phases from all execution nodes (phase nodes, then image nodes)
       const phases = [];
+
+      // Helper to find text input source for a node
+      const findTextSource = (node, targetHandle = null) => {
+        const textEdge = edges.find(e =>
+          e.target === node.id &&
+          (targetHandle
+            ? e.targetHandle === targetHandle
+            : (e.targetHandle?.startsWith('text-in') || e.targetHandle === 'prompt' || e.targetHandle === 'input' || !e.targetHandle))
+        );
+        return textEdge ? nodeMap.get(textEdge.source) : null;
+      };
+
+      // Helper to find image input source for a node
+      const findImageSource = (node) => {
+        const imageEdge = edges.find(e =>
+          e.target === node.id && (e.targetHandle === 'image-in' || e.targetHandle === 'image')
+        );
+        return imageEdge ? nodeMap.get(imageEdge.source) : null;
+      };
+
+      // Process phase nodes (LLM phases with YAML)
+      const phaseNodes = sortedNodes.filter(n => n.type === 'phase');
+      phaseNodes.forEach(node => {
+        // Parse the YAML to get the phase definition
+        let phaseConfig;
+        try {
+          phaseConfig = yaml.load(node.data.yaml);
+        } catch {
+          // Skip invalid YAML
+          console.warn(`[generateCascade] Invalid YAML for phase node ${node.id}`);
+          return;
+        }
+
+        // Use custom node name if set, otherwise use name from YAML
+        const phaseName = node.data.name || phaseConfig.name || node.id;
+        const phase = {
+          ...phaseConfig,
+          name: phaseName,
+        };
+
+        // Find all text input connections (for context from other phases)
+        const textEdges = edges.filter(e =>
+          e.target === node.id && e.targetHandle?.startsWith('text-in')
+        );
+
+        const contextSources = [];
+        textEdges.forEach(edge => {
+          const sourceNode = nodeMap.get(edge.source);
+          if (!sourceNode) return;
+
+          if (sourceNode.type === 'phase') {
+            // Phase → Phase: Add context.from with include: ["output"]
+            contextSources.push({
+              phase: getNodeName(sourceNode),
+              include: ['output'],
+            });
+          }
+          // Prompt → Phase: The YAML already has {{ input.X }} references
+          // which will be resolved from cascade inputs
+        });
+
+        // Find image input connection (for vision models)
+        const imageSource = findImageSource(node);
+        if (imageSource) {
+          if (imageSource.type === 'image' || imageSource.type === 'phase') {
+            contextSources.push({
+              phase: getNodeName(imageSource),
+              include: ['images'],
+            });
+          }
+        }
+
+        // Add context if we have upstream phase dependencies
+        if (contextSources.length > 0) {
+          phase.context = {
+            from: contextSources,
+          };
+        }
+
+        phases.push(phase);
+      });
+
+      // Process image nodes (generators, transformers, tools)
       const imageNodes = sortedNodes.filter(n => n.type === 'image');
 
       imageNodes.forEach(node => {
         const paletteConfig = node.data.paletteConfig;
         if (!paletteConfig) return;
 
-        // Find connected prompt node (via 'text-in' handle or legacy 'prompt'/'input' handles)
-        const promptEdge = edges.find(e =>
-          e.target === node.id &&
-          (e.targetHandle === 'text-in' || e.targetHandle === 'prompt' || e.targetHandle === 'input' || !e.targetHandle)
-        );
-        const promptNode = promptEdge ? nodeMap.get(promptEdge.source) : null;
-        const promptRef = promptNode?.type === 'prompt'
-          ? `{{ input.${getNodeName(promptNode)} }}`
-          : '';
+        // Find connected text source (prompt or phase)
+        const textSource = findTextSource(node);
+        let promptRef = '';
 
-        // Find connected image input (via 'image-in' handle or legacy 'image' handle)
-        const imageEdge = edges.find(e =>
-          e.target === node.id && (e.targetHandle === 'image-in' || e.targetHandle === 'image')
-        );
-        const sourceImageNode = imageEdge ? nodeMap.get(imageEdge.source) : null;
-        const hasImageInput = sourceImageNode?.type === 'image';
+        if (textSource?.type === 'prompt') {
+          promptRef = `{{ input.${getNodeName(textSource)} }}`;
+        } else if (textSource?.type === 'phase') {
+          // Phase output - will be set via context
+          promptRef = `{{ outputs.${getNodeName(textSource)} }}`;
+        }
+
+        // Find connected image input
+        const imageSource = findImageSource(node);
+        const hasImageInput = imageSource?.type === 'image' || imageSource?.type === 'phase';
 
         if (paletteConfig.openrouter) {
           // OpenRouter image model - use model-based phase (same as LLM phases)
@@ -253,21 +454,34 @@ const usePlaygroundStore = create(
             },
           };
 
+          // Build context.from for upstream dependencies
+          const contextSources = [];
+
+          // If text source is a phase, add context for its output
+          if (textSource?.type === 'phase') {
+            contextSources.push({
+              phase: getNodeName(textSource),
+              include: ['output'],
+            });
+          }
+
           // If there's an image input, add context.from to inject that image
           if (hasImageInput) {
-            phase.context = {
-              from: [getNodeName(sourceImageNode)],
-            };
+            contextSources.push({
+              phase: getNodeName(imageSource),
+              include: ['images'],
+            });
+          }
+
+          if (contextSources.length > 0) {
+            phase.context = { from: contextSources };
           }
 
           phases.push(phase);
         } else if (paletteConfig.harbor) {
           // Harbor tool (HuggingFace Space) - deterministic phase
-          // For harbor tools, use the image handle connection
-          const inputImageEdge = imageEdge || edges.find(e => e.target === node.id);
-          const inputSourceNode = inputImageEdge ? nodeMap.get(inputImageEdge.source) : null;
-          const imageRef = inputSourceNode?.type === 'image'
-            ? `{{ state.output_${getNodeName(inputSourceNode)}.images[0] }}`
+          const imageRef = imageSource?.type === 'image'
+            ? `{{ state.output_${getNodeName(imageSource)}.images[0] }}`
             : '';
 
           phases.push({
@@ -313,6 +527,9 @@ const usePlaygroundStore = create(
               name: n.data.name, // Persist custom names
               width: n.data.width,
               height: n.data.height,
+              // Phase node specific data
+              yaml: n.data.yaml,
+              discoveredInputs: n.data.discoveredInputs,
             },
           })),
           edges: edges.map(e => ({
@@ -383,6 +600,75 @@ const usePlaygroundStore = create(
     // EXECUTION
     // ============================================
 
+    // Fetch session cost from database
+    fetchSessionCost: async () => {
+      const state = get();
+      const sid = state.sessionId;
+      if (!sid) return;
+
+      try {
+        const response = await fetch(`http://localhost:5001/api/session-cost/${sid}`);
+        const data = await response.json();
+
+        if (data.cost !== null && data.cost !== undefined) {
+          set((s) => {
+            s.totalSessionCost = data.cost;
+          });
+        }
+      } catch (err) {
+        // Silently ignore polling errors
+        console.warn('[Store] Cost polling error:', err.message);
+      }
+
+      // Check if we should stop polling
+      const currentState = get();
+      if (currentState.costPollingStopTime && Date.now() >= currentState.costPollingStopTime) {
+        get().stopCostPolling();
+      }
+    },
+
+    // Start polling for session cost
+    startCostPolling: () => {
+      const state = get();
+
+      // Clear any existing timer
+      if (state.costPollingTimer) {
+        clearInterval(state.costPollingTimer);
+      }
+
+      // Poll every 2 seconds
+      const timer = setInterval(() => {
+        get().fetchSessionCost();
+      }, 2000);
+
+      set((s) => {
+        s.costPollingTimer = timer;
+        s.costPollingStopTime = null; // Clear stop time while running
+      });
+
+      // Also fetch immediately
+      get().fetchSessionCost();
+    },
+
+    // Stop polling for session cost
+    stopCostPolling: () => {
+      const state = get();
+      if (state.costPollingTimer) {
+        clearInterval(state.costPollingTimer);
+        set((s) => {
+          s.costPollingTimer = null;
+          s.costPollingStopTime = null;
+        });
+      }
+    },
+
+    // Schedule polling to stop after a delay (used after cascade completes)
+    scheduleCostPollingStop: (delayMs = 10000) => {
+      set((s) => {
+        s.costPollingStopTime = Date.now() + delayMs;
+      });
+    },
+
     // Run the cascade
     runCascade: async () => {
       const state = get();
@@ -392,12 +678,15 @@ const usePlaygroundStore = create(
         return { success: false, error: 'Failed to generate cascade' };
       }
 
-      // Set all image nodes to 'pending' status
+      // Set all execution nodes (image and phase) to 'pending' status
       set((state) => {
         state.nodes.forEach(node => {
           if (node.type === 'image') {
             node.data.status = 'pending';
             node.data.images = [];
+          } else if (node.type === 'phase') {
+            node.data.status = 'pending';
+            node.data.output = '';
           }
         });
         state.executionStatus = 'running';
@@ -429,6 +718,9 @@ const usePlaygroundStore = create(
           state.sessionId = data.session_id;
         });
 
+        // Start polling for session cost from database
+        get().startCostPolling();
+
         return { success: true, sessionId: data.session_id };
 
       } catch (err) {
@@ -458,26 +750,35 @@ const usePlaygroundStore = create(
       const phaseName = targetNode?.data?.name || nodeId;
 
       // Set target node to 'pending', keep upstream nodes completed, clear downstream
+      // Include both image and phase nodes in execution order
       const nodeOrder = state.nodes
-        .filter(n => n.type === 'image')
+        .filter(n => n.type === 'image' || n.type === 'phase')
         .map(n => n.id);
       const targetIdx = nodeOrder.indexOf(nodeId);
 
       set((state) => {
         state.nodes.forEach(node => {
-          if (node.type === 'image') {
+          if (node.type === 'image' || node.type === 'phase') {
             const nodeIdx = nodeOrder.indexOf(node.id);
             if (nodeIdx < targetIdx) {
-              // Upstream: keep as completed with cached images
+              // Upstream: keep as completed with cached results
               node.data.status = 'completed';
             } else if (nodeIdx === targetIdx) {
               // Target: mark as pending
               node.data.status = 'pending';
-              node.data.images = [];
+              if (node.type === 'image') {
+                node.data.images = [];
+              } else {
+                node.data.output = '';
+              }
             } else {
               // Downstream: mark as pending
               node.data.status = 'pending';
-              node.data.images = [];
+              if (node.type === 'image') {
+                node.data.images = [];
+              } else {
+                node.data.output = '';
+              }
             }
           }
         });
@@ -512,6 +813,9 @@ const usePlaygroundStore = create(
           state.sessionId = data.session_id;
         });
 
+        // Start polling for session cost from database
+        get().startCostPolling();
+
         return { success: true, sessionId: data.session_id, startingFrom: nodeId };
 
       } catch (err) {
@@ -525,79 +829,115 @@ const usePlaygroundStore = create(
 
     // Handle phase completion from SSE
     handlePhaseComplete: (phaseName, result) => set((state) => {
-      console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images);
+      console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images, 'output:', result.output);
 
       // Find node by custom name OR by id (for backwards compatibility)
-      const nodeIndex = state.nodes.findIndex(n =>
-        n.data.name === phaseName || n.id === phaseName
-      );
+      // Also check parsed phase name for phase nodes
+      const nodeIndex = state.nodes.findIndex(n => {
+        if (n.data.name === phaseName || n.id === phaseName) return true;
+        // For phase nodes, also check the name in their YAML
+        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        return false;
+      });
+
       if (nodeIndex !== -1) {
         const node = state.nodes[nodeIndex];
         // Only update images if this result has them (avoid overwriting with empty)
         const newImages = result.images && result.images.length > 0 ? result.images : node.data.images;
 
-        console.log('[Store] Found node:', node.id, 'current images:', node.data.images, 'new images:', newImages);
+        console.log('[Store] Found node:', node.id, 'type:', node.type, 'current images:', node.data.images, 'new images:', newImages);
 
         // Create a completely new nodes array to ensure React Flow detects the change
         // Note: runner sends duration_ms, not duration
         state.nodes = state.nodes.map((n, i) => {
           if (i !== nodeIndex) return n;
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              status: 'completed',
-              images: newImages,
-              cost: result.cost || n.data.cost,
-              duration: result.duration_ms || result.duration || n.data.duration,
-            },
+
+          const baseUpdate = {
+            ...n.data,
+            status: 'completed',
+            cost: result.cost || n.data.cost,
+            duration: result.duration_ms || result.duration || n.data.duration,
           };
+
+          // For phase nodes, store text output; for image nodes, store images
+          if (n.type === 'phase') {
+            return {
+              ...n,
+              data: {
+                ...baseUpdate,
+                output: result.output || result.content || '',
+              },
+            };
+          } else {
+            return {
+              ...n,
+              data: {
+                ...baseUpdate,
+                images: newImages,
+              },
+            };
+          }
         });
 
-        console.log('[Store] After update, node images:', state.nodes[nodeIndex].data.images);
+        console.log('[Store] After update, node:', state.nodes[nodeIndex].id);
       } else {
-        console.log('[Store] Node not found for phase:', phaseName, 'available nodes:', state.nodes.map(n => n.id));
+        console.log('[Store] Node not found for phase:', phaseName, 'available nodes:', state.nodes.map(n => ({ id: n.id, name: n.data.name, type: n.type })));
       }
 
       state.phaseResults[phaseName] = result;
-
-      // Accumulate session cost
-      if (result.cost && typeof result.cost === 'number') {
-        state.totalSessionCost += result.cost;
-      }
+      // Note: Session cost is now polled from database via fetchSessionCost()
+      // to avoid double-counting (SSE events can have duplicate cost values)
     }),
 
     // Handle cascade completion
-    handleCascadeComplete: () => set((state) => {
-      state.executionStatus = 'completed';
-      // Cache session ID for "run from here" feature
-      if (state.sessionId) {
-        state.lastSuccessfulSessionId = state.sessionId;
-      }
-    }),
-
-    // Handle cascade error
-    handleCascadeError: (error) => set((state) => {
-      state.executionStatus = 'error';
-      state.executionError = error;
-    }),
-
-    // Clear execution state
-    clearExecution: () => set((state) => {
-      state.sessionId = null;
-      state.executionStatus = 'idle';
-      state.executionError = null;
-      state.phaseResults = {};
-      state.nodes.forEach(node => {
-        if (node.type === 'image') {
-          node.data.status = 'idle';
-          node.data.images = [];
+    handleCascadeComplete: () => {
+      set((state) => {
+        state.executionStatus = 'completed';
+        // Cache session ID for "run from here" feature
+        if (state.sessionId) {
+          state.lastSuccessfulSessionId = state.sessionId;
         }
       });
-    }),
+      // Continue polling for 10 more seconds to catch final cost data
+      get().scheduleCostPollingStop(10000);
+      // Also fetch immediately to get any pending costs
+      get().fetchSessionCost();
+    },
+
+    // Handle cascade error
+    handleCascadeError: (error) => {
+      set((state) => {
+        state.executionStatus = 'error';
+        state.executionError = error;
+      });
+      // Stop polling on error
+      get().stopCostPolling();
+    },
+
+    // Clear execution state
+    clearExecution: () => {
+      get().stopCostPolling();
+      set((state) => {
+        state.sessionId = null;
+        state.executionStatus = 'idle';
+        state.executionError = null;
+        state.phaseResults = {};
+        state.totalSessionCost = 0;
+        state.nodes.forEach(node => {
+          if (node.type === 'image') {
+            node.data.status = 'idle';
+            node.data.images = [];
+          } else if (node.type === 'phase') {
+            node.data.status = 'idle';
+            node.data.output = '';
+          }
+        });
+      });
+    },
 
     // Reset the entire playground
     resetPlayground: () => {
+      get().stopCostPolling();
       set((state) => {
         state.nodes = [];
         state.edges = [];
@@ -610,10 +950,60 @@ const usePlaygroundStore = create(
         state.phaseResults = {};
         state.selectedNodeId = null;
         state.totalSessionCost = 0;
+        state.costPollingTimer = null;
+        state.costPollingStopTime = null;
         nodeIdCounter = 0;
       });
       // Clear URL hash
       window.location.hash = '/playground';
+    },
+
+    // ============================================
+    // DYNAMIC PALETTE
+    // ============================================
+
+    // Fetch image generation models from API and merge with static palette items
+    refreshPalette: async () => {
+      set((state) => {
+        state.paletteLoading = true;
+        state.paletteError = null;
+      });
+
+      try {
+        const response = await fetch('http://localhost:5001/api/image-generation-models');
+        const data = await response.json();
+
+        if (data.error) {
+          console.warn('[Store] Palette API error (using static fallback):', data.error);
+        }
+
+        const dynamicModels = data.models || [];
+
+        // Keep static items that are NOT generators (transformers, utilities, agent)
+        const staticItems = (paletteConfig.palette || []).filter(
+          item => item.category !== 'generator'
+        );
+
+        // Merge: static items first, then dynamic generators
+        const mergedPalette = [...staticItems, ...dynamicModels];
+
+        set((state) => {
+          state.palette = mergedPalette;
+          state.paletteLoading = false;
+        });
+
+        console.log(`[Store] Palette refreshed: ${staticItems.length} static + ${dynamicModels.length} dynamic models`);
+        return { success: true, count: mergedPalette.length };
+
+      } catch (err) {
+        console.error('[Store] Failed to refresh palette:', err);
+        set((state) => {
+          state.paletteLoading = false;
+          state.paletteError = err.message;
+        });
+        // Keep existing palette on error
+        return { success: false, error: err.message };
+      }
     },
 
     // ============================================
@@ -668,10 +1058,48 @@ const usePlaygroundStore = create(
           return { success: false, error: config.error };
         }
 
-        const playground = config._playground;
+        let playground = config._playground;
+
+        // If no _playground metadata, introspect the cascade to infer the graph
         if (!playground) {
-          console.error('[Store] Cascade has no _playground metadata');
-          return { success: false, error: 'No playground metadata found' };
+          console.log('[Store] No _playground metadata, introspecting cascade...');
+
+          try {
+            const introspectResponse = await fetch('http://localhost:5001/api/playground/introspect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cascade_yaml: yaml.dump(config) }),
+            });
+            const introspected = await introspectResponse.json();
+
+            if (introspected.error) {
+              console.error('[Store] Introspection failed:', introspected.error);
+              return { success: false, error: `Introspection failed: ${introspected.error}` };
+            }
+
+            console.log('[Store] Introspected cascade:', introspected.nodes.length, 'nodes,', introspected.edges.length, 'edges');
+
+            // Convert introspected result to _playground format
+            playground = {
+              version: 1,
+              viewport: introspected.viewport,
+              nodes: introspected.nodes.map(n => ({
+                id: n.id,
+                type: n.type,
+                position: n.position,
+                data: n.data,
+              })),
+              edges: introspected.edges.map(e => ({
+                source: e.source,
+                target: e.target,
+                sourceHandle: e.sourceHandle,
+                targetHandle: e.targetHandle,
+              })),
+            };
+          } catch (introErr) {
+            console.error('[Store] Introspection request failed:', introErr);
+            return { success: false, error: `Introspection failed: ${introErr.message}` };
+          }
         }
 
         const palette = get().palette;
@@ -696,11 +1124,29 @@ const usePlaygroundStore = create(
               data: {
                 text: n.data?.text || '',
                 name: n.data?.name, // Restore custom name
+                placeholder: n.data?.placeholder, // Input description as placeholder
+                width: n.data?.width,
+                height: n.data?.height,
+              },
+            };
+          } else if (n.type === 'phase') {
+            // Restore phase node with YAML data
+            return {
+              id: n.id,
+              type: 'phase',
+              position: n.position,
+              data: {
+                yaml: n.data?.yaml || '',
+                discoveredInputs: n.data?.discoveredInputs || [],
+                status: 'idle',
+                output: '',
+                name: n.data?.name, // Restore custom name
                 width: n.data?.width,
                 height: n.data?.height,
               },
             };
           } else {
+            // Image node
             return {
               id: n.id,
               type: n.type,
@@ -774,6 +1220,124 @@ const usePlaygroundStore = create(
         return { success: true, cascade: config };
       } catch (err) {
         console.error('[Store] Failed to load cascade:', err);
+        return { success: false, error: err.message };
+      }
+    },
+
+    // Load a cascade directly from a file path (for browsing examples)
+    loadCascadeFromFile: async (filepath) => {
+      try {
+        console.log('[Store] Loading cascade from file:', filepath);
+
+        // Introspect the file to get the graph structure
+        const response = await fetch('http://localhost:5001/api/playground/introspect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cascade_file: filepath }),
+        });
+        const result = await response.json();
+
+        if (result.error) {
+          console.error('[Store] Introspection failed:', result.error);
+          return { success: false, error: result.error };
+        }
+
+        console.log('[Store] Introspected file:', result.nodes.length, 'nodes,', result.edges.length, 'edges');
+
+        const palette = get().palette;
+
+        // Build nodes from introspected result
+        const restoredNodes = result.nodes.map(n => {
+          // Update nodeIdCounter to prevent ID collisions
+          const idNum = parseInt(n.id.split('_').pop());
+          if (!isNaN(idNum) && idNum >= nodeIdCounter) {
+            nodeIdCounter = idNum + 1;
+          }
+
+          if (n.type === 'prompt') {
+            return {
+              id: n.id,
+              type: 'prompt',
+              position: n.position,
+              data: {
+                text: '',
+                name: n.data?.name,
+                placeholder: n.data?.placeholder, // Input description as placeholder
+              },
+            };
+          } else if (n.type === 'phase') {
+            return {
+              id: n.id,
+              type: 'phase',
+              position: n.position,
+              data: {
+                yaml: n.data?.yaml || '',
+                discoveredInputs: [],
+                status: 'idle',
+                output: '',
+                name: n.data?.name,
+              },
+            };
+          } else {
+            // Image node - try to match palette item
+            const paletteConfig = n.data?.paletteConfig;
+            const modelId = paletteConfig?.openrouter?.model;
+            const paletteItem = modelId
+              ? palette.find(p => p.openrouter?.model === modelId)
+              : null;
+
+            return {
+              id: n.id,
+              type: n.type,
+              position: n.position,
+              data: {
+                paletteId: paletteItem?.id,
+                paletteName: paletteItem?.name || n.data?.name || 'Image',
+                paletteIcon: paletteItem?.icon || 'mdi:image',
+                paletteColor: paletteItem?.color || '#8b5cf6',
+                paletteConfig: paletteItem || paletteConfig,
+                status: 'idle',
+                images: [],
+                prompt: '',
+                name: n.data?.name,
+              },
+            };
+          }
+        });
+
+        // Build edges
+        const restoredEdges = result.edges.map(e => ({
+          id: e.id || `${e.source}-${e.target}`,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle || 'text-out',
+          targetHandle: e.targetHandle || 'text-in',
+          animated: e.animated,
+          style: e.style,
+        }));
+
+        set((state) => {
+          state.nodes = restoredNodes;
+          state.edges = restoredEdges;
+          state.sessionId = null; // No session yet - this is a fresh load
+          state.lastSuccessfulSessionId = null;
+          state.loadedCascadeId = filepath; // Track file path
+          state.loadedSessionId = null;
+          state.executionStatus = 'idle';
+          state.executionError = null;
+          state.phaseResults = {};
+          state.selectedNodeId = null;
+          if (result.viewport) {
+            state.viewport = result.viewport;
+          }
+        });
+
+        // Clear URL hash (not a session)
+        window.location.hash = '/playground';
+
+        return { success: true, filepath, nodes: restoredNodes.length, edges: restoredEdges.length };
+      } catch (err) {
+        console.error('[Store] Failed to load cascade from file:', err);
         return { success: false, error: err.message };
       }
     },

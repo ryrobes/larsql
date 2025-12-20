@@ -113,6 +113,7 @@ def get_cost_timeline():
         # Query cost grouped by time bucket and model
         # Use model_requested (cleaner), fallback to model with timestamp stripped
         # Pattern: strip trailing -YYYYMMDD or -YYYYMMDD[timestamp] suffixes from model field
+        # Only count 'assistant' role costs to avoid double-counting
         cost_query = f"""
             SELECT
                 {bucket_expression} as time_bucket,
@@ -124,7 +125,7 @@ def get_cost_timeline():
                 SUM(tokens_in) as tokens_in,
                 SUM(tokens_out) as tokens_out
             FROM unified_logs
-            WHERE {where_clause}
+            WHERE {where_clause} AND role = 'assistant'
             GROUP BY time_bucket, effective_model
             ORDER BY time_bucket DESC
             LIMIT {limit * 10}

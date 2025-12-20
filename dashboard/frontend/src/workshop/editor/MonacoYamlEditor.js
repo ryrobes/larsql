@@ -74,35 +74,35 @@ function MonacoYamlEditor({
     readOnly,
   };
 
-  // Custom dark theme matching the app
+  // Custom dark theme - GitHub Dark inspired, pastels on black
   const handleEditorWillMount = useCallback((monaco) => {
     monaco.editor.defineTheme('windlass-dark', {
       base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'key', foreground: '4a9edd' },           // ocean-primary
-        { token: 'string.yaml', foreground: '2dd4bf' },   // ocean-teal
-        { token: 'number', foreground: 'a78bfa' },        // purple
-        { token: 'keyword', foreground: 'd9a553' },       // compass-brass
-        { token: 'comment', foreground: '6b7280' },       // gray
-        { token: 'type', foreground: '4a9edd' },
+        { token: 'key', foreground: '7ee787' },           // pastel green
+        { token: 'string.yaml', foreground: 'a5d6ff' },   // pastel blue
+        { token: 'number', foreground: 'd2a8ff' },        // pastel purple
+        { token: 'keyword', foreground: 'ff9eb8' },       // pastel pink
+        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+        { token: 'type', foreground: '79c0ff' },          // pastel cyan
       ],
       colors: {
-        'editor.background': '#0b1219',                   // midnight-fjord
-        'editor.foreground': '#e2e8f0',                   // text-primary
-        'editor.lineHighlightBackground': '#1a2633',
-        'editor.selectionBackground': '#2d4a5e',
-        'editorLineNumber.foreground': '#4a5568',
-        'editorLineNumber.activeForeground': '#8c9cac',   // mist-gray
-        'editorCursor.foreground': '#4a9edd',             // ocean-primary
-        'editor.inactiveSelectionBackground': '#1e3a4d',
-        'editorIndentGuide.background': '#2c3b4b',
-        'editorIndentGuide.activeBackground': '#4a5568',
-        'editorGutter.background': '#0b1219',
-        'minimap.background': '#0d151d',
-        'scrollbarSlider.background': '#2c3b4b80',
-        'scrollbarSlider.hoverBackground': '#3d4f61',
-        'scrollbarSlider.activeBackground': '#4a5f73',
+        'editor.background': '#000000',                   // pure black
+        'editor.foreground': '#e6edf3',                   // light gray
+        'editor.lineHighlightBackground': '#161b22',
+        'editor.selectionBackground': '#264f78',
+        'editorLineNumber.foreground': '#6e7681',
+        'editorLineNumber.activeForeground': '#e6edf3',
+        'editorCursor.foreground': '#79c0ff',             // pastel cyan
+        'editor.inactiveSelectionBackground': '#1d2d3e',
+        'editorIndentGuide.background': '#21262d',
+        'editorIndentGuide.activeBackground': '#30363d',
+        'editorGutter.background': '#000000',
+        'minimap.background': '#0d1117',
+        'scrollbarSlider.background': '#6e768180',
+        'scrollbarSlider.hoverBackground': '#8b949e80',
+        'scrollbarSlider.activeBackground': '#8b949e',
       },
     });
   }, []);
