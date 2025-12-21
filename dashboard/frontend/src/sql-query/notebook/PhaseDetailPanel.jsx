@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import Split from 'react-split';
 import Editor from '@monaco-editor/react';
 import { Icon } from '@iconify/react';
+import { useDroppable } from '@dnd-kit/core';
 import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
 import createPlotlyComponent from 'react-plotly.js/factory';
@@ -42,6 +43,12 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   const [showYamlEditor, setShowYamlEditor] = useState(false);
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
+
+  // Make editor droppable
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `editor-drop-${phase.name}`,
+    data: { type: 'monaco-editor' },
+  });
 
   // Cleanup editors on unmount
   React.useEffect(() => {
@@ -121,6 +128,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
       onClose();
     }
   };
+
 
   // Monaco theme
   const handleMonacoBeforeMount = (monaco) => {
@@ -268,7 +276,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                     gutterSize={6}
                     gutterAlign="center"
                   >
-                    <div className="phase-detail-code-section">
+                    <div
+                      ref={setDropRef}
+                      className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                    >
                       <Editor
                         key={`editor-${phase.name}`}
                         height="100%"
@@ -277,7 +288,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                         onChange={handleCodeChange}
                         theme="detail-dark"
                         beforeMount={handleMonacoBeforeMount}
-                        onMount={(editor) => { editorRef.current = editor; }}
+                        onMount={(editor) => {
+                          editorRef.current = editor;
+                          window.__activeMonacoEditor = editor;
+                        }}
                         options={{
                           minimap: { enabled: false },
                           fontSize: 13,
@@ -318,7 +332,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                     </div>
                   </Split>
                 ) : (
-                  <div className="phase-detail-code-section">
+                  <div
+                    ref={setDropRef}
+                    className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                  >
                     <Editor
                       key={`editor-${phase.name}`}
                       height="100%"
@@ -327,7 +344,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                       onChange={handleCodeChange}
                       theme="detail-dark"
                       beforeMount={handleMonacoBeforeMount}
-                      onMount={(editor) => { editorRef.current = editor; }}
+                      onMount={(editor) => {
+                        editorRef.current = editor;
+                        window.__activeMonacoEditor = editor;
+                      }}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,
@@ -438,7 +458,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                   gutterSize={6}
                   gutterAlign="center"
                 >
-                  <div className="phase-detail-code-section">
+                  <div
+                    ref={setDropRef}
+                    className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                  >
                     <Editor
                       key={`editor-${phase.name}`}
                       height="100%"
@@ -447,7 +470,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                       onChange={handleCodeChange}
                       theme="detail-dark"
                       beforeMount={handleMonacoBeforeMount}
-                      onMount={(editor) => { editorRef.current = editor; }}
+                      onMount={(editor) => {
+                        editorRef.current = editor;
+                        window.__activeMonacoEditor = editor;
+                      }}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,
@@ -488,7 +514,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                   </div>
                 </Split>
               ) : (
-                <div className="phase-detail-code-section">
+                <div
+                  ref={setDropRef}
+                  className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                >
                   <Editor
                     key={`editor-${phase.name}`}
                     height="100%"

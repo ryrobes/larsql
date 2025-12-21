@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import useNotebookStore from '../stores/notebookStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
 import InputsForm from './InputsForm';
+import VariablePalette from './VariablePalette';
 import './NotebookNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -423,6 +424,9 @@ function NotebookNavigator() {
 
       {/* Phase Types Section (Draggable Palette) */}
       <PhaseTypesSection />
+
+      {/* Variable Palette */}
+      <VariablePalette />
 
       {/* Phases Section */}
       <div className="nav-section nav-phases-section">

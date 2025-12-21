@@ -406,6 +406,8 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px;
+  margin-left: 4px;
+  margin-right: 4px;
 }
 
 .nav-phase-types-hint {
@@ -528,4 +530,112 @@
 .nav-run-all-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ============================================
+   VARIABLE PALETTE
+   ============================================ */
+
+.var-palette-section {
+  border-top: 1px solid #1a2028;
+}
+
+.var-palette-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.var-palette-hint {
+  font-size: 10px;
+  color: #64748b;
+  font-style: italic;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+/* Variable Pills */
+.var-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  background-color: #0b1219;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  user-select: none;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.var-pill:hover {
+  background-color: #0f1821;
+  transform: translateX(2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.var-pill.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.var-pill span {
+  font-weight: 500;
+}
+
+/* Variable Groups */
+.var-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.var-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  user-select: none;
+}
+
+.var-group-header:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.var-group-chevron {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.var-group-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.var-group-title {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  flex: 1;
+}
+
+.var-group-count {
+  font-size: 10px;
+  color: #64748b;
+  background-color: #1a2028;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.var-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 4px 20px;
 }

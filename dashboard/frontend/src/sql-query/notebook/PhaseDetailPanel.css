@@ -498,11 +498,10 @@
 
 /* Code container wrapper (keeps Split structure consistent) */
 .phase-detail-code-container {
-  flex: 1;
   height: 100%;
+  width: 100%;
   overflow: hidden;
-  position: relative;
-  min-width: 0;
+  display: block;
 }
 
 .phase-detail-code-yaml-split {
@@ -511,6 +510,10 @@
   height: 100%;
   overflow: hidden;
   flex-direction: row;
+}
+
+.phase-detail-code-yaml-split > div {
+  height: 100%;
 }
 
 .phase-detail-code-section {
@@ -524,4 +527,10 @@
   display: flex;
   flex-direction: column;
   background-color: #0a0e14;
+}
+
+/* Drop active state for Monaco */
+.phase-detail-code-section.drop-active {
+  box-shadow: inset 0 0 0 2px rgba(167, 139, 250, 0.4);
+  background-color: rgba(167, 139, 250, 0.05);
 }

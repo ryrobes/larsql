@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { DndContext } from '@dnd-kit/core';
+import React, { useEffect, useState } from 'react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useSqlQueryStore from './stores/sqlQueryStore';
@@ -44,20 +44,63 @@ function SqlQueryPage({
   // Persist split sizes in state
   const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
 
+  // Track what's being dragged for overlay
+  const [activeDragItem, setActiveDragItem] = useState(null);
+
   // Drag and drop handlers for timeline mode
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveDragItem(active.data.current);
+  };
+
   const handleDragEnd = (event) => {
+    setActiveDragItem(null);
     const { active, over } = event;
 
     if (!over) return;
 
-    // Check if we're dropping a phase type
-    if (active.data.current?.type === 'phase-type') {
+    const dragType = active.data.current?.type;
+
+    // Handle phase type drops
+    if (dragType === 'phase-type') {
       const phaseType = active.data.current.phaseType;
       const dropPosition = over.data.current?.position;
 
       if (dropPosition !== undefined) {
         // Insert at specific position
         addCell(phaseType, dropPosition);
+      }
+    }
+
+    // Handle variable drops into Monaco editor
+    if (dragType === 'variable' && over?.data?.current?.type === 'monaco-editor') {
+      const variablePath = active.data.current.variablePath;
+      const editor = window.__activeMonacoEditor;
+
+      if (editor && variablePath) {
+        // Insert at cursor position
+        const position = editor.getPosition();
+        const jinjaText = `{{ ${variablePath} }}`;
+
+        editor.executeEdits('insert-variable', [
+          {
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            },
+            text: jinjaText,
+          },
+        ]);
+
+        // Move cursor after inserted text
+        editor.setPosition({
+          lineNumber: position.lineNumber,
+          column: position.column + jinjaText.length,
+        });
+
+        editor.focus();
       }
     }
   };
@@ -106,7 +149,7 @@ function SqlQueryPage({
     <div className="sql-query-page">
       {mode === 'timeline' ? (
         /* Timeline Mode - Vertical sidebar with drag-drop context */
-        <DndContext onDragEnd={handleDragEnd}>
+        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="sql-query-timeline-layout">
             <VerticalSidebar
               onMessageFlow={onMessageFlow}
@@ -145,6 +188,25 @@ function SqlQueryPage({
               </div>
             </Split>
           </div>
+
+          {/* Drag Overlay */}
+          <DragOverlay>
+            {activeDragItem && (
+              <div className="sql-drag-overlay">
+                {activeDragItem.type === 'variable' && (
+                  <div className="sql-drag-variable">
+                    <Icon icon="mdi:code-braces" width="14" />
+                    {`{{ ${activeDragItem.variablePath} }}`}
+                  </div>
+                )}
+                {activeDragItem.type === 'phase-type' && (
+                  <div className="sql-drag-phase">
+                    Adding {activeDragItem.phaseType}...
+                  </div>
+                )}
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       ) : (
         <>
