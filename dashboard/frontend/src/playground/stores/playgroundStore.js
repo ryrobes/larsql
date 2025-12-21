@@ -101,6 +101,10 @@ const usePlaygroundStore = create(
     costPollingTimer: null, // Timer ID for cost polling
     costPollingStopTime: null, // When to stop polling after completion
 
+    // Session stream state (derived from unified_logs polling)
+    // phaseName -> { status, soundingsProgress, winnerIndex, soundingsOutputs, output, cost, ... }
+    sessionStreamStates: {},
+
     // ============================================
     // UI STATE
     // ============================================
@@ -1051,6 +1055,39 @@ rules:
       }
     }),
 
+    // Update session stream states (called by useSessionStream hook)
+    // This merges derived phase states from the session log stream
+    setSessionStreamStates: (phaseStates) => set((state) => {
+      state.sessionStreamStates = phaseStates;
+
+      // Also update node data based on the derived states
+      for (const node of state.nodes) {
+        if (node.type !== 'phase') continue;
+
+        // Match by custom name or parsed phase name
+        const phaseName = node.data.name || node.data.parsedPhase?.name;
+        if (!phaseName) continue;
+
+        const phaseState = phaseStates[phaseName];
+        if (!phaseState) continue;
+
+        // Update node data with derived state
+        node.data.status = phaseState.status;
+        node.data.output = phaseState.output || '';
+        node.data.liveLog = phaseState.liveLog || [];         // Scrolling log during execution
+        node.data.finalOutput = phaseState.finalOutput || ''; // Clean winner output after completion
+        node.data.lastStatusMessage = phaseState.lastStatusMessage || ''; // Short status for footer
+        node.data.cost = phaseState.cost;
+        node.data.duration = phaseState.duration;
+        node.data.soundingsProgress = phaseState.soundingsProgress;
+        node.data.winnerIndex = phaseState.winnerIndex;
+        node.data.currentReforgeStep = phaseState.currentReforgeStep;
+        node.data.totalReforgeSteps = phaseState.totalReforgeSteps;
+        node.data.soundingsOutputs = phaseState.soundingsOutputs;
+        node.data.reforgeOutputs = phaseState.reforgeOutputs || {}; // Flattened: step -> winner content
+      }
+    }),
+
     // Clear execution state
     clearExecution: () => {
       get().stopCostPolling();
@@ -1060,6 +1097,7 @@ rules:
         state.executionError = null;
         state.phaseResults = {};
         state.totalSessionCost = 0;
+        state.sessionStreamStates = {};
         state.nodes.forEach(node => {
           if (node.type === 'image') {
             node.data.status = 'idle';
@@ -1067,6 +1105,9 @@ rules:
           } else if (node.type === 'phase') {
             node.data.status = 'idle';
             node.data.output = '';
+            node.data.soundingsProgress = [];
+            node.data.winnerIndex = null;
+            node.data.soundingsOutputs = {};
           }
         });
       });
@@ -1085,6 +1126,7 @@ rules:
         state.executionStatus = 'idle';
         state.executionError = null;
         state.phaseResults = {};
+        state.sessionStreamStates = {};
         state.selectedNodeId = null;
         state.totalSessionCost = 0;
         state.costPollingTimer = null;

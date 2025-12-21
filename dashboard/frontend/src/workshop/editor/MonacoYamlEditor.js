@@ -53,6 +53,7 @@ function MonacoYamlEditor({
     fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
+    renderLineHighlightOnlyWhenFocus: true,
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     wrappingStrategy: 'advanced',

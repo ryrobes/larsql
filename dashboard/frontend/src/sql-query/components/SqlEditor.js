@@ -177,6 +177,7 @@ function SqlEditor() {
     fontFamily: "'IBM Plex Mono', 'Monaco', 'Menlo', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
+    renderLineHighlightOnlyWhenFocus: true,
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     automaticLayout: true,

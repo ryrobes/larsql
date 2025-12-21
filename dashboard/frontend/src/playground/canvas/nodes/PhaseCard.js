@@ -97,6 +97,9 @@ function PhaseCard({ id, data, selected }) {
   // Track last synced value
   const lastSyncedYamlRef = useRef(data.yaml);
 
+  // Track content for per-card update detection
+  const prevContentCountRef = useRef({ soundings: new Set(), reforge: new Set() });
+
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -105,6 +108,9 @@ function PhaseCard({ id, data, selected }) {
   const {
     status = 'idle',
     output = '',
+    liveLog = [],            // Scrolling log during execution: [{ id, label, content, isWinner, soundingIndex, reforgeStep }]
+    finalOutput = '',        // Clean winner output after completion
+    lastStatusMessage = '',  // Short status message for footer display
     cost,
     duration,
     width: dataWidth,
@@ -116,6 +122,7 @@ function PhaseCard({ id, data, selected }) {
     currentReforgeStep = 0,  // Current reforge step (1-based when running)
     totalReforgeSteps = 0,   // Total reforge steps
     soundingsOutputs = {},   // Map of sounding index to output content { 0: "...", 1: "...", ... }
+    reforgeOutputs = {},     // Flattened reforge outputs: step -> winner content
   } = data;
 
   // Parse YAML for phase config
@@ -251,6 +258,84 @@ function PhaseCard({ id, data, selected }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Track which stack cards recently got updates (for highlight effect)
+  const [recentlyUpdated, setRecentlyUpdated] = useState(new Set());
+  // Track per-card update timestamps to manage individual timeouts
+  const cardUpdateTimesRef = useRef({});
+
+  // Detect when specific soundings/reforge cards get new content and highlight them
+  useEffect(() => {
+    const now = Date.now();
+    const newlyUpdated = new Set();
+
+    // Check soundings
+    Object.keys(soundingsOutputs).forEach(idx => {
+      const key = `S${idx}`;
+      if (!prevContentCountRef.current.soundings?.has(idx)) {
+        newlyUpdated.add(key);
+        cardUpdateTimesRef.current[key] = now;
+      }
+    });
+
+    // Check reforge
+    Object.keys(reforgeOutputs).forEach(step => {
+      const key = `R${step}`;
+      if (!prevContentCountRef.current.reforge?.has(step)) {
+        newlyUpdated.add(key);
+        cardUpdateTimesRef.current[key] = now;
+      }
+    });
+
+    if (newlyUpdated.size > 0) {
+      setRecentlyUpdated(prev => new Set([...prev, ...newlyUpdated]));
+    }
+
+    // Update tracking
+    prevContentCountRef.current = {
+      soundings: new Set(Object.keys(soundingsOutputs)),
+      reforge: new Set(Object.keys(reforgeOutputs)),
+    };
+  }, [soundingsOutputs, reforgeOutputs]);
+
+  // Separate effect to clear old updates - runs on interval, not tied to content changes
+  useEffect(() => {
+    const ANIMATION_DURATION = 2000;
+
+    const checkAndClear = () => {
+      const now = Date.now();
+      const stillActive = new Set();
+
+      for (const [key, time] of Object.entries(cardUpdateTimesRef.current)) {
+        if (now - time < ANIMATION_DURATION) {
+          stillActive.add(key);
+        } else {
+          delete cardUpdateTimesRef.current[key];
+        }
+      }
+
+      setRecentlyUpdated(prev => {
+        // Only update if different
+        if (prev.size !== stillActive.size || [...prev].some(k => !stillActive.has(k))) {
+          return stillActive;
+        }
+        return prev;
+      });
+    };
+
+    // Check every 500ms
+    const interval = setInterval(checkAndClear, 500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Clear all animations when phase completes
+  useEffect(() => {
+    if (status === 'completed' || status === 'idle') {
+      setRecentlyUpdated(new Set());
+      cardUpdateTimesRef.current = {};
+    }
+  }, [status]);
+
   // Card flip handler - triggered by right-click on header
   const handleFlip = useCallback((e) => {
     e.preventDefault();
@@ -380,6 +465,7 @@ function PhaseCard({ id, data, selected }) {
     fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
+    renderLineHighlightOnlyWhenFocus: true,
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     automaticLayout: true,
@@ -446,7 +532,12 @@ function PhaseCard({ id, data, selected }) {
   return (
     <div
       className={cardClasses}
-      style={{ width, height }}
+      style={{
+        width,
+        height,
+        '--card-width': `${width}px`,
+        '--card-height': `${height}px`,
+      }}
     >
       {/* Stacked deck edges (behind the card) - click to fan */}
       {stackDepth > 0 && (
@@ -472,9 +563,20 @@ function PhaseCard({ id, data, selected }) {
         const isWinner = winnerIndex !== null && soundingIndex === winnerIndex;
         const isLoser = winnerIndex !== null && soundingIndex !== null && !isWinner && isComplete;
 
-        // Get output content for this sounding
-        const soundingOutput = soundingsOutputs[soundingIndex];
-        const hasContent = !!soundingOutput;
+        // Get output content for this card
+        // Soundings use soundingsOutputs[index], Reforge uses reforgeOutputs[step]
+        const cardOutput = isReforgeCard
+          ? reforgeOutputs[reforgeStep]
+          : soundingsOutputs[soundingIndex];
+        const hasContent = !!cardOutput;
+
+        // Reforge cards are "running" if currentReforgeStep === reforgeStep
+        const isReforgeRunning = isReforgeCard && currentReforgeStep === reforgeStep;
+        const isReforgeComplete = isReforgeCard && reforgeStep < currentReforgeStep;
+
+        // Check if this card was recently updated
+        const cardKey = isReforgeCard ? `R${reforgeStep}` : `S${soundingIndex}`;
+        const isRecentlyUpdated = recentlyUpdated.has(cardKey);
 
         return (
           <div
@@ -484,24 +586,28 @@ function PhaseCard({ id, data, selected }) {
               `stack-edge-${idx}`,
               isReforgeCard ? 'reforge-card' : 'sounding-card',
               isWinner ? 'is-winner' : '',
+              isRecentlyUpdated ? 'just-updated' : '',
               isLoser ? 'is-loser' : '',
-              isRunning ? 'is-running' : '',
-              isComplete ? 'is-complete' : '',
+              isRunning || isReforgeRunning ? 'is-running' : '',
+              isComplete || isReforgeComplete ? 'is-complete' : '',
             ].filter(Boolean).join(' ')}
           >
             <div className="stack-card-preview">
               <div className="stack-card-header">
                 {isReforgeCard ? `R${reforgeStep}` : `S${soundingIndex}`}
               </div>
-              {/* Content preview when available */}
+              {/* Content preview when available - full content, CSS handles overflow */}
               {hasContent && (
                 <div className="stack-card-content">
-                  <RichMarkdown>{soundingOutput.slice(0, 200)}</RichMarkdown>
+                  <RichMarkdown>{String(cardOutput || '')}</RichMarkdown>
                 </div>
               )}
               {/* Progress indicator during execution */}
               {!isReforgeCard && (status === 'soundings_running' || status === 'evaluating') && (
                 <div className={`stack-card-progress ${progressStatus}`} />
+              )}
+              {isReforgeCard && isReforgeRunning && (
+                <div className="stack-card-progress running" />
               )}
             </div>
           </div>
@@ -644,23 +750,60 @@ function PhaseCard({ id, data, selected }) {
               </div>
             </div>
 
-            {/* Content area - shows output preview */}
+            {/* Content area - shows live log during execution, final output when done */}
             <div className="card-content">
-              {status === 'idle' && !output && (
+              {/* Idle state - no execution yet */}
+              {status === 'idle' && !output && !finalOutput && liveLog.length === 0 && (
                 <div className="card-idle-state">
                   <Icon icon="mdi:play-circle-outline" width="32" />
                   <span>Ready to execute</span>
                 </div>
               )}
-              {status === 'running' && (
-                <div className="card-running-state">
-                  <Icon icon="mdi:loading" width="32" className="spinning" />
-                  <span>Executing...</span>
+              {/* Pending/waiting state - waiting for upstream phases */}
+              {status === 'pending' && (
+                <div className="card-waiting-state">
+                  <Icon icon="mdi:clock-outline" width="28" />
+                  <span>Waiting...</span>
                 </div>
               )}
-              {(status === 'completed' || output) && (
+              {/* Live log during execution - simple scrolling log, newest at top */}
+              {['running', 'soundings_running', 'evaluating', 'reforge_running', 'aggregate_running', 'winner_selected'].includes(status) && (
+                <div className="card-live-log">
+                  {liveLog.length === 0 ? (
+                    <div className="card-running-state">
+                      <Icon icon="mdi:loading" width="24" className="spinning" />
+                      <span>Executing...</span>
+                    </div>
+                  ) : (
+                    <div className="live-log-scroll">
+                      {/* Reverse order - newest first */}
+                      {[...liveLog].reverse().map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`log-row ${entry.isWinner ? 'winner' : ''}`}
+                        >
+                          <span className="log-label">{entry.label || '•'}</span>
+                          <span className="log-text">
+                            {String(entry.content || '').slice(0, 80)}
+                            {String(entry.content || '').length > 80 ? '…' : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Final output after completion - show full winner content */}
+              {status === 'completed' && (
                 <div className="card-output-preview">
-                  <RichMarkdown>{String(output || '')}</RichMarkdown>
+                  {(finalOutput || output) ? (
+                    <RichMarkdown>{String(finalOutput || output)}</RichMarkdown>
+                  ) : liveLog.length > 0 ? (
+                    // Fallback: show last live log entry if no explicit output
+                    <RichMarkdown>{String(liveLog[liveLog.length - 1]?.content || 'Completed')}</RichMarkdown>
+                  ) : (
+                    <span className="text-muted">Completed</span>
+                  )}
                 </div>
               )}
               {status === 'error' && (
@@ -707,6 +850,12 @@ function PhaseCard({ id, data, selected }) {
                     <span className="footer-indicator aggregate-indicator">
                       <Icon icon="mdi:merge" width="12" className="spinning" />
                       Fusing...
+                    </span>
+                  )}
+                  {/* Status message during running states */}
+                  {lastStatusMessage && ['running', 'soundings_running', 'evaluating', 'reforge_running', 'aggregate_running', 'winner_selected'].includes(status) && (
+                    <span className="footer-indicator status-message" title={lastStatusMessage}>
+                      {lastStatusMessage.slice(0, 30)}{lastStatusMessage.length > 30 ? '…' : ''}
                     </span>
                   )}
                   {/* Idle or completed - show config summary */}

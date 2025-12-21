@@ -3648,6 +3648,128 @@ def get_model_costs():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/playground/session-stream/<session_id>', methods=['GET'])
+def playground_session_stream(session_id):
+    """
+    Stream session execution logs for the playground UI.
+
+    This endpoint replaces fragmented SSE events with a single polling endpoint
+    that returns all relevant execution data since a given timestamp. The UI
+    derives phase states, soundings progress, winner, etc. from these log rows.
+
+    Query params:
+        after: ISO timestamp to fetch logs after (default: 1970-01-01)
+        limit: Max rows to return (default: 200)
+
+    Returns:
+        {
+            "rows": [...],      // Log rows since 'after' timestamp
+            "has_more": bool,   // True if more rows available
+            "cursor": "...",    // Timestamp of last row for next poll
+            "session_complete": bool,  // True if session has completed
+            "total_cost": float // Accumulated session cost
+        }
+
+    The UI should poll this endpoint every ~750ms while execution is running,
+    then stop once session_complete is true.
+    """
+    try:
+        conn = get_db_connection()
+
+        # Parse query params
+        after = request.args.get('after', '1970-01-01 00:00:00')
+        limit = int(request.args.get('limit', 200))
+
+        # Query for relevant execution events
+        # We include all event types that are useful for UI state derivation
+        # Note: Use startsWith instead of LIKE to avoid % escaping issues with ClickHouse driver
+        query = f"""
+            SELECT
+                toString(message_id) as message_id,
+                timestamp,
+                session_id,
+                trace_id,
+                phase_name,
+                role,
+                sounding_index,
+                is_winner,
+                reforge_step,
+                winning_sounding_index,
+                model,
+                cost,
+                duration_ms,
+                content_json
+            FROM unified_logs
+            WHERE startsWith(session_id, '{session_id}')
+              AND timestamp > '{after}'
+            ORDER BY timestamp ASC
+            LIMIT {limit + 1}
+        """
+
+        result = conn.execute(query).fetchall()
+        conn.close()
+
+        # Get column names for dict conversion
+        columns = [
+            'message_id', 'timestamp', 'session_id', 'trace_id', 'phase_name',
+            'role', 'sounding_index', 'is_winner', 'reforge_step', 'winning_sounding_index',
+            'model', 'cost', 'duration_ms', 'content_json'
+        ]
+
+        # Check if there are more rows
+        has_more = len(result) > limit
+        rows_to_return = result[:limit]
+
+        # Convert to dicts
+        rows = []
+        for row in rows_to_return:
+            row_dict = {}
+            for i, col in enumerate(columns):
+                val = row[i]
+                # Handle timestamp serialization
+                if col == 'timestamp' and val is not None:
+                    if hasattr(val, 'isoformat'):
+                        val = val.isoformat()
+                    else:
+                        val = str(val)
+                # Handle UUID serialization
+                if col == 'message_uuid' and val is not None:
+                    val = str(val)
+                row_dict[col] = val
+            rows.append(row_dict)
+
+        # Determine cursor (timestamp of last row)
+        cursor = after
+        if rows:
+            cursor = rows[-1]['timestamp']
+
+        # Check if session is complete by looking for cascade_complete role
+        session_complete = any(
+            r.get('role') in ('cascade_complete', 'cascade_error')
+            for r in rows
+        )
+
+        # Calculate total cost from all rows
+        total_cost = sum(
+            float(r.get('cost', 0) or 0)
+            for r in rows
+            if r.get('cost')
+        )
+
+        return jsonify({
+            'rows': rows,
+            'has_more': has_more,
+            'cursor': cursor,
+            'session_complete': session_complete,
+            'total_cost': round(total_cost, 6)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/playground/introspect', methods=['POST'])
 def introspect_cascade_endpoint():
     """

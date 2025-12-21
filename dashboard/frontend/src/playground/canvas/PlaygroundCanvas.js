@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo } from 'react';
+import React, { useCallback, useRef, useMemo, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -6,6 +6,7 @@ import ReactFlow, {
   useReactFlow,
 } from 'reactflow';
 import usePlaygroundStore from '../stores/playgroundStore';
+import { useSessionStream } from '../execution/useSessionStream';
 import PromptNode from './nodes/PromptNode';
 import ImageNode from './nodes/ImageNode';
 import PhaseCard from './nodes/PhaseCard';
@@ -42,7 +43,19 @@ function PlaygroundCanvas() {
     removeNode,
     updateNodePosition,
     setSelectedNodeId,
+    sessionId,
+    setSessionStreamStates,
   } = usePlaygroundStore();
+
+  // Use session stream polling for real-time execution state
+  const { phaseStates, isPolling } = useSessionStream(sessionId);
+
+  // Update store with derived phase states
+  useEffect(() => {
+    if (phaseStates && Object.keys(phaseStates).length > 0) {
+      setSessionStreamStates(phaseStates);
+    }
+  }, [phaseStates, setSessionStreamStates]);
 
   // Handle node changes from React Flow
   const onNodesChange = useCallback((changes) => {

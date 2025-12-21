@@ -126,6 +126,7 @@ function PromptNode({ id, data, selected }) {
     lineNumbers: 'on',  // Show line numbers for consistency with YAML editor
     lineNumbersMinChars: 2,
     renderLineHighlight: 'line',
+    renderLineHighlightOnlyWhenFocus: true,
     scrollBeyondLastLine: false,
     wordWrap: 'on',
     wrappingStrategy: 'advanced',

@@ -341,6 +341,7 @@ const NotebookCell = ({ id, phase, index, cellState, connections }) => {
     fontFamily: "'IBM Plex Mono', 'Monaco', 'Menlo', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
+    renderLineHighlightOnlyWhenFocus: true,
     wordWrap: 'on',
     automaticLayout: true,
     scrollBeyondLastLine: false,
