@@ -403,47 +403,47 @@
 /* Phase Types Section - Draggable Palette */
 .nav-phase-types-content {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  margin-left: 4px;
-  margin-right: 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 17px 14px;
+  align-items: flex-start;
 }
 
 .nav-phase-types-hint {
-  font-size: 10px;
-  color: #64748b;
+  font-size: 9px;
+  color: #475569;
   font-style: italic;
-  margin-bottom: 4px;
+  padding: 0 0 4px 0;
   text-align: center;
+  width: 100%;
 }
 
 .nav-phase-type-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  background-color: #0b1219;
-  border: 1px solid;
-  border-radius: 6px;
+  gap: 5px;
+  padding: 4px 7px;
+  background-color: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.08);
+  border-radius: 4px;
   cursor: grab;
   transition: all 0.15s ease;
   user-select: none;
 }
 
 .nav-phase-type-pill:hover {
-  background-color: #0f1821;
-  transform: translateX(2px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: rgba(100, 116, 139, 0.2);
 }
 
 .nav-phase-type-pill.dragging {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: grabbing;
 }
 
 .nav-phase-type-pill span {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -543,60 +543,61 @@
 .var-palette-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 0;
+  padding: 4px 0;
 }
 
 .var-palette-hint {
-  font-size: 10px;
-  color: #64748b;
+  font-size: 9px;
+  color: #475569;
   font-style: italic;
-  margin-bottom: 4px;
+  padding: 6px 12px;
   text-align: center;
 }
 
-/* Variable Pills */
+/* Variable Pills - subtle and compact */
 .var-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
-  background-color: #0b1219;
-  border: 1px solid;
-  border-radius: 4px;
+  gap: 4px;
+  padding: 3px 6px;
+  background-color: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.08);
+  border-radius: 3px;
   cursor: grab;
   transition: all 0.15s ease;
   user-select: none;
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'IBM Plex Mono', monospace;
 }
 
 .var-pill:hover {
-  background-color: #0f1821;
-  transform: translateX(2px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: rgba(100, 116, 139, 0.2);
 }
 
 .var-pill.dragging {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: grabbing;
 }
 
 .var-pill span {
   font-weight: 500;
+  opacity: 0.85;
 }
 
-/* Variable Groups */
+/* Variable Groups - match nav-section style */
 .var-group {
   display: flex;
   flex-direction: column;
+  margin-bottom: 4px;
 }
 
 .var-group-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.15s ease;
@@ -613,29 +614,33 @@
 }
 
 .var-group-icon {
-  font-size: 12px;
+  color: #64748b;
   flex-shrink: 0;
 }
 
 .var-group-title {
   font-size: 11px;
-  color: #94a3b8;
+  color: #64748b;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
   flex: 1;
 }
 
 .var-group-count {
-  font-size: 10px;
+  font-size: 9px;
   color: #64748b;
   background-color: #1a2028;
-  padding: 1px 5px;
+  padding: 2px 5px;
   border-radius: 3px;
   font-weight: 600;
 }
 
 .var-group-content {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 0 4px 20px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 4px 8px 6px 24px;
 }

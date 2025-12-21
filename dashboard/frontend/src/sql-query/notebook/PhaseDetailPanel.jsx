@@ -75,17 +75,22 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   const isJs = phase.tool === 'js_data';
   const isClojure = phase.tool === 'clojure_data';
   const isWindlass = phase.tool === 'windlass_data';
+  const isLLMPhase = !phase.tool && phase.instructions;
 
   const typeInfo = {
-    sql_data: { language: 'sql', codeKey: 'query' },
-    python_data: { language: 'python', codeKey: 'code' },
-    js_data: { language: 'javascript', codeKey: 'code' },
-    clojure_data: { language: 'clojure', codeKey: 'code' },
-    windlass_data: { language: 'yaml', codeKey: 'code' },
+    sql_data: { language: 'sql', codeKey: 'query', source: 'inputs' },
+    python_data: { language: 'python', codeKey: 'code', source: 'inputs' },
+    js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
+    clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
+    llm_phase: { language: 'markdown', codeKey: 'instructions', source: 'phase' },
+    windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
   };
-  const info = typeInfo[phase.tool] || typeInfo.python_data;
+  const phaseType = phase.tool || (isLLMPhase ? 'llm_phase' : 'python_data');
+  const info = typeInfo[phaseType] || typeInfo.python_data;
 
-  const code = phase.inputs?.[info.codeKey] || '';
+  const code = info.source === 'inputs'
+    ? (phase.inputs?.[info.codeKey] || '')
+    : (phase[info.codeKey] || '');
   const status = cellState?.status || 'pending';
   const result = cellState?.result;
   const error = cellState?.error;
@@ -111,8 +116,12 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   }, [index, updateCell]);
 
   const handleCodeChange = useCallback((value) => {
-    updateCell(index, { inputs: { ...phase.inputs, [info.codeKey]: value } });
-  }, [index, phase.inputs, info.codeKey, updateCell]);
+    if (info.source === 'inputs') {
+      updateCell(index, { inputs: { ...phase.inputs, [info.codeKey]: value } });
+    } else {
+      updateCell(index, { [info.codeKey]: value });
+    }
+  }, [index, phase.inputs, info.codeKey, info.source, updateCell]);
 
   const handleNameChange = (e) => {
     updateCell(index, { name: e.target.value });
@@ -422,6 +431,27 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                         enableCellTextSelection={true}
                         headerHeight={36}
                         rowHeight={28}
+                      />
+                    </div>
+                  ) : result?.result?.lineage?.[0]?.output ? (
+                    /* LLM output from lineage */
+                    <div className="phase-detail-text">
+                      <Editor
+                        height="100%"
+                        language="markdown"
+                        value={typeof result.result.lineage[0].output === 'string'
+                          ? result.result.lineage[0].output
+                          : JSON.stringify(result.result.lineage[0].output, null, 2)}
+                        theme="detail-dark"
+                        beforeMount={handleMonacoBeforeMount}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          lineNumbers: 'off',
+                          wordWrap: 'on',
+                          padding: { top: 12, bottom: 12 },
+                        }}
                       />
                     </div>
                   ) : result?.result !== undefined ? (

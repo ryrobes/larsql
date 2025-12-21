@@ -344,7 +344,16 @@ const useNotebookStore = create(
             python_data: '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}',
             js_data: '// Access prior cell outputs:\n// const rows = data.cell_name;\n//\n// Set result to an array of objects or value:\nresult = [{ message: "Hello" }];',
             clojure_data: '; Access prior cell outputs:\n; (:cell-name data)\n;\n; Return a vector of maps or value:\n[{:message "Hello"}]',
-            windlass_data: `# LLM Phase Cell
+            llm_phase: `You are a helpful assistant analyzing data.
+
+Use Jinja2 templates to reference data:
+- Inputs: {{ input.param_name }}
+- Prior phases: {{ outputs.phase_name }}
+- State: {{ state.var_name }}
+
+Provide your analysis below:
+`,
+            windlass_data: `# LLM Phase Cell (Data Tool)
 # Access prior cells with: {{outputs.cell_name}}
 # Full Windlass power: soundings, reforge, wards, model selection
 
@@ -372,7 +381,13 @@ output_schema:
           };
           const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
-          const newCell = {
+          // Create phase based on type
+          const newCell = type === 'llm_phase' ? {
+            name: `phase_${cellCount}`,
+            instructions: templateCode || defaultCode,
+            model: 'anthropic/claude-sonnet-4',
+            tackle: [],
+          } : {
             name: `cell_${cellCount}`,
             tool: type,
             inputs: type === 'sql_data'

@@ -260,7 +260,7 @@ function PhaseTypePill({ type, icon, label, color }) {
       {...listeners}
       {...attributes}
       className={`nav-phase-type-pill ${isDragging ? 'dragging' : ''}`}
-      style={{ borderColor: color }}
+      style={{ borderColor: color + 34 }}
     >
       <Icon icon={icon} width="16" style={{ color }} />
       <span style={{ color }}>{label}</span>
@@ -277,7 +277,8 @@ function PhaseTypesSection() {
     { type: 'python_data', icon: 'mdi:language-python', label: 'Python', color: '#fbbf24' },
     { type: 'js_data', icon: 'mdi:language-javascript', label: 'JavaScript', color: '#f7df1e' },
     { type: 'clojure_data', icon: 'simple-icons:clojure', label: 'Clojure', color: '#63b132' },
-    { type: 'windlass_data', icon: 'mdi:sail-boat', label: 'LLM Phase', color: '#2dd4bf' },
+    { type: 'llm_phase', icon: 'mdi:brain', label: 'LLM', color: '#a78bfa' },
+    { type: 'windlass_data', icon: 'mdi:sail-boat', label: 'LLM (Data)', color: '#2dd4bf' },
   ];
 
   return (

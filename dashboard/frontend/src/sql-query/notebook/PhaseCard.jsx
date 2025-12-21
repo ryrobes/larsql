@@ -17,15 +17,17 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
 
-  // Type info
+  // Type info - check for tool field or if it's a regular LLM phase
   const typeInfo = {
     sql_data: { label: 'SQL', icon: 'mdi:database', color: '#60a5fa' },
     python_data: { label: 'Python', icon: 'mdi:language-python', color: '#fbbf24' },
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
-    windlass_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    llm_phase: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
+    windlass_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
   };
-  const info = typeInfo[phase.tool] || typeInfo.python_data;
+  const phaseType = phase.tool || (phase.instructions ? 'llm_phase' : 'python_data');
+  const info = typeInfo[phaseType] || typeInfo.python_data;
 
   // Status icon
   const StatusIcon = () => {

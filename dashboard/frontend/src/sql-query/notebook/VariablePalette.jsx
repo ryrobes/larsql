@@ -16,9 +16,9 @@ import useNotebookStore from '../stores/notebookStore';
 // Variable type metadata
 const VARIABLE_TYPES = {
   input: { icon: 'mdi:import', color: '#a78bfa', label: 'Input' },
-  output: { icon: 'mdi:export', color: '#60a5fa', label: 'Output' },
-  state: { icon: 'mdi:database', color: '#34d399', label: 'State' },
-  builtin: { icon: 'mdi:cog', color: '#fbbf24', label: 'Built-in' },
+  output: { icon: 'mdi:export-variant', color: '#60a5fa', label: 'Output' },
+  state: { icon: 'mdi:database-outline', color: '#34d399', label: 'State' },
+  builtin: { icon: 'mdi:cog-outline', color: '#fbbf24', label: 'Built-in' },
 };
 
 // Built-in variables available in all phases
@@ -64,7 +64,7 @@ function VariablePill({ variable }) {
       {...listeners}
       {...attributes}
       className={`var-pill var-pill-${type} ${isDragging ? 'dragging' : ''}`}
-      style={{ borderColor: config.color }}
+      style={{ borderColor: config.color + 34 }}
       title={variable.description || `{{ ${variable.path} }}`}
     >
       <Icon icon={config.icon} width="12" style={{ color: config.color }} />
@@ -76,7 +76,7 @@ function VariablePill({ variable }) {
 /**
  * Collapsible variable group
  */
-function VariableGroup({ title, icon, variables, defaultOpen = true }) {
+function VariableGroup({ title, iconName, variables, defaultOpen = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
   if (variables.length === 0) return null;
@@ -92,7 +92,7 @@ function VariableGroup({ title, icon, variables, defaultOpen = true }) {
           width="12"
           className="var-group-chevron"
         />
-        <span className="var-group-icon">{icon}</span>
+        <Icon icon={iconName} width="12" className="var-group-icon" />
         <span className="var-group-title">{title}</span>
         <span className="var-group-count">{variables.length}</span>
       </div>
@@ -191,28 +191,26 @@ function VariablePalette() {
       </div>
 
       <div className="nav-section-content var-palette-content">
-        <div className="var-palette-hint">
-          Drag to code editor →
-        </div>
+
 
         <VariableGroup
           title="Inputs"
-          icon="📥"
+          iconName="mdi:import"
           variables={grouped.input}
         />
         <VariableGroup
           title="Previous Phases"
-          icon="📤"
+          iconName="mdi:export-variant"
           variables={grouped.output}
         />
         <VariableGroup
           title="State"
-          icon="📦"
+          iconName="mdi:database-outline"
           variables={grouped.state}
         />
         <VariableGroup
           title="Built-ins"
-          icon="⚙️"
+          iconName="mdi:cog-outline"
           variables={grouped.builtin}
           defaultOpen={false}
         />

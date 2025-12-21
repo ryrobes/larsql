@@ -602,15 +602,76 @@ def run_cell():
             else:
                 rendered_inputs[key] = value
 
+        # Check if this is a regular LLM phase (no tool field, has instructions)
+        is_llm_phase = not tool and cell.get('instructions')
+
         # Get original code for potential auto-fix
         original_code = rendered_inputs.get('query') if tool == 'sql_data' else rendered_inputs.get('code', '')
 
-        # Execute the appropriate tool
+        # Execute the appropriate tool or phase
         execution_error = None
         result = None
 
         try:
-            if tool == 'sql_data':
+            if is_llm_phase:
+                # Regular LLM phase - use run_cascade with temp file
+                import traceback
+                try:
+                    # Render Jinja2 templates in instructions
+                    instructions = cell.get('instructions', '')
+                    if instructions and isinstance(instructions, str):
+                        try:
+                            from jinja2 import Template
+                            template = Template(instructions)
+                            rendered_instructions = template.render(**render_context)
+                        except Exception as e:
+                            print(f"[Jinja Render Warning] {e}")
+                            rendered_instructions = instructions
+                    else:
+                        rendered_instructions = instructions
+
+                    # Create phase with rendered instructions
+                    rendered_cell = {**cell, 'instructions': rendered_instructions}
+
+                    # Create a mini-cascade with just this phase
+                    mini_cascade = {
+                        'cascade_id': f'notebook_{phase_name}',
+                        'description': 'Notebook LLM phase',
+                        'phases': [rendered_cell]
+                    }
+
+                    # Write to temp file (run_cascade expects a file path)
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+                        yaml.dump(mini_cascade, f)
+                        temp_path = f.name
+
+                    try:
+                        # Run cascade
+                        cell_session_id = f"{session_id}_llm_{phase_name}"
+
+                        cascade_result = run_cascade(temp_path, inputs or {}, session_id=cell_session_id)
+
+                        # run_cascade returns a dict with the final output
+                        # Format it for notebook display
+                        result = {
+                            '_route': 'success',
+                            'result': cascade_result if isinstance(cascade_result, dict) else {'content': str(cascade_result)},
+                            'content': str(cascade_result)
+                        }
+                    finally:
+                        # Clean up temp file
+                        try:
+                            os.unlink(temp_path)
+                        except:
+                            pass
+
+                except Exception as llm_error:
+                    print(f"[LLM Phase Error] {llm_error}")
+                    print(f"[LLM Phase Cell] {json.dumps(cell, indent=2)}")
+                    print(traceback.format_exc())
+                    raise
+
+            elif tool == 'sql_data':
                 result = sql_data(
                     query=rendered_inputs.get('query', ''),
                     connection=rendered_inputs.get('connection'),
