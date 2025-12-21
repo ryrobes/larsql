@@ -1,0 +1,61 @@
+cascade_id: game21
+description: Generated from Image Playground
+inputs_schema:
+  prompt: Prompt text for prompt
+phases:
+- name: llm_phase
+  instructions: '{{ input.prompt }}
+
+    '
+  model: google/gemini-2.5-flash-lite
+  soundings:
+    factor: 3
+    models:
+    - anthropic/claude-sonnet-4
+    - openai/gpt-4.1
+    - google/gemini-2.5-flash
+    model_strategy: round_robin
+    mutate: true
+    mutation_mode: approach
+    evaluator_instructions: 'Evaluate these 3 responses. Pick the best based on: -
+      Completeness (covers all aspects?) - Clarity (well-structured?)'
+    reforge:
+      steps: 2
+      factor_per_step: 2
+      mutate: false
+      honing_prompt: 'REFINE this winning response. Make it: - More specific (concrete
+        technologies, patterns) - More robust (error handling, edge cases) Keep all
+        good parts. ADD depth without unnecessary restructuring.'
+  rules:
+    max_turns: 1
+_playground:
+  version: 1
+  viewport:
+    x: 0
+    y: 0
+    zoom: 1
+  nodes:
+  - id: prompt_1
+    type: prompt
+    position:
+      x: -16
+      y: 224
+    data:
+      text: Cold Fusion?
+      name: prompt
+  - id: phase_2
+    type: phase
+    position:
+      x: 336
+      y: 176
+    data:
+      name: llm_phase
+      width: 480
+      height: 416
+      discoveredInputs:
+      - prompt
+  edges:
+  - source: prompt_1
+    target: phase_2
+    sourceHandle: text-out
+    targetHandle: text-in

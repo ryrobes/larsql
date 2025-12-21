@@ -129,6 +129,7 @@ function ResearchCockpit({
   onCockpit,
   onSextant,
   onWorkshop,
+  onPlayground,
   onTools,
   onSearch,
   onArtifacts,
@@ -1190,6 +1191,7 @@ function ResearchCockpit({
         onCockpit={onCockpit}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
+        onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
         onArtifacts={onArtifacts}

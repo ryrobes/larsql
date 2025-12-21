@@ -3467,22 +3467,37 @@ def browse_cascade_files():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/playground/load/<session_id>', methods=['GET'])
-def load_playground_cascade(session_id):
-    """Load a playground cascade by session ID.
+@app.route('/api/playground/load/<cascade_id>', methods=['GET'])
+def load_playground_cascade(cascade_id):
+    """Load a playground cascade by cascade_id or session_id.
 
-    Returns the full cascade config including _playground metadata
-    for restoring the graph state.
+    Searches multiple directories: playground_scratchpad, cascades, examples, tackle.
+    Returns the full cascade config including _playground metadata for restoring the graph state.
     """
     try:
-        filepath = os.path.join(PLAYGROUND_SCRATCHPAD_DIR, f"{session_id}.yaml")
+        # Search directories in order of priority
+        search_dirs = [
+            PLAYGROUND_SCRATCHPAD_DIR,
+            CASCADES_DIR,
+            EXAMPLES_DIR,
+            TACKLE_DIR,
+        ]
 
-        if not os.path.exists(filepath):
+        filepath = None
+        for search_dir in search_dirs:
+            # Try YAML first
+            candidate = os.path.join(search_dir, f"{cascade_id}.yaml")
+            if os.path.exists(candidate):
+                filepath = candidate
+                break
             # Try JSON
-            filepath = os.path.join(PLAYGROUND_SCRATCHPAD_DIR, f"{session_id}.json")
+            candidate = os.path.join(search_dir, f"{cascade_id}.json")
+            if os.path.exists(candidate):
+                filepath = candidate
+                break
 
-        if not os.path.exists(filepath):
-            return jsonify({'error': f'Cascade not found: {session_id}'}), 404
+        if not filepath:
+            return jsonify({'error': f'Cascade not found: {cascade_id}'}), 404
 
         config = load_config_file(filepath)
         return jsonify(config)

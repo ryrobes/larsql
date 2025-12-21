@@ -8,15 +8,17 @@ import ReactFlow, {
 import usePlaygroundStore from '../stores/playgroundStore';
 import PromptNode from './nodes/PromptNode';
 import ImageNode from './nodes/ImageNode';
-import PhaseNode from './nodes/PhaseNode';
+import PhaseCard from './nodes/PhaseCard';
 import 'reactflow/dist/style.css';
 import './PlaygroundCanvas.css';
 
 // Register custom node types
+// PhaseCard replaces PhaseNode - all phases are now two-sided cards
 const nodeTypes = {
   prompt: PromptNode,
   image: ImageNode,
-  phase: PhaseNode,
+  phase: PhaseCard,  // Two-sided card with flip animation, stacked deck for soundings
+  card: PhaseCard,   // Alias for backwards compatibility
 };
 
 /**
@@ -125,6 +127,9 @@ function PlaygroundCanvas() {
     } else if (nodeType === 'phase') {
       // Phase node - use addPhaseNode from store
       usePlaygroundStore.getState().addPhaseNode(position);
+    } else if (nodeType === 'card') {
+      // Card node - new two-sided card with flip animation
+      usePlaygroundStore.getState().addCardNode(position);
     } else {
       addNode(paletteId, position);
     }
@@ -189,6 +194,7 @@ function PlaygroundCanvas() {
           nodeColor={(node) => {
             if (node.type === 'prompt') return '#10b981';
             if (node.type === 'phase') return '#06b6d4';
+            if (node.type === 'card') return '#8B5CF6';  // Purple for card nodes
             if (node.data?.paletteColor) return node.data.paletteColor;
             return 'var(--ocean-primary)';
           }}
@@ -204,7 +210,6 @@ function PlaygroundCanvas() {
       {nodes.length === 0 && (
         <div className="canvas-empty-state">
           <div className="empty-state-icon">
-            <span role="img" aria-label="palette">🎨</span>
           </div>
           <h3>Start Building</h3>
           <p>Drag nodes from the palette to create your image workflow</p>

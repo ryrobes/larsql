@@ -36,6 +36,15 @@
       "description": "Custom LLM phase with full YAML control"
     },
     {
+      "id": "phase_card",
+      "name": "Phase Card",
+      "category": "agent",
+      "nodeType": "card",
+      "icon": "mdi:cards-playing-outline",
+      "color": "#8B5CF6",
+      "description": "Two-sided card with flip animation, stacked deck for soundings"
+    },
+    {
       "id": "decompose",
       "name": "Decompose",
       "category": "transformer",

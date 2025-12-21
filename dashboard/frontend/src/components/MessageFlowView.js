@@ -239,7 +239,7 @@ function EvaluatorSection({ evaluator, winnerIndex }) {
   );
 }
 
-function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null, externalData = null, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
+function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideControls = false, scrollToIndex = null, onMessageSelect = null, selectedMessageIndex = null, runningSessions: parentRunningSessions = null, sessionUpdates: parentSessionUpdates = null, externalData = null, onMessageFlow, onSextant, onWorkshop, onPlayground, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [sessionId, setSessionId] = useState(initialSessionId || '');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -752,6 +752,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             onMessageFlow={onMessageFlow}
             onSextant={onSextant}
             onWorkshop={onWorkshop}
+            onPlayground={onPlayground}
             onTools={onTools}
             onSearch={onSearch}
             onArtifacts={onArtifacts}

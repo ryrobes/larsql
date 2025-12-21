@@ -219,6 +219,39 @@ rules:
       state.selectedNodeId = nodeId;
     }),
 
+    // Add a card node (Two-sided PhaseCard with flip animation)
+    addCardNode: (position) => set((state) => {
+      const nodeId = generateNodeId('card');
+
+      // Generate unique name
+      const existingNames = getExistingNames(state.nodes);
+      const uniqueName = generateUniqueName('llm_phase', existingNames);
+
+      const defaultYaml = `name: ${uniqueName}
+instructions: |
+  {{ input.prompt }}
+model: google/gemini-2.5-flash-lite
+rules:
+  max_turns: 1
+`;
+
+      const newNode = {
+        id: nodeId,
+        type: 'card',  // Uses PhaseCard component
+        position,
+        data: {
+          name: uniqueName,
+          yaml: defaultYaml,
+          discoveredInputs: ['prompt'],
+          status: 'idle',
+          output: '',
+        },
+      };
+
+      state.nodes.push(newNode);
+      state.selectedNodeId = nodeId;
+    }),
+
     // Remove a node
     removeNode: (nodeId) => set((state) => {
       state.nodes = state.nodes.filter(n => n.id !== nodeId);
@@ -514,6 +547,8 @@ rules:
         phases,
 
         // Embed playground state for UI persistence
+        // NOTE: Don't store yaml string in node data - it's redundant with phases[]
+        // When loading, we reconstruct yaml from the phase definition
         _playground: {
           version: 1,
           viewport: state.viewport,
@@ -527,8 +562,7 @@ rules:
               name: n.data.name, // Persist custom names
               width: n.data.width,
               height: n.data.height,
-              // Phase node specific data
-              yaml: n.data.yaml,
+              // Phase node: store discoveredInputs but NOT yaml (reconstructed on load)
               discoveredInputs: n.data.discoveredInputs,
             },
           })),
@@ -542,7 +576,12 @@ rules:
       };
 
       return {
-        yaml: yaml.dump(cascade, { lineWidth: -1 }),
+        yaml: yaml.dump(cascade, {
+          lineWidth: 100,
+          noRefs: true,
+          quotingType: '"',
+          forceQuotes: false,
+        }),
         inputs,
       };
     },
@@ -1228,13 +1267,27 @@ rules:
               },
             };
           } else if (n.type === 'phase') {
-            // Restore phase node with YAML data
+            // Restore phase node - reconstruct YAML from phase definition
+            // Look up the phase by name in config.phases
+            const phaseName = n.data?.name || 'llm_phase';
+            const phaseConfig = config.phases?.find(p => p.name === phaseName);
+
+            // Reconstruct clean YAML from the phase config (not the stringified blob)
+            let phaseYaml = n.data?.yaml || '';
+            if (phaseConfig && !phaseYaml) {
+              // Build yaml from the phase definition
+              phaseYaml = yaml.dump(phaseConfig, {
+                lineWidth: 100,
+                noRefs: true,
+              });
+            }
+
             return {
               id: n.id,
               type: 'phase',
               position: n.position,
               data: {
-                yaml: n.data?.yaml || '',
+                yaml: phaseYaml,
                 discoveredInputs: n.data?.discoveredInputs || [],
                 status: 'idle',
                 output: '',

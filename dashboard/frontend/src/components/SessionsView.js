@@ -27,6 +27,7 @@ function SessionsView({
   onCockpit,
   onSextant,
   onWorkshop,
+  onPlayground,
   onTools,
   onSearch,
   onSqlQuery,
@@ -253,6 +254,7 @@ function SessionsView({
           onCockpit={onCockpit}
           onSextant={onSextant}
           onWorkshop={onWorkshop}
+          onPlayground={onPlayground}
           onTools={onTools}
           onSearch={onSearch}
           onSqlQuery={onSqlQuery}
@@ -320,6 +322,7 @@ function SessionsView({
         onCockpit={onCockpit}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
+        onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
         onSqlQuery={onSqlQuery}

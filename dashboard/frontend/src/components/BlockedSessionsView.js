@@ -450,7 +450,7 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
 /**
  * Main Blocked Sessions View
  */
-function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
+function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextant, onWorkshop, onPlayground, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [blockedSessions, setBlockedSessions] = useState([]);
   const [waitingSignals, setWaitingSignals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -739,6 +739,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
         onMessageFlow={onMessageFlow}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
+        onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
         onArtifacts={onArtifacts}

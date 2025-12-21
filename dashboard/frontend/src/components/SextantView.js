@@ -1449,7 +1449,7 @@ function SimilaritySearch({ onResults }) {
  * 3. Direct manipulation - click to expand, inline actions
  * 4. Tight loops - no modals, everything inline
  */
-function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
+function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onPlayground, onTools, onSearch, onArtifacts, onBlocked, blockedCount = 0, sseConnected = false }) {
   const [cascades, setCascades] = useState([]);
   const [selectedCascade, setSelectedCascade] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -1527,6 +1527,7 @@ function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onTools, on
         onMessageFlow={onMessageFlow}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
+        onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
         onArtifacts={onArtifacts}

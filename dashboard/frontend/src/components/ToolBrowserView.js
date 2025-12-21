@@ -14,6 +14,7 @@ function ToolBrowserView({
   onCockpit,
   onSextant,
   onWorkshop,
+  onPlayground,
   onTools,
   onSearch,
   onSqlQuery,
@@ -88,6 +89,7 @@ function ToolBrowserView({
         onCockpit={onCockpit}
         onSextant={onSextant}
         onWorkshop={onWorkshop}
+        onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
         onSqlQuery={onSqlQuery}
