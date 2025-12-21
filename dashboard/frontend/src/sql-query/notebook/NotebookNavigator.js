@@ -3,6 +3,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useNotebookStore from '../stores/notebookStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
+import InputsForm from './InputsForm';
 import './NotebookNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -294,9 +295,7 @@ function PhaseTypesSection() {
 
       {isExpanded && (
         <div className="nav-section-content nav-phase-types-content">
-          <div className="nav-phase-types-hint">
-            Drag to timeline →
-          </div>
+
           {phaseTypes.map(type => (
             <PhaseTypePill key={type.type} {...type} />
           ))}
@@ -380,6 +379,7 @@ function NotebookNavigator() {
   const phases = notebook.phases || [];
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
   const errorCount = Object.values(cellStates).filter(s => s?.status === 'error').length;
+  const hasInputs = notebook.inputs_schema && Object.keys(notebook.inputs_schema).length > 0;
 
   return (
     <div className="notebook-navigator">
@@ -397,6 +397,13 @@ function NotebookNavigator() {
           <Icon icon="mdi:loading" className="nav-running-icon spin" />
         )}
       </div>
+
+      {/* Inputs Form (if cascade has inputs_schema) */}
+      {hasInputs && (
+        <div className="nav-inputs-section">
+          <InputsForm schema={notebook.inputs_schema} />
+        </div>
+      )}
 
       {/* Phase Types Section (Draggable Palette) */}
       <PhaseTypesSection />

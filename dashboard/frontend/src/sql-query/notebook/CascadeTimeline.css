@@ -5,6 +5,7 @@
 .cascade-timeline {
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
   background-color: #0a0a0a;
   color: #cbd5e1;
@@ -195,6 +196,7 @@
 
 .cascade-timeline-strip {
   flex-shrink: 0;
+  width: 100%;
   height: 150px;
   background-color: #0b1219;
   border-bottom: 2px solid #1a2028;
@@ -209,6 +211,7 @@
   gap: 0;
   padding: 20px;
   min-height: 100%;
+  min-width: 100%;
   flex-shrink: 0;
 }
 
@@ -238,12 +241,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
+  padding: 0 4px;
   color: #374151;
   flex-shrink: 0;
-  width: 36px;
-  min-width: 36px;
-  max-width: 36px;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
 }
 
 /* ============================================
@@ -347,9 +350,9 @@
    ============================================ */
 
 .cascade-drop-zone {
-  width: 40px;
-  min-width: 40px;
-  max-width: 40px;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
   flex-shrink: 0;
   flex-grow: 0;
   display: flex;
