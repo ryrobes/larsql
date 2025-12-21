@@ -9,6 +9,7 @@ import SqlEditor from './components/SqlEditor';
 import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import { NotebookEditor, NotebookNavigator } from './notebook';
+import CascadeTimeline from './notebook/CascadeTimeline';
 import Header from '../components/Header';
 import './SqlQueryPage.css';
 
@@ -101,6 +102,13 @@ function SqlQueryPage({
               >
                 Notebook
               </button>
+              <button
+                className={`sql-mode-btn ${mode === 'timeline' ? 'active' : ''}`}
+                onClick={() => setMode('timeline')}
+                title="Horizontal cascade builder (experimental)"
+              >
+                Timeline
+              </button>
             </div>
 
             <span className="header-divider">·</span>
@@ -123,7 +131,28 @@ function SqlQueryPage({
         sseConnected={sseConnected}
       />
 
-      {mode === 'notebook' ? (
+      {mode === 'timeline' ? (
+        /* Timeline Mode - Horizontal cascade builder with sidebar */
+        <Split
+          className="sql-query-horizontal-split"
+          sizes={[20, 80]}
+          minSize={[180, 400]}
+          maxSize={[500, Infinity]}
+          gutterSize={6}
+          gutterAlign="center"
+          direction="horizontal"
+        >
+          {/* Left Sidebar - Cascade Navigator */}
+          <div className="sql-query-schema-panel notebook-mode">
+            <NotebookNavigator />
+          </div>
+
+          {/* Timeline Area */}
+          <div className="sql-query-timeline-area">
+            <CascadeTimeline key="timeline-mode" />
+          </div>
+        </Split>
+      ) : mode === 'notebook' ? (
         /* Notebook Mode */
         <Split
           className="sql-query-horizontal-split"
@@ -141,7 +170,7 @@ function SqlQueryPage({
 
           {/* Notebook Editor */}
           <div className="sql-query-notebook-area">
-            <NotebookEditor />
+            <NotebookEditor key="notebook-mode" />
           </div>
         </Split>
       ) : (

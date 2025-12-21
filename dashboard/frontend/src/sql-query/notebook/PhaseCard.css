@@ -1,0 +1,177 @@
+/* ============================================
+   PHASE CARD - Compact Horizontal Card
+   ============================================ */
+
+.phase-card {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  height: 90px;
+  background-color: #0f1821;
+  border: 2px solid #1a2028;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  position: relative;
+  gap: 6px;
+}
+
+.phase-card:hover {
+  border-color: #2a3038;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.phase-card-selected {
+  border-color: #2dd4bf !important;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.2), 0 4px 12px rgba(45, 212, 191, 0.2) !important;
+  background-color: rgba(45, 212, 191, 0.05);
+}
+
+/* Status-based borders */
+.phase-card-running {
+  border-color: #fbbf24;
+  animation: phase-card-pulse 1.5s ease-in-out infinite;
+}
+
+.phase-card-success {
+  border-color: #34d399;
+}
+
+.phase-card-error {
+  border-color: #f87171;
+}
+
+.phase-card-stale {
+  border-color: #64748b;
+  border-style: dashed;
+}
+
+@keyframes phase-card-pulse {
+  0%, 100% { border-color: #fbbf24; }
+  50% { border-color: rgba(251, 191, 36, 0.5); }
+}
+
+/* ============================================
+   TOP ROW (Index + Status)
+   ============================================ */
+
+.phase-card-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.phase-card-index {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ============================================
+   TYPE ROW (Icon + Label - nested in top row)
+   ============================================ */
+
+.phase-card-type-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phase-card-type-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Status Icons */
+.phase-card-status-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #1a2028;
+  border-top-color: #fbbf24;
+  border-radius: 50%;
+  animation: phase-card-spin 0.8s linear infinite;
+}
+
+@keyframes phase-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+.phase-card-status-success {
+  color: #34d399;
+  font-size: 18px;
+}
+
+.phase-card-status-error {
+  color: #f87171;
+  font-size: 18px;
+}
+
+.phase-card-status-stale,
+.phase-card-status-pending {
+  color: #475569;
+  font-size: 16px;
+}
+
+/* ============================================
+   NAME
+   ============================================ */
+
+.phase-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f0f4f8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* ============================================
+   BOTTOM ROW (Stats + Badges - all horizontal)
+   ============================================ */
+
+.phase-card-bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.phase-card-stat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.phase-card-stat-rows {
+  color: #34d399;
+}
+
+.phase-card-badge {
+  font-size: 8px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.phase-card-badge-cached {
+  background-color: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.phase-card-badge-fixed {
+  background-color: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
