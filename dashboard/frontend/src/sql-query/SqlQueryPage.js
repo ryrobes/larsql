@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { DndContext } from '@dnd-kit/core';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useSqlQueryStore from './stores/sqlQueryStore';
@@ -10,6 +11,7 @@ import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import { NotebookEditor, NotebookNavigator } from './notebook';
 import CascadeTimeline from './notebook/CascadeTimeline';
+import VerticalSidebar from './notebook/VerticalSidebar';
 import Header from '../components/Header';
 import './SqlQueryPage.css';
 
@@ -37,7 +39,25 @@ function SqlQueryPage({
     connections
   } = useSqlQueryStore();
 
-  const { mode, setMode, notebooks, fetchNotebooks, loadNotebook } = useNotebookStore();
+  const { mode, setMode, notebooks, fetchNotebooks, loadNotebook, addCell } = useNotebookStore();
+
+  // Drag and drop handlers for timeline mode
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+
+    if (!over) return;
+
+    // Check if we're dropping a phase type
+    if (active.data.current?.type === 'phase-type') {
+      const phaseType = active.data.current.phaseType;
+      const dropPosition = over.data.current?.position;
+
+      if (dropPosition !== undefined) {
+        // Insert at specific position
+        addCell(phaseType, dropPosition);
+      }
+    }
+  };
 
   // Fetch connections on mount
   useEffect(() => {
@@ -81,78 +101,102 @@ function SqlQueryPage({
 
   return (
     <div className="sql-query-page">
-      <Header
-        centerContent={
-          <>
-            <Icon icon="mdi:database-search" width="24" />
-            <span className="header-stat">SQL Query IDE</span>
-            <span className="header-divider">·</span>
-
-            {/* Mode Toggle */}
-            <div className="sql-mode-toggle">
-              <button
-                className={`sql-mode-btn ${mode === 'query' ? 'active' : ''}`}
-                onClick={() => setMode('query')}
-              >
-                Query
-              </button>
-              <button
-                className={`sql-mode-btn ${mode === 'notebook' ? 'active' : ''}`}
-                onClick={() => setMode('notebook')}
-              >
-                Notebook
-              </button>
-              <button
-                className={`sql-mode-btn ${mode === 'timeline' ? 'active' : ''}`}
-                onClick={() => setMode('timeline')}
-                title="Horizontal cascade builder (experimental)"
-              >
-                Timeline
-              </button>
-            </div>
-
-            <span className="header-divider">·</span>
-            <span className="header-stat">{connections.length} <span className="stat-dim">connections</span></span>
-          </>
-        }
-        onMessageFlow={onMessageFlow}
-        onCockpit={onCockpit}
-        onSextant={onSextant}
-        onWorkshop={onWorkshop}
-        onPlayground={onPlayground}
-        onTools={onTools}
-        onSearch={onSearch}
-        onSqlQuery={onSqlQuery}
-        onArtifacts={onArtifacts}
-        onBrowser={onBrowser}
-        onSessions={onSessions}
-        onBlocked={onBlocked}
-        blockedCount={blockedCount}
-        sseConnected={sseConnected}
-      />
-
       {mode === 'timeline' ? (
-        /* Timeline Mode - Horizontal cascade builder with sidebar */
-        <Split
-          className="sql-query-horizontal-split"
-          sizes={[20, 80]}
-          minSize={[180, 400]}
-          maxSize={[500, Infinity]}
-          gutterSize={6}
-          gutterAlign="center"
-          direction="horizontal"
-        >
-          {/* Left Sidebar - Cascade Navigator */}
-          <div className="sql-query-schema-panel notebook-mode">
-            <NotebookNavigator />
-          </div>
+        /* Timeline Mode - Vertical sidebar with drag-drop context */
+        <DndContext onDragEnd={handleDragEnd}>
+          <div className="sql-query-timeline-layout">
+            <VerticalSidebar
+              onMessageFlow={onMessageFlow}
+              onCockpit={onCockpit}
+              onSextant={onSextant}
+              onWorkshop={onWorkshop}
+              onPlayground={onPlayground}
+              onTools={onTools}
+              onSearch={onSearch}
+              onSqlQuery={onSqlQuery}
+              onArtifacts={onArtifacts}
+              onBrowser={onBrowser}
+              onSessions={onSessions}
+              onBlocked={onBlocked}
+              blockedCount={blockedCount}
+              sseConnected={sseConnected}
+            />
+            <Split
+              className="sql-query-horizontal-split"
+              sizes={[20, 80]}
+              minSize={[180, 400]}
+              maxSize={[500, Infinity]}
+              gutterSize={6}
+              gutterAlign="center"
+              direction="horizontal"
+            >
+              {/* Left Sidebar - Cascade Navigator */}
+              <div className="sql-query-schema-panel notebook-mode">
+                <NotebookNavigator />
+              </div>
 
-          {/* Timeline Area */}
-          <div className="sql-query-timeline-area">
-            <CascadeTimeline key="timeline-mode" />
+              {/* Timeline Area */}
+              <div className="sql-query-timeline-area">
+                <CascadeTimeline key="timeline-mode" />
+              </div>
+            </Split>
           </div>
-        </Split>
-      ) : mode === 'notebook' ? (
+        </DndContext>
+      ) : (
+        <>
+          <Header
+            centerContent={
+              <>
+                <Icon icon="mdi:database-search" width="24" />
+                <span className="header-stat">SQL Query IDE</span>
+                <span className="header-divider">·</span>
+
+                {/* Mode Toggle */}
+                <div className="sql-mode-toggle">
+                  <button
+                    className={`sql-mode-btn ${mode === 'query' ? 'active' : ''}`}
+                    onClick={() => setMode('query')}
+                  >
+                    Query
+                  </button>
+                  <button
+                    className={`sql-mode-btn ${mode === 'notebook' ? 'active' : ''}`}
+                    onClick={() => setMode('notebook')}
+                  >
+                    Notebook
+                  </button>
+                  <button
+                    className={`sql-mode-btn ${mode === 'timeline' ? 'active' : ''}`}
+                    onClick={() => setMode('timeline')}
+                    title="Horizontal cascade builder (experimental)"
+                  >
+                    Timeline
+                  </button>
+                </div>
+
+                <span className="header-divider">·</span>
+                <span className="header-stat">{connections.length} <span className="stat-dim">connections</span></span>
+              </>
+            }
+            onMessageFlow={onMessageFlow}
+            onCockpit={onCockpit}
+            onSextant={onSextant}
+            onWorkshop={onWorkshop}
+            onPlayground={onPlayground}
+            onTools={onTools}
+            onSearch={onSearch}
+            onSqlQuery={onSqlQuery}
+            onArtifacts={onArtifacts}
+            onBrowser={onBrowser}
+            onSessions={onSessions}
+            onBlocked={onBlocked}
+            blockedCount={blockedCount}
+            sseConnected={sseConnected}
+          />
+        </>
+      )}
+
+      {mode === 'timeline' ? null : mode === 'notebook' ? (
         /* Notebook Mode */
         <Split
           className="sql-query-horizontal-split"

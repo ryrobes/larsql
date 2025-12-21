@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useNotebookStore from '../stores/notebookStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
@@ -244,6 +245,67 @@ function SessionTablesSection({ sessionId, phases, cellStates }) {
   );
 }
 
+// Draggable phase type pill
+function PhaseTypePill({ type, icon, label, color }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `phase-type-${type}`,
+    data: { type: 'phase-type', phaseType: type },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`nav-phase-type-pill ${isDragging ? 'dragging' : ''}`}
+      style={{ borderColor: color }}
+    >
+      <Icon icon={icon} width="16" style={{ color }} />
+      <span style={{ color }}>{label}</span>
+    </div>
+  );
+}
+
+// Phase Types section (draggable palette)
+function PhaseTypesSection() {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const phaseTypes = [
+    { type: 'sql_data', icon: 'mdi:database', label: 'SQL', color: '#60a5fa' },
+    { type: 'python_data', icon: 'mdi:language-python', label: 'Python', color: '#fbbf24' },
+    { type: 'js_data', icon: 'mdi:language-javascript', label: 'JavaScript', color: '#f7df1e' },
+    { type: 'clojure_data', icon: 'simple-icons:clojure', label: 'Clojure', color: '#63b132' },
+    { type: 'windlass_data', icon: 'mdi:sail-boat', label: 'LLM Phase', color: '#2dd4bf' },
+  ];
+
+  return (
+    <div className="nav-section">
+      <div
+        className="nav-section-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          className="nav-chevron"
+        />
+        <Icon icon="mdi:puzzle" className="nav-section-icon" />
+        <span className="nav-section-title">Phase Types</span>
+      </div>
+
+      {isExpanded && (
+        <div className="nav-section-content nav-phase-types-content">
+          <div className="nav-phase-types-hint">
+            Drag to timeline →
+          </div>
+          {phaseTypes.map(type => (
+            <PhaseTypePill key={type.type} {...type} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Connections section (collapsed by default)
 function ConnectionsSection() {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -335,6 +397,9 @@ function NotebookNavigator() {
           <Icon icon="mdi:loading" className="nav-running-icon spin" />
         )}
       </div>
+
+      {/* Phase Types Section (Draggable Palette) */}
+      <PhaseTypesSection />
 
       {/* Phases Section */}
       <div className="nav-section nav-phases-section">

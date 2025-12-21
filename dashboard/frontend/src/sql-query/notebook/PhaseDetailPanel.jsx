@@ -4,8 +4,13 @@ import Editor from '@monaco-editor/react';
 import { Icon } from '@iconify/react';
 import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
+import createPlotlyComponent from 'react-plotly.js/factory';
+import Plotly from 'plotly.js/dist/plotly';
 import useNotebookStore from '../stores/notebookStore';
 import './PhaseDetailPanel.css';
+
+// Create Plot component
+const Plot = createPlotlyComponent(Plotly);
 
 // Dark AG Grid theme
 const detailGridTheme = themeQuartz.withParams({
@@ -255,7 +260,39 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                       <span className="phase-detail-error-label">Error:</span>
                       <pre className="phase-detail-error-message">{error}</pre>
                     </div>
+                  ) : result?.type === 'image' && (result?.api_url || result?.base64) ? (
+                    /* Image result (matplotlib, PIL) */
+                    <div className="phase-detail-image">
+                      <img
+                        src={result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`}
+                        alt={result.content || "Phase output"}
+                        style={{ maxWidth: '100%', height: 'auto' }}
+                      />
+                      {result.width && result.height && (
+                        <div className="phase-detail-image-info">
+                          {result.width} × {result.height}
+                        </div>
+                      )}
+                    </div>
+                  ) : result?.type === 'plotly' && result?.data ? (
+                    /* Plotly chart result */
+                    <div className="phase-detail-plotly">
+                      <Plot
+                        data={JSON.parse(JSON.stringify(result.data))}
+                        layout={{
+                          ...JSON.parse(JSON.stringify(result.layout || {})),
+                          paper_bgcolor: '#080c12',
+                          plot_bgcolor: '#080c12',
+                          font: { color: '#cbd5e1' },
+                          xaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
+                          yaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
+                        }}
+                        config={{ responsive: true, displayModeBar: true }}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    </div>
                   ) : result?.rows && result?.columns ? (
+                    /* DataFrame result */
                     <div className="phase-detail-grid">
                       <AgGridReact
                         rowData={gridRowData}
@@ -268,6 +305,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                       />
                     </div>
                   ) : result?.result !== undefined ? (
+                    /* JSON result */
                     <div className="phase-detail-json">
                       <Editor
                         height="100%"

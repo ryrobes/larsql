@@ -48,9 +48,8 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
       className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''}`}
       onClick={onSelect}
     >
-      {/* Top row: Index + Type (Icon + Label) + Status */}
+      {/* Top row: Type (Icon + Label) + Status */}
       <div className="phase-card-top-row">
-        <div className="phase-card-index">{index + 1}</div>
         <div className="phase-card-type-row">
           <Icon icon={info.icon} width="16" style={{ color: info.color }} />
           <span className="phase-card-type-label" style={{ color: info.color }}>
@@ -94,4 +93,4 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
   );
 };
 
-export default PhaseCard;
+export default React.memo(PhaseCard);

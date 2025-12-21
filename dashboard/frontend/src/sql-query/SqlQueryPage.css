@@ -231,7 +231,13 @@
   background-color: #0a0a0a;
 }
 
-/* Timeline Mode */
+/* Timeline Mode - Full-height with vertical sidebar */
+.sql-query-timeline-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .sql-query-timeline-area {
   flex: 1;
   overflow: hidden;

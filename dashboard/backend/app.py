@@ -2853,6 +2853,127 @@ def get_mermaid_graph(session_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/mermaid/static/<path:cascade_path>', methods=['GET'])
+@app.route('/api/mermaid/static', methods=['POST'])
+def get_static_mermaid_from_cascade(cascade_path=None):
+    """Generate static Mermaid diagram from cascade definition file (without execution).
+
+    This endpoint performs static analysis of a cascade YAML/JSON file and returns
+    a Mermaid state diagram showing the intended flow structure.
+
+    Two modes supported:
+    1. GET /api/mermaid/static/<path> - cascade_path in URL
+    2. POST /api/mermaid/static with JSON body: {"cascade_path": "..."}
+
+    Args:
+        cascade_path: Path to cascade file (relative to WINDLASS_ROOT or absolute)
+
+    Returns:
+        {
+            'mermaid': str,        # Mermaid diagram string
+            'cascade_id': str,     # Cascade ID from config
+            'cascade_path': str,   # Resolved file path
+            'phases_count': int,   # Number of phases
+            'has_soundings': bool, # Whether any phases have soundings
+            'has_routing': bool    # Whether any phases have routing/handoffs
+        }
+
+    Example:
+        GET /api/mermaid/static/examples/simple_flow.json
+        POST /api/mermaid/static
+        Body: {"cascade_path": "tackle/my_cascade.yaml"}
+    """
+    try:
+        # Import here to avoid circular dependency
+        from windlass.visualizer import generate_mermaid_string_from_config
+        from windlass.cascade import load_cascade_config
+        from windlass.config import get_config
+
+        # Handle POST request with JSON body
+        if request.method == 'POST':
+            data = request.get_json()
+            if not data or 'cascade_path' not in data:
+                return jsonify({'error': 'cascade_path required in JSON body'}), 400
+            cascade_path = data['cascade_path']
+
+        if not cascade_path:
+            return jsonify({'error': 'cascade_path is required'}), 400
+
+        # Resolve path (support relative to WINDLASS_ROOT)
+        config = get_config()
+        windlass_root = Path(config.root_dir)
+
+        # Try as absolute path first
+        resolved_path = Path(cascade_path)
+        if not resolved_path.is_absolute():
+            # Try relative to WINDLASS_ROOT
+            resolved_path = windlass_root / cascade_path
+
+        # Also check common directories
+        if not resolved_path.exists():
+            for subdir in ['examples', 'cascades', 'tackle']:
+                candidate = windlass_root / subdir / cascade_path
+                if candidate.exists():
+                    resolved_path = candidate
+                    break
+
+        if not resolved_path.exists():
+            return jsonify({
+                'error': f'Cascade file not found: {cascade_path}',
+                'searched_paths': [
+                    str(Path(cascade_path)),
+                    str(windlass_root / cascade_path),
+                    str(windlass_root / 'examples' / cascade_path),
+                    str(windlass_root / 'cascades' / cascade_path),
+                    str(windlass_root / 'tackle' / cascade_path),
+                ]
+            }), 404
+
+        # Load cascade config
+        try:
+            cascade_config = load_cascade_config(str(resolved_path))
+        except Exception as load_err:
+            return jsonify({
+                'error': f'Failed to load cascade config: {str(load_err)}',
+                'cascade_path': str(resolved_path)
+            }), 400
+
+        # Generate Mermaid diagram
+        try:
+            mermaid_content = generate_mermaid_string_from_config(cascade_config)
+        except Exception as gen_err:
+            return jsonify({
+                'error': f'Failed to generate Mermaid diagram: {str(gen_err)}',
+                'cascade_path': str(resolved_path)
+            }), 500
+
+        # Extract metadata from config
+        has_soundings = any(
+            phase.soundings and phase.soundings.factor > 1
+            for phase in cascade_config.phases
+        )
+        has_routing = any(
+            phase.handoffs or (phase.routing if hasattr(phase, 'routing') else False)
+            for phase in cascade_config.phases
+        )
+
+        return jsonify({
+            'mermaid': mermaid_content,
+            'cascade_id': cascade_config.cascade_id,
+            'cascade_path': str(resolved_path),
+            'phases_count': len(cascade_config.phases),
+            'has_soundings': has_soundings,
+            'has_routing': has_routing,
+            'description': cascade_config.description
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"Error generating static mermaid for cascade {cascade_path}: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'cascade_path': cascade_path}), 500
+
+
 @app.route('/api/pareto/<session_id>', methods=['GET'])
 def get_pareto_frontier(session_id):
     """Get Pareto frontier data for visualization.

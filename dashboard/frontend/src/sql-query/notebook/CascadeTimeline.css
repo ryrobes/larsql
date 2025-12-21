@@ -209,6 +209,7 @@
   gap: 0;
   padding: 20px;
   min-height: 100%;
+  flex-shrink: 0;
 }
 
 /* Custom scrollbar for timeline */
@@ -240,6 +241,9 @@
   padding: 0 8px;
   color: #374151;
   flex-shrink: 0;
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
 }
 
 /* ============================================
@@ -335,5 +339,74 @@
 
 .cascade-empty-detail p {
   margin: 0;
+  font-size: 14px;
+}
+
+/* ============================================
+   DROP ZONES
+   ============================================ */
+
+.cascade-drop-zone {
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  flex-shrink: 0;
+  flex-grow: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cascade-drop-zone-indicator {
+  width: 4px;
+  height: 80px;
+  background-color: transparent;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.cascade-drop-zone-active .cascade-drop-zone-indicator {
+  width: 8px;
+  background: linear-gradient(180deg, #2dd4bf, #14b8a6);
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.5);
+}
+
+.cascade-drop-zone-active {
+  color: #2dd4bf;
+}
+
+/* ============================================
+   DRAG OVERLAY
+   ============================================ */
+
+.cascade-drag-overlay-pill {
+  padding: 10px 16px;
+  background-color: #0f1821;
+  border: 2px solid #2dd4bf;
+  border-radius: 8px;
+  color: #2dd4bf;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+  pointer-events: none;
+}
+
+/* ============================================
+   EMPTY STATE HINT
+   ============================================ */
+
+.cascade-empty-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #475569;
+  padding: 40px;
+  width: 100%;
+  text-align: center;
+}
+
+.cascade-empty-hint span {
   font-size: 14px;
 }

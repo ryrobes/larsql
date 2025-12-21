@@ -3770,51 +3770,117 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     return path
 
 
-def generate_mermaid_from_config(config: Any, output_path: str) -> str:
+def generate_mermaid_string_from_config(config: Any) -> str:
     """
-    Generate a static Mermaid diagram from CascadeConfig.
+    Generate a static Mermaid diagram string from CascadeConfig.
     Shows the intended structure before execution.
+
+    This is the string-returning variant - useful for APIs.
+
+    Args:
+        config: CascadeConfig object
+
+    Returns:
+        Mermaid diagram as a string
     """
-    lines = ["graph TD"]
+    lines = ["stateDiagram-v2"]
 
     # Styles - Midnight Fjord Dark Theme
     lines.extend([
         "    %% Static Structure Styles - Midnight Fjord Dark Theme",
-        "    classDef cascade fill:#16202A,stroke:#2C3B4B,stroke-width:2px,color:#F0F4F8;",
         "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
+        "    classDef deterministic fill:#16202A,stroke:#6366f1,stroke-width:2px,color:#F0F4F8;",
         "    classDef soundings fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef reforge fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef sub_cascade fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
+        "    classDef ward fill:#16202A,stroke:#f97316,stroke-width:1px,color:#F0F4F8;",
         "",
     ])
 
-    # Note: Removed cascade container for cleaner visualization without outer border
+    lines.append(f"    [*] --> {config.phases[0].name.replace('-', '_').replace(' ', '_')}")
+    lines.append("")
 
     phase_ids = []
 
     for phase in config.phases:
-        phase_id = f"p_{phase.name.replace('-', '_').replace(' ', '_')}"
+        phase_id = f"{phase.name.replace('-', '_').replace(' ', '_')}"
         phase_ids.append(phase_id)
 
-        # Determine phase decoration
-        if phase.soundings and phase.soundings.factor > 1:
-            icon = "[ToT]"  # Soundings / Tree of Thought
+        # Determine phase type and decorations
+        is_deterministic = phase.is_deterministic()
+        has_soundings = phase.soundings and phase.soundings.factor > 1
+        has_reforge = has_soundings and phase.soundings.reforge
+        has_sub_cascades = bool(phase.sub_cascades)
+        has_wards = phase.wards and (phase.wards.pre or phase.wards.post)
+
+        # Build label with icons
+        icons = []
+        if has_soundings:
+            icons.append("🔱ToT")
+        if has_reforge:
+            icons.append("🔨R")
+        if has_sub_cascades:
+            icons.append("📦Sub")
+        if has_wards:
+            icons.append("🛡️W")
+        if is_deterministic:
+            icons.append(f"⚡{phase.tool.split(':')[0] if ':' in phase.tool else phase.tool}")
+
+        label = f"{phase.name}"
+        if icons:
+            label += f" [{', '.join(icons)}]"
+
+        # Determine style class
+        if has_reforge:
+            style = "reforge"
+        elif has_soundings:
             style = "soundings"
-            if phase.soundings.reforge:
-                icon = "[ToT+R]"  # Soundings + Reforge
-                style = "reforge"
-        elif phase.sub_cascades:
-            icon = "[Sub]"  # Sub-cascade
+        elif has_sub_cascades:
             style = "sub_cascade"
+        elif is_deterministic:
+            style = "deterministic"
         else:
-            icon = ""
             style = "phase"
 
-        label = f"{icon} {phase.name}" if icon else phase.name
-        lines.append(f'        {phase_id}["{sanitize_label(label, 40)}"]')
-        lines.append(f"        class {phase_id} {style}")
+        # Create state with description
+        lines.append(f"    state \"{sanitize_label(label, 60)}\" as {phase_id}")
+        lines.append(f"    class {phase_id} {style}")
 
-    # Connect phases (handoffs)
+        # Add note with phase details
+        details = []
+        if is_deterministic:
+            details.append(f"Tool: {phase.tool}")
+            if phase.routing:
+                routes = ", ".join(f"{k}→{v}" for k, v in phase.routing.items())
+                details.append(f"Routes: {routes}")
+        else:
+            if phase.tackle:
+                if phase.tackle == "manifest":
+                    details.append("Tackle: Auto (Quartermaster)")
+                else:
+                    tools = ", ".join(phase.tackle[:3])
+                    if len(phase.tackle) > 3:
+                        tools += f"... (+{len(phase.tackle) - 3})"
+                    details.append(f"Tools: {tools}")
+
+        if phase.rules and phase.rules.max_turns:
+            details.append(f"Max turns: {phase.rules.max_turns}")
+
+        if has_soundings:
+            details.append(f"Soundings: {phase.soundings.factor}x")
+            if phase.soundings.mode == "aggregate":
+                details.append("Mode: Aggregate")
+
+        if details:
+            note_text = "\\n".join(details)
+            lines.append(f"    note right of {phase_id}")
+            for detail in details:
+                lines.append(f"        {sanitize_label(detail, 80)}")
+            lines.append(f"    end note")
+
+        lines.append("")
+
+    # Connect phases (handoffs and routing)
     for i, phase in enumerate(config.phases):
         current_id = phase_ids[i]
 
@@ -3825,13 +3891,53 @@ def generate_mermaid_from_config(config: Any, output_path: str) -> str:
                 # Find target phase
                 for j, p in enumerate(config.phases):
                     if p.name == target:
-                        lines.append(f"        {current_id} --> {phase_ids[j]}")
+                        target_id = phase_ids[j]
+                        # Label the edge if there's a description
+                        if hasattr(handoff, 'description') and handoff.description:
+                            label = sanitize_label(handoff.description, 30)
+                            lines.append(f"    {current_id} --> {target_id} : {label}")
+                        else:
+                            lines.append(f"    {current_id} --> {target_id}")
                         break
+        # Check for deterministic routing
+        elif phase.routing:
+            for route_key, target_name in phase.routing.items():
+                # Find target phase
+                for j, p in enumerate(config.phases):
+                    if p.name == target_name:
+                        target_id = phase_ids[j]
+                        lines.append(f"    {current_id} --> {target_id} : {route_key}")
+                        break
+        # Default sequential connection
         elif i + 1 < len(phase_ids):
-            # Default sequential connection
-            lines.append(f"        {current_id} --> {phase_ids[i+1]}")
+            lines.append(f"    {current_id} --> {phase_ids[i+1]}")
+
+    # Add final state if last phase has no handoffs
+    last_phase = config.phases[-1]
+    last_id = phase_ids[-1]
+    if not last_phase.handoffs and not last_phase.routing:
+        lines.append(f"    {last_id} --> [*]")
+
+    return "\n".join(lines)
+
+
+def generate_mermaid_from_config(config: Any, output_path: str) -> str:
+    """
+    Generate a static Mermaid diagram from CascadeConfig and write to file.
+    Shows the intended structure before execution.
+
+    This is the file-writing variant - wraps generate_mermaid_string_from_config.
+
+    Args:
+        config: CascadeConfig object
+        output_path: Path to write the .mmd file
+
+    Returns:
+        Path to the written file
+    """
+    mermaid_content = generate_mermaid_string_from_config(config)
 
     with open(output_path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(mermaid_content)
 
     return output_path

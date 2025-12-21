@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useNotebookStore from '../stores/notebookStore';
 import PhaseCard from './PhaseCard';
@@ -6,11 +7,32 @@ import PhaseDetailPanel from './PhaseDetailPanel';
 import './CascadeTimeline.css';
 
 /**
+ * DropZone - Visual drop target between phases
+ */
+const DropZone = ({ position }) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `drop-zone-${position}`,
+    data: { position },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`cascade-drop-zone ${isOver ? 'cascade-drop-zone-active' : ''}`}
+    >
+      <div className="cascade-drop-zone-indicator">
+        {isOver && <Icon icon="mdi:plus-circle" width="20" />}
+      </div>
+    </div>
+  );
+};
+
+/**
  * CascadeTimeline - Horizontal cascade builder (DAW-style)
  *
  * Layout:
  * - Top bar: Cascade controls + metadata
- * - Middle strip: Horizontal scrolling phase cards (left→right)
+ * - Middle strip: Horizontal scrolling phase cards (left→right) with drop zones
  * - Bottom panel: Selected phase details (config, code, outputs)
  */
 const CascadeTimeline = () => {
@@ -33,7 +55,6 @@ const CascadeTimeline = () => {
   } = useNotebookStore();
 
   const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(null);
-  const [showAddMenu, setShowAddMenu] = useState(false);
   const timelineRef = useRef(null);
 
   const handleTitleChange = (e) => {
@@ -94,20 +115,6 @@ const CascadeTimeline = () => {
     }
   }, [notebook, newNotebook]);
 
-  const handleAddPhase = (type) => {
-    addCell(type);
-    setShowAddMenu(false);
-    // Auto-select newly added phase
-    setTimeout(() => {
-      const newIndex = (notebook?.phases?.length || 0);
-      setSelectedPhaseIndex(newIndex);
-      // Scroll to end
-      if (timelineRef.current) {
-        timelineRef.current.scrollLeft = timelineRef.current.scrollWidth;
-      }
-    }, 100);
-  };
-
   const handleSelectPhase = (index) => {
     setSelectedPhaseIndex(index);
   };
@@ -128,8 +135,8 @@ const CascadeTimeline = () => {
 
   return (
     <div className="cascade-timeline">
-      {/* Top Control Bar */}
-      <div className="cascade-control-bar">
+        {/* Top Control Bar */}
+        <div className="cascade-control-bar">
         <div className="cascade-control-left">
           <input
             className="cascade-title-input"
@@ -214,6 +221,9 @@ const CascadeTimeline = () => {
       {/* Horizontal Phase Timeline */}
       <div className="cascade-timeline-strip" ref={timelineRef}>
         <div className="cascade-timeline-track">
+          {/* Drop zone at start */}
+          <DropZone position={0} />
+
           {phases.map((phase, index) => (
             <React.Fragment key={phase.name}>
               <PhaseCard
@@ -223,50 +233,21 @@ const CascadeTimeline = () => {
                 isSelected={selectedPhaseIndex === index}
                 onSelect={() => handleSelectPhase(index)}
               />
-              {index < phases.length - 1 && (
-                <div className="cascade-connector">
-                  <Icon icon="mdi:arrow-right" width="20" />
-                </div>
-              )}
+              <div className="cascade-connector">
+                <Icon icon="mdi:arrow-right" width="20" />
+              </div>
+              {/* Drop zone after this phase */}
+              <DropZone position={index + 1} />
             </React.Fragment>
           ))}
 
-          {/* Add Phase Button */}
-          <div className="cascade-add-phase">
-            <button
-              className="cascade-add-btn"
-              onClick={() => setShowAddMenu(!showAddMenu)}
-            >
-              <Icon icon="mdi:plus" width="20" />
-              Add Phase
-            </button>
-
-            {showAddMenu && (
-              <div className="cascade-add-menu">
-                <button onClick={() => handleAddPhase('sql_data')}>
-                  <Icon icon="mdi:database" width="16" />
-                  SQL
-                </button>
-                <button onClick={() => handleAddPhase('python_data')}>
-                  <Icon icon="mdi:language-python" width="16" />
-                  Python
-                </button>
-                <button onClick={() => handleAddPhase('js_data')}>
-                  <Icon icon="mdi:language-javascript" width="16" />
-                  JavaScript
-                </button>
-                <button onClick={() => handleAddPhase('clojure_data')}>
-                  <Icon icon="simple-icons:clojure" width="16" />
-                  Clojure
-                </button>
-                <hr />
-                <button onClick={() => handleAddPhase('windlass_data')} className="cascade-add-llm">
-                  <Icon icon="mdi:sail-boat" width="16" />
-                  LLM Phase
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Empty state hint */}
+          {phases.length === 0 && (
+            <div className="cascade-empty-hint">
+              <Icon icon="mdi:hand-back-left" width="24" />
+              <span>Drag phase types from the sidebar to start</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -284,6 +265,7 @@ const CascadeTimeline = () => {
           <p>Select a phase above to view details</p>
         </div>
       )}
+
     </div>
   );
 };
