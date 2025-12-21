@@ -199,7 +199,7 @@
   width: 100%;
   height: 150px;
   background-color: #0b1219;
-  border-bottom: 2px solid #1a2028;
+  /* border-bottom: 2px solid #1a2028; */
   overflow-x: auto;
   overflow-y: hidden;
   position: relative;
@@ -213,6 +213,26 @@
   min-height: 100%;
   min-width: 100%;
   flex-shrink: 0;
+  position: relative;
+}
+
+/* Metro map style continuous track line */
+.cascade-track-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 6px;
+  background: linear-gradient(90deg,
+    rgba(45, 212, 191, 0.3) 0%,
+    rgba(45, 212, 191, 0.5) 50%,
+    rgba(45, 212, 191, 0.3) 100%
+  );
+  border-radius: 3px;
+  z-index: 0;
+  pointer-events: none;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.2);
 }
 
 /* Custom scrollbar for timeline */
@@ -233,21 +253,6 @@
   background: #2a3038;
 }
 
-/* ============================================
-   CONNECTOR ARROWS
-   ============================================ */
-
-.cascade-connector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  color: #374151;
-  flex-shrink: 0;
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
-}
 
 /* ============================================
    ADD PHASE BUTTON
@@ -350,28 +355,29 @@
    ============================================ */
 
 .cascade-drop-zone {
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
   flex-shrink: 0;
   flex-grow: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
 }
 
 .cascade-drop-zone-indicator {
-  width: 4px;
-  height: 80px;
+  width: 6px;
+  height: 60px;
   background-color: transparent;
-  border-radius: 2px;
+  border-radius: 3px;
   transition: all 0.2s ease;
 }
 
 .cascade-drop-zone-active .cascade-drop-zone-indicator {
-  width: 8px;
+  width: 12px;
   background: linear-gradient(180deg, #2dd4bf, #14b8a6);
-  box-shadow: 0 0 12px rgba(45, 212, 191, 0.5);
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.6);
 }
 
 .cascade-drop-zone-active {

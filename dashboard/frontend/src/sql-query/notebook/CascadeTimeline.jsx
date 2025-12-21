@@ -198,29 +198,15 @@ const CascadeTimeline = () => {
             As Tool
           </button>
 
-          <button
-            className="cascade-btn cascade-btn-primary"
-            onClick={handleRunAll}
-            disabled={isRunningAll || cellCount === 0}
-          >
-            {isRunningAll ? (
-              <>
-                <span className="cascade-spinner-sm" />
-                Running
-              </>
-            ) : (
-              <>
-                <Icon icon="mdi:play" width="16" />
-                Run All
-              </>
-            )}
-          </button>
         </div>
       </div>
 
       {/* Horizontal Phase Timeline */}
       <div className="cascade-timeline-strip" ref={timelineRef}>
         <div className="cascade-timeline-track">
+          {/* Continuous track line (metro map style) */}
+          {phases.length > 0 && <div className="cascade-track-line" />}
+
           {/* Drop zone at start */}
           <DropZone position={0} />
 
@@ -233,9 +219,6 @@ const CascadeTimeline = () => {
                 isSelected={selectedPhaseIndex === index}
                 onSelect={() => handleSelectPhase(index)}
               />
-              <div className="cascade-connector">
-                <Icon icon="mdi:arrow-right" width="20" />
-              </div>
               {/* Drop zone after this phase */}
               <DropZone position={index + 1} />
             </React.Fragment>

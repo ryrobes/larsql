@@ -24,6 +24,7 @@
   box-sizing: border-box;
   contain: layout style;
   will-change: border-color;
+  z-index: 1;
 }
 
 .phase-card:hover {
@@ -32,7 +33,10 @@
 
 .phase-card-selected {
   border-color: #2dd4bf !important;
-  /* Keep exact same dimensions - no layout shift */
+  background: linear-gradient(135deg, #0f2420, #0f1f1d);
+  box-shadow:
+    inset 0 0 0 1px rgba(45, 212, 191, 0.4),
+    0 0 16px rgba(45, 212, 191, 0.3);
 }
 
 /* Status-based borders */

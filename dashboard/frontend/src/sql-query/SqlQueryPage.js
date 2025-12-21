@@ -41,6 +41,9 @@ function SqlQueryPage({
 
   const { mode, setMode, notebooks, fetchNotebooks, loadNotebook, addCell } = useNotebookStore();
 
+  // Persist split sizes in state
+  const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
+
   // Drag and drop handlers for timeline mode
   const handleDragEnd = (event) => {
     const { active, over } = event;
@@ -123,7 +126,8 @@ function SqlQueryPage({
             />
             <Split
               className="sql-query-horizontal-split"
-              sizes={[20, 80]}
+              sizes={timelineSplitSizes}
+              onDragEnd={(sizes) => setTimelineSplitSizes(sizes)}
               minSize={[180, 400]}
               maxSize={[500, Infinity]}
               gutterSize={6}

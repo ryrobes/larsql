@@ -346,7 +346,8 @@ function NotebookNavigator() {
     notebook,
     cellStates,
     sessionId,
-    isRunningAll
+    isRunningAll,
+    runAllCells
   } = useNotebookStore();
 
   const [activePhase, setActivePhase] = useState(null);
@@ -381,21 +382,36 @@ function NotebookNavigator() {
   const errorCount = Object.values(cellStates).filter(s => s?.status === 'error').length;
   const hasInputs = notebook.inputs_schema && Object.keys(notebook.inputs_schema).length > 0;
 
+  const handleRunAll = async () => {
+    await runAllCells();
+  };
+
   return (
     <div className="notebook-navigator">
       {/* Notebook Header */}
       <div className="nav-notebook-header">
-        <Icon icon="mdi:notebook-edit" className="nav-notebook-icon" />
-        <div className="nav-notebook-info">
-          <span className="nav-notebook-name">{notebook.cascade_id}</span>
-          <span className="nav-notebook-stats">
-            {completedCount}/{phases.length} phases
-            {errorCount > 0 && <span className="nav-error-count"> · {errorCount} errors</span>}
-          </span>
+        <div className="nav-notebook-header-left">
+          <Icon icon="mdi:notebook-edit" className="nav-notebook-icon" />
+          <div className="nav-notebook-info">
+            <span className="nav-notebook-name">{notebook.cascade_id}</span>
+            <span className="nav-notebook-stats">
+              {completedCount}/{phases.length} phases
+              {errorCount > 0 && <span className="nav-error-count"> · {errorCount} errors</span>}
+            </span>
+          </div>
         </div>
-        {isRunningAll && (
-          <Icon icon="mdi:loading" className="nav-running-icon spin" />
-        )}
+        <button
+          className="nav-run-all-btn"
+          onClick={handleRunAll}
+          disabled={isRunningAll || phases.length === 0}
+          title="Run all phases"
+        >
+          {isRunningAll ? (
+            <Icon icon="mdi:loading" className="spin" width="14" />
+          ) : (
+            <Icon icon="mdi:play" width="14" />
+          )}
+        </button>
       </div>
 
       {/* Inputs Form (if cascade has inputs_schema) */}

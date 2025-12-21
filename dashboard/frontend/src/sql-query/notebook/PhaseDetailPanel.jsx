@@ -6,6 +6,7 @@ import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js/dist/plotly';
+import yaml from 'js-yaml';
 import useNotebookStore from '../stores/notebookStore';
 import './PhaseDetailPanel.css';
 
@@ -38,14 +39,23 @@ const detailGridTheme = themeQuartz.withParams({
 const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   const { updateCell, runCell, removeCell } = useNotebookStore();
   const [activeTab, setActiveTab] = useState('code');
+  const [showYamlEditor, setShowYamlEditor] = useState(false);
   const editorRef = useRef(null);
+  const yamlEditorRef = useRef(null);
 
-  // Cleanup editor on unmount
+  // Cleanup editors on unmount
   React.useEffect(() => {
     return () => {
       if (editorRef.current) {
         try {
           editorRef.current.dispose();
+        } catch (e) {
+          // Ignore disposal errors
+        }
+      }
+      if (yamlEditorRef.current) {
+        try {
+          yamlEditorRef.current.dispose();
         } catch (e) {
           // Ignore disposal errors
         }
@@ -72,6 +82,26 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   const status = cellState?.status || 'pending';
   const result = cellState?.result;
   const error = cellState?.error;
+
+  // Serialize phase to YAML for YAML editor
+  const phaseYaml = useMemo(() => {
+    try {
+      return yaml.dump(phase, { indent: 2, lineWidth: -1 });
+    } catch (e) {
+      return `# Error serializing phase:\n# ${e.message}`;
+    }
+  }, [phase]);
+
+  const handleYamlChange = useCallback((value) => {
+    try {
+      const parsed = yaml.load(value);
+      // Update entire phase object
+      updateCell(index, parsed);
+    } catch (e) {
+      // Invalid YAML - don't update (user is still typing)
+      console.debug('YAML parse error:', e.message);
+    }
+  }, [index, updateCell]);
 
   const handleCodeChange = useCallback((value) => {
     updateCell(index, { inputs: { ...phase.inputs, [info.codeKey]: value } });
@@ -162,10 +192,18 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
             </>
           )}
           {!isWindlass && (
-            <span className="phase-detail-mode-label">
+            <div className="phase-detail-mode-label">
               <Icon icon="mdi:code-braces" width="16" />
               Code Editor
-            </span>
+              <button
+                className={`phase-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
+                onClick={() => setShowYamlEditor(!showYamlEditor)}
+                title={showYamlEditor ? 'Hide YAML editor' : 'Show YAML editor'}
+              >
+                <Icon icon="mdi:code-json" width="14" />
+                YAML
+              </button>
+            </div>
           )}
         </div>
 
@@ -219,28 +257,90 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
               gutterSize={6}
               gutterAlign="center"
             >
-              {/* Code Editor */}
-              <div className="phase-detail-code-section">
-                <Editor
-                  key={`editor-${phase.name}`}
-                  height="100%"
-                  language={info.language}
-                  value={code}
-                  onChange={handleCodeChange}
-                  theme="detail-dark"
-                  beforeMount={handleMonacoBeforeMount}
-                  onMount={(editor) => { editorRef.current = editor; }}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    lineNumbers: 'on',
-                    wordWrap: 'on',
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                    padding: { top: 12, bottom: 12 },
-                  }}
-                />
+              {/* Code Editor Container (keeps consistent structure for Split) */}
+              <div className="phase-detail-code-container">
+                {showYamlEditor ? (
+                  <Split
+                    className="phase-detail-code-yaml-split"
+                    direction="horizontal"
+                    sizes={[60, 40]}
+                    minSize={[200, 200]}
+                    gutterSize={6}
+                    gutterAlign="center"
+                  >
+                    <div className="phase-detail-code-section">
+                      <Editor
+                        key={`editor-${phase.name}`}
+                        height="100%"
+                        language={info.language}
+                        value={code}
+                        onChange={handleCodeChange}
+                        theme="detail-dark"
+                        beforeMount={handleMonacoBeforeMount}
+                        onMount={(editor) => { editorRef.current = editor; }}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          automaticLayout: true,
+                          scrollBeyondLastLine: false,
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
+                    </div>
+                    <div className="phase-detail-yaml-section">
+                      <div className="phase-detail-yaml-header">
+                        <Icon icon="mdi:file-code-outline" width="14" />
+                        <span>Full Phase YAML</span>
+                      </div>
+                      <Editor
+                        key={`yaml-${phase.name}`}
+                        height="100%"
+                        language="yaml"
+                        value={phaseYaml}
+                        onChange={handleYamlChange}
+                        theme="detail-dark"
+                        beforeMount={handleMonacoBeforeMount}
+                        onMount={(editor) => { yamlEditorRef.current = editor; }}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 12,
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          automaticLayout: true,
+                          scrollBeyondLastLine: false,
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
+                    </div>
+                  </Split>
+                ) : (
+                  <div className="phase-detail-code-section">
+                    <Editor
+                      key={`editor-${phase.name}`}
+                      height="100%"
+                      language={info.language}
+                      value={code}
+                      onChange={handleCodeChange}
+                      theme="detail-dark"
+                      beforeMount={handleMonacoBeforeMount}
+                      onMount={(editor) => { editorRef.current = editor; }}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                        padding: { top: 12, bottom: 12 },
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Results Section */}
@@ -327,28 +427,90 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
               </div>
             </Split>
           ) : (
-            /* No results yet - just code editor */
-            <div className="phase-detail-code-section phase-detail-code-only">
-              <Editor
-                key={`editor-${phase.name}`}
-                height="100%"
-                language={info.language}
-                value={code}
-                onChange={handleCodeChange}
-                theme="detail-dark"
-                beforeMount={handleMonacoBeforeMount}
-                onMount={(editor) => { editorRef.current = editor; }}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  lineNumbers: 'on',
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  scrollBeyondLastLine: false,
-                  padding: { top: 12, bottom: 12 },
-                }}
-              />
+            /* No results yet - just code editor (with optional YAML) */
+            <div className="phase-detail-code-container">
+              {showYamlEditor ? (
+                <Split
+                  className="phase-detail-code-yaml-split"
+                  direction="horizontal"
+                  sizes={[60, 40]}
+                  minSize={[200, 200]}
+                  gutterSize={6}
+                  gutterAlign="center"
+                >
+                  <div className="phase-detail-code-section">
+                    <Editor
+                      key={`editor-${phase.name}`}
+                      height="100%"
+                      language={info.language}
+                      value={code}
+                      onChange={handleCodeChange}
+                      theme="detail-dark"
+                      beforeMount={handleMonacoBeforeMount}
+                      onMount={(editor) => { editorRef.current = editor; }}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                        padding: { top: 12, bottom: 12 },
+                      }}
+                    />
+                  </div>
+                  <div className="phase-detail-yaml-section">
+                    <div className="phase-detail-yaml-header">
+                      <Icon icon="mdi:file-code-outline" width="14" />
+                      <span>Full Phase YAML</span>
+                    </div>
+                    <Editor
+                      key={`yaml-${phase.name}`}
+                      height="100%"
+                      language="yaml"
+                      value={phaseYaml}
+                      onChange={handleYamlChange}
+                      theme="detail-dark"
+                      beforeMount={handleMonacoBeforeMount}
+                      onMount={(editor) => { yamlEditorRef.current = editor; }}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 12,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                        padding: { top: 12, bottom: 12 },
+                      }}
+                    />
+                  </div>
+                </Split>
+              ) : (
+                <div className="phase-detail-code-section">
+                  <Editor
+                    key={`editor-${phase.name}`}
+                    height="100%"
+                    language={info.language}
+                    value={code}
+                    onChange={handleCodeChange}
+                    theme="detail-dark"
+                    beforeMount={handleMonacoBeforeMount}
+                    onMount={(editor) => { editorRef.current = editor; }}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      lineNumbers: 'on',
+                      wordWrap: 'on',
+                      automaticLayout: true,
+                      scrollBeyondLastLine: false,
+                      padding: { top: 12, bottom: 12 },
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )
         )}
