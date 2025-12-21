@@ -4,14 +4,21 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-Windlass is a declarative agent framework for Python that orchestrates multi-step LLM workflows. It replaces imperative glue code with a JSON-based DSL, handling context persistence, tool orchestration, and observability automatically.
+Windlass is a declarative agent framework for Python that orchestrates multi-step LLM workflows. It has evolved from a pure LLM orchestration framework into a **full-stack AI-native data IDE** with visual workflow building, polyglot execution, and self-healing capabilities.
 
-**Key Philosophy**: Workflows are defined as JSON "Cascades" composed of "Phases", where each phase has specific system prompts, available tools ("Tackle"), and routing logic. The framework handles context accumulation, state management, and execution tracing.
+**Key Philosophy**: Workflows are defined as JSON/YAML "Cascades" composed of "Phases", where each phase can be:
+- **LLM-powered**: Traditional agent execution with tool calling
+- **Deterministic**: Direct tool invocation without LLM mediation
+- **Polyglot**: Execute SQL, Python, JavaScript, Clojure, or nested LLM phases
+- **Hybrid**: Mix all approaches in a single workflow
 
-**The Three Self-* Properties**:
+The framework handles context accumulation, state management, execution tracing, and provides both CLI and web-based interfaces.
+
+**The Four Self-* Properties**:
 1. **Self-Orchestrating** (Manifest/Quartermaster): Workflows pick their own tools based on context
 2. **Self-Testing** (Snapshot System): Tests write themselves from real executions
 3. **Self-Optimizing** (Passive Optimization): Prompts improve automatically from usage data
+4. **Self-Healing** (Auto-Fix): Failed cells debug and repair themselves with LLM assistance
 
 ## Installation & Setup
 
@@ -92,6 +99,46 @@ pytest tests/test_snapshots.py -v
 python -m pytest tests/
 ```
 
+## Web Dashboard
+
+Windlass includes a full-featured web-based IDE for building and executing cascades.
+
+### Starting the Dashboard
+```bash
+cd dashboard
+python backend/app.py
+# Backend runs on http://localhost:5001
+
+# In another terminal:
+cd dashboard/frontend
+npm install
+npm start
+# Frontend runs on http://localhost:3000 (proxies to backend)
+```
+
+### Three Main Interfaces
+
+1. **SQL Query IDE** (`/sql-query`)
+   - **Query Mode**: Traditional SQL editor with schema browser and result viewer
+   - **Notebook Mode** (`?mode=notebook`): Data Cascades with polyglot cells (SQL, Python, JS, Clojure, Windlass)
+   - Multi-modal output rendering (tables, images, charts, JSON)
+   - Auto-fix failed cells with LLM-powered debugging
+
+2. **Playground Canvas** (`/playground`)
+   - Visual cascade builder with drag-and-drop nodes
+   - Two-sided phase cards (front: output, back: YAML config)
+   - Stacked deck visualization for soundings
+   - Real-time execution with SSE updates
+   - Save/load cascades from tackle/ or cascades/
+
+3. **Session Explorer** (`/sessions`)
+   - Browse all execution sessions
+   - View session details, costs, and outputs
+   - Visualize execution graphs
+   - Cost analytics by session/phase/model
+
+See `docs/claude/dashboard-reference.md` for full documentation.
+
 ## Core Architecture
 
 ### Cascade DSL
@@ -116,6 +163,8 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 ```
 
 **Phase Configuration** (key fields):
+
+**LLM Phases** (use `instructions`):
 - `name`: Phase identifier
 - `instructions`: Jinja2-templated system prompt
 - `tackle`: Tool names to inject, or `"manifest"` for auto-selection
@@ -127,6 +176,14 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 - `context`: Selective context from other phases
 - `output_schema`: JSON schema for output validation
 
+**Deterministic Phases** (use `tool` instead of `instructions`):
+- `name`: Phase identifier
+- `tool`: Direct tool invocation (e.g., `"sql_data"`, `"python:module.func"`, `"sql:path/query.sql"`)
+- `inputs`: Jinja2-templated inputs for the tool
+- `retry`: Retry configuration (max_attempts, backoff strategy)
+- `timeout`: Execution timeout (e.g., `"5m"`, `"30s"`)
+- `handoffs`: Next-phase targets (routing via `_route` in tool output)
+
 ### Tool System ("Tackle")
 
 **Three Types**:
@@ -134,7 +191,14 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 2. **Cascade Tools**: JSON cascades with `inputs_schema` in `tackle/` directory
 3. **Gradio Tools (Harbor)**: HuggingFace Spaces as tools via `.tool.json` with `type: "gradio"`
 
-**Built-in Tools**: `linux_shell`, `run_code`, `smart_sql_run`, `take_screenshot`, `ask_human`, `ask_human_custom`, `set_state`, `spawn_cascade`, `create_chart`, `rabbitize_*`, `say` (TTS), `listen` (STT), `transcribe_audio`
+**Built-in Tools**:
+- **Core**: `linux_shell`, `run_code`, `set_state`, `spawn_cascade`
+- **Data**: `sql_data`, `python_data`, `js_data`, `clojure_data`, `windlass_data` (polyglot execution)
+- **SQL**: `smart_sql_run` (LLM-powered query generation)
+- **Human-in-the-loop**: `ask_human`, `ask_human_custom`
+- **Visualization**: `create_chart`, `take_screenshot`
+- **Browser**: `rabbitize_*` (visual browser automation)
+- **Voice**: `say` (TTS), `listen` (STT), `transcribe_audio`
 
 **Registering Custom Tools**:
 ```python
@@ -166,6 +230,11 @@ The core engine is `WindlassRunner` in `runner.py`.
 
 | Feature | Purpose | Reference |
 |---------|---------|-----------|
+| **Data Cascades** | Polyglot notebooks: SQL, Python, JS, Clojure, LLM cells | `docs/claude/data-cascades-reference.md` |
+| **Deterministic Execution** | Tool-based phases without LLM mediation | `docs/claude/deterministic-reference.md` |
+| **Playground Canvas** | Visual cascade builder with stacked deck UI | `docs/claude/playground-reference.md` |
+| **Dashboard** | Web IDE for SQL notebooks, canvas, and sessions | `docs/claude/dashboard-reference.md` |
+| **Auto-Fix** | Self-healing cells with LLM-powered debugging | `docs/claude/data-cascades-reference.md` |
 | **Soundings** | Parallel attempts, evaluator picks winner OR aggregate all | `docs/claude/soundings-reference.md` |
 | **Aggregate Mode** | Fan-out pattern: combine all outputs instead of picking one | `docs/claude/soundings-reference.md` |
 | **Reforge** | Iterative refinement of soundings winner | `docs/claude/soundings-reference.md` |
@@ -184,6 +253,7 @@ windlass/
 ├── __init__.py          # Package entry point, tool registration
 ├── cascade.py           # Pydantic models for Cascade DSL
 ├── runner.py            # WindlassRunner execution engine
+├── deterministic.py     # Deterministic phase execution (NEW)
 ├── agent.py             # LLM wrapper (LiteLLM integration)
 ├── echo.py              # Echo class (state/history container)
 ├── tackle.py            # ToolRegistry for tool management
@@ -198,16 +268,29 @@ windlass/
 ├── utils.py             # Tool schemas, image encoding
 ├── cli.py               # Command-line interface
 ├── prompts.py           # Jinja2 prompt rendering
-└── eddies/              # Built-in tools
-    ├── extras.py        # linux_shell, run_code, take_screenshot
-    ├── human.py         # ask_human, ask_human_custom
-    ├── state_tools.py   # set_state
-    ├── system.py        # spawn_cascade
-    └── chart.py         # create_chart
+├── eddies/              # Built-in tools
+│   ├── extras.py        # linux_shell, run_code, take_screenshot
+│   ├── data_tools.py    # sql_data, python_data, js_data, clojure_data, windlass_data (NEW)
+│   ├── human.py         # ask_human, ask_human_custom
+│   ├── state_tools.py   # set_state
+│   ├── system.py        # spawn_cascade
+│   └── chart.py         # create_chart
+└── sql_tools/           # SQL utilities (NEW)
+    └── session_db.py    # Session-scoped DuckDB
 
-extras/
-├── debug_ui/            # Development debug UI (Flask + React)
-└── ui/                  # Production UI components
+dashboard/               # Web UI (NEW)
+├── backend/
+│   ├── app.py           # Main Flask application
+│   ├── notebook_api.py  # Data Cascades notebook endpoints
+│   ├── playground_api.py # Playground canvas endpoints
+│   ├── session_api.py   # Session/logs endpoints
+│   └── events.py        # SSE event streaming
+└── frontend/
+    └── src/
+        ├── sql-query/   # SQL Query IDE + Notebooks
+        ├── playground/  # Visual cascade builder
+        ├── sessions/    # Session explorer
+        └── components/  # Shared UI components
 ```
 
 ## Key Implementation Patterns
@@ -255,6 +338,13 @@ The `examples/` directory contains reference implementations:
 **Context**: `context_selective_demo.json`, `context_sugar_demo.json`
 **Tools**: `manifest_flow.json`, `rabbitize_*.json`, `hitl_flow.json`
 **Voice**: `voice_transcription_demo.json`, `voice_assistant_demo.json`, `voice_conversation_demo.json`
+**Data Cascades (Notebooks)** (NEW):
+- `notebook_polyglot_showcase.yaml` - SQL → Python → JS → Clojure → SQL pipeline
+- `notebook_llm_classification.yaml` - LLM-powered data classification
+- `notebook_etl_pipeline.yaml` - Full ETL workflow
+- `notebook_llm_sentiment.yaml` - Sentiment analysis
+- `notebook_llm_entity_extraction.yaml` - Named entity recognition
+- `notebook_llm_data_cleaning.yaml` - LLM-powered data cleaning
 
 ## Terminology (Nautical Theme)
 
@@ -277,6 +367,12 @@ For detailed feature reference, see `docs/claude/`:
 
 | Document | Contents |
 |----------|----------|
+| **NEW FEATURES** | |
+| `data-cascades-reference.md` | Polyglot notebooks: SQL, Python, JS, Clojure, LLM cells with auto-fix |
+| `deterministic-reference.md` | Tool-based phases without LLM mediation, hybrid workflows |
+| `playground-reference.md` | Visual cascade builder, stacked deck UI, two-sided cards |
+| `dashboard-reference.md` | Web IDE: SQL notebooks, canvas, session explorer |
+| **CORE FEATURES** | |
 | `tools-reference.md` | Tackle system, Manifest, Docker, Rabbitize, Generative UI |
 | `soundings-reference.md` | Soundings, Reforge, Mutations, Multi-Model |
 | `context-reference.md` | Selective context system, phase references |
@@ -285,4 +381,4 @@ For detailed feature reference, see `docs/claude/`:
 | `testing.md` | Snapshot testing system |
 | `optimization.md` | Training data, Passive prompt optimization |
 
-Also see: `CLICKHOUSE_SETUP.md`, `TESTING.md`, `OPTIMIZATION.md`
+Also see: `CLICKHOUSE_SETUP.md`, `TESTING.md`, `OPTIMIZATION.md`, `docs/harbor-design.md`

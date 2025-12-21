@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
 import RichMarkdown from '../../../components/RichMarkdown';
+import PhaseExplosionView from '../PhaseExplosionView';
 import './PhaseCard.css';
 
 // Default dimensions (grid-aligned to 16px)
@@ -83,6 +84,7 @@ function PhaseCard({ id, data, selected }) {
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+  const cardRef = useRef(null);
 
   // Card state
   const [isFlipped, setIsFlipped] = useState(false); // false = front (output), true = back (yaml)
@@ -93,6 +95,10 @@ function PhaseCard({ id, data, selected }) {
   const [parseError, setParseError] = useState(null);
   const [discoveredInputs, setDiscoveredInputs] = useState(data.discoveredInputs || []);
   const [isDirty, setIsDirty] = useState(false);
+
+  // Explosion view state
+  const [showExplosion, setShowExplosion] = useState(false);
+  const [explosionOriginRect, setExplosionOriginRect] = useState(null);
 
   // Track last synced value
   const lastSyncedYamlRef = useRef(data.yaml);
@@ -370,6 +376,23 @@ function PhaseCard({ id, data, selected }) {
     }
   }, [isFlipping, stackDepth]);
 
+  // Explosion view - double-click to explode cards into 3D view
+  const handleOpenExplosion = useCallback((e) => {
+    e.stopPropagation();
+    if (stackDepth > 0 && cardRef.current) {
+      // Capture card's current screen position as animation origin
+      const rect = cardRef.current.getBoundingClientRect();
+      setExplosionOriginRect(rect);
+      setShowExplosion(true);
+      setIsFanned(false); // Close fan when exploding
+      setIsTilted(false); // Close tilt when exploding
+    }
+  }, [stackDepth]);
+
+  const handleCloseExplosion = useCallback(() => {
+    setShowExplosion(false);
+  }, []);
+
   // Delete handler - untilts then deletes
   const handleDelete = useCallback((e) => {
     e.stopPropagation();
@@ -531,6 +554,7 @@ function PhaseCard({ id, data, selected }) {
 
   return (
     <div
+      ref={cardRef}
       className={cardClasses}
       style={{
         width,
@@ -538,6 +562,7 @@ function PhaseCard({ id, data, selected }) {
         '--card-width': `${width}px`,
         '--card-height': `${height}px`,
       }}
+      onDoubleClick={handleOpenExplosion}
     >
       {/* Stacked deck edges (behind the card) - click to fan */}
       {stackDepth > 0 && (
@@ -938,6 +963,42 @@ function PhaseCard({ id, data, selected }) {
         className="card-resize-handle nodrag"
         onPointerDown={onResizeStart}
       />
+
+      {/* Explosion view - rendered as portal when active */}
+      {showExplosion && explosionOriginRect && (
+        <PhaseExplosionView
+          phaseData={{
+            name: displayName,
+            soundingsProgress,
+            soundingsOutputs,
+            reforgeOutputs,
+            winnerIndex,
+            currentReforgeStep,
+            totalReforgeSteps: totalReforgeSteps || reforgeSteps, // Use execution state or fall back to config
+            // Extract evaluator reasoning from liveLog
+            evaluatorReasoning: (() => {
+              // Look for evaluator messages in liveLog
+              const evalLog = liveLog.find(e =>
+                e.content &&
+                typeof e.content === 'string' &&
+                (e.content.toLowerCase().includes('winner') ||
+                 e.content.toLowerCase().includes('best') ||
+                 e.content.toLowerCase().includes('pick'))
+              );
+              return evalLog?.content || '';
+            })(),
+            aggregatorReasoning: liveLog.find(e =>
+              e.content &&
+              typeof e.content === 'string' &&
+              e.content.toLowerCase().includes('aggregate')
+            )?.content || '',
+            parsedPhase: parsedYaml,
+            liveLog, // Pass full log for debugging
+          }}
+          originRect={explosionOriginRect}
+          onClose={handleCloseExplosion}
+        />
+      )}
     </div>
   );
 }

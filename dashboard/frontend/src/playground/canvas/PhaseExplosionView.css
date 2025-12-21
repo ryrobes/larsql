@@ -1,0 +1,406 @@
+/* PhaseExplosionView - 3D Card Explosion */
+
+.phase-explosion-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* Ensure scrolling works */
+  overscroll-behavior: contain;
+
+  /* 3D perspective for card lifting */
+  perspective: 1200px;
+  perspective-origin: 50% 50%;
+
+  /* Dark backdrop with blur */
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  transition: background 0.3s ease, backdrop-filter 0.3s ease;
+}
+
+.phase-explosion-overlay.phase-spreading,
+.phase-explosion-overlay.phase-settled {
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+/* Content container with proper height */
+.explosion-content {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100px; /* Extra space at bottom */
+}
+
+/* Header - minimal floating controls */
+.explosion-header {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(20, 20, 30, 0.6);
+  border: 1px solid rgba(100, 200, 255, 0.15);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.explosion-back,
+.explosion-close {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #a0d8ff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.explosion-back:hover,
+.explosion-close:hover {
+  background: rgba(100, 200, 255, 0.15);
+  border-color: rgba(100, 200, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.explosion-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(224, 242, 255, 0.8);
+  margin: 0;
+  letter-spacing: 0.3px;
+  pointer-events: auto;
+}
+
+/* Section labels - floating annotations */
+.explosion-section {
+  position: relative;
+  margin: 60px 0;
+}
+
+.section-label {
+  position: absolute;
+  top: -30px;
+  left: 40px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: rgba(100, 200, 255, 0.5);
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 3px 10px;
+  background: rgba(100, 200, 255, 0.05);
+  border: 1px solid rgba(100, 200, 255, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+}
+
+/* Individual explosion cards */
+.explosion-card {
+  background: linear-gradient(145deg, #1a1a2e 0%, #12121e 100%);
+  border: 2px solid rgba(100, 200, 255, 0.3);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  overflow: hidden;
+  cursor: pointer;
+
+  /* Flexbox for proper content expansion */
+  display: flex;
+  flex-direction: column;
+
+  /* 3D transforms are set inline by JS */
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+.explosion-card:hover {
+  border-color: rgba(100, 200, 255, 0.5);
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(100, 200, 255, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  transform: translateZ(20px) !important;
+}
+
+/* Card states */
+.explosion-card.winner {
+  border-color: rgba(255, 215, 0, 0.6);
+  box-shadow:
+    0 8px 32px rgba(255, 215, 0, 0.3),
+    0 0 24px rgba(255, 215, 0, 0.2),
+    0 0 0 1px rgba(255, 215, 0, 0.1) inset;
+  background: linear-gradient(145deg, #2a2416 0%, #1a1810 100%);
+}
+
+.explosion-card.eliminated {
+  opacity: 0.85;
+  border-color: rgba(255, 100, 100, 0.3);
+}
+
+.explosion-card.running {
+  border-color: rgba(251, 191, 36, 0.6);
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(251, 191, 36, 0.4); }
+  50% { border-color: rgba(251, 191, 36, 0.8); }
+}
+
+.explosion-card.reforge-card {
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.explosion-card.reforge-card.complete {
+  border-color: rgba(52, 211, 153, 0.5);
+}
+
+.explosion-card.reforge-card.current {
+  border-color: rgba(251, 191, 36, 0.6);
+  animation: shimmer-border 2s ease-in-out infinite;
+}
+
+@keyframes shimmer-border {
+  0%, 100% {
+    border-color: rgba(251, 191, 36, 0.6);
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+  }
+  50% {
+    border-color: rgba(168, 85, 247, 0.6);
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+  }
+}
+
+/* Card header */
+.explosion-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.explosion-card-header.reforge-header {
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.15) 0%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+.card-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #a0d8ff;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.winner-icon {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+}
+
+.complete-icon {
+  color: #34d399;
+}
+
+.card-status {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.5px;
+}
+
+.card-status.status-running {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.card-status.status-complete {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.card-status.status-error {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* Card content - expand to fill remaining space */
+.explosion-card-content {
+  padding: 16px;
+  flex: 1;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d0e8ff;
+  min-height: 0; /* Important for flex child with overflow */
+}
+
+.explosion-card-content pre {
+  margin: 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 11px;
+  overflow-x: auto;
+}
+
+.card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Eliminated badge - corner indicator */
+.eliminated-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background: rgba(248, 113, 113, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+/* Shimmer overlay for reforge current step */
+.shimmer-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0) 0%,
+    rgba(251, 191, 36, 0.05) 50%,
+    rgba(251, 191, 36, 0) 100%
+  );
+  animation: shimmer-sweep 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Inline reasoning between sections */
+.explosion-reasoning-inline {
+  /* Position set inline via style */
+  display: flex;
+  justify-content: center;
+}
+
+.reasoning-inline-box {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 16px rgba(96, 165, 250, 0.15);
+  max-width: 900px;
+  align-items: flex-start;
+}
+
+.reasoning-icon {
+  flex-shrink: 0;
+  color: rgba(96, 165, 250, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reasoning-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(208, 232, 255, 0.85);
+  font-style: italic;
+}
+
+.reasoning-text strong {
+  color: rgba(160, 216, 255, 1);
+  font-weight: 600;
+  font-style: normal;
+}
+
+/* Utility animations */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Scrollbar styling */
+.explosion-card-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.explosion-card-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.explosion-card-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 200, 255, 0.3);
+  border-radius: 3px;
+}
+
+.explosion-card-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 200, 255, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .explosion-card {
+    width: calc(100vw - 80px) !important;
+    left: 40px !important;
+  }
+
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+}

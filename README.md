@@ -4,6 +4,12 @@
 
 Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
 
+**NEW: Data Cascades (Polyglot Notebooks)!** Execute SQL, Python, JavaScript, Clojure, and LLM phases in a single pipeline with seamless data flow. "Jupyter for Cascades" with auto-fix debugging, multi-modal outputs, and session-scoped temp tables. [See Data Cascades →](#data-cascades-polyglot-notebooks)
+
+**NEW: Web Dashboard!** Full-featured web IDE with SQL notebook mode, visual playground canvas (stacked deck UI for soundings), and session explorer. Build cascades visually or write polyglot data pipelines. [See Dashboard →](#web-dashboard)
+
+**NEW: Deterministic Execution!** Skip the LLM for predictable operations. Execute tools directly (10-100x faster, $0 cost) while keeping LLM phases for complex tasks. Hybrid workflows give you the best of both worlds. [See Deterministic Phases →](#deterministic-execution)
+
 **NEW: Automatic prompt optimization!** Rewrite mutations now learn from previous winners automatically. Each run builds on the last 5 winning prompts (same config). View the full genetic lineage in the Web UI's Evolution Tree (🧬). Zero configuration required. [See Passive Prompt Optimization →](#passive-prompt-optimization-winner-learning)
 
 **NEW: Visual browser automation!** Give your agents eyes and hands for the web. First-class Playwright integration with automatic screenshot capture, video recording, and visual coordinate-based interaction. [See Browser Automation →](#browser-automation)
@@ -2270,6 +2276,265 @@ cd dashboard && ./start.sh
 - ✅ Agent "sees" what it's clicking (just like a human)
 - ✅ Hover effects visible in screenshots
 - ✅ More robust across site updates
+
+## Data Cascades (Polyglot Notebooks)
+
+**"Jupyter for Cascades"** - Execute multiple programming languages in a single pipeline with seamless data flow.
+
+Data Cascades transform Windlass from a pure LLM orchestration framework into a **full-stack AI-native data IDE**. Each "cell" is a Windlass phase that can execute SQL, Python, JavaScript, Clojure, or even nested LLM phases.
+
+### The Five Cell Types
+
+**1. SQL (`sql_data`)**: Query databases, results auto-materialize as temp tables
+**2. Python (`python_data`)**: pandas, numpy, matplotlib, plotly - access prior outputs via `data.phase_name`
+**3. JavaScript (`js_data`)**: Node.js execution with access to prior outputs
+**4. Clojure (`clojure_data`)**: Via Babashka (10ms startup vs 2-3s for JVM)
+**5. Windlass (`windlass_data`)**: Full LLM phases with structured output (meta!)
+
+### Example: Polyglot Pipeline
+
+```yaml
+cascade_id: "polyglot_etl"
+phases:
+  # SQL: Extract data
+  - name: "extract"
+    tool: "sql_data"
+    inputs:
+      query: "SELECT * FROM sales WHERE date >= '2024-01-01' LIMIT 1000"
+
+  # Python: Transform with pandas
+  - name: "transform"
+    tool: "python_data"
+    inputs:
+      code: |
+        import pandas as pd
+        df = data.extract  # Access SQL results
+        df['profit'] = df['revenue'] - df['cost']
+        df['margin_pct'] = (df['profit'] / df['revenue']) * 100
+        df  # Return DataFrame (auto-materialized as temp table)
+
+  # LLM: Classify products
+  - name: "classify"
+    tool: "windlass_data"
+    inputs:
+      phase_config:
+        instructions: "Classify product: {{ input.product_name }}"
+        output_schema:
+          type: object
+          properties:
+            category: {type: string}
+            confidence: {type: number}
+        model: "anthropic/claude-sonnet-4.5"
+      input_data: "{{ outputs.transform }}"
+      input_field: "product_name"
+
+  # SQL: Load results
+  - name: "load"
+    tool: "sql_data"
+    inputs:
+      query: |
+        INSERT INTO classified_products
+        SELECT t.*, c.category, c.confidence
+        FROM transform t
+        JOIN classify c ON t.product_id = c.id
+```
+
+### Key Features
+
+**Seamless Data Flow**: Each phase output becomes a queryable temp table and a namespaced variable for downstream phases.
+
+**Multi-Modal Outputs**:
+- DataFrames (AG-Grid tables)
+- Images (matplotlib, PIL, numpy arrays)
+- Interactive charts (Plotly)
+- JSON/scalars (Monaco viewer)
+- stdout/stderr (terminal display)
+
+**Auto-Fix (Self-Healing)**: When a cell fails, an LLM automatically:
+1. Diagnoses the error
+2. Generates a fix
+3. Shows side-by-side diff (Monaco DiffEditor)
+4. User applies or dismisses
+
+**Session-Scoped DuckDB**: Temp tables persist across phases within a session, enabling complex multi-step SQL pipelines.
+
+### Performance
+
+**Why use deterministic data tools?**
+- SQL query: ~50ms (vs ~3s for LLM-mediated)
+- Python transform: ~100ms (vs ~8s for LLM to write code)
+- Total speedup: **20-50x faster** for data pipelines
+- Cost: **$0 for non-LLM phases** (only pay for LLM classification/generation)
+
+**See**: `docs/claude/data-cascades-reference.md`
+
+## Deterministic Execution
+
+**Skip the LLM for predictable operations.** Execute tools directly without LLM mediation.
+
+Traditional Windlass phases use an **LLM-in-the-loop**: LLM receives instructions → chooses tools → executes → decides next action.
+
+Deterministic phases **bypass the LLM entirely**: Config specifies exact tool and inputs → tool executes → results flow to next phase.
+
+### Example: Hybrid Workflow
+
+```yaml
+phases:
+  # Deterministic: Fast SQL extraction (50ms, $0)
+  - name: "extract"
+    tool: "sql_data"
+    inputs:
+      query: "SELECT * FROM {{ input.table_name }} WHERE processed = false"
+
+  # Deterministic: Python preprocessing (100ms, $0)
+  - name: "preprocess"
+    tool: "python:etl.clean_data"
+    inputs:
+      data: "{{ outputs.extract }}"
+
+  # LLM: Intelligent classification (5s, $0.02)
+  - name: "classify"
+    instructions: |
+      Classify each record in the dataset.
+      Data: {{ outputs.preprocess }}
+    tackle: ["set_state"]
+    output_schema:
+      type: array
+      items:
+        properties:
+          id: {type: integer}
+          category: {type: string}
+
+  # Deterministic: Fast SQL load (50ms, $0)
+  - name: "load"
+    tool: "sql_data"
+    inputs:
+      query: "INSERT INTO classified SELECT * FROM classify"
+```
+
+**Performance**: ~5.2s total (vs ~15s if all phases were LLM-mediated)
+**Cost**: $0.02 (vs $0.15 for LLM-mediated ETL)
+
+### Tool Resolution
+
+Deterministic phases support four tool types:
+
+1. **Registered tools**: `tool: "sql_data"`
+2. **Python imports**: `tool: "python:module.path.function"`
+3. **SQL files**: `tool: "sql:queries/daily_report.sql"` (Jinja2 templated)
+4. **Shell scripts**: `tool: "shell:scripts/backup.sh"` (Jinja2 templated)
+
+### Advanced Features
+
+**Retry Logic**:
+```yaml
+- name: "api_call"
+  tool: "python:api.fetch_data"
+  retry:
+    max_attempts: 3
+    backoff: "exponential"
+    initial_delay: 1
+```
+
+**Timeout Support**:
+```yaml
+- name: "slow_query"
+  tool: "sql_data"
+  inputs:
+    query: "SELECT * FROM huge_table"
+  timeout: "5m"
+```
+
+**Dynamic Routing**: Tools return `{"_route": "next_phase"}` to control flow.
+
+**When to use deterministic phases:**
+- ✅ Data extraction/transformation/loading (ETL)
+- ✅ API calls with known schemas
+- ✅ Business logic with clear rules
+- ✅ Performance-critical operations
+- ✅ Operations that must be predictable/auditable
+
+**When to use LLM phases:**
+- ✅ Natural language understanding
+- ✅ Content generation
+- ✅ Complex decision-making
+- ✅ Handling ambiguity
+- ✅ Creative tasks
+
+**See**: `docs/claude/deterministic-reference.md`
+
+## Web Dashboard
+
+**Full-featured web IDE** for building and executing Windlass cascades.
+
+The Dashboard provides three main interfaces:
+
+### 1. SQL Query IDE (`/sql-query`)
+
+**Two Modes**:
+
+**Query Mode**: Traditional SQL editor
+- Monaco SQL editor with syntax highlighting
+- Schema tree browser (tables, columns, types)
+- Query history panel
+- AG-Grid results viewer (sorting, filtering, export)
+- Export to CSV, JSON, Parquet
+
+**Notebook Mode** (`?mode=notebook`): Data Cascades
+- Create/edit/delete cells (SQL, Python, JS, Clojure, Windlass)
+- Run individual cells or entire notebook
+- Multi-modal output rendering (tables, images, charts, JSON)
+- Auto-fix failed cells with diff viewer
+- Save notebooks as YAML cascades
+- Load existing cascades as notebooks
+
+### 2. Playground Canvas (`/playground`)
+
+**Visual cascade builder** with drag-and-drop nodes:
+
+**Two-Sided Phase Cards**:
+- **Front**: Execution output (images, text, status)
+- **Back**: YAML configuration editor (Monaco)
+- 3D flip animation
+
+**Stacked Deck UI (Soundings)**:
+- Cards display as stacked deck when soundings configured
+- Fan-out animation reveals all sounding attempts
+- CCG-inspired rarity frames (common, uncommon, rare, legendary)
+- Model element badges (color-coded by provider)
+- Winner badge on evaluator-chosen card
+
+**Features**:
+- Load any cascade and auto-generate visual representation
+- Execute with real-time updates (SSE)
+- Save to `tackle/` (reusable tools) or `cascades/` (workflows)
+- Auto-layout with Dagre algorithm
+
+### 3. Session Explorer (`/sessions`)
+
+**Browse and analyze** all execution sessions:
+- List sessions with filtering (date, cascade_id, status)
+- View session details (phases, costs, outputs)
+- Visualize execution graphs (Mermaid)
+- Cost analytics (by session, phase, model)
+- Download session data (JSON, YAML)
+
+### Starting the Dashboard
+
+```bash
+# Backend
+cd dashboard
+python backend/app.py
+# Runs on http://localhost:5001
+
+# Frontend (in another terminal)
+cd dashboard/frontend
+npm install
+npm start
+# Runs on http://localhost:3000
+```
+
+**See**: `docs/claude/dashboard-reference.md`, `docs/claude/playground-reference.md`
 
 ## Declarative Tools (`.tool.json`)
 
