@@ -79,9 +79,10 @@ function StatusIcon({ status }) {
 // Format duration for display
 function formatDuration(ms) {
   if (!ms && ms !== 0) return null;
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
+  const rounded = Math.round(ms);
+  if (rounded < 1000) return `${rounded}ms`;
+  if (rounded < 60000) return `${(rounded / 1000).toFixed(1)}s`;
+  return `${(rounded / 60000).toFixed(1)}m`;
 }
 
 // Format row count for display
@@ -349,14 +350,21 @@ function NotebookNavigator() {
     cellStates,
     sessionId,
     isRunningAll,
-    runAllCells
+    runCascadeStandard
   } = useNotebookStore();
 
   const [activePhase, setActivePhase] = useState(null);
 
-  // Scroll to cell in the notebook editor
+  // Scroll to cell and select it in timeline
   const scrollToCell = useCallback((phaseName) => {
     setActivePhase(phaseName);
+
+    // Find phase index and select in timeline
+    const { notebook, setSelectedPhaseIndex } = useNotebookStore.getState();
+    const phaseIndex = notebook?.phases?.findIndex(p => p.name === phaseName);
+    if (phaseIndex !== -1) {
+      setSelectedPhaseIndex(phaseIndex);
+    }
 
     // Find the cell element and scroll to it
     const cellElement = document.querySelector(`[data-phase-name="${phaseName}"]`);
@@ -385,7 +393,7 @@ function NotebookNavigator() {
   const hasInputs = notebook.inputs_schema && Object.keys(notebook.inputs_schema).length > 0;
 
   const handleRunAll = async () => {
-    await runAllCells();
+    await runCascadeStandard();
   };
 
   return (

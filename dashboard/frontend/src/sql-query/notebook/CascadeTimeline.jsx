@@ -52,9 +52,10 @@ const CascadeTimeline = () => {
     restartSession,
     updateNotebook,
     saveNotebook,
+    selectedPhaseIndex,
+    setSelectedPhaseIndex,
   } = useNotebookStore();
 
-  const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(null);
   const timelineRef = useRef(null);
 
   const handleTitleChange = (e) => {

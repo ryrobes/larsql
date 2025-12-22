@@ -19,6 +19,7 @@ import FlowBuilderView from './components/FlowBuilderView';
 import FlowRegistryView from './components/FlowRegistryView';
 import SessionsView from './components/SessionsView';
 import SqlQueryPage from './sql-query/SqlQueryPage';
+import useNotebookStore from './sql-query/stores/notebookStore';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -533,14 +534,51 @@ function App() {
             break;
 
           case 'phase_start':
+            // Debug log to see actual structure
+            console.log('[SSE phase_start] Full event:', event);
+
+            // Notify notebook store (for Timeline cascade execution)
+            const phaseNameStart = event.phase_name || event.data?.phase_name || event.name;
+            useNotebookStore.getState().handleSSEPhaseStart?.(event.session_id, phaseNameStart);
+
+            // Refresh on any activity
+            setRefreshTrigger(prev => prev + 1);
+            if (event.session_id) {
+              setSessionUpdates(prev => ({
+                ...prev,
+                [event.session_id]: Date.now()
+              }));
+            }
+            break;
+
           case 'phase_complete':
+            // Debug log to see actual structure
+            console.log('[SSE phase_complete] Full event:', event);
+
+            // Notify notebook store (for Timeline cascade execution)
+            const phaseNameComplete = event.phase_name || event.data?.phase_name || event.name;
+            const phaseResult = event.result || event.data?.result || event.data || {};
+            useNotebookStore.getState().handleSSEPhaseComplete?.(
+              event.session_id,
+              phaseNameComplete,
+              phaseResult
+            );
+
+            setRefreshTrigger(prev => prev + 1);
+            if (event.session_id) {
+              setSessionUpdates(prev => ({
+                ...prev,
+                [event.session_id]: Date.now()
+              }));
+            }
+            break;
+
           case 'turn_start':
           case 'tool_call':
           case 'tool_result':
           case 'cost_update':
-            // Refresh on any activity (data may not be in SQL yet, but update UI state)
+            // Refresh on any activity
             setRefreshTrigger(prev => prev + 1);
-            // Track session update for mermaid refresh
             if (event.session_id) {
               setSessionUpdates(prev => ({
                 ...prev,
@@ -552,6 +590,9 @@ function App() {
           case 'cascade_complete':
             const completeCascadeId = event.data?.cascade_id;
             const completeSessionId = event.session_id;
+
+            // Notify notebook store (for Timeline cascade execution)
+            useNotebookStore.getState().handleSSECascadeComplete?.(event.session_id);
 
             // Move cascade from running to neutral
             if (completeCascadeId) {
@@ -624,6 +665,13 @@ function App() {
           case 'cascade_error':
             const errorCascadeId = event.data?.cascade_id;
             const errorSessionId = event.session_id;
+
+            // Notify notebook store (for Timeline cascade execution)
+            useNotebookStore.getState().handleSSECascadeError?.(
+              event.session_id,
+              event.phase_name,
+              event.message || event.error || 'Unknown error'
+            );
 
             if (errorCascadeId) {
               setRunningCascades(prev => {

@@ -646,10 +646,9 @@ def run_cell():
                         temp_path = f.name
 
                     try:
-                        # Run cascade
-                        cell_session_id = f"{session_id}_llm_{phase_name}"
-
-                        cascade_result = run_cascade(temp_path, inputs or {}, session_id=cell_session_id)
+                        # Run cascade with SAME session ID (not a sub-session)
+                        # This ensures SSE events go to the parent session stream
+                        cascade_result = run_cascade(temp_path, inputs or {}, session_id=session_id)
 
                         # run_cascade returns a dict with the final output
                         # Format it for notebook display

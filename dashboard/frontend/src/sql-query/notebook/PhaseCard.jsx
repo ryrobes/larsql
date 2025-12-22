@@ -71,7 +71,7 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
         {cellState?.duration && (
           <span className="phase-card-stat">
             <Icon icon="mdi:clock-outline" width="12" />
-            {cellState.duration}ms
+            {Math.round(cellState.duration)}ms
           </span>
         )}
         {cellState?.result?.row_count !== undefined && (

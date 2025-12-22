@@ -76,10 +76,16 @@ const useNotebookStore = create(
       // status: 'pending' | 'running' | 'success' | 'error' | 'stale'
 
       isRunningAll: false,  // Full notebook execution in progress
+      cascadeSessionId: null,  // Session ID when running full cascade (for SSE tracking)
 
       // Session ID for temp table persistence across cell executions
       // Generated when notebook loads, persists until restart/reload
       sessionId: null,
+
+      // ============================================
+      // UI STATE
+      // ============================================
+      selectedPhaseIndex: null,  // Currently selected phase in timeline view
 
       // ============================================
       // AUTO-FIX CONFIGURATION
@@ -184,6 +190,12 @@ const useNotebookStore = create(
       setMode: (mode) => {
         set(state => {
           state.mode = mode;
+        });
+      },
+
+      setSelectedPhaseIndex: (index) => {
+        set(state => {
+          state.selectedPhaseIndex = index;
         });
       },
 
@@ -719,6 +731,138 @@ output_schema:
         }
       },
 
+      // Run full cascade via standard execution (NEW - replaces sequential cell execution)
+      runCascadeStandard: async () => {
+        const state = get();
+        if (!state.notebook || state.isRunningAll) return;
+
+        // Generate session ID
+        const sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+        set(s => {
+          s.isRunningAll = true;
+          s.cascadeSessionId = sessionId;
+          // Reset all cell states to pending
+          s.notebook.phases.forEach(phase => {
+            s.cellStates[phase.name] = { status: 'pending' };
+          });
+        });
+
+        try {
+          // Export notebook to YAML
+          const yaml = require('js-yaml');
+          const cascadeYaml = yaml.dump(state.notebook, { indent: 2, lineWidth: -1 });
+
+          // POST to standard run-cascade endpoint
+          const res = await fetch('http://localhost:5001/api/run-cascade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cascade_yaml: cascadeYaml,
+              inputs: state.notebookInputs,
+              session_id: sessionId,
+            }),
+          });
+
+          const result = await res.json();
+
+          if (result.error) {
+            throw new Error(result.error);
+          }
+
+          console.log('[runCascadeStandard] Execution started, session:', sessionId);
+          // SSE events will update cell states as phases complete
+          // Note: Don't set isRunningAll = false here - wait for cascade_complete event
+
+        } catch (err) {
+          console.error('[runCascadeStandard] Error:', err);
+          set(s => {
+            s.isRunningAll = false;
+            s.cascadeSessionId = null;
+          });
+        }
+      },
+
+      // Handle SSE events for standard cascade execution
+      handleSSEPhaseStart: (sessionId, phaseName) => {
+        const state = get();
+        if (state.cascadeSessionId !== sessionId) return;
+
+        console.log('[NotebookStore SSE] Phase start:', phaseName);
+
+        set(s => {
+          if (!s.cellStates[phaseName]) {
+            s.cellStates[phaseName] = {};
+          }
+          s.cellStates[phaseName].status = 'running';
+        });
+      },
+
+      handleSSEPhaseComplete: (sessionId, phaseName, result) => {
+        const state = get();
+        if (state.cascadeSessionId !== sessionId) return;
+
+        console.log('[NotebookStore SSE] Phase complete:', phaseName, 'result:', result);
+
+        // Extract the actual output from SSE result structure
+        // SSE sends: {output: {...}, duration_ms: ...}
+        // Note: We get TWO phase_complete events per phase:
+        //   1. First with actual data: {output: {rows, columns}, duration_ms}
+        //   2. Second with just handoff: {output: 'next_phase_name', duration_ms}
+        const actualResult = result?.output || result;
+        const duration = result?.duration_ms;
+
+        // Skip if this looks like a handoff-only event:
+        // Handoffs are simple phase names (single word, short, no spaces usually)
+        // Real output is longer or has special chars or is an object
+        const isLikelyHandoff = typeof actualResult === 'string'
+          && actualResult.length < 30
+          && !actualResult.includes(' ')
+          && !actualResult.includes('\n');
+
+        if (isLikelyHandoff) {
+          console.log('[NotebookStore SSE] Skipping handoff event for:', phaseName, '(output:', actualResult, ')');
+          return;
+        }
+
+        console.log('[NotebookStore SSE] Storing result for:', phaseName);
+
+        set(s => {
+          s.cellStates[phaseName] = {
+            status: 'success',
+            result: actualResult,
+            duration: duration,
+          };
+        });
+      },
+
+      handleSSECascadeComplete: (sessionId) => {
+        const state = get();
+        if (state.cascadeSessionId !== sessionId) return;
+
+        set(s => {
+          s.isRunningAll = false;
+          s.cascadeSessionId = null;
+        });
+      },
+
+      handleSSECascadeError: (sessionId, phaseName, error) => {
+        const state = get();
+        if (state.cascadeSessionId !== sessionId) return;
+
+        set(s => {
+          if (phaseName && s.cellStates[phaseName]) {
+            s.cellStates[phaseName] = {
+              status: 'error',
+              error: error,
+            };
+          }
+          s.isRunningAll = false;
+          s.cascadeSessionId = null;
+        });
+      },
+
+      // Legacy: Run cells sequentially via notebook API (for isolated testing)
       runAllCells: async () => {
         const state = get();
         if (!state.notebook || state.isRunningAll) return;

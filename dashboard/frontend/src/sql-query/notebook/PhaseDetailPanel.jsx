@@ -380,7 +380,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                     <span className="phase-detail-row-count">{result.row_count} rows</span>
                   )}
                   {cellState?.duration && (
-                    <span className="phase-detail-duration">{cellState.duration}ms</span>
+                    <span className="phase-detail-duration">{Math.round(cellState.duration)}ms</span>
                   )}
                 </div>
                 <div className="phase-detail-results-content">
@@ -388,6 +388,25 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                     <div className="phase-detail-error">
                       <span className="phase-detail-error-label">Error:</span>
                       <pre className="phase-detail-error-message">{error}</pre>
+                    </div>
+                  ) : typeof result === 'string' ? (
+                    /* String result (LLM output from standard execution) */
+                    <div className="phase-detail-text">
+                      <Editor
+                        height="100%"
+                        language="markdown"
+                        value={result}
+                        theme="detail-dark"
+                        beforeMount={handleMonacoBeforeMount}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          lineNumbers: 'off',
+                          wordWrap: 'on',
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
                     </div>
                   ) : result?.type === 'image' && (result?.api_url || result?.base64) ? (
                     /* Image result (matplotlib, PIL) */
