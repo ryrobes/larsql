@@ -5,6 +5,7 @@ import useCascadeStore from '../stores/cascadeStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
 import InputsForm from './InputsForm';
 import VariablePalette from './VariablePalette';
+import RecentRunsSection from './RecentRunsSection';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -436,6 +437,9 @@ function CascadeNavigator() {
 
       {/* Variable Palette */}
       <VariablePalette />
+
+      {/* Recent Runs */}
+      <RecentRunsSection />
 
       {/* Phases Section */}
       <div className="nav-section nav-phases-section">

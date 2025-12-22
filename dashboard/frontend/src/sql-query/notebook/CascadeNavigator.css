@@ -644,3 +644,110 @@
   gap: 3px;
   padding: 4px 8px 6px 24px;
 }
+
+/* ============================================
+   RECENT RUNS SECTION
+   ============================================ */
+
+.recent-runs-section {
+  border-top: 1px solid #1a2028;
+}
+
+.recent-runs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.recent-runs-loading,
+.recent-runs-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.recent-run-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.recent-run-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+.recent-run-active {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.recent-run-live {
+  background: rgba(45, 212, 191, 0.08);
+  border-color: rgba(45, 212, 191, 0.2);
+  cursor: default;
+}
+
+.recent-run-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recent-run-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.recent-run-success {
+  color: #34d399;
+}
+
+.recent-run-error {
+  color: #f87171;
+}
+
+.recent-run-live-dot {
+  width: 6px;
+  height: 6px;
+  background: #2dd4bf;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.recent-run-label {
+  font-size: 11px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.recent-run-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: #64748b;
+  padding-left: 20px;
+}
+
+.recent-run-cost {
+  color: #34d399;
+}

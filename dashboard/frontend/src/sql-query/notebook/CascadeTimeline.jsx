@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useCascadeStore from '../stores/cascadeStore';
+import useTimelinePolling from '../hooks/useTimelinePolling';
 import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
 import './CascadeTimeline.css';
@@ -42,19 +43,40 @@ const CascadeTimeline = () => {
     cascadeDirty,
     cellStates,
     isRunningAll,
+    cascadeSessionId,
+    viewMode,
+    replaySessionId,
     sessionId,
     cascades,
     fetchCascades,
     loadCascade,
     newCascade,
     addCell,
-    runAllCells,
     restartSession,
     updateCascade,
     saveCascade,
     selectedPhaseIndex,
     setSelectedPhaseIndex,
+    updateCellStatesFromPolling,
   } = useCascadeStore();
+
+  // Poll for execution updates - either live or replay session
+  const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
+  const isPollingActive = viewMode === 'live' && isRunningAll;
+  const { phaseStates } = useTimelinePolling(sessionToPoll, isPollingActive);
+
+  // Update cellStates when polling returns new data
+  const prevPhaseStatesHashRef = useRef('');
+  useEffect(() => {
+    if (!phaseStates || Object.keys(phaseStates).length === 0) return;
+
+    // Only update if data actually changed (cheap hash check)
+    const currentHash = JSON.stringify(phaseStates);
+    if (currentHash === prevPhaseStatesHashRef.current) return;
+
+    prevPhaseStatesHashRef.current = currentHash;
+    updateCellStatesFromPolling(phaseStates);
+  }, [phaseStates, updateCellStatesFromPolling]);
 
   const timelineRef = useRef(null);
 
@@ -66,9 +88,6 @@ const CascadeTimeline = () => {
     updateCascade({ description: e.target.value });
   };
 
-  const handleRunAll = async () => {
-    await runAllCells();
-  };
 
   const handleSave = async () => {
     if (!cascadePath) {
@@ -146,6 +165,12 @@ const CascadeTimeline = () => {
             placeholder="cascade_name"
           />
           {cascadeDirty && <span className="cascade-dirty-dot" title="Unsaved changes" />}
+          {viewMode === 'replay' && (
+            <span className="cascade-replay-badge" title="Viewing past execution">
+              <Icon icon="mdi:history" width="14" />
+              Replay
+            </span>
+          )}
           <input
             className="cascade-description-input"
             value={cascade.description || ''}

@@ -86,6 +86,8 @@ const useCascadeStore = create(
       // UI STATE
       // ============================================
       selectedPhaseIndex: null,  // Currently selected phase in timeline view
+      viewMode: 'live',  // 'live' | 'replay' - viewing live execution vs past run
+      replaySessionId: null,  // Session ID when in replay mode
 
       // ============================================
       // AUTO-FIX CONFIGURATION
@@ -196,6 +198,22 @@ const useCascadeStore = create(
       setSelectedPhaseIndex: (index) => {
         set(state => {
           state.selectedPhaseIndex = index;
+        });
+      },
+
+      setReplayMode: (sessionId) => {
+        set(state => {
+          state.viewMode = 'replay';
+          state.replaySessionId = sessionId;
+          // Clear any running execution
+          state.isRunningAll = false;
+        });
+      },
+
+      setLiveMode: () => {
+        set(state => {
+          state.viewMode = 'live';
+          state.replaySessionId = null;
         });
       },
 
@@ -771,8 +789,9 @@ output_schema:
           }
 
           console.log('[runCascadeStandard] Execution started, session:', sessionId);
-          // SSE events will update cell states as phases complete
-          // Note: Don't set isRunningAll = false here - wait for cascade_complete event
+          console.log('[runCascadeStandard] Polling will update cell states');
+          // Polling (via useTimelinePolling) will update cellStates automatically
+          // isRunningAll will be set to false when all phases complete
 
         } catch (err) {
           console.error('[runCascadeStandard] Error:', err);
@@ -783,82 +802,40 @@ output_schema:
         }
       },
 
-      // Handle SSE events for standard cascade execution
-      handleSSEPhaseStart: (sessionId, phaseName) => {
-        const state = get();
-        if (state.cascadeSessionId !== sessionId) return;
-
-        console.log('[NotebookStore SSE] Phase start:', phaseName);
-
+      // Update cell states from polling data (replaces SSE handlers)
+      updateCellStatesFromPolling: (phaseStates) => {
         set(s => {
-          if (!s.cellStates[phaseName]) {
-            s.cellStates[phaseName] = {};
-          }
-          s.cellStates[phaseName].status = 'running';
-        });
-      },
+          for (const [phaseName, state] of Object.entries(phaseStates)) {
+            console.log('[updateCellStatesFromPolling]', phaseName, 'state.result type:', typeof state.result);
 
-      handleSSEPhaseComplete: (sessionId, phaseName, result) => {
-        const state = get();
-        if (state.cascadeSessionId !== sessionId) return;
+            // Parse result if it's a JSON string (double-encoded from DB)
+            let result = state.result;
+            if (typeof result === 'string') {
+              try {
+                result = JSON.parse(result);
+                console.log('[updateCellStatesFromPolling] Parsed string to object for', phaseName);
+              } catch (e) {
+                // Not JSON, keep as string
+              }
+            }
 
-        console.log('[NotebookStore SSE] Phase complete:', phaseName, 'result:', result);
-
-        // Extract the actual output from SSE result structure
-        // SSE sends: {output: {...}, duration_ms: ...}
-        // Note: We get TWO phase_complete events per phase:
-        //   1. First with actual data: {output: {rows, columns}, duration_ms}
-        //   2. Second with just handoff: {output: 'next_phase_name', duration_ms}
-        const actualResult = result?.output || result;
-        const duration = result?.duration_ms;
-
-        // Skip if this looks like a handoff-only event:
-        // Handoffs are simple phase names (single word, short, no spaces usually)
-        // Real output is longer or has special chars or is an object
-        const isLikelyHandoff = typeof actualResult === 'string'
-          && actualResult.length < 30
-          && !actualResult.includes(' ')
-          && !actualResult.includes('\n');
-
-        if (isLikelyHandoff) {
-          console.log('[NotebookStore SSE] Skipping handoff event for:', phaseName, '(output:', actualResult, ')');
-          return;
-        }
-
-        console.log('[NotebookStore SSE] Storing result for:', phaseName);
-
-        set(s => {
-          s.cellStates[phaseName] = {
-            status: 'success',
-            result: actualResult,
-            duration: duration,
-          };
-        });
-      },
-
-      handleSSECascadeComplete: (sessionId) => {
-        const state = get();
-        if (state.cascadeSessionId !== sessionId) return;
-
-        set(s => {
-          s.isRunningAll = false;
-          s.cascadeSessionId = null;
-        });
-      },
-
-      handleSSECascadeError: (sessionId, phaseName, error) => {
-        const state = get();
-        if (state.cascadeSessionId !== sessionId) return;
-
-        set(s => {
-          if (phaseName && s.cellStates[phaseName]) {
             s.cellStates[phaseName] = {
-              status: 'error',
-              error: error,
+              ...state,
+              result: result,
             };
           }
-          s.isRunningAll = false;
-          s.cascadeSessionId = null;
+
+          // Check if all phases complete
+          const phases = s.cascade?.phases || [];
+          const allComplete = phases.every(p => {
+            const state = s.cellStates[p.name];
+            return state?.status === 'success' || state?.status === 'error';
+          });
+
+          if (allComplete && s.isRunningAll) {
+            s.isRunningAll = false;
+            s.cascadeSessionId = null;
+          }
         });
       },
 

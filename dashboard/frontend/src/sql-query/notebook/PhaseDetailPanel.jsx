@@ -17,7 +17,7 @@ import './PhaseDetailPanel.css';
  * - Output: Results table/JSON
  */
 const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
-  const { updateCell, runCell, removeCell } = useNotebookStore();
+  const { updateCell, runCell, removeCell } = useCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [showYamlEditor, setShowYamlEditor] = useState(false);
   const editorRef = useRef(null);
@@ -73,6 +73,11 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
   const status = cellState?.status || 'pending';
   const result = cellState?.result;
   const error = cellState?.error;
+
+  // Debug
+  React.useEffect(() => {
+    console.log('[PhaseDetailPanel] Phase:', phase.name, 'Status:', status, 'Has result:', !!result, 'Has error:', !!error);
+  }, [phase.name, status, result, error]);
 
   // Serialize phase to YAML for YAML editor
   const phaseYaml = useMemo(() => {
@@ -353,110 +358,6 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                     error={error}
                     handleMonacoBeforeMount={handleMonacoBeforeMount}
                   />
-                  {/* REMOVED: 107 lines of inline result rendering - now in ResultRenderer.jsx */}
-                  {false && typeof result === 'string' ? (
-                    /* String result (LLM output from standard execution) */
-                    <div className="phase-detail-text">
-                      <Editor
-                        height="100%"
-                        language="markdown"
-                        value={result}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineNumbers: 'off',
-                          wordWrap: 'on',
-                          padding: { top: 12, bottom: 12 },
-                        }}
-                      />
-                    </div>
-                  ) : result?.type === 'image' && (result?.api_url || result?.base64) ? (
-                    /* Image result (matplotlib, PIL) */
-                    <div className="phase-detail-image">
-                      <img
-                        src={result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`}
-                        alt={result.content || "Phase output"}
-                        style={{ maxWidth: '100%', height: 'auto' }}
-                      />
-                      {result.width && result.height && (
-                        <div className="phase-detail-image-info">
-                          {result.width} × {result.height}
-                        </div>
-                      )}
-                    </div>
-                  ) : result?.type === 'plotly' && result?.data ? (
-                    /* Plotly chart result */
-                    <div className="phase-detail-plotly">
-                      <Plot
-                        data={JSON.parse(JSON.stringify(result.data))}
-                        layout={{
-                          ...JSON.parse(JSON.stringify(result.layout || {})),
-                          paper_bgcolor: '#080c12',
-                          plot_bgcolor: '#080c12',
-                          font: { color: '#cbd5e1' },
-                          xaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
-                          yaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
-                        }}
-                        config={{ responsive: true, displayModeBar: true }}
-                        style={{ width: '100%', height: '100%' }}
-                      />
-                    </div>
-                  ) : result?.rows && result?.columns ? (
-                    /* DataFrame result */
-                    <div className="phase-detail-grid">
-                      <AgGridReact
-                        rowData={gridRowData}
-                        columnDefs={gridColumnDefs}
-                        theme={detailGridTheme}
-                        animateRows={false}
-                        enableCellTextSelection={true}
-                        headerHeight={36}
-                        rowHeight={28}
-                      />
-                    </div>
-                  ) : result?.result?.lineage?.[0]?.output ? (
-                    /* LLM output from lineage */
-                    <div className="phase-detail-text">
-                      <Editor
-                        height="100%"
-                        language="markdown"
-                        value={typeof result.result.lineage[0].output === 'string'
-                          ? result.result.lineage[0].output
-                          : JSON.stringify(result.result.lineage[0].output, null, 2)}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineNumbers: 'off',
-                          wordWrap: 'on',
-                          padding: { top: 12, bottom: 12 },
-                        }}
-                      />
-                    </div>
-                  ) : result?.result !== undefined ? (
-                    /* JSON result */
-                    <div className="phase-detail-json">
-                      <Editor
-                        height="100%"
-                        language="json"
-                        value={JSON.stringify(result.result, null, 2)}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineNumbers: 'off',
-                          wordWrap: 'on',
-                        }}
-                      />
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </Split>

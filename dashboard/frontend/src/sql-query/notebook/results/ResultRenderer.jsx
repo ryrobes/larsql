@@ -55,13 +55,38 @@ const ResultRenderer = ({ result, error, handleMonacoBeforeMount }) => {
 
   const gridRowData = React.useMemo(() => result?.rows || [], [result?.rows]);
 
-  // === Render logic (brittle, extracted as-is) ===
+  // === Render logic ===
+
+  // Debug
+  React.useEffect(() => {
+    console.log('[ResultRenderer] result type:', typeof result);
+    console.log('[ResultRenderer] has rows?', result?.rows);
+    console.log('[ResultRenderer] has columns?', result?.columns);
+    console.log('[ResultRenderer] result:', result);
+  }, [result]);
 
   if (error) {
     return (
       <div className="phase-detail-error">
         <span className="phase-detail-error-label">Error:</span>
         <pre className="phase-detail-error-message">{error}</pre>
+      </div>
+    );
+  }
+
+  // DataFrame result (SQL/Python tables) - CHECK FIRST before string check
+  if (result?.rows && result?.columns) {
+    return (
+      <div className="phase-detail-grid">
+        <AgGridReact
+          rowData={gridRowData}
+          columnDefs={gridColumnDefs}
+          theme={detailGridTheme}
+          animateRows={false}
+          enableCellTextSelection={true}
+          headerHeight={36}
+          rowHeight={28}
+        />
       </div>
     );
   }
@@ -128,22 +153,6 @@ const ResultRenderer = ({ result, error, handleMonacoBeforeMount }) => {
     );
   }
 
-  // DataFrame result (SQL/Python tables)
-  if (result?.rows && result?.columns) {
-    return (
-      <div className="phase-detail-grid">
-        <AgGridReact
-          rowData={gridRowData}
-          columnDefs={gridColumnDefs}
-          theme={detailGridTheme}
-          animateRows={false}
-          enableCellTextSelection={true}
-          headerHeight={36}
-          rowHeight={28}
-        />
-      </div>
-    );
-  }
 
   // LLM output from lineage (legacy notebook API)
   if (result?.result?.lineage?.[0]?.output) {

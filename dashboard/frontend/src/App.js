@@ -19,7 +19,6 @@ import FlowBuilderView from './components/FlowBuilderView';
 import FlowRegistryView from './components/FlowRegistryView';
 import SessionsView from './components/SessionsView';
 import SqlQueryPage from './sql-query/SqlQueryPage';
-import useCascadeStore from './sql-query/stores/cascadeStore';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -534,36 +533,8 @@ function App() {
             break;
 
           case 'phase_start':
-            // Debug log to see actual structure
-            console.log('[SSE phase_start] Full event:', event);
-
-            // Notify notebook store (for Timeline cascade execution)
-            const phaseNameStart = event.phase_name || event.data?.phase_name || event.name;
-            useCascadeStore.getState().handleSSEPhaseStart?.(event.session_id, phaseNameStart);
-
-            // Refresh on any activity
-            setRefreshTrigger(prev => prev + 1);
-            if (event.session_id) {
-              setSessionUpdates(prev => ({
-                ...prev,
-                [event.session_id]: Date.now()
-              }));
-            }
-            break;
-
           case 'phase_complete':
-            // Debug log to see actual structure
-            console.log('[SSE phase_complete] Full event:', event);
-
-            // Notify notebook store (for Timeline cascade execution)
-            const phaseNameComplete = event.phase_name || event.data?.phase_name || event.name;
-            const phaseResult = event.result || event.data?.result || event.data || {};
-            useCascadeStore.getState().handleSSEPhaseComplete?.(
-              event.session_id,
-              phaseNameComplete,
-              phaseResult
-            );
-
+            // Timeline uses polling, not SSE - just refresh for other views
             setRefreshTrigger(prev => prev + 1);
             if (event.session_id) {
               setSessionUpdates(prev => ({
@@ -591,9 +562,7 @@ function App() {
             const completeCascadeId = event.data?.cascade_id;
             const completeSessionId = event.session_id;
 
-            // Notify notebook store (for Timeline cascade execution)
-            useCascadeStore.getState().handleSSECascadeComplete?.(event.session_id);
-
+            // Timeline uses polling for completion detection
             // Move cascade from running to neutral
             if (completeCascadeId) {
               setRunningCascades(prev => {
@@ -666,13 +635,7 @@ function App() {
             const errorCascadeId = event.data?.cascade_id;
             const errorSessionId = event.session_id;
 
-            // Notify notebook store (for Timeline cascade execution)
-            useCascadeStore.getState().handleSSECascadeError?.(
-              event.session_id,
-              event.phase_name,
-              event.message || event.error || 'Unknown error'
-            );
-
+            // Timeline uses polling for error detection
             if (errorCascadeId) {
               setRunningCascades(prev => {
                 const newSet = new Set(prev);
