@@ -10,6 +10,7 @@ images
 memories
 audio
 rabbitize-runs
+session_dbs
 sql_connections/samples
 samples
 *sql_connections*

@@ -16,15 +16,21 @@ from threading import Lock
 _session_dbs: Dict[str, duckdb.DuckDBPyConnection] = {}
 _session_db_lock = Lock()
 
-# Directory for session database files
-SESSION_DB_DIR = "/tmp/windlass_sessions"
+# Directory for session database files - now in WINDLASS_ROOT
+def _get_session_db_dir():
+    """Get session database directory (creates if needed)."""
+    from ..config import get_config
+    config = get_config()
+    session_db_dir = os.path.join(config.root_dir, 'session_dbs')
+    os.makedirs(session_db_dir, exist_ok=True)
+    return session_db_dir
 
 
 def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
     """
     Get or create a DuckDB connection for the given session.
 
-    The database file persists at /tmp/windlass_sessions/<session_id>.duckdb
+    The database file persists at $WINDLASS_ROOT/session_dbs/<session_id>.duckdb
     and contains all temp tables created during the cascade execution.
 
     Args:
@@ -35,14 +41,14 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
     """
     with _session_db_lock:
         if session_id not in _session_dbs:
-            # Ensure directory exists
-            os.makedirs(SESSION_DB_DIR, exist_ok=True)
+            # Get session database directory
+            session_db_dir = _get_session_db_dir()
 
             # Sanitize session_id for filename (replace problematic chars)
             safe_session_id = session_id.replace("/", "_").replace("\\", "_")
 
             # Create or open session database
-            db_path = os.path.join(SESSION_DB_DIR, f"{safe_session_id}.duckdb")
+            db_path = os.path.join(session_db_dir, f"{safe_session_id}.duckdb")
             conn = duckdb.connect(db_path)
 
             # Configure for our use case
@@ -74,7 +80,8 @@ def cleanup_session_db(session_id: str, delete_file: bool = True):
             if delete_file:
                 # Sanitize session_id for filename
                 safe_session_id = session_id.replace("/", "_").replace("\\", "_")
-                db_path = os.path.join(SESSION_DB_DIR, f"{safe_session_id}.duckdb")
+                session_db_dir = _get_session_db_dir()
+                db_path = os.path.join(session_db_dir, f"{safe_session_id}.duckdb")
                 try:
                     if os.path.exists(db_path):
                         os.remove(db_path)
@@ -141,7 +148,8 @@ def session_db_exists(session_id: str) -> bool:
             return True
 
         safe_session_id = session_id.replace("/", "_").replace("\\", "_")
-        db_path = os.path.join(SESSION_DB_DIR, f"{safe_session_id}.duckdb")
+        session_db_dir = _get_session_db_dir()
+        db_path = os.path.join(session_db_dir, f"{safe_session_id}.duckdb")
         return os.path.exists(db_path)
 
 

@@ -30,7 +30,7 @@ function SessionsView({
   onPlayground,
   onTools,
   onSearch,
-  onSqlQuery,
+  onStudio,
   onArtifacts,
   onBrowser,
   onSessions,
@@ -257,7 +257,7 @@ function SessionsView({
           onPlayground={onPlayground}
           onTools={onTools}
           onSearch={onSearch}
-          onSqlQuery={onSqlQuery}
+          onStudio={onStudio}
           onArtifacts={onArtifacts}
           onBrowser={onBrowser}
           onSessions={onSessions}
@@ -325,7 +325,7 @@ function SessionsView({
         onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
-        onSqlQuery={onSqlQuery}
+        onStudio={onStudio}
         onArtifacts={onArtifacts}
         onBrowser={onBrowser}
         onSessions={onSessions}

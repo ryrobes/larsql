@@ -542,14 +542,22 @@ class WindlassRunner:
                 self.echo.add_lineage(phase.name, result, trace_id=phase_trace.id)
 
                 # Hook: Phase Complete (emits SSE event)
-                # For image phases, execute_phase already calls this via _execute_image_generation_phase
-                # For non-image phases, we need to call it here
-                phase_model = phase.model or self.model
-                if not Agent.is_image_generation_model(phase_model):
-                    self.hooks.on_phase_complete(phase.name, self.session_id, {
-                        "output": result,
-                        "duration_ms": phase_duration_ms,
-                    })
+                # In parallel execution, ALWAYS call this to ensure phase_complete is logged
+                self.hooks.on_phase_complete(phase.name, self.session_id, {
+                    "output": result,
+                    "duration_ms": phase_duration_ms,
+                })
+
+                # Log phase completion to unified_logs
+                log_message(
+                    self.session_id,
+                    "phase_complete",
+                    f"Phase {phase.name} completed",
+                    trace_id=phase_trace.id,
+                    phase_name=phase.name,
+                    cascade_id=self.config.cascade_id,
+                    duration_ms=phase_duration_ms
+                )
 
                 return {
                     "phase_name": phase.name,
@@ -4206,17 +4214,68 @@ Refinement directive: {reforge_config.honing_prompt}
         """
         # Create session state in ClickHouse for durable tracking
         try:
+            # Determine execution source
+            execution_source = "cli"  # Default
+            if self.depth > 0:
+                execution_source = "sub_cascade"
+
             create_session_state(
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
                 parent_session_id=self.parent_session_id,
                 depth=self.depth,
-                metadata={"config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline"}
+                metadata={
+                    "config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline",
+                    "execution_source": execution_source
+                }
             )
         except Exception as e:
             # Don't fail cascade if session state creation fails (backward compat)
             logger = logging.getLogger(__name__)
             logger.debug(f"Could not create session state: {e}")
+
+        # Save cascade definition and inputs for perfect replay
+        try:
+            from .db_adapter import get_db
+            from datetime import datetime
+            import yaml
+
+            db = get_db()
+
+            # Read original cascade file contents (preserve YAML/JSON as-is)
+            if isinstance(self.config_path, str):
+                # It's a file path - read raw contents
+                with open(self.config_path, 'r') as f:
+                    cascade_def_raw = f.read()
+            else:
+                # It's an inline dict - dump to YAML (preserves all data)
+                cascade_def_raw = yaml.dump(self.config_path, default_flow_style=False, sort_keys=False)
+
+            # Serialize input data to JSON (small, simple data structure)
+            input_json = json.dumps(input_data if input_data else {}, indent=2)
+
+            # Get config path (ClickHouse String type doesn't support None)
+            config_path_str = str(self.config_path) if isinstance(self.config_path, str) else ''
+
+            # Insert into cascade_sessions table using insert_rows method
+            db.insert_rows(
+                'cascade_sessions',
+                [{
+                    'session_id': self.session_id,
+                    'cascade_id': self.config.cascade_id,
+                    'cascade_definition': cascade_def_raw,  # Store raw YAML/JSON, not parsed/re-serialized
+                    'input_data': input_json,
+                    'config_path': config_path_str,
+                    'created_at': datetime.now(),
+                    'parent_session_id': self.parent_session_id or '',  # ClickHouse doesn't support None for String type
+                    'depth': self.depth
+                }],
+                columns=['session_id', 'cascade_id', 'cascade_definition', 'input_data', 'config_path', 'created_at', 'parent_session_id', 'depth']
+            )
+        except Exception as e:
+            # Don't fail cascade if cascade_sessions save fails (table might not exist yet)
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not save cascade definition to cascade_sessions: {e}")
 
         # Set hooks context for tools (allows checkpoint callbacks)
         set_current_hooks(self.hooks)
@@ -4280,6 +4339,42 @@ Refinement directive: {reforge_config.honing_prompt}
             return result
 
         except Exception as e:
+            # Log cascade-level error to unified logs
+            from .unified_logs import log_unified
+            import traceback
+
+            error_type = type(e).__name__
+            error_msg = str(e)
+            error_tb = traceback.format_exc()
+
+            # Log to unified logs with cascade context
+            log_unified(
+                session_id=self.session_id,
+                trace_id=self.trace.id if self.trace else None,
+                parent_id=self.trace.parent_id if self.trace else None,
+                parent_session_id=self.parent_session_id,
+                node_type="cascade_error",
+                role="error",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                cascade_config=self.config.dict() if hasattr(self.config, 'dict') else None,
+                content=f"{error_type}: {error_msg}\n\nTraceback:\n{error_tb}",
+                metadata={
+                    "error_type": error_type,
+                    "error_message": error_msg,
+                    "cascade_id": self.config.cascade_id,
+                    "depth": self.depth,
+                }
+            )
+
+            # Add to echo for error tracking
+            if hasattr(self, 'echo'):
+                self.echo.add_error(
+                    phase="cascade",
+                    error_type=error_type,
+                    error_message=error_msg
+                )
+
             # Update status to error
             try:
                 update_session_status(
@@ -4299,10 +4394,12 @@ Refinement directive: {reforge_config.honing_prompt}
             self._stop_heartbeat()
             # Stop narrator service if running
             self._stop_narrator_service()
-            # Clean up session DuckDB for data cascades
+            # Close session DuckDB connection (but keep file for replay/debugging)
+            # The Studio UI can explicitly cleanup via /api/studio/cleanup-session
+            # Or files can be cleaned up via TTL/manual cleanup
             try:
                 from .sql_tools.session_db import cleanup_session_db
-                cleanup_session_db(self.session_id, delete_file=True)
+                cleanup_session_db(self.session_id, delete_file=False)  # Keep file for temp table access
             except Exception:
                 pass  # Don't fail cascade if cleanup fails
 
@@ -7614,6 +7711,49 @@ Refinement directive: {reforge_config.honing_prompt}
                 return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
 
             return self._execute_phase_internal(phase, input_data, trace, initial_injection)
+
+        except Exception as e:
+            # Log uncaught phase errors to unified logs
+            # (Note: Turn-loop errors and deterministic errors are already logged in their respective methods)
+            from .unified_logs import log_unified
+            import traceback
+            import time
+
+            error_type = type(e).__name__
+            error_msg = str(e)
+            error_tb = traceback.format_exc()
+
+            # Log to unified logs with full context
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                parent_session_id=self.parent_session_id,
+                node_type="phase_error",
+                role="error",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                phase_name=phase.name,
+                phase_config=phase.dict() if hasattr(phase, 'dict') else None,
+                content=f"{error_type}: {error_msg}\n\nTraceback:\n{error_tb}",
+                metadata={
+                    "error_type": error_type,
+                    "error_message": error_msg,
+                    "phase_name": phase.name,
+                    "phase_type": "deterministic" if phase.is_deterministic() else "llm",
+                    "has_soundings": phase.soundings is not None and phase.soundings.factor > 1 if phase.soundings else False,
+                }
+            )
+
+            # Add to echo for cascade-level error tracking
+            self.echo.add_error(
+                phase=phase.name,
+                error_type=error_type,
+                error_message=error_msg
+            )
+
+            # Re-raise to let cascade-level handler process it
+            raise
 
         finally:
             # Clean up browser session

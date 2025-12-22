@@ -17,7 +17,7 @@ function ToolBrowserView({
   onPlayground,
   onTools,
   onSearch,
-  onSqlQuery,
+  onStudio,
   onArtifacts,
   onBrowser,
   onSessions,
@@ -92,7 +92,7 @@ function ToolBrowserView({
         onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
-        onSqlQuery={onSqlQuery}
+        onStudio={onStudio}
         onArtifacts={onArtifacts}
         onBrowser={onBrowser}
         onSessions={onSessions}

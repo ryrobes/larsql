@@ -63,6 +63,7 @@ from analytics_api import analytics_bp
 from browser_sessions_api import browser_sessions_bp
 from sql_query_api import sql_query_bp
 from notebook_api import notebook_bp
+from studio_api import studio_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -74,6 +75,9 @@ app.register_blueprint(tool_browser_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
+# New unified Studio API (combines SQL Query + Notebook)
+app.register_blueprint(studio_bp)
+# Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
 
@@ -3819,7 +3823,8 @@ def playground_session_stream(session_id):
                 model,
                 cost,
                 duration_ms,
-                content_json
+                content_json,
+                metadata_json
             FROM unified_logs
             WHERE startsWith(session_id, '{session_id}')
               AND timestamp > '{after}'
@@ -3827,58 +3832,39 @@ def playground_session_stream(session_id):
             LIMIT {limit + 1}
         """
 
-        result = conn.execute(query).fetchall()
-        conn.close()
-
-        # Get column names for dict conversion
-        columns = [
-            'message_id', 'timestamp', 'session_id', 'trace_id', 'phase_name',
-            'role', 'sounding_index', 'is_winner', 'reforge_step', 'winning_sounding_index',
-            'model', 'cost', 'duration_ms', 'content_json'
-        ]
+        # Use db.query() for proper dict results with all columns
+        db = get_db()
+        rows = db.query(query)
 
         # Check if there are more rows
-        has_more = len(result) > limit
-        rows_to_return = result[:limit]
+        has_more = len(rows) > limit
+        rows_to_return = rows[:limit]
 
-        # Convert to dicts
-        rows = []
+        # Rows are already dicts from db.query(), just need to serialize timestamps
         for row in rows_to_return:
-            row_dict = {}
-            for i, col in enumerate(columns):
-                val = row[i]
-                # Handle timestamp serialization
-                if col == 'timestamp' and val is not None:
-                    if hasattr(val, 'isoformat'):
-                        val = val.isoformat()
-                    else:
-                        val = str(val)
-                # Handle UUID serialization
-                if col == 'message_uuid' and val is not None:
-                    val = str(val)
-                row_dict[col] = val
-            rows.append(row_dict)
+            if row.get('timestamp') and hasattr(row['timestamp'], 'isoformat'):
+                row['timestamp'] = row['timestamp'].isoformat()
 
         # Determine cursor (timestamp of last row)
         cursor = after
-        if rows:
-            cursor = rows[-1]['timestamp']
+        if rows_to_return:
+            cursor = rows_to_return[-1]['timestamp']
 
         # Check if session is complete by looking for cascade_complete role
         session_complete = any(
             r.get('role') in ('cascade_complete', 'cascade_error')
-            for r in rows
+            for r in rows_to_return
         )
 
-        # Calculate total cost from all rows
+        # Calculate total cost from all returned rows
         total_cost = sum(
             float(r.get('cost', 0) or 0)
-            for r in rows
+            for r in rows_to_return
             if r.get('cost')
         )
 
         return jsonify({
-            'rows': rows,
+            'rows': rows_to_return,
             'has_more': has_more,
             'cursor': cursor,
             'session_complete': session_complete,

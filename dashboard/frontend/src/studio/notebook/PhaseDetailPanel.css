@@ -1,0 +1,820 @@
+/* ============================================
+   PHASE DETAIL PANEL - Bottom Panel
+   ============================================ */
+
+.phase-detail-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f1821;
+  /* border-top: 1px solid #2dd4bf; */
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.phase-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #0b1219;
+  border-bottom: 1px solid #1a2028;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.phase-detail-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-detail-header-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.phase-detail-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.phase-detail-name-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f4f8;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-width: 150px;
+}
+
+.phase-detail-name-input:hover {
+  border-color: #1a2028;
+}
+
+.phase-detail-name-input:focus {
+  outline: none;
+  border-color: #2dd4bf;
+  background-color: rgba(45, 212, 191, 0.05);
+}
+
+.phase-detail-index {
+  font-size: 12px;
+  color: #64748b;
+  background-color: #1a2028;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* ============================================
+   TABS
+   ============================================ */
+
+.phase-detail-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.phase-detail-tab:hover:not(:disabled) {
+  color: #cbd5e1;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.phase-detail-tab.active {
+  color: #2dd4bf;
+  background-color: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+.phase-detail-tab:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.phase-detail-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.phase-detail-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.phase-detail-btn-run {
+  background-color: #2dd4bf;
+  color: #0a0a0a;
+  border-color: #2dd4bf;
+}
+
+.phase-detail-btn-run:hover:not(:disabled) {
+  background-color: #14b8a6;
+}
+
+.phase-detail-btn-delete {
+  background-color: transparent;
+  color: #f8717133;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.phase-detail-btn-delete:hover {
+  background-color: rgba(248, 113, 113, 0.1);
+  border-color: #f87171;
+}
+
+.phase-detail-btn-close {
+  background-color: transparent;
+  color: #64748b;
+  border-color: #1a2028;
+}
+
+.phase-detail-btn-close:hover {
+  color: #cbd5e1;
+  border-color: #2a3038;
+}
+
+.phase-detail-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(10, 10, 10, 0.3);
+  border-top-color: #0a0a0a;
+  border-radius: 50%;
+  animation: phase-detail-spin 0.8s linear infinite;
+}
+
+@keyframes phase-detail-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   BODY
+   ============================================ */
+
+.phase-detail-body {
+  flex: 1;
+  overflow: hidden;
+  background-color: #0a0e14;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mode label (for non-LLM phases) */
+.phase-detail-mode-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* Splitter for Code + Results */
+.phase-detail-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-code-only {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-results-section {
+  border-top: 1px solid #1a2028;
+  background-color: #080c12;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background-color: #0b1219;
+  border-bottom: 1px solid #1a2028;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.phase-detail-results-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-detail-results-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phase-detail-results-tab {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-detail-results-tab:hover {
+  background-color: #131921;
+  color: #94a3b8;
+}
+
+.phase-detail-results-tab.active {
+  background-color: #1e293b;
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.phase-detail-row-count {
+  color: #34d399;
+  font-weight: 500;
+}
+
+.phase-detail-duration {
+  color: #64748b;
+}
+
+.phase-detail-results-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Images container styling (defined in ResultRenderer via inline styles, but add base here) */
+.phase-detail-results-content .phase-detail-images {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Raw JSON view */
+.phase-detail-raw-json {
+  padding: 16px;
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e6edf3;
+  background-color: #0a0e14;
+  overflow: auto;
+  flex: 1;
+}
+
+/* Images-only tab view */
+.phase-detail-images-only {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.phase-detail-image-container {
+  background-color: #0a0e14;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.phase-detail-image-container img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* Error detail view */
+.phase-detail-error-detail {
+  padding: 16px;
+  flex: 1;
+  overflow: auto;
+}
+
+.phase-detail-error-detail pre {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #f87171;
+  background-color: #1a0a0a;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 3px solid #f87171;
+}
+
+/* Messages view */
+.phase-detail-messages {
+  padding: 16px;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.phase-detail-messages-loading,
+.phase-detail-messages-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  color: #64748b;
+}
+
+.phase-detail-messages-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.phase-detail-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.phase-detail-message {
+  background-color: #0a0e14;
+  border-radius: 6px;
+  padding: 12px;
+  border-left: 3px solid #64748b;
+}
+
+.phase-detail-message-tool {
+  border-left-color: #60a5fa;
+}
+
+.phase-detail-message-assistant {
+  border-left-color: #a78bfa;
+}
+
+.phase-detail-message-user {
+  border-left-color: #34d399;
+}
+
+.phase-detail-message-system {
+  border-left-color: #fbbf24;
+}
+
+.phase-detail-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #1a2028;
+}
+
+.phase-detail-message-role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6edf3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-detail-message-node-type {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.phase-detail-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.phase-detail-message-duration,
+.phase-detail-message-cost,
+.phase-detail-message-turn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phase-detail-message-cost {
+  color: #34d399;
+}
+
+.phase-detail-message-content {
+  margin-bottom: 0;
+}
+
+.phase-detail-message-content pre {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e6edf3;
+  background-color: #060a10;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.phase-detail-message-tool-calls {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #1a2028;
+}
+
+.phase-detail-message-tool-calls-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.phase-detail-tool-call {
+  background-color: #060a10;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.phase-detail-tool-call:last-child {
+  margin-bottom: 0;
+}
+
+.phase-detail-tool-call strong {
+  display: block;
+  color: #60a5fa;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.phase-detail-tool-call pre {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #94a3b8;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.phase-detail-grid {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+
+.phase-detail-grid > div {
+  width: 100%;
+  height: 100%;
+}
+
+.phase-detail-json {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Code Tab (legacy - for config mode) */
+.phase-detail-code {
+  width: 100%;
+  height: 100%;
+}
+
+/* Config Tab */
+.phase-detail-config {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.phase-detail-config-section {
+  margin-bottom: 24px;
+}
+
+.phase-detail-config-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f4f8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-detail-placeholder {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* Output Tab */
+.phase-detail-output {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-grid {
+  width: 100%;
+  height: 100%;
+}
+
+.phase-detail-json {
+  width: 100%;
+  height: 100%;
+}
+
+.phase-detail-error {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phase-detail-error-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f87171;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-detail-error-message {
+  margin: 0;
+  font-family: 'IBM Plex Mono', 'Monaco', monospace;
+  font-size: 12px;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  background-color: rgba(248, 113, 113, 0.08);
+  padding: 12px;
+  border-radius: 4px;
+  border-left: 3px solid #f87171;
+}
+
+.phase-detail-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #475569;
+}
+
+.phase-detail-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ============================================
+   IMAGE RESULTS
+   ============================================ */
+
+.phase-detail-image {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  overflow: auto;
+}
+
+.phase-detail-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  border: 1px solid #1a2028;
+}
+
+.phase-detail-image-info {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* ============================================
+   PLOTLY CHART RESULTS
+   ============================================ */
+
+.phase-detail-plotly {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-plotly .js-plotly-plot {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Override Plotly modebar colors for dark theme */
+.phase-detail-plotly .modebar {
+  background: transparent !important;
+}
+
+.phase-detail-plotly .modebar-btn {
+  fill: #64748b !important;
+}
+
+.phase-detail-plotly .modebar-btn:hover {
+  fill: #2dd4bf !important;
+}
+
+/* ============================================
+   YAML TOGGLE BUTTON
+   ============================================ */
+
+.phase-detail-mode-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.phase-detail-yaml-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background-color: transparent;
+  border: 1px solid #1a2028;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.phase-detail-yaml-toggle:hover {
+  border-color: #2dd4bf;
+  color: #2dd4bf;
+  background-color: rgba(45, 212, 191, 0.05);
+}
+
+.phase-detail-yaml-toggle.active {
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #2dd4bf;
+  background-color: rgba(45, 212, 191, 0.1);
+}
+
+/* ============================================
+   YAML EDITOR SECTION
+   ============================================ */
+
+.phase-detail-code-yaml-split {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-yaml-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0a0e14;
+  border-left: 1px solid #1a2028;
+}
+
+.phase-detail-yaml-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #0b1219;
+  border-bottom: 1px solid #1a2028;
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.phase-detail-yaml-header span {
+  font-weight: 600;
+}
+
+.phase-detail-code-yaml-split .phase-detail-code-section {
+  border-right: 1px solid #1a2028;
+}
+
+/* Code container wrapper (keeps Split structure consistent) */
+.phase-detail-code-container {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  display: block;
+}
+
+.phase-detail-code-yaml-split {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  flex-direction: row;
+}
+
+.phase-detail-code-yaml-split > div {
+  height: 100%;
+}
+
+.phase-detail-code-section {
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-yaml-section {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: #0a0e14;
+}
+
+/* Drop active state for Monaco */
+.phase-detail-code-section.drop-active {
+  box-shadow: inset 0 0 0 2px rgba(167, 139, 250, 0.4);
+  background-color: rgba(167, 139, 250, 0.05);
+}
+
+/* Text content display for LLM outputs */
+.phase-detail-text {
+  flex: 1;
+  overflow: hidden;
+  padding: 12px;
+}

@@ -614,11 +614,10 @@ def cmd_run(args):
     except Exception:
         pass  # Non-fatal if tool discovery fails
 
-    # Generate session ID if not provided
+    # Generate session ID if not provided - use woodland naming
     if args.session is None:
-        import time
-        import uuid
-        session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        from windlass.session_naming import auto_generate_session_id
+        session_id = auto_generate_session_id()
     else:
         session_id = args.session
 

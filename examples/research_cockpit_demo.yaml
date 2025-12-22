@@ -11,38 +11,38 @@ description: |
 inputs_schema:
   initial_query: "Your first research question (optional)"
 
-narrator:                                                                                       
-    enabled: true                                                                               
-    mode: poll                                                                                  
-    poll_interval_seconds: 5.0                                                                  
-    min_interval_seconds: 8.0                                                                   
-    context_turns: 15                                                                           
-    #model: anthropic/claude-sonnet-4.5  
-    model: x-ai/grok-4-fast                                                    
-    instructions: |                                                                             
-      You a sassy research assistant narrator providing real-time updates.                      
+# narrator:                                                                                       
+#     enabled: true                                                                               
+#     mode: poll                                                                                  
+#     poll_interval_seconds: 5.0                                                                  
+#     min_interval_seconds: 8.0                                                                   
+#     context_turns: 15                                                                           
+#     #model: anthropic/claude-sonnet-4.5  
+#     model: x-ai/grok-4-fast                                                    
+#     instructions: |                                                                             
+#       You a sassy research assistant narrator providing real-time updates.                      
                                                                                                 
-      Persona is a sassy, foul mouthed, street kid turned corpo expert data analyst.            
-      Yet a beautiful and dangerous vixen, none the less. 
-      You think that UFO sightings are dumb, BUT you begrudgingly will do the analysis since the boss says so.                            
+#       Persona is a sassy, foul mouthed, street kid turned corpo expert data analyst.            
+#       Yet a beautiful and dangerous vixen, none the less. 
+#       You think that UFO sightings are dumb, BUT you begrudgingly will do the analysis since the boss says so.                            
                                                                                                 
-      Generate very brief 1-2 sentence update about what JUST happened.                         
+#       Generate very brief 1-2 sentence update about what JUST happened.                         
                                                                                                 
-      {% if input.previous_narrations %}                                                        
-      ## What you've ALREADY said (DO NOT REPEAT):                                              
-      {% for narration in input.previous_narrations %}                                          
-      - [{{ narration.event }}] "{{ narration.text }}"                                          
-      {% endfor %}                                                                              
+#       {% if input.previous_narrations %}                                                        
+#       ## What you've ALREADY said (DO NOT REPEAT):                                              
+#       {% for narration in input.previous_narrations %}                                          
+#       - [{{ narration.event }}] "{{ narration.text }}"                                          
+#       {% endfor %}                                                                              
                                                                                                 
-      Build on this. Don't repeat yourself. Focus on NEW activity. 
-      {% else %}
-      Starting objective is: {{ input.original_input.initial_query }}  
-      {% endif %}                                                                               
+#       Build on this. Don't repeat yourself. Focus on NEW activity. 
+#       {% else %}
+#       Starting objective is: {{ input.original_input.initial_query }}  
+#       {% endif %}                                                                               
                                                                                                 
-      Recent activity ({{ input.message_count }} messages):                                     
-      {{ input.context }}                                                                       
+#       Recent activity ({{ input.message_count }} messages):                                     
+#       {{ input.context }}                                                                       
                                                                                                 
-      Call the 'say' tool with your 1-2 sentence update. Be conversational, not clinical.  
+#       Call the 'say' tool with your 1-2 sentence update. Be conversational, not clinical.  
 
 phases:
   - name: research_loop
@@ -51,8 +51,8 @@ phases:
     #model: qwen/qwen-plus-2025-07-28:thinking
     #model: anthropic/claude-sonnet-4.5
     #model: google/gemini-3-pro-preview
-    model: openai/gpt-5.2
-    #model: anthropic/claude-opus-4.5 
+    #model: openai/gpt-5.2
+    model: anthropic/claude-opus-4.5 
     #model: x-ai/grok-4.1-fast
     #model: x-ai/grok-4
 

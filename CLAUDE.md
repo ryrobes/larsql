@@ -57,6 +57,7 @@ $WINDLASS_ROOT/
 ├── states/        # Session state JSON files
 ├── images/        # Multi-modal image outputs
 ├── audio/         # Voice recordings and TTS outputs
+├── session_dbs/   # Session-scoped DuckDB files with temp tables (NEW)
 ├── examples/      # Example cascade definitions
 ├── tackle/        # Reusable tool cascades
 └── cascades/      # User-defined cascades
@@ -339,12 +340,14 @@ The `examples/` directory contains reference implementations:
 **Tools**: `manifest_flow.json`, `rabbitize_*.json`, `hitl_flow.json`
 **Voice**: `voice_transcription_demo.json`, `voice_assistant_demo.json`, `voice_conversation_demo.json`
 **Data Cascades (Notebooks)** (NEW):
-- `notebook_polyglot_showcase.yaml` - SQL → Python → JS → Clojure → SQL pipeline
+- `notebook_polyglot_showcase.yaml` - SQL → Python → JS → Clojure → SQL pipeline (demonstrates temp tables)
 - `notebook_llm_classification.yaml` - LLM-powered data classification
 - `notebook_etl_pipeline.yaml` - Full ETL workflow
 - `notebook_llm_sentiment.yaml` - Sentiment analysis
 - `notebook_llm_entity_extraction.yaml` - Named entity recognition
 - `notebook_llm_data_cleaning.yaml` - LLM-powered data cleaning
+
+**Note**: Data cascades use session-scoped temp tables (`_phase_name`) for zero-copy data flow between polyglot phases. See `TEMP_TABLES_GUIDE.md` for details.
 
 ## Terminology (Nautical Theme)
 

@@ -26,7 +26,7 @@ function Header({
   onPlayground,
   onTools,
   onSearch,
-  onSqlQuery,
+  onStudio,
   onArtifacts,
   onBrowser,
   onSessions,
@@ -145,7 +145,7 @@ function Header({
       description: 'Semantic search',
     },
     {
-      label: 'SQL Query',
+      label: 'Studio',
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
           <ellipse cx="12" cy="6" rx="8" ry="3"/>
@@ -153,9 +153,9 @@ function Header({
           <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/>
         </svg>
       ),
-      onClick: onSqlQuery,
-      enabled: !!onSqlQuery,
-      description: 'SQL Query IDE',
+      onClick: onStudio,
+      enabled: !!onStudio,
+      description: 'Studio - Data & Cascade IDE',
     },
     {
       label: 'Artifacts',

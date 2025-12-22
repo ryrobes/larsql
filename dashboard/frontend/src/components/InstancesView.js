@@ -156,7 +156,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, onMessageFlow, onCockpit, onSextant, onWorkshop, onPlayground, onTools, onSearch, onSqlQuery, onArtifacts, onBrowser, onSessions, blockedCount }) {
+function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, onRunCascade, onInstanceComplete, cascadeData, refreshTrigger, runningCascades, runningSessions, finalizingSessions, sessionMetadata, sessionUpdates, sessionStartTimes, sseConnected, onBlocked, onMessageFlow, onCockpit, onSextant, onWorkshop, onPlayground, onTools, onSearch, onStudio, onArtifacts, onBrowser, onSessions, blockedCount }) {
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1222,7 +1222,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
-        onSqlQuery={onSqlQuery}
+        onStudio={onStudio}
         onArtifacts={onArtifacts}
         onBrowser={onBrowser}
         onSessions={onSessions}

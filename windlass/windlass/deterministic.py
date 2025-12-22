@@ -463,13 +463,17 @@ def execute_deterministic_phase(
             original_error=e
         )
 
-    # Inject context for data tools (sql_data, python_data)
-    if phase.tool in ("sql_data", "python_data"):
+    # Inject context for ALL data tools (sql_data, python_data, js_data, clojure_data, windlass_data)
+    if phase.tool in ("sql_data", "python_data", "js_data", "clojure_data", "windlass_data"):
         rendered_inputs["_phase_name"] = phase.name
         rendered_inputs["_session_id"] = echo.session_id
 
-        # python_data needs access to outputs and state
-        if phase.tool == "python_data":
+        # Enable materialization by default for sql_data (creates _phase_name temp tables)
+        if phase.tool == "sql_data" and "materialize" not in rendered_inputs:
+            rendered_inputs["materialize"] = True
+
+        # All polyglot tools need access to outputs and state (not just python_data)
+        if phase.tool in ("python_data", "js_data", "clojure_data", "windlass_data"):
             rendered_inputs["_outputs"] = outputs  # Dict of phase_name -> output
             rendered_inputs["_state"] = echo.state
             rendered_inputs["_input"] = input_data

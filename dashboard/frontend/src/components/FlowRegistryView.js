@@ -24,7 +24,7 @@ function FlowRegistryView({
   onPlayground,
   onTools,
   onSearch,
-  onSqlQuery,
+  onStudio,
   onArtifacts,
   onBrowser,
   onSessions,
@@ -235,7 +235,7 @@ function FlowRegistryView({
         onPlayground={onPlayground}
         onTools={onTools}
         onSearch={onSearch}
-        onSqlQuery={onSqlQuery}
+        onStudio={onStudio}
         onArtifacts={onArtifacts}
         onBrowser={onBrowser}
         onSessions={onSessions}

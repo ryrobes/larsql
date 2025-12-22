@@ -18,7 +18,7 @@ import BrowserSessionDetail from './components/BrowserSessionDetail';
 import FlowBuilderView from './components/FlowBuilderView';
 import FlowRegistryView from './components/FlowRegistryView';
 import SessionsView from './components/SessionsView';
-import SqlQueryPage from './sql-query/SqlQueryPage';
+import StudioPage from './studio/StudioPage';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -127,9 +127,14 @@ function App() {
         // /#/tools → tool browser
         return { view: 'tools', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: null };
       }
+      if (parts[0] === 'studio') {
+        // /#/studio → Studio page
+        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+      }
       if (parts[0] === 'sql-query') {
-        // /#/sql-query → SQL query page
-        return { view: 'sql-query', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
+        // Backward compatibility: redirect to studio
+        window.location.hash = window.location.hash.replace('sql-query', 'studio');
+        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
       }
       if (parts[0] === 'search') {
         // /#/search or /#/search/rag → search view
@@ -169,9 +174,14 @@ function App() {
         // /#/search/rag → search view with specific tab
         return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
       }
+      if (parts[0] === 'studio') {
+        // /#/studio/notebook_name → Studio page with notebook loaded
+        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
+      }
       if (parts[0] === 'sql-query') {
-        // /#/sql-query/notebook_name → SQL query page with notebook loaded
-        return { view: 'sql-query', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
+        // Backward compatibility: redirect to studio
+        window.location.hash = window.location.hash.replace('sql-query', 'studio');
+        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
       }
       // /#/cascade_id/session_id → detail view
       return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null, artifactId: null };
@@ -382,11 +392,11 @@ function App() {
         setSearchTab(route.searchTab || 'rag');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
-      } else if (route.view === 'sql-query') {
-        setCurrentView('sql-query');
+      } else if (route.view === 'studio') {
+        setCurrentView('studio');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
-        // If notebook name provided, store it for SqlQueryPage to load
+        // If notebook name provided, store it for StudioPage to load
         if (route.notebookName) {
           setInitialNotebook(route.notebookName);
         }
@@ -925,9 +935,9 @@ function App() {
       setCurrentView('search');
       updateHash('search', null, null, 'rag');
     },
-    onSqlQuery: () => {
-      setCurrentView('sql-query');
-      window.location.hash = '#/sql-query';
+    onStudio: () => {
+      setCurrentView('studio');
+      window.location.hash = '#/studio';
     },
     onArtifacts: () => {
       setCurrentView('artifacts');
@@ -988,9 +998,9 @@ function App() {
             setCurrentView('search');
             updateHash('search', null, null, 'rag');
           }}
-          onSqlQuery={() => {
-            setCurrentView('sql-query');
-            window.location.hash = '#/sql-query';
+          onStudio={() => {
+            setCurrentView('studio');
+            window.location.hash = '#/studio';
           }}
           onArtifacts={() => {
             setCurrentView('artifacts');
@@ -1220,8 +1230,8 @@ function App() {
         />
       )}
 
-      {currentView === 'sql-query' && (
-        <SqlQueryPage
+      {currentView === 'studio' && (
+        <StudioPage
           {...getStandardNavigationProps()}
           initialNotebook={initialNotebook}
           onNotebookLoaded={() => setInitialNotebook(null)}
