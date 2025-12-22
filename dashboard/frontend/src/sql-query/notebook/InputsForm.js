@@ -1,15 +1,15 @@
 import React from 'react';
-import useNotebookStore from '../stores/notebookStore';
+import useCascadeStore from '../stores/cascadeStore';
 import './InputsForm.css';
 
 /**
- * InputsForm - Dynamic form for notebook input parameters
+ * InputsForm - Dynamic form for cascade input parameters
  *
- * Renders input fields based on the notebook's inputs_schema.
- * Values are stored in notebookInputs and used when running cells.
+ * Renders input fields based on the cascade's inputs_schema.
+ * Values are stored in cascadeInputs and used when running cells.
  */
 const InputsForm = ({ schema }) => {
-  const { notebookInputs, setNotebookInput, clearNotebookInputs } = useNotebookStore();
+  const { cascadeInputs, setCascadeInput, clearCascadeInputs } = useCascadeStore();
 
   if (!schema || Object.keys(schema).length === 0) {
     return null;
@@ -23,7 +23,7 @@ const InputsForm = ({ schema }) => {
         <span className="inputs-form-title">Parameters</span>
         <button
           className="inputs-form-clear"
-          onClick={clearNotebookInputs}
+          onClick={clearCascadeInputs}
           title="Clear all inputs"
         >
           Clear
@@ -42,8 +42,8 @@ const InputsForm = ({ schema }) => {
               id={`input-${key}`}
               className="inputs-form-input"
               type="text"
-              value={notebookInputs[key] || ''}
-              onChange={(e) => setNotebookInput(key, e.target.value)}
+              value={cascadeInputs[key] || ''}
+              onChange={(e) => setCascadeInput(key, e.target.value)}
               placeholder={description || `Enter ${key}...`}
             />
           </div>

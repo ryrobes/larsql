@@ -1,4 +1,4 @@
-.notebook-navigator {
+.cascade-navigator {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -8,7 +8,7 @@
   font-size: 13px;
 }
 
-.notebook-navigator.empty {
+.cascade-navigator.empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -18,7 +18,7 @@
   padding: 24px;
 }
 
-.notebook-navigator .empty-icon {
+.cascade-navigator .empty-icon {
   font-size: 32px;
   opacity: 0.5;
 }
@@ -27,7 +27,7 @@
    NOTEBOOK HEADER
    ============================================ */
 
-.nav-notebook-header {
+.nav-cascade-header {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -37,12 +37,12 @@
   flex-shrink: 0;
 }
 
-.nav-notebook-icon {
+.nav-cascade-icon {
   font-size: 20px;
   color: #2dd4bf;
 }
 
-.nav-notebook-info {
+.nav-cascade-info {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -50,7 +50,7 @@
   min-width: 0;
 }
 
-.nav-notebook-name {
+.nav-cascade-name {
   font-weight: 600;
   color: #f0f4f8;
   white-space: nowrap;
@@ -58,7 +58,7 @@
   text-overflow: ellipsis;
 }
 
-.nav-notebook-stats {
+.nav-cascade-stats {
   font-size: 11px;
   color: #64748b;
 }
@@ -383,20 +383,20 @@
    SCROLLBAR
    ============================================ */
 
-.notebook-navigator::-webkit-scrollbar {
+.cascade-navigator::-webkit-scrollbar {
   width: 6px;
 }
 
-.notebook-navigator::-webkit-scrollbar-track {
+.cascade-navigator::-webkit-scrollbar-track {
   background: #0a0a0a;
 }
 
-.notebook-navigator::-webkit-scrollbar-thumb {
+.cascade-navigator::-webkit-scrollbar-thumb {
   background: #1a2028;
   border-radius: 3px;
 }
 
-.notebook-navigator::-webkit-scrollbar-thumb:hover {
+.cascade-navigator::-webkit-scrollbar-thumb:hover {
   background: #2a3038;
 }
 
@@ -492,13 +492,13 @@
 }
 
 /* Updated header layout for Run All button */
-.nav-notebook-header {
+.nav-cascade-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.nav-notebook-header-left {
+.nav-cascade-header-left {
   display: flex;
   align-items: center;
   gap: 10px;

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
-import useNotebookStore from '../stores/notebookStore';
+import useCascadeStore from '../stores/cascadeStore';
 import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
 import './CascadeTimeline.css';
@@ -37,33 +37,33 @@ const DropZone = ({ position }) => {
  */
 const CascadeTimeline = () => {
   const {
-    notebook,
-    notebookPath,
-    notebookDirty,
+    cascade,
+    cascadePath,
+    cascadeDirty,
     cellStates,
     isRunningAll,
     sessionId,
-    notebooks,
-    fetchNotebooks,
-    loadNotebook,
-    newNotebook,
+    cascades,
+    fetchCascades,
+    loadCascade,
+    newCascade,
     addCell,
     runAllCells,
     restartSession,
-    updateNotebook,
-    saveNotebook,
+    updateCascade,
+    saveCascade,
     selectedPhaseIndex,
     setSelectedPhaseIndex,
-  } = useNotebookStore();
+  } = useCascadeStore();
 
   const timelineRef = useRef(null);
 
   const handleTitleChange = (e) => {
-    updateNotebook({ cascade_id: e.target.value });
+    updateCascade({ cascade_id: e.target.value });
   };
 
   const handleDescriptionChange = (e) => {
-    updateNotebook({ description: e.target.value });
+    updateCascade({ description: e.target.value });
   };
 
   const handleRunAll = async () => {
@@ -71,22 +71,22 @@ const CascadeTimeline = () => {
   };
 
   const handleSave = async () => {
-    if (!notebookPath) {
-      const path = window.prompt('Save cascade as:', `cascades/${notebook?.cascade_id || 'cascade'}.yaml`);
+    if (!cascadePath) {
+      const path = window.prompt('Save cascade as:', `cascades/${cascade?.cascade_id || 'cascade'}.yaml`);
       if (path) {
-        await saveNotebook(path);
+        await saveCascade(path);
       }
     } else {
-      await saveNotebook();
+      await saveCascade();
     }
   };
 
   const handleSaveAsTool = async () => {
-    const toolName = notebook?.cascade_id?.replace(/[^a-z0-9_]/gi, '_') || 'cascade';
+    const toolName = cascade?.cascade_id?.replace(/[^a-z0-9_]/gi, '_') || 'cascade';
     const path = `tackle/${toolName}.yaml`;
 
     if (window.confirm(`Save as tool: ${toolName}?\n\nThis will make it callable from other cascades.`)) {
-      await saveNotebook(path);
+      await saveCascade(path);
     }
   };
 
@@ -98,29 +98,29 @@ const CascadeTimeline = () => {
 
   const handleLoad = async (path) => {
     try {
-      await loadNotebook(path);
+      await loadCascade(path);
     } catch (err) {
       console.error('Load failed:', err);
     }
   };
 
-  // Fetch notebooks on mount
+  // Fetch cascades on mount
   useEffect(() => {
-    fetchNotebooks();
-  }, [fetchNotebooks]);
+    fetchCascades();
+  }, [fetchCascades]);
 
-  // Create new notebook if none exists (same pattern as NotebookEditor)
+  // Create new cascade if none exists (same pattern as NotebookEditor)
   useEffect(() => {
-    if (!notebook) {
-      newNotebook();
+    if (!cascade) {
+      newCascade();
     }
-  }, [notebook, newNotebook]);
+  }, [cascade, newCascade]);
 
   const handleSelectPhase = (index) => {
     setSelectedPhaseIndex(index);
   };
 
-  if (!notebook) {
+  if (!cascade) {
     return (
       <div className="cascade-timeline cascade-loading">
         <div className="cascade-spinner" />
@@ -129,7 +129,7 @@ const CascadeTimeline = () => {
     );
   }
 
-  const phases = notebook.phases || [];
+  const phases = cascade.phases || [];
   const selectedPhase = selectedPhaseIndex !== null ? phases[selectedPhaseIndex] : null;
   const cellCount = phases.length;
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
@@ -141,14 +141,14 @@ const CascadeTimeline = () => {
         <div className="cascade-control-left">
           <input
             className="cascade-title-input"
-            value={notebook.cascade_id || ''}
+            value={cascade.cascade_id || ''}
             onChange={handleTitleChange}
             placeholder="cascade_name"
           />
-          {notebookDirty && <span className="cascade-dirty-dot" title="Unsaved changes" />}
+          {cascadeDirty && <span className="cascade-dirty-dot" title="Unsaved changes" />}
           <input
             className="cascade-description-input"
-            value={notebook.description || ''}
+            value={cascade.description || ''}
             onChange={handleDescriptionChange}
             placeholder="Description..."
           />
@@ -162,11 +162,11 @@ const CascadeTimeline = () => {
           {/* Cascade selector dropdown */}
           <select
             className="cascade-selector"
-            value={notebookPath || ''}
+            value={cascadePath || ''}
             onChange={(e) => e.target.value && handleLoad(e.target.value)}
           >
             <option value="">Load cascade...</option>
-            {notebooks.map(nb => (
+            {cascades.map(nb => (
               <option key={nb.path} value={nb.path}>
                 {nb.cascade_id} ({nb.path})
               </option>
@@ -184,7 +184,7 @@ const CascadeTimeline = () => {
           <button
             className="cascade-btn cascade-btn-secondary"
             onClick={handleSave}
-            disabled={!notebookDirty && notebookPath}
+            disabled={!cascadeDirty && cascadePath}
           >
             <Icon icon="mdi:content-save" width="16" />
             Save

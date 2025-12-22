@@ -8,12 +8,12 @@ const API_BASE_URL = 'http://localhost:5001/api';
  * Simple hash function for cell caching.
  * Creates a fingerprint of the cell's inputs to detect changes.
  */
-function hashCellInputs(phase, notebookInputs, priorOutputHashes) {
+function hashCellInputs(phase, cascadeInputs, priorOutputHashes) {
   // Combine relevant inputs into a string
   const inputStr = JSON.stringify({
     tool: phase.tool,
     inputs: phase.inputs,
-    notebookInputs,
+    cascadeInputs,
     // Include hashes of prior outputs to invalidate if upstream changed
     priorOutputHashes
   });
@@ -39,7 +39,7 @@ function hashCellInputs(phase, notebookInputs, priorOutputHashes) {
  * - JavaScript: data.cell_name returns array of objects
  * - Clojure: (:cell-name data) returns vector of maps
  */
-const useNotebookStore = create(
+const useCascadeStore = create(
   persist(
     immer((set, get) => ({
       // ============================================
@@ -48,13 +48,13 @@ const useNotebookStore = create(
       mode: 'query',  // 'query' | 'notebook'
 
       // ============================================
-      // NOTEBOOK STATE
+      // CASCADE STATE
       // ============================================
-      notebook: null,  // Current notebook object
-      notebookPath: null,  // Path to loaded notebook
-      notebookDirty: false,  // Unsaved changes
+      cascade: null,  // Current cascade object
+      cascadePath: null,  // Path to loaded cascade
+      cascadeDirty: false,  // Unsaved changes
 
-      // Notebook structure:
+      // Cascade structure:
       // {
       //   cascade_id: string,
       //   description: string,
@@ -67,7 +67,7 @@ const useNotebookStore = create(
       // ============================================
       // INPUT VALUES
       // ============================================
-      notebookInputs: {},  // User-provided input values
+      cascadeInputs: {},  // User-provided input values
 
       // ============================================
       // CELL EXECUTION STATE
@@ -103,26 +103,26 @@ const useNotebookStore = create(
       // ============================================
       // UNDO/REDO HISTORY
       // ============================================
-      undoStack: [],  // Stack of previous notebook states (phases snapshots)
+      undoStack: [],  // Stack of previous cascade states (phases snapshots)
       redoStack: [],  // Stack of undone states
       maxHistorySize: 50,  // Maximum history entries
 
       // ============================================
-      // NOTEBOOK LIST
+      // CASCADE LIST
       // ============================================
-      notebooks: [],  // List of available notebooks
-      notebooksLoading: false,
-      notebooksError: null,
+      cascades: [],  // List of available cascades
+      cascadesLoading: false,
+      cascadesError: null,
 
       // ============================================
       // UNDO/REDO HELPERS
       // ============================================
       _saveToUndoStack: () => {
         const state = get();
-        if (!state.notebook?.phases) return;
+        if (!state.cascade?.phases) return;
 
         // Create a deep copy of phases for the undo stack
-        const phasesSnapshot = JSON.parse(JSON.stringify(state.notebook.phases));
+        const phasesSnapshot = JSON.parse(JSON.stringify(state.cascade.phases));
 
         set(s => {
           // Push current state to undo stack
@@ -140,17 +140,17 @@ const useNotebookStore = create(
 
       undo: () => {
         const state = get();
-        if (!state.notebook || state.undoStack.length === 0) return false;
+        if (!state.cascade || state.undoStack.length === 0) return false;
 
         set(s => {
           // Save current state to redo stack
-          const currentSnapshot = JSON.parse(JSON.stringify(s.notebook.phases));
+          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.phases));
           s.redoStack.push(currentSnapshot);
 
           // Pop previous state from undo stack
           const previousState = s.undoStack.pop();
-          s.notebook.phases = previousState;
-          s.notebookDirty = true;
+          s.cascade.phases = previousState;
+          s.cascadeDirty = true;
         });
 
         return true;
@@ -158,17 +158,17 @@ const useNotebookStore = create(
 
       redo: () => {
         const state = get();
-        if (!state.notebook || state.redoStack.length === 0) return false;
+        if (!state.cascade || state.redoStack.length === 0) return false;
 
         set(s => {
           // Save current state to undo stack
-          const currentSnapshot = JSON.parse(JSON.stringify(s.notebook.phases));
+          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.phases));
           s.undoStack.push(currentSnapshot);
 
           // Pop next state from redo stack
           const nextState = s.redoStack.pop();
-          s.notebook.phases = nextState;
-          s.notebookDirty = true;
+          s.cascade.phases = nextState;
+          s.cascadeDirty = true;
         });
 
         return true;
@@ -232,8 +232,8 @@ const useNotebookStore = create(
           s.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
           s.cellStates = {};
           // Reset all cells to pending
-          if (s.notebook?.phases) {
-            s.notebook.phases.forEach(phase => {
+          if (s.cascade?.phases) {
+            s.cascade.phases.forEach(phase => {
               s.cellStates[phase.name] = { status: 'pending' };
             });
           }
@@ -241,21 +241,21 @@ const useNotebookStore = create(
       },
 
       // ============================================
-      // NOTEBOOK CRUD
+      // CASCADE CRUD
       // ============================================
-      newNotebook: () => {
+      newCascade: () => {
         set(state => {
-          state.notebook = {
-            cascade_id: 'new_notebook',
-            description: 'New data notebook',
+          state.cascade = {
+            cascade_id: 'new_cascade',
+            description: 'New cascade',
             inputs_schema: {},
             phases: []
           };
-          state.notebookPath = null;
-          state.notebookDirty = false;
-          state.notebookInputs = {};
+          state.cascadePath = null;
+          state.cascadeDirty = false;
+          state.cascadeInputs = {};
           state.cellStates = {};
-          // Generate fresh session for new notebook
+          // Generate fresh session for new cascade
           state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
           // Clear undo/redo history
           state.undoStack = [];
@@ -263,7 +263,7 @@ const useNotebookStore = create(
         });
       },
 
-      loadNotebook: async (path) => {
+      loadCascade: async (path) => {
         try {
           const res = await fetch(`${API_BASE_URL}/notebook/load?path=${encodeURIComponent(path)}`);
           const data = await res.json();
@@ -273,10 +273,10 @@ const useNotebookStore = create(
           }
 
           set(state => {
-            state.notebook = data.notebook;
-            state.notebookPath = path;
-            state.notebookDirty = false;
-            state.notebookInputs = {};
+            state.cascade = data.cascade || data.notebook;
+            state.cascadePath = path;
+            state.cascadeDirty = false;
+            state.cascadeInputs = {};
             state.cellStates = {};
             // Generate fresh session for loaded notebook
             state.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -287,14 +287,14 @@ const useNotebookStore = create(
 
           return data.notebook;
         } catch (err) {
-          console.error('Failed to load notebook:', err);
+          console.error('Failed to load cascade:', err);
           throw err;
         }
       },
 
-      saveNotebook: async (path = null) => {
+      saveCascade: async (path = null) => {
         const state = get();
-        const savePath = path || state.notebookPath;
+        const savePath = path || state.cascadePath;
 
         if (!savePath) {
           throw new Error('No path specified for saving');
@@ -306,7 +306,7 @@ const useNotebookStore = create(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               path: savePath,
-              notebook: state.notebook
+              cascade: state.cascade
             })
           });
 
@@ -317,22 +317,22 @@ const useNotebookStore = create(
           }
 
           set(state => {
-            state.notebookPath = savePath;
-            state.notebookDirty = false;
+            state.cascadePath = savePath;
+            state.cascadeDirty = false;
           });
 
           return data;
         } catch (err) {
-          console.error('Failed to save notebook:', err);
+          console.error('Failed to save cascade:', err);
           throw err;
         }
       },
 
-      updateNotebook: (updates) => {
+      updateCascade: (updates) => {
         set(state => {
-          if (state.notebook) {
-            Object.assign(state.notebook, updates);
-            state.notebookDirty = true;
+          if (state.cascade) {
+            Object.assign(state.cascade, updates);
+            state.cascadeDirty = true;
           }
         });
       },
@@ -345,9 +345,9 @@ const useNotebookStore = create(
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.notebook) return;
+          if (!state.cascade) return;
 
-          const phases = state.notebook.phases;
+          const phases = state.cascade.phases;
           const cellCount = phases.length + 1;
 
           // Default code templates by language
@@ -426,7 +426,7 @@ output_schema:
             phases.splice(afterIndex + 1, 0, newCell);
           }
 
-          state.notebookDirty = true;
+          state.cascadeDirty = true;
           state.cellStates[newCell.name] = { status: 'pending' };
         });
       },
@@ -436,15 +436,15 @@ output_schema:
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.notebook || !state.notebook.phases[index]) return;
+          if (!state.cascade || !state.cascade.phases[index]) return;
 
-          const cell = state.notebook.phases[index];
+          const cell = state.cascade.phases[index];
           const oldName = cell.name;
 
           // Handle name change - update references
           if (updates.name && updates.name !== oldName) {
             // Update handoffs in other phases that reference this cell
-            state.notebook.phases.forEach(phase => {
+            state.cascade.phases.forEach(phase => {
               if (phase.handoffs) {
                 phase.handoffs = phase.handoffs.map(h =>
                   h === oldName ? updates.name : h
@@ -460,7 +460,7 @@ output_schema:
           }
 
           Object.assign(cell, updates);
-          state.notebookDirty = true;
+          state.cascadeDirty = true;
 
           // Mark downstream cells as stale
           if (updates.inputs) {
@@ -474,9 +474,9 @@ output_schema:
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.notebook || state.notebook.phases.length <= 1) return;
+          if (!state.cascade || state.cascade.phases.length <= 1) return;
 
-          const phases = state.notebook.phases;
+          const phases = state.cascade.phases;
           const removedName = phases[index].name;
 
           // Update previous cell's handoffs to skip the removed cell
@@ -492,7 +492,7 @@ output_schema:
 
           // Remove the cell
           phases.splice(index, 1);
-          state.notebookDirty = true;
+          state.cascadeDirty = true;
         });
       },
 
@@ -501,9 +501,9 @@ output_schema:
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.notebook) return;
+          if (!state.cascade) return;
 
-          const phases = state.notebook.phases;
+          const phases = state.cascade.phases;
           if (fromIndex < 0 || fromIndex >= phases.length) return;
           if (toIndex < 0 || toIndex >= phases.length) return;
 
@@ -519,22 +519,22 @@ output_schema:
             }
           });
 
-          state.notebookDirty = true;
+          state.cascadeDirty = true;
         });
       },
 
       // ============================================
       // INPUT ACTIONS
       // ============================================
-      setNotebookInput: (key, value) => {
+      setCascadeInput: (key, value) => {
         set(state => {
-          state.notebookInputs[key] = value;
+          state.cascadeInputs[key] = value;
         });
       },
 
-      clearNotebookInputs: () => {
+      clearCascadeInputs: () => {
         set(state => {
-          state.notebookInputs = {};
+          state.cascadeInputs = {};
         });
       },
 
@@ -552,11 +552,11 @@ output_schema:
 
       markDownstreamStale: (fromIndex) => {
         set(state => {
-          if (!state.notebook) return;
+          if (!state.cascade) return;
 
           // Mark all cells after fromIndex as stale
-          for (let i = fromIndex + 1; i < state.notebook.phases.length; i++) {
-            const phaseName = state.notebook.phases[i].name;
+          for (let i = fromIndex + 1; i < state.cascade.phases.length; i++) {
+            const phaseName = state.cascade.phases[i].name;
             if (state.cellStates[phaseName]?.status === 'success') {
               state.cellStates[phaseName].status = 'stale';
             }
@@ -609,12 +609,12 @@ output_schema:
       // ============================================
       runCell: async (phaseName, forceRun = false) => {
         const state = get();
-        if (!state.notebook) return;
+        if (!state.cascade) return;
 
-        const phaseIndex = state.notebook.phases.findIndex(p => p.name === phaseName);
+        const phaseIndex = state.cascade.phases.findIndex(p => p.name === phaseName);
         if (phaseIndex === -1) return;
 
-        const phase = state.notebook.phases[phaseIndex];
+        const phase = state.cascade.phases[phaseIndex];
 
         // Ensure we have a session ID
         let sessionId = state.sessionId;
@@ -625,7 +625,7 @@ output_schema:
         // Collect prior output hashes for cache invalidation
         const priorOutputHashes = {};
         for (let i = 0; i < phaseIndex; i++) {
-          const priorPhase = state.notebook.phases[i];
+          const priorPhase = state.cascade.phases[i];
           const priorState = state.cellStates[priorPhase.name];
           if (priorState?.inputHash) {
             priorOutputHashes[priorPhase.name] = priorState.inputHash;
@@ -633,7 +633,7 @@ output_schema:
         }
 
         // Compute hash of current inputs
-        const currentHash = hashCellInputs(phase, state.notebookInputs, priorOutputHashes);
+        const currentHash = hashCellInputs(phase, state.cascadeInputs, priorOutputHashes);
         const existingState = state.cellStates[phaseName];
 
         // Check cache: if hash matches and we have a successful result, skip execution
@@ -662,7 +662,7 @@ output_schema:
           // Collect outputs from prior phases for python_data
           const priorOutputs = {};
           for (let i = 0; i < phaseIndex; i++) {
-            const priorPhase = state.notebook.phases[i];
+            const priorPhase = state.cascade.phases[i];
             const priorState = state.cellStates[priorPhase.name];
             if (priorState?.result) {
               priorOutputs[priorPhase.name] = priorState.result;
@@ -677,7 +677,7 @@ output_schema:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               cell: phase,
-              inputs: state.notebookInputs,
+              inputs: state.cascadeInputs,
               prior_outputs: priorOutputs,
               session_id: sessionId,
               auto_fix: autoFixConfig
@@ -734,7 +734,7 @@ output_schema:
       // Run full cascade via standard execution (NEW - replaces sequential cell execution)
       runCascadeStandard: async () => {
         const state = get();
-        if (!state.notebook || state.isRunningAll) return;
+        if (!state.cascade || state.isRunningAll) return;
 
         // Generate session ID
         const sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -743,7 +743,7 @@ output_schema:
           s.isRunningAll = true;
           s.cascadeSessionId = sessionId;
           // Reset all cell states to pending
-          s.notebook.phases.forEach(phase => {
+          s.cascade.phases.forEach(phase => {
             s.cellStates[phase.name] = { status: 'pending' };
           });
         });
@@ -751,7 +751,7 @@ output_schema:
         try {
           // Export notebook to YAML
           const yaml = require('js-yaml');
-          const cascadeYaml = yaml.dump(state.notebook, { indent: 2, lineWidth: -1 });
+          const cascadeYaml = yaml.dump(state.cascade, { indent: 2, lineWidth: -1 });
 
           // POST to standard run-cascade endpoint
           const res = await fetch('http://localhost:5001/api/run-cascade', {
@@ -759,7 +759,7 @@ output_schema:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               cascade_yaml: cascadeYaml,
-              inputs: state.notebookInputs,
+              inputs: state.cascadeInputs,
               session_id: sessionId,
             }),
           });
@@ -865,21 +865,21 @@ output_schema:
       // Legacy: Run cells sequentially via notebook API (for isolated testing)
       runAllCells: async () => {
         const state = get();
-        if (!state.notebook || state.isRunningAll) return;
+        if (!state.cascade || state.isRunningAll) return;
 
         // Ensure we have a session ID (generate fresh for run all)
         set(s => {
           s.isRunningAll = true;
           s.sessionId = `nb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
           // Reset all cell states to pending
-          s.notebook.phases.forEach(phase => {
+          s.cascade.phases.forEach(phase => {
             s.cellStates[phase.name] = { status: 'pending' };
           });
         });
 
         try {
           // Run cells sequentially using runCell to maintain session
-          for (const phase of get().notebook.phases) {
+          for (const phase of get().cascade.phases) {
             await get().runCell(phase.name);
 
             // Stop if cell failed
@@ -896,9 +896,9 @@ output_schema:
 
       runFromCell: async (phaseName) => {
         const state = get();
-        if (!state.notebook) return;
+        if (!state.cascade) return;
 
-        const startIndex = state.notebook.phases.findIndex(p => p.name === phaseName);
+        const startIndex = state.cascade.phases.findIndex(p => p.name === phaseName);
         if (startIndex === -1) return;
 
         // Ensure session ID exists
@@ -907,8 +907,8 @@ output_schema:
         }
 
         // Run cells sequentially from startIndex
-        for (let i = startIndex; i < state.notebook.phases.length; i++) {
-          const phase = state.notebook.phases[i];
+        for (let i = startIndex; i < state.cascade.phases.length; i++) {
+          const phase = state.cascade.phases[i];
           await get().runCell(phase.name);
 
           // Stop if cell failed
@@ -919,12 +919,12 @@ output_schema:
       },
 
       // ============================================
-      // NOTEBOOK LIST ACTIONS
+      // CASCADE LIST ACTIONS
       // ============================================
-      fetchNotebooks: async () => {
+      fetchCascades: async () => {
         set(state => {
-          state.notebooksLoading = true;
-          state.notebooksError = null;
+          state.cascadesLoading = true;
+          state.cascadesError = null;
         });
 
         try {
@@ -936,13 +936,13 @@ output_schema:
           }
 
           set(state => {
-            state.notebooks = data.notebooks || [];
-            state.notebooksLoading = false;
+            state.cascades = data.cascades || data.notebooks || [];
+            state.cascadesLoading = false;
           });
         } catch (err) {
           set(state => {
-            state.notebooksError = err.message;
-            state.notebooksLoading = false;
+            state.cascadesError = err.message;
+            state.cascadesLoading = false;
           });
         }
       }
@@ -957,4 +957,4 @@ output_schema:
   )
 );
 
-export default useNotebookStore;
+export default useCascadeStore;

@@ -3,31 +3,10 @@ import Split from 'react-split';
 import Editor from '@monaco-editor/react';
 import { Icon } from '@iconify/react';
 import { useDroppable } from '@dnd-kit/core';
-import { AgGridReact } from 'ag-grid-react';
-import { themeQuartz } from 'ag-grid-community';
-import createPlotlyComponent from 'react-plotly.js/factory';
-import Plotly from 'plotly.js/dist/plotly';
 import yaml from 'js-yaml';
-import useNotebookStore from '../stores/notebookStore';
+import useCascadeStore from '../stores/cascadeStore';
+import ResultRenderer from './results/ResultRenderer';
 import './PhaseDetailPanel.css';
-
-// Create Plot component
-const Plot = createPlotlyComponent(Plotly);
-
-// Dark AG Grid theme
-const detailGridTheme = themeQuartz.withParams({
-  backgroundColor: '#080c12',
-  foregroundColor: '#cbd5e1',
-  headerBackgroundColor: '#0b1219',
-  headerTextColor: '#f0f4f8',
-  oddRowBackgroundColor: '#0a0e14',
-  borderColor: '#1a2028',
-  rowBorder: true,
-  headerFontSize: 11,
-  fontFamily: "'IBM Plex Mono', monospace",
-  fontSize: 12,
-  accentColor: '#2dd4bf',
-});
 
 /**
  * PhaseDetailPanel - Bottom panel showing full phase configuration
@@ -159,21 +138,6 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
     });
   };
 
-  // AG Grid config for DataFrame results
-  const gridColumnDefs = useMemo(() => {
-    if (!result?.columns) return [];
-    return result.columns.map((col) => ({
-      field: col,
-      headerName: col,
-      sortable: true,
-      filter: true,
-      resizable: true,
-      minWidth: 80,
-      flex: 1,
-    }));
-  }, [result?.columns]);
-
-  const gridRowData = useMemo(() => result?.rows || [], [result?.rows]);
 
   return (
     <div className="phase-detail-panel">
@@ -384,12 +348,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, onClose }) => {
                   )}
                 </div>
                 <div className="phase-detail-results-content">
-                  {error ? (
-                    <div className="phase-detail-error">
-                      <span className="phase-detail-error-label">Error:</span>
-                      <pre className="phase-detail-error-message">{error}</pre>
-                    </div>
-                  ) : typeof result === 'string' ? (
+                  <ResultRenderer
+                    result={result}
+                    error={error}
+                    handleMonacoBeforeMount={handleMonacoBeforeMount}
+                  />
+                  {/* REMOVED: 107 lines of inline result rendering - now in ResultRenderer.jsx */}
+                  {false && typeof result === 'string' ? (
                     /* String result (LLM output from standard execution) */
                     <div className="phase-detail-text">
                       <Editor

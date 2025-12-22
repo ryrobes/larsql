@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
-import useNotebookStore from '../stores/notebookStore';
+import useCascadeStore from '../stores/cascadeStore';
 import useSqlQueryStore from '../stores/sqlQueryStore';
 import InputsForm from './InputsForm';
 import VariablePalette from './VariablePalette';
-import './NotebookNavigator.css';
+import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
 const TYPE_COLORS = {
@@ -343,15 +343,15 @@ function ConnectionsSection() {
   );
 }
 
-// Main NotebookNavigator component
-function NotebookNavigator() {
+// Main CascadeNavigator component
+function CascadeNavigator() {
   const {
-    notebook,
+    cascade,
     cellStates,
     sessionId,
     isRunningAll,
     runCascadeStandard
-  } = useNotebookStore();
+  } = useCascadeStore();
 
   const [activePhase, setActivePhase] = useState(null);
 
@@ -360,8 +360,8 @@ function NotebookNavigator() {
     setActivePhase(phaseName);
 
     // Find phase index and select in timeline
-    const { notebook, setSelectedPhaseIndex } = useNotebookStore.getState();
-    const phaseIndex = notebook?.phases?.findIndex(p => p.name === phaseName);
+    const { cascade, setSelectedPhaseIndex } = useCascadeStore.getState();
+    const phaseIndex = cascade?.phases?.findIndex(p => p.name === phaseName);
     if (phaseIndex !== -1) {
       setSelectedPhaseIndex(phaseIndex);
     }
@@ -378,33 +378,33 @@ function NotebookNavigator() {
     }
   }, []);
 
-  if (!notebook) {
+  if (!cascade) {
     return (
-      <div className="notebook-navigator empty">
-        <Icon icon="mdi:notebook-outline" className="empty-icon" />
-        <span>No notebook loaded</span>
+      <div className="cascade-navigator empty">
+        <Icon icon="mdi:cascade-outline" className="empty-icon" />
+        <span>No cascade loaded</span>
       </div>
     );
   }
 
-  const phases = notebook.phases || [];
+  const phases = cascade.phases || [];
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
   const errorCount = Object.values(cellStates).filter(s => s?.status === 'error').length;
-  const hasInputs = notebook.inputs_schema && Object.keys(notebook.inputs_schema).length > 0;
+  const hasInputs = cascade.inputs_schema && Object.keys(cascade.inputs_schema).length > 0;
 
   const handleRunAll = async () => {
     await runCascadeStandard();
   };
 
   return (
-    <div className="notebook-navigator">
+    <div className="cascade-navigator">
       {/* Notebook Header */}
-      <div className="nav-notebook-header">
-        <div className="nav-notebook-header-left">
-          <Icon icon="mdi:notebook-edit" className="nav-notebook-icon" />
-          <div className="nav-notebook-info">
-            <span className="nav-notebook-name">{notebook.cascade_id}</span>
-            <span className="nav-notebook-stats">
+      <div className="nav-cascade-header">
+        <div className="nav-cascade-header-left">
+          <Icon icon="mdi:cascade-edit" className="nav-cascade-icon" />
+          <div className="nav-cascade-info">
+            <span className="nav-cascade-name">{cascade.cascade_id}</span>
+            <span className="nav-cascade-stats">
               {completedCount}/{phases.length} phases
               {errorCount > 0 && <span className="nav-error-count"> · {errorCount} errors</span>}
             </span>
@@ -427,7 +427,7 @@ function NotebookNavigator() {
       {/* Inputs Form (if cascade has inputs_schema) */}
       {hasInputs && (
         <div className="nav-inputs-section">
-          <InputsForm schema={notebook.inputs_schema} />
+          <InputsForm schema={cascade.inputs_schema} />
         </div>
       )}
 
@@ -471,4 +471,4 @@ function NotebookNavigator() {
   );
 }
 
-export default NotebookNavigator;
+export default CascadeNavigator;

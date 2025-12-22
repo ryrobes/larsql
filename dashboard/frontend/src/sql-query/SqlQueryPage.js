@@ -3,13 +3,13 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useSqlQueryStore from './stores/sqlQueryStore';
-import useNotebookStore from './stores/notebookStore';
+import useCascadeStore from './stores/cascadeStore';
 import SchemaTree from './components/SchemaTree';
 import QueryTabManager from './components/QueryTabManager';
 import SqlEditor from './components/SqlEditor';
 import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
-import { NotebookEditor, NotebookNavigator } from './notebook';
+import { CascadeNavigator } from './notebook';
 import CascadeTimeline from './notebook/CascadeTimeline';
 import VerticalSidebar from './notebook/VerticalSidebar';
 import Header from '../components/Header';
@@ -30,8 +30,8 @@ function SqlQueryPage({
   onBlocked,
   blockedCount,
   sseConnected,
-  initialNotebook,
-  onNotebookLoaded
+  initialCascade,
+  onCascadeLoaded
 }) {
   const {
     historyPanelOpen,
@@ -39,7 +39,7 @@ function SqlQueryPage({
     connections
   } = useSqlQueryStore();
 
-  const { mode, setMode, notebooks, fetchNotebooks, loadNotebook, addCell } = useNotebookStore();
+  const { mode, setMode, cascades, fetchCascades, loadCascade, addCell } = useCascadeStore();
 
   // Persist split sizes in state
   const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
@@ -121,29 +121,29 @@ function SqlQueryPage({
     }
   }, [connections]);
 
-  // Load notebook from URL parameter
+  // Load cascade from URL parameter
   useEffect(() => {
-    if (initialNotebook) {
-      // Ensure notebooks are fetched first
+    if (initialCascade) {
+      // Ensure cascades are fetched first
       const tryLoadNotebook = async () => {
-        await fetchNotebooks();
+        await fetchCascades();
         // Get fresh state after fetch
-        const state = useNotebookStore.getState();
-        const nb = state.notebooks.find(n => n.cascade_id === initialNotebook);
+        const state = useCascadeStore.getState();
+        const nb = state.cascades.find(n => n.cascade_id === initialCascade);
         if (nb) {
-          await loadNotebook(nb.path);
-          setMode('notebook');
+          await loadCascade(nb.path);
+          setMode('timeline');
         } else {
-          console.warn('[SqlQueryPage] Notebook not found:', initialNotebook);
+          console.warn('[SqlQueryPage] Cascade not found:', initialCascade);
         }
-        // Clear the initial notebook flag
-        if (onNotebookLoaded) {
-          onNotebookLoaded();
+        // Clear the initial cascade flag
+        if (onCascadeLoaded) {
+          onCascadeLoaded();
         }
       };
       tryLoadNotebook();
     }
-  }, [initialNotebook, fetchNotebooks, loadNotebook, setMode, onNotebookLoaded]);
+  }, [initialCascade, fetchCascades, loadCascade, setMode, onCascadeLoaded]);
 
   return (
     <div className="sql-query-page">
@@ -178,8 +178,8 @@ function SqlQueryPage({
               direction="horizontal"
             >
               {/* Left Sidebar - Cascade Navigator */}
-              <div className="sql-query-schema-panel notebook-mode">
-                <NotebookNavigator />
+              <div className="sql-query-schema-panel timeline-mode">
+                <CascadeNavigator />
               </div>
 
               {/* Timeline Area */}
@@ -226,12 +226,6 @@ function SqlQueryPage({
                     Query
                   </button>
                   <button
-                    className={`sql-mode-btn ${mode === 'notebook' ? 'active' : ''}`}
-                    onClick={() => setMode('notebook')}
-                  >
-                    Notebook
-                  </button>
-                  <button
                     className={`sql-mode-btn ${mode === 'timeline' ? 'active' : ''}`}
                     onClick={() => setMode('timeline')}
                     title="Horizontal cascade builder (experimental)"
@@ -262,28 +256,7 @@ function SqlQueryPage({
         </>
       )}
 
-      {mode === 'timeline' ? null : mode === 'notebook' ? (
-        /* Notebook Mode */
-        <Split
-          className="sql-query-horizontal-split"
-          sizes={[20, 80]}
-          minSize={[180, 400]}
-          maxSize={[500, Infinity]}
-          gutterSize={6}
-          gutterAlign="center"
-          direction="horizontal"
-        >
-          {/* Left Sidebar - Notebook Navigator */}
-          <div className="sql-query-schema-panel notebook-mode">
-            <NotebookNavigator />
-          </div>
-
-          {/* Notebook Editor */}
-          <div className="sql-query-notebook-area">
-            <NotebookEditor key="notebook-mode" />
-          </div>
-        </Split>
-      ) : (
+      {mode === 'timeline' ? null : (
         /* Query Mode (original) */
         <>
           <Split

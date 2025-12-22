@@ -33,7 +33,7 @@
 }
 
 /* Notebook mode - no header needed, navigator handles it */
-.sql-query-schema-panel.notebook-mode {
+.sql-query-schema-panel.timeline-mode {
   background-color: #0a0a0a;
 }
 

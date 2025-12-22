@@ -19,7 +19,7 @@ import FlowBuilderView from './components/FlowBuilderView';
 import FlowRegistryView from './components/FlowRegistryView';
 import SessionsView from './components/SessionsView';
 import SqlQueryPage from './sql-query/SqlQueryPage';
-import useNotebookStore from './sql-query/stores/notebookStore';
+import useCascadeStore from './sql-query/stores/cascadeStore';
 import RunCascadeModal from './components/RunCascadeModal';
 import FreezeTestModal from './components/FreezeTestModal';
 import CheckpointPanel from './components/CheckpointPanel';
@@ -539,7 +539,7 @@ function App() {
 
             // Notify notebook store (for Timeline cascade execution)
             const phaseNameStart = event.phase_name || event.data?.phase_name || event.name;
-            useNotebookStore.getState().handleSSEPhaseStart?.(event.session_id, phaseNameStart);
+            useCascadeStore.getState().handleSSEPhaseStart?.(event.session_id, phaseNameStart);
 
             // Refresh on any activity
             setRefreshTrigger(prev => prev + 1);
@@ -558,7 +558,7 @@ function App() {
             // Notify notebook store (for Timeline cascade execution)
             const phaseNameComplete = event.phase_name || event.data?.phase_name || event.name;
             const phaseResult = event.result || event.data?.result || event.data || {};
-            useNotebookStore.getState().handleSSEPhaseComplete?.(
+            useCascadeStore.getState().handleSSEPhaseComplete?.(
               event.session_id,
               phaseNameComplete,
               phaseResult
@@ -592,7 +592,7 @@ function App() {
             const completeSessionId = event.session_id;
 
             // Notify notebook store (for Timeline cascade execution)
-            useNotebookStore.getState().handleSSECascadeComplete?.(event.session_id);
+            useCascadeStore.getState().handleSSECascadeComplete?.(event.session_id);
 
             // Move cascade from running to neutral
             if (completeCascadeId) {
@@ -667,7 +667,7 @@ function App() {
             const errorSessionId = event.session_id;
 
             // Notify notebook store (for Timeline cascade execution)
-            useNotebookStore.getState().handleSSECascadeError?.(
+            useCascadeStore.getState().handleSSECascadeError?.(
               event.session_id,
               event.phase_name,
               event.message || event.error || 'Unknown error'

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
-import useNotebookStore from '../stores/notebookStore';
+import useCascadeStore from '../stores/cascadeStore';
 
 /**
  * VariablePalette - Draggable Jinja2 variables for cascade building
@@ -112,17 +112,17 @@ function VariableGroup({ title, iconName, variables, defaultOpen = true }) {
  * Main VariablePalette component
  */
 function VariablePalette() {
-  const { notebook } = useNotebookStore();
+  const { cascade } = useCascadeStore();
 
   // Introspect cascade for available variables
   const variables = useMemo(() => {
     const vars = [];
 
-    if (!notebook) return vars;
+    if (!cascade) return vars;
 
     // 1. Input variables
-    if (notebook.inputs_schema) {
-      Object.entries(notebook.inputs_schema).forEach(([key, description]) => {
+    if (cascade.inputs_schema) {
+      Object.entries(cascade.inputs_schema).forEach(([key, description]) => {
         vars.push({
           path: `input.${key}`,
           description: typeof description === 'string' ? description : `Input: ${key}`,
@@ -131,8 +131,8 @@ function VariablePalette() {
     }
 
     // 2. Previous phase outputs
-    if (notebook.phases) {
-      notebook.phases.forEach((phase) => {
+    if (cascade.phases) {
+      cascade.phases.forEach((phase) => {
         if (phase.name) {
           vars.push({
             path: `outputs.${phase.name}`,
@@ -145,7 +145,7 @@ function VariablePalette() {
     // 3. State variables (scan for state.* usage)
     const stateVars = new Set();
     const statePattern = /state\.(\w+)/g;
-    notebook.phases?.forEach((phase) => {
+    cascade.phases?.forEach((phase) => {
       const codeToScan = phase.inputs?.code || phase.inputs?.query || phase.instructions || '';
       let match;
       while ((match = statePattern.exec(codeToScan)) !== null) {
@@ -165,7 +165,7 @@ function VariablePalette() {
     });
 
     return vars;
-  }, [notebook]);
+  }, [cascade]);
 
   // Group by type
   const grouped = useMemo(() => {
