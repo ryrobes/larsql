@@ -36,11 +36,35 @@ const formatDuration = (ms) => {
  * - Duration/row count
  * - Quick actions
  */
-const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
+const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSelect }) => {
   const status = cellState?.status || 'pending';
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
   const hasImages = cellState?.images && cellState.images.length > 0;
+
+  // Extract sounding info from logs
+  const soundingInfo = React.useMemo(() => {
+    if (!phaseLogs || phaseLogs.length === 0) return null;
+
+    const soundingIndices = new Set();
+    let winningIndex = null;
+
+    for (const log of phaseLogs) {
+      if (log.sounding_index !== null && log.sounding_index !== undefined) {
+        soundingIndices.add(log.sounding_index);
+      }
+      if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
+        winningIndex = log.winning_sounding_index;
+      }
+    }
+
+    if (soundingIndices.size === 0) return null;
+
+    return {
+      soundings: Array.from(soundingIndices).sort((a, b) => a - b),
+      winner: winningIndex
+    };
+  }, [phaseLogs]);
 
   // Type info - check for tool field or if it's a regular LLM phase
   const typeInfo = {
@@ -74,6 +98,7 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
     <div
       className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''}`}
       onClick={onSelect}
+      data-phase-name={phase.name}
     >
       {/* Top row: Type (Icon + Label) + Status */}
       <div className="phase-card-top-row">
@@ -96,7 +121,7 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
 
       {/* Bottom row: Stats + Badges (all horizontal) */}
       <div className="phase-card-bottom-row">
-        {cellState?.duration && (
+        {cellState?.duration !== undefined && cellState.duration !== null && (
           <span className="phase-card-stat">
             <Icon icon="mdi:clock-outline" width="12" />
             {formatDuration(cellState.duration)}
@@ -131,6 +156,19 @@ const PhaseCard = ({ phase, index, cellState, isSelected, onSelect }) => {
           </span>
         )}
       </div>
+
+      {/* Soundings indicator row */}
+      {soundingInfo && (
+        <div className="phase-card-soundings-row">
+          {soundingInfo.soundings.map((idx) => (
+            <div
+              key={idx}
+              className={`phase-card-sounding-dot ${idx === soundingInfo.winner ? 'winner' : ''}`}
+              title={idx === soundingInfo.winner ? `Sounding ${idx} (WINNER)` : `Sounding ${idx}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

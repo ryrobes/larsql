@@ -306,26 +306,62 @@ def fetch_tuition_data(school_url: str) -> dict:
 
 def insert_payment_plans(conn, course_id: str, run_id: str, school_url: str,
                          ticket_id: str, payment_plans: list[dict], full_tuition_price: float):
-    """Insert normalized payment plan records."""
+    """Insert normalized payment plan records with stable plan ordering."""
+    parsed_plans = []
     for plan in payment_plans:
+        raw_option = plan.get('option', '') or ''
+        down_payment = float(plan.get('down_payment', 0) or 0)
+        weekly_str = plan.get('weekly_payment', '') or ''
+        weekly_payment = float(weekly_str) if weekly_str else None
+        weeks_str = plan.get('number_of_weeks', '') or ''
+        number_of_weeks = int(weeks_str) if weeks_str else None
+        is_full = raw_option.strip().lower() == 'full tuition' or (
+            weekly_payment is None and number_of_weeks is None
+        )
+        parsed_plans.append(
+            {
+                "raw_option": raw_option,
+                "label": plan.get('label'),
+                "down_payment": down_payment,
+                "weekly_payment": weekly_payment,
+                "number_of_weeks": number_of_weeks,
+                "is_full": is_full,
+            }
+        )
+
+    full_plans = [plan for plan in parsed_plans if plan["is_full"]]
+    other_plans = [plan for plan in parsed_plans if not plan["is_full"]]
+    other_plans.sort(
+        key=lambda plan: (
+            plan["down_payment"] or 0,
+            plan["weekly_payment"] or 0,
+            plan["number_of_weeks"] or 0,
+            plan["raw_option"],
+        )
+    )
+
+    for idx, plan in enumerate(other_plans, start=1):
+        plan["canonical_option"] = f"Payment Plan {idx}"
+
+    for plan in full_plans:
+        plan["canonical_option"] = "Full Tuition"
+
+    ordered_plans = full_plans + other_plans
+
+    for plan in ordered_plans:
         try:
-            option_name = plan.get('option', '')
+            option_name = plan["canonical_option"]
             plan_id = f"{course_id}|{option_name}"
 
-            # Parse numeric values
-            down_payment = float(plan.get('down_payment', 0) or 0)
-            weekly_str = plan.get('weekly_payment', '') or ''
-            weekly_payment = float(weekly_str) if weekly_str else None
-            weeks_str = plan.get('number_of_weeks', '') or ''
-            number_of_weeks = int(weeks_str) if weeks_str else None
+            down_payment = plan["down_payment"]
+            weekly_payment = plan["weekly_payment"]
+            number_of_weeks = plan["number_of_weeks"]
 
-            # Calculate total cost for this plan
             if weekly_payment and number_of_weeks:
                 total_cost = down_payment + (weekly_payment * number_of_weeks)
             else:
-                total_cost = down_payment  # Full tuition case
+                total_cost = down_payment
 
-            # Financing premium = how much extra you pay vs full tuition
             financing_premium = total_cost - full_tuition_price if full_tuition_price else None
 
             conn.execute("""
@@ -489,6 +525,53 @@ def print_diff_report(conn, current_run_id: str, scraped_at: datetime):
     prev_run_id = prev_run[0]
     changes_stored = 0
 
+    def normalize_number(value):
+        if value is None:
+            return None
+        try:
+            return round(float(value), 2)
+        except (TypeError, ValueError):
+            return value
+
+    def values_differ(current, previous):
+        if current is None and previous is None:
+            return False
+        if current is None or previous is None:
+            return True
+        try:
+            return round(float(current), 2) != round(float(previous), 2)
+        except (TypeError, ValueError):
+            return current != previous
+
+    def format_money(value):
+        if value is None:
+            return "N/A"
+        try:
+            return f"${float(value):.0f}"
+        except (TypeError, ValueError):
+            return str(value)
+
+    def format_weeks(value):
+        if value is None:
+            return "N/A"
+        try:
+            return f"{int(value)} wks"
+        except (TypeError, ValueError):
+            return str(value)
+
+    def build_plan_map(rows):
+        plans = {}
+        for ticket_id, option_name, weeks, down, weekly, total in rows:
+            course_plans = plans.setdefault(ticket_id, {})
+            key = option_name or "Plan"
+            course_plans[key] = {
+                "number_of_weeks": weeks,
+                "down_payment": down,
+                "weekly_payment": weekly,
+                "total_cost": total,
+            }
+        return plans
+
     console.print()
     console.print(Panel(
         f"[bold]Current:[/bold] [cyan]{current_run_id}[/cyan]\n[bold]Previous:[/bold] [cyan]{prev_run_id}[/cyan]",
@@ -574,21 +657,55 @@ def print_diff_report(conn, current_run_id: str, scraped_at: datetime):
             # Get courses from both runs for this school
             curr_courses = conn.execute("""
                 SELECT hubspot_ticket_id, course_name, currently_enrolling, is_full,
-                       seats_remaining, total_cost, promo_active, start_date
+                       seats_remaining, total_cost, promo_active, start_date,
+                       base_tuition, registration, supply_fee, textbook
                 FROM zollege_courses
                 WHERE school_url = ? AND run_id = ?
             """, [school_url, current_run_id]).fetchall()
 
             prev_courses = conn.execute("""
                 SELECT hubspot_ticket_id, course_name, currently_enrolling, is_full,
-                       seats_remaining, total_cost, promo_active, start_date
+                       seats_remaining, total_cost, promo_active, start_date,
+                       base_tuition, registration, supply_fee, textbook
                 FROM zollege_courses
                 WHERE school_url = ? AND run_id = ?
             """, [school_url, prev_run_id]).fetchall()
 
+            course_fields = [
+                "hubspot_ticket_id",
+                "course_name",
+                "currently_enrolling",
+                "is_full",
+                "seats_remaining",
+                "total_cost",
+                "promo_active",
+                "start_date",
+                "base_tuition",
+                "registration",
+                "supply_fee",
+                "textbook",
+            ]
+
             # Index by ticket_id for comparison
-            curr_by_id = {c[0]: c for c in curr_courses}
-            prev_by_id = {c[0]: c for c in prev_courses}
+            curr_by_id = {c[0]: dict(zip(course_fields, c)) for c in curr_courses}
+            prev_by_id = {c[0]: dict(zip(course_fields, c)) for c in prev_courses}
+
+            curr_plan_rows = conn.execute("""
+                SELECT hubspot_ticket_id, option_name, number_of_weeks,
+                       down_payment, weekly_payment, total_cost
+                FROM zollege_payment_plans
+                WHERE school_url = ? AND run_id = ?
+            """, [school_url, current_run_id]).fetchall()
+
+            prev_plan_rows = conn.execute("""
+                SELECT hubspot_ticket_id, option_name, number_of_weeks,
+                       down_payment, weekly_payment, total_cost
+                FROM zollege_payment_plans
+                WHERE school_url = ? AND run_id = ?
+            """, [school_url, prev_run_id]).fetchall()
+
+            curr_plans_by_course = build_plan_map(curr_plan_rows)
+            prev_plans_by_course = build_plan_map(prev_plan_rows)
 
             new_course_ids = set(curr_by_id.keys()) - set(prev_by_id.keys())
             removed_course_ids = set(prev_by_id.keys()) - set(curr_by_id.keys())
@@ -613,46 +730,171 @@ def print_diff_report(conn, current_run_id: str, scraped_at: datetime):
             for ticket_id in common_courses:
                 curr = curr_by_id[ticket_id]
                 prev = prev_by_id[ticket_id]
-                course_name = curr[1]
+                course_name = curr["course_name"]
                 changes = []
 
                 # Compare fields: currently_enrolling(2), is_full(3), seats_remaining(4), total_cost(5), promo_active(6)
-                if curr[2] != prev[2]:  # currently_enrolling
+                if curr["currently_enrolling"] != prev["currently_enrolling"]:
                     insert_change(conn, current_run_id, prev_run_id, scraped_at,
                                   school_url, 'field_change', ticket_id, course_name,
-                                  'currently_enrolling', str(prev[2]), str(curr[2]))
-                    changes.append(f"enrollment: {prev[2]} → {curr[2]}")
+                                  'currently_enrolling', str(prev["currently_enrolling"]),
+                                  str(curr["currently_enrolling"]))
+                    changes.append(
+                        f"enrollment: {prev['currently_enrolling']} → {curr['currently_enrolling']}"
+                    )
                     changes_stored += 1
 
-                if curr[3] != prev[3]:  # is_full
+                if curr["is_full"] != prev["is_full"]:
                     insert_change(conn, current_run_id, prev_run_id, scraped_at,
                                   school_url, 'field_change', ticket_id, course_name,
-                                  'is_full', str(prev[3]), str(curr[3]))
-                    changes.append(f"full: {prev[3]} → {curr[3]}")
+                                  'is_full', str(prev["is_full"]), str(curr["is_full"]))
+                    changes.append(f"full: {prev['is_full']} → {curr['is_full']}")
                     changes_stored += 1
 
-                if curr[4] != prev[4]:  # seats_remaining
+                if curr["seats_remaining"] != prev["seats_remaining"]:
                     insert_change(conn, current_run_id, prev_run_id, scraped_at,
                                   school_url, 'field_change', ticket_id, course_name,
-                                  'seats_remaining', str(prev[4]), str(curr[4]))
-                    changes.append(f"seats: {prev[4]} → {curr[4]}")
+                                  'seats_remaining', str(prev["seats_remaining"]),
+                                  str(curr["seats_remaining"]))
+                    changes.append(f"seats: {prev['seats_remaining']} → {curr['seats_remaining']}")
                     changes_stored += 1
 
-                if curr[5] != prev[5]:  # total_cost
+                if values_differ(curr["base_tuition"], prev["base_tuition"]):
                     insert_change(conn, current_run_id, prev_run_id, scraped_at,
                                   school_url, 'field_change', ticket_id, course_name,
-                                  'total_cost', str(prev[5]), str(curr[5]))
-                    diff = (curr[5] or 0) - (prev[5] or 0)
+                                  'base_tuition', str(prev["base_tuition"]),
+                                  str(curr["base_tuition"]))
+                    changes.append(
+                        f"tuition: {format_money(prev['base_tuition'])} → {format_money(curr['base_tuition'])}"
+                    )
+                    changes_stored += 1
+
+                if values_differ(curr["registration"], prev["registration"]):
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  'registration', str(prev["registration"]),
+                                  str(curr["registration"]))
+                    changes.append(
+                        f"registration: {format_money(prev['registration'])} → {format_money(curr['registration'])}"
+                    )
+                    changes_stored += 1
+
+                if values_differ(curr["supply_fee"], prev["supply_fee"]):
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  'supply_fee', str(prev["supply_fee"]),
+                                  str(curr["supply_fee"]))
+                    changes.append(
+                        f"supplies: {format_money(prev['supply_fee'])} → {format_money(curr['supply_fee'])}"
+                    )
+                    changes_stored += 1
+
+                if values_differ(curr["textbook"], prev["textbook"]):
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  'textbook', str(prev["textbook"]), str(curr["textbook"]))
+                    changes.append(
+                        f"textbook: {format_money(prev['textbook'])} → {format_money(curr['textbook'])}"
+                    )
+                    changes_stored += 1
+
+                if values_differ(curr["total_cost"], prev["total_cost"]):
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  'total_cost', str(prev["total_cost"]), str(curr["total_cost"]))
+                    prev_total = normalize_number(prev["total_cost"]) or 0
+                    curr_total = normalize_number(curr["total_cost"]) or 0
+                    diff = curr_total - prev_total
                     sign = "+" if diff > 0 else ""
-                    changes.append(f"price: ${prev[5]:.0f} → ${curr[5]:.0f} ({sign}{diff:.0f})")
+                    changes.append(
+                        f"price: {format_money(prev['total_cost'])} → {format_money(curr['total_cost'])} "
+                        f"({sign}{diff:.0f})"
+                    )
                     changes_stored += 1
 
-                if curr[6] != prev[6]:  # promo_active
+                if curr["promo_active"] != prev["promo_active"]:
                     insert_change(conn, current_run_id, prev_run_id, scraped_at,
                                   school_url, 'field_change', ticket_id, course_name,
-                                  'promo_active', str(prev[6]), str(curr[6]))
-                    changes.append(f"promo: {prev[6]} → {curr[6]}")
+                                  'promo_active', str(prev["promo_active"]),
+                                  str(curr["promo_active"]))
+                    changes.append(f"promo: {prev['promo_active']} → {curr['promo_active']}")
                     changes_stored += 1
+
+                curr_plans = curr_plans_by_course.get(ticket_id, {})
+                prev_plans = prev_plans_by_course.get(ticket_id, {})
+
+                added_plans = set(curr_plans.keys()) - set(prev_plans.keys())
+                removed_plans = set(prev_plans.keys()) - set(curr_plans.keys())
+                shared_plans = set(curr_plans.keys()) & set(prev_plans.keys())
+
+                for plan_name in added_plans:
+                    safe_plan = plan_name.replace("|", "/")
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  f"payment_plan:{safe_plan}:status", "missing", "present")
+                    changes.append(f"plan added: {plan_name}")
+                    changes_stored += 1
+
+                for plan_name in removed_plans:
+                    safe_plan = plan_name.replace("|", "/")
+                    insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                  school_url, 'field_change', ticket_id, course_name,
+                                  f"payment_plan:{safe_plan}:status", "present", "missing")
+                    changes.append(f"plan removed: {plan_name}")
+                    changes_stored += 1
+
+                for plan_name in shared_plans:
+                    curr_plan = curr_plans[plan_name]
+                    prev_plan = prev_plans[plan_name]
+                    safe_plan = plan_name.replace("|", "/")
+
+                    if values_differ(curr_plan["number_of_weeks"], prev_plan["number_of_weeks"]):
+                        insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                      school_url, 'field_change', ticket_id, course_name,
+                                      f"payment_plan:{safe_plan}:weeks",
+                                      str(prev_plan["number_of_weeks"]),
+                                      str(curr_plan["number_of_weeks"]))
+                        changes.append(
+                            f"{plan_name} term: {format_weeks(prev_plan['number_of_weeks'])} → "
+                            f"{format_weeks(curr_plan['number_of_weeks'])}"
+                        )
+                        changes_stored += 1
+
+                    if values_differ(curr_plan["down_payment"], prev_plan["down_payment"]):
+                        insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                      school_url, 'field_change', ticket_id, course_name,
+                                      f"payment_plan:{safe_plan}:down_payment",
+                                      str(prev_plan["down_payment"]),
+                                      str(curr_plan["down_payment"]))
+                        changes.append(
+                            f"{plan_name} down: {format_money(prev_plan['down_payment'])} → "
+                            f"{format_money(curr_plan['down_payment'])}"
+                        )
+                        changes_stored += 1
+
+                    if values_differ(curr_plan["weekly_payment"], prev_plan["weekly_payment"]):
+                        insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                      school_url, 'field_change', ticket_id, course_name,
+                                      f"payment_plan:{safe_plan}:weekly_payment",
+                                      str(prev_plan["weekly_payment"]),
+                                      str(curr_plan["weekly_payment"]))
+                        changes.append(
+                            f"{plan_name} weekly: {format_money(prev_plan['weekly_payment'])} → "
+                            f"{format_money(curr_plan['weekly_payment'])}"
+                        )
+                        changes_stored += 1
+
+                    if values_differ(curr_plan["total_cost"], prev_plan["total_cost"]):
+                        insert_change(conn, current_run_id, prev_run_id, scraped_at,
+                                      school_url, 'field_change', ticket_id, course_name,
+                                      f"payment_plan:{safe_plan}:total_cost",
+                                      str(prev_plan["total_cost"]),
+                                      str(curr_plan["total_cost"]))
+                        changes.append(
+                            f"{plan_name} total: {format_money(prev_plan['total_cost'])} → "
+                            f"{format_money(curr_plan['total_cost'])}"
+                        )
+                        changes_stored += 1
 
                 if changes:
                     short_name = course_name.split()[-1] if course_name else ticket_id

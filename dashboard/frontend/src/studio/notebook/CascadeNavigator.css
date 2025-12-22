@@ -751,3 +751,59 @@
 .recent-run-cost {
   color: #34d399;
 }
+
+/* ============================================
+   MEDIA SECTION
+   ============================================ */
+
+.nav-media-content {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.nav-media-item {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #0a0e14;
+  border: 1px solid #1a2028;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-media-item:hover {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.3);
+  transform: scale(1.02);
+}
+
+.nav-media-item img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+}
+
+.nav-media-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.6));
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.nav-media-label span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

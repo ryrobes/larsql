@@ -276,14 +276,39 @@ class Agent:
                 if hasattr(e, '__dict__'):
                     error_info["error_attributes"] = {k: str(v)[:200] for k, v in e.__dict__.items() if not k.startswith('_')}
 
+                # Extract more useful error message if the primary message is empty/unhelpful
+                # This happens with litellm parsing errors (e.g., image generation failures)
+                enhanced_message = error_info["error_message"]
+                if not enhanced_message or enhanced_message.strip().endswith('-'):
+                    # Try to get message from response body
+                    if "response_body" in error_info and error_info["response_body"]:
+                        enhanced_message += f"\nResponse: {error_info['response_body'][:500]}"
+
+                    # Try to get message from litellm_debug_info
+                    if "error_attributes" in error_info:
+                        debug_info = error_info["error_attributes"].get("litellm_debug_info")
+                        if debug_info:
+                            enhanced_message += f"\n{debug_info}"
+
+                        # Check for actual error message in attributes
+                        msg_attr = error_info["error_attributes"].get("message")
+                        if msg_attr and msg_attr != enhanced_message:
+                            enhanced_message += f"\nDetails: {msg_attr}"
+
+                    # If still empty, give a generic but useful message
+                    if enhanced_message.strip().endswith('-'):
+                        enhanced_message += " (API returned no error details - possible response parsing failure or transient issue)"
+
+                    error_info["enhanced_message"] = enhanced_message
+
                 # Log to echo system
-                log_message(None, "system", f"LLM API Error: {error_info['error_type']}: {error_info['error_message']}",
+                log_message(None, "system", f"LLM API Error: {error_info['error_type']}: {enhanced_message}",
                            metadata=error_info, node_type="error")
 
                 # Print detailed error to console
                 print(f"\n[ERROR] LLM Call Failed:")
                 print(f"  Error Type: {error_info['error_type']}")
-                print(f"  Error Message: {error_info['error_message']}")
+                print(f"  Error Message: {enhanced_message}")
                 if "status_code" in error_info:
                     print(f"  HTTP Status: {error_info['status_code']}")
                     print(f"  Response Body: {error_info.get('response_body', 'N/A')}")
@@ -292,9 +317,10 @@ class Agent:
                 print(f"\n  Full Error Details:")
                 print(json.dumps(error_info, indent=2, default=str))
 
-                # Re-raise with full_request attached for upstream logging
+                # Re-raise with enhanced message and full_request attached for upstream logging
                 # This allows runner to capture the request even on failure
                 e.full_request = full_request
+                e.enhanced_message = enhanced_message  # Attach enhanced message to exception
                 raise e
 
     @classmethod

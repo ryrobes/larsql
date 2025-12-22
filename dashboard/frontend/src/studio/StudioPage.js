@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
@@ -32,6 +32,7 @@ function StudioPage({
   blockedCount,
   sseConnected,
   initialCascade,
+  initialSession,
   onCascadeLoaded
 }) {
   const {
@@ -40,7 +41,19 @@ function StudioPage({
     connections
   } = useStudioQueryStore();
 
-  const { mode, setMode, cascades, fetchCascades, loadCascade, addCell } = useStudioCascadeStore();
+  const {
+    mode,
+    setMode,
+    cascades,
+    fetchCascades,
+    loadCascade,
+    addCell,
+    setReplayMode,
+    cascade,
+    viewMode,
+    replaySessionId,
+    cascadeSessionId
+  } = useStudioCascadeStore();
 
   // Persist split sizes in state
   const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
@@ -134,29 +147,82 @@ function StudioPage({
     }
   }, [connections]);
 
-  // Load cascade from URL parameter
+  // Track if we've already loaded from URL to prevent multiple loads
+  const urlLoadedRef = useRef(false);
+
+  // Load cascade or session from URL parameter
   useEffect(() => {
-    if (initialCascade) {
-      // Ensure cascades are fetched first
-      const tryLoadNotebook = async () => {
+    // Only load once per mount
+    if (urlLoadedRef.current) {
+      console.log('[StudioPage] URL already loaded, skipping');
+      return;
+    }
+
+    const loadFromUrl = async () => {
+      // Small delay to ensure component is fully mounted and CascadeTimeline is ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Priority 1: If session provided, load it in replay mode (includes cascade)
+      if (initialSession) {
+        console.log('[StudioPage] Loading session from URL:', initialSession);
+        urlLoadedRef.current = true;
+        try {
+          await setReplayMode(initialSession);
+          setMode('timeline');
+          console.log('[StudioPage] ✓ Replay mode activated, polling should start');
+        } catch (err) {
+          console.error('[StudioPage] Failed to load session:', err);
+        }
+        if (onCascadeLoaded) onCascadeLoaded();
+        return;
+      }
+
+      // Priority 2: If only cascade provided (no session), load cascade file
+      if (initialCascade) {
+        console.log('[StudioPage] Loading cascade from URL:', initialCascade);
+        urlLoadedRef.current = true;
         await fetchCascades();
-        // Get fresh state after fetch
         const state = useStudioCascadeStore.getState();
         const nb = state.cascades.find(n => n.cascade_id === initialCascade);
         if (nb) {
           await loadCascade(nb.path);
           setMode('timeline');
+          console.log('[StudioPage] ✓ Cascade loaded');
         } else {
-          console.warn('[SqlQueryPage] Cascade not found:', initialCascade);
+          console.warn('[StudioPage] Cascade not found:', initialCascade);
         }
-        // Clear the initial cascade flag
-        if (onCascadeLoaded) {
-          onCascadeLoaded();
-        }
-      };
-      tryLoadNotebook();
+        if (onCascadeLoaded) onCascadeLoaded();
+        return;
+      }
+
+      console.log('[StudioPage] No URL parameters to load');
+    };
+
+    loadFromUrl();
+  }, [initialCascade, initialSession, fetchCascades, loadCascade, setReplayMode, setMode, onCascadeLoaded]);
+
+  // Update URL hash when cascade or session changes (timeline mode only)
+  useEffect(() => {
+    if (mode !== 'timeline' || !cascade) return;
+
+    const cascadeId = cascade.cascade_id;
+    const activeSession = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
+
+    // Build new hash
+    let newHash = '#/studio';
+    if (cascadeId) {
+      newHash += `/${cascadeId}`;
+      if (activeSession) {
+        newHash += `/${activeSession}`;
+      }
     }
-  }, [initialCascade, fetchCascades, loadCascade, setMode, onCascadeLoaded]);
+
+    // Only update if different (avoid infinite loops)
+    if (window.location.hash !== newHash) {
+      window.location.hash = newHash;
+      console.log('[StudioPage] Updated URL:', newHash);
+    }
+  }, [mode, cascade, viewMode, replaySessionId, cascadeSessionId]);
 
   return (
     <div className="studio-page">

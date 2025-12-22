@@ -278,13 +278,56 @@
   font-weight: 600;
 }
 
+/* Winner sounding tab */
+.phase-detail-results-tab.winner {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+.phase-detail-results-tab.winner.active {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.15));
+  color: #fbbf24;
+  border-color: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+}
+
+.phase-detail-results-tab.winner:hover {
+  color: #fcd34d;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.18), rgba(245, 158, 11, 0.12));
+}
+
 .phase-detail-row-count {
   color: #34d399;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .phase-detail-duration {
   color: #64748b;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phase-detail-cost {
+  color: #34d399;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.phase-detail-tokens {
+  color: #60a5fa;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
 }
 
 .phase-detail-results-content {
@@ -303,17 +346,207 @@
   gap: 16px;
 }
 
-/* Raw JSON view */
+/* Raw JSON view (legacy - replaced by Monaco) */
 .phase-detail-raw-json {
   padding: 16px;
   margin: 0;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
   line-height: 1.6;
-  color: #e6edf3;
+}
+
+/* Monaco read-only viewer for raw/request JSON */
+.phase-detail-monaco-readonly {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ============================================
+   DECISION UI - Interactive HTMX iframe
+   ============================================ */
+
+.phase-detail-decision-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.phase-detail-decision-live-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.15));
+  border-bottom: 2px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  animation: decision-pulse 2s ease-in-out infinite;
+}
+
+@keyframes decision-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+  }
+}
+
+.phase-detail-decision-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #fbbf24;
+}
+
+.phase-detail-decision-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.phase-detail-decision-context {
+  padding: 12px 16px;
+  background-color: rgba(100, 116, 139, 0.1);
+  border-left: 3px solid #64748b;
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.phase-detail-decision-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.phase-detail-decision-option {
+  padding: 16px;
+  border-radius: 8px;
+  border: 2px solid #1a2028;
   background-color: #0a0e14;
-  overflow: auto;
-  flex: 1;
+  transition: all 0.2s ease;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.phase-detail-decision-option-interactive {
+  cursor: pointer;
+}
+
+.phase-detail-decision-option-interactive:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.phase-detail-decision-option-interactive:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.phase-detail-decision-option-primary {
+  border-color: #2dd4bf;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(20, 184, 166, 0.1));
+}
+
+.phase-detail-decision-option-primary:hover:not(:disabled) {
+  border-color: #14b8a6;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(20, 184, 166, 0.15));
+  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.4);
+}
+
+.phase-detail-decision-option-secondary {
+  border-color: #475569;
+}
+
+.phase-detail-decision-option-secondary:hover:not(:disabled) {
+  border-color: #64748b;
+  background-color: #0f1419;
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.2);
+}
+
+.phase-detail-decision-option-danger {
+  border-color: #f87171;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(239, 68, 68, 0.1));
+}
+
+.phase-detail-decision-option-danger:hover:not(:disabled) {
+  border-color: #ef4444;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.25), rgba(239, 68, 68, 0.15));
+  box-shadow: 0 4px 16px rgba(248, 113, 113, 0.4);
+}
+
+.phase-detail-decision-option-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f4f8;
+  margin-bottom: 4px;
+}
+
+.phase-detail-decision-option-desc {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.phase-detail-decision-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 6px;
+  color: #60a5fa;
+  font-size: 12px;
+}
+
+/* Fallback for no HTML section */
+.phase-detail-decision-fallback {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.phase-detail-decision-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 6px;
+  color: #60a5fa;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+/* Decision tab styling - make it stand out */
+.phase-detail-results-tab-decision {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.phase-detail-results-tab-decision:hover {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.15));
+  color: #fcd34d;
+}
+
+.phase-detail-results-tab-decision.active {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.2));
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
 }
 
 /* Images-only tab view */
@@ -358,6 +591,44 @@
   padding: 12px;
   border-radius: 6px;
   border-left: 3px solid #f87171;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* No data placeholder */
+.phase-detail-no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  color: #64748b;
+  padding: 32px;
+}
+
+/* Markdown rendered output */
+.phase-detail-markdown {
+  padding: 16px 24px;
+  overflow-y: auto;
+  flex: 1;
+  background-color: #0a0e14;
+}
+
+.phase-detail-markdown .rich-markdown {
+  max-width: 100%;
+}
+
+.phase-detail-no-data p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.phase-detail-no-data span {
+  font-size: 12px;
+  color: #64748b;
 }
 
 /* Messages view */
@@ -393,6 +664,66 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Winner sounding banner */
+.phase-detail-sounding-winner-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+  margin-bottom: 8px;
+}
+
+/* Evaluator banner - shown in Output tab explaining winner selection */
+.phase-detail-evaluator-banner {
+  margin: 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
+}
+
+.phase-detail-evaluator-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: rgba(167, 139, 250, 0.1);
+  border-bottom: 1px solid rgba(167, 139, 250, 0.3);
+  color: #a78bfa;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.phase-detail-evaluator-model {
+  font-size: 11px;
+  color: #8b5cf6;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.phase-detail-evaluator-content {
+  padding: 12px 16px;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.phase-detail-evaluator-content pre {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .phase-detail-message {

@@ -157,6 +157,28 @@
   white-space: nowrap;
 }
 
+/* Message Counts - Shows breakdown by role */
+.cascade-message-counts-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: rgba(96, 165, 250, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cascade-message-counts-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
 /* Divider between metadata and buttons */
 .cascade-control-divider {
   width: 1px;

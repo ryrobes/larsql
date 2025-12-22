@@ -38,6 +38,7 @@ function App() {
   const [messageFlowSessionId, setMessageFlowSessionId] = useState(null);
   const [searchTab, setSearchTab] = useState('rag');
   const [initialNotebook, setInitialNotebook] = useState(null);
+  const [initialSession, setInitialSession] = useState(null);
   const [showRunModal, setShowRunModal] = useState(false);
   const [showFreezeModal, setShowFreezeModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
@@ -76,6 +77,7 @@ function App() {
     }
 
     const parts = hash.split('/').filter(p => p); // Split and remove empty parts
+    console.log('[App] Parsing hash:', hash, '→ parts:', parts);
 
     if (parts.length === 1) {
       if (parts[0] === 'message_flow') {
@@ -175,16 +177,59 @@ function App() {
         return { view: 'search', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, searchTab: parts[1] };
       }
       if (parts[0] === 'studio') {
-        // /#/studio/notebook_name → Studio page with notebook loaded
-        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
+        // /#/studio/{cascade_id} → Studio with cascade loaded
+        const route = {
+          view: 'studio',
+          cascadeId: parts[1] || null,
+          sessionId: null,  // 2-part URL has no session
+          checkpointId: null,
+          artifactId: null,
+          notebookName: parts[1] || null  // Keep for backward compat
+        };
+        console.log('[App] Parsed studio route (2 parts):', route);
+        return route;
       }
       if (parts[0] === 'sql-query') {
         // Backward compatibility: redirect to studio
         window.location.hash = window.location.hash.replace('sql-query', 'studio');
-        return { view: 'studio', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null, notebookName: parts[1] };
+        return {
+          view: 'studio',
+          cascadeId: parts[1] || null,
+          sessionId: parts[2] || null,
+          checkpointId: null,
+          artifactId: null,
+          notebookName: parts[1] || null
+        };
       }
       // /#/cascade_id/session_id → detail view
       return { view: 'detail', cascadeId: parts[0], sessionId: parts[1], checkpointId: null, artifactId: null };
+    } else if (parts.length >= 3) {
+      // Handle 3+ part routes
+      if (parts[0] === 'studio') {
+        // /#/studio/{cascade_id}/{session_id} → Studio with cascade + replay session
+        const route = {
+          view: 'studio',
+          cascadeId: parts[1],
+          sessionId: parts[2],
+          checkpointId: null,
+          artifactId: null,
+          notebookName: parts[1]
+        };
+        console.log('[App] Parsed studio route (3 parts):', route);
+        return route;
+      }
+      if (parts[0] === 'sql-query') {
+        // Backward compatibility
+        window.location.hash = window.location.hash.replace('sql-query', 'studio');
+        return {
+          view: 'studio',
+          cascadeId: parts[1],
+          sessionId: parts[2],
+          checkpointId: null,
+          artifactId: null,
+          notebookName: parts[1]
+        };
+      }
     }
 
     return { view: 'cascades', cascadeId: null, sessionId: null, checkpointId: null, artifactId: null };
@@ -335,7 +380,7 @@ function App() {
   useEffect(() => {
     const handleHashChange = async () => {
       const route = parseHash();
-      //console.log('[Router] Hash changed:', route);
+      console.log('[Router] Hash changed, route:', route);
 
       if (route.view === 'cascades') {
         setCurrentView('cascades');
@@ -393,11 +438,22 @@ function App() {
         setSelectedCascadeId(null);
         setDetailSessionId(null);
       } else if (route.view === 'studio') {
+        console.log('[App] Setting studio view with route:', route);
         setCurrentView('studio');
         setSelectedCascadeId(null);
         setDetailSessionId(null);
-        // If notebook name provided, store it for StudioPage to load
-        if (route.notebookName) {
+        // If cascade_id provided, store it for StudioPage to load
+        if (route.cascadeId) {
+          console.log('[App] Setting initialNotebook:', route.cascadeId);
+          setInitialNotebook(route.cascadeId);
+        }
+        // If session_id provided, store it for replay mode
+        if (route.sessionId) {
+          console.log('[App] Setting initialSession:', route.sessionId);
+          setInitialSession(route.sessionId);
+        }
+        // Backward compat: notebookName field
+        if (route.notebookName && !route.cascadeId) {
           setInitialNotebook(route.notebookName);
         }
       } else if (route.view === 'messageflow') {
@@ -1233,8 +1289,12 @@ function App() {
       {currentView === 'studio' && (
         <StudioPage
           {...getStandardNavigationProps()}
-          initialNotebook={initialNotebook}
-          onNotebookLoaded={() => setInitialNotebook(null)}
+          initialCascade={initialNotebook}
+          initialSession={initialSession}
+          onCascadeLoaded={() => {
+            setInitialNotebook(null);
+            setInitialSession(null);
+          }}
         />
       )}
 

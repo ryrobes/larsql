@@ -87,6 +87,7 @@ const useStudioCascadeStore = create(
       // UI STATE
       // ============================================
       selectedPhaseIndex: null,  // Currently selected phase in timeline view
+      desiredOutputTab: null,  // Desired output tab when selecting phase (e.g., 'images' from Media section)
       viewMode: 'live',  // 'live' | 'replay' - viewing live execution vs past run
       replaySessionId: null,  // Session ID when in replay mode
 
@@ -199,6 +200,12 @@ const useStudioCascadeStore = create(
       setSelectedPhaseIndex: (index) => {
         set(state => {
           state.selectedPhaseIndex = index;
+        });
+      },
+
+      setDesiredOutputTab: (tab) => {
+        set(state => {
+          state.desiredOutputTab = tab;
         });
       },
 
@@ -819,6 +826,8 @@ output_schema:
         set(s => {
           s.isRunningAll = true;
           s.cascadeSessionId = sessionId;
+          s.viewMode = 'live'; // Force live mode when running new cascade
+          s.replaySessionId = null; // Clear any replay session
           // Reset all cell states to pending
           s.cascade.phases.forEach(phase => {
             s.cellStates[phase.name] = { status: 'pending' };
@@ -856,7 +865,8 @@ output_schema:
           console.error('[runCascadeStandard] Error:', err);
           set(s => {
             s.isRunningAll = false;
-            s.cascadeSessionId = null;
+            // Keep cascadeSessionId even on error so it stays visible in header
+            // s.cascadeSessionId = null;
           });
         }
       },
@@ -865,14 +875,11 @@ output_schema:
       updateCellStatesFromPolling: (phaseStates) => {
         set(s => {
           for (const [phaseName, state] of Object.entries(phaseStates)) {
-            console.log('[updateCellStatesFromPolling]', phaseName, 'state.result type:', typeof state.result);
-
             // Parse result if it's a JSON string (double-encoded from DB)
             let result = state.result;
             if (typeof result === 'string') {
               try {
                 result = JSON.parse(result);
-                console.log('[updateCellStatesFromPolling] Parsed string to object for', phaseName);
               } catch (e) {
                 // Not JSON, keep as string
               }
@@ -882,6 +889,11 @@ output_schema:
               ...state,
               result: result,
             };
+
+            // Log only when we have meaningful metrics
+            if (state.duration || state.cost || state.tokens_in) {
+              console.log('[updateCellStatesFromPolling]', phaseName, '- Duration:', state.duration, 'Cost:', state.cost, 'Tokens:', state.tokens_in, '/', state.tokens_out);
+            }
           }
 
           // Check if all phases complete
@@ -898,7 +910,8 @@ output_schema:
           if (allComplete && s.isRunningAll) {
             console.log('[updateCellStatesFromPolling] ✓ All phases complete! Stopping execution.');
             s.isRunningAll = false;
-            s.cascadeSessionId = null;
+            // DON'T clear cascadeSessionId - keep it visible in header after completion!
+            // s.cascadeSessionId = null;
           }
         });
       },

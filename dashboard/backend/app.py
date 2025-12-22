@@ -3812,10 +3812,12 @@ def playground_session_stream(session_id):
             SELECT
                 toString(message_id) as message_id,
                 timestamp,
+                timestamp_iso,
                 session_id,
                 trace_id,
                 phase_name,
                 role,
+                node_type,
                 sounding_index,
                 is_winner,
                 reforge_step,
@@ -3823,8 +3825,15 @@ def playground_session_stream(session_id):
                 model,
                 cost,
                 duration_ms,
+                tokens_in,
+                tokens_out,
+                total_tokens,
                 content_json,
-                metadata_json
+                metadata_json,
+                full_request_json,
+                tool_calls_json,
+                images_json,
+                has_images
             FROM unified_logs
             WHERE startsWith(session_id, '{session_id}')
               AND timestamp > '{after}'
@@ -3840,10 +3849,28 @@ def playground_session_stream(session_id):
         has_more = len(rows) > limit
         rows_to_return = rows[:limit]
 
-        # Rows are already dicts from db.query(), just need to serialize timestamps
+        # Rows are already dicts from db.query(), need to serialize timestamps and numeric types
         for row in rows_to_return:
+            # Serialize timestamps
             if row.get('timestamp') and hasattr(row['timestamp'], 'isoformat'):
                 row['timestamp'] = row['timestamp'].isoformat()
+            if row.get('timestamp_iso') and hasattr(row['timestamp_iso'], 'isoformat'):
+                row['timestamp_iso'] = row['timestamp_iso'].isoformat()
+
+            # Convert ClickHouse numeric types to native Python floats/ints
+            # ClickHouse returns Float64/Decimal objects that don't serialize properly
+            numeric_fields = ['duration_ms', 'cost', 'tokens_in', 'tokens_out', 'total_tokens']
+            for field in numeric_fields:
+                if row.get(field) is not None:
+                    try:
+                        # Convert to float, then to int if it's a whole number (for tokens)
+                        val = float(row[field])
+                        if field in ['tokens_in', 'tokens_out', 'total_tokens']:
+                            row[field] = int(val) if val == int(val) else val
+                        else:
+                            row[field] = val
+                    except (ValueError, TypeError):
+                        row[field] = None
 
         # Determine cursor (timestamp of last row)
         cursor = after

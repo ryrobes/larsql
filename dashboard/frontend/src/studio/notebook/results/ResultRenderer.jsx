@@ -4,9 +4,53 @@ import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js/dist/plotly';
+import RichMarkdown from '../../../components/RichMarkdown';
 
 // Create Plot component
 const Plot = createPlotlyComponent(Plotly);
+
+/**
+ * Detect if string content looks like markdown
+ *
+ * Checks for common markdown patterns:
+ * - Headers (# ## ###)
+ * - Bold/italic (**text** or *text*)
+ * - Lists (- or * or 1.)
+ * - Links ([text](url))
+ * - Code blocks (``` or ~~~)
+ * - Blockquotes (>)
+ * - Tables (|)
+ */
+function isMarkdown(text) {
+  if (!text || typeof text !== 'string') return false;
+
+  // Ignore very short strings (likely not markdown)
+  if (text.trim().length < 20) return false;
+
+  const markdownPatterns = [
+    /^#{1,6}\s+.+$/m,           // Headers: # Header
+    /\*\*.+\*\*/,                // Bold: **text**
+    /\*.+\*/,                    // Italic: *text*
+    /^[-*+]\s+.+$/m,             // Unordered lists: - item
+    /^\d+\.\s+.+$/m,             // Ordered lists: 1. item
+    /\[.+\]\(.+\)/,              // Links: [text](url)
+    /^```/m,                     // Code blocks: ```
+    /^~~~/m,                     // Alt code blocks: ~~~
+    /^>\s+.+$/m,                 // Blockquotes: > quote
+    /\|.+\|/,                    // Tables: | cell |
+  ];
+
+  // Count how many patterns match
+  let matches = 0;
+  for (const pattern of markdownPatterns) {
+    if (pattern.test(text)) {
+      matches++;
+    }
+  }
+
+  // If 2+ markdown patterns detected, treat as markdown
+  return matches >= 2;
+}
 
 // Dark AG Grid theme
 const detailGridTheme = themeQuartz.withParams({
@@ -66,10 +110,15 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
   }, [result]);
 
   if (error) {
+    // Convert \n to actual newlines if error is a string
+    const errorText = typeof error === 'string'
+      ? error.replace(/\\n/g, '\n')
+      : JSON.stringify(error, null, 2);
+
     return (
       <div className="phase-detail-error">
         <span className="phase-detail-error-label">Error:</span>
-        <pre className="phase-detail-error-message">{error}</pre>
+        <pre className="phase-detail-error-message">{errorText}</pre>
       </div>
     );
   }
@@ -135,6 +184,18 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
 
   // String result (LLM output from standard execution)
   if (typeof result === 'string') {
+    // Detect if content is markdown and render accordingly
+    const isMarkdownContent = isMarkdown(result);
+
+    if (isMarkdownContent) {
+      return (
+        <div className="phase-detail-markdown">
+          <RichMarkdown>{result}</RichMarkdown>
+        </div>
+      );
+    }
+
+    // Plain text - show in editor
     return (
       <div className="phase-detail-text">
         <Editor
@@ -200,14 +261,26 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
   // LLM output from lineage (legacy notebook API)
   if (result?.result?.lineage?.[0]?.output) {
     const llmOutput = result.result.lineage[0].output;
+    const outputString = typeof llmOutput === 'string'
+      ? llmOutput
+      : JSON.stringify(llmOutput, null, 2);
+
+    const isMarkdownContent = isMarkdown(outputString);
+
+    if (isMarkdownContent) {
+      return (
+        <div className="phase-detail-markdown">
+          <RichMarkdown>{outputString}</RichMarkdown>
+        </div>
+      );
+    }
+
     return (
       <div className="phase-detail-text">
         <Editor
           height="100%"
           language="markdown"
-          value={typeof llmOutput === 'string'
-            ? llmOutput
-            : JSON.stringify(llmOutput, null, 2)}
+          value={outputString}
           theme="detail-dark"
           beforeMount={handleMonacoBeforeMount}
           options={{

@@ -17,6 +17,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const POLL_INTERVAL_MS = 750;
 const POLL_AFTER_COMPLETE_MS = 10000;
+const COST_BACKFILL_LOOKBACK_MS = 30000; // Look back 30s for cost updates
 
 /**
  * Derive phase state from log rows
@@ -33,7 +34,7 @@ function derivePhaseState(logs, phaseName) {
   const phaseLogs = logs.filter(r => r.phase_name === phaseName);
 
   if (phaseLogs.length === 0) {
-    return { status: 'pending', result: null, error: null, duration: null, images: null, cost: null, model: null };
+    return { status: 'pending', result: null, error: null, duration: null, images: null, cost: null, model: null, tokens_in: null, tokens_out: null };
   }
 
   console.log('[derivePhaseState]', phaseName, 'has', phaseLogs.length, 'log rows');
@@ -45,6 +46,8 @@ function derivePhaseState(logs, phaseName) {
   let images = null;
   let cost = 0;
   let model = null;
+  let tokens_in = 0;
+  let tokens_out = 0;
 
   for (const row of phaseLogs) {
     const role = row.role;
@@ -71,29 +74,40 @@ function derivePhaseState(logs, phaseName) {
     if (role === 'tool' && row.content_json) {
       let toolResult = row.content_json;
 
-      // Parse if JSON-encoded string
-      if (typeof toolResult === 'string') {
+      // Parse if JSON-encoded string (may need multiple parses for double-encoding)
+      while (typeof toolResult === 'string') {
         try {
-          toolResult = JSON.parse(toolResult);
+          const parsed = JSON.parse(toolResult);
+          toolResult = parsed;
+          console.log('[derivePhaseState]', phaseName, '✓ Parsed tool result, now type:', typeof toolResult);
         } catch (e) {
-          console.warn('[derivePhaseState] Failed to parse tool result JSON:', e);
+          // Can't parse further - it's a plain string result
+          console.log('[derivePhaseState]', phaseName, 'Result is plain string (not JSON)');
+          break;
         }
       }
 
-      console.log('[derivePhaseState]', phaseName, 'Found tool result:', toolResult);
+      console.log('[derivePhaseState]', phaseName, '✓ Found tool result, type:', typeof toolResult, 'has rows?', toolResult?.rows?.length);
       result = toolResult;
     }
 
     // Extract output from LLM/assistant messages
     if (role === 'assistant' && row.content_json) {
       let content = row.content_json;
-      // Parse if JSON-encoded string
-      if (typeof content === 'string' && content.startsWith('"')) {
+
+      // Parse if JSON-encoded string (may need multiple parses for double-encoding)
+      while (typeof content === 'string' && content.startsWith('"')) {
         try {
-          content = JSON.parse(content);
-        } catch {}
+          const parsed = JSON.parse(content);
+          content = parsed;
+          console.log('[derivePhaseState]', phaseName, '✓ Parsed assistant content, now type:', typeof content);
+        } catch {
+          // Can't parse further
+          break;
+        }
       }
-      console.log('[derivePhaseState]', phaseName, 'Found LLM result:', content);
+
+      console.log('[derivePhaseState]', phaseName, '✓ Found assistant result, type:', typeof content);
       result = content;
     }
 
@@ -117,13 +131,35 @@ function derivePhaseState(logs, phaseName) {
     }
 
     // Accumulate duration
-    if (row.duration_ms) {
-      duration = (duration || 0) + parseFloat(row.duration_ms);
+    if (row.duration_ms !== undefined && row.duration_ms !== null) {
+      const ms = parseFloat(row.duration_ms);
+      if (!isNaN(ms) && ms > 0) {
+        duration = (duration || 0) + ms;
+        console.log('[derivePhaseState]', phaseName, '✓ Added duration:', ms, 'ms from', role, '- Total:', duration);
+      }
     }
 
     // Accumulate cost
-    if (row.cost) {
-      cost += parseFloat(row.cost);
+    if (row.cost !== undefined && row.cost !== null) {
+      const c = parseFloat(row.cost);
+      if (!isNaN(c)) {
+        cost += c;
+      }
+    }
+
+    // Accumulate tokens
+    if (row.tokens_in !== undefined && row.tokens_in !== null) {
+      const ti = parseFloat(row.tokens_in);
+      if (!isNaN(ti)) {
+        tokens_in += ti;
+      }
+    }
+
+    if (row.tokens_out !== undefined && row.tokens_out !== null) {
+      const to = parseFloat(row.tokens_out);
+      if (!isNaN(to)) {
+        tokens_out += to;
+      }
     }
 
     // Track model (use last non-null model seen)
@@ -132,17 +168,30 @@ function derivePhaseState(logs, phaseName) {
     }
   }
 
-  console.log('[derivePhaseState]', phaseName, 'Final result:', result);
-
-  return {
+  const finalState = {
     status,
     result,
     error,
     duration: duration ? Math.round(duration) : null,
-    images: images,  // Add images to state
+    images: images,
     cost: cost > 0 ? cost : null,
     model: model,
+    tokens_in: tokens_in > 0 ? Math.round(tokens_in) : null,
+    tokens_out: tokens_out > 0 ? Math.round(tokens_out) : null,
   };
+
+  // Log final state
+  console.log('[derivePhaseState]', phaseName, 'Final state:', {
+    status,
+    hasResult: !!result,
+    resultType: result ? typeof result : 'null',
+    hasRows: result?.rows?.length,
+    duration: finalState.duration,
+    cost: finalState.cost,
+    hasImages: !!images
+  });
+
+  return finalState;
 }
 
 /**
@@ -165,12 +214,33 @@ export function useTimelinePolling(sessionId, isRunning) {
   const seenIdsRef = useRef(new Set());
   const prevSessionRef = useRef(null);
 
+  console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
+
   // Poll function
   const poll = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      console.log('[TimelinePolling] No sessionId, skipping poll');
+      return;
+    }
+
+    console.log('[TimelinePolling] Polling session:', sessionId, 'cursor:', cursorRef.current);
 
     try {
-      const url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(cursorRef.current)}`;
+      // Use a lookback window instead of strict cursor to catch cost updates on existing rows
+      // Calculate timestamp 30s ago to catch backfilled cost data
+      const now = new Date();
+      const lookbackTime = new Date(now.getTime() - COST_BACKFILL_LOOKBACK_MS);
+      const lookbackTimestamp = lookbackTime.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+
+      // Use the older of cursorRef or lookbackTimestamp to catch updates
+      const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
+      const isLookback = effectiveCursor !== cursorRef.current;
+
+      if (isLookback && Math.random() < 0.1) { // Log 10% of lookbacks to avoid spam
+        console.log('[TimelinePolling] Using lookback window to catch cost updates', { cursor: cursorRef.current, lookback: lookbackTimestamp });
+      }
+
+      const url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -179,22 +249,54 @@ export function useTimelinePolling(sessionId, isRunning) {
 
       const data = await response.json();
 
+      console.log('[TimelinePolling] Fetched', data.rows?.length || 0, 'rows for session:', sessionId);
+
       if (data.error) {
         throw new Error(data.error);
       }
 
-      // Filter duplicates
-      const newRows = (data.rows || []).filter(row => {
-        if (seenIdsRef.current.has(row.message_id)) {
-          return false;
-        }
-        seenIdsRef.current.add(row.message_id);
-        return true;
-      });
+      // Handle duplicates intelligently: update existing rows if data changed (e.g., cost backfilled)
+      const newRows = [];
+      const updatedMessageIds = new Set();
 
-      // Only update logs if we actually got new rows
-      if (newRows.length > 0) {
-        setLogs(prev => [...prev, ...newRows]);
+      for (const row of (data.rows || [])) {
+        if (seenIdsRef.current.has(row.message_id)) {
+          // Already seen this message_id - check if cost was backfilled
+          if (row.cost && row.cost > 0) {
+            updatedMessageIds.add(row.message_id);
+          }
+          // Skip adding to newRows, but track for potential update
+        } else {
+          // Brand new row
+          seenIdsRef.current.add(row.message_id);
+          newRows.push(row);
+        }
+      }
+
+      // Update logs: add new rows AND update existing rows with backfilled cost
+      if (newRows.length > 0 || updatedMessageIds.size > 0) {
+        setLogs(prev => {
+          if (updatedMessageIds.size === 0) {
+            // No updates, just append new rows
+            return [...prev, ...newRows];
+          }
+
+          // Update existing rows with backfilled data
+          const updated = prev.map(existingRow => {
+            if (updatedMessageIds.has(existingRow.message_id)) {
+              // Find the new version of this row
+              const newVersion = (data.rows || []).find(r => r.message_id === existingRow.message_id);
+              if (newVersion && newVersion.cost && (!existingRow.cost || existingRow.cost === 0)) {
+                console.log('[TimelinePolling] Backfilling cost for message', existingRow.message_id, 'from', existingRow.cost, 'to', newVersion.cost);
+                return { ...existingRow, cost: newVersion.cost };
+              }
+            }
+            return existingRow;
+          });
+
+          return [...updated, ...newRows];
+        });
+
         cursorRef.current = data.cursor;
       }
 
@@ -234,7 +336,10 @@ export function useTimelinePolling(sessionId, isRunning) {
 
   // Start/stop polling based on execution state
   useEffect(() => {
+    console.log('[useTimelinePolling] Start/stop check:', { sessionId, isRunning });
+
     if (!sessionId || !isRunning) {
+      console.log('[useTimelinePolling] Stopping polling (no session or not running)');
       setIsPolling(false);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -243,6 +348,7 @@ export function useTimelinePolling(sessionId, isRunning) {
       return;
     }
 
+    console.log('[useTimelinePolling] Starting polling for session:', sessionId);
     setIsPolling(true);
 
     // Initial poll
@@ -250,8 +356,10 @@ export function useTimelinePolling(sessionId, isRunning) {
 
     // Set up interval
     pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    console.log('[useTimelinePolling] Poll interval set (every', POLL_INTERVAL_MS, 'ms)');
 
     return () => {
+      console.log('[useTimelinePolling] Cleanup: stopping poll interval');
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;

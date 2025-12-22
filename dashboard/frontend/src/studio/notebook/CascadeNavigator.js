@@ -250,6 +250,78 @@ function SessionTablesSection({ sessionId, phases, cellStates }) {
   );
 }
 
+// Media section - shows image thumbnails from phases
+function MediaSection({ phases, cellStates, onNavigateToPhase }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Collect all images from phases with their source phase
+  const mediaItems = React.useMemo(() => {
+    const items = [];
+    phases?.forEach(phase => {
+      const state = cellStates[phase.name];
+      const images = state?.images;
+      if (images && Array.isArray(images) && images.length > 0) {
+        images.forEach((imagePath, idx) => {
+          items.push({
+            phaseName: phase.name,
+            imagePath,
+            imageIndex: idx,
+            key: `${phase.name}-${idx}`
+          });
+        });
+      }
+    });
+    return items;
+  }, [phases, cellStates]);
+
+  // Don't show section if no media
+  if (mediaItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="nav-section">
+      <div
+        className="nav-section-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          className="nav-chevron"
+        />
+        <Icon icon="mdi:image-multiple" className="nav-section-icon" />
+        <span className="nav-section-title">Media</span>
+        <span className="nav-section-count">{mediaItems.length}</span>
+      </div>
+
+      {isExpanded && (
+        <div className="nav-section-content nav-media-content">
+          {mediaItems.map(item => {
+            const imageUrl = item.imagePath.startsWith('/api')
+              ? `http://localhost:5001${item.imagePath}`
+              : item.imagePath;
+
+            return (
+              <div
+                key={item.key}
+                className="nav-media-item"
+                onClick={() => onNavigateToPhase(item.phaseName, { outputTab: 'images' })}
+                title={`${item.phaseName} - Image ${item.imageIndex + 1}`}
+              >
+                <img src={imageUrl} alt={`${item.phaseName} output`} />
+                <div className="nav-media-label">
+                  <Icon icon="mdi:image" width="12" />
+                  <span>{item.phaseName}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Draggable phase type pill
 function PhaseTypePill({ type, icon, label, color }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -368,14 +440,19 @@ function CascadeNavigator() {
   }, [cascadeInputs]);
 
   // Scroll to cell and select it in timeline
-  const scrollToCell = useCallback((phaseName) => {
+  const scrollToCell = useCallback((phaseName, options = {}) => {
     setActivePhase(phaseName);
 
     // Find phase index and select in timeline
-    const { cascade, setSelectedPhaseIndex } = useStudioCascadeStore.getState();
+    const { cascade, setSelectedPhaseIndex, setDesiredOutputTab } = useStudioCascadeStore.getState();
     const phaseIndex = cascade?.phases?.findIndex(p => p.name === phaseName);
     if (phaseIndex !== -1) {
       setSelectedPhaseIndex(phaseIndex);
+
+      // Set desired output tab if specified (for Media section navigation)
+      if (options.outputTab) {
+        setDesiredOutputTab(options.outputTab);
+      }
     }
 
     // Find the cell element and scroll to it
@@ -541,6 +618,13 @@ function CascadeNavigator() {
         sessionId={sessionId}
         phases={phases}
         cellStates={cellStates}
+      />
+
+      {/* Media Section - shows thumbnails of images from phases */}
+      <MediaSection
+        phases={phases}
+        cellStates={cellStates}
+        onNavigateToPhase={scrollToCell}
       />
 
       {/* Connections Section */}

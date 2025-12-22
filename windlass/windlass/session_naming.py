@@ -35,7 +35,7 @@ WOODLAND_ADJECTIVES = [
 # Woodland creatures (emphasizing rabbits, but diverse)
 WOODLAND_CREATURES = [
     # Rabbits (featured for RVBBIT!)
-    'rabbit', 'hare', 'bunny', 'cottontail', 'jackrabbit', 'snowshoe',
+    'rabbit', 'hare', 'bunny', 'cottontail', 'jackrabbit', 'snowshoe', 'jackalope', 'snowhare', 'bunnicula',
     # Small mammals
     'fox', 'squirrel', 'chipmunk', 'mouse', 'vole', 'hedgehog', 'badger',
     'ferret', 'weasel', 'otter', 'beaver', 'marmot', 'pika', 'shrew',
@@ -46,7 +46,7 @@ WOODLAND_CREATURES = [
     'hawk', 'falcon', 'eagle', 'sparrow', 'cardinal', 'chickadee',
     # Others
     'raccoon', 'porcupine', 'skunk', 'opossum', 'mole', 'mink',
-    'lynx', 'bobcat', 'coyote', 'wolf', 'bear', 'boar'
+    'lynx', 'bobcat', 'coyote', 'wolf', 'bear', 'boar', 'snipe'
 ]
 
 

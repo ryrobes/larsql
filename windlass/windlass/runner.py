@@ -4345,6 +4345,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
             error_type = type(e).__name__
             error_msg = str(e)
+            # Use enhanced message if available (from agent.py error extraction)
+            enhanced_msg = getattr(e, 'enhanced_message', None)
+            display_msg = enhanced_msg or error_msg
             error_tb = traceback.format_exc()
 
             # Log to unified logs with cascade context
@@ -4358,10 +4361,10 @@ Refinement directive: {reforge_config.honing_prompt}
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
                 cascade_config=self.config.dict() if hasattr(self.config, 'dict') else None,
-                content=f"{error_type}: {error_msg}\n\nTraceback:\n{error_tb}",
+                content=f"{error_type}: {display_msg}\n\nTraceback:\n{error_tb}",
                 metadata={
                     "error_type": error_type,
-                    "error_message": error_msg,
+                    "error_message": display_msg,
                     "cascade_id": self.config.cascade_id,
                     "depth": self.depth,
                 }
@@ -4372,7 +4375,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 self.echo.add_error(
                     phase="cascade",
                     error_type=error_type,
-                    error_message=error_msg
+                    error_message=display_msg
                 )
 
             # Update status to error
@@ -7721,6 +7724,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
             error_type = type(e).__name__
             error_msg = str(e)
+            # Use enhanced message if available (from agent.py error extraction)
+            enhanced_msg = getattr(e, 'enhanced_message', None)
+            display_msg = enhanced_msg or error_msg
             error_tb = traceback.format_exc()
 
             # Log to unified logs with full context
@@ -7735,10 +7741,10 @@ Refinement directive: {reforge_config.honing_prompt}
                 cascade_id=self.config.cascade_id,
                 phase_name=phase.name,
                 phase_config=phase.dict() if hasattr(phase, 'dict') else None,
-                content=f"{error_type}: {error_msg}\n\nTraceback:\n{error_tb}",
+                content=f"{error_type}: {display_msg}\n\nTraceback:\n{error_tb}",
                 metadata={
                     "error_type": error_type,
-                    "error_message": error_msg,
+                    "error_message": display_msg,
                     "phase_name": phase.name,
                     "phase_type": "deterministic" if phase.is_deterministic() else "llm",
                     "has_soundings": phase.soundings is not None and phase.soundings.factor > 1 if phase.soundings else False,
@@ -7936,38 +7942,79 @@ Refinement directive: {reforge_config.honing_prompt}
                     if source_images:
                         console.print(f"{indent}  [cyan]📷 Loaded {len(source_images)} image(s) from phase '{source_name}'[/cyan]")
 
-        try:
-            # Create Agent with modalities for image generation
-            # This uses the SAME Agent.run() path as text models
-            agent = Agent(
-                model=phase_model,
-                system_prompt="Generate the requested image.",
-                tools=[],
-                base_url=self.base_url,
-                api_key=self.api_key,
-                modalities=["text", "image"],  # Enable image output
-            )
+        # Retry logic for image generation (transient API failures are common)
+        max_attempts = 3
+        last_error = None
+        response = None
 
-            # Build input - if we have context images, create multimodal message
-            if context_images:
-                # Build multimodal content: images FIRST, then text prompt
-                # This is more natural for image-to-image: "Here's the image, now do X with it"
-                multimodal_content = []
-                for img_url in context_images:
-                    multimodal_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": img_url}
-                    })
-                # Add text prompt after images - prefix with instruction context
-                edit_prompt = f"Using the image(s) above as reference, {prompt}"
-                multimodal_content.append({"type": "text", "text": edit_prompt})
-                console.print(f"{indent}  Edit prompt: {edit_prompt[:80]}...")
-                # Create context with multimodal message
-                context_messages = [{"role": "user", "content": multimodal_content}]
-                response = agent.run(context_messages=context_messages)
-            else:
-                # Simple text-to-image
-                response = agent.run(input_message=prompt)
+        for attempt in range(max_attempts):
+            try:
+                # Create Agent with modalities for image generation
+                # This uses the SAME Agent.run() path as text models
+                agent = Agent(
+                    model=phase_model,
+                    system_prompt="Generate the requested image.",
+                    tools=[],
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    modalities=["text", "image"],  # Enable image output
+                )
+
+                # Build input - if we have context images, create multimodal message
+                if context_images:
+                    # Build multimodal content: images FIRST, then text prompt
+                    # This is more natural for image-to-image: "Here's the image, now do X with it"
+                    multimodal_content = []
+                    for img_url in context_images:
+                        multimodal_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url}
+                        })
+                    # Add text prompt after images - prefix with instruction context
+                    edit_prompt = f"Using the image(s) above as reference, {prompt}"
+                    multimodal_content.append({"type": "text", "text": edit_prompt})
+                    console.print(f"{indent}  Edit prompt: {edit_prompt[:80]}...")
+                    # Create context with multimodal message
+                    context_messages = [{"role": "user", "content": multimodal_content}]
+                    response = agent.run(context_messages=context_messages)
+                else:
+                    # Simple text-to-image
+                    response = agent.run(input_message=prompt)
+
+                # Success! Break out of retry loop
+                break
+
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                enhanced_msg = getattr(e, 'enhanced_message', None)
+
+                # Check if this is a transient/parsing error worth retrying
+                is_transient = (
+                    not error_msg or  # Empty error message
+                    error_msg.strip().endswith('-') or  # Incomplete error
+                    'parsing' in error_msg.lower() or  # Parse error
+                    'convert_to_model_response_object' in str(type(e).__module__) or  # LiteLLM parsing
+                    'TimeoutError' in type(e).__name__ or  # Timeout
+                    'ConnectionError' in type(e).__name__  # Connection issue
+                )
+
+                if is_transient and attempt < max_attempts - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    console.print(f"{indent}  [yellow]⚠ Image generation failed (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...[/yellow]")
+                    console.print(f"{indent}    Error: {enhanced_msg or error_msg}")
+                    import time
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Non-transient error or final attempt - raise it
+                    raise
+
+        # If we got here without response, raise the last error
+        if response is None:
+            raise last_error
+
+        try:
 
             duration_ms = (time.time() - start_time) * 1000
 
@@ -8080,7 +8127,10 @@ Refinement directive: {reforge_config.honing_prompt}
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
-            # Log error
+            # Use enhanced message if available (from agent.py error extraction)
+            error_message = getattr(e, 'enhanced_message', None) or str(e)
+
+            # Log error with enhanced details
             log_unified(
                 session_id=self.session_id,
                 trace_id=trace.id,
@@ -8091,16 +8141,17 @@ Refinement directive: {reforge_config.honing_prompt}
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
                 phase_name=phase.name,
-                content=f"Image generation failed: {str(e)}",
+                content=f"Image generation failed: {error_message}",
                 duration_ms=duration_ms,
                 metadata={
                     "phase_type": "image_generation",
                     "model": phase_model,
-                    "error": str(e)
+                    "error": error_message,
+                    "error_type": type(e).__name__,
                 }
             )
 
-            console.print(f"{indent}  [red]✗ Image generation failed: {e}[/red]")
+            console.print(f"{indent}  [red]✗ Image generation failed: {error_message[:200]}[/red]")
             raise
 
     def _auto_fix_and_retry(

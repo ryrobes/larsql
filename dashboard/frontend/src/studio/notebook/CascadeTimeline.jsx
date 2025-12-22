@@ -63,19 +63,64 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
   // Poll for execution updates - either live or replay session
   const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
-  // Poll in live mode while running, or in replay mode to fetch historical data
-  const isPollingActive = (viewMode === 'live' && isRunningAll) || (viewMode === 'replay' && replaySessionId);
-  const { phaseStates, totalCost } = useTimelinePolling(sessionToPoll, isPollingActive);
+
+  console.log('[CascadeTimeline] Session to poll:', { viewMode, replaySessionId, cascadeSessionId, sessionToPoll });
+
+  // Keep polling for a grace period after execution completes to get final cost data
+  const [keepPolling, setKeepPolling] = React.useState(false);
+  React.useEffect(() => {
+    if (!isRunningAll && cascadeSessionId) {
+      // Execution just finished, keep polling for 15s to get final cost
+      setKeepPolling(true);
+      const timer = setTimeout(() => setKeepPolling(false), 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [isRunningAll, cascadeSessionId]);
+
+  // Poll in live mode while running OR during grace period,
+  // or in replay mode to fetch historical data
+  const isPollingActive = (viewMode === 'live' && (isRunningAll || keepPolling)) || (viewMode === 'replay' && replaySessionId);
+
+  console.log('[CascadeTimeline] Polling active?', isPollingActive, 'Reason:', {
+    isLive: viewMode === 'live',
+    isRunningAll,
+    keepPolling,
+    isReplay: viewMode === 'replay',
+    hasReplaySession: !!replaySessionId
+  });
+
+  const { logs, phaseStates, totalCost } = useTimelinePolling(sessionToPoll, isPollingActive);
+
+  // Debug polling state
+  React.useEffect(() => {
+    if (sessionToPoll) {
+      console.log('[CascadeTimeline] Polling state:', {
+        viewMode,
+        sessionToPoll,
+        isPollingActive,
+        logsCount: logs.length,
+        phaseStatesKeys: Object.keys(phaseStates || {}),
+        totalCost
+      });
+    }
+  }, [viewMode, sessionToPoll, isPollingActive, logs.length, phaseStates, totalCost]);
 
   // Update cellStates when polling returns new data
   const prevPhaseStatesHashRef = useRef('');
   useEffect(() => {
-    if (!phaseStates || Object.keys(phaseStates).length === 0) return;
+    if (!phaseStates || Object.keys(phaseStates).length === 0) {
+      console.log('[CascadeTimeline] No phaseStates to update');
+      return;
+    }
 
     // Only update if data actually changed (cheap hash check)
     const currentHash = JSON.stringify(phaseStates);
-    if (currentHash === prevPhaseStatesHashRef.current) return;
+    if (currentHash === prevPhaseStatesHashRef.current) {
+      console.log('[CascadeTimeline] phaseStates unchanged, skipping update');
+      return;
+    }
 
+    console.log('[CascadeTimeline] Updating cellStates from polling:', Object.keys(phaseStates));
     prevPhaseStatesHashRef.current = currentHash;
     updateCellStatesFromPolling(phaseStates);
   }, [phaseStates, updateCellStatesFromPolling]);
@@ -141,6 +186,24 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     setSelectedPhaseIndex(index);
   };
 
+  // Count messages by role, filtering out system messages (phase_*)
+  let messageCounts = null;
+  if (logs && logs.length > 0) {
+    const counts = {};
+    let total = 0;
+    for (const log of logs) {
+      const role = log.role;
+      // Skip system messages (phase_start, phase_complete, etc.)
+      if (role && !role.startsWith('phase_')) {
+        counts[role] = (counts[role] || 0) + 1;
+        total++;
+      }
+    }
+    if (total > 0) {
+      messageCounts = { ...counts, total };
+    }
+  }
+
   if (!cascade) {
     return (
       <div className="cascade-timeline cascade-loading">
@@ -188,11 +251,34 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
                 <Icon icon="mdi:identifier" width="14" />
                 <span className="cascade-session-id-value">{sessionToPoll}</span>
               </div>
-              {totalCost > 0 && (
-                <div className="cascade-total-cost-compact" title="Total cascade cost">
-                  <Icon icon="mdi:currency-usd" width="14" />
-                  <span className="cascade-total-cost-value">
-                    {totalCost < 0.01 ? '<$0.01' : `$${totalCost.toFixed(4)}`}
+              {/* Always show cost when session exists, even if $0.00 */}
+              <div className="cascade-total-cost-compact" title={`Total cascade cost (polling: ${isPollingActive ? 'active' : 'inactive'})`}>
+                <Icon icon="mdi:currency-usd" width="14" />
+                <span className="cascade-total-cost-value">
+                  {totalCost === 0 ? '$0.00' : (totalCost < 0.01 ? '<$0.01' : `$${totalCost.toFixed(4)}`)}
+                </span>
+              </div>
+              {/* Message counts by role */}
+              {messageCounts && (
+                <div
+                  className="cascade-message-counts-compact"
+                  title={Object.entries(messageCounts)
+                    .filter(([key]) => key !== 'total')
+                    .map(([role, count]) => `${role}: ${count}`)
+                    .join(', ')}
+                >
+                  <Icon icon="mdi:message-text" width="14" />
+                  <span className="cascade-message-counts-value">
+                    {/* Show roles in preferred order: user, assistant, tool, then others alphabetically */}
+                    {['user', 'assistant', 'tool']
+                      .filter(role => messageCounts[role])
+                      .map(role => `${messageCounts[role]}${role[0]}`)
+                      .join(' ')}
+                    {Object.keys(messageCounts)
+                      .filter(key => key !== 'total' && !['user', 'assistant', 'tool'].includes(key))
+                      .sort()
+                      .map(role => ` ${messageCounts[role]}${role[0]}`)
+                      .join('')}
                   </span>
                 </div>
               )}
@@ -261,6 +347,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
                 phase={phase}
                 index={index}
                 cellState={cellStates[phase.name]}
+                phaseLogs={logs.filter(log => log.phase_name === phase.name)}
                 isSelected={selectedPhaseIndex === index}
                 onSelect={() => handleSelectPhase(index)}
               />
@@ -285,6 +372,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           phase={selectedPhase}
           index={selectedPhaseIndex}
           cellState={cellStates[selectedPhase.name]}
+          phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
+          allSessionLogs={logs}
           onClose={() => setSelectedPhaseIndex(null)}
         />
       ) : (
