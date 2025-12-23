@@ -98,7 +98,7 @@
   right: 8px;
   color: #555;
   font-size: 12px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
   pointer-events: none;
   z-index: 1;
   white-space: pre-wrap;

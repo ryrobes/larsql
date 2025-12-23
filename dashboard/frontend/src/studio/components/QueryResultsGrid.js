@@ -20,7 +20,7 @@ const darkTheme = themeQuartz.withParams({
   wrapperBorder: false,
   headerFontSize: 12,
   headerFontWeight: 600,
-  fontFamily: "'Google Sans Code', 'Monaco', monospace",
+  fontFamily: "'Google Sans Code', 'Google Sans Code', monospace",
   fontSize: 13,
   accentColor: '#00e5ff',
   chromeBackgroundColor: '#000000',

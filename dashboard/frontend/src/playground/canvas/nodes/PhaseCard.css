@@ -559,7 +559,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 10px;
   line-height: 1.5;
 }

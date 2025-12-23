@@ -448,7 +448,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
 }
 
 /* Tool type colors */

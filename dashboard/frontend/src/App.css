@@ -19,7 +19,7 @@ body {
 }
 
 code, pre, .monospace {
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
 }
 
 #root {

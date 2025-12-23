@@ -51,28 +51,6 @@
   min-width: 0; /* Enable proper shrinking behavior */
 }
 
-.cascade-title-input {
-  font-size: 15px;
-  font-weight: 600;
-  color: #f0f4f8;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 4px 8px;
-  min-width: 150px;
-  max-width: 250px;
-}
-
-.cascade-title-input:hover {
-  border-color: #1a1628;
-}
-
-.cascade-title-input:focus {
-  outline: none;
-  border-color: #00e5ff;
-  background-color: rgba(0, 229, 255, 0.05);
-}
-
 .cascade-dirty-dot {
   width: 6px;
   height: 6px;
@@ -89,10 +67,6 @@
   border: none;
   padding: 4px 0;
   min-width: 0;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .cascade-description-input:focus {

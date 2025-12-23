@@ -17,7 +17,7 @@
 
   /* Blocky retro console font stack with fallbacks */
   /* Note: VT323 is blocky but may have spacing issues, fallback to true monospace */
-  font-family: 'Google Sans Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Consolas', 'Google Sans Code', 'Courier New', monospace;
   font-size: 14px;
   line-height: 1.3; /* Tighter line spacing for terminal look */
 

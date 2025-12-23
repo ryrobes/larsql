@@ -100,7 +100,7 @@
   padding: 0.75rem;
   font-size: 0.7rem;
   color: #999;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   backdrop-filter: blur(8px);
   max-width: 300px;
 }

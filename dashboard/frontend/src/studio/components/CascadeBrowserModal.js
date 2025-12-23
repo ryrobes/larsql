@@ -221,16 +221,6 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
 
         {/* Footer */}
         <div className="studio-browser-footer">
-          <div className="selected-info">
-            {selectedFile ? (
-              <>
-                <Icon icon="mdi:file-document" width="16" />
-                <span>{selectedFile.filename}</span>
-              </>
-            ) : (
-              <span className="hint">Select a cascade to open</span>
-            )}
-          </div>
           <div className="footer-actions">
             <button className="btn-secondary" onClick={onClose}>
               Cancel
@@ -240,7 +230,6 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
               onClick={handleLoad}
               disabled={!selectedFile}
             >
-              <Icon icon="mdi:folder-open" width="16" />
               Open
             </button>
           </div>

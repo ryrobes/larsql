@@ -106,7 +106,7 @@
   padding: 0.75rem;
   color: #F0F4F8;
   font-size: 0.9rem;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   transition: border-color 0.2s ease;
 }
 
@@ -180,7 +180,7 @@
 .cascade-file-id {
   font-size: 0.85rem;
   color: #4A9EDD;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   margin-bottom: 0.25rem;
 }
 

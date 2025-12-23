@@ -446,10 +446,6 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     [phases, inputsSchema, layoutMode]
   );
 
-  const handleTitleChange = (e) => {
-    updateCascade({ cascade_id: e.target.value });
-  };
-
   const handleDescriptionChange = (e) => {
     updateCascade({ description: e.target.value });
   };
@@ -541,12 +537,6 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         {/* Top Control Bar */}
         <div className="cascade-control-bar">
         <div className="cascade-control-left">
-          <input
-            className="cascade-title-input"
-            value={cascade.cascade_id || ''}
-            onChange={handleTitleChange}
-            placeholder="cascade_name"
-          />
           {cascadeDirty && <span className="cascade-dirty-dot" title="Unsaved changes" />}
           {viewMode === 'replay' && (
             <span className="cascade-replay-badge" title="Viewing past execution">

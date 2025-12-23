@@ -54,7 +54,7 @@
 .state-key {
   font-weight: 500;
   color: #cbd5e1;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 11px;
   flex: 1;
 }
@@ -65,7 +65,7 @@
   border-radius: 3px;
   background: rgba(100, 116, 139, 0.2);
   color: #94a3b8;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -96,7 +96,7 @@
 }
 
 .state-value {
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 11px;
 }
 
@@ -159,7 +159,7 @@
   padding: 10px;
   border-radius: 3px;
   border: 1px solid rgba(100, 116, 139, 0.2);
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 10px;
   color: #9be9a8;
   overflow-x: auto;
@@ -205,7 +205,7 @@
 
 .state-history-value {
   flex: 1;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: #cbd5e1;
   overflow: hidden;
   text-overflow: ellipsis;

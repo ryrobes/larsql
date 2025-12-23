@@ -54,7 +54,7 @@
   font-size: 0.8rem;
   font-weight: 700;
   color: #4A9EDD;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
 }
 
 /* Bar track and fill */
@@ -206,7 +206,7 @@
   font-size: 9px;
   font-weight: 700;
   color: #4A9EDD;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
 }
@@ -218,7 +218,7 @@
   font-size: 9px;
   font-weight: 500;
   color: #9AA5B1;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -249,7 +249,7 @@
   font-size: 0.7rem;
   font-weight: 500;
   color: #6B7280;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   padding: 1px 4px;
   background: rgba(107, 114, 128, 0.15);
   border-radius: 3px;
@@ -290,7 +290,7 @@
   font-size: 9px;
   font-weight: 500;
   color: #6B7280;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   line-height: 14px; /* Match container height */
 }
 
@@ -370,7 +370,7 @@
   font-size: 9px;
   font-weight: 400;
   color: #6B7280;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -185,7 +185,7 @@
 
 .context-bar .session-id {
   color: #9AA5B1;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   font-size: 0.75rem;
   padding: 4px 10px;
   background: rgba(22, 32, 42, 0.8);
@@ -535,7 +535,7 @@
   border: 1px solid rgba(74, 158, 221, 0.2);
   padding: 2px 8px;
   border-radius: 6px;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   font-size: 0.9em;
   color: #4A9EDD;
 }

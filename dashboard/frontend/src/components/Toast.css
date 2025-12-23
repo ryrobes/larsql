@@ -188,7 +188,7 @@
 }
 
 .toast-session {
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: 'SF Mono', 'Consolas', 'Google Sans Code', monospace;
   font-size: 0.75rem;
   color: #9AA5B1;
   max-width: 180px;

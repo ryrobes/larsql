@@ -7,6 +7,9 @@
 
 export const STUDIO_THEME_NAME = 'studio-dark';
 
+// Track if we've already set up font loading
+let fontLoadingInitialized = false;
+
 /**
  * Studio dark theme - Purple/Cyan/Pink on pure black
  * Matches the overall Studio UI aesthetic
@@ -79,6 +82,9 @@ export const studioThemeDefinition = {
   },
 };
 
+// Store monaco reference for remeasureFonts
+let monacoInstance = null;
+
 /**
  * Configure Monaco with Studio theme
  * Use this as the `beforeMount` prop on Monaco Editor components
@@ -87,7 +93,42 @@ export const studioThemeDefinition = {
  * <Editor beforeMount={configureMonacoTheme} theme="studio-dark" ... />
  */
 export function configureMonacoTheme(monaco) {
+  monacoInstance = monaco;
   monaco.editor.defineTheme(STUDIO_THEME_NAME, studioThemeDefinition);
+
+  // Set up font loading handler (only once)
+  if (!fontLoadingInitialized && typeof document !== 'undefined') {
+    fontLoadingInitialized = true;
+
+    // Wait for Google Sans Code font to load, then tell Monaco to remeasure
+    document.fonts.ready.then(() => {
+      // Check if our font is loaded
+      if (document.fonts.check("12px 'Google Sans Code'")) {
+        monaco.editor.remeasureFonts();
+      } else {
+        // Font not loaded yet, wait for it
+        document.fonts.load("12px 'Google Sans Code'").then(() => {
+          monaco.editor.remeasureFonts();
+        }).catch(() => {
+          // Font failed to load, Monaco will use fallback
+          console.warn('[Monaco] Google Sans Code font failed to load, using fallback');
+        });
+      }
+    });
+  }
+}
+
+/**
+ * Call this after editor mounts to ensure fonts are applied
+ * Use as: onMount={(editor, monaco) => handleEditorMount(editor, monaco)}
+ */
+export function handleEditorMount(editor, monaco) {
+  // Ensure fonts are measured after editor is ready
+  if (typeof document !== 'undefined' && document.fonts) {
+    document.fonts.ready.then(() => {
+      monaco.editor.remeasureFonts();
+    });
+  }
 }
 
 /**
@@ -97,7 +138,7 @@ export function configureMonacoTheme(monaco) {
 export const studioEditorOptions = {
   minimap: { enabled: false },
   fontSize: 12,
-  fontFamily: "'Monaco', 'Menlo', monospace",
+  fontFamily: "'Google Sans Code', 'Menlo', monospace",
   lineNumbers: 'off',
   renderLineHighlight: 'line',
   renderLineHighlightOnlyWhenFocus: true,

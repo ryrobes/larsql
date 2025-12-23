@@ -734,8 +734,6 @@ function CascadeNavigator() {
   }
 
   const phases = cascade.phases || [];
-  const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
-  const errorCount = Object.values(cellStates).filter(s => s?.status === 'error').length;
   const hasInputs = cascade.inputs_schema && Object.keys(cascade.inputs_schema).length > 0;
 
   const handleRunAll = async () => {
@@ -786,10 +784,6 @@ function CascadeNavigator() {
           <Icon icon="mdi:cascade-edit" className="nav-cascade-icon" />
           <div className="nav-cascade-info">
             <span className="nav-cascade-name">{cascade.cascade_id}</span>
-            <span className="nav-cascade-stats">
-              {completedCount}/{phases.length} phases
-              {errorCount > 0 && <span className="nav-error-count"> · {errorCount} errors</span>}
-            </span>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>

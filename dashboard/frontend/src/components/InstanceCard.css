@@ -98,7 +98,7 @@
   font-weight: 600;
   margin: 0;
   color: #F0F4F8;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -250,7 +250,7 @@
   display: flex;
   gap: 0.5rem;
   font-size: 0.75rem;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   line-height: 1.4;
 }
 
@@ -437,7 +437,7 @@
   background: #16202A;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   font-size: 0.75rem;
   color: #D9A553;
 }
@@ -1072,7 +1072,7 @@
   justify-content: space-between;
   align-items: center;
   margin-top: 0.25rem;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
   font-size: 0.7rem;
 }
 

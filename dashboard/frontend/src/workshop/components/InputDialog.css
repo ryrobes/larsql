@@ -105,7 +105,7 @@
 }
 
 .cascade-info strong {
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
 }
 
 /* Input Fields */
@@ -131,7 +131,7 @@
 .input-key {
   font-size: 13px;
   font-weight: 600;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -148,7 +148,7 @@
   border-radius: 6px;
   padding: 10px 12px;
   font-size: 13px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
   resize: vertical;
   min-height: 60px;
@@ -194,7 +194,7 @@
 }
 
 .no-inputs-message strong {
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--ocean-primary);
 }
 

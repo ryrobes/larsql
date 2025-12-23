@@ -91,7 +91,7 @@
   border: 1px solid rgba(168, 85, 247, 0.4);
   border-radius: 4px;
   font-size: 9px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: #a855f7;
   text-transform: none;
   letter-spacing: 0;
@@ -250,7 +250,7 @@
   flex: 1;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -462,7 +462,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   font-size: 12px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -543,7 +543,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   font-size: 11px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -635,7 +635,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   font-size: 11px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
 }
 
 .preview-node.current {

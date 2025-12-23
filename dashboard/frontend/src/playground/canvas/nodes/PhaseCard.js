@@ -485,7 +485,7 @@ function PhaseCard({ id, data, selected }) {
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 11,
-    fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    fontFamily: "'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

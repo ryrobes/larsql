@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import useStudioQueryStore from '../stores/studioQueryStore';
-import { configureMonacoTheme, STUDIO_THEME_NAME } from '../utils/monacoTheme';
+import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
 import './SqlEditor.css';
 
 function SqlEditor() {
@@ -22,6 +22,9 @@ function SqlEditor() {
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Ensure custom fonts are applied
+    handleEditorMount(editor, monaco);
 
     // Configure SQL-specific settings
     editor.updateOptions({
@@ -132,7 +135,7 @@ function SqlEditor() {
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 14,
-    fontFamily: "'Google Sans Code', 'Monaco', 'Menlo', monospace",
+    fontFamily: "'Google Sans Code', 'Google Sans Code', 'Menlo', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

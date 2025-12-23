@@ -122,7 +122,7 @@ function PromptNode({ id, data, selected }) {
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 12,
-    fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    fontFamily: "'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace",
     lineNumbers: 'on',  // Show line numbers for consistency with YAML editor
     lineNumbersMinChars: 2,
     renderLineHighlight: 'line',

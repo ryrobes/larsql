@@ -79,7 +79,7 @@
 .phase-name {
   font-weight: 600;
   font-size: 14px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
   cursor: text;
 }
@@ -92,7 +92,7 @@
   padding: 4px 8px;
   font-weight: 600;
   font-size: 14px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -186,7 +186,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   padding: 10px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-primary);
@@ -383,7 +383,7 @@
   border-radius: 4px;
   padding: 8px 10px;
   font-size: 13px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
   transition: border-color 0.15s ease;
 }
@@ -433,7 +433,7 @@
 }
 
 .drawer-field.slider-field .slider-value {
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 14px;
   font-weight: 600;
   color: var(--ocean-primary);

@@ -266,7 +266,7 @@
   padding: 12px;
   background: rgba(0, 0, 0, 0.4);
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 11px;
   overflow-x: auto;
 }

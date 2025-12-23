@@ -46,7 +46,7 @@
 
 .collapsed-summary {
   margin-left: auto;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   font-size: 12px;
   font-weight: 400;
   color: var(--text-secondary);
@@ -92,7 +92,7 @@
   padding: 8px 10px;
   color: var(--text-primary);
   font-size: 13px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -306,7 +306,7 @@
 .item-name {
   font-size: 13px;
   font-weight: 500;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -328,7 +328,7 @@
   border: 1px solid var(--ocean-secondary);
   border-radius: 4px;
   font-size: 12px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
 }
 
@@ -434,7 +434,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   font-size: 12px;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
   color: var(--text-primary);
   resize: vertical;
   min-height: 60px;

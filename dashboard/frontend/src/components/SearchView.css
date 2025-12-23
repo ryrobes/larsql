@@ -175,7 +175,7 @@
   margin-top: 0.5rem;
   font-size: 0.875rem;
   color: #fca5a5;
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
 }
 
 .search-error .error-hint {
@@ -316,7 +316,7 @@
 
 .result-source code,
 .table-name code {
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   color: #60a5fa;
 }
 
@@ -391,7 +391,7 @@
 }
 
 .message-meta code {
-  font-family: 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   background: #1f2937;
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;

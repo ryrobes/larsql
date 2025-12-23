@@ -3513,7 +3513,8 @@ def browse_cascade_files():
             if not os.path.exists(dir_path):
                 continue
 
-            files = []
+            # Use dict to deduplicate by cascade_id, keeping most recent
+            files_by_id = {}
 
             # Only YAML files
             for filepath in sorted(glob.glob(f"{dir_path}/*.yaml")):
@@ -3554,21 +3555,32 @@ def browse_cascade_files():
                                     is_image_cascade = True
                                     break
 
-                    files.append({
+                    file_entry = {
                         'filename': filename,
                         'filepath': filepath,
                         'name': cascade_id,
                         'description': description[:100] if description else '',
                         'modified_at': modified_at,
+                        'mtime': mtime,  # Keep numeric mtime for comparison
                         'phase_count': phase_count,
                         'input_count': input_count,
                         'has_playground': has_playground,
                         'is_image_cascade': is_image_cascade,
-                    })
+                    }
+
+                    # Deduplicate: keep only the most recently modified file for each cascade_id
+                    if cascade_id not in files_by_id or mtime > files_by_id[cascade_id]['mtime']:
+                        files_by_id[cascade_id] = file_entry
 
                 except Exception as e:
                     # Skip files that can't be parsed
                     continue
+
+            # Convert back to list, sorted by modification time (newest first)
+            files = sorted(files_by_id.values(), key=lambda f: f['mtime'], reverse=True)
+            # Remove mtime from output (not needed by frontend)
+            for f in files:
+                del f['mtime']
 
             if files:
                 categories.append({

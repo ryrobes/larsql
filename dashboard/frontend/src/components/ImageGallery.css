@@ -108,7 +108,7 @@
   background: rgba(22, 32, 42, 0.8);
   padding: 2px 8px;
   border-radius: 10px;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
 }
 
 .sounding-item.is-winner .sounding-badge {
@@ -144,7 +144,7 @@
   background: rgba(139, 159, 204, 0.2);
   padding: 2px 8px;
   border-radius: 10px;
-  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
 }
 
 .reforge-badge.ultimate {

@@ -440,7 +440,7 @@
 .parameter-item .param-name {
   font-weight: 600;
   color: var(--forest-accent);
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: 'Google Sans Code', 'Consolas', monospace;
 }
 
 .parameter-item .param-type {
@@ -482,7 +482,7 @@
   background: rgba(0, 0, 0, 0.3);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: 'Google Sans Code', 'Consolas', monospace;
 }
 
 .no-params {
@@ -538,7 +538,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: 'Google Sans Code', 'Consolas', monospace;
   font-size: 12px;
 }
 
@@ -690,7 +690,7 @@
 .param-row .param-name {
   font-weight: 500;
   color: var(--forest-accent);
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: 'Google Sans Code', 'Consolas', monospace;
   font-size: 13px;
 }
 
@@ -825,7 +825,7 @@
   flex: 1;
   font-size: 12px;
   color: rgba(224, 232, 240, 0.6);
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: 'Google Sans Code', 'Consolas', monospace;
   background: rgba(0, 0, 0, 0.2);
   padding: 2px 6px;
   border-radius: 4px;

@@ -1,7 +1,7 @@
 import React, { useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { Icon } from '@iconify/react';
-import { configureMonacoTheme, STUDIO_THEME_NAME } from '../../studio/utils/monacoTheme';
+import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import './MonacoYamlEditor.css';
 
 /**
@@ -29,6 +29,9 @@ function MonacoYamlEditor({
     editorRef.current = editor;
     monacoRef.current = monaco;
     window.__activeMonacoEditor = editor; // Enable drag-and-drop
+
+    // Ensure custom fonts are applied
+    handleEditorMount(editor, monaco);
 
     // Configure YAML-specific settings
     editor.updateOptions({
@@ -70,7 +73,7 @@ function MonacoYamlEditor({
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 12,
-    fontFamily: "'Monaco', 'Menlo', monospace",
+    fontFamily: "'Google Sans Code', 'Menlo', monospace",
     lineNumbers: 'off',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

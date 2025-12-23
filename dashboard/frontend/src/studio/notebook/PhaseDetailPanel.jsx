@@ -8,7 +8,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
 import { detectPhaseEditors } from '../editors';
-import { configureMonacoTheme, STUDIO_THEME_NAME } from '../utils/monacoTheme';
+import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
 import './PhaseDetailPanel.css';
 
 /**
@@ -807,8 +807,9 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           onChange={handleYamlChange}
                           theme={STUDIO_THEME_NAME}
                           beforeMount={configureMonacoTheme}
-                          onMount={(editor) => {
+                          onMount={(editor, monaco) => {
                             yamlEditorRef.current = editor;
+                            handleEditorMount(editor, monaco);
                             // Add focus/blur handlers
                             editor.onDidFocusEditorText(() => {
                               yamlEditorEverFocusedRef.current = true;
@@ -881,9 +882,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         onChange={handleCodeChange}
                         theme={STUDIO_THEME_NAME}
                         beforeMount={configureMonacoTheme}
-                        onMount={(editor) => {
+                        onMount={(editor, monaco) => {
                           editorRef.current = editor;
                           window.__activeMonacoEditor = editor;
+                          handleEditorMount(editor, monaco);
                         }}
                         options={{
                           minimap: { enabled: false },
@@ -923,9 +925,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           onChange={handleYamlChange}
                           theme={STUDIO_THEME_NAME}
                           beforeMount={configureMonacoTheme}
-                          onMount={(editor) => {
+                          onMount={(editor, monaco) => {
                             yamlEditorRef.current = editor;
                             window.__activeMonacoEditor = editor; // Enable drag-and-drop
+                            handleEditorMount(editor, monaco);
                             // Add focus/blur handlers
                             editor.onDidFocusEditorText(() => {
                               yamlEditorEverFocusedRef.current = true;
@@ -978,9 +981,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         onChange={handleCodeChange}
                         theme={STUDIO_THEME_NAME}
                         beforeMount={configureMonacoTheme}
-                        onMount={(editor) => {
+                        onMount={(editor, monaco) => {
                           editorRef.current = editor;
                           window.__activeMonacoEditor = editor;
+                          handleEditorMount(editor, monaco);
                         }}
                         options={{
                           minimap: { enabled: false },

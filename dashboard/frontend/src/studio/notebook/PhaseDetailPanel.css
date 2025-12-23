@@ -955,7 +955,7 @@
 
 .phase-detail-error-message {
   margin: 0;
-  font-family: 'Google Sans Code', 'Monaco', monospace;
+  font-family: 'Google Sans Code', 'Google Sans Code', monospace;
   font-size: 12px;
   color: #fca5a5;
   white-space: pre-wrap;

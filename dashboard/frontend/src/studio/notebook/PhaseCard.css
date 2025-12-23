@@ -249,8 +249,9 @@
 
 .phase-card-stat-model {
   /* Color set dynamically via inline style to match provider */
-  max-width: 120px;
+  max-width: 150px;
   overflow: hidden;
+  font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
