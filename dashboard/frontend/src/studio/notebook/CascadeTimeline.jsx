@@ -8,12 +8,32 @@ import PhaseDetailPanel from './PhaseDetailPanel';
 import './CascadeTimeline.css';
 
 /**
- * Analyze cascade DAG structure to detect parallelism and branching
- * Handles BOTH explicit handoffs AND implicit dependencies from {{ outputs.X }}
- * Returns flow bar metadata for visualization
+ * Build FBP-style layered graph layout
+ * Returns positioned nodes and edges for rendering
+ *
+ * @param {boolean} linearMode - If true, arrange in single row instead of DAG layers
  */
-const analyzeFlowStructure = (phases) => {
-  if (!phases || phases.length === 0) return [];
+const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
+  if (!phases || phases.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {} };
+
+  // Calculate input parameter positions in sidebar
+  const inputPositions = {};
+  if (inputsSchema) {
+    const inputNames = Object.keys(inputsSchema);
+    // Sidebar layout (from top):
+    // - Cascade header: ~50px
+    // - First input field center (right after PARAMETERS header): ~50px
+    // - Each input field: ~55px tall (with padding)
+    const BASE_OFFSET = 50; // Center of first input field (param 1)
+    const INPUT_HEIGHT = 55;
+
+    inputNames.forEach((name, idx) => {
+      // Center of each input field based on its index in inputs_schema
+      inputPositions[name] = BASE_OFFSET + (idx * INPUT_HEIGHT);
+    });
+
+    console.log('[FBP] Input positions:', inputPositions);
+  }
 
   // Build dependency graph
   const graph = {};
@@ -28,27 +48,34 @@ const analyzeFlowStructure = (phases) => {
       targets: [],
       sources: [],
       implicitDeps: [],
+      inputDeps: [], // Track {{ input.X }} references
     };
     inDegree[idx] = 0;
     outDegree[idx] = 0;
   });
 
-  // Extract implicit dependencies from Jinja2 {{ outputs.phase_name }} references
+  // Extract dependencies from {{ outputs.X }} AND {{ input.X }}
   phases.forEach((phase, idx) => {
-    const phaseYaml = JSON.stringify(phase); // Convert to string to search
+    const phaseYaml = JSON.stringify(phase);
+    const outputDeps = new Set();
+    const inputRefs = new Set();
+
+    // {{ outputs.phase_name }} references
     const outputsPattern = /\{\{\s*outputs\.(\w+)/g;
     let match;
-    const deps = new Set();
-
     while ((match = outputsPattern.exec(phaseYaml)) !== null) {
-      const referencedPhaseName = match[1];
-      const depIdx = phases.findIndex(p => p.name === referencedPhaseName);
-      if (depIdx !== -1 && depIdx !== idx) {
-        deps.add(depIdx);
-      }
+      const depIdx = phases.findIndex(p => p.name === match[1]);
+      if (depIdx !== -1 && depIdx !== idx) outputDeps.add(depIdx);
     }
 
-    graph[idx].implicitDeps = Array.from(deps);
+    // {{ input.param_name }} references
+    const inputPattern = /\{\{\s*input\.(\w+)/g;
+    while ((match = inputPattern.exec(phaseYaml)) !== null) {
+      inputRefs.add(match[1]);
+    }
+
+    graph[idx].implicitDeps = Array.from(outputDeps);
+    graph[idx].inputDeps = Array.from(inputRefs);
   });
 
   // Build edges from BOTH handoffs (explicit) AND implicit deps
@@ -83,65 +110,106 @@ const analyzeFlowStructure = (phases) => {
     });
   });
 
-  // Assign lanes - default is lane 0 (sequential), branch when parallelism detected
-  const lanes = phases.map(() => 0); // Default: all lane 0
-  const visited = new Set();
+  const CARD_WIDTH = 240;
+  const CARD_HEIGHT = 130;
+  const HORIZONTAL_GAP = linearMode ? 60 : 120; // Tighter in linear mode
+  const VERTICAL_GAP = 0; // No vertical spacing - cards touch
+  const PADDING_LEFT = 160; // More space from sidebar
+  const PADDING_TOP = linearMode ? 20 : 40; // Less vertical padding in linear
+  const PADDING_RIGHT = 40;
 
-  // Identify parallel branches and assign lanes
-  phases.forEach((_, idx) => {
-    if (outDegree[idx] > 1) {
-      // This phase branches to multiple targets - assign unique lanes
-      const targets = graph[idx].targets.sort((a, b) => a - b);
+  // Topological layering (columns)
+  const layers = [];
+  const nodeLayer = {};
+  const remaining = new Set(phases.map((_, i) => i));
 
-      targets.forEach((targetIdx, laneOffset) => {
-        // Assign lane to this target
-        lanes[targetIdx] = laneOffset;
-        visited.add(targetIdx);
-
-        // Propagate lane to descendants until merge point
-        const propagateLane = (nodeIdx, lane) => {
-          if (visited.has(nodeIdx)) return; // Already processed
-          visited.add(nodeIdx);
-          lanes[nodeIdx] = lane;
-
-          // Continue propagation if linear path (single target, single source)
-          if (outDegree[nodeIdx] === 1) {
-            const nextTarget = graph[nodeIdx].targets[0];
-            if (inDegree[nextTarget] === 1) {
-              // Linear continuation - keep same lane
-              propagateLane(nextTarget, lane);
-            }
-          }
-        };
-
-        // Start propagation from branch target
-        if (inDegree[targetIdx] === 1) {
-          propagateLane(targetIdx, laneOffset);
-        }
-      });
+  while (remaining.size > 0) {
+    const layer = [];
+    for (const idx of remaining) {
+      // Can place if all sources already placed
+      if (graph[idx].sources.every(s => nodeLayer[s] !== undefined)) {
+        layer.push(idx);
+      }
     }
+
+    if (layer.length === 0) break; // Finished or cycle
+    layer.forEach(idx => {
+      nodeLayer[idx] = layers.length;
+      remaining.delete(idx);
+    });
+    layers.push(layer);
+  }
+
+  console.log('[FBP] Layers:', layers.map((l, i) => `L${i}:[${l.map(idx => phases[idx].name).join(',')}]`));
+
+  // Position nodes
+  const nodes = [];
+
+  if (linearMode) {
+    // Linear mode: single horizontal row (array order)
+    phases.forEach((phase, idx) => {
+      const x = PADDING_LEFT + (idx * (CARD_WIDTH + HORIZONTAL_GAP));
+      const y = PADDING_TOP;
+
+      nodes.push({
+        phaseIdx: idx,
+        phase: phases[idx],
+        x,
+        y,
+        layer: 0,
+        isBranch: outDegree[idx] > 1,
+        isMerge: inDegree[idx] > 1,
+        inputDeps: graph[idx].inputDeps,
+      });
+    });
+  } else {
+    // FBP mode: layered graph
+    layers.forEach((layer, layerIdx) => {
+      const x = PADDING_LEFT + (layerIdx * (CARD_WIDTH + HORIZONTAL_GAP));
+
+      layer.forEach((phaseIdx, posInLayer) => {
+        const y = PADDING_TOP + (posInLayer * (CARD_HEIGHT + VERTICAL_GAP));
+
+        nodes.push({
+          phaseIdx,
+          phase: phases[phaseIdx],
+          x,
+          y,
+          layer: layerIdx,
+          isBranch: outDegree[phaseIdx] > 1,
+          isMerge: inDegree[phaseIdx] > 1,
+          inputDeps: graph[phaseIdx].inputDeps,
+        });
+      });
+    });
+  }
+
+  // Build edges
+  const edges = [];
+  nodes.forEach(node => {
+    graph[node.phaseIdx].targets.forEach(targetIdx => {
+      const targetNode = nodes.find(n => n.phaseIdx === targetIdx);
+      if (targetNode) {
+        edges.push({
+          source: node,
+          target: targetNode,
+          isSpecial: node.isBranch || targetNode.isMerge,
+        });
+      }
+    });
   });
 
-  console.log('[FlowStructure] Lane assignments:', phases.map((p, i) => `${p.name}:L${lanes[i]}`).join(', '));
+  // Calculate canvas dimensions
+  const width = linearMode
+    ? phases.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT
+    : layers.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT;
 
-  // Build flow bar metadata
-  return phases.map((phase, idx) => {
-    const isBranch = outDegree[idx] > 1;
-    const isMerge = inDegree[idx] > 1;
-    const isParallel = graph[idx].sources.length > 0 &&
-                       graph[idx].sources.some(s => outDegree[s] > 1);
+  const maxNodesInLayer = linearMode ? 1 : Math.max(...layers.map(l => l.length), 1);
+  const height = linearMode
+    ? CARD_HEIGHT + (PADDING_TOP * 2) // Compact height for linear
+    : maxNodesInLayer * (CARD_HEIGHT + VERTICAL_GAP) + PADDING_TOP * 2;
 
-    return {
-      index: idx,
-      name: phase.name,
-      lane: lanes[idx] || 0,
-      isBranch,
-      isMerge,
-      isParallel,
-      targets: graph[idx].targets,
-      sources: graph[idx].sources,
-    };
-  });
+  return { nodes, edges, width, height, inputPositions };
 };
 
 /**
@@ -253,11 +321,62 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   }, [phaseStates, updateCellStatesFromPolling]);
 
   const timelineRef = useRef(null);
+  const [layoutMode, setLayoutMode] = useState('linear'); // 'linear' or 'graph'
+  const [scrollOffset, setScrollOffset] = useState({ x: 0, y: 0 });
+  const [timelineOffset, setTimelineOffset] = useState({ left: 0, top: 0 });
 
-  // Analyze flow structure for visualization (must be before early returns)
+  // Measure timeline position relative to viewport (for input lines)
+  useEffect(() => {
+    const stripEl = timelineRef.current;
+    if (!stripEl) return;
+
+    const updateOffset = () => {
+      const rect = stripEl.getBoundingClientRect();
+      setTimelineOffset({
+        left: rect.left, // Distance from viewport left (vertical sidebar + left panel)
+        top: rect.top,   // Distance from viewport top (control bar)
+      });
+    };
+
+    updateOffset();
+
+    // Update on resize and when split panel moves
+    window.addEventListener('resize', updateOffset);
+
+    // Use ResizeObserver to detect split panel changes
+    const resizeObserver = new ResizeObserver(updateOffset);
+    const parent = stripEl.parentElement;
+    if (parent) resizeObserver.observe(parent);
+
+    return () => {
+      window.removeEventListener('resize', updateOffset);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // Track scroll position for input edges
+  useEffect(() => {
+    const stripEl = timelineRef.current;
+    if (!stripEl) return;
+
+    const handleScroll = () => {
+      setScrollOffset({
+        x: stripEl.scrollLeft,
+        y: stripEl.scrollTop,
+      });
+    };
+
+    stripEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => stripEl.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Build FBP layout (must be before early returns)
   const phases = cascade?.phases || [];
-  const flowStructure = useMemo(() => analyzeFlowStructure(phases), [phases]);
-  const maxLane = flowStructure.length > 0 ? Math.max(...flowStructure.map(f => f.lane)) : 0;
+  const inputsSchema = cascade?.inputs_schema || {};
+  const layout = useMemo(
+    () => buildFBPLayout(phases, inputsSchema, layoutMode === 'linear'),
+    [phases, inputsSchema, layoutMode]
+  );
 
   const handleTitleChange = (e) => {
     updateCascade({ cascade_id: e.target.value });
@@ -420,6 +539,26 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         <div className="cascade-control-right">
           <div className="cascade-control-divider" />
 
+          {/* Layout Toggle */}
+          <div className="cascade-view-toggle">
+            <button
+              className={`cascade-view-btn ${layoutMode === 'linear' ? 'active' : ''}`}
+              onClick={() => setLayoutMode('linear')}
+              title="Linear view (IDE mode)"
+            >
+              <Icon icon="mdi:view-sequential" width="16" />
+            </button>
+            <button
+              className={`cascade-view-btn ${layoutMode === 'graph' ? 'active' : ''}`}
+              onClick={() => setLayoutMode('graph')}
+              title="Graph view (DAG structure)"
+            >
+              <Icon icon="mdi:graph" width="16" />
+            </button>
+          </div>
+
+          <div className="cascade-control-divider" />
+
           <span className="cascade-stats">
             {completedCount}/{cellCount} phases
           </span>
@@ -463,128 +602,163 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         </div>
       </div>
 
-      {/* Horizontal Phase Timeline */}
-      <div className="cascade-timeline-strip" ref={timelineRef}>
-        <div className="cascade-timeline-track">
-          {/* Flow visualization - shows DAG structure */}
-          {phases.length > 0 && (
-            <>
-              {/* For linear flows: single continuous line */}
-              {maxLane === 0 && (
-                <div className="cascade-track-line" />
-              )}
+      {/* Fixed overlay for input parameter connections */}
+      <svg
+        className="cascade-input-edges"
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          width: '100vw',
+          height: '100vh',
+          pointerEvents: 'none',
+          zIndex: 5, // Above background
+        }}
+      >
+        {/* Clip path to cut off lines at editor panel boundary */}
+        <defs>
+          <clipPath id="timeline-clip">
+            <rect
+              x="0"
+              y="0"
+              width="100%"
+              height={timelineOffset.top + (timelineRef.current?.clientHeight || 0)}
+            />
+          </clipPath>
+        </defs>
 
-              {/* For DAG flows: multi-lane parallel tracks */}
-              {maxLane > 0 && (
-                <div className="cascade-flow-bars">
-                  {/* Draw continuous tracks for each lane */}
-                  {(() => {
-                    const CARD_WIDTH = 240;
-                    const CARD_GAP = 56;
-                    const TRACK_PADDING = 20;
-                    const BAR_HEIGHT = 6;
-                    const LANE_SPACING = 20;
+        <g clipPath="url(#timeline-clip)">
+          {/* Input parameter edges - from sidebar to phases (stays fixed during scroll) */}
+          {layout.nodes.map(node => {
+          if (!node.inputDeps || node.inputDeps.length === 0) return null;
 
-                    // Group phases by lane
-                    const lanePhases = {};
-                    flowStructure.forEach((flow, idx) => {
-                      if (!lanePhases[flow.lane]) lanePhases[flow.lane] = [];
-                      lanePhases[flow.lane].push(idx);
-                    });
+          return node.inputDeps.map(inputName => {
+            // Get calculated Y position for this input in sidebar
+            const inputY = layout.inputPositions[inputName] || 50;
 
-                    // Draw continuous track for each lane
-                    return Object.entries(lanePhases).flatMap(([lane, phaseIndices]) => {
-                      const laneNum = parseInt(lane);
-                      const yOffset = (laneNum - maxLane / 2) * LANE_SPACING;
+            // VIEWPORT coordinates (since SVG is position:fixed)
+            // x1: Right edge of left panel (timelineOffset.left = left edge of timeline)
+            const x1 = timelineOffset.left;
 
-                      const segments = [];
+            // y1: Input field position in viewport
+            // Left panel starts at viewport top (y=0)
+            const y1 = inputY + 90; // Source: move down more
 
-                      // Draw bars under cards
-                      phaseIndices.forEach(idx => {
-                        const flow = flowStructure[idx];
-                        const xPos = TRACK_PADDING + (idx * (CARD_WIDTH + CARD_GAP));
-                        const isSpecial = flow.isBranch || flow.isMerge;
-                        const barColor = isSpecial ? '#ff006e' : '#00e5ff';
+            // x2: Phase card left edge, y2: connection point on card
+            const x2 = timelineOffset.left + (node.x - scrollOffset.x);
+            // Connect to upper portion of card
+            const y2 = timelineOffset.top + (node.y + 40 - scrollOffset.y); // Destination: move up more
 
-                        segments.push(
-                          <div
-                            key={`bar-${lane}-${idx}`}
-                            className={`flow-bar ${isSpecial ? 'flow-bar-special' : ''}`}
-                            style={{
-                              left: `${xPos}px`,
-                              top: `calc(50% + ${yOffset}px - ${BAR_HEIGHT / 2}px)`,
-                              width: `${CARD_WIDTH}px`,
-                              height: `${BAR_HEIGHT}px`,
-                              backgroundColor: barColor,
-                              opacity: isSpecial ? 0.7 : 0.4,
-                              boxShadow: isSpecial
-                                ? '0 0 16px rgba(255, 0, 110, 0.5)'
-                                : '0 0 8px rgba(0, 229, 255, 0.3)',
-                            }}
-                          />
-                        );
-                      });
+            // Don't draw if target is off-screen
+            if (x2 < timelineOffset.left - 240 || x2 > window.innerWidth) return null;
 
-                      // Draw gaps between consecutive phases in same lane
-                      for (let i = 0; i < phaseIndices.length - 1; i++) {
-                        const currentIdx = phaseIndices[i];
-                        const nextIdxInLane = phaseIndices[i + 1];
-                        const currentFlow = flowStructure[currentIdx];
-                        const nextFlowInLane = flowStructure[nextIdxInLane];
+            const dx = x2 - x1;
+            const cx1 = x1 + Math.min(60, dx * 0.3);
+            const cx2 = x2 - Math.min(60, dx * 0.3);
 
-                        const gapStartX = TRACK_PADDING + (currentIdx * (CARD_WIDTH + CARD_GAP)) + CARD_WIDTH;
-                        const gapEndX = TRACK_PADDING + (nextIdxInLane * (CARD_WIDTH + CARD_GAP));
-                        const gapWidth = gapEndX - gapStartX;
+            return (
+              <path
+                key={`input-${node.phaseIdx}-${inputName}`}
+                d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                stroke="#ffd700"
+                strokeWidth="2.5"
+                fill="none"
+                opacity="0.7"
+                strokeLinecap="round"
+                strokeDasharray="5 5"
+              />
+            );
+          });
+        })}
+        </g>
+      </svg>
 
-                        const isSpecial = currentFlow.isBranch || nextFlowInLane.isMerge;
-                        const gapColor = isSpecial ? '#ff006e' : '#00e5ff';
+      {/* FBP Graph Layout */}
+      <div
+        className="cascade-timeline-strip"
+        ref={timelineRef}
+        style={{
+          minHeight: layoutMode === 'linear' ? '180px' : '150px',
+          maxHeight: layoutMode === 'linear' ? '180px' : '400px',
+        }}
+      >
+        <div
+          className="cascade-fbp-canvas"
+          style={{
+            width: `${layout.width}px`,
+            height: `${layout.height}px`,
+            position: 'relative',
+            minHeight: '100%',
+          }}
+        >
+          {/* SVG layer for phase-to-phase edges (scrolls with content) */}
+          <svg
+            className="cascade-edges"
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          >
+            {/* Phase-to-phase edges */}
+            {layout.edges.map((edge, idx) => {
+              const { source, target, isSpecial } = edge;
 
-                        segments.push(
-                          <div
-                            key={`gap-${lane}-${currentIdx}-${nextIdxInLane}`}
-                            className="flow-gap"
-                            style={{
-                              position: 'absolute',
-                              left: `${gapStartX}px`,
-                              top: `calc(50% + ${yOffset}px - ${BAR_HEIGHT / 2}px)`,
-                              width: `${gapWidth}px`,
-                              height: `${BAR_HEIGHT}px`,
-                              backgroundColor: gapColor,
-                              opacity: isSpecial ? 0.6 : 0.3,
-                              boxShadow: isSpecial
-                                ? '0 0 10px rgba(255, 0, 110, 0.4)'
-                                : '0 0 6px rgba(0, 229, 255, 0.3)',
-                              borderRadius: '2px',
-                            }}
-                          />
-                        );
-                      }
+              // Connection points: right side of source to left side of target
+              const x1 = source.x + 240; // Right edge of source card
+              const y1 = source.y + 65;  // Center of source card
+              const x2 = target.x;       // Left edge of target card
+              const y2 = target.y + 65;  // Center of target card
 
-                      return segments;
-                    });
-                  })()}
-                </div>
-              )}
-            </>
-          )}
+              const color = isSpecial ? '#ff006e' : '#00e5ff';
+              const opacity = isSpecial ? 0.7 : 0.5;
 
-          {/* Drop zone at start */}
-          <DropZone position={0} />
+              // Bezier curve for smooth connections
+              const dx = x2 - x1;
+              const cx1 = x1 + dx * 0.5;
+              const cx2 = x2 - dx * 0.5;
 
-          {phases.map((phase, index) => (
-            <React.Fragment key={phase.name}>
+              return (
+                <path
+                  key={`edge-${idx}`}
+                  d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                  stroke={color}
+                  strokeWidth="3"
+                  fill="none"
+                  opacity={opacity}
+                  strokeLinecap="round"
+                />
+              );
+            })}
+          </svg>
+
+          {/* Positioned phase cards */}
+          {layout.nodes.map(node => (
+            <div
+              key={`node-${node.phaseIdx}`}
+              className="fbp-node"
+              style={{
+                position: 'absolute',
+                left: `${node.x}px`,
+                top: `${node.y}px`,
+                width: '240px',
+                zIndex: selectedPhaseIndex === node.phaseIdx ? 100 : 50, // Raised above input edges
+              }}
+            >
               <PhaseCard
-                phase={phase}
-                index={index}
-                cellState={cellStates[phase.name]}
-                phaseLogs={logs.filter(log => log.phase_name === phase.name)}
-                isSelected={selectedPhaseIndex === index}
-                onSelect={() => handleSelectPhase(index)}
+                phase={node.phase}
+                index={node.phaseIdx}
+                cellState={cellStates[node.phase.name]}
+                phaseLogs={logs.filter(log => log.phase_name === node.phase.name)}
+                isSelected={selectedPhaseIndex === node.phaseIdx}
+                onSelect={() => handleSelectPhase(node.phaseIdx)}
                 defaultModel={defaultModel}
               />
-              {/* Drop zone after this phase */}
-              <DropZone position={index + 1} />
-            </React.Fragment>
+            </div>
           ))}
 
           {/* Empty state hint */}

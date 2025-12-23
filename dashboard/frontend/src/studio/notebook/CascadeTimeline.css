@@ -281,24 +281,36 @@
 .cascade-timeline-strip {
   flex-shrink: 0;
   width: 100%;
-  height: 150px;
+  height: auto;
+  min-height: 150px;
   background-color: #000000;
   /* border-bottom: 2px solid #1a1628; */
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   position: relative;
 }
 
-.cascade-timeline-track {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 20px;
-  min-height: 100%;
-  min-width: 100%;
-  flex-shrink: 0;
+/* FBP Canvas - absolute positioned nodes */
+.cascade-fbp-canvas {
   position: relative;
   background-color: #000000;
+}
+
+.fbp-node {
+  position: absolute;
+  transition: box-shadow 0.2s ease;
+}
+
+.fbp-node:hover {
+  z-index: 5 !important;
+}
+
+.cascade-edges {
+  pointer-events: none;
+}
+
+.cascade-edges path {
+  transition: opacity 0.2s ease;
 }
 
 /* Simple track line for linear flows */
@@ -362,9 +374,68 @@
   transition: all 0.3s ease;
 }
 
-/* Custom scrollbar for timeline */
+/* Phase card wrapper for vertical stacking */
+.phase-card-wrapper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  will-change: transform;
+}
+
+/* Flow markers for branch/merge points */
+.flow-marker {
+  pointer-events: none;
+}
+
+@keyframes marker-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 1;
+  }
+}
+
+/* View mode toggle (Linear vs Graph) */
+.cascade-view-toggle {
+  display: flex;
+  align-items: center;
+  background-color: #080510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.cascade-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cascade-view-btn:hover:not(.active) {
+  color: #94a3b8;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.cascade-view-btn.active {
+  background-color: #00e5ff;
+  color: #050508;
+}
+
+/* Custom scrollbar for timeline - horizontal */
 .cascade-timeline-strip::-webkit-scrollbar {
   height: 10px;
+  width: 10px;
 }
 
 .cascade-timeline-strip::-webkit-scrollbar-track {
@@ -378,6 +449,10 @@
 
 .cascade-timeline-strip::-webkit-scrollbar-thumb:hover {
   background: #2a2638;
+}
+
+.cascade-timeline-strip::-webkit-scrollbar-corner {
+  background: #050508;
 }
 
 
