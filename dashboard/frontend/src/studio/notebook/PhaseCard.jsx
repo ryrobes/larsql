@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
+import ModelIcon, { getProviderColor, getProvider } from '../../components/ModelIcon';
 import './PhaseCard.css';
 
 /**
@@ -36,13 +37,37 @@ const formatDuration = (ms) => {
  * - Duration/row count
  * - Quick actions
  */
-const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSelect }) => {
+const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSelect, defaultModel }) => {
   const status = cellState?.status || 'pending';
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
   const hasImages = cellState?.images && cellState.images.length > 0;
 
-  // Extract sounding info from logs
+  // Extract model - from phase YAML or cellState (executed) or default
+  // Only show for LLM phases (deterministic data phases don't use models)
+  const isLLMPhase = !!(phase.tool === 'windlass_data' || phase.instructions);
+  const modelToDisplay = isLLMPhase ? (phase.model || cellState?.model || defaultModel) : null;
+
+  // Debug logging
+  React.useEffect(() => {
+    if (isLLMPhase) {
+      console.log('[PhaseCard]', phase.name, {
+        isLLMPhase,
+        phaseModel: phase.model,
+        cellStateModel: cellState?.model,
+        defaultModel,
+        modelToDisplay
+      });
+    }
+  }, [phase.name, isLLMPhase, phase.model, cellState?.model, defaultModel, modelToDisplay]);
+
+  // Extract soundings config from YAML (before execution)
+  const soundingsConfig = phase.soundings;
+  const hasSoundings = soundingsConfig && soundingsConfig.factor && soundingsConfig.factor > 1;
+  const soundingsFactor = hasSoundings ? soundingsConfig.factor : null;
+  const reforgeSteps = hasSoundings && soundingsConfig.reforge ? soundingsConfig.reforge.steps : null;
+
+  // Extract sounding info from logs (after execution)
   const soundingInfo = React.useMemo(() => {
     if (!phaseLogs || phaseLogs.length === 0) return null;
 
@@ -98,7 +123,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
   return (
     <div
-      className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''}`}
+      className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''} ${hasSoundings ? 'phase-card-stacked' : ''}`}
       onClick={onSelect}
       data-phase-name={phase.name}
     >
@@ -123,35 +148,57 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
       {/* Bottom row: Stats + Badges (all horizontal) */}
       <div className="phase-card-bottom-row">
+        {/* Duration (after execution) */}
         {cellState?.duration !== undefined && cellState.duration !== null && (
           <span className="phase-card-stat">
             <Icon icon="mdi:clock-outline" width="12" />
             {formatDuration(cellState.duration)}
           </span>
         )}
+
+        {/* Row count (after execution) */}
         {cellState?.result?.row_count !== undefined && (
           <span className="phase-card-stat phase-card-stat-rows">
             <Icon icon="mdi:table" width="12" />
             {cellState.result.row_count}
           </span>
         )}
+
+        {/* Cost (after execution) */}
         {cellState?.cost > 0 && (
           <span className="phase-card-stat phase-card-stat-cost" title="LLM cost">
             <Icon icon="mdi:currency-usd" width="12" />
             {cellState.cost < 0.01 ? '<$0.01' : `$${cellState.cost.toFixed(4)}`}
           </span>
         )}
-        {cellState?.model && (
-          <span className="phase-card-stat phase-card-stat-model" title={cellState.model}>
-            <Icon icon="mdi:chip" width="12" />
-            {cellState.model.split('/').pop().slice(0, 15)}
+
+        {/* Model - show from YAML or default (BEFORE execution) */}
+        {modelToDisplay && (
+          <span
+            className="phase-card-stat phase-card-stat-model"
+            title={modelToDisplay}
+            style={{ color: getProviderColor(getProvider(modelToDisplay)) }}
+          >
+            <ModelIcon modelId={modelToDisplay} size={12} showTooltip={false} />
+            {modelToDisplay.split('/').pop().slice(0, 15)}
           </span>
         )}
+
+        {/* Reforge steps - from YAML (BEFORE execution) */}
+        {reforgeSteps && !soundingInfo && (
+          <span className="phase-card-badge phase-card-badge-reforge" title={`${reforgeSteps} reforge iterations`}>
+            {reforgeSteps}x reforge
+          </span>
+        )}
+
+        {/* Cached indicator (after execution) */}
         {isCached && status === 'success' && (
           <span className="phase-card-badge phase-card-badge-cached" title="Cached result">
             cached
           </span>
         )}
+
+        {/* Auto-fix indicator (after execution) */}
         {autoFixed && (
           <span className="phase-card-badge phase-card-badge-fixed" title="Auto-fixed">
             🔧 fixed
@@ -159,7 +206,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
         )}
       </div>
 
-      {/* Soundings indicator row */}
+      {/* Soundings indicator row (after execution - shows actual results) */}
       {soundingInfo && (
         <div className="phase-card-soundings-row">
           {soundingInfo.soundings.map((idx) => (

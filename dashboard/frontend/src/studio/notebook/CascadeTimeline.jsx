@@ -59,6 +59,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     setSelectedPhaseIndex,
     setLiveMode,
     updateCellStatesFromPolling,
+    defaultModel,
   } = useStudioCascadeStore();
 
   // Poll for execution updates - either live or replay session
@@ -339,6 +340,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
                 phaseLogs={logs.filter(log => log.phase_name === phase.name)}
                 isSelected={selectedPhaseIndex === index}
                 onSelect={() => handleSelectPhase(index)}
+                defaultModel={defaultModel}
               />
               {/* Drop zone after this phase */}
               <DropZone position={index + 1} />

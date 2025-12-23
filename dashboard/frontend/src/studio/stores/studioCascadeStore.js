@@ -123,6 +123,11 @@ const useStudioCascadeStore = create(
       cascadesError: null,
 
       // ============================================
+      // DEFAULT MODEL
+      // ============================================
+      defaultModel: null,  // Default model from backend config
+
+      // ============================================
       // UNDO/REDO HELPERS
       // ============================================
       _saveToUndoStack: () => {
@@ -1121,6 +1126,36 @@ output_schema:
           set(state => {
             state.cascadesError = err.message;
             state.cascadesLoading = false;
+          });
+        }
+      },
+
+      // Fetch default model from backend
+      fetchDefaultModel: async () => {
+        console.log('[fetchDefaultModel] Starting fetch...');
+        try {
+          const res = await fetch(`${API_BASE_URL}/models`);
+          console.log('[fetchDefaultModel] Response status:', res.status);
+
+          const data = await res.json();
+          console.log('[fetchDefaultModel] Response data:', data);
+
+          if (data.default_model) {
+            console.log('[fetchDefaultModel] Setting default model:', data.default_model);
+            set(state => {
+              state.defaultModel = data.default_model;
+            });
+          } else {
+            console.warn('[fetchDefaultModel] No default_model in response, using fallback');
+            set(state => {
+              state.defaultModel = 'google/gemini-2.5-flash-lite';
+            });
+          }
+        } catch (err) {
+          console.error('[fetchDefaultModel] Failed to fetch:', err);
+          // Fallback to known default
+          set(state => {
+            state.defaultModel = 'google/gemini-2.5-flash-lite';
           });
         }
       },

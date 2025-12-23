@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
+import ModelIcon from '../../components/ModelIcon';
 
 /**
  * ModelBrowserPalette - Draggable LLM model browser for cascade building
@@ -121,9 +122,8 @@ function ModelPill({ model }) {
       style={{ borderColor: config.color + '34' }}
       title={`${model.name}\nContext: ${formatContextLength(model.context_length)}\n${model.id}`}
     >
-      <Icon icon={config.icon} width="12" style={{ color: config.color }} />
-      <span className="model-pill-provider">{provider}</span>
-      <span className="model-pill-sep">/</span>
+      <ModelIcon modelId={model.id} size={12} />
+      <Icon icon={config.icon} width="10" style={{ color: config.color, opacity: 0.6 }} />
       <span className="model-pill-name" style={{ color: config.color }}>
         {modelName}
       </span>

@@ -40,7 +40,7 @@ export function useTimelinePolling(sessionId, isRunning) {
   const seenIdsRef = useRef(new Set());
   const prevSessionRef = useRef(null);
 
-  console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
+  //console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
 
   // Poll function
   const poll = useCallback(async () => {
@@ -162,10 +162,10 @@ export function useTimelinePolling(sessionId, isRunning) {
 
   // Start/stop polling based on execution state
   useEffect(() => {
-    console.log('[useTimelinePolling] Start/stop check:', { sessionId, isRunning });
+    //console.log('[useTimelinePolling] Start/stop check:', { sessionId, isRunning });
 
     if (!sessionId || !isRunning) {
-      console.log('[useTimelinePolling] Stopping polling (no session or not running)');
+      //console.log('[useTimelinePolling] Stopping polling (no session or not running)');
       setIsPolling(false);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -174,7 +174,7 @@ export function useTimelinePolling(sessionId, isRunning) {
       return;
     }
 
-    console.log('[useTimelinePolling] Starting polling for session:', sessionId);
+    //console.log('[useTimelinePolling] Starting polling for session:', sessionId);
     setIsPolling(true);
 
     // Initial poll
@@ -182,10 +182,10 @@ export function useTimelinePolling(sessionId, isRunning) {
 
     // Set up interval
     pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    console.log('[useTimelinePolling] Poll interval set (every', POLL_INTERVAL_MS, 'ms)');
+    //console.log('[useTimelinePolling] Poll interval set (every', POLL_INTERVAL_MS, 'ms)');
 
     return () => {
-      console.log('[useTimelinePolling] Cleanup: stopping poll interval');
+      //console.log('[useTimelinePolling] Cleanup: stopping poll interval');
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;

@@ -53,7 +53,8 @@ function StudioPage({
     cascade,
     viewMode,
     replaySessionId,
-    cascadeSessionId
+    cascadeSessionId,
+    fetchDefaultModel
   } = useStudioCascadeStore();
 
   // Persist split sizes in state
@@ -163,10 +164,11 @@ function StudioPage({
     }
   };
 
-  // Fetch connections on mount
+  // Fetch connections and default model on mount
   useEffect(() => {
     fetchConnections();
-  }, [fetchConnections]);
+    fetchDefaultModel();
+  }, [fetchConnections, fetchDefaultModel]);
 
   // Set default connection for first tab when connections load
   useEffect(() => {

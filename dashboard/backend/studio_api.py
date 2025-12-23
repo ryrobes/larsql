@@ -1641,8 +1641,10 @@ def get_models():
     if _models_cache['data'] and _models_cache['timestamp']:
         age = now - _models_cache['timestamp']
         if age < _models_cache['ttl_seconds']:
+            cfg = get_config()
             return jsonify({
                 'models': _models_cache['data'],
+                'default_model': cfg.default_model,
                 'cached': True,
                 'cache_age_seconds': int(age)
             })
@@ -1674,15 +1676,28 @@ def get_models():
         _models_cache['data'] = models
         _models_cache['timestamp'] = now
 
+        # Get default model from config
+        default_model = cfg.default_model
+
         return jsonify({
             'models': models,
+            'default_model': default_model,
             'cached': False,
             'cache_age_seconds': 0
         })
 
     except Exception as e:
         import traceback
+        # Still return default_model even on error
+        try:
+            cfg = get_config()
+            default_model = cfg.default_model
+        except:
+            default_model = 'google/gemini-2.5-flash-lite'
+
         return jsonify({
             'error': str(e),
-            'traceback': traceback.format_exc()
+            'traceback': traceback.format_exc(),
+            'default_model': default_model,
+            'models': []
         }), 500

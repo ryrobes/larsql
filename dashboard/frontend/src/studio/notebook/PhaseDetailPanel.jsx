@@ -880,9 +880,20 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       ref={setDropRef}
                       className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
                     >
-                      <Editor
-                        key={`editor-${phase.name}`}
-                        height="100%"
+                      <div className="phase-detail-code-header">
+                        <Icon icon="mdi:code-braces" width="14" />
+                        <span>
+                          {info.codeKey === 'query' ? 'Query' :
+                           info.codeKey === 'code' ? 'Code' :
+                           info.codeKey === 'instructions' ? 'Instructions' :
+                           info.codeKey === 'command' ? 'Command' :
+                           info.codeKey.charAt(0).toUpperCase() + info.codeKey.slice(1)}
+                        </span>
+                      </div>
+                      <div className="phase-detail-editor-wrapper">
+                        <Editor
+                          key={`editor-${phase.name}`}
+                          height="100%"
                         language={info.language}
                         value={code}
                         onChange={handleCodeChange}
@@ -903,7 +914,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           scrollBeyondLastLine: false,
                           padding: { top: 12, bottom: 12 },
                         }}
-                      />
+                        />
+                      </div>
                     </div>
                     <div
                       ref={setYamlDropRef}
@@ -920,42 +932,44 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         )}
                         <span className="phase-yaml-hint">Auto-saves on blur</span>
                       </div>
-                      <Editor
-                        key={`yaml-${phase.name}`}
-                        height="100%"
-                        language="yaml"
-                        value={phaseYaml}
-                        onChange={handleYamlChange}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
-                        onMount={(editor) => {
-                          yamlEditorRef.current = editor;
-                          window.__activeMonacoEditor = editor; // Enable drag-and-drop
-                          // Add focus/blur handlers
-                          editor.onDidFocusEditorText(() => {
-                            yamlEditorEverFocusedRef.current = true;
-                            setYamlEditorFocused(true);
-                            window.__activeMonacoEditor = editor; // Update on focus
-                          });
-                          editor.onDidBlurEditorText(() => {
-                            // Only process blur if editor was actually focused by user
-                            if (!yamlEditorEverFocusedRef.current) return;
-                            const currentValue = editor.getValue();
-                            handleYamlBlur(currentValue);
-                          });
-                        }}
-                        options={{
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          fontFamily: "'IBM Plex Mono', monospace",
-                          lineNumbers: 'on',
-                          renderLineHighlightOnlyWhenFocus: true,
-                          wordWrap: 'on',
-                          automaticLayout: true,
-                          scrollBeyondLastLine: false,
-                          padding: { top: 12, bottom: 12 },
-                        }}
-                      />
+                      <div className="phase-detail-editor-wrapper">
+                        <Editor
+                          key={`yaml-${phase.name}`}
+                          height="100%"
+                          language="yaml"
+                          value={phaseYaml}
+                          onChange={handleYamlChange}
+                          theme="detail-dark"
+                          beforeMount={handleMonacoBeforeMount}
+                          onMount={(editor) => {
+                            yamlEditorRef.current = editor;
+                            window.__activeMonacoEditor = editor; // Enable drag-and-drop
+                            // Add focus/blur handlers
+                            editor.onDidFocusEditorText(() => {
+                              yamlEditorEverFocusedRef.current = true;
+                              setYamlEditorFocused(true);
+                              window.__activeMonacoEditor = editor; // Update on focus
+                            });
+                            editor.onDidBlurEditorText(() => {
+                              // Only process blur if editor was actually focused by user
+                              if (!yamlEditorEverFocusedRef.current) return;
+                              const currentValue = editor.getValue();
+                              handleYamlBlur(currentValue);
+                            });
+                          }}
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            lineNumbers: 'on',
+                            renderLineHighlightOnlyWhenFocus: true,
+                            wordWrap: 'on',
+                            automaticLayout: true,
+                            scrollBeyondLastLine: false,
+                            padding: { top: 12, bottom: 12 },
+                          }}
+                        />
+                      </div>
                     </div>
                   </Split>
                 ) : (
@@ -963,29 +977,41 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     ref={setDropRef}
                     className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
                   >
-                    <Editor
-                      key={`editor-${phase.name}`}
-                      height="100%"
-                      language={info.language}
-                      value={code}
-                      onChange={handleCodeChange}
-                      theme="detail-dark"
-                      beforeMount={handleMonacoBeforeMount}
-                      onMount={(editor) => {
-                        editorRef.current = editor;
-                        window.__activeMonacoEditor = editor;
-                      }}
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 13,
-                        fontFamily: "'IBM Plex Mono', monospace",
-                        lineNumbers: 'on',
-                        wordWrap: 'on',
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                        padding: { top: 12, bottom: 12 },
-                      }}
-                    />
+                    <div className="phase-detail-code-header">
+                      <Icon icon="mdi:code-braces" width="14" />
+                      <span>
+                        {info.codeKey === 'query' ? 'Query' :
+                         info.codeKey === 'code' ? 'Code' :
+                         info.codeKey === 'instructions' ? 'Instructions' :
+                         info.codeKey === 'command' ? 'Command' :
+                         info.codeKey.charAt(0).toUpperCase() + info.codeKey.slice(1)}
+                      </span>
+                    </div>
+                    <div className="phase-detail-editor-wrapper">
+                      <Editor
+                        key={`editor-${phase.name}`}
+                        height="100%"
+                        language={info.language}
+                        value={code}
+                        onChange={handleCodeChange}
+                        theme="detail-dark"
+                        beforeMount={handleMonacoBeforeMount}
+                        onMount={(editor) => {
+                          editorRef.current = editor;
+                          window.__activeMonacoEditor = editor;
+                        }}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          automaticLayout: true,
+                          scrollBeyondLastLine: false,
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
+                    </div>
                   </div>
                 )
               )}

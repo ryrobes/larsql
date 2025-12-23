@@ -1090,6 +1090,30 @@
   border-left: 1px solid #1a2028;
 }
 
+.phase-detail-code-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #0b1219;
+  border-bottom: 1px solid #1a2028;
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.phase-detail-code-header span {
+  font-weight: 600;
+}
+
+.phase-detail-editor-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .phase-detail-yaml-header {
   display: flex;
   align-items: center;
@@ -1155,13 +1179,15 @@
 .phase-detail-code-section {
   height: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .phase-detail-yaml-section {
   height: 100%;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background-color: #0a0e14;
 }
 

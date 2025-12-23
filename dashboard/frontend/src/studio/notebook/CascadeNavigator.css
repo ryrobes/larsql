@@ -1128,7 +1128,7 @@
 
 /* Model Pills */
 .model-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
@@ -1140,6 +1140,7 @@
   user-select: none;
   font-size: 10px;
   font-family: 'IBM Plex Mono', monospace;
+  width: 100%;
 }
 
 .model-pill:hover {
@@ -1166,6 +1167,11 @@
 .model-pill-name {
   font-weight: 600;
   opacity: 0.9;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .model-pill-context {
@@ -1174,7 +1180,8 @@
   background: rgba(100, 116, 139, 0.15);
   padding: 1px 4px;
   border-radius: 2px;
-  margin-left: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Loading/Error States */
