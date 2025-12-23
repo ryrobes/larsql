@@ -46,6 +46,7 @@ from .utils import get_tool_schema, encode_image_base64, compute_species_hash
 from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
+from .artifact_resolver import enrich_outputs_with_artifacts, convert_to_multimodal_content
 from .state import update_session_state, update_phase_progress, clear_phase_progress
 from .session_state import (
     get_session_state_manager, create_session as create_session_state,
@@ -4587,6 +4588,7 @@ If no tools are needed, return an empty array: []
 
         # Render the original instructions first
         outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        outputs = enrich_outputs_with_artifacts(outputs, self.config.phases, self.session_id)
         render_context = {
             "input": input_data,
             "state": self.echo.state,
@@ -5333,6 +5335,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         # Build render context for system prompt
         # outputs is built dynamically from lineage (not an Echo attribute)
         outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        outputs = enrich_outputs_with_artifacts(outputs, self.config.phases, self.session_id)
         render_context = {
             "input": input_data or {},
             "state": self.echo.state,
@@ -7802,6 +7805,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
                 # Render URL template (supports {{ input.url }} etc.)
                 outputs = {entry["phase"]: entry["output"] for entry in self.echo.lineage if "phase" in entry and "output" in entry}
+                outputs = enrich_outputs_with_artifacts(outputs, self.config.phases, self.session_id)
                 render_context = {
                     "input": input_data,
                     "state": self.echo.state,
@@ -7915,6 +7919,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Build outputs dict from lineage (same pattern as other phase methods)
         outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        outputs = enrich_outputs_with_artifacts(outputs, self.config.phases, self.session_id)
 
         # Render the prompt from instructions using Jinja2
         prompt = render_instruction(phase.instructions, {
@@ -8595,6 +8600,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # Prepare outputs dict for easier templating
         outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        outputs = enrich_outputs_with_artifacts(outputs, self.config.phases, self.session_id)
 
         # Render Instructions (Jinja2)
         render_context = {
@@ -8973,6 +8979,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # User message with the task
             task_content = f"## New Task\n\n{rendered_instructions}{rag_prompt}"
+            # Convert to multimodal if images are embedded in rendered text
+            task_content = convert_to_multimodal_content(task_content)
             user_trace = trace.create_child("msg", "phase_task")
             user_msg = {"role": "user", "content": task_content}
             self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",
@@ -8989,6 +8997,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # User message with the actual task
             task_content = rendered_instructions + rag_prompt
+            # Convert to multimodal if images are embedded in rendered text
+            task_content = convert_to_multimodal_content(task_content)
             user_trace = trace.create_child("msg", "phase_task")
             user_msg = {"role": "user", "content": task_content}
             self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",

@@ -275,9 +275,10 @@ const ARTIFACT_TYPES = {
 function ArtifactPill({ phaseName, artifactType, index, label }) {
   const config = ARTIFACT_TYPES[artifactType];
 
+  // Artifacts are accessed via outputs.phase_name.artifact_type.index
   const jinjaPath = index !== null
-    ? `${phaseName}.${artifactType}.${index}`
-    : `${phaseName}.${artifactType}`;
+    ? `outputs.${phaseName}.${artifactType}.${index}`
+    : `outputs.${phaseName}.${artifactType}`;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `artifact-${phaseName}-${artifactType}-${index}`,
