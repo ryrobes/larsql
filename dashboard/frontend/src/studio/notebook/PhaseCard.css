@@ -287,18 +287,18 @@
 .phase-card-soundings-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: left;
   gap: 4px;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid #1a2028;
+  margin-top: 3px;
+  padding-top: 3px;
+  /* border-top: 1px solid #1a2028; */
 }
 
 .phase-card-sounding-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
-  background-color: #475569;
+  /* background-color: #475569; */
   border: 1px solid #64748b;
   transition: all 0.2s ease;
 }

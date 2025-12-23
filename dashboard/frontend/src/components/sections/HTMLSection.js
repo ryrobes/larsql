@@ -477,7 +477,7 @@ function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
 body {
   margin: 0;
   padding: 16px;
-  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);

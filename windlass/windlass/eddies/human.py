@@ -1348,7 +1348,7 @@ def _build_screenshot_html(body_html: str) -> str:
 body {
   margin: 0;
   padding: 16px;
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Quicksand', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);

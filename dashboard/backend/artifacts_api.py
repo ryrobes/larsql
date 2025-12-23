@@ -696,7 +696,7 @@ def _generate_index_html(artifacts):
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
         body {{
-            font-family: 'Manrope', -apple-system, sans-serif;
+            font-family: 'Quicksand', -apple-system, sans-serif;
             background: var(--bg-darkest);
             color: var(--text-primary);
             min-height: 100vh;
@@ -898,7 +898,7 @@ def _get_base_styles():
 body {
   margin: 0;
   padding: 16px;
-  font-family: 'Manrope', -apple-system, sans-serif;
+  font-family: 'Quicksand', -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
@@ -971,7 +971,7 @@ def _add_navigation_to_artifact(html_content, artifact):
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-family: 'Manrope', -apple-system, sans-serif;
+        font-family: 'Quicksand', -apple-system, sans-serif;
     ">
         <a href="index.html" style="
             display: flex;
