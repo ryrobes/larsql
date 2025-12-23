@@ -274,6 +274,7 @@
   to { transform: rotate(360deg); }
 }
 
+
 /* ============================================
    HORIZONTAL TIMELINE STRIP
    ============================================ */
@@ -467,6 +468,46 @@
 .cascade-view-btn.active {
   background-color: #00e5ff;
   color: #050508;
+}
+
+/* Edge Legend */
+.cascade-edge-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background-color: #080510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  color: #64748b;
+  cursor: help;
+  transition: all 0.15s ease;
+}
+
+.cascade-edge-legend:hover {
+  border-color: #00e5ff;
+  color: #00e5ff;
+}
+
+.legend-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.cascade-edge-legend:hover .legend-dot {
+  transform: scale(1.3);
+}
+
+.legend-dot-gradient {
+  background: linear-gradient(135deg, #ffd700 0%, #ffa94d 25%, #fb7185 50%, #d4a8ff 75%, #a7f3d0 100%);
 }
 
 /* Custom scrollbar for timeline - horizontal */

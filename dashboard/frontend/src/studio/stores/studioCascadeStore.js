@@ -128,6 +128,12 @@ const useStudioCascadeStore = create(
       defaultModel: null,  // Default model from backend config
 
       // ============================================
+      // PHASE TYPES (Declarative)
+      // ============================================
+      phaseTypes: [],  // Loaded from phase_types/ YAML files
+      phaseTypesLoading: false,
+
+      // ============================================
       // UNDO/REDO HELPERS
       // ============================================
       _saveToUndoStack: () => {
@@ -550,22 +556,16 @@ output_schema:
           };
           const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
-          // Create phase based on type
-          let newCell;
+          // Get phase type definition (declarative from YAML)
+          const phaseTypeDef = state.phaseTypes.find(pt => pt.type_id === type);
 
-          // Generate type-specific name
-          const nameMap = {
-            llm_phase: 'llm',
-            sql_data: 'sql',
-            python_data: 'python',
-            js_data: 'js',
-            clojure_data: 'clojure',
-            windlass_data: 'llm_data',
-            rabbitize_batch: 'browser',
-          };
-          const baseName = nameMap[type] || type.replace(/_data$/, '');
+          if (!phaseTypeDef) {
+            console.error(`Phase type not found: ${type}`);
+            return;
+          }
 
-          // Find unique name with counter
+          // Generate unique name using prefix from type definition
+          const baseName = phaseTypeDef.name_prefix || type.replace(/_data$/, '');
           let phaseName = `${baseName}_${cellCount}`;
           let counter = cellCount;
           while (phases.some(p => p.name === phaseName)) {
@@ -573,41 +573,37 @@ output_schema:
             phaseName = `${baseName}_${counter}`;
           }
 
-          if (type === 'llm_phase') {
-            newCell = {
-              name: phaseName,
-              instructions: templateCode || defaultCode,
-              model: 'anthropic/claude-sonnet-4',
-              tackle: [],
-            };
-          } else if (type === 'rabbitize_batch') {
-            // Rabbitize automation phase - uses linux_shell_dangerous to run on host
-            const cascadeId = state.cascade?.cascade_id || 'untitled_cascade';
+          // Clone template and set name
+          const template = JSON.parse(JSON.stringify(phaseTypeDef.template));
+          const newCell = {
+            name: phaseName,
+            ...template
+          };
 
-            newCell = {
-              name: phaseName,
-              tool: 'linux_shell_dangerous',
-              inputs: {
-                command: templateCode || `npx rabbitize \\
-  --client-id "${cascadeId}" \\
-  --test-id "${phaseName}.studio" \\
-  --exit-on-end true \\
-  --process-video true \\
-  --batch-url "https://example.com" \\
-  --batch-commands='[]'`
-              },
-              timeout: '5m'
-            };
-          } else {
-            // Data tools (SQL, Python, JS, Clojure, etc.)
-            newCell = {
-              name: phaseName,
-              tool: type,
-              inputs: type === 'sql_data'
-                ? { query: templateCode || defaultCode }
-                : { code: templateCode || defaultCode }
-            };
-          }
+          // Apply template variable substitutions
+          const applyTemplateVars = (obj) => {
+            if (typeof obj === 'string') {
+              return obj
+                .replace(/\{\{PHASE_NAME\}\}/g, phaseName)
+                .replace(/\{\{CASCADE_ID\}\}/g, state.cascade?.cascade_id || 'untitled');
+            }
+            if (Array.isArray(obj)) {
+              return obj.map(applyTemplateVars);
+            }
+            if (obj && typeof obj === 'object') {
+              const result = {};
+              for (const [key, value] of Object.entries(obj)) {
+                result[key] = applyTemplateVars(value);
+              }
+              return result;
+            }
+            return obj;
+          };
+
+          // Apply substitutions to entire cell
+          Object.keys(newCell).forEach(key => {
+            newCell[key] = applyTemplateVars(newCell[key]);
+          });
 
           // Add handoff to previous cell if exists
           if (afterIndex === null) {
@@ -1186,6 +1182,29 @@ output_schema:
           // Fallback to known default
           set(state => {
             state.defaultModel = 'google/gemini-2.5-flash-lite';
+          });
+        }
+      },
+
+      // Fetch phase types from backend
+      fetchPhaseTypes: async () => {
+        set(state => { state.phaseTypesLoading = true; });
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/phase-types`);
+          const data = await res.json();
+
+          set(state => {
+            state.phaseTypes = data || [];
+            state.phaseTypesLoading = false;
+          });
+
+          console.log('[fetchPhaseTypes] Loaded types:', data.length);
+        } catch (err) {
+          console.error('[fetchPhaseTypes] Failed:', err);
+          set(state => {
+            state.phaseTypes = [];
+            state.phaseTypesLoading = false;
           });
         }
       },

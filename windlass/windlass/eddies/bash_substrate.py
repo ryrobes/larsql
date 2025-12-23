@@ -25,7 +25,7 @@ def bash_data(
     output_format: str = "csv",
     timeout: Optional[str] = None,
     env: Optional[Dict[str, str]] = None,
-    persist_session: bool = False,  # TODO: Enable once IPC is fixed
+    persist_session: bool = True,
     _phase_name: str = None,
     _session_id: str = None,
     _outputs: Dict[str, Any] = None,

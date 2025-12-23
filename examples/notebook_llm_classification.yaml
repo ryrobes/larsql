@@ -24,37 +24,33 @@ phases:
     handoffs: [llm_classify]
 
   - name: llm_classify
-    tool: windlass_data
-    inputs:
-      code: |
-        instructions: |
-          You are a support ticket classifier. Analyze each ticket and classify it.
+    instructions: |
+      You are a support ticket classifier. Analyze each ticket and classify it.
 
-          Tickets to classify:
-          {{outputs.raw_support_tickets}}
+      Tickets to classify:
+      {{outputs.raw_support_tickets}}
 
-          For each ticket, determine:
-          1. category: one of [bug, feature_request, billing, account, feedback, critical]
-          2. priority: one of [low, medium, high, critical]
-          3. sentiment: one of [positive, neutral, negative, angry]
-          4. clean_subject: A clean, normalized subject line (max 50 chars)
+      For each ticket, determine:
+      1. category: one of [bug, feature_request, billing, account, feedback, critical]
+      2. priority: one of [low, medium, high, critical]
+      3. sentiment: one of [positive, neutral, negative, angry]
+      4. clean_subject: A clean, normalized subject line (max 50 chars)
 
-          Return ALL tickets with their classifications.
-
-        model: google/gemini-2.5-flash
-
-        output_schema:
-          type: array
-          items:
-            type: object
-            properties:
-              ticket_id: { type: string }
-              email: { type: string }
-              category: { type: string }
-              priority: { type: string }
-              sentiment: { type: string }
-              clean_subject: { type: string }
-            required: [ticket_id, category, priority, sentiment, clean_subject]
+      Return ALL tickets with their classifications.
+    model: google/gemini-2.5-flash
+    tackle: []
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          ticket_id: { type: string }
+          email: { type: string }
+          category: { type: string }
+          priority: { type: string }
+          sentiment: { type: string }
+          clean_subject: { type: string }
+        required: [ticket_id, category, priority, sentiment, clean_subject]
     handoffs: [aggregate_stats]
 
   - name: aggregate_stats

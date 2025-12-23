@@ -17,7 +17,7 @@ phases:
 
         # Define shell functions (persist)
         function log_msg() {
-          echo "[$(date '+%H:%M:%S')] $1"
+          echo "[$(date '+%H:%M:%S')] $1" >&2  # Send to stderr to not pollute stdout
         }
 
         function generate_id() {

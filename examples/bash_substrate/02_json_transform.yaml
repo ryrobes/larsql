@@ -1,39 +1,36 @@
 cascade_id: "bash_json_transform"
-description: "Generate and consume JSON using bash - demonstrates JSON data flow"
+description: "Generate and transform JSON using bash - demonstrates jq integration"
 
 phases:
-  # Phase 1: Generate JSON data with bash
+  # Phase 1: Generate CSV data with bash
   - name: generate_users
     tool: bash_data
     inputs:
       script: |
-        # Generate JSON array using jq
-        cat <<EOF | jq -c .
-        [
-          {"id": 1, "name": "Alice", "score": 95},
-          {"id": 2, "name": "Bob", "score": 87},
-          {"id": 3, "name": "Charlie", "score": 92},
-          {"id": 4, "name": "Diana", "score": 88},
-          {"id": 5, "name": "Eve", "score": 98}
-        ]
-        EOF
-      output_format: json
+        # Generate CSV data
+        echo "id,name,score"
+        echo "1,Alice,95"
+        echo "2,Bob,87"
+        echo "3,Charlie,92"
+        echo "4,Diana,88"
+        echo "5,Eve,98"
+      output_format: csv
+    handoffs: [transform_to_json]
 
-  # Phase 2: Filter and transform with bash + jq
+  # Phase 2: Convert CSV to JSON and filter with jq
   # Input: _generate_users table as CSV from stdin
   # Output: JSON array to stdout
-  - name: high_scorers
+  - name: transform_to_json
     tool: bash_data
     inputs:
       script: |
-        # Read CSV, convert to JSON, filter, and transform
-        # Skip header, convert to JSON objects
-        tail -n +2 | awk -F',' '
-        {
-          print "{\"id\":" $1 ",\"name\":\"" $2 "\",\"score\":" $3 "}"
-        }
-        ' | jq -s 'map(select(.score >= 90)) | map({id, name, score, grade: (if .score >= 95 then "A" else "B" end)})'
+        # Read CSV, convert to JSON objects with jq
+        # Skip header, then use jq to parse CSV-like format
+        tail -n +2 | awk -F',' '{
+          printf "{\"id\":%s,\"name\":\"%s\",\"score\":%s}\n", $1, $2, $3
+        }' | jq -s 'map(select(.score >= 90)) | map(. + {grade: (if .score >= 95 then "A" else "B" end)})'
       output_format: json
+    handoffs: [analyze]
 
   # Phase 3: Query the result with SQL
   - name: analyze
@@ -44,6 +41,6 @@ phases:
           grade,
           COUNT(*) as student_count,
           AVG(score) as avg_score
-        FROM _high_scorers
+        FROM _transform_to_json
         GROUP BY grade
         ORDER BY grade

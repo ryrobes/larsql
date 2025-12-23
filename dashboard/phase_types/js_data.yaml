@@ -1,0 +1,17 @@
+type_id: js_data
+display_name: JavaScript
+icon: mdi:language-javascript
+color: "#f7df1e"
+name_prefix: js
+description: "JavaScript data transformation phase"
+category: "data"
+
+template:
+  tool: js_data
+  inputs:
+    code: |
+      // Access prior cell outputs:
+      // const rows = data.phase_name;
+      //
+      // Set result to an array of objects or value:
+      result = [{ message: "Hello from JS" }];

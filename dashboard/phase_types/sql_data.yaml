@@ -1,0 +1,15 @@
+type_id: sql_data
+display_name: SQL
+icon: mdi:database
+color: "#60a5fa"
+name_prefix: sql
+description: "SQL query phase - query DuckDB or ClickHouse"
+category: "data"
+
+template:
+  tool: sql_data
+  inputs:
+    query: |
+      -- Enter SQL here
+      -- Reference prior cells with: SELECT * FROM _phase_name
+      SELECT 1 as test

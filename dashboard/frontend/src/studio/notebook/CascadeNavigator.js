@@ -519,15 +519,15 @@ function PhaseTypePill({ type, icon, label, color }) {
 function PhaseTypesSection() {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const phaseTypes = [
-    { type: 'sql_data', icon: 'mdi:database', label: 'SQL', color: '#60a5fa' },
-    { type: 'python_data', icon: 'mdi:language-python', label: 'Python', color: '#fbbf24' },
-    { type: 'js_data', icon: 'mdi:language-javascript', label: 'JavaScript', color: '#f7df1e' },
-    { type: 'clojure_data', icon: 'simple-icons:clojure', label: 'Clojure', color: '#63b132' },
-    { type: 'llm_phase', icon: 'mdi:brain', label: 'LLM', color: '#a78bfa' },
-    { type: 'windlass_data', icon: 'mdi:sail-boat', label: 'LLM (Data)', color: '#2dd4bf' },
-    { type: 'rabbitize_batch', icon: 'mdi:record-circle', label: 'Browser', color: '#f87171' },
-  ];
+  // Load phase types from store (declarative from YAML files)
+  const phaseTypesFromStore = useStudioCascadeStore(state => state.phaseTypes);
+
+  const phaseTypes = phaseTypesFromStore.map(pt => ({
+    type: pt.type_id,
+    icon: pt.icon,
+    label: pt.display_name,
+    color: pt.color
+  }));
 
   return (
     <div className="nav-section">

@@ -1,0 +1,20 @@
+type_id: rabbitize_batch
+display_name: Browser
+icon: mdi:web
+color: "#f87171"
+name_prefix: browser
+description: "Browser automation with Rabbitize"
+category: "tools"
+
+template:
+  tool: linux_shell_dangerous
+  inputs:
+    command: |
+      npx rabbitize \
+        --client-id "studio" \
+        --test-id "{{PHASE_NAME}}.studio" \
+        --exit-on-end true \
+        --process-video true \
+        --batch-url "https://example.com" \
+        --batch-commands='[]'
+  timeout: 5m

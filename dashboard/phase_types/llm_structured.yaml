@@ -1,0 +1,28 @@
+type_id: llm_structured
+display_name: LLM (Schema)
+icon: mdi:format-list-checkbox
+color: "#a78bfa"
+name_prefix: llm_schema
+description: "LLM phase with output schema validation for structured data extraction"
+category: "llm"
+
+template:
+  instructions: |
+    Extract structured data from the input.
+
+    Data to process:
+    {{ outputs.phase_name }}
+
+    Return results in the specified JSON schema format.
+  model: google/gemini-2.5-flash
+  tackle: []
+  output_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+        value:
+          type: string
+      required: [id, value]

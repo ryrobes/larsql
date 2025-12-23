@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 import os
+import fcntl
 from pathlib import Path
 from typing import Dict, Optional
 from dataclasses import dataclass
@@ -77,6 +78,10 @@ class BashSession:
             cwd=str(self.session_dir)
         )
 
+        # Make stdout non-blocking to avoid deadlocks
+        flags = fcntl.fcntl(self.process.stdout, fcntl.F_GETFL)
+        fcntl.fcntl(self.process.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
     def execute(self, script: str, timeout: int = 300, input_data: Optional[str] = None) -> BashResult:
         """
         Execute a bash script in the persistent session.
@@ -114,14 +119,32 @@ class BashSession:
             # Wrap script with markers
             # Send EVERYTHING to stdout for simplicity (markers + output)
             # This avoids complex multi-stream synchronization
-            wrapped_script = f"""
-# Redirect input file to stdin if provided
-{f'exec < "{input_file}"' if input_file else ''}
 
+            # If we have input data, redirect stdin ONLY for the user script
+            # Don't use 'exec <' because that permanently redirects stdin!
+            if input_file:
+                wrapped_script = f"""
 # Send start marker
 echo '{start_marker}'
 
-# User script (output goes to stdout naturally)
+# User script with input redirection
+{{
+{script}
+}} < "{input_file}"
+
+# Capture exit code
+__EXIT_CODE=$?
+
+# Send end markers
+echo '{end_marker}'
+echo '{exit_marker}'$__EXIT_CODE
+"""
+            else:
+                wrapped_script = f"""
+# Send start marker
+echo '{start_marker}'
+
+# User script (no input redirection needed)
 {script}
 
 # Capture exit code
@@ -139,34 +162,42 @@ echo '{exit_marker}'$__EXIT_CODE
             except BrokenPipeError:
                 raise Exception("Bash process stdin pipe is broken")
 
-            # Collect output from stdout only (includes markers)
-            all_output_lines = []
+            # Collect output from stdout using non-blocking reads
+            buffer = ""
             exit_code = None
             start_time = time.time()
 
-            # Read stdout line by line until we see the exit marker
+            # Read stdout in chunks until we see the exit marker
             while time.time() - start_time < timeout:
                 try:
-                    line = self.process.stdout.readline()
-                    if not line:
+                    # Non-blocking read (returns immediately)
+                    chunk = self.process.stdout.read(4096)
+                    if chunk:
+                        buffer += chunk
+
+                        # Check if we have the exit marker
+                        if exit_marker in buffer:
+                            # Extract exit code
+                            exit_line = [line for line in buffer.split('\n') if exit_marker in line][0]
+                            exit_code = int(exit_line.split(exit_marker)[1].strip())
+                            break
+                    else:
+                        # No data available yet, sleep briefly
                         time.sleep(0.01)
-                        continue
 
-                    all_output_lines.append(line)
-
-                    # Check for exit marker (signals end of execution)
-                    if exit_marker in line:
-                        exit_code = int(line.split(exit_marker)[1].strip())
-                        break
-
+                except BlockingIOError:
+                    # No data available, try again
+                    time.sleep(0.01)
                 except Exception as e:
+                    # Unexpected error
                     break
 
             # Parse output: extract data between start and end markers
+            lines = buffer.split('\n')
             stdout_lines = []
             capturing = False
 
-            for line in all_output_lines:
+            for line in lines:
                 if start_marker in line:
                     capturing = True
                     continue
@@ -178,7 +209,7 @@ echo '{exit_marker}'$__EXIT_CODE
                     continue
 
                 if capturing:
-                    stdout_lines.append(line)
+                    stdout_lines.append(line + '\n')
 
             # Stderr is still available for any actual errors
             stderr_lines = []
@@ -282,6 +313,5 @@ def cleanup_all_bash_sessions():
 
 
 # Register cleanup on exit
-# TODO: Re-enable once IPC is stable
-# import atexit
-# atexit.register(cleanup_all_bash_sessions)
+import atexit
+atexit.register(cleanup_all_bash_sessions)

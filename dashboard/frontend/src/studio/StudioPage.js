@@ -54,7 +54,8 @@ function StudioPage({
     viewMode,
     replaySessionId,
     cascadeSessionId,
-    fetchDefaultModel
+    fetchDefaultModel,
+    fetchPhaseTypes
   } = useStudioCascadeStore();
 
   // Persist split sizes in state
@@ -104,17 +105,9 @@ function StudioPage({
         const phasesBefore = cascadeStore.cascade?.phases || [];
         const cellCount = phasesBefore.length + 1;
 
-        // Predict what name addCell will generate (MUST match studioCascadeStore naming)
-        const nameMap = {
-          llm_phase: 'llm',
-          sql_data: 'sql',
-          python_data: 'python',
-          js_data: 'js',
-          clojure_data: 'clojure',
-          windlass_data: 'llm_data',
-          rabbitize_batch: 'browser',
-        };
-        const baseName = nameMap[phaseType] || phaseType.replace(/_data$/, '');
+        // Get phase type definition to match naming
+        const phaseTypeDef = cascadeStore.phaseTypes.find(pt => pt.type_id === phaseType);
+        const baseName = phaseTypeDef?.name_prefix || phaseType.replace(/_data$/, '');
 
         // Find unique name with counter
         let predictedName = `${baseName}_${cellCount}`;
@@ -209,11 +202,12 @@ function StudioPage({
     }
   };
 
-  // Fetch connections and default model on mount
+  // Fetch connections, default model, and phase types on mount
   useEffect(() => {
     fetchConnections();
     fetchDefaultModel();
-  }, [fetchConnections, fetchDefaultModel]);
+    fetchPhaseTypes();
+  }, [fetchConnections, fetchDefaultModel, fetchPhaseTypes]);
 
   // Set default connection for first tab when connections load
   useEffect(() => {

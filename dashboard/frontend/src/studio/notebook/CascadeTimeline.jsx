@@ -16,8 +16,21 @@ import './CascadeTimeline.css';
 const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   if (!phases || phases.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {} };
 
-  // Calculate input parameter positions in sidebar
+  // Input parameter color palette (warm/pastel to avoid clash with context colors)
+  const inputColors = [
+    '#ffd700', // Gold
+    '#ffa94d', // Amber
+    '#ff9d76', // Coral
+    '#fb7185', // Rose
+    '#f472b6', // Hot pink
+    '#d4a8ff', // Lavender
+    '#fde047', // Lemon
+    '#a7f3d0', // Mint
+  ];
+
+  // Calculate input parameter positions and colors
   const inputPositions = {};
+  const inputColorMap = {};
   if (inputsSchema) {
     const inputNames = Object.keys(inputsSchema);
     // Sidebar layout (from top):
@@ -30,9 +43,12 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     inputNames.forEach((name, idx) => {
       // Center of each input field based on its index in inputs_schema
       inputPositions[name] = BASE_OFFSET + (idx * INPUT_HEIGHT);
+      // Assign color deterministically
+      inputColorMap[name] = inputColors[idx % inputColors.length];
     });
 
     console.log('[FBP] Input positions:', inputPositions);
+    console.log('[FBP] Input colors:', inputColorMap);
   }
 
   // Build dependency graph
@@ -184,18 +200,42 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     });
   }
 
-  // Build edges
+  // Build edges with context-aware coloring
   const edges = [];
   nodes.forEach(node => {
     graph[node.phaseIdx].targets.forEach(targetIdx => {
       const targetNode = nodes.find(n => n.phaseIdx === targetIdx);
-      if (targetNode) {
-        edges.push({
-          source: node,
-          target: targetNode,
-          isSpecial: node.isBranch || targetNode.isMerge,
-        });
+      if (!targetNode) return;
+
+      const sourcePhase = phases[node.phaseIdx];
+      const targetPhase = phases[targetIdx];
+
+      // Determine edge context type
+      let contextType = 'execution'; // Default: just execution order
+
+      // Check for selective context array
+      const hasSelectiveContext = targetPhase.context?.from;
+      if (hasSelectiveContext) {
+        const contextFrom = targetPhase.context.from || [];
+        if (contextFrom.includes(sourcePhase.name) || contextFrom.includes('all')) {
+          contextType = 'selective';
+        }
       }
+
+      // Check for direct output reference {{ outputs.source_name }}
+      const targetYaml = JSON.stringify(targetPhase);
+      const outputsPattern = new RegExp(`\\{\\{\\s*outputs\\.${sourcePhase.name}`, 'g');
+      if (outputsPattern.test(targetYaml)) {
+        contextType = 'data'; // Direct data flow
+      }
+
+      edges.push({
+        source: node,
+        target: targetNode,
+        contextType, // 'data', 'selective', 'execution'
+        isBranch: node.isBranch,
+        isMerge: targetNode.isMerge,
+      });
     });
   });
 
@@ -209,7 +249,7 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     ? CARD_HEIGHT + (PADDING_TOP * 2) // Compact height for linear
     : maxNodesInLayer * (CARD_HEIGHT + VERTICAL_GAP) + PADDING_TOP * 2;
 
-  return { nodes, edges, width, height, inputPositions };
+  return { nodes, edges, width, height, inputPositions, inputColorMap };
 };
 
 /**
@@ -295,25 +335,25 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
   const { logs, phaseStates, totalCost } = useTimelinePolling(sessionToPoll, shouldPoll);
 
-  console.log('[CascadeTimeline] Polling decision:', {
-    viewMode,
-    sessionToPoll,
-    isRunningAll,
-    shouldPoll,
-    phaseCount: Object.keys(phaseStates || {}).length
-  });
+  // console.log('[CascadeTimeline] Polling decision:', {
+  //   viewMode,
+  //   sessionToPoll,
+  //   isRunningAll,
+  //   shouldPoll,
+  //   phaseCount: Object.keys(phaseStates || {}).length
+  // });
 
   // Debug polling state
   React.useEffect(() => {
     if (sessionToPoll) {
-      console.log('[CascadeTimeline] Polling state:', {
-        viewMode,
-        sessionToPoll,
-        shouldPoll,
-        logsCount: logs.length,
-        phaseStatesKeys: Object.keys(phaseStates || {}),
-        totalCost
-      });
+      // console.log('[CascadeTimeline] Polling state:', {
+      //   viewMode,
+      //   sessionToPoll,
+      //   shouldPoll,
+      //   logsCount: logs.length,
+      //   phaseStatesKeys: Object.keys(phaseStates || {}),
+      //   totalCost
+      // });
     }
   }, [viewMode, sessionToPoll, shouldPoll, logs.length, phaseStates, totalCost]);
 
@@ -349,12 +389,15 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
     const updateOffset = () => {
       const rect = stripEl.getBoundingClientRect();
-      setTimelineOffset({
+      const newOffset = {
         left: rect.left, // Distance from viewport left (vertical sidebar + left panel)
         top: rect.top,   // Distance from viewport top (control bar)
-      });
+      };
+      setTimelineOffset(newOffset);
+      //console.log('[Timeline Offset]', newOffset);
     };
 
+    // Immediate update
     updateOffset();
 
     // Update on resize and when split panel moves
@@ -365,11 +408,19 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     const parent = stripEl.parentElement;
     if (parent) resizeObserver.observe(parent);
 
+    // Delayed updates to handle async DOM changes
+    const timeout1 = setTimeout(updateOffset, 100);
+    const timeout2 = setTimeout(updateOffset, 300);
+    const timeout3 = setTimeout(updateOffset, 600);
+
     return () => {
       window.removeEventListener('resize', updateOffset);
       resizeObserver.disconnect();
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
     };
-  }, []);
+  }, [layoutMode, cascade?.cascade_id]); // Re-measure when layout or cascade changes
 
   // Track scroll position for input edges
   useEffect(() => {
@@ -574,6 +625,18 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             </button>
           </div>
 
+          {/* Edge Legend */}
+          <div className="cascade-edge-legend" title="Edge color legend: shows data flow type">
+            <Icon icon="mdi:information-outline" width="14" />
+            <div className="legend-dots">
+              <div className="legend-dot" style={{ backgroundColor: '#00e5ff' }} title="Cyan: Data flow ({{ outputs.X }})" />
+              <div className="legend-dot" style={{ backgroundColor: '#a78bfa' }} title="Purple: Selective context" />
+              <div className="legend-dot" style={{ backgroundColor: '#64748b' }} title="Gray: Execution order only" />
+              <div className="legend-dot" style={{ backgroundColor: '#ff006e' }} title="Pink: Branch/merge" />
+              <div className="legend-dot legend-dot-gradient" title="Warm colors: Input parameters (color varies per input)" />
+            </div>
+          </div>
+
           <div className="cascade-control-divider" />
 
           <span className="cascade-stats">
@@ -651,21 +714,25 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           if (!node.inputDeps || node.inputDeps.length === 0) return null;
 
           return node.inputDeps.map(inputName => {
-            // Get calculated Y position for this input in sidebar
+            // Get calculated Y position and color for this input
             const inputY = layout.inputPositions[inputName] || 50;
+            const inputColor = layout.inputColorMap[inputName] || '#ffd700';
 
             // VIEWPORT coordinates (since SVG is position:fixed)
-            // x1: Right edge of left panel (timelineOffset.left = left edge of timeline)
+            // x1: Right edge of left panel
             const x1 = timelineOffset.left;
 
             // y1: Input field position in viewport
-            // Left panel starts at viewport top (y=0)
-            const y1 = inputY + 90; // Source: move down more
+            // Left panel contains: cascade header (~50px) + inputs section
+            // inputY is offset from cascade header start
+            const SIDEBAR_TOP = 0; // Left panel starts at top of viewport
+            const y1 = SIDEBAR_TOP + inputY + 60; // Sidebar top + input offset + adjustment
 
-            // x2: Phase card left edge, y2: connection point on card
+            // x2: Phase card left edge (in viewport coords)
             const x2 = timelineOffset.left + (node.x - scrollOffset.x);
-            // Connect to upper portion of card
-            const y2 = timelineOffset.top + (node.y + 40 - scrollOffset.y); // Destination: move up more
+
+            // y2: Phase card connection point (in viewport coords)
+            const y2 = timelineOffset.top + (node.y + 50 - scrollOffset.y);
 
             // Don't draw if target is off-screen
             if (x2 < timelineOffset.left - 240 || x2 > window.innerWidth) return null;
@@ -678,10 +745,10 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               <path
                 key={`input-${node.phaseIdx}-${inputName}`}
                 d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                stroke="#ffd700"
+                stroke={inputColor}
                 strokeWidth="2.5"
                 fill="none"
-                opacity="0.7"
+                opacity="0.75"
                 strokeLinecap="round"
                 strokeDasharray="5 5"
               />
@@ -727,9 +794,9 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               zIndex: 0,
             }}
           >
-            {/* Phase-to-phase edges */}
+            {/* Phase-to-phase edges - color coded by context type */}
             {layout.edges.map((edge, idx) => {
-              const { source, target, isSpecial } = edge;
+              const { source, target, contextType, isBranch, isMerge } = edge;
 
               // Connection points: right side of source to left side of target
               const x1 = source.x + 240; // Right edge of source card
@@ -737,8 +804,18 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               const x2 = target.x;       // Left edge of target card
               const y2 = target.y + 65;  // Center of target card
 
-              const color = isSpecial ? '#ff006e' : '#00e5ff';
-              const opacity = isSpecial ? 0.7 : 0.5;
+              // Color based on context type
+              const colorMap = {
+                data: '#00e5ff',      // Bright cyan - direct data flow {{ outputs.X }}
+                selective: '#a78bfa', // Purple - selective context.from
+                execution: '#64748b', // Dim gray - execution order only
+              };
+              const color = colorMap[contextType] || '#64748b';
+
+              // Highlight branch/merge with pink overlay
+              const isSpecial = isBranch || isMerge;
+              const finalColor = isSpecial ? '#ff006e' : color;
+              const opacity = contextType === 'execution' ? 0.3 : 0.6;
 
               // Bezier curve for smooth connections
               const dx = x2 - x1;
@@ -749,7 +826,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
                 <path
                   key={`edge-${idx}`}
                   d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                  stroke={color}
+                  stroke={finalColor}
                   strokeWidth="3"
                   fill="none"
                   opacity={opacity}

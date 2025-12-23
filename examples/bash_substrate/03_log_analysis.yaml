@@ -65,6 +65,7 @@ phases:
         2024-01-15 10:45:27 ERROR Failed login attempt for user bob from 192.168.1.20
         EOF
       output_format: csv
+    handoffs: [filter_issues]
 
   # Phase 2: Filter for errors and warnings only
   - name: filter_issues
@@ -75,6 +76,7 @@ phases:
         head -n 1
         tail -n +2 | grep -E "ERROR|WARN"
       output_format: csv
+    handoffs: [analyze_issues]
 
   # Phase 3: Analyze issues with SQL
   - name: analyze_issues
@@ -89,6 +91,7 @@ phases:
         WHERE column1 IS NOT NULL AND column2 IS NOT NULL
         GROUP BY level, user
         ORDER BY issue_count DESC, level, user
+    handoffs: [problem_users]
 
   # Phase 4: Identify problematic users
   - name: problem_users

@@ -1701,3 +1701,47 @@ def get_models():
             'default_model': default_model,
             'models': []
         }), 500
+
+
+@studio_bp.route('/phase-types', methods=['GET'])
+def get_phase_types():
+    """
+    Load declarative phase type definitions from phase_types/ directory
+    Returns list of phase types with metadata and templates
+    """
+    try:
+        phase_types_dir = Path(__file__).parent.parent / 'phase_types'
+
+        if not phase_types_dir.exists():
+            return jsonify([])
+
+        phase_types = []
+
+        for yaml_file in sorted(phase_types_dir.glob('*.yaml')):
+            try:
+                with open(yaml_file, 'r') as f:
+                    type_def = yaml.safe_load(f)
+
+                if type_def and 'type_id' in type_def:
+                    phase_types.append({
+                        'type_id': type_def['type_id'],
+                        'display_name': type_def.get('display_name', type_def['type_id']),
+                        'icon': type_def.get('icon', 'mdi:cog'),
+                        'color': type_def.get('color', '#94a3b8'),
+                        'name_prefix': type_def.get('name_prefix', type_def['type_id']),
+                        'description': type_def.get('description', ''),
+                        'category': type_def.get('category', 'other'),
+                        'template': type_def.get('template', {}),
+                    })
+            except Exception as e:
+                print(f"Warning: Could not load phase type {yaml_file}: {e}")
+                continue
+
+        return jsonify(phase_types)
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

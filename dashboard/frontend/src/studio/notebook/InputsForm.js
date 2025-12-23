@@ -17,6 +17,18 @@ const InputsForm = ({ schema }) => {
 
   const inputEntries = Object.entries(schema);
 
+  // Input color palette (matches CascadeTimeline.jsx)
+  const inputColors = [
+    '#ffd700', // Gold
+    '#ffa94d', // Amber
+    '#ff9d76', // Coral
+    '#fb7185', // Rose
+    '#f472b6', // Hot pink
+    '#d4a8ff', // Lavender
+    '#fde047', // Lemon
+    '#a7f3d0', // Mint
+  ];
+
   return (
     <div className="inputs-form">
       <div className="inputs-form-header">
@@ -32,14 +44,20 @@ const InputsForm = ({ schema }) => {
         </button>
       </div>
       <div className="inputs-form-fields">
-        {inputEntries.map(([key, description]) => (
-          <div className="inputs-form-field" key={key}>
-            <label className="inputs-form-label" htmlFor={`input-${key}`}>
-              {key}
-              <span className="inputs-form-description" title={description}>
-                {description}
-              </span>
-            </label>
+        {inputEntries.map(([key, description], idx) => {
+          const inputColor = inputColors[idx % inputColors.length];
+
+          return (
+            <div className="inputs-form-field" key={key}>
+              <label className="inputs-form-label" htmlFor={`input-${key}`}>
+                <span className="inputs-form-name">{key}</span>
+                <div
+                  className="input-color-indicator"
+                  style={{ backgroundColor: inputColor }}
+                  title={`Input parameter color (${inputColor})`}
+                />
+
+              </label>
             <input
               id={`input-${key}`}
               className="inputs-form-input"
@@ -49,7 +67,8 @@ const InputsForm = ({ schema }) => {
               placeholder={description || `Enter ${key}...`}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
