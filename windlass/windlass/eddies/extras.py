@@ -1,5 +1,8 @@
 from .base import simple_eddy
 from ..logs import log_message
+from ..config import get_config
+import subprocess
+import os
 
 @simple_eddy
 def linux_shell(command: str, timeout: int = 30) -> str:
@@ -73,6 +76,68 @@ def linux_shell(command: str, timeout: int = 30) -> str:
 
         log_message(None, "system", f"linux_shell error: {type(e).__name__}: {e}",
                    metadata={"tool": "linux_shell", "error_type": type(e).__name__})
+
+        return error_msg
+
+@simple_eddy
+def linux_shell_dangerous(command: str, timeout: int = 300) -> str:
+    """
+    Execute a shell command directly on the host system (NO DOCKER SANDBOX).
+
+    WARNING: This runs commands directly on your machine from WINDLASS_ROOT.
+    Use this for local tools that need access to the host environment
+    (like rabbitize, which needs node_modules and localhost ports).
+
+    Examples:
+    - npx rabbitize --batch-url "..." --batch-commands='[...]'
+    - npm install
+    - Local scripts that need filesystem access
+
+    Returns stdout/stderr from command execution.
+    """
+    code_preview = command[:200] + "..." if len(command) > 200 else command
+    log_message(None, "system", f"linux_shell_dangerous executing: {code_preview}",
+                metadata={"tool": "linux_shell_dangerous", "command_length": len(command)})
+
+    try:
+        # Run from WINDLASS_ROOT
+        cwd = get_config().root_dir
+
+        # Execute command directly on host
+        result = subprocess.run(
+            ["bash", "-c", command],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False  # Use array form for safety
+        )
+
+        exit_code = result.returncode
+        output = result.stdout + result.stderr
+
+        log_message(None, "system", f"linux_shell_dangerous completed: exit_code={exit_code}, {len(output)} chars output",
+                   metadata={"tool": "linux_shell_dangerous", "exit_code": exit_code, "output_length": len(output)})
+
+        # Return output with exit code info
+        if exit_code != 0:
+            return f"Exit code: {exit_code}\n\n{output}"
+
+        return output if output else "(Command executed successfully with no output)"
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"Error: Command timed out after {timeout} seconds"
+        log_message(None, "system", f"linux_shell_dangerous timeout: {timeout}s",
+                   metadata={"tool": "linux_shell_dangerous", "error_type": "TimeoutExpired"})
+        return error_msg
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        error_msg = f"Error: {type(e).__name__}: {e}\n\nTraceback:\n{tb}"
+
+        log_message(None, "system", f"linux_shell_dangerous error: {type(e).__name__}: {e}",
+                   metadata={"tool": "linux_shell_dangerous", "error_type": type(e).__name__})
 
         return error_msg
 

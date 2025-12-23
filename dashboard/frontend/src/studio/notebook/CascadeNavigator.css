@@ -645,6 +645,77 @@
   padding: 4px 8px 6px 24px;
 }
 
+/* Artifact types list - sections stack vertically, pills within sections stack horizontally */
+.artifact-types-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+
+/* ============================================
+   RABBITIZE ARTIFACTS (nested in Phases)
+   ============================================ */
+
+.nav-phase-artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 4px 24px;
+  margin-top: 4px;
+}
+
+.nav-artifact-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-artifact-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.15s ease;
+  user-select: none;
+}
+
+.nav-artifact-header:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.nav-artifact-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  flex: 1;
+  letter-spacing: 0.5px;
+}
+
+.nav-artifact-count {
+  font-size: 9px;
+  color: #64748b;
+  background-color: rgba(100, 116, 139, 0.15);
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.nav-artifact-pills {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 4px 8px 6px 24px;
+}
+
+.nav-artifact-single {
+  padding: 4px 8px 4px 24px;
+}
+
 /* ============================================
    RECENT RUNS SECTION
    ============================================ */

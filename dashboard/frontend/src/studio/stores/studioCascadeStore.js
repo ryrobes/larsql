@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { autoGenerateSessionId } from '../../utils/sessionNaming';
+import { derivePhaseState } from '../utils/derivePhaseState';
 
 const API_BASE_URL = 'http://localhost:5001/api/studio';
 
@@ -247,7 +248,8 @@ const useStudioCascadeStore = create(
               state.cascadeDirty = false;
               // Load historical inputs if available
               if (data.input_data && Object.keys(data.input_data).length > 0) {
-                state.inputs = data.input_data;
+                state.cascadeInputs = data.input_data;
+                console.log('[setReplayMode] Loaded historical inputs into cascadeInputs:', data.input_data);
               }
               // Clear any running execution
               state.isRunningAll = false;
@@ -274,6 +276,49 @@ const useStudioCascadeStore = create(
           state.replaySessionId = sessionId;
           state.isRunningAll = false;
         });
+      },
+
+      // Fetch session data immediately (for URL loading)
+      fetchReplayData: async (sessionId) => {
+        console.log('[fetchReplayData] Fetching session data:', sessionId);
+
+        try {
+          // Use same endpoint as polling
+          const url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+          const response = await fetch(url);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          console.log('[fetchReplayData] Got', data.rows?.length || 0, 'rows');
+
+          // Derive phase states using shared logic
+          const logs = data.rows || [];
+          const phaseNames = [...new Set(logs.map(r => r.phase_name).filter(Boolean))];
+          const phaseStates = {};
+
+          for (const phaseName of phaseNames) {
+            phaseStates[phaseName] = derivePhaseState(logs, phaseName);
+          }
+
+          // Update cellStates immediately
+          get().updateCellStatesFromPolling(phaseStates);
+
+          console.log('[fetchReplayData] ✓ Cell states updated:', Object.keys(phaseStates));
+
+          return { success: true, phaseCount: phaseNames.length };
+
+        } catch (err) {
+          console.error('[fetchReplayData] Error:', err);
+          return { success: false, error: err.message };
+        }
       },
 
       setLiveMode: () => {
@@ -328,9 +373,13 @@ const useStudioCascadeStore = create(
       // CASCADE CRUD
       // ============================================
       newCascade: () => {
+        // Generate a unique cascade ID for new cascades
+        const uniqueId = `studio_new_${autoGenerateSessionId().split('-').pop()}`;
+        console.log('[newCascade] Creating blank cascade with ID:', uniqueId);
+
         set(state => {
           state.cascade = {
-            cascade_id: 'new_cascade',
+            cascade_id: uniqueId,
             description: 'New cascade',
             inputs_schema: {},
             phases: []
@@ -339,8 +388,13 @@ const useStudioCascadeStore = create(
           state.cascadeDirty = false;
           state.cascadeInputs = {};
           state.cellStates = {};
-          // Generate fresh session for new cascade
+          // Generate fresh session ID for individual cell executions
           state.sessionId = autoGenerateSessionId();
+          // Clear cascade-level session (generated when Run All is clicked)
+          state.cascadeSessionId = null;
+          state.replaySessionId = null;
+          state.viewMode = 'live';
+          state.isRunningAll = false;
           // Clear undo/redo history
           state.undoStack = [];
           state.redoStack = [];
@@ -473,23 +527,56 @@ output_schema:
 # soundings:
 #   factor: 3
 #   evaluator_instructions: Pick the most accurate result
-`
+`,
+            rabbitize_batch: `npx rabbitize \\
+  --client-id "studio" \\
+  --test-id "browser_task_${cellCount}" \\
+  --exit-on-end true \\
+  --process-video true \\
+  --batch-url "https://example.com" \\
+  --batch-commands='[]'`
           };
           const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
           // Create phase based on type
-          const newCell = type === 'llm_phase' ? {
-            name: `phase_${cellCount}`,
-            instructions: templateCode || defaultCode,
-            model: 'anthropic/claude-sonnet-4',
-            tackle: [],
-          } : {
-            name: `cell_${cellCount}`,
-            tool: type,
-            inputs: type === 'sql_data'
-              ? { query: templateCode || defaultCode }
-              : { code: templateCode || defaultCode }
-          };
+          let newCell;
+
+          if (type === 'llm_phase') {
+            newCell = {
+              name: `phase_${cellCount}`,
+              instructions: templateCode || defaultCode,
+              model: 'anthropic/claude-sonnet-4',
+              tackle: [],
+            };
+          } else if (type === 'rabbitize_batch') {
+            // Rabbitize automation phase - uses linux_shell_dangerous to run on host
+            const cascadeId = state.cascade?.cascade_id || 'untitled_cascade';
+            const phaseName = `browser_${cellCount}`;
+
+            newCell = {
+              name: phaseName,
+              tool: 'linux_shell_dangerous',
+              inputs: {
+                command: templateCode || `npx rabbitize \\
+  --client-id "${cascadeId}" \\
+  --test-id "${phaseName}.studio" \\
+  --exit-on-end true \\
+  --process-video true \\
+  --batch-url "https://example.com" \\
+  --batch-commands='[]'`
+              },
+              timeout: '5m'
+            };
+          } else {
+            // Data tools (SQL, Python, JS, Clojure, etc.)
+            newCell = {
+              name: `cell_${cellCount}`,
+              tool: type,
+              inputs: type === 'sql_data'
+                ? { query: templateCode || defaultCode }
+                : { code: templateCode || defaultCode }
+            };
+          }
 
           // Add handoff to previous cell if exists
           if (afterIndex === null) {
@@ -896,22 +983,52 @@ output_schema:
             }
           }
 
-          // Check if all phases complete
-          const phases = s.cascade?.phases || [];
-          const allComplete = phases.every(p => {
-            const state = s.cellStates[p.name];
-            const isDone = state?.status === 'success' || state?.status === 'error';
-            console.log('[updateCellStatesFromPolling] Phase', p.name, 'status:', state?.status, 'isDone?', isDone);
-            return isDone;
-          });
+          // SMART COMPLETION DETECTION: Use the data we just received to determine if execution is done
+          // This is data-driven, not flag-driven!
+          if (s.cascade?.phases && s.cascadeSessionId) {
+            const phases = s.cascade.phases;
 
-          console.log('[updateCellStatesFromPolling] All complete?', allComplete, 'isRunningAll?', s.isRunningAll);
+            // Check what phases are actually doing based on the cellStates we just updated
+            const phaseStatuses = phases.map(p => ({
+              name: p.name,
+              status: s.cellStates[p.name]?.status || 'pending'
+            }));
 
-          if (allComplete && s.isRunningAll) {
-            console.log('[updateCellStatesFromPolling] ✓ All phases complete! Stopping execution.');
-            s.isRunningAll = false;
-            // DON'T clear cascadeSessionId - keep it visible in header after completion!
-            // s.cascadeSessionId = null;
+            const hasAnyRunning = phases.some(p => {
+              const status = s.cellStates[p.name]?.status;
+              return status === 'running';
+            });
+
+            const allComplete = phases.every(p => {
+              const status = s.cellStates[p.name]?.status;
+              return status === 'success' || status === 'error';
+            });
+
+            console.log('[updateCellStatesFromPolling] Data-driven execution check:', {
+              totalPhases: phases.length,
+              hasAnyRunning,
+              allComplete,
+              phaseStatuses,
+              currentIsRunningAll: s.isRunningAll
+            });
+
+            // Update isRunningAll based on the DATA
+            // ONLY set to false if we have actual completion data (not just pending)
+            if (hasAnyRunning) {
+              // Phases are actively running
+              if (!s.isRunningAll) {
+                console.log('[updateCellStatesFromPolling] Phases are running, setting isRunningAll = true');
+                s.isRunningAll = true;
+              }
+            } else if (allComplete) {
+              // All phases have terminal states (success or error)
+              if (s.isRunningAll) {
+                console.log('[updateCellStatesFromPolling] ✓ All phases complete! Setting isRunningAll = false');
+                s.isRunningAll = false;
+              }
+            }
+            // If all pending (no running, not complete), keep isRunningAll as-is
+            // This prevents stopping polling when execution just started
           }
         });
       },
@@ -1004,8 +1121,10 @@ output_schema:
     {
       name: 'studio-cascade-storage',
       partialize: (state) => ({
-        // Only persist mode preference
-        mode: state.mode
+        // Persist mode preference and running state (for page refresh resilience)
+        mode: state.mode,
+        cascadeSessionId: state.cascadeSessionId,
+        isRunningAll: state.isRunningAll,
       }),
       onRehydrateStorage: () => (state) => {
         // Migration: Copy old data if new key is empty

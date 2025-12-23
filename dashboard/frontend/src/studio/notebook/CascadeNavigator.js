@@ -125,11 +125,65 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
     : [];
 
   const displayColumns = columnInfo.length > 0 ? columnInfo : dictKeys;
+
+  // Check if this is a rabbitize phase - extract artifacts
+  const isRabbitize = (phase.tool === 'linux_shell' || phase.tool === 'linux_shell_dangerous') &&
+                      phase.inputs?.command?.includes('rabbitize');
+  const rabbitizeArtifacts = React.useMemo(() => {
+    if (!isRabbitize) return null;
+
+    const artifacts = {};
+    const command = phase.inputs?.command || '';
+
+    // Strategy 1: Get from cellState if executed
+    if (cellState?.status === 'success') {
+      if (cellState.images?.length) artifacts.images = cellState.images.length;
+
+      const result = cellState.result;
+      if (result && typeof result === 'object') {
+        if (result.screenshots) artifacts.images = Array.isArray(result.screenshots) ? result.screenshots.length : result.screenshots;
+        if (result.dom_snapshots) artifacts.dom_snapshots = Array.isArray(result.dom_snapshots) ? result.dom_snapshots.length : result.dom_snapshots;
+        if (result.dom_coords) artifacts.dom_coords = Array.isArray(result.dom_coords) ? result.dom_coords.length : result.dom_coords;
+        if (result.video || result.has_video) artifacts.video = 1;
+      }
+    }
+
+    // Strategy 2: Infer from batch commands
+    if (Object.keys(artifacts).length === 0) {
+      const batchMatch = command.match(/--batch-commands='(\[[\s\S]*?\])'/);
+      if (batchMatch) {
+        try {
+          const commands = JSON.parse(batchMatch[1]);
+          const artifactSteps = commands.filter(cmd => {
+            const cmdType = Array.isArray(cmd) ? cmd[0] : cmd;
+            return cmdType !== ':wait';
+          }).length;
+
+          if (artifactSteps > 0) {
+            artifacts.images = artifactSteps;
+            artifacts.dom_snapshots = artifactSteps;
+            artifacts.dom_coords = artifactSteps;
+          }
+
+          if (command.includes('--process-video')) {
+            artifacts.video = 1;
+          }
+        } catch (e) {
+          console.error('Failed to parse rabbitize commands:', e);
+        }
+      }
+    }
+
+    return Object.keys(artifacts).length > 0 ? artifacts : null;
+  }, [isRabbitize, phase.inputs?.command, cellState]);
+
   const hasColumns = displayColumns.length > 0;
+  const hasArtifacts = rabbitizeArtifacts !== null;
+  const hasExpandableContent = hasColumns || hasArtifacts;
 
   const handleToggle = (e) => {
     e.stopPropagation();
-    if (hasColumns) {
+    if (hasExpandableContent) {
       setIsExpanded(!isExpanded);
     }
   };
@@ -145,13 +199,15 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
     js_data: { icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { icon: 'simple-icons:clojure', color: '#63b132' },
     windlass_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches
+    linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
   };
   const { icon: toolIcon, color: toolColor } = toolStyles[phase.tool] || toolStyles.python_data;
 
   return (
     <div className={`nav-phase-node ${isActive ? 'active' : ''}`}>
       <div className="nav-phase-row" onClick={handleNavigate}>
-        {hasColumns ? (
+        {hasExpandableContent ? (
           <Icon
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
             className="nav-chevron"
@@ -199,6 +255,117 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
           ))}
         </div>
       )}
+
+      {isExpanded && hasArtifacts && (
+        <RabbitizeArtifactsTree phaseName={phase.name} artifacts={rabbitizeArtifacts} />
+      )}
+    </div>
+  );
+}
+
+// Artifact type metadata (moved from ArtifactsPalette)
+const ARTIFACT_TYPES = {
+  images: { icon: 'mdi:image-multiple', color: '#a78bfa', label: 'Screenshots' },
+  dom_snapshots: { icon: 'mdi:code-tags', color: '#60a5fa', label: 'DOM Snapshots' },
+  dom_coords: { icon: 'mdi:crosshairs-gps', color: '#34d399', label: 'DOM Coords' },
+  video: { icon: 'mdi:video', color: '#f87171', label: 'Video' },
+};
+
+// Draggable artifact pill
+function ArtifactPill({ phaseName, artifactType, index, label }) {
+  const config = ARTIFACT_TYPES[artifactType];
+
+  const jinjaPath = index !== null
+    ? `${phaseName}.${artifactType}.${index}`
+    : `${phaseName}.${artifactType}`;
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `artifact-${phaseName}-${artifactType}-${index}`,
+    data: { type: 'variable', variablePath: jinjaPath },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`var-pill ${isDragging ? 'dragging' : ''}`}
+      style={{ borderColor: config.color + '34' }}
+      title={`{{ ${jinjaPath} }}`}
+    >
+      <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+      <span style={{ color: config.color }}>{label}</span>
+    </div>
+  );
+}
+
+// Artifact type group (Screenshots, DOM Snapshots, etc.)
+function ArtifactTypeGroup({ phaseName, artifactType, count }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const config = ARTIFACT_TYPES[artifactType];
+
+  if (count === 0) return null;
+
+  const isSingleItem = artifactType === 'video';
+
+  if (isSingleItem) {
+    return (
+      <div className="nav-artifact-single">
+        <ArtifactPill
+          phaseName={phaseName}
+          artifactType={artifactType}
+          index={null}
+          label={config.label}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="nav-artifact-group">
+      <div
+        className="nav-artifact-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          width="12"
+          className="nav-chevron"
+        />
+        <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+        <span className="nav-artifact-label">{config.label.toUpperCase()}</span>
+        <span className="nav-artifact-count">{count}</span>
+      </div>
+
+      {isExpanded && (
+        <div className="nav-artifact-pills">
+          {Array.from({ length: count }).map((_, idx) => (
+            <ArtifactPill
+              key={idx}
+              phaseName={phaseName}
+              artifactType={artifactType}
+              index={idx}
+              label={`${idx}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Rabbitize artifacts tree
+function RabbitizeArtifactsTree({ phaseName, artifacts }) {
+  return (
+    <div className="nav-phase-artifacts">
+      {Object.entries(artifacts).map(([type, count]) => (
+        <ArtifactTypeGroup
+          key={type}
+          phaseName={phaseName}
+          artifactType={type}
+          count={count}
+        />
+      ))}
     </div>
   );
 }
@@ -354,6 +521,7 @@ function PhaseTypesSection() {
     { type: 'clojure_data', icon: 'simple-icons:clojure', label: 'Clojure', color: '#63b132' },
     { type: 'llm_phase', icon: 'mdi:brain', label: 'LLM', color: '#a78bfa' },
     { type: 'windlass_data', icon: 'mdi:sail-boat', label: 'LLM (Data)', color: '#2dd4bf' },
+    { type: 'rabbitize_batch', icon: 'mdi:record-circle', label: 'Browser', color: '#f87171' },
   ];
 
   return (

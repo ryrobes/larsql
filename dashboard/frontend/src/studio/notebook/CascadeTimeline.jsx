@@ -64,32 +64,21 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   // Poll for execution updates - either live or replay session
   const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
 
-  console.log('[CascadeTimeline] Session to poll:', { viewMode, replaySessionId, cascadeSessionId, sessionToPoll });
+  // SMART POLLING: In replay mode, poll once to get historical data
+  // In live mode, use isRunningAll flag (which is now data-driven from the store)
+  const shouldPoll = viewMode === 'replay'
+    ? !!replaySessionId
+    : !!(cascadeSessionId && isRunningAll);
 
-  // Keep polling for a grace period after execution completes to get final cost data
-  const [keepPolling, setKeepPolling] = React.useState(false);
-  React.useEffect(() => {
-    if (!isRunningAll && cascadeSessionId) {
-      // Execution just finished, keep polling for 15s to get final cost
-      setKeepPolling(true);
-      const timer = setTimeout(() => setKeepPolling(false), 15000);
-      return () => clearTimeout(timer);
-    }
-  }, [isRunningAll, cascadeSessionId]);
+  const { logs, phaseStates, totalCost } = useTimelinePolling(sessionToPoll, shouldPoll);
 
-  // Poll in live mode while running OR during grace period,
-  // or in replay mode to fetch historical data
-  const isPollingActive = (viewMode === 'live' && (isRunningAll || keepPolling)) || (viewMode === 'replay' && replaySessionId);
-
-  console.log('[CascadeTimeline] Polling active?', isPollingActive, 'Reason:', {
-    isLive: viewMode === 'live',
+  console.log('[CascadeTimeline] Polling decision:', {
+    viewMode,
+    sessionToPoll,
     isRunningAll,
-    keepPolling,
-    isReplay: viewMode === 'replay',
-    hasReplaySession: !!replaySessionId
+    shouldPoll,
+    phaseCount: Object.keys(phaseStates || {}).length
   });
-
-  const { logs, phaseStates, totalCost } = useTimelinePolling(sessionToPoll, isPollingActive);
 
   // Debug polling state
   React.useEffect(() => {
@@ -97,30 +86,30 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       console.log('[CascadeTimeline] Polling state:', {
         viewMode,
         sessionToPoll,
-        isPollingActive,
+        shouldPoll,
         logsCount: logs.length,
         phaseStatesKeys: Object.keys(phaseStates || {}),
         totalCost
       });
     }
-  }, [viewMode, sessionToPoll, isPollingActive, logs.length, phaseStates, totalCost]);
+  }, [viewMode, sessionToPoll, shouldPoll, logs.length, phaseStates, totalCost]);
 
   // Update cellStates when polling returns new data
   const prevPhaseStatesHashRef = useRef('');
   useEffect(() => {
     if (!phaseStates || Object.keys(phaseStates).length === 0) {
-      console.log('[CascadeTimeline] No phaseStates to update');
+      //console.log('[CascadeTimeline] No phaseStates to update');
       return;
     }
 
     // Only update if data actually changed (cheap hash check)
     const currentHash = JSON.stringify(phaseStates);
     if (currentHash === prevPhaseStatesHashRef.current) {
-      console.log('[CascadeTimeline] phaseStates unchanged, skipping update');
+      //console.log('[CascadeTimeline] phaseStates unchanged, skipping update');
       return;
     }
 
-    console.log('[CascadeTimeline] Updating cellStates from polling:', Object.keys(phaseStates));
+    //console.log('[CascadeTimeline] Updating cellStates from polling:', Object.keys(phaseStates));
     prevPhaseStatesHashRef.current = currentHash;
     updateCellStatesFromPolling(phaseStates);
   }, [phaseStates, updateCellStatesFromPolling]);
@@ -252,7 +241,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
                 <span className="cascade-session-id-value">{sessionToPoll}</span>
               </div>
               {/* Always show cost when session exists, even if $0.00 */}
-              <div className="cascade-total-cost-compact" title={`Total cascade cost (polling: ${isPollingActive ? 'active' : 'inactive'})`}>
+              <div className="cascade-total-cost-compact" title={`Total cascade cost (polling: ${shouldPoll ? 'active' : 'inactive'})`}>
                 <Icon icon="mdi:currency-usd" width="14" />
                 <span className="cascade-total-cost-value">
                   {totalCost === 0 ? '$0.00' : (totalCost < 0.01 ? '<$0.01' : `$${totalCost.toFixed(4)}`)}

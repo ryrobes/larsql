@@ -13,7 +13,7 @@ from .visualizer import (
 
 # Register batteries-included eddies
 from .eddies.sql import run_sql
-from .eddies.extras import run_code, take_screenshot, linux_shell
+from .eddies.extras import run_code, take_screenshot, linux_shell, linux_shell_dangerous
 from .eddies.human import ask_human, ask_human_custom, request_decision
 from .eddies.display import show_ui
 from .eddies.artifacts import create_artifact, list_artifacts, get_artifact
@@ -37,6 +37,7 @@ from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
 
 register_tackle("smart_sql_run", run_sql)
 register_tackle("linux_shell", linux_shell)
+register_tackle("linux_shell_dangerous", linux_shell_dangerous)
 register_tackle("run_code", run_code)
 register_tackle("take_screenshot", take_screenshot)
 register_tackle("ask_human", ask_human)

@@ -7,6 +7,7 @@ import yaml from 'js-yaml';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
 import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
+import { detectPhaseEditors } from '../editors';
 import './PhaseDetailPanel.css';
 
 /**
@@ -97,9 +98,15 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
     llm_phase: { language: 'markdown', codeKey: 'instructions', source: 'phase' },
     windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
+    linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
+    linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
   };
   const phaseType = phase.tool || (isLLMPhase ? 'llm_phase' : 'python_data');
   const info = typeInfo[phaseType] || typeInfo.python_data;
+
+  // Detect custom editors for this phase
+  const customEditors = useMemo(() => detectPhaseEditors(phase), [phase]);
+  const hasCustomEditors = customEditors.length > 0;
 
   const code = info.source === 'inputs'
     ? (phase.inputs?.[info.codeKey] || '')
@@ -114,6 +121,114 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       console.log('[PhaseDetailPanel]', phase.name, '- Duration:', cellState.duration, 'Cost:', cellState.cost, 'Tokens:', cellState.tokens_in, '/', cellState.tokens_out);
     }
   }, [phase.name, cellState]);
+
+  // Build HTML for decision tag (converts JSON to HTMX form)
+  const buildDecisionHTML = useCallback((decisionData) => {
+    const optionsHTML = (decisionData.options || []).map(option => `
+      <button
+        type="submit"
+        name="response[option]"
+        value="${option.id}"
+        class="decision-option decision-option-${option.style || 'secondary'}"
+      >
+        <div class="decision-option-label">${option.label}</div>
+        ${option.description ? `<div class="decision-option-desc">${option.description}</div>` : ''}
+      </button>
+    `).join('');
+
+    return `
+      <div class="decision-card">
+        <div class="decision-header">
+          <h3>${decisionData.question || 'Decision Required'}</h3>
+        </div>
+        ${decisionData.context ? `
+          <div class="decision-context">
+            ${decisionData.context}
+          </div>
+        ` : ''}
+        <form hx-post="{{ api_endpoint }}" hx-headers='{"X-Checkpoint-ID": "{{ checkpoint_id }}"}'>
+          <div class="decision-options">
+            ${optionsHTML}
+          </div>
+        </form>
+      </div>
+      <style>
+        .decision-card {
+          max-width: 600px;
+          margin: 0 auto;
+          background: linear-gradient(135deg, #0f1821, #0a0e14);
+          border: 2px solid #f59e0b;
+          border-radius: 12px;
+          padding: 24px;
+        }
+        .decision-header h3 {
+          margin: 0 0 16px 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: #fbbf24;
+        }
+        .decision-context {
+          padding: 12px 16px;
+          background-color: rgba(100, 116, 139, 0.1);
+          border-left: 3px solid #64748b;
+          border-radius: 6px;
+          margin-bottom: 20px;
+        }
+        .decision-options {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .decision-option {
+          padding: 16px;
+          border-radius: 8px;
+          border: 2px solid #1a2028;
+          background-color: #0a0e14;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-align: left;
+          width: 100%;
+        }
+        .decision-option:hover {
+          transform: translateY(-2px);
+        }
+        .decision-option-primary {
+          border-color: #2dd4bf;
+          background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(20, 184, 166, 0.1));
+        }
+        .decision-option-primary:hover {
+          border-color: #14b8a6;
+          background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(20, 184, 166, 0.15));
+          box-shadow: 0 4px 16px rgba(45, 212, 191, 0.4);
+        }
+        .decision-option-secondary {
+          border-color: #475569;
+        }
+        .decision-option-secondary:hover {
+          border-color: #64748b;
+          background-color: #0f1419;
+        }
+        .decision-option-danger {
+          border-color: #f87171;
+          background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(239, 68, 68, 0.1));
+        }
+        .decision-option-danger:hover {
+          border-color: #ef4444;
+          box-shadow: 0 4px 16px rgba(248, 113, 113, 0.4);
+        }
+        .decision-option-label {
+          font-size: 15px;
+          font-weight: 600;
+          color: #f0f4f8;
+          margin-bottom: 4px;
+        }
+        .decision-option-desc {
+          font-size: 13px;
+          color: #94a3b8;
+        }
+      </style>
+    `;
+  }, []);
 
   // Group messages by sounding index
   const messagesBySounding = React.useMemo(() => {
@@ -349,115 +464,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
 
     console.log('[PhaseDetailPanel] No checkpoint or decision found');
     return null;
-  }, [phaseLogs, allSessionLogs]);
-
-  // Build HTML for decision tag (converts JSON to HTMX form)
-  const buildDecisionHTML = (decisionData) => {
-    const optionsHTML = (decisionData.options || []).map(option => `
-      <button
-        type="submit"
-        name="response[option]"
-        value="${option.id}"
-        class="decision-option decision-option-${option.style || 'secondary'}"
-      >
-        <div class="decision-option-label">${option.label}</div>
-        ${option.description ? `<div class="decision-option-desc">${option.description}</div>` : ''}
-      </button>
-    `).join('');
-
-    return `
-      <div class="decision-card">
-        <div class="decision-header">
-          <h3>${decisionData.question || 'Decision Required'}</h3>
-        </div>
-        ${decisionData.context ? `
-          <div class="decision-context">
-            ${decisionData.context}
-          </div>
-        ` : ''}
-        <form hx-post="{{ api_endpoint }}" hx-headers='{"X-Checkpoint-ID": "{{ checkpoint_id }}"}'>
-          <div class="decision-options">
-            ${optionsHTML}
-          </div>
-        </form>
-      </div>
-      <style>
-        .decision-card {
-          max-width: 600px;
-          margin: 0 auto;
-          background: linear-gradient(135deg, #0f1821, #0a0e14);
-          border: 2px solid #f59e0b;
-          border-radius: 12px;
-          padding: 24px;
-        }
-        .decision-header h3 {
-          margin: 0 0 16px 0;
-          font-size: 18px;
-          font-weight: 700;
-          color: #fbbf24;
-        }
-        .decision-context {
-          padding: 12px 16px;
-          background-color: rgba(100, 116, 139, 0.1);
-          border-left: 3px solid #64748b;
-          border-radius: 6px;
-          margin-bottom: 20px;
-        }
-        .decision-options {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .decision-option {
-          padding: 16px;
-          border-radius: 8px;
-          border: 2px solid #1a2028;
-          background-color: #0a0e14;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          text-align: left;
-          width: 100%;
-        }
-        .decision-option:hover {
-          transform: translateY(-2px);
-        }
-        .decision-option-primary {
-          border-color: #2dd4bf;
-          background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(20, 184, 166, 0.1));
-        }
-        .decision-option-primary:hover {
-          border-color: #14b8a6;
-          background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(20, 184, 166, 0.15));
-          box-shadow: 0 4px 16px rgba(45, 212, 191, 0.4);
-        }
-        .decision-option-secondary {
-          border-color: #475569;
-        }
-        .decision-option-secondary:hover {
-          border-color: #64748b;
-          background-color: #0f1419;
-        }
-        .decision-option-danger {
-          border-color: #f87171;
-          background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(239, 68, 68, 0.1));
-        }
-        .decision-option-danger:hover {
-          border-color: #ef4444;
-          box-shadow: 0 4px 16px rgba(248, 113, 113, 0.4);
-        }
-        .decision-option-label {
-          font-size: 15px;
-          font-weight: 600;
-          color: #f0f4f8;
-          margin-bottom: 4px;
-        }
-        .decision-option-desc {
-          font-size: 13px;
-          color: #94a3b8;
-        }
-      </style>
-    `;
-  };
+  }, [phaseLogs, allSessionLogs, buildDecisionHTML]);
 
   // Extract full_request_json from logs for debugging
   const fullRequest = React.useMemo(() => {
@@ -558,12 +565,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     return isLive;
   }, [checkpointData, viewMode, phaseLogs]);
 
-  // Auto-select decision tab when it's live (most important - it's blocking!)
+  // Auto-select decision tab when it exists (even if not live - it's important!)
   React.useEffect(() => {
-    if (checkpointData && isLiveDecision) {
+    if (checkpointData) {
+      console.log('[PhaseDetailPanel] Setting active tab to decision');
       setActiveOutputTab('decision');
     }
-  }, [phase.name, checkpointData, isLiveDecision]);
+  }, [phase.name, checkpointData]);
 
   // Monaco theme
   const handleMonacoBeforeMount = (monaco) => {
@@ -619,7 +627,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
               </button>
             </>
           )}
-          {!isWindlass && (
+          {!isWindlass && !hasCustomEditors && (
             <div className="phase-detail-mode-label">
               <Icon icon="mdi:code-braces" width="16" />
               Code Editor
@@ -632,6 +640,37 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                 YAML
               </button>
             </div>
+          )}
+          {!isWindlass && hasCustomEditors && (
+            <>
+              <button
+                className={`phase-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
+                onClick={() => setActiveTab('code')}
+              >
+                <Icon icon="mdi:code-braces" width="16" />
+                Code
+              </button>
+              {customEditors.map(editor => (
+                <button
+                  key={editor.id}
+                  className={`phase-detail-tab ${activeTab === editor.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(editor.id)}
+                >
+                  {editor.icon && <Icon icon={editor.icon} width="16" />}
+                  {editor.label}
+                  <span className="phase-detail-tab-badge">Custom</span>
+                </button>
+              ))}
+              <button
+                className={`phase-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
+                onClick={() => setShowYamlEditor(!showYamlEditor)}
+                title={showYamlEditor ? 'Hide YAML editor' : 'Show YAML editor'}
+                style={{ marginLeft: 'auto' }}
+              >
+                <Icon icon="mdi:code-json" width="14" />
+                YAML
+              </button>
+            </>
           )}
         </div>
 
@@ -675,7 +714,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
             </div>
           </div>
         ) : (
-          /* Code + Results with resizable splitter (always shown) */
+          /* Code/Custom Editor + Results with resizable splitter (always shown) */
           <Split
             className="phase-detail-split"
             direction="vertical"
@@ -684,9 +723,73 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
             gutterSize={6}
             gutterAlign="center"
           >
-              {/* Code Editor Container (keeps consistent structure for Split) */}
+              {/* Code/Custom Editor Container (keeps consistent structure for Split) */}
               <div className="phase-detail-code-container">
-                {showYamlEditor ? (
+                {/* Render Custom Editor or Monaco Editor */}
+                {customEditors.find(e => e.id === activeTab) ? (
+                  /* Custom Editor (with optional YAML split) */
+                  showYamlEditor ? (
+                    <Split
+                      className="phase-detail-code-yaml-split"
+                      direction="horizontal"
+                      sizes={[60, 40]}
+                      minSize={[200, 200]}
+                      gutterSize={6}
+                      gutterAlign="center"
+                    >
+                      <div className="phase-detail-custom-editor">
+                        {React.createElement(
+                          customEditors.find(e => e.id === activeTab).component,
+                          {
+                            phase,
+                            onChange: (updatedPhase) => updateCell(index, updatedPhase),
+                            phaseName: phase.name
+                          }
+                        )}
+                      </div>
+                      <div className="phase-detail-yaml-section">
+                        <div className="phase-detail-yaml-header">
+                          <Icon icon="mdi:file-code-outline" width="14" />
+                          <span>Full Phase YAML</span>
+                        </div>
+                        <Editor
+                          key={`yaml-${phase.name}`}
+                          height="100%"
+                          language="yaml"
+                          value={phaseYaml}
+                          onChange={handleYamlChange}
+                          theme="detail-dark"
+                          beforeMount={handleMonacoBeforeMount}
+                          onMount={(editor) => { yamlEditorRef.current = editor; }}
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 12,
+                            fontFamily: "'IBM Plex Mono', monospace",
+                            lineNumbers: 'on',
+                            renderLineHighlightOnlyWhenFocus: true,
+                            wordWrap: 'on',
+                            automaticLayout: true,
+                            scrollBeyondLastLine: false,
+                            padding: { top: 12, bottom: 12 },
+                          }}
+                        />
+                      </div>
+                    </Split>
+                  ) : (
+                    <div className="phase-detail-custom-editor">
+                      {React.createElement(
+                        customEditors.find(e => e.id === activeTab).component,
+                        {
+                          phase,
+                          onChange: (updatedPhase) => updateCell(index, updatedPhase),
+                          phaseName: phase.name
+                        }
+                      )}
+                    </div>
+                  )
+                ) : (
+                  /* Monaco Code Editor (with optional YAML split) */
+                  showYamlEditor ? (
                   <Split
                     className="phase-detail-code-yaml-split"
                     direction="horizontal"
@@ -781,7 +884,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       }}
                     />
                   </div>
-                )}
+                )
+              )}
               </div>
 
               {/* Results Section */}
@@ -812,17 +916,23 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                   </div>
                   <div className="phase-detail-results-tabs">
                     {/* Decision tab - appears FIRST if present (blocking interaction) */}
-                    {checkpointData && (
-                      <button
-                        className={`phase-detail-results-tab phase-detail-results-tab-decision ${activeOutputTab === 'decision' ? 'active' : ''}`}
-                        onClick={() => setActiveOutputTab('decision')}
-                        title={isLiveDecision ? "Human decision required (LIVE)" : "Decision UI (replay)"}
-                      >
-                        <Icon icon="mdi:hand-front-right" width="14" />
-                        Decision
-                        {isLiveDecision && <Icon icon="mdi:circle" width="8" style={{ color: '#ef4444', marginLeft: '4px' }} />}
-                      </button>
-                    )}
+                    {checkpointData && (() => {
+                      console.log('[PhaseDetailPanel] Rendering Decision tab button');
+                      return (
+                        <button
+                          className={`phase-detail-results-tab phase-detail-results-tab-decision ${activeOutputTab === 'decision' ? 'active' : ''}`}
+                          onClick={() => {
+                            console.log('[PhaseDetailPanel] Decision tab clicked');
+                            setActiveOutputTab('decision');
+                          }}
+                          title={isLiveDecision ? "Human decision required (LIVE)" : "Decision UI (replay)"}
+                        >
+                          <Icon icon="mdi:hand-front-right" width="14" />
+                          Decision
+                          {isLiveDecision && <Icon icon="mdi:circle" width="8" style={{ color: '#ef4444', marginLeft: '4px' }} />}
+                        </button>
+                      );
+                    })()}
                     <button
                       className={`phase-detail-results-tab ${activeOutputTab === 'output' ? 'active' : ''}`}
                       onClick={() => setActiveOutputTab('output')}
@@ -906,36 +1016,51 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                   </div>
                 </div>
                 <div className="phase-detail-results-content">
-                  {activeOutputTab === 'decision' && checkpointData && (
-                    <div className="phase-detail-decision-view">
-                      {isLiveDecision && (
-                        <div className="phase-detail-decision-live-banner">
-                          <Icon icon="mdi:clock-alert" width="16" />
-                          <span>Cascade is waiting for your decision</span>
-                        </div>
-                      )}
-                      {checkpointData.uiSpec?.sections?.find(s => s.type === 'html') ? (
-                        // Render actual HTMX UI using HTMLSection (same as blockers panel)
-                        <HTMLSection
-                          spec={checkpointData.uiSpec.sections.find(s => s.type === 'html')}
-                          checkpointId={checkpointData.checkpointId}
-                          sessionId={cascadeSessionId}
-                          isSavedCheckpoint={!isLiveDecision}
-                        />
-                      ) : (
-                        // Fallback if no HTML section
-                        <div className="phase-detail-decision-fallback">
-                          <div className="phase-detail-decision-note">
-                            <Icon icon="mdi:information-outline" width="16" />
-                            No HTML UI found for this checkpoint
+                  {activeOutputTab === 'decision' && checkpointData && (() => {
+                    console.log('[PhaseDetailPanel] Rendering decision content:', {
+                      source: checkpointData.source,
+                      hasUiSpec: !!checkpointData.uiSpec,
+                      sections: checkpointData.uiSpec?.sections?.length,
+                      checkpointId: checkpointData.checkpointId
+                    });
+
+                    const htmlSection = checkpointData.uiSpec?.sections?.find(s => s.type === 'html');
+                    console.log('[PhaseDetailPanel] HTML section:', {
+                      found: !!htmlSection,
+                      contentLength: htmlSection?.content?.length
+                    });
+
+                    return (
+                      <div className="phase-detail-decision-view">
+                        {isLiveDecision && (
+                          <div className="phase-detail-decision-live-banner">
+                            <Icon icon="mdi:clock-alert" width="16" />
+                            <span>Cascade is waiting for your decision</span>
                           </div>
-                          <pre className="phase-detail-raw-json">
-                            {JSON.stringify(checkpointData.uiSpec, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                        {htmlSection ? (
+                          // Render actual HTMX UI using HTMLSection (same as blockers panel)
+                          <HTMLSection
+                            spec={htmlSection}
+                            checkpointId={checkpointData.checkpointId}
+                            sessionId={cascadeSessionId}
+                            isSavedCheckpoint={!isLiveDecision}
+                          />
+                        ) : (
+                          // Fallback if no HTML section
+                          <div className="phase-detail-decision-fallback">
+                            <div className="phase-detail-decision-note">
+                              <Icon icon="mdi:information-outline" width="16" />
+                              No HTML UI found for this checkpoint
+                            </div>
+                            <pre className="phase-detail-raw-json">
+                              {JSON.stringify(checkpointData, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {activeOutputTab === 'output' && (
                     (result || error) ? (
                       <>

@@ -14,6 +14,7 @@ import CascadeTimeline from './notebook/CascadeTimeline';
 import VerticalSidebar from './notebook/VerticalSidebar';
 import Header from '../components/Header';
 import CascadeBrowserModal from './components/CascadeBrowserModal';
+import './editors'; // Initialize phase editor registry
 import './StudioPage.css';
 
 function StudioPage({
@@ -148,31 +149,68 @@ function StudioPage({
   }, [connections]);
 
   // Track if we've already loaded from URL to prevent multiple loads
-  const urlLoadedRef = useRef(false);
+  const lastLoadedRef = useRef({ cascade: null, session: null });
 
-  // Load cascade or session from URL parameter
+  // Load cascade or session from URL parameter - reactive to URL changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    // Only load once per mount
-    if (urlLoadedRef.current) {
-      console.log('[StudioPage] URL already loaded, skipping');
-      return;
-    }
-
     const loadFromUrl = async () => {
+      const state = useStudioCascadeStore.getState();
+
+      // Check if store already has what the URL is asking for
+      // This prevents double-loading when Recent Runs updates state AND URL
+      // OR when the URL sync effect updates the URL during live execution
+      if (initialSession) {
+        // Check if we're already in replay mode with this session
+        if (state.viewMode === 'replay' && state.replaySessionId === initialSession) {
+          console.log('[StudioPage] Store already in replay mode with this session, skipping URL load');
+          lastLoadedRef.current = { cascade: initialCascade, session: initialSession };
+          return;
+        }
+        // Check if this session is currently running LIVE (don't switch to replay!)
+        if (state.viewMode === 'live' && state.cascadeSessionId === initialSession) {
+          console.log('[StudioPage] Session is currently running LIVE, skipping URL load (not switching to replay)');
+          lastLoadedRef.current = { cascade: initialCascade, session: initialSession };
+          return;
+        }
+      }
+
+      // Check if we already loaded this exact combination via URL
+      if (lastLoadedRef.current.cascade === initialCascade &&
+          lastLoadedRef.current.session === initialSession) {
+        console.log('[StudioPage] Already loaded this URL combination, skipping');
+        return;
+      }
+
       // Small delay to ensure component is fully mounted and CascadeTimeline is ready
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Priority 1: If session provided, load it in replay mode (includes cascade)
       if (initialSession) {
         console.log('[StudioPage] Loading session from URL:', initialSession);
-        urlLoadedRef.current = true;
+
         try {
+          // Step 1: Load cascade definition
           await setReplayMode(initialSession);
+
+          // Step 2: Fetch session data BEFORE activating UI
+          console.log('[StudioPage] Fetching replay data...');
+          const result = await useStudioCascadeStore.getState().fetchReplayData(initialSession);
+
+          if (result.success) {
+            console.log('[StudioPage] ✓ Replay data loaded:', result.phaseCount, 'phases');
+          } else {
+            console.warn('[StudioPage] ⚠ Replay data fetch failed:', result.error);
+          }
+
+          // Step 3: Activate timeline mode (UI rehydrates from cellStates)
           setMode('timeline');
-          console.log('[StudioPage] ✓ Replay mode activated, polling should start');
+
         } catch (err) {
           console.error('[StudioPage] Failed to load session:', err);
         }
+
+        lastLoadedRef.current = { cascade: initialCascade, session: initialSession };
         if (onCascadeLoaded) onCascadeLoaded();
         return;
       }
@@ -180,7 +218,6 @@ function StudioPage({
       // Priority 2: If only cascade provided (no session), load cascade file
       if (initialCascade) {
         console.log('[StudioPage] Loading cascade from URL:', initialCascade);
-        urlLoadedRef.current = true;
         await fetchCascades();
         const state = useStudioCascadeStore.getState();
         const nb = state.cascades.find(n => n.cascade_id === initialCascade);
@@ -191,15 +228,48 @@ function StudioPage({
         } else {
           console.warn('[StudioPage] Cascade not found:', initialCascade);
         }
+        lastLoadedRef.current = { cascade: initialCascade, session: null };
         if (onCascadeLoaded) onCascadeLoaded();
         return;
       }
 
-      console.log('[StudioPage] No URL parameters to load');
+      // Priority 3: No URL parameters - create a new blank cascade with generated ID
+      console.log('[StudioPage] No URL parameters - creating new blank cascade');
+      const currentState = useStudioCascadeStore.getState();
+
+      // Generate ID for the new blank cascade
+      const { autoGenerateSessionId } = await import('../utils/sessionNaming');
+      const newCascadeId = `studio_new_${autoGenerateSessionId().split('-').pop()}`; // e.g. studio_new_abc123
+
+      console.log('[StudioPage] Generated new cascade:', newCascadeId);
+
+      // Create a blank cascade (no session yet - that's generated when you click Run)
+      useStudioCascadeStore.setState({
+        cascade: {
+          cascade_id: newCascadeId,
+          description: 'New cascade',
+          inputs_schema: {},
+          phases: []
+        },
+        cascadePath: null,
+        cascadeDirty: false,
+        cascadeSessionId: null, // No session until Run is clicked
+        replaySessionId: null,
+        viewMode: 'live',
+        isRunningAll: false,
+        cascadeInputs: {},
+        cellStates: {},
+      });
+
+      // Update URL to reflect the new cascade (no session ID yet)
+      window.location.hash = `#/studio/${newCascadeId}`;
+
+      setMode('timeline');
+      lastLoadedRef.current = { cascade: newCascadeId, session: null };
     };
 
     loadFromUrl();
-  }, [initialCascade, initialSession, fetchCascades, loadCascade, setReplayMode, setMode, onCascadeLoaded]);
+  }, [initialCascade, initialSession]); // Only react to URL changes, not function references
 
   // Update URL hash when cascade or session changes (timeline mode only)
   useEffect(() => {
