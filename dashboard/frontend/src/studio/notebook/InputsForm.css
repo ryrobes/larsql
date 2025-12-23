@@ -84,7 +84,7 @@
 
 .inputs-form-input {
   padding: 7px 10px;
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: #080b10;
   border: 1px solid rgba(100, 116, 139, 0.2);
   border-radius: 3px;
   color: #cbd5e1;
@@ -95,7 +95,7 @@
 
 .inputs-form-input:hover {
   border-color: rgba(100, 116, 139, 0.3);
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: #0a0e14;
 }
 
 .inputs-form-input:focus {
@@ -113,9 +113,9 @@
 .inputs-form-input:-webkit-autofill:hover,
 .inputs-form-input:-webkit-autofill:focus,
 .inputs-form-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px rgba(11, 18, 25, 1) inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #080b10 inset !important;
   -webkit-text-fill-color: #cbd5e1 !important;
-  box-shadow: 0 0 0 1000px rgba(11, 18, 25, 1) inset !important;
+  box-shadow: 0 0 0 1000px #080b10 inset !important;
   caret-color: #cbd5e1 !important;
   border-color: rgba(100, 116, 139, 0.2) !important;
   transition: background-color 5000s ease-in-out 0s;

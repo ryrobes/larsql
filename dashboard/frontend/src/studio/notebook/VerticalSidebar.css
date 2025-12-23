@@ -25,11 +25,13 @@
   justify-content: center;
   width: 44px;
   height: 44px;
-  color: #2dd4bf;
   margin-bottom: 16px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.1), rgba(45, 212, 191, 0.05));
-  border: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.vsidebar-brand-logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
 }
 
 /* ============================================
