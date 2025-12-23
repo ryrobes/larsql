@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
@@ -6,6 +6,143 @@ import useTimelinePolling from '../hooks/useTimelinePolling';
 import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
 import './CascadeTimeline.css';
+
+/**
+ * Analyze cascade DAG structure to detect parallelism and branching
+ * Handles BOTH explicit handoffs AND implicit dependencies from {{ outputs.X }}
+ * Returns flow bar metadata for visualization
+ */
+const analyzeFlowStructure = (phases) => {
+  if (!phases || phases.length === 0) return [];
+
+  // Build dependency graph
+  const graph = {};
+  const inDegree = {};
+  const outDegree = {};
+
+  phases.forEach((phase, idx) => {
+    graph[idx] = {
+      phase,
+      name: phase.name,
+      handoffs: phase.handoffs || [],
+      targets: [],
+      sources: [],
+      implicitDeps: [],
+    };
+    inDegree[idx] = 0;
+    outDegree[idx] = 0;
+  });
+
+  // Extract implicit dependencies from Jinja2 {{ outputs.phase_name }} references
+  phases.forEach((phase, idx) => {
+    const phaseYaml = JSON.stringify(phase); // Convert to string to search
+    const outputsPattern = /\{\{\s*outputs\.(\w+)/g;
+    let match;
+    const deps = new Set();
+
+    while ((match = outputsPattern.exec(phaseYaml)) !== null) {
+      const referencedPhaseName = match[1];
+      const depIdx = phases.findIndex(p => p.name === referencedPhaseName);
+      if (depIdx !== -1 && depIdx !== idx) {
+        deps.add(depIdx);
+      }
+    }
+
+    graph[idx].implicitDeps = Array.from(deps);
+  });
+
+  // Build edges from BOTH handoffs (explicit) AND implicit deps
+  phases.forEach((phase, idx) => {
+    // Explicit handoffs
+    const handoffs = phase.handoffs || [];
+    handoffs.forEach(targetName => {
+      const targetIdx = phases.findIndex(p => p.name === targetName);
+      if (targetIdx !== -1) {
+        if (!graph[idx].targets.includes(targetIdx)) {
+          graph[idx].targets.push(targetIdx);
+          outDegree[idx]++;
+        }
+        if (!graph[targetIdx].sources.includes(idx)) {
+          graph[targetIdx].sources.push(idx);
+          inDegree[targetIdx]++;
+        }
+      }
+    });
+
+    // Implicit dependencies (reverse direction: this phase depends ON others)
+    graph[idx].implicitDeps.forEach(depIdx => {
+      // depIdx → idx (dependency feeds into this phase)
+      if (!graph[depIdx].targets.includes(idx)) {
+        graph[depIdx].targets.push(idx);
+        outDegree[depIdx]++;
+      }
+      if (!graph[idx].sources.includes(depIdx)) {
+        graph[idx].sources.push(depIdx);
+        inDegree[idx]++;
+      }
+    });
+  });
+
+  // Assign lanes - default is lane 0 (sequential), branch when parallelism detected
+  const lanes = phases.map(() => 0); // Default: all lane 0
+  const visited = new Set();
+
+  // Identify parallel branches and assign lanes
+  phases.forEach((_, idx) => {
+    if (outDegree[idx] > 1) {
+      // This phase branches to multiple targets - assign unique lanes
+      const targets = graph[idx].targets.sort((a, b) => a - b);
+
+      targets.forEach((targetIdx, laneOffset) => {
+        // Assign lane to this target
+        lanes[targetIdx] = laneOffset;
+        visited.add(targetIdx);
+
+        // Propagate lane to descendants until merge point
+        const propagateLane = (nodeIdx, lane) => {
+          if (visited.has(nodeIdx)) return; // Already processed
+          visited.add(nodeIdx);
+          lanes[nodeIdx] = lane;
+
+          // Continue propagation if linear path (single target, single source)
+          if (outDegree[nodeIdx] === 1) {
+            const nextTarget = graph[nodeIdx].targets[0];
+            if (inDegree[nextTarget] === 1) {
+              // Linear continuation - keep same lane
+              propagateLane(nextTarget, lane);
+            }
+          }
+        };
+
+        // Start propagation from branch target
+        if (inDegree[targetIdx] === 1) {
+          propagateLane(targetIdx, laneOffset);
+        }
+      });
+    }
+  });
+
+  console.log('[FlowStructure] Lane assignments:', phases.map((p, i) => `${p.name}:L${lanes[i]}`).join(', '));
+
+  // Build flow bar metadata
+  return phases.map((phase, idx) => {
+    const isBranch = outDegree[idx] > 1;
+    const isMerge = inDegree[idx] > 1;
+    const isParallel = graph[idx].sources.length > 0 &&
+                       graph[idx].sources.some(s => outDegree[s] > 1);
+
+    return {
+      index: idx,
+      name: phase.name,
+      lane: lanes[idx] || 0,
+      isBranch,
+      isMerge,
+      isParallel,
+      targets: graph[idx].targets,
+      sources: graph[idx].sources,
+    };
+  });
+};
 
 /**
  * DropZone - Visual drop target between phases
@@ -117,6 +254,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
   const timelineRef = useRef(null);
 
+  // Analyze flow structure for visualization (must be before early returns)
+  const phases = cascade?.phases || [];
+  const flowStructure = useMemo(() => analyzeFlowStructure(phases), [phases]);
+  const maxLane = flowStructure.length > 0 ? Math.max(...flowStructure.map(f => f.lane)) : 0;
+
   const handleTitleChange = (e) => {
     updateCascade({ cascade_id: e.target.value });
   };
@@ -194,6 +336,10 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     }
   }
 
+  const selectedPhase = selectedPhaseIndex !== null ? phases[selectedPhaseIndex] : null;
+  const cellCount = phases.length;
+  const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
+
   if (!cascade) {
     return (
       <div className="cascade-timeline cascade-loading">
@@ -202,11 +348,6 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       </div>
     );
   }
-
-  const phases = cascade.phases || [];
-  const selectedPhase = selectedPhaseIndex !== null ? phases[selectedPhaseIndex] : null;
-  const cellCount = phases.length;
-  const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
 
   return (
     <div className="cascade-timeline">
@@ -325,8 +466,107 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       {/* Horizontal Phase Timeline */}
       <div className="cascade-timeline-strip" ref={timelineRef}>
         <div className="cascade-timeline-track">
-          {/* Continuous track line (metro map style) */}
-          {phases.length > 0 && <div className="cascade-track-line" />}
+          {/* Flow visualization - shows DAG structure */}
+          {phases.length > 0 && (
+            <>
+              {/* For linear flows: single continuous line */}
+              {maxLane === 0 && (
+                <div className="cascade-track-line" />
+              )}
+
+              {/* For DAG flows: multi-lane parallel tracks */}
+              {maxLane > 0 && (
+                <div className="cascade-flow-bars">
+                  {/* Draw continuous tracks for each lane */}
+                  {(() => {
+                    const CARD_WIDTH = 240;
+                    const CARD_GAP = 56;
+                    const TRACK_PADDING = 20;
+                    const BAR_HEIGHT = 6;
+                    const LANE_SPACING = 20;
+
+                    // Group phases by lane
+                    const lanePhases = {};
+                    flowStructure.forEach((flow, idx) => {
+                      if (!lanePhases[flow.lane]) lanePhases[flow.lane] = [];
+                      lanePhases[flow.lane].push(idx);
+                    });
+
+                    // Draw continuous track for each lane
+                    return Object.entries(lanePhases).flatMap(([lane, phaseIndices]) => {
+                      const laneNum = parseInt(lane);
+                      const yOffset = (laneNum - maxLane / 2) * LANE_SPACING;
+
+                      const segments = [];
+
+                      // Draw bars under cards
+                      phaseIndices.forEach(idx => {
+                        const flow = flowStructure[idx];
+                        const xPos = TRACK_PADDING + (idx * (CARD_WIDTH + CARD_GAP));
+                        const isSpecial = flow.isBranch || flow.isMerge;
+                        const barColor = isSpecial ? '#ff006e' : '#00e5ff';
+
+                        segments.push(
+                          <div
+                            key={`bar-${lane}-${idx}`}
+                            className={`flow-bar ${isSpecial ? 'flow-bar-special' : ''}`}
+                            style={{
+                              left: `${xPos}px`,
+                              top: `calc(50% + ${yOffset}px - ${BAR_HEIGHT / 2}px)`,
+                              width: `${CARD_WIDTH}px`,
+                              height: `${BAR_HEIGHT}px`,
+                              backgroundColor: barColor,
+                              opacity: isSpecial ? 0.7 : 0.4,
+                              boxShadow: isSpecial
+                                ? '0 0 16px rgba(255, 0, 110, 0.5)'
+                                : '0 0 8px rgba(0, 229, 255, 0.3)',
+                            }}
+                          />
+                        );
+                      });
+
+                      // Draw gaps between consecutive phases in same lane
+                      for (let i = 0; i < phaseIndices.length - 1; i++) {
+                        const currentIdx = phaseIndices[i];
+                        const nextIdxInLane = phaseIndices[i + 1];
+                        const currentFlow = flowStructure[currentIdx];
+                        const nextFlowInLane = flowStructure[nextIdxInLane];
+
+                        const gapStartX = TRACK_PADDING + (currentIdx * (CARD_WIDTH + CARD_GAP)) + CARD_WIDTH;
+                        const gapEndX = TRACK_PADDING + (nextIdxInLane * (CARD_WIDTH + CARD_GAP));
+                        const gapWidth = gapEndX - gapStartX;
+
+                        const isSpecial = currentFlow.isBranch || nextFlowInLane.isMerge;
+                        const gapColor = isSpecial ? '#ff006e' : '#00e5ff';
+
+                        segments.push(
+                          <div
+                            key={`gap-${lane}-${currentIdx}-${nextIdxInLane}`}
+                            className="flow-gap"
+                            style={{
+                              position: 'absolute',
+                              left: `${gapStartX}px`,
+                              top: `calc(50% + ${yOffset}px - ${BAR_HEIGHT / 2}px)`,
+                              width: `${gapWidth}px`,
+                              height: `${BAR_HEIGHT}px`,
+                              backgroundColor: gapColor,
+                              opacity: isSpecial ? 0.6 : 0.3,
+                              boxShadow: isSpecial
+                                ? '0 0 10px rgba(255, 0, 110, 0.4)'
+                                : '0 0 6px rgba(0, 229, 255, 0.3)',
+                              borderRadius: '2px',
+                            }}
+                          />
+                        );
+                      }
+
+                      return segments;
+                    });
+                  })()}
+                </div>
+              )}
+            </>
+          )}
 
           {/* Drop zone at start */}
           <DropZone position={0} />

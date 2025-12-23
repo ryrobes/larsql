@@ -70,7 +70,7 @@
 .cascade-title-input:focus {
   outline: none;
   border-color: #00e5ff;
-  background-color: rgba(45, 212, 191, 0.05);
+  background-color: rgba(0, 229, 255, 0.05);
 }
 
 .cascade-dirty-dot {
@@ -189,7 +189,7 @@
 
 .cascade-selector {
   padding: 6px 12px;
-  background-color: #0b1219;
+  background-color: #0a0818;
   border: 1px solid #1a1628;
   border-radius: 4px;
   color: #cbd5e1;
@@ -236,7 +236,7 @@
 .cascade-btn-primary:hover:not(:disabled) {
   background-color: #14b8a6;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 229, 255, 0.3);
 }
 
 .cascade-btn-secondary {
@@ -301,23 +301,65 @@
   background-color: #000000;
 }
 
-/* Metro map style continuous track line */
+/* Simple track line for linear flows */
 .cascade-track-line {
   position: absolute;
   left: 0;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  height: 6px;
+  height: 4px;
   background: linear-gradient(90deg,
-    rgba(45, 212, 191, 0.3) 0%,
-    rgba(45, 212, 191, 0.5) 50%,
-    rgba(45, 212, 191, 0.3) 100%
+    rgba(0, 229, 255, 0.2) 0%,
+    rgba(0, 229, 255, 0.4) 50%,
+    rgba(0, 229, 255, 0.2) 100%
   );
-  border-radius: 3px;
+  border-radius: 2px;
   z-index: 0;
   pointer-events: none;
-  box-shadow: 0 0 12px rgba(45, 212, 191, 0.2);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
+}
+
+/* Flow bars - DAG structure visualization */
+.cascade-flow-bars {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.flow-bar {
+  position: absolute;
+  border-radius: 3px;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.flow-bar-special {
+  /* Branch/merge bars get extra glow */
+  animation: flow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes flow-pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.flow-connection {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.flow-connection line {
+  transition: all 0.3s ease;
 }
 
 /* Custom scrollbar for timeline */
@@ -326,7 +368,7 @@
 }
 
 .cascade-timeline-strip::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: #050508;
 }
 
 .cascade-timeline-strip::-webkit-scrollbar-thumb {
@@ -335,7 +377,7 @@
 }
 
 .cascade-timeline-strip::-webkit-scrollbar-thumb:hover {
-  background: #2a3038;
+  background: #2a2638;
 }
 
 
@@ -368,7 +410,7 @@
 .cascade-add-btn:hover {
   border-color: #00e5ff;
   color: #00e5ff;
-  background-color: rgba(45, 212, 191, 0.05);
+  background-color: rgba(0, 229, 255, 0.05);
 }
 
 .cascade-add-menu {
@@ -401,7 +443,7 @@
 }
 
 .cascade-add-menu button:hover {
-  background-color: rgba(45, 212, 191, 0.1);
+  background-color: rgba(0, 229, 255, 0.1);
 }
 
 .cascade-add-menu hr {
@@ -462,7 +504,7 @@
 .cascade-drop-zone-active .cascade-drop-zone-indicator {
   width: 12px;
   background: linear-gradient(180deg, #00e5ff, #14b8a6);
-  box-shadow: 0 0 16px rgba(45, 212, 191, 0.6);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.6);
 }
 
 .cascade-drop-zone-active {
@@ -481,7 +523,7 @@
   color: #00e5ff;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
   pointer-events: none;
 }
 
