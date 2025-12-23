@@ -251,7 +251,7 @@
 }
 
 .blocked-session-card .session-id {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.85rem;
   font-weight: 600;
   color: #F0F4F8;
@@ -292,7 +292,7 @@
 }
 
 .blocked-session-card .blocked-value {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.875rem;
   font-weight: 600;
   color: #F0F4F8;
@@ -486,7 +486,7 @@
 }
 
 .signal-fire-modal .info-row .value.mono {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .signal-fire-modal .payload-section label {
@@ -503,7 +503,7 @@
   border: 1px solid rgba(74, 158, 221, 0.2);
   border-radius: 8px;
   padding: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.85rem;
   color: #F0F4F8;
   resize: vertical;

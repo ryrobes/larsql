@@ -323,7 +323,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   flex: 1;
 }
 
@@ -546,7 +546,7 @@
 
 .footer-item.size {
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Responsive */

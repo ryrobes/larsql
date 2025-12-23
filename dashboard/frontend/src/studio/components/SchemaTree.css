@@ -84,7 +84,7 @@
 
 .schema-tree-type {
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   margin-left: 8px;
   text-transform: lowercase;
 }
@@ -158,6 +158,6 @@
   color: #2dd4bf;
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 12px;
 }

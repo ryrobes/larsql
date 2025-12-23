@@ -185,7 +185,7 @@
 
 .context-bar .session-id {
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.75rem;
   padding: 4px 10px;
   background: rgba(22, 32, 42, 0.8);
@@ -535,7 +535,7 @@
   border: 1px solid rgba(74, 158, 221, 0.2);
   padding: 2px 8px;
   border-radius: 6px;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.9em;
   color: #4A9EDD;
 }
@@ -825,7 +825,7 @@
   background: rgba(22, 32, 42, 0.95);
   padding: 4px 10px;
   border-radius: 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   border: 1px solid #2C3B4B;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -895,7 +895,7 @@
   background: rgba(22, 32, 42, 0.95);
   padding: 3px 8px;
   border-radius: 5px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   border: 1px solid #2C3B4B;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -920,7 +920,7 @@
   background: #16202A;
   border: 1px solid #2C3B4B;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.8rem;
   color: #4A9EDD;
   margin: 0 2px;
@@ -943,7 +943,7 @@
   background: #16202A;
   border: 1px solid #2C3B4B;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.7rem;
   color: #9AA5B1;
 }

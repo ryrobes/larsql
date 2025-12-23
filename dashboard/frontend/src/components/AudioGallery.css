@@ -47,7 +47,7 @@
 .audio-player-info .audio-filename {
   font-size: 0.7rem;
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

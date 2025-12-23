@@ -69,7 +69,7 @@ function MonacoYamlEditor({
   const editorOptions = {
     minimap: { enabled: true, scale: 0.8 },
     fontSize: 13,
-    fontFamily: "'IBM Plex Mono', monospace",
+    fontFamily: "'Google Sans Code', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

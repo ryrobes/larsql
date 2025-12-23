@@ -6,8 +6,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #0a0e14;
-  /* border-top: 1px solid #2dd4bf; */
+  background-color: #000000;
+  /* border-top: 1px solid #00e5ff; */
   overflow: hidden;
   min-height: 0;
 }
@@ -21,8 +21,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background-color: #080b10;
-  border-bottom: 1px solid #1a2028;
+  background-color: #080510;
+  border-bottom: 1px solid #1a1628;
   flex-shrink: 0;
   gap: 16px;
 }
@@ -59,19 +59,19 @@
 }
 
 .phase-detail-name-input:hover {
-  border-color: #1a2028;
+  border-color: #1a1628;
 }
 
 .phase-detail-name-input:focus {
   outline: none;
-  border-color: #2dd4bf;
-  background-color: rgba(45, 212, 191, 0.05);
+  border-color: #00e5ff;
+  background-color: rgba(0, 229, 255, 0.05);
 }
 
 .phase-detail-index {
   font-size: 12px;
   color: #64748b;
-  background-color: #1a2028;
+  background-color: #1a1628;
   padding: 3px 8px;
   border-radius: 4px;
   font-weight: 600;
@@ -102,9 +102,9 @@
 }
 
 .phase-detail-tab.active {
-  color: #2dd4bf;
-  background-color: rgba(45, 212, 191, 0.1);
-  border-color: rgba(45, 212, 191, 0.3);
+  color: #00e5ff;
+  background-color: rgba(0, 229, 255, 0.1);
+  border-color: rgba(0, 229, 255, 0.3);
 }
 
 .phase-detail-tab:disabled {
@@ -135,13 +135,15 @@
 }
 
 .phase-detail-btn-run {
-  background-color: #2dd4bf;
-  color: #0a0a0a;
-  border-color: #2dd4bf;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #00e5ff;
+  border-color: #00e5ff;
 }
 
 .phase-detail-btn-run:hover:not(:disabled) {
-  background-color: #14b8a6;
+  background-color: rgba(0, 229, 255, 0.1);
+  border-color: #00e5ff;
+  color: #00e5ff;
 }
 
 .phase-detail-btn-delete {
@@ -158,12 +160,12 @@
 .phase-detail-btn-close {
   background-color: transparent;
   color: #64748b;
-  border-color: #1a2028;
+  border-color: #1a1628;
 }
 
 .phase-detail-btn-close:hover {
   color: #cbd5e1;
-  border-color: #2a3038;
+  border-color: #2a2638;
 }
 
 .phase-detail-spinner {
@@ -186,7 +188,7 @@
 .phase-detail-body {
   flex: 1;
   overflow: hidden;
-  background-color: #0a0e14;
+  background-color: #000000;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -216,8 +218,8 @@
 }
 
 .phase-detail-results-section {
-  border-top: 1px solid #1a2028;
-  background-color: #080c12;
+  border-top: 1px solid #1a1628;
+  background-color: #000000;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -230,8 +232,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 16px;
-  background-color: #080b10;
-  border-bottom: 1px solid #1a2028;
+  background-color: #080510;
+  border-bottom: 1px solid #1a1628;
   font-size: 12px;
   color: #64748b;
 }
@@ -268,12 +270,12 @@
 }
 
 .phase-detail-results-tab:hover {
-  background-color: #131921;
+  background-color: #0f0a19;
   color: #94a3b8;
 }
 
 .phase-detail-results-tab.active {
-  background-color: #1e293b;
+  background-color: #1a1428;
   color: #a78bfa;
   font-weight: 600;
 }
@@ -350,7 +352,7 @@
 .phase-detail-raw-json {
   padding: 16px;
   margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 12px;
   line-height: 1.6;
 }
@@ -432,8 +434,8 @@
 .phase-detail-decision-option {
   padding: 16px;
   border-radius: 8px;
-  border: 2px solid #1a2028;
-  background-color: #0a0e14;
+  border: 2px solid #1a1628;
+  background-color: #050410;
   transition: all 0.2s ease;
   width: 100%;
   text-align: left;
@@ -455,14 +457,14 @@
 }
 
 .phase-detail-decision-option-primary {
-  border-color: #2dd4bf;
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(20, 184, 166, 0.1));
+  border-color: #00e5ff;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(0, 200, 225, 0.1));
 }
 
 .phase-detail-decision-option-primary:hover:not(:disabled) {
-  border-color: #14b8a6;
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.25), rgba(20, 184, 166, 0.15));
-  box-shadow: 0 4px 16px rgba(45, 212, 191, 0.4);
+  border-color: #00c8e1;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.25), rgba(0, 200, 225, 0.15));
+  box-shadow: 0 4px 16px rgba(0, 229, 255, 0.4);
 }
 
 .phase-detail-decision-option-secondary {
@@ -471,7 +473,7 @@
 
 .phase-detail-decision-option-secondary:hover:not(:disabled) {
   border-color: #64748b;
-  background-color: #0f1419;
+  background-color: #0f0a19;
   box-shadow: 0 4px 12px rgba(100, 116, 139, 0.2);
 }
 
@@ -560,7 +562,7 @@
 }
 
 .phase-detail-image-container {
-  background-color: #0a0e14;
+  background-color: #000000;
   border-radius: 6px;
   padding: 12px;
   display: flex;
@@ -583,7 +585,7 @@
 
 .phase-detail-error-detail pre {
   margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 12px;
   line-height: 1.6;
   color: #f87171;
@@ -612,7 +614,7 @@
   padding: 16px 24px;
   overflow-y: auto;
   flex: 1;
-  background-color: #0a0e14;
+  background-color: #000000;
 }
 
 .phase-detail-markdown .rich-markdown {
@@ -729,13 +731,13 @@
 
 .phase-detail-evaluator-content pre {
   margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
 
 .phase-detail-message {
-  background-color: #0a0e14;
+  background-color: #050410;
   border-radius: 6px;
   padding: 12px;
   border-left: 3px solid #64748b;
@@ -763,7 +765,7 @@
   justify-content: space-between;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #1a2028;
+  border-bottom: 1px solid #1a1628;
 }
 
 .phase-detail-message-role {
@@ -810,11 +812,11 @@
 
 .phase-detail-message-content pre {
   margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 12px;
   line-height: 1.6;
   color: #e6edf3;
-  background-color: #060a10;
+  background-color: #050410;
   padding: 10px;
   border-radius: 4px;
   overflow-x: auto;
@@ -825,7 +827,7 @@
 .phase-detail-message-tool-calls {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #1a2028;
+  border-top: 1px solid #1a1628;
 }
 
 .phase-detail-message-tool-calls-header {
@@ -841,7 +843,7 @@
 }
 
 .phase-detail-tool-call {
-  background-color: #060a10;
+  background-color: #050410;
   padding: 10px;
   border-radius: 4px;
   margin-bottom: 8px;
@@ -860,7 +862,7 @@
 
 .phase-detail-tool-call pre {
   margin: 0;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 11px;
   line-height: 1.6;
   color: #94a3b8;
@@ -953,7 +955,7 @@
 
 .phase-detail-error-message {
   margin: 0;
-  font-family: 'IBM Plex Mono', 'Monaco', monospace;
+  font-family: 'Google Sans Code', 'Monaco', monospace;
   font-size: 12px;
   color: #fca5a5;
   white-space: pre-wrap;
@@ -998,7 +1000,7 @@
   max-width: 100%;
   height: auto;
   border-radius: 4px;
-  border: 1px solid #1a2028;
+  border: 1px solid #1a1628;
 }
 
 .phase-detail-image-info {
@@ -1031,7 +1033,7 @@
 }
 
 .phase-detail-plotly .modebar-btn:hover {
-  fill: #2dd4bf !important;
+  fill: #00e5ff !important;
 }
 
 /* ============================================
@@ -1050,7 +1052,7 @@
   gap: 4px;
   padding: 4px 10px;
   background-color: transparent;
-  border: 1px solid #1a2028;
+  border: 1px solid #1a1628;
   border-radius: 4px;
   color: #64748b;
   font-size: 11px;
@@ -1060,15 +1062,15 @@
 }
 
 .phase-detail-yaml-toggle:hover {
-  border-color: #2dd4bf;
-  color: #2dd4bf;
-  background-color: rgba(45, 212, 191, 0.05);
+  border-color: #00e5ff;
+  color: #00e5ff;
+  background-color: rgba(0, 229, 255, 0.05);
 }
 
 .phase-detail-yaml-toggle.active {
-  border-color: rgba(45, 212, 191, 0.4);
-  color: #2dd4bf;
-  background-color: rgba(45, 212, 191, 0.1);
+  border-color: rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+  background-color: rgba(0, 229, 255, 0.1);
 }
 
 /* ============================================
@@ -1086,8 +1088,8 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background-color: #0a0e14;
-  border-left: 1px solid #1a2028;
+  background-color: #000000;
+  border-left: 1px solid #1a1628;
 }
 
 .phase-detail-code-header {
@@ -1095,8 +1097,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background-color: #080b10;
-  border-bottom: 1px solid #1a2028;
+  background-color: #080510;
+  border-bottom: 1px solid #1a1628;
   font-size: 11px;
   color: #64748b;
   text-transform: uppercase;
@@ -1119,8 +1121,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background-color: #080b10;
-  border-bottom: 1px solid #1a2028;
+  background-color: #080510;
+  border-bottom: 1px solid #1a1628;
   font-size: 11px;
   color: #64748b;
   text-transform: uppercase;
@@ -1153,7 +1155,7 @@
 }
 
 .phase-detail-code-yaml-split .phase-detail-code-section {
-  border-right: 1px solid #1a2028;
+  border-right: 1px solid #1a1628;
 }
 
 /* Code container wrapper (keeps Split structure consistent) */
@@ -1188,7 +1190,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: #0a0e14;
+  background-color: #000000;
 }
 
 /* Drop active state for Monaco */
@@ -1227,7 +1229,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #0a0a0a;
+  background: #050508;
   height: 100%;
   min-height: 0;
 }

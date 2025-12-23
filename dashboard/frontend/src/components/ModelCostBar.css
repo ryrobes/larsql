@@ -79,7 +79,7 @@
 .model-cost-value {
   color: #4A9EDD;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.65rem;
   margin-left: auto;
   text-align: right;
@@ -90,7 +90,7 @@
 .model-cost-duration {
   color: #9AA5B1;
   font-weight: 500;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.65rem;
   text-align: right;
   flex-shrink: 0;
@@ -160,7 +160,7 @@
   align-items: center;
   gap: 8px;
   font-size: 0.65rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   white-space: nowrap;
   padding-top: 6px;
   margin-top: 4px;

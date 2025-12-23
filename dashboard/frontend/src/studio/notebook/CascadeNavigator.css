@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: #080b10;
+  background-color: #080510;
   color: #cbd5e1;
   overflow-y: auto;
   font-size: 13px;
@@ -32,14 +32,14 @@
   align-items: center;
   gap: 10px;
   padding: 7.5px 12px;
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.0), rgba(96, 165, 250, 0.1));
-  border-bottom: 1px solid #1a2028;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.0), rgba(167, 139, 250, 0.1));
+  border-bottom: 1px solid #1a1628;
   flex-shrink: 0;
 }
 
 .nav-cascade-icon {
   font-size: 20px;
-  color: #2dd4bf;
+  color: #00e5ff;
 }
 
 .nav-cascade-info {
@@ -77,7 +77,7 @@
    ============================================ */
 
 .nav-section {
-  border-bottom: 1px solid #1a2028;
+  border-bottom: 1px solid #1a1628;
 }
 
 .nav-section-header {
@@ -217,7 +217,7 @@
 
 .nav-phase-duration {
   font-size: 10px;
-  color: #2dd4bf;
+  color: #00e5ff;
   background: rgba(45, 212, 191, 0.15);
   padding: 2px 5px;
   border-radius: 3px;
@@ -242,7 +242,7 @@
 
 .nav-phase-columns {
   padding: 4px 8px 8px 36px;
-  border-left: 2px solid #1a2028;
+  border-left: 2px solid #1a1628;
   margin-left: 19px;
 }
 
@@ -388,16 +388,16 @@
 }
 
 .cascade-navigator::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: #050508;
 }
 
 .cascade-navigator::-webkit-scrollbar-thumb {
-  background: #1a2028;
+  background: #1a1628;
   border-radius: 3px;
 }
 
 .cascade-navigator::-webkit-scrollbar-thumb:hover {
-  background: #2a3038;
+  background: #2a2638;
 }
 
 /* Phase Types Section - Draggable Palette */
@@ -455,7 +455,7 @@
    ============================================ */
 
 .nav-inputs-section {
-  border-bottom: 1px solid #1a2028;
+  border-bottom: 1px solid #1a1628;
 }
 
 .nav-inputs-section .inputs-form {
@@ -468,7 +468,7 @@
 .nav-inputs-section .inputs-form-header {
   padding: 8px 12px;
   background-color: transparent;
-  border-bottom: 1px solid #1a2028;
+  border-bottom: 1px solid #1a1628;
 }
 
 .nav-inputs-section .inputs-form-title {
@@ -488,7 +488,7 @@
 }
 
 .nav-inputs-section .inputs-form-input {
-  background-color: #0b1219;
+  background-color: #0a0818;
 }
 
 /* Updated header layout for Run All button */
@@ -506,25 +506,27 @@
   min-width: 0;
 }
 
-/* Run All button - subtle styling */
+/* Run All button - dark with cyan border */
 .nav-run-all-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background-color: rgba(45, 212, 191, 0.1);
-  border: 1px solid rgba(45, 212, 191, 0.3);
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 1px solid #00e5ff;
   border-radius: 6px;
-  color: #2dd4bf;
+  color: #00e5ff;
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .nav-run-all-btn:hover:not(:disabled) {
-  background-color: rgba(45, 212, 191, 0.2);
-  border-color: rgba(45, 212, 191, 0.5);
+  background-color: rgba(0, 229, 255, 0.1);
+  border-color: #00e5ff;
 }
 
 .nav-run-all-btn:disabled {
@@ -537,7 +539,7 @@
    ============================================ */
 
 .var-palette-section {
-  border-top: 1px solid #1a2028;
+  border-top: 1px solid #1a1628;
 }
 
 .var-palette-content {
@@ -568,7 +570,7 @@
   transition: all 0.15s ease;
   user-select: none;
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .var-pill:hover {
@@ -630,7 +632,7 @@
 .var-group-count {
   font-size: 9px;
   color: #64748b;
-  background-color: #1a2028;
+  background-color: #1a1628;
   padding: 2px 5px;
   border-radius: 3px;
   font-weight: 600;
@@ -721,7 +723,7 @@
    ============================================ */
 
 .recent-runs-section {
-  border-top: 1px solid #1a2028;
+  border-top: 1px solid #1a1628;
 }
 
 .recent-runs-content {
@@ -793,7 +795,7 @@
 .recent-run-live-dot {
   width: 6px;
   height: 6px;
-  background: #2dd4bf;
+  background: #00e5ff;
   border-radius: 50%;
   flex-shrink: 0;
   animation: pulse 2s ease-in-out infinite;
@@ -838,8 +840,8 @@
   position: relative;
   border-radius: 6px;
   overflow: hidden;
-  background-color: #0a0e14;
-  border: 1px solid #1a2028;
+  background-color: #0a0614;
+  border: 1px solid #1a1628;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -921,7 +923,7 @@
 .nav-yaml-editor-container {
   flex: 1;
   min-height: 0;
-  border-top: 1px solid #1a2028;
+  border-top: 1px solid #1a1628;
 }
 
 /* Warning Banners */
@@ -965,7 +967,7 @@
    ============================================ */
 
 .model-browser-section {
-  border-bottom: 1px solid #1a2028;
+  border-bottom: 1px solid #1a1628;
 }
 
 .model-browser-content {
@@ -1057,7 +1059,7 @@
 .model-filter-btn.active {
   background: rgba(45, 212, 191, 0.15);
   border-color: rgba(45, 212, 191, 0.4);
-  color: #2dd4bf;
+  color: #00e5ff;
 }
 
 /* Model Groups */
@@ -1113,7 +1115,7 @@
 .model-group-count {
   font-size: 9px;
   color: #64748b;
-  background-color: #1a2028;
+  background-color: #1a1628;
   padding: 2px 5px;
   border-radius: 3px;
   font-weight: 600;
@@ -1139,7 +1141,7 @@
   transition: all 0.15s ease;
   user-select: none;
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   width: 100%;
 }
 

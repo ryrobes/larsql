@@ -1,7 +1,7 @@
 .sql-editor {
   flex: 1;
   overflow: hidden;
-  background-color: #0b1219;
+  background-color: #000000;
 }
 
 .sql-editor-empty {

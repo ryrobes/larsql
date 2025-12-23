@@ -90,7 +90,7 @@
 }
 
 .live-debug-log .phase-cost {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 14px;
   color: #5EEAD4;
   font-weight: 600;
@@ -171,13 +171,13 @@
 }
 
 .live-debug-log .entry-time {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 11px;
   color: #9AA5B1;
 }
 
 .live-debug-log .entry-cost {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 11px;
   color: #5EEAD4;
   font-weight: 600;

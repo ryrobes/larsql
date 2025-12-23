@@ -160,7 +160,7 @@
 .session-button-id {
   font-size: 0.65rem;
   color: #6B7280;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .session-cascade {
@@ -177,14 +177,14 @@
 .session-age {
   color: #9AA5B1;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   flex-shrink: 0;
 }
 
 .session-id-preview {
   color: #9AA5B1;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -194,7 +194,7 @@
   flex: 1;
   padding: 0.75rem 1rem;
   font-size: 0.9rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   background: rgba(22, 32, 42, 0.6);
   border: 1px solid rgba(74, 158, 221, 0.2);
   color: #F0F4F8;
@@ -255,7 +255,7 @@
   border-radius: 12px;
   color: #CF6679;
   margin-bottom: 2rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.9rem;
 }
 
@@ -324,7 +324,7 @@
   color: #EF4444;
   font-size: 0.75rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   letter-spacing: 0.05em;
 }
 
@@ -588,7 +588,7 @@
   background: rgba(74, 158, 221, 0.15);
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
 }
 
 .evaluator-model {
@@ -597,7 +597,7 @@
   background: rgba(44, 59, 75, 0.5);
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
 }
 
 .evaluator-content {
@@ -608,7 +608,7 @@
   background: rgba(11, 18, 25, 0.5);
   border-radius: 6px;
   white-space: pre-wrap;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
 }
 
 .evaluator-result {
@@ -725,7 +725,7 @@
   font-size: 1.1rem;
   font-weight: 700;
   color: #F0F4F8;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .eval-stat-warning .eval-stat-value {
@@ -814,7 +814,7 @@
 
 .eval-attempts-table td {
   color: #F0F4F8;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .eval-attempts-table tr.winner-row {
@@ -888,7 +888,7 @@
   color: #9AA5B1;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   max-height: 200px;
   overflow-y: auto;
 }
@@ -1122,7 +1122,7 @@
   color: #60A5FA;
   font-size: 1rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   letter-spacing: -0.01em;
 }
 
@@ -1139,13 +1139,13 @@
 .phase-group-stats .phase-cost {
   color: #4A9EDD;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .phase-group-stats .phase-tokens {
   color: #6B7FBB;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .phase-soundings-badge {
@@ -1155,7 +1155,7 @@
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .phase-group-content {
@@ -1317,7 +1317,7 @@
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   white-space: nowrap;
 }
 
@@ -1331,7 +1331,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Reforge Badge - Purple/Pink */
@@ -1344,7 +1344,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Role Badge - Color by role */
@@ -1355,7 +1355,7 @@
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   text-transform: lowercase;
   background: rgba(107, 114, 128, 0.2);
   color: #9AA5B1;
@@ -1391,7 +1391,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Model Badge - Purple */
@@ -1404,7 +1404,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1421,7 +1421,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Tokens Badge - Teal */
@@ -1434,14 +1434,14 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .message-label {
   font-weight: 700;
   color: #6B7280;
   font-size: 0.7rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .message-role {
@@ -1451,7 +1451,7 @@
   border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .message-node-type {
@@ -1461,7 +1461,7 @@
   border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .message-model {
@@ -1471,7 +1471,7 @@
   border-radius: 6px;
   font-size: 0.7rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1483,14 +1483,14 @@
   color: #60A5FA;
   font-size: 0.75rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .tokens {
   color: #4A9EDD;
   font-size: 0.75rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .cost-badge {
@@ -1502,7 +1502,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .winner-badge {
@@ -1527,7 +1527,7 @@
   border-radius: 4px;
   font-size: 0.65rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .image-badge {
@@ -1541,7 +1541,7 @@
   font-size: 0.6rem;
   font-weight: 600;
   cursor: help;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .message-content-preview {
@@ -1549,7 +1549,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.8rem;
 }
 
@@ -1638,7 +1638,7 @@
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .llm-role {
@@ -1671,7 +1671,7 @@
   font-size: 0.75rem;
   line-height: 1.5;
   margin-top: 0.5rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .full-request-meta {
@@ -1682,7 +1682,7 @@
   color: #9AA5B1;
   display: flex;
   gap: 1rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Full Content Expansion */
@@ -1712,7 +1712,7 @@
   padding: 0.75rem;
   background: rgba(11, 18, 25, 0.8);
   border-radius: 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .expand-hint {
@@ -1838,7 +1838,7 @@
   padding: 3px 6px;
   border-radius: 4px;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Most Expensive Styling */
@@ -1869,7 +1869,7 @@
   border-radius: 6px;
   font-weight: 700;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   animation: pulse-glow-gold 2s ease-in-out infinite;
 }
 
@@ -1939,7 +1939,7 @@
   border-radius: 4px;
   font-size: 0.6rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -2008,7 +2008,7 @@
   color: #4A9EDD;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.9rem;
 }
 

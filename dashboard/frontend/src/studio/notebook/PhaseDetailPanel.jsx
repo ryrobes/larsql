@@ -631,22 +631,69 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [phase.name, checkpointData]);
 
-  // Monaco theme
+  // Monaco theme - Deep purple-black with comprehensive syntax highlighting
   const handleMonacoBeforeMount = (monaco) => {
     monaco.editor.defineTheme('detail-dark', {
       base: 'vs-dark',
       inherit: true,
       rules: [
+        // Keywords (SQL, Python, JS, YAML, etc.)
         { token: 'keyword', foreground: 'ff9eb8', fontStyle: 'bold' },
-        { token: 'string', foreground: '9be9a8' },
+        { token: 'keyword.sql', foreground: 'ff9eb8', fontStyle: 'bold' },
+        { token: 'keyword.json', foreground: 'ff9eb8', fontStyle: 'bold' },
+
+        // Strings - bright cyan
+        { token: 'string', foreground: '00e5ff' },
+        { token: 'string.sql', foreground: '00e5ff' },
+        { token: 'string.yaml', foreground: '00e5ff' },
+        { token: 'string.json', foreground: '00e5ff' },
+        { token: 'string.key', foreground: '00e5ff' },
+        { token: 'string.value', foreground: '00e5ff' },
+        { token: 'string.quoted', foreground: '00e5ff' },
+
+        // JSON-specific
+        { token: 'string.key.json', foreground: 'a78bfa' },            // purple for JSON keys
+        { token: 'string.value.json', foreground: '00e5ff' },          // cyan for JSON values
+        { token: 'number.json', foreground: 'd2a8ff' },
+        { token: 'keyword.json', foreground: 'ffd700' },               // true/false/null
+
+        // Numbers
         { token: 'number', foreground: 'd2a8ff' },
+        { token: 'number.sql', foreground: 'd2a8ff' },
+
+        // Comments
         { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+        { token: 'comment.sql', foreground: '8b949e', fontStyle: 'italic' },
+
+        // Operators
+        { token: 'operator', foreground: 'ffc9e3' },
+        { token: 'delimiter', foreground: '94a3b8' },
+        { token: 'delimiter.bracket', foreground: '94a3b8' },
+        { token: 'delimiter.array', foreground: '94a3b8' },
+        { token: 'delimiter.colon', foreground: '94a3b8' },
+
+        // Functions
+        { token: 'predefined', foreground: 'ffd700' },
+        { token: 'predefined.sql', foreground: 'ffd700' },
+
+        // Types & Identifiers
+        { token: 'type', foreground: '79c0ff' },
+        { token: 'identifier', foreground: 'e6edf3' },
+
+        // YAML-specific
+        { token: 'tag', foreground: 'a78bfa' },
       ],
       colors: {
-        'editor.background': '#0a0e14',
+        'editor.background': '#000000',                                 // pure black
         'editor.foreground': '#e6edf3',
         'editorLineNumber.foreground': '#6e7681',
-        'editor.lineHighlightBackground': '#161b22',
+        'editor.lineHighlightBackground': '#0a0510',
+        'editor.selectionBackground': '#1a0f2f',
+        'editorCursor.foreground': '#00e5ff',
+        'editor.inactiveSelectionBackground': '#0f0a1e',
+        'editorIndentGuide.background': '#0f0a16',
+        'editorIndentGuide.activeBackground': '#1a1428',
+        'editorGutter.background': '#000000',
       }
     });
   };
@@ -842,7 +889,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           options={{
                             minimap: { enabled: false },
                             fontSize: 13,
-                            fontFamily: "'IBM Plex Mono', monospace",
+                            fontFamily: "'Google Sans Code', monospace",
                             lineNumbers: 'on',
                             renderLineHighlightOnlyWhenFocus: true,
                             wordWrap: 'on',
@@ -906,7 +953,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         options={{
                           minimap: { enabled: false },
                           fontSize: 13,
-                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontFamily: "'Google Sans Code', monospace",
                           lineNumbers: 'on',
                           renderLineHighlightOnlyWhenFocus: true,
                           wordWrap: 'on',
@@ -960,7 +1007,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           options={{
                             minimap: { enabled: false },
                             fontSize: 13,
-                            fontFamily: "'IBM Plex Mono', monospace",
+                            fontFamily: "'Google Sans Code', monospace",
                             lineNumbers: 'on',
                             renderLineHighlightOnlyWhenFocus: true,
                             wordWrap: 'on',
@@ -1003,7 +1050,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         options={{
                           minimap: { enabled: false },
                           fontSize: 13,
-                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontFamily: "'Google Sans Code', monospace",
                           lineNumbers: 'on',
                           wordWrap: 'on',
                           automaticLayout: true,
@@ -1382,7 +1429,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       ) : (
                         <div className="phase-detail-messages-empty">
                           <Icon icon="mdi:message-off" width="48" />
-                          <p>No messages found for this phase</p>
+                          <p>No messages for this phase</p>
                         </div>
                       )}
                     </div>
@@ -1399,7 +1446,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           readOnly: true,
                           minimap: { enabled: false },
                           fontSize: 12,
-                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontFamily: "'Google Sans Code', monospace",
                           lineNumbers: 'on',
                           wordWrap: 'on',
                           wrappingIndent: 'indent',
@@ -1429,7 +1476,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           readOnly: true,
                           minimap: { enabled: false },
                           fontSize: 12,
-                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontFamily: "'Google Sans Code', monospace",
                           lineNumbers: 'on',
                           wordWrap: 'on',
                           wrappingIndent: 'indent',

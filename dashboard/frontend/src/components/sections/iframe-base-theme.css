@@ -72,7 +72,7 @@ p {
 }
 
 code, pre {
-  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   background: var(--bg-darkest);
   border-radius: 4px;
 }

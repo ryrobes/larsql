@@ -350,7 +350,7 @@
   background: rgba(167, 139, 250, 0.15);
   border-color: rgba(167, 139, 250, 0.3);
   color: #a78bfa;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .meta-badge.turns {
@@ -374,7 +374,7 @@
   gap: 6px;
   font-size: 0.75rem;
   color: #6b7280;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .session-card-tags {
@@ -406,7 +406,7 @@
   font-size: 1.125rem;
   font-weight: 700;
   color: #a78bfa;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .run-count {
@@ -500,7 +500,7 @@
   font-size: 1.25rem;
   font-weight: 700;
   color: #a78bfa;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .form-description {

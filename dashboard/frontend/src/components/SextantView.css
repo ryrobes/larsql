@@ -278,7 +278,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   color: #4A9EDD;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .result-phase {
@@ -579,7 +579,7 @@
 .dominant-stat .stat-value {
   color: #5EEAD4;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .patterns-preview {
@@ -669,7 +669,7 @@
 }
 
 .sounding-index {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   font-size: 0.85rem;
   color: #F0F4F8;
@@ -695,7 +695,7 @@
 }
 
 .win-rate-pct {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 700;
   font-size: 0.85rem;
   min-width: 45px;
@@ -729,7 +729,7 @@
 }
 
 .model-name {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   font-size: 0.9rem;
   color: #F0F4F8;
@@ -745,7 +745,7 @@
 
 .model-cost {
   color: #fbbf24;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .multi-model-badge {
@@ -783,7 +783,7 @@
 
 .best-model {
   color: #5EEAD4 !important;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Mutation Stats */
@@ -804,7 +804,7 @@
 }
 
 .mutation-type {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   font-size: 0.85rem;
   color: #8B9FCC;
@@ -817,7 +817,7 @@
 }
 
 .mutation-rate {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 700;
   margin-left: auto;
 }
@@ -854,25 +854,25 @@
 }
 
 .cp-sounding {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   color: #F0F4F8;
 }
 
 .cp-cost {
   color: #fbbf24;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .cp-duration {
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .cp-winrate {
   font-weight: 700;
   text-align: right;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Samples Section */
@@ -912,7 +912,7 @@
 }
 
 .sample-sounding {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   font-size: 0.8rem;
   color: #4A9EDD;
@@ -929,7 +929,7 @@
 .sample-cost {
   margin-left: auto;
   font-size: 0.8rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   color: #fbbf24;
 }
 
@@ -1154,7 +1154,7 @@
 .synopsis-confidence {
   margin-left: auto;
   font-size: 0.8rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .synopsis-body {
@@ -1267,7 +1267,7 @@
   background: rgba(0, 0, 0, 0.3);
   padding: 12px 14px;
   border-radius: 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.85rem;
   color: #F0F4F8;
   line-height: 1.5;
@@ -1389,7 +1389,7 @@
 }
 
 .response-model {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.8rem;
   font-weight: 600;
   color: #F0F4F8;
@@ -1410,7 +1410,7 @@
 }
 
 .response-cost {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.75rem;
   color: #fbbf24;
 }
@@ -1664,7 +1664,7 @@
 }
 
 .tooltip-model {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 0.8rem;
   color: #8B9FCC;
   margin-bottom: 4px;
@@ -1736,7 +1736,7 @@
   align-items: center;
   gap: 4px;
   font-size: 0.8rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   margin-bottom: 6px;
 }
 
@@ -1904,7 +1904,7 @@
 }
 
 .heatmap-stats .heat-stat {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Heat Legend */
@@ -2007,7 +2007,7 @@
 }
 
 .insight-heat {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   min-width: 50px;
 }
@@ -2397,7 +2397,7 @@
 }
 
 .pattern-heat {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
   min-width: 45px;
 }
@@ -2712,7 +2712,7 @@
 .cost-stat .cost-value {
   font-size: 0.95rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   color: #F0F4F8;
 }
 
@@ -2733,7 +2733,7 @@
 
 .prompt-cost {
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   padding: 2px 8px;
   background: rgba(74, 158, 221, 0.15);
   border-radius: 4px;
@@ -2784,7 +2784,7 @@
 .cost-stats-row .value {
   font-size: 0.9rem;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   color: #F0F4F8;
 }
 
@@ -2814,7 +2814,7 @@
 
 .hotspot-tooltip .tooltip-cost {
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   padding: 2px 6px;
   background: rgba(74, 158, 221, 0.2);
   border-radius: 3px;

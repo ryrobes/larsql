@@ -84,7 +84,7 @@
   font-size: 0.7rem;
   color: #64748b;
   font-weight: 400;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
 }
 
 .header-center {
@@ -604,7 +604,7 @@
   font-weight: 600;
   margin: 0;
   color: #F0F4F8;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -809,7 +809,7 @@
   display: flex;
   gap: 0.5rem;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   line-height: 1.4;
 }
 
@@ -908,7 +908,7 @@
   background: #16202A;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.8rem;
   color: #D9A553;
 }
@@ -1346,7 +1346,7 @@
   font-weight: 600;
   margin: 0;
   color: #F0F4F8;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1634,7 +1634,7 @@
   justify-content: space-between;
   align-items: center;
   margin-top: 0.25rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.7rem;
 }
 
@@ -1662,7 +1662,7 @@
 .latest-message-text {
   font-size: 0.8rem;
   color: #9AA5B1;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1674,7 +1674,7 @@
 .latest-message-metadata {
   margin-top: 0.25rem;
   padding: 0 0.4rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   font-size: 0.7rem;
   color: #64748b;
   white-space: nowrap;
@@ -1693,7 +1693,7 @@
   display: flex;
   gap: 0.4rem;
   font-size: 0.7rem;
-  font-family: 'IBM Plex Mono', 'Monaco', 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Monaco', 'Courier New', monospace;
   line-height: 1.3;
 }
 

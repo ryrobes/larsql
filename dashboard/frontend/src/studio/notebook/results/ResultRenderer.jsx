@@ -88,19 +88,19 @@ function isAnsi(text) {
   return hasAnsi;
 }
 
-// Dark AG Grid theme
+// Dark AG Grid theme - pure black with purple undertones
 const detailGridTheme = themeQuartz.withParams({
-  backgroundColor: '#080c12',
+  backgroundColor: '#000000',
   foregroundColor: '#cbd5e1',
-  headerBackgroundColor: '#0b1219',
+  headerBackgroundColor: '#0a0510',
   headerTextColor: '#f0f4f8',
-  oddRowBackgroundColor: '#0a0e14',
-  borderColor: '#1a2028',
+  oddRowBackgroundColor: '#050410',
+  borderColor: '#1a1628',
   rowBorder: true,
   headerFontSize: 11,
-  fontFamily: "'IBM Plex Mono', monospace",
+  fontFamily: "'Google Sans Code', monospace",
   fontSize: 12,
-  accentColor: '#2dd4bf',
+  accentColor: '#00e5ff',
 });
 
 /**
@@ -257,6 +257,7 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
             readOnly: true,
             minimap: { enabled: false },
             fontSize: 13,
+            fontFamily: "'Google Sans Code', monospace",
             lineNumbers: 'off',
             renderLineHighlightOnlyWhenFocus: true,
             wordWrap: 'on',
@@ -293,11 +294,11 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
           data={JSON.parse(JSON.stringify(result.data))}
           layout={{
             ...JSON.parse(JSON.stringify(result.layout || {})),
-            paper_bgcolor: '#080c12',
-            plot_bgcolor: '#080c12',
+            paper_bgcolor: '#000000',
+            plot_bgcolor: '#000000',
             font: { color: '#cbd5e1' },
-            xaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
-            yaxis: { gridcolor: '#1a2028', zerolinecolor: '#1a2028' },
+            xaxis: { gridcolor: '#1a1628', zerolinecolor: '#1a1628' },
+            yaxis: { gridcolor: '#1a1628', zerolinecolor: '#1a1628' },
           }}
           config={{ responsive: true, displayModeBar: true }}
           style={{ width: '100%', height: '100%' }}
@@ -336,6 +337,7 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
             readOnly: true,
             minimap: { enabled: false },
             fontSize: 13,
+            fontFamily: "'Google Sans Code', monospace",
             lineNumbers: 'off',
             renderLineHighlightOnlyWhenFocus: true,
             wordWrap: 'on',
@@ -360,6 +362,7 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
             readOnly: true,
             minimap: { enabled: false },
             fontSize: 13,
+            fontFamily: "'Google Sans Code', monospace",
             lineNumbers: 'off',
             renderLineHighlightOnlyWhenFocus: true,
             wordWrap: 'on',

@@ -8,22 +8,22 @@ import './QueryResultsGrid.css';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// Create dark theme for AG Grid
+// Create dark theme for AG Grid - pure black with purple undertones
 const darkTheme = themeQuartz.withParams({
-  backgroundColor: '#0b1219',
+  backgroundColor: '#000000',
   foregroundColor: '#cbd5e1',
-  headerBackgroundColor: '#0f1821',
+  headerBackgroundColor: '#0a0510',
   headerTextColor: '#f0f4f8',
-  oddRowBackgroundColor: '#0d1419',
-  borderColor: '#1a2028',
+  oddRowBackgroundColor: '#050410',
+  borderColor: '#1a1628',
   rowBorder: true,
   wrapperBorder: false,
   headerFontSize: 12,
   headerFontWeight: 600,
-  fontFamily: "'IBM Plex Mono', 'Monaco', monospace",
+  fontFamily: "'Google Sans Code', 'Monaco', monospace",
   fontSize: 13,
-  accentColor: '#2dd4bf',
-  chromeBackgroundColor: '#080c12',
+  accentColor: '#00e5ff',
+  chromeBackgroundColor: '#000000',
 });
 
 function QueryResultsGrid() {

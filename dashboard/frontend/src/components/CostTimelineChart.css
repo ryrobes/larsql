@@ -118,7 +118,7 @@
 .stat-value {
   font-size: 1.125rem;
   font-weight: 700;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   letter-spacing: -0.02em;
 }
 
@@ -216,7 +216,7 @@
 
 .timeline-chart .recharts-text {
   fill: #5B6B7B;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
 }
 
 /* Model breakdown */
@@ -319,7 +319,7 @@
 
 .breakdown-cost {
   font-size: 0.6875rem;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   font-weight: 600;
   color: #4A9EDD;
   min-width: 38px;
@@ -328,7 +328,7 @@
 
 .breakdown-percent {
   font-size: 0.625rem;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   color: #5B6B7B;
   min-width: 24px;
   text-align: right;
@@ -345,7 +345,7 @@
 
 .filter-value {
   color: #5EEAD4;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   font-weight: 500;
 }
 
@@ -373,7 +373,7 @@
 
 .tooltip-total-v2 {
   font-size: 1.125rem;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   font-weight: 700;
   color: #4A9EDD;
   letter-spacing: -0.02em;
@@ -405,7 +405,7 @@
 
 .tooltip-model-cost {
   font-size: 0.6875rem;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   font-weight: 500;
   color: #5EEAD4;
   flex-shrink: 0;
@@ -427,7 +427,7 @@
 
 .token-value {
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
   font-weight: 600;
   color: #F0F4F8;
 }

@@ -57,7 +57,7 @@
 }
 
 .session-cost-chart .stat-value {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
 }
 
@@ -178,7 +178,7 @@
 
 .session-cost-tooltip .tooltip-row span:last-child {
   color: #F0F4F8;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .session-cost-tooltip .tooltip-row.highlight span:last-child {

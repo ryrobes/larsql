@@ -216,7 +216,7 @@
 .tooltip-cost {
   color: #5EEAD4;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .tooltip-percent {
@@ -343,7 +343,7 @@
   font-size: 0.85rem;
   font-weight: 700;
   color: #4A9EDD;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Responsive */

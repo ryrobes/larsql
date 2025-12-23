@@ -204,7 +204,7 @@
 
 .query-history-item-sql {
   font-size: 12px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   color: #94a3b8;
   line-height: 1.5;
   word-break: break-all;

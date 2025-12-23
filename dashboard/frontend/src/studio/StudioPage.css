@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #0a0a0a;
+  background-color: #050508;
   color: #cbd5e1;
   overflow: hidden;
 }
@@ -27,7 +27,7 @@
 .studio-schema-panel {
   display: flex;
   flex-direction: column;
-  background-color: #080b10;
+  background-color: #080510;
   overflow: hidden;
   height: 100%;
 }
@@ -42,8 +42,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #1a2028;
-  background-color: #0a0e14;
+  border-bottom: 1px solid #1a1628;
+  background-color: #0a0614;
   flex-shrink: 0;
 }
 
@@ -67,14 +67,14 @@
 .studio-results-panel {
   background-color: #000000;
   overflow: hidden;
-  border-top: 1px solid #1a2028;
+  border-top: 1px solid #1a1628;
 }
 
 /* History Panel (Right Sidebar) */
 .studio-history-panel {
   width: 320px;
-  background-color: #080b10;
-  border-left: 1px solid #1a2028;
+  background-color: #080510;
+  border-left: 1px solid #1a1628;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -85,32 +85,32 @@
 
 /* Horizontal gutter (between schema and main) */
 .studio-horizontal-split > .gutter {
-  background-color: #1a2028;
+  background-color: #1a1628;
   cursor: col-resize;
   transition: background-color 0.15s ease;
 }
 
 .studio-horizontal-split > .gutter:hover {
-  background-color: #2dd4bf;
+  background-color: #00e5ff;
 }
 
 .studio-horizontal-split > .gutter:active {
-  background-color: #2dd4bf;
+  background-color: #00e5ff;
 }
 
 /* Vertical gutter (between editor and results) */
 .studio-vertical-split > .gutter {
-  background-color: #1a2028;
+  background-color: #1a1628;
   cursor: row-resize;
   transition: background-color 0.15s ease;
 }
 
 .studio-vertical-split > .gutter:hover {
-  background-color: #2dd4bf;
+  background-color: #00e5ff;
 }
 
 .studio-vertical-split > .gutter:active {
-  background-color: #2dd4bf;
+  background-color: #00e5ff;
 }
 
 /* Gutter visual indicator */
@@ -191,8 +191,8 @@
 .sql-mode-toggle {
   display: flex;
   align-items: center;
-  background-color: #080b10;
-  border: 1px solid #1a2028;
+  background-color: #080510;
+  border: 1px solid #1a1628;
   border-radius: 6px;
   padding: 2px;
   gap: 2px;
@@ -215,8 +215,8 @@
 }
 
 .sql-mode-btn.active {
-  background-color: #2dd4bf;
-  color: #0a0a0a;
+  background-color: #00e5ff;
+  color: #050508;
 }
 
 /* ============================================
@@ -228,7 +228,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background-color: #0a0a0a;
+  background-color: #050508;
 }
 
 /* Timeline Mode - Full-height with vertical sidebar */
@@ -256,13 +256,13 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background-color: #0a0e14;
+  background-color: #0a0614;
   border: 2px solid #a78bfa;
   border-radius: 6px;
   color: #a78bfa;
   font-size: 12px;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   box-shadow: 0 8px 24px rgba(167, 139, 250, 0.4);
 }
 
@@ -271,23 +271,23 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background-color: #0a0e14;
-  border: 2px solid #2dd4bf;
+  background-color: #0a0614;
+  border: 2px solid #00e5ff;
   border-radius: 6px;
-  color: #2dd4bf;
+  color: #00e5ff;
   font-size: 12px;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
-  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+  font-family: 'Google Sans Code', monospace;
+  box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
 }
 
 .studio-drag-phase {
   padding: 10px 16px;
-  background-color: #0a0e14;
-  border: 2px solid #2dd4bf;
+  background-color: #0a0614;
+  border: 2px solid #00e5ff;
   border-radius: 8px;
-  color: #2dd4bf;
+  color: #00e5ff;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
 }

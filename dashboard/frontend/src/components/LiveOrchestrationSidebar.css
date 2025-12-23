@@ -54,7 +54,7 @@
 .live-timestamp {
   margin-left: auto;
   font-size: 0.75rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   color: #9ca3af;
 }
 
@@ -179,7 +179,7 @@
   font-size: 0.75rem;
   font-weight: 600;
   color: #10b981;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* END Cascade Button - Subtle stop button */
@@ -319,7 +319,7 @@
   font-size: 1rem;
   font-weight: 700;
   color: #a78bfa;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .round-events-badge .event-label {
@@ -340,7 +340,7 @@
   font-size: 2rem;
   font-weight: 700;
   color: #10b981;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
   margin: 8px 0;
   transition: all 0.3s;
 }
@@ -394,7 +394,7 @@
 .cost-value {
   color: #10b981;
   font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 /* Session Overview - Compact Grid */
@@ -441,13 +441,13 @@
 
 .overview-value.phase-value {
   color: #a78bfa;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .overview-value.turn-value {
   color: #fbbf24;
   font-size: 1.5rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .overview-value.turn-value.zero {
@@ -458,7 +458,7 @@
 .overview-value.messages-value {
   color: #60a5fa;
   font-size: 1.5rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .overview-value.messages-value.zero {
@@ -469,7 +469,7 @@
 .overview-value.duration-value {
   color: #34d399;
   font-size: 1.25rem;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .overview-value.duration-value.zero {
@@ -481,7 +481,7 @@
 }
 
 .overview-value.mono {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .model-badge-compact {
@@ -556,7 +556,7 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: #e5e7eb;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .phase-timeline-model {
@@ -607,7 +607,7 @@
   font-size: 0.875rem;
   font-weight: 700;
   color: #8b5cf6;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .token-stat.total .token-value {
@@ -730,7 +730,7 @@
   font-size: 0.65rem;
   color: #6b7280;
   white-space: nowrap;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .session-description {
@@ -753,7 +753,7 @@
   gap: 4px;
   font-size: 0.7rem;
   color: #9ca3af;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Google Sans Code', monospace;
 }
 
 .session-tags {
