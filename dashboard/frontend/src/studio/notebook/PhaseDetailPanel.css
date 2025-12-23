@@ -1166,7 +1166,8 @@
 }
 
 /* Drop active state for Monaco */
-.phase-detail-code-section.drop-active {
+.phase-detail-code-section.drop-active,
+.phase-detail-yaml-section.drop-active {
   box-shadow: inset 0 0 0 2px rgba(167, 139, 250, 0.4);
   background-color: rgba(167, 139, 250, 0.05);
 }

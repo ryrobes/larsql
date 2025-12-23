@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import yaml from 'js-yaml';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
@@ -616,6 +616,12 @@ function CascadeNavigator() {
   const lastSyncedYamlRef = useRef('');
   const editorRef = useRef(null);
 
+  // Make YAML editor droppable
+  const { setNodeRef: setYamlDropRef, isOver: isYamlOver } = useDroppable({
+    id: 'cascade-yaml-editor-drop',
+    data: { type: 'monaco-editor' },
+  });
+
   // Clear validation error when inputs change
   useEffect(() => {
     if (inputValidationError) {
@@ -860,7 +866,10 @@ function CascadeNavigator() {
           )}
 
           {/* Monaco Editor */}
-          <div className="nav-yaml-editor-container">
+          <div
+            ref={setYamlDropRef}
+            className={`nav-yaml-editor-container ${isYamlOver ? 'drop-active' : ''}`}
+          >
             <MonacoYamlEditor
               value={yamlContent}
               onChange={handleYamlChange}
@@ -895,13 +904,11 @@ function CascadeNavigator() {
           {/* Recent Runs */}
           <RecentRunsSection />
 
-          {/* Session State (Live) */}
-          <div className="nav-section">
-            <SessionStatePanel
-              sessionId={sessionId || 'unknown'}
-              isRunning={isRunningAll || false}
-            />
-          </div>
+          {/* Session State (Live) - renders nav-section internally */}
+          <SessionStatePanel
+            sessionId={sessionId || 'unknown'}
+            isRunning={isRunningAll || false}
+          />
 
           {/* Phases Section */}
           <div className="nav-section nav-phases-section">

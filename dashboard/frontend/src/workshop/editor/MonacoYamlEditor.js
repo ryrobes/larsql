@@ -27,6 +27,7 @@ function MonacoYamlEditor({
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    window.__activeMonacoEditor = editor; // Enable drag-and-drop
 
     // Configure YAML-specific settings
     editor.updateOptions({
@@ -37,6 +38,7 @@ function MonacoYamlEditor({
 
     // Add focus handler
     editor.onDidFocusEditorText(() => {
+      window.__activeMonacoEditor = editor; // Update on focus
       if (onFocus) {
         onFocus();
       }
@@ -67,7 +69,7 @@ function MonacoYamlEditor({
   const editorOptions = {
     minimap: { enabled: true, scale: 0.8 },
     fontSize: 13,
-    fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    fontFamily: "'IBM Plex Mono', monospace",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

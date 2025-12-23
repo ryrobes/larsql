@@ -266,6 +266,21 @@
   box-shadow: 0 8px 24px rgba(167, 139, 250, 0.4);
 }
 
+.studio-drag-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #0f1821;
+  border: 2px solid #2dd4bf;
+  border-radius: 6px;
+  color: #2dd4bf;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  box-shadow: 0 8px 24px rgba(45, 212, 191, 0.4);
+}
+
 .studio-drag-phase {
   padding: 10px 16px;
   background-color: #0f1821;

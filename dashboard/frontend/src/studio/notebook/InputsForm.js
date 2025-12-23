@@ -20,7 +20,9 @@ const InputsForm = ({ schema }) => {
   return (
     <div className="inputs-form">
       <div className="inputs-form-header">
-        <span className="inputs-form-title">Parameters</span>
+        <div className="inputs-form-title-group">
+          <span className="inputs-form-title">PARAMETERS</span>
+        </div>
         <button
           className="inputs-form-clear"
           onClick={clearCascadeInputs}

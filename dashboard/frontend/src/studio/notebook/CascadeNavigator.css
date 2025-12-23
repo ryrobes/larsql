@@ -1206,3 +1206,9 @@
     transform: rotate(360deg);
   }
 }
+
+/* Drop active state for YAML editor */
+.nav-yaml-editor-container.drop-active {
+  box-shadow: inset 0 0 0 2px rgba(167, 139, 250, 0.4);
+  background-color: rgba(167, 139, 250, 0.05);
+}

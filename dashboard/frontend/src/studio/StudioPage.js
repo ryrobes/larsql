@@ -130,6 +130,37 @@ function StudioPage({
         editor.focus();
       }
     }
+
+    // Handle model drops into Monaco editor (no Jinja brackets)
+    if (dragType === 'model' && over?.data?.current?.type === 'monaco-editor') {
+      const modelId = active.data.current.modelId;
+      const editor = window.__activeMonacoEditor;
+
+      if (editor && modelId) {
+        // Insert at cursor position (plain string, no quotes)
+        const position = editor.getPosition();
+
+        editor.executeEdits('insert-model', [
+          {
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            },
+            text: modelId,
+          },
+        ]);
+
+        // Move cursor after inserted text
+        editor.setPosition({
+          lineNumber: position.lineNumber,
+          column: position.column + modelId.length,
+        });
+
+        editor.focus();
+      }
+    }
   };
 
   // Fetch connections on mount
@@ -364,6 +395,12 @@ function StudioPage({
                   <div className="studio-drag-variable">
                     <Icon icon="mdi:code-braces" width="14" />
                     {`{{ ${activeDragItem.variablePath} }}`}
+                  </div>
+                )}
+                {activeDragItem.type === 'model' && (
+                  <div className="studio-drag-model">
+                    <Icon icon="mdi:robot-outline" width="14" />
+                    {activeDragItem.modelId}
                   </div>
                 )}
                 {activeDragItem.type === 'phase-type' && (

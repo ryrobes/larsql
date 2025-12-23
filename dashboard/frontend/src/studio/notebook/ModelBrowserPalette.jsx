@@ -109,7 +109,7 @@ function ModelPill({ model }) {
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `model-${model.id}`,
-    data: { type: 'variable', variablePath: model.id },
+    data: { type: 'model', modelId: model.id },
   });
 
   return (

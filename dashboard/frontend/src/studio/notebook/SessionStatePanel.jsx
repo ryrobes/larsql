@@ -19,6 +19,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedKeys, setExpandedKeys] = useState(new Set());
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // Fetch state from API
   const fetchState = async () => {
@@ -117,52 +118,47 @@ function SessionStatePanel({ sessionId, isRunning }) {
     return date.toLocaleTimeString();
   };
 
-  if (loading && !stateData) {
-    return (
-      <div className="session-state-panel">
-        <div className="state-header">
-          <Icon icon="mdi:database-outline" width="16" />
-          <span>Session State</span>
-        </div>
-        <div className="state-loading">Loading...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="session-state-panel">
-        <div className="state-header">
-          <Icon icon="mdi:database-outline" width="16" />
-          <span>Session State</span>
-        </div>
-        <div className="state-error">{error}</div>
-      </div>
-    );
-  }
-
+  // Don't render at all if no state (save space)
   if (!stateData || !stateData.state_by_key || Object.keys(stateData.state_by_key).length === 0) {
-    return (
-      <div className="session-state-panel">
-        <div className="state-header">
-          <Icon icon="mdi:database-outline" width="16" />
-          <span>Session State</span>
-        </div>
-        <div className="state-empty">No state set yet</div>
-      </div>
-    );
+    if (!loading && !error) {
+      return null; // Hide section completely when no state
+    }
   }
+
+  const stateCount = stateData?.state_by_key ? Object.keys(stateData.state_by_key).length : 0;
 
   return (
-    <div className="session-state-panel">
-      <div className="state-header">
-        <Icon icon="mdi:database-outline" width="16" />
-        <span>Session State</span>
-        <span className="state-count">{Object.keys(stateData.state_by_key).length} keys</span>
+    <div className="nav-section">
+      {/* Section Header (consistent with other sections) */}
+      <div
+        className="nav-section-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          className="nav-chevron"
+        />
+        <Icon icon="mdi:database-outline" className="nav-section-icon" />
+        <span className="nav-section-title">Session State</span>
+        {stateCount > 0 && (
+          <span className="nav-section-count">{stateCount}</span>
+        )}
         {isRunning && <span className="state-live-indicator" title="Updating live">●</span>}
       </div>
 
-      <div className="state-list">
+      {/* Section Content */}
+      {isExpanded && (
+        <div className="nav-section-content">
+          {loading && !stateData && (
+            <div className="state-loading">Loading...</div>
+          )}
+
+          {error && (
+            <div className="state-error">{error}</div>
+          )}
+
+          {stateData && stateData.state_by_key && Object.keys(stateData.state_by_key).length > 0 && (
+            <div className="state-list">
         {Object.entries(stateData.state_by_key).map(([key, entries]) => {
           const latest = entries[0]; // Already sorted by created_at DESC
           const isExpanded = expandedKeys.has(key);
@@ -239,7 +235,10 @@ function SessionStatePanel({ sessionId, isRunning }) {
             </div>
           );
         })}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

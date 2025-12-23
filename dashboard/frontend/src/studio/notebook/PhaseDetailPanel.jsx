@@ -53,6 +53,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   const lastSyncedYamlRef = useRef('');
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
+  const yamlEditorEverFocusedRef = useRef(false);
 
   // Apply desired output tab when it changes (from Media section navigation)
   React.useEffect(() => {
@@ -62,9 +63,15 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [desiredOutputTab, setDesiredOutputTab]);
 
-  // Make editor droppable
+  // Make code editor droppable
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `editor-drop-${phase.name}`,
+    data: { type: 'monaco-editor' },
+  });
+
+  // Make YAML editor droppable
+  const { setNodeRef: setYamlDropRef, isOver: isYamlOver } = useDroppable({
+    id: `yaml-editor-drop-${phase.name}`,
     data: { type: 'monaco-editor' },
   });
 
@@ -539,6 +546,16 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
 
     try {
       const parsed = yaml.load(editorValue);
+
+      // Validate that parsed has required fields
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid phase structure: must be an object');
+      }
+
+      if (!parsed.name) {
+        throw new Error('Invalid phase: missing required field "name"');
+      }
+
       // Update entire phase object
       updateCell(index, parsed);
       lastSyncedYamlRef.current = editorValue;
@@ -548,7 +565,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     } catch (e) {
       // Invalid YAML - keep error visible but still unfocus
       setYamlParseError(e.message);
-      console.debug('YAML parse error on blur:', e.message);
+      console.debug('YAML parse/validation error on blur:', e.message);
       setYamlEditorFocused(false);
     }
   }, [index, updateCell]);
@@ -811,15 +828,20 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           onMount={(editor) => {
                             yamlEditorRef.current = editor;
                             // Add focus/blur handlers
-                            editor.onDidFocusEditorText(() => setYamlEditorFocused(true));
+                            editor.onDidFocusEditorText(() => {
+                              yamlEditorEverFocusedRef.current = true;
+                              setYamlEditorFocused(true);
+                            });
                             editor.onDidBlurEditorText(() => {
+                              // Only process blur if editor was actually focused by user
+                              if (!yamlEditorEverFocusedRef.current) return;
                               const currentValue = editor.getValue();
                               handleYamlBlur(currentValue);
                             });
                           }}
                           options={{
                             minimap: { enabled: false },
-                            fontSize: 12,
+                            fontSize: 13,
                             fontFamily: "'IBM Plex Mono', monospace",
                             lineNumbers: 'on',
                             renderLineHighlightOnlyWhenFocus: true,
@@ -883,7 +905,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         }}
                       />
                     </div>
-                    <div className="phase-detail-yaml-section">
+                    <div
+                      ref={setYamlDropRef}
+                      className={`phase-detail-yaml-section ${isYamlOver ? 'drop-active' : ''}`}
+                    >
                       <div className="phase-detail-yaml-header">
                         <Icon icon="mdi:file-code-outline" width="14" />
                         <span>Full Phase YAML</span>
@@ -905,16 +930,23 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         beforeMount={handleMonacoBeforeMount}
                         onMount={(editor) => {
                           yamlEditorRef.current = editor;
+                          window.__activeMonacoEditor = editor; // Enable drag-and-drop
                           // Add focus/blur handlers
-                          editor.onDidFocusEditorText(() => setYamlEditorFocused(true));
+                          editor.onDidFocusEditorText(() => {
+                            yamlEditorEverFocusedRef.current = true;
+                            setYamlEditorFocused(true);
+                            window.__activeMonacoEditor = editor; // Update on focus
+                          });
                           editor.onDidBlurEditorText(() => {
+                            // Only process blur if editor was actually focused by user
+                            if (!yamlEditorEverFocusedRef.current) return;
                             const currentValue = editor.getValue();
                             handleYamlBlur(currentValue);
                           });
                         }}
                         options={{
                           minimap: { enabled: false },
-                          fontSize: 12,
+                          fontSize: 13,
                           fontFamily: "'IBM Plex Mono', monospace",
                           lineNumbers: 'on',
                           renderLineHighlightOnlyWhenFocus: true,
