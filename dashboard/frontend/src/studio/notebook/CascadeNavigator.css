@@ -878,3 +878,331 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ============================================
+   YAML EDITOR TOGGLE
+   ============================================ */
+
+/* YAML Editor Toggle Button */
+.nav-yaml-toggle-btn {
+  padding: 6px 8px;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 4px;
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.nav-yaml-toggle-btn:hover {
+  background: rgba(167, 139, 250, 0.25);
+  border-color: rgba(167, 139, 250, 0.5);
+  transform: translateY(-1px);
+}
+
+.nav-yaml-toggle-btn:active {
+  transform: translateY(0);
+}
+
+/* YAML View Container */
+.nav-yaml-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 50px); /* viewport - vertical sidebar - header */
+  overflow: hidden;
+}
+
+.nav-yaml-editor-container {
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid #1a2028;
+}
+
+/* Warning Banners */
+.nav-yaml-warning {
+  padding: 8px 12px;
+  background: rgba(251, 191, 36, 0.1);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-yaml-warning.replay-warning {
+  background: rgba(96, 165, 250, 0.1);
+  border-bottom-color: rgba(96, 165, 250, 0.3);
+  color: #60a5fa;
+}
+
+.nav-yaml-error {
+  padding: 8px 12px;
+  background: rgba(248, 113, 113, 0.1);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Normal View Container (preserves layout) */
+.nav-normal-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ============================================
+   MODEL BROWSER PALETTE
+   ============================================ */
+
+.model-browser-section {
+  border-bottom: 1px solid #1a2028;
+}
+
+.model-browser-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+/* Search Bar */
+.model-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 0 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.model-search-bar:focus-within {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+.model-search-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.model-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.model-search-input::placeholder {
+  color: #64748b;
+}
+
+.model-search-clear {
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.model-search-clear:hover {
+  color: #94a3b8;
+}
+
+/* Category Filters */
+.model-category-filters {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  flex-wrap: wrap;
+}
+
+.model-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 3px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.model-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+}
+
+.model-filter-btn.active {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #2dd4bf;
+}
+
+/* Model Groups */
+.model-groups-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+.model-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 4px;
+}
+
+.model-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  user-select: none;
+}
+
+.model-group-header:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.model-group-chevron {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.model-group-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.model-group-title {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex: 1;
+}
+
+.model-group-count {
+  font-size: 9px;
+  color: #64748b;
+  background-color: #1a2028;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.model-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 6px 24px;
+}
+
+/* Model Pills */
+.model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background-color: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.08);
+  border-radius: 3px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  user-select: none;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.model-pill:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+.model-pill.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.model-pill-provider {
+  color: #64748b;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.model-pill-sep {
+  color: #64748b;
+  opacity: 0.5;
+}
+
+.model-pill-name {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.model-pill-context {
+  font-size: 9px;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.15);
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: 2px;
+}
+
+/* Loading/Error States */
+.model-browser-loading,
+.model-browser-error,
+.model-browser-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: #64748b;
+  font-size: 11px;
+  justify-content: center;
+}
+
+.model-browser-error {
+  color: #f87171;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

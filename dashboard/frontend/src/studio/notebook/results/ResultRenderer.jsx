@@ -5,6 +5,7 @@ import { themeQuartz } from 'ag-grid-community';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js/dist/plotly';
 import RichMarkdown from '../../../components/RichMarkdown';
+import AnsiRenderer from '../../../components/AnsiRenderer';
 
 // Create Plot component
 const Plot = createPlotlyComponent(Plotly);
@@ -50,6 +51,41 @@ function isMarkdown(text) {
 
   // If 2+ markdown patterns detected, treat as markdown
   return matches >= 2;
+}
+
+/**
+ * Detect if string content contains ANSI escape codes
+ *
+ * Checks for ANSI escape sequences like:
+ * - Color codes: \x1b[31m (red), \x1b[0m (reset)
+ * - Cursor movement: \x1b[2J, \x1b[H
+ * - Text formatting: \x1b[1m (bold), \x1b[4m (underline)
+ */
+function isAnsi(text) {
+  if (!text || typeof text !== 'string') return false;
+
+  // ANSI escape sequence patterns
+  // Check both actual escape characters AND escaped string representations
+  const ansiPatterns = [
+    /\x1b\[[0-9;]*m/,                // Color/format codes: \x1b[31m (actual escape)
+    /\u001b\[[0-9;]*m/,              // Unicode variant: \u001b[31m (actual escape)
+    /\x1b\[[0-9;]*[A-HJKSTfmsu]/,   // Cursor/erase codes (actual escape)
+    /\\x1b\[[0-9;]*m/,               // Escaped string: "\\x1b[31m"
+    /\\u001b\[[0-9;]*m/,             // Escaped unicode: "\\u001b[31m"
+    /\\033\[[0-9;]*m/,               // Escaped octal: "\\033[31m"
+  ];
+
+  // Check if any ANSI pattern exists
+  const hasAnsi = ansiPatterns.some(pattern => pattern.test(text));
+
+  // Debug logging
+  if (hasAnsi) {
+    console.log('[isAnsi] Detected ANSI in text (first 100 chars):', text.substring(0, 100));
+    console.log('[isAnsi] Has actual \\x1b?', text.includes('\x1b'));
+    console.log('[isAnsi] Has escaped \\\\x1b?', text.includes('\\x1b'));
+  }
+
+  return hasAnsi;
 }
 
 // Dark AG Grid theme
@@ -184,7 +220,20 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
 
   // String result (LLM output from standard execution)
   if (typeof result === 'string') {
-    // Detect if content is markdown and render accordingly
+    // Check for ANSI FIRST (before markdown)
+    // This is important because ANSI output might contain # or * characters
+    // that could trigger markdown detection
+    const isAnsiContent = isAnsi(result);
+
+    if (isAnsiContent) {
+      return (
+        <div className="phase-detail-ansi">
+          <AnsiRenderer>{result}</AnsiRenderer>
+        </div>
+      );
+    }
+
+    // Then check for markdown
     const isMarkdownContent = isMarkdown(result);
 
     if (isMarkdownContent) {
@@ -195,7 +244,7 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
       );
     }
 
-    // Plain text - show in editor
+    // Fallback: Plain text - show in editor
     return (
       <div className="phase-detail-text">
         <Editor

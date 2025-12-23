@@ -1594,3 +1594,95 @@ def get_session_cascade(session_id):
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+
+# ============================================================================
+# MODEL BROWSER API
+# ============================================================================
+
+# In-memory cache for models (TTL: 3 hours)
+_models_cache = {
+    'data': None,
+    'timestamp': None,
+    'ttl_seconds': 10800  # 3 hours
+}
+
+
+@studio_bp.route('/models', methods=['GET'])
+def get_models():
+    """
+    Fetch available LLM models from OpenRouter API.
+
+    Returns cached data if available and fresh (< 3 hours old).
+
+    Response:
+        {
+            "models": [
+                {
+                    "id": "anthropic/claude-opus-4.5",
+                    "name": "Claude Opus 4.5",
+                    "context_length": 200000,
+                    "pricing": {...},
+                    "architecture": {...},
+                    "top_provider": {...}
+                },
+                ...
+            ],
+            "cached": true,
+            "cache_age_seconds": 1234
+        }
+    """
+    import time
+    import httpx
+
+    now = time.time()
+
+    # Check if cache is valid
+    if _models_cache['data'] and _models_cache['timestamp']:
+        age = now - _models_cache['timestamp']
+        if age < _models_cache['ttl_seconds']:
+            return jsonify({
+                'models': _models_cache['data'],
+                'cached': True,
+                'cache_age_seconds': int(age)
+            })
+
+    # Fetch fresh data from OpenRouter
+    try:
+        cfg = get_config()
+        base_url = cfg.provider_base_url or "https://openrouter.ai/api/v1"
+        api_key = cfg.provider_api_key
+
+        if not api_key:
+            return jsonify({'error': 'No OpenRouter API key configured'}), 500
+
+        url = f"{base_url.rstrip('/')}/models"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # Make synchronous request
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        models = data.get("data", [])
+
+        # Update cache
+        _models_cache['data'] = models
+        _models_cache['timestamp'] = now
+
+        return jsonify({
+            'models': models,
+            'cached': False,
+            'cache_age_seconds': 0
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

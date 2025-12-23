@@ -92,6 +92,9 @@ const useStudioCascadeStore = create(
       viewMode: 'live',  // 'live' | 'replay' - viewing live execution vs past run
       replaySessionId: null,  // Session ID when in replay mode
 
+      // YAML View Mode (for cascade-level YAML editing)
+      yamlViewMode: false,  // false = normal navigator view, true = YAML editor view
+
       // ============================================
       // AUTO-FIX CONFIGURATION
       // ============================================
@@ -438,13 +441,17 @@ const useStudioCascadeStore = create(
           throw new Error('No path specified for saving');
         }
 
+        if (!state.cascade) {
+          throw new Error('No cascade to save');
+        }
+
         try {
           const res = await fetch(`${API_BASE_URL}/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               path: savePath,
-              cascade: state.cascade
+              notebook: state.cascade  // Backend expects 'notebook' not 'cascade'
             })
           });
 
@@ -1115,6 +1122,70 @@ output_schema:
             state.cascadesError = err.message;
             state.cascadesLoading = false;
           });
+        }
+      },
+
+      // ============================================
+      // YAML VIEW MODE ACTIONS
+      // ============================================
+      setYamlViewMode: (enabled) => {
+        set(state => {
+          state.yamlViewMode = enabled;
+        });
+      },
+
+      updateCascadeFromYaml: (yamlString) => {
+        try {
+          // Parse YAML
+          const yaml = require('js-yaml');
+          const parsed = yaml.load(yamlString);
+
+          // Validate required fields
+          if (!parsed.cascade_id || !Array.isArray(parsed.phases)) {
+            throw new Error('Invalid cascade: missing cascade_id or phases array');
+          }
+
+          // Validate phases have required fields
+          for (const phase of parsed.phases) {
+            if (!phase.name) {
+              throw new Error(`Phase missing required field: name`);
+            }
+          }
+
+          set(state => {
+            // Update cascade object
+            state.cascade = {
+              cascade_id: parsed.cascade_id,
+              description: parsed.description || '',
+              inputs_schema: parsed.inputs_schema || {},
+              phases: parsed.phases
+            };
+
+            // Mark as dirty (unsaved changes)
+            state.cascadeDirty = true;
+
+            // Invalidate cell states (cascade structure changed)
+            // Keep existing results but mark as stale
+            Object.keys(state.cellStates).forEach(phaseName => {
+              if (!parsed.phases.find(p => p.name === phaseName)) {
+                // Phase was removed
+                delete state.cellStates[phaseName];
+              } else {
+                // Phase still exists but may have changed - mark stale
+                if (state.cellStates[phaseName]) {
+                  state.cellStates[phaseName].status = 'stale';
+                }
+              }
+            });
+
+            // Clear undo/redo (major structural change)
+            state.undoStack = [];
+            state.redoStack = [];
+          });
+
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: error.message };
         }
       }
     })),

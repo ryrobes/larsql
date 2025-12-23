@@ -15,6 +15,8 @@ import './MonacoYamlEditor.css';
 function MonacoYamlEditor({
   value,
   onChange,
+  onFocus,
+  onBlur,
   onValidationError,
   readOnly = false
 }) {
@@ -33,13 +35,28 @@ function MonacoYamlEditor({
       detectIndentation: false,
     });
 
+    // Add focus handler
+    editor.onDidFocusEditorText(() => {
+      if (onFocus) {
+        onFocus();
+      }
+    });
+
+    // Add blur handler
+    editor.onDidBlurEditorText(() => {
+      if (onBlur) {
+        const content = editor.getValue();
+        onBlur(content);
+      }
+    });
+
     // Add custom keybindings
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       // Trigger save - handled by parent
       const content = editor.getValue();
       onChange?.(content);
     });
-  }, [onChange]);
+  }, [onChange, onFocus, onBlur]);
 
   // Handle content changes with validation
   const handleEditorChange = useCallback((newValue) => {
@@ -118,8 +135,8 @@ function MonacoYamlEditor({
         </div>
         <div className="header-hints">
           <span className="hint">
-            <Icon icon="mdi:keyboard" width="12" />
-            Ctrl+S to save
+            <Icon icon="mdi:content-save-outline" width="12" />
+            Auto-saves on blur
           </span>
           <span className="hint">
             <Icon icon="mdi:format-indent-increase" width="12" />

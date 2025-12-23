@@ -1,0 +1,41 @@
+cascade_id: studio_new_30ff8d
+description: New cascade
+inputs_schema: {}
+phases:
+- name: browser_1
+  tool: linux_shell_dangerous
+  inputs:
+    command: "npx rabbitize \\\n  --client-id \"studio_new_30ff8d\" \\\n  --test-id\
+      \ \"browser_1.studio\" \\\n  --exit-on-end true \\\n  --process-video false\
+      \ \\\n  --batch-url \"https://oxen.ai\" \\\n  --batch-commands='[[\":move-mouse\"\
+      ,\":to\",491,35],[\":click\"],[\":move-mouse\",\":to\",1111,514],[\":click\"\
+      ],[\":move-mouse\",\":to\",132,34],[\":click\"]]'  "
+  timeout: 5m
+  handoffs:
+  - phase_2
+- name: phase_2
+  instructions: 'You are a helpful assistant analyzing data.
+
+
+    {{ outputs.browser_1.dom_snapshots[0] }}
+
+
+    Provide your analysis below:
+
+    '
+  model: anthropic/claude-sonnet-4
+  tackle: []
+  handoffs:
+  - phase_3
+- name: phase_3
+  instructions: 'You are a helpful assistant analyzing images - what is this?
+
+
+    {{ outputs.browser_1.images[0] }}
+
+
+    Provide your analysis below:
+
+    '
+  model: anthropic/claude-sonnet-4
+  tackle: []

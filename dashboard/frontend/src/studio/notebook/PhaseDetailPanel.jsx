@@ -47,6 +47,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
   const [showYamlEditor, setShowYamlEditor] = useState(false);
+  const [yamlEditorFocused, setYamlEditorFocused] = useState(false);
+  const [localYaml, setLocalYaml] = useState('');
+  const [yamlParseError, setYamlParseError] = useState(null);
+  const lastSyncedYamlRef = useRef('');
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
 
@@ -492,23 +496,60 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [phase.name, messagesBySounding]);
 
-  // Serialize phase to YAML for YAML editor
-  const phaseYaml = useMemo(() => {
+  // Sync phase → localYaml when phase changes externally (not when focused)
+  React.useEffect(() => {
+    if (yamlEditorFocused) return;
+
     try {
-      return yaml.dump(phase, { indent: 2, lineWidth: -1 });
+      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1 });
+      // Only update if different from last synced (prevents overwriting user edits)
+      if (yamlStr !== lastSyncedYamlRef.current) {
+        setLocalYaml(yamlStr);
+        lastSyncedYamlRef.current = yamlStr;
+      }
     } catch (e) {
-      return `# Error serializing phase:\n# ${e.message}`;
+      console.error('Error serializing phase:', e);
     }
-  }, [phase]);
+  }, [phase, yamlEditorFocused]);
+
+  // Use localYaml as the editor value
+  const phaseYaml = localYaml || yaml.dump(phase, { indent: 2, lineWidth: -1 });
 
   const handleYamlChange = useCallback((value) => {
+    // Only update local YAML for display, don't sync to store until blur
+    setLocalYaml(value);
+
+    // Try to validate for immediate error feedback
     try {
-      const parsed = yaml.load(value);
+      yaml.load(value);
+      setYamlParseError(null);
+    } catch (e) {
+      setYamlParseError(e.message);
+    }
+  }, []);
+
+  const handleYamlBlur = useCallback((editorValue) => {
+    console.log('[PhaseDetailPanel] YAML editor blurred, syncing to store');
+
+    // Prevent sync loop
+    if (editorValue === lastSyncedYamlRef.current) {
+      setYamlEditorFocused(false);
+      return;
+    }
+
+    try {
+      const parsed = yaml.load(editorValue);
       // Update entire phase object
       updateCell(index, parsed);
+      lastSyncedYamlRef.current = editorValue;
+      setYamlParseError(null);
+      // Only set unfocused after successful update
+      setYamlEditorFocused(false);
     } catch (e) {
-      // Invalid YAML - don't update (user is still typing)
-      console.debug('YAML parse error:', e.message);
+      // Invalid YAML - keep error visible but still unfocus
+      setYamlParseError(e.message);
+      console.debug('YAML parse error on blur:', e.message);
+      setYamlEditorFocused(false);
     }
   }, [index, updateCell]);
 
@@ -751,6 +792,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         <div className="phase-detail-yaml-header">
                           <Icon icon="mdi:file-code-outline" width="14" />
                           <span>Full Phase YAML</span>
+                          {yamlParseError && (
+                            <span className="phase-yaml-error" title={yamlParseError}>
+                              <Icon icon="mdi:alert-circle" width="12" />
+                              Parse Error
+                            </span>
+                          )}
+                          <span className="phase-yaml-hint">Auto-saves on blur</span>
                         </div>
                         <Editor
                           key={`yaml-${phase.name}`}
@@ -760,7 +808,15 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           onChange={handleYamlChange}
                           theme="detail-dark"
                           beforeMount={handleMonacoBeforeMount}
-                          onMount={(editor) => { yamlEditorRef.current = editor; }}
+                          onMount={(editor) => {
+                            yamlEditorRef.current = editor;
+                            // Add focus/blur handlers
+                            editor.onDidFocusEditorText(() => setYamlEditorFocused(true));
+                            editor.onDidBlurEditorText(() => {
+                              const currentValue = editor.getValue();
+                              handleYamlBlur(currentValue);
+                            });
+                          }}
                           options={{
                             minimap: { enabled: false },
                             fontSize: 12,
@@ -831,6 +887,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       <div className="phase-detail-yaml-header">
                         <Icon icon="mdi:file-code-outline" width="14" />
                         <span>Full Phase YAML</span>
+                        {yamlParseError && (
+                          <span className="phase-yaml-error" title={yamlParseError}>
+                            <Icon icon="mdi:alert-circle" width="12" />
+                            Parse Error
+                          </span>
+                        )}
+                        <span className="phase-yaml-hint">Auto-saves on blur</span>
                       </div>
                       <Editor
                         key={`yaml-${phase.name}`}
@@ -840,7 +903,15 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         onChange={handleYamlChange}
                         theme="detail-dark"
                         beforeMount={handleMonacoBeforeMount}
-                        onMount={(editor) => { yamlEditorRef.current = editor; }}
+                        onMount={(editor) => {
+                          yamlEditorRef.current = editor;
+                          // Add focus/blur handlers
+                          editor.onDidFocusEditorText(() => setYamlEditorFocused(true));
+                          editor.onDidBlurEditorText(() => {
+                            const currentValue = editor.getValue();
+                            handleYamlBlur(currentValue);
+                          });
+                        }}
                         options={{
                           minimap: { enabled: false },
                           fontSize: 12,

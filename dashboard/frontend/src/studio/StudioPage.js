@@ -233,11 +233,20 @@ function StudioPage({
         return;
       }
 
-      // Priority 3: No URL parameters - create a new blank cascade with generated ID
-      console.log('[StudioPage] No URL parameters - creating new blank cascade');
+      // Priority 3: No URL parameters - check if store already has a cascade
+      console.log('[StudioPage] No URL parameters');
       const currentState = useStudioCascadeStore.getState();
 
-      // Generate ID for the new blank cascade
+      // Don't auto-create if cascade already exists in store
+      if (currentState.cascade && currentState.cascade.cascade_id) {
+        console.log('[StudioPage] Store already has cascade, keeping it:', currentState.cascade.cascade_id);
+        lastLoadedRef.current = { cascade: currentState.cascade.cascade_id, session: null };
+        setMode('timeline');
+        return;
+      }
+
+      // Otherwise, create a new blank cascade with generated ID
+      console.log('[StudioPage] Creating new blank cascade');
       const { autoGenerateSessionId } = await import('../utils/sessionNaming');
       const newCascadeId = `studio_new_${autoGenerateSessionId().split('-').pop()}`; // e.g. studio_new_abc123
 
@@ -261,9 +270,6 @@ function StudioPage({
         cellStates: {},
       });
 
-      // Update URL to reflect the new cascade (no session ID yet)
-      window.location.hash = `#/studio/${newCascadeId}`;
-
       setMode('timeline');
       lastLoadedRef.current = { cascade: newCascadeId, session: null };
     };
@@ -271,28 +277,37 @@ function StudioPage({
     loadFromUrl();
   }, [initialCascade, initialSession]); // Only react to URL changes, not function references
 
-  // Update URL hash when cascade or session changes (timeline mode only)
-  useEffect(() => {
-    if (mode !== 'timeline' || !cascade) return;
-
-    const cascadeId = cascade.cascade_id;
-    const activeSession = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
-
-    // Build new hash
-    let newHash = '#/studio';
-    if (cascadeId) {
-      newHash += `/${cascadeId}`;
-      if (activeSession) {
-        newHash += `/${activeSession}`;
-      }
-    }
-
-    // Only update if different (avoid infinite loops)
-    if (window.location.hash !== newHash) {
-      window.location.hash = newHash;
-      console.log('[StudioPage] Updated URL:', newHash);
-    }
-  }, [mode, cascade, viewMode, replaySessionId, cascadeSessionId]);
+  // DISABLED: Auto URL sync creates circular dependency with URL→State effect above
+  // The two effects create a race condition loop:
+  // 1. User loads cascade → Effect #1 loads → updates store
+  // 2. Store update → Effect #2 fires → updates URL
+  // 3. URL update → Effect #1 fires again → creates blank cascade
+  // 4. User's work disappears! 😱
+  //
+  // Solution: URL is INPUT-ONLY. Users can manually bookmark/share URLs.
+  // If re-enabling, need proper state reconciliation strategy.
+  //
+  // useEffect(() => {
+  //   if (mode !== 'timeline' || !cascade) return;
+  //
+  //   const cascadeId = cascade.cascade_id;
+  //   const activeSession = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
+  //
+  //   // Build new hash
+  //   let newHash = '#/studio';
+  //   if (cascadeId) {
+  //     newHash += `/${cascadeId}`;
+  //     if (activeSession) {
+  //       newHash += `/${activeSession}`;
+  //     }
+  //   }
+  //
+  //   // Only update if different (avoid infinite loops)
+  //   if (window.location.hash !== newHash) {
+  //     window.location.hash = newHash;
+  //     console.log('[StudioPage] Updated URL:', newHash);
+  //   }
+  // }, [mode, cascade, viewMode, replaySessionId, cascadeSessionId]);
 
   return (
     <div className="studio-page">

@@ -1,187 +1,128 @@
 """
 Artifact Resolver for Rabbitize Browser Automation
 
-Provides Jinja2-accessible artifact resolution for browser automation phases.
+Loads rabbitize artifacts into plain dict structures for Jinja templates.
 Supports:
-- {{ browser_1.images.0 }} → Base64 data URL (multimodal attachment)
-- {{ browser_1.dom_coords.0 }} → File contents as text
-- {{ browser_1.dom_snapshots.0 }} → File contents as text
-- {{ browser_1.video }} → File path
+- {{ outputs.browser_1.images.0 }} → Base64 data URL (multimodal attachment)
+- {{ outputs.browser_1.dom_coords.0 }} → File contents as text
+- {{ outputs.browser_1.dom_snapshots.0 }} → File contents as text
+- {{ outputs.browser_1.video }} → File path
+
+Simple approach: Load all artifacts into memory as regular Python dicts/lists.
+No custom classes, no magic methods - just plain data.
 """
 
 import os
 import glob
-from typing import Optional, Dict, Any, Union
+from typing import Dict, Any, List, Union
 from .utils import encode_image_base64
 from .config import get_config
 
 
-class ArtifactCollection:
+def load_rabbitize_artifacts(phase_name: str, session_id: str) -> Dict[str, Any]:
     """
-    Lazy-loading collection for artifact files.
+    Load all rabbitize artifacts for a phase into a plain dict structure.
 
-    Supports indexed access: collection[0], collection[1], etc.
+    Returns structure like:
+    {
+        'images': ['data:image/png;base64,...', 'data:image/png;base64,...'],
+        'dom_snapshots': ['<html>...</html>', '<html>...</html>'],
+        'dom_coords': ['{"x": 123, ...}', '{"x": 456, ...}'],
+        'video': '/path/to/video.webm'
+    }
+
+    This is just regular data - Jinja templates work naturally.
+    Images are base64 data URLs, which convert_to_multimodal_content() auto-detects.
     """
+    import re
 
-    def __init__(self, phase_name: str, artifact_type: str, session_id: str):
-        self.phase_name = phase_name
-        self.artifact_type = artifact_type
-        self.session_id = session_id
-        self._files = None
+    root = get_config().root_dir
+    rabbitize_runs = os.path.join(root, "rabbitize-runs")
 
-    def _discover_files(self):
-        """Discover artifact files on disk"""
-        if self._files is not None:
-            return
+    # Initialize with empty lists for all types (so Jinja can access even if no files)
+    artifacts = {
+        'images': [],
+        'dom_snapshots': [],
+        'dom_coords': [],
+        'video': None
+    }
 
-        # Build path: rabbitize-runs/{client_id}/{test_id}/{session}/artifacts/
-        # For now, search for the pattern - in real runs, test_id will have session suffix
-        root = get_config().root_dir
-        rabbitize_runs = os.path.join(root, "rabbitize-runs")
-
-        # Search for this phase's artifacts (wildcards for session suffix)
-        # Pattern: rabbitize-runs/*/{phase_name}.*/screenshots/*.png
-        pattern_map = {
-            'images': 'screenshots/*.png',
-            'dom_snapshots': 'dom-snapshots/*.html',
-            'dom_coords': 'dom-coords/*.json',
-        }
-
-        if self.artifact_type not in pattern_map:
-            self._files = []
-            return
-
-        # Search pattern: rabbitize-runs/*/{phase_name}.*/{artifact_subdir}/*
+    # Helper to find artifact directory
+    def find_artifacts_dir(subdir: str, pattern: str) -> List[str]:
+        """Find and sort artifact files"""
         search_pattern = os.path.join(
             rabbitize_runs,
             '*',  # Any client_id
-            f'{self.phase_name}.*',  # test_id starts with phase_name
-            pattern_map[self.artifact_type]
+            f'{phase_name}.*',  # test_id starts with phase_name
+            '*',  # Timestamp session subdirectory
+            subdir,
+            pattern
         )
-
-        found_files = glob.glob(search_pattern)
-        # Sort by filename (typically numbered: 0.png, 1.png, etc.)
-        found_files.sort()
-
-        self._files = found_files
-
-    def __getitem__(self, index: int) -> str:
-        """Get artifact by index"""
-        self._discover_files()
-
-        if not self._files or index >= len(self._files):
-            return f"[Artifact not found: {self.phase_name}.{self.artifact_type}.{index}]"
-
-        file_path = self._files[index]
-
-        # For images, return base64 data URL (enables multimodal attachment)
-        if self.artifact_type == 'images':
-            try:
-                return encode_image_base64(file_path)
-            except Exception as e:
-                return f"[Error loading image: {e}]"
-
-        # For text files (dom_coords, dom_snapshots), return contents
-        else:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-            except Exception as e:
-                return f"[Error reading file: {e}]"
-
-    def __len__(self):
-        """Get count of artifacts"""
-        self._discover_files()
-        return len(self._files) if self._files else 0
-
-    def __repr__(self):
-        """String representation"""
-        return f"<ArtifactCollection {self.phase_name}.{self.artifact_type} ({len(self)} items)>"
-
-
-class VideoArtifact:
-    """
-    Single video artifact.
-    Returns path to video file.
-    """
-
-    def __init__(self, phase_name: str, session_id: str):
-        self.phase_name = phase_name
-        self.session_id = session_id
-
-    def __str__(self):
-        """Return path to video file"""
-        root = get_config().root_dir
-        rabbitize_runs = os.path.join(root, "rabbitize-runs")
-
-        # Search for video: rabbitize-runs/*/{phase_name}.*/video.webm
-        search_pattern = os.path.join(
-            rabbitize_runs,
-            '*',
-            f'{self.phase_name}.*',
-            'video.webm'
-        )
-
+        print(f"[ArtifactResolver]   Searching: {search_pattern}")
         found = glob.glob(search_pattern)
-        if found:
-            return found[0]
+        print(f"[ArtifactResolver]   Found {len(found)} files: {found[:3]}")
+        found.sort()  # Sort by filename (0.png, 1.png, etc.)
+        return found
 
-        return f"[Video not found for {self.phase_name}]"
+    # Load screenshots as base64 data URLs (try multiple extensions)
+    screenshot_files = []
+    for ext in ['*.png', '*.jpg', '*.jpeg']:
+        screenshot_files.extend(find_artifacts_dir('screenshots', ext))
 
-    def __repr__(self):
-        return f"<VideoArtifact {self.phase_name}>"
+    # Filter to numbered screenshots only (0.jpg, 1.jpg, not 0-pre-move.jpg)
+    import re
+    screenshot_files = [f for f in screenshot_files if re.search(r'/\d+\.(png|jpe?g)$', f)]
+    screenshot_files.sort()
 
+    if screenshot_files:
+        artifacts['images'] = []
+        for img_path in screenshot_files:
+            try:
+                data_url = encode_image_base64(img_path)
+                artifacts['images'].append(data_url)
+            except Exception as e:
+                print(f"[ArtifactResolver] Failed to load image {img_path}: {e}")
+                artifacts['images'].append(f"[Error loading image: {e}]")
 
-class RabbitizeArtifacts:
-    """
-    Main artifact resolver for a rabbitize phase.
+    # Load DOM snapshots as markdown text (rabbitize saves as .md files)
+    dom_files = find_artifacts_dir('dom_snapshots', 'dom_*.md')
+    if dom_files:
+        artifacts['dom_snapshots'] = []
+        for md_path in dom_files:
+            try:
+                with open(md_path, 'r', encoding='utf-8') as f:
+                    artifacts['dom_snapshots'].append(f.read())
+            except Exception as e:
+                print(f"[ArtifactResolver] Failed to load DOM snapshot {md_path}: {e}")
+                artifacts['dom_snapshots'].append(f"[Error loading DOM: {e}]")
 
-    Provides attribute access to artifact collections:
-    - .images → ArtifactCollection (base64 data URLs)
-    - .dom_snapshots → ArtifactCollection (HTML text)
-    - .dom_coords → ArtifactCollection (JSON text)
-    - .video → VideoArtifact (path)
-    """
+    # Load DOM coords as JSON text (filter to numbered coords only)
+    coord_files = find_artifacts_dir('dom_coords', 'dom_coords_*.json')
+    # Filter to just numbered files (exclude dom_coords_initial.json)
+    coord_files = [f for f in coord_files if re.search(r'/dom_coords_\d+\.json$', f)]
+    coord_files.sort()
 
-    def __init__(self, phase_name: str, session_id: str):
-        self.phase_name = phase_name
-        self.session_id = session_id
-        self._collections = {}
+    if coord_files:
+        artifacts['dom_coords'] = []
+        for json_path in coord_files:
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    artifacts['dom_coords'].append(f.read())
+            except Exception as e:
+                print(f"[ArtifactResolver] Failed to load DOM coords {json_path}: {e}")
+                artifacts['dom_coords'].append(f"[Error loading coords: {e}]")
 
-    def __getattr__(self, name: str):
-        """Lazy-load artifact collections"""
-        if name.startswith('_'):
-            # Internal attributes
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+    # Find video file
+    video_pattern = os.path.join(rabbitize_runs, '*', f'{phase_name}.*', '*', 'video', '*.webm')
+    print(f"[ArtifactResolver]   Searching video: {video_pattern}")
+    video_files = glob.glob(video_pattern)
+    print(f"[ArtifactResolver]   Found {len(video_files)} video files")
+    if video_files:
+        artifacts['video'] = video_files[0]  # Just the path
 
-        if name == 'video':
-            return VideoArtifact(self.phase_name, self.session_id)
+    print(f"[ArtifactResolver] Loaded artifacts for {phase_name}: {', '.join(f'{k}={len(v) if isinstance(v, list) else 1}' for k, v in artifacts.items())}")
 
-        if name in ['images', 'dom_snapshots', 'dom_coords']:
-            if name not in self._collections:
-                self._collections[name] = ArtifactCollection(
-                    self.phase_name,
-                    name,
-                    self.session_id
-                )
-            return self._collections[name]
-
-        raise AttributeError(f"Unknown artifact type: {name}")
-
-    def __repr__(self):
-        return f"<RabbitizeArtifacts {self.phase_name}>"
-
-
-def create_artifact_resolver(phase_name: str, session_id: str) -> RabbitizeArtifacts:
-    """
-    Factory function to create an artifact resolver for a phase.
-
-    Usage in Jinja templates:
-        {{ browser_1.images.0 }}        → Base64 image data URL
-        {{ browser_1.dom_coords.2 }}    → JSON file contents
-        {{ browser_1.video }}           → Video file path
-    """
-    return RabbitizeArtifacts(phase_name, session_id)
+    return artifacts
 
 
 def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list, session_id: str) -> Dict[str, Any]:
@@ -194,7 +135,7 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
         session_id: Current session ID
 
     Returns:
-        Enriched outputs dict with artifact resolvers
+        Enriched outputs dict with plain artifact dicts
     """
     enriched = outputs.copy()
 
@@ -209,29 +150,48 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
         phase_inputs = getattr(phase, 'inputs', None)
 
         print(f"[ArtifactResolver] Checking phase: {phase_name}, tool: {phase_tool}, inputs type: {type(phase_inputs)}")
+        print(f"[ArtifactResolver]   Phase attributes: {dir(phase)[:20]}")  # Debug what's available
 
         is_shell_tool = phase_tool in ('linux_shell', 'linux_shell_dangerous')
 
-        # Check if inputs contains rabbitize command
+        # Check if inputs contains rabbitize command (multiple strategies)
         has_rabbitize = False
+
         if phase_inputs:
             if isinstance(phase_inputs, dict):
                 command = phase_inputs.get('command', '')
             else:
                 command = getattr(phase_inputs, 'command', '')
             has_rabbitize = 'rabbitize' in command if command else False
-            print(f"[ArtifactResolver]   -> has_rabbitize: {has_rabbitize}, command: {command[:100] if command else None}")
+            print(f"[ArtifactResolver]   -> has_rabbitize: {has_rabbitize}, command preview: {command[:100] if command else None}")
+
+        # Fallback: Check phase dict directly (Pydantic model might have inputs in __dict__)
+        if not has_rabbitize and is_shell_tool:
+            phase_dict = getattr(phase, '__dict__', {}) or getattr(phase, 'dict', lambda: {})()
+            if isinstance(phase_dict, dict) and 'inputs' in phase_dict:
+                inputs_dict = phase_dict['inputs']
+                if isinstance(inputs_dict, dict) and 'command' in inputs_dict:
+                    command = inputs_dict['command']
+                    has_rabbitize = 'rabbitize' in command if command else False
+                    print(f"[ArtifactResolver]   -> Fallback dict check: has_rabbitize={has_rabbitize}")
+
+        # Simple fallback: linux_shell_dangerous is primarily for rabbitize
+        # (until we have a better Docker image)
+        if not has_rabbitize and phase_tool == 'linux_shell_dangerous':
+            has_rabbitize = True
+            print(f"[ArtifactResolver]   -> Using fallback: linux_shell_dangerous = rabbitize")
 
         is_rabbitize = is_shell_tool and has_rabbitize
 
         if is_rabbitize:
             if phase_name:
-                print(f"[ArtifactResolver] ✓ Enriching outputs for rabbitize phase: {phase_name}")
-                # Replace output with artifact resolver (even if output is a string)
-                enriched[phase_name] = create_artifact_resolver(phase_name, session_id)
+                print(f"[ArtifactResolver] ✓ Loading artifacts for rabbitize phase: {phase_name}")
+                # Load artifacts into plain dict (no custom classes)
+                enriched[phase_name] = load_rabbitize_artifacts(phase_name, session_id)
             else:
                 print(f"[ArtifactResolver] ✗ Rabbitize phase has no name!")
 
+    print(f"[ArtifactResolver] Final enriched outputs keys: {list(enriched.keys())}")
     return enriched
 
 

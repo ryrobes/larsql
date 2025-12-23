@@ -1,12 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
+import yaml from 'js-yaml';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useStudioQueryStore from '../stores/studioQueryStore';
 import InputsForm from './InputsForm';
+import ModelBrowserPalette from './ModelBrowserPalette';
 import VariablePalette from './VariablePalette';
 import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
+import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -275,9 +278,10 @@ const ARTIFACT_TYPES = {
 function ArtifactPill({ phaseName, artifactType, index, label }) {
   const config = ARTIFACT_TYPES[artifactType];
 
-  // Artifacts are accessed via outputs.phase_name.artifact_type.index
+  // Artifacts are accessed via outputs.phase_name.artifact_type[index]
+  // NOTE: Jinja requires bracket notation for numeric indices
   const jinjaPath = index !== null
-    ? `outputs.${phaseName}.${artifactType}.${index}`
+    ? `outputs.${phaseName}.${artifactType}[${index}]`
     : `outputs.${phaseName}.${artifactType}`;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -594,11 +598,23 @@ function CascadeNavigator() {
     cellStates,
     sessionId,
     isRunningAll,
-    runCascadeStandard
+    runCascadeStandard,
+    yamlViewMode,
+    setYamlViewMode,
+    updateCascadeFromYaml,
+    viewMode,
+    replaySessionId
   } = useStudioCascadeStore();
 
   const [activePhase, setActivePhase] = useState(null);
   const [inputValidationError, setInputValidationError] = useState(null);
+
+  // YAML editor state
+  const [yamlContent, setYamlContent] = useState('');
+  const [yamlParseError, setYamlParseError] = useState(null);
+  const [editorFocused, setEditorFocused] = useState(false);
+  const lastSyncedYamlRef = useRef('');
+  const editorRef = useRef(null);
 
   // Clear validation error when inputs change
   useEffect(() => {
@@ -607,6 +623,72 @@ function CascadeNavigator() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cascadeInputs]);
+
+  // Sync cascade to YAML when cascade changes externally
+  // ONLY update if editor is not focused (prevents fighting with user input)
+  useEffect(() => {
+    if (!cascade || yamlViewMode === false || editorFocused) return;
+
+    try {
+      const yamlStr = yaml.dump({
+        cascade_id: cascade.cascade_id,
+        description: cascade.description || '',
+        inputs_schema: cascade.inputs_schema || {},
+        phases: cascade.phases || []
+      }, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false
+      });
+
+      // Only update if different from last synced (prevent loops)
+      if (yamlStr !== lastSyncedYamlRef.current) {
+        setYamlContent(yamlStr);
+        lastSyncedYamlRef.current = yamlStr;
+        setYamlParseError(null);
+      }
+    } catch (error) {
+      console.error('[CascadeNavigator] Failed to serialize cascade to YAML:', error);
+      setYamlParseError(error.message);
+    }
+  }, [cascade, yamlViewMode, editorFocused]);
+
+  // Handle YAML editor changes (just update local state for live validation)
+  const handleYamlChange = useCallback((newYaml) => {
+    // Only update local yamlContent for display
+    // Don't sync to store until blur
+    setYamlContent(newYaml);
+
+    // Try to validate for immediate error feedback
+    try {
+      yaml.load(newYaml);
+      setYamlParseError(null);
+    } catch (error) {
+      setYamlParseError(error.message);
+    }
+  }, []);
+
+  // Handle blur - sync to store when user leaves editor
+  const handleYamlBlur = useCallback((newYaml) => {
+    console.log('[CascadeNavigator] Editor blurred, syncing to store');
+    setEditorFocused(false);
+
+    // Prevent sync loop: don't update store if this is the same as last synced
+    if (newYaml === lastSyncedYamlRef.current) {
+      return;
+    }
+
+    const result = updateCascadeFromYaml(newYaml);
+
+    if (result.success) {
+      lastSyncedYamlRef.current = newYaml;
+      setYamlParseError(null);
+    } else {
+      setYamlParseError(result.error);
+    }
+  }, [updateCascadeFromYaml]);
 
   // Scroll to cell and select it in timeline
   const scrollToCell = useCallback((phaseName, options = {}) => {
@@ -705,19 +787,34 @@ function CascadeNavigator() {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-          <button
-            className="nav-run-all-btn"
-            onClick={handleRunAll}
-            disabled={isRunningAll || phases.length === 0}
-            title={inputValidationError || "Run all phases"}
-          >
-            {isRunningAll ? (
-              <Icon icon="mdi:loading" className="spin" width="14" />
-            ) : (
-              <Icon icon="mdi:play" width="14" />
-            )}
-            Run All
-          </button>
+          {/* Toggle button row */}
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              className="nav-yaml-toggle-btn"
+              onClick={() => setYamlViewMode(!yamlViewMode)}
+              title={yamlViewMode ? "Show Navigator" : "Show YAML Editor"}
+            >
+              <Icon
+                icon={yamlViewMode ? 'mdi:view-dashboard' : 'mdi:code-braces'}
+                width="14"
+              />
+            </button>
+
+            <button
+              className="nav-run-all-btn"
+              onClick={handleRunAll}
+              disabled={isRunningAll || phases.length === 0}
+              title={inputValidationError || "Run all phases"}
+            >
+              {isRunningAll ? (
+                <Icon icon="mdi:loading" className="spin" width="14" />
+              ) : (
+                <Icon icon="mdi:play" width="14" />
+              )}
+              Run All
+            </button>
+          </div>
+
           {inputValidationError && (
             <div style={{
               fontSize: '11px',
@@ -737,67 +834,114 @@ function CascadeNavigator() {
         </div>
       </div>
 
-      {/* Inputs Form (if cascade has inputs_schema) */}
-      {hasInputs && (
-        <div className="nav-inputs-section">
-          <InputsForm schema={cascade.inputs_schema} />
+      {/* YAML Editor View */}
+      {yamlViewMode && (
+        <div className="nav-yaml-view">
+          {/* Warning banners */}
+          {viewMode === 'replay' && (
+            <div className="nav-yaml-warning replay-warning">
+              <Icon icon="mdi:information" width="14" />
+              <span>Viewing historical session - YAML editor is read-only</span>
+            </div>
+          )}
+
+          {isRunningAll && (
+            <div className="nav-yaml-warning running-warning">
+              <Icon icon="mdi:alert" width="14" />
+              <span>Cascade is running - edits may cause unexpected behavior</span>
+            </div>
+          )}
+
+          {yamlParseError && (
+            <div className="nav-yaml-error">
+              <Icon icon="mdi:alert-circle" width="14" />
+              <span>Parse Error: {yamlParseError}</span>
+            </div>
+          )}
+
+          {/* Monaco Editor */}
+          <div className="nav-yaml-editor-container">
+            <MonacoYamlEditor
+              value={yamlContent}
+              onChange={handleYamlChange}
+              onFocus={() => setEditorFocused(true)}
+              onBlur={handleYamlBlur}
+              readOnly={viewMode === 'replay'}
+              onValidationError={(err) => setYamlParseError(err)}
+            />
+          </div>
         </div>
       )}
 
-      {/* Phase Types Section (Draggable Palette) */}
-      <PhaseTypesSection />
+      {/* Normal Navigator View (hide when YAML mode active) */}
+      {!yamlViewMode && (
+        <div className="nav-normal-view">
+          {/* Inputs Form (if cascade has inputs_schema) */}
+          {hasInputs && (
+            <div className="nav-inputs-section">
+              <InputsForm schema={cascade.inputs_schema} />
+            </div>
+          )}
 
-      {/* Variable Palette */}
-      <VariablePalette />
+          {/* Phase Types Section (Draggable Palette) */}
+          <PhaseTypesSection />
 
-      {/* Recent Runs */}
-      <RecentRunsSection />
+          {/* Model Browser Palette */}
+          <ModelBrowserPalette />
 
-      {/* Session State (Live) */}
-      <div className="nav-section">
-        <SessionStatePanel
-          sessionId={sessionId || 'unknown'}
-          isRunning={isRunningAll || false}
-        />
-      </div>
+          {/* Variable Palette */}
+          <VariablePalette />
 
-      {/* Phases Section */}
-      <div className="nav-section nav-phases-section">
-        <div className="nav-section-header">
-          <Icon icon="mdi:format-list-numbered" className="nav-section-icon" />
-          <span className="nav-section-title">Phases</span>
-        </div>
+          {/* Recent Runs */}
+          <RecentRunsSection />
 
-        <div className="nav-phases-list">
-          {phases.map((phase, index) => (
-            <PhaseNode
-              key={phase.name}
-              phase={phase}
-              index={index}
-              cellState={cellStates[phase.name]}
-              isActive={activePhase === phase.name}
-              onNavigate={scrollToCell}
+          {/* Session State (Live) */}
+          <div className="nav-section">
+            <SessionStatePanel
+              sessionId={sessionId || 'unknown'}
+              isRunning={isRunningAll || false}
             />
-          ))}
+          </div>
+
+          {/* Phases Section */}
+          <div className="nav-section nav-phases-section">
+            <div className="nav-section-header">
+              <Icon icon="mdi:format-list-numbered" className="nav-section-icon" />
+              <span className="nav-section-title">Phases</span>
+            </div>
+
+            <div className="nav-phases-list">
+              {phases.map((phase, index) => (
+                <PhaseNode
+                  key={phase.name}
+                  phase={phase}
+                  index={index}
+                  cellState={cellStates[phase.name]}
+                  isActive={activePhase === phase.name}
+                  onNavigate={scrollToCell}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Session Tables Section */}
+          <SessionTablesSection
+            sessionId={sessionId}
+            phases={phases}
+            cellStates={cellStates}
+          />
+
+          {/* Media Section - shows thumbnails of images from phases */}
+          <MediaSection
+            phases={phases}
+            cellStates={cellStates}
+            onNavigateToPhase={scrollToCell}
+          />
+
+          {/* Connections Section */}
+          <ConnectionsSection />
         </div>
-      </div>
-
-      {/* Session Tables Section */}
-      <SessionTablesSection
-        sessionId={sessionId}
-        phases={phases}
-        cellStates={cellStates}
-      />
-
-      {/* Media Section - shows thumbnails of images from phases */}
-      <MediaSection
-        phases={phases}
-        cellStates={cellStates}
-        onNavigateToPhase={scrollToCell}
-      />
-
-      {/* Connections Section */}
-      <ConnectionsSection />
+      )}
     </div>
   );
 }

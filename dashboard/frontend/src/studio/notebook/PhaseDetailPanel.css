@@ -619,6 +619,14 @@
   max-width: 100%;
 }
 
+/* ANSI terminal output */
+.phase-detail-ansi {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .phase-detail-no-data p {
   margin: 0;
   font-size: 14px;
@@ -1098,6 +1106,26 @@
 
 .phase-detail-yaml-header span {
   font-weight: 600;
+}
+
+.phase-yaml-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #f87171;
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.phase-yaml-hint {
+  margin-left: auto;
+  color: #475569;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 .phase-detail-code-yaml-split .phase-detail-code-section {

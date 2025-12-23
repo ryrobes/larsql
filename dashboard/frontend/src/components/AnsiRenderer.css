@@ -1,0 +1,77 @@
+/**
+ * AnsiRenderer Styles
+ *
+ * Terminal-like ANSI color output rendering
+ * Matches Windlass UI design system: pure black (#0a0a0a) + bright pastels
+ */
+
+/* Import blocky console fonts from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Courier+Prime&family=IBM+Plex+Mono:wght@400;700&display=swap');
+
+.ansi-output {
+  padding: 16px 24px;
+  overflow-y: auto;
+  overflow-x: auto; /* Allow horizontal scroll for long lines */
+  flex: 1;
+  background-color: #0a0e14; /* Match existing dark theme */
+
+  /* Blocky retro console font stack with fallbacks */
+  /* Note: VT323 is blocky but may have spacing issues, fallback to true monospace */
+  font-family: 'IBM Plex Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.3; /* Tighter line spacing for terminal look */
+
+  /* Disable font features that interfere with terminal rendering */
+  font-variant-ligatures: none;
+  font-feature-settings: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Optional: Add a class for VT323 retro style if user wants it */
+.ansi-output.retro {
+  font-family: 'VT323', 'Share Tech Mono', monospace;
+  font-size: 16px;
+}
+
+.ansi-output pre {
+  margin: 0;
+  color: #e6edf3; /* Default text color */
+
+  /* Critical: preserve ALL whitespace exactly as in terminal */
+  white-space: pre;  /* Don't wrap, preserve exact spacing */
+  overflow-x: auto;  /* Scroll horizontally if needed */
+
+  font-family: inherit; /* Inherit from parent */
+  font-size: inherit;
+  line-height: inherit;
+
+  /* Ensure truly monospace rendering */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ============================================
+   ADDITIONAL STYLES
+   ============================================ */
+
+/* Note: Colors are applied via inline styles from anser library */
+
+/* Scrollbar styling for dark theme */
+.ansi-output::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.ansi-output::-webkit-scrollbar-track {
+  background: #0a0e14;
+}
+
+.ansi-output::-webkit-scrollbar-thumb {
+  background: #1a2028;
+  border-radius: 5px;
+}
+
+.ansi-output::-webkit-scrollbar-thumb:hover {
+  background: #2d3748;
+}
