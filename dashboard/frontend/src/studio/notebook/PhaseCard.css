@@ -29,6 +29,12 @@
   border-color: #2a263a;
 }
 
+.phase-card-drop-target {
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.6);
+  background-color: rgba(0, 229, 255, 0.05);
+}
+
 /* ============================================
    STACKED CARD EFFECT (for soundings/parallel phases)
    ============================================ */

@@ -92,10 +92,56 @@ function StudioPage({
     // Handle phase type drops
     if (dragType === 'phase-type') {
       const phaseType = active.data.current.phaseType;
-      const dropPosition = over.data.current?.position;
+      const dropTarget = over.data.current;
 
+      // Drop on phase card → Create new phase with handoff from that card
+      if (dropTarget?.type === 'phase-card') {
+        const sourcePhaseName = dropTarget.phaseName;
+        const sourcePhaseIndex = dropTarget.phaseIndex;
+
+        // Get current cascade state
+        const cascadeStore = useStudioCascadeStore.getState();
+        const phases = cascadeStore.cascade?.phases || [];
+
+        // Generate new phase name
+        const baseName = phaseType.replace(/_data$/, '');
+        let newName = baseName;
+        let counter = 1;
+        while (phases.some(p => p.name === newName)) {
+          newName = `${baseName}_${counter}`;
+          counter++;
+        }
+
+        // Check for cycles: would adding source→new create a cycle?
+        // (New phase has no targets yet, so we're just checking if source is reachable from... nothing)
+        // No cycle possible for new phase!
+
+        // Add new phase after source
+        addCell(phaseType, sourcePhaseIndex + 1);
+
+        // Update source phase to add handoff to new phase
+        setTimeout(() => {
+          const state = useStudioCascadeStore.getState();
+          // Deep clone to avoid frozen object issues
+          const updatedPhases = JSON.parse(JSON.stringify(state.cascade.phases));
+          const sourcePhase = updatedPhases[sourcePhaseIndex];
+
+          if (sourcePhase) {
+            const existingHandoffs = sourcePhase.handoffs || [];
+            if (!existingHandoffs.includes(newName)) {
+              sourcePhase.handoffs = [...existingHandoffs, newName];
+            }
+          }
+
+          state.updateCascade({ phases: updatedPhases });
+        }, 100); // Small delay to let addCell complete
+
+        return;
+      }
+
+      // Drop on drop zone → Insert at position
+      const dropPosition = dropTarget?.position;
       if (dropPosition !== undefined) {
-        // Insert at specific position
         addCell(phaseType, dropPosition);
       }
     }

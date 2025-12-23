@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import ModelIcon, { getProviderColor, getProvider } from '../../components/ModelIcon';
 import './PhaseCard.css';
@@ -42,6 +43,16 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
   const hasImages = cellState?.images && cellState.images.length > 0;
+
+  // Make card droppable for creating handoffs
+  const { setNodeRef, isOver } = useDroppable({
+    id: `phase-card-${phase.name}`,
+    data: {
+      type: 'phase-card',
+      phaseName: phase.name,
+      phaseIndex: index,
+    },
+  });
 
   // Extract model - from phase YAML or cellState (executed) or default
   // Only show for LLM phases (deterministic data phases don't use models)
@@ -123,7 +134,8 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
   return (
     <div
-      className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''} ${hasSoundings ? 'phase-card-stacked' : ''}`}
+      ref={setNodeRef}
+      className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''} ${hasSoundings ? 'phase-card-stacked' : ''} ${isOver ? 'phase-card-drop-target' : ''}`}
       onClick={onSelect}
       data-phase-name={phase.name}
     >

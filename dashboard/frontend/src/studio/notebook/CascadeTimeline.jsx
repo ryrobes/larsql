@@ -602,34 +602,35 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         </div>
       </div>
 
-      {/* Fixed overlay for input parameter connections */}
-      <svg
-        className="cascade-input-edges"
-        style={{
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          width: '100vw',
-          height: '100vh',
-          pointerEvents: 'none',
-          zIndex: 5, // Above background
-        }}
-      >
-        {/* Clip path to cut off lines at editor panel boundary */}
-        <defs>
-          <clipPath id="timeline-clip">
-            <rect
-              x="0"
-              y="0"
-              width="100%"
-              height={timelineOffset.top + (timelineRef.current?.clientHeight || 0)}
-            />
-          </clipPath>
-        </defs>
+      {/* Fixed overlay for input parameter connections - only if inputs exist */}
+      {Object.keys(inputsSchema).length > 0 && (
+        <svg
+          className="cascade-input-edges"
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: '100vw',
+            height: '100vh',
+            pointerEvents: 'none',
+            zIndex: 5, // Above background
+          }}
+        >
+          {/* Clip path to cut off lines at editor panel boundary */}
+          <defs>
+            <clipPath id="timeline-clip">
+              <rect
+                x="0"
+                y="0"
+                width="100%"
+                height={timelineOffset.top + (timelineRef.current?.clientHeight || 0)}
+              />
+            </clipPath>
+          </defs>
 
-        <g clipPath="url(#timeline-clip)">
-          {/* Input parameter edges - from sidebar to phases (stays fixed during scroll) */}
-          {layout.nodes.map(node => {
+          <g clipPath="url(#timeline-clip)">
+            {/* Input parameter edges - from sidebar to phases (stays fixed during scroll) */}
+            {layout.nodes.map(node => {
           if (!node.inputDeps || node.inputDeps.length === 0) return null;
 
           return node.inputDeps.map(inputName => {
@@ -672,6 +673,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         })}
         </g>
       </svg>
+      )}
 
       {/* FBP Graph Layout */}
       <div
@@ -680,13 +682,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         style={{
           minHeight: layoutMode === 'linear' ? '180px' : '150px',
           maxHeight: layoutMode === 'linear' ? '180px' : '400px',
+          flex: phases.length === 0 ? 1 : undefined, // Expand to fill when empty
         }}
       >
         <div
           className="cascade-fbp-canvas"
           style={{
-            width: `${layout.width}px`,
-            height: `${layout.height}px`,
+            width: phases.length === 0 ? '100%' : `${layout.width}px`,
+            height: phases.length === 0 ? '100%' : `${layout.height}px`,
             position: 'relative',
             minHeight: '100%',
           }}
@@ -761,31 +764,36 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             </div>
           ))}
 
-          {/* Empty state hint */}
+          {/* Empty state - large centered drop target */}
           {phases.length === 0 && (
-            <div className="cascade-empty-hint">
-              <Icon icon="mdi:hand-back-left" width="24" />
-              <span>Drag phase types from the sidebar to start</span>
+            <div className="cascade-empty-state">
+              <DropZone position={0} />
+              <div className="cascade-empty-hint">
+                <Icon icon="mdi:hand-back-left" width="32" />
+                <span>Drag phase types from the sidebar to start</span>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Bottom Detail Panel */}
-      {selectedPhase ? (
-        <PhaseDetailPanel
-          phase={selectedPhase}
-          index={selectedPhaseIndex}
-          cellState={cellStates[selectedPhase.name]}
-          phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
-          allSessionLogs={logs}
-          onClose={() => setSelectedPhaseIndex(null)}
-        />
-      ) : (
-        <div className="cascade-empty-detail">
-          <Icon icon="mdi:cursor-pointer" width="32" />
-          <p>Select a phase above to view details</p>
-        </div>
+      {/* Bottom Detail Panel - hide completely when no phases */}
+      {phases.length > 0 && (
+        selectedPhase ? (
+          <PhaseDetailPanel
+            phase={selectedPhase}
+            index={selectedPhaseIndex}
+            cellState={cellStates[selectedPhase.name]}
+            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
+            allSessionLogs={logs}
+            onClose={() => setSelectedPhaseIndex(null)}
+          />
+        ) : (
+          <div className="cascade-empty-detail">
+            <Icon icon="mdi:cursor-pointer" width="32" />
+            <p>Select a phase above to view details</p>
+          </div>
+        )
       )}
 
     </div>

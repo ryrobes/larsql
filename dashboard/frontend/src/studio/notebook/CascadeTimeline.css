@@ -294,6 +294,8 @@
 .cascade-fbp-canvas {
   position: relative;
   background-color: #000000;
+  min-width: 100%; /* Fill container when empty */
+  min-height: 100%;
 }
 
 .fbp-node {
@@ -566,6 +568,54 @@
   align-items: center;
   justify-content: center;
   z-index: 2;
+}
+
+/* Empty state container - fills entire canvas */
+.cascade-empty-state {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+/* Large centered drop zone box for empty state */
+.cascade-empty-state .cascade-drop-zone {
+  position: relative;
+  width: 500px;
+  height: 400px;
+  max-width: none;
+  min-width: 500px;
+  border: 3px dashed #1a1628;
+  border-radius: 16px;
+  background-color: rgba(0, 229, 255, 0.03);
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cascade-empty-state .cascade-drop-zone-active {
+  border-color: #00e5ff;
+  background-color: rgba(0, 229, 255, 0.1);
+  box-shadow: 0 0 32px rgba(0, 229, 255, 0.5);
+  transform: scale(1.02);
+}
+
+/* Hide the line indicator - use the box border instead */
+.cascade-empty-state .cascade-drop-zone-indicator {
+  display: none;
+}
+
+/* Empty hint centered in drop zone */
+.cascade-empty-state .cascade-empty-hint {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .cascade-drop-zone-indicator {
