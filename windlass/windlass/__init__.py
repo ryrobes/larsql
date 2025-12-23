@@ -77,10 +77,12 @@ register_tackle("list_sql_connections", list_sql_connections)
 
 # Data Cascade tools (SQL notebooks / data pipelines)
 from .eddies.data_tools import sql_data, python_data, js_data, clojure_data
+from .eddies.bash_substrate import bash_data
 register_tackle("sql_data", sql_data)
 register_tackle("python_data", python_data)
 register_tackle("js_data", js_data)
 register_tackle("clojure_data", clojure_data)
+register_tackle("bash_data", bash_data)
 
 # Conditional: ElevenLabs TTS (only if API key and voice ID are configured)
 from .eddies.tts import say as elevenlabs_say, is_available as elevenlabs_available

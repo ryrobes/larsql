@@ -4407,6 +4407,13 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Don't fail cascade if cleanup fails
 
+            # Terminate bash session (cleanup persistent bash process)
+            try:
+                from .eddies.bash_session import cleanup_bash_session
+                cleanup_bash_session(self.session_id)
+            except Exception:
+                pass  # Don't fail cascade if cleanup fails
+
     def _run_quartermaster(self, phase: PhaseConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
         Run the Quartermaster agent to select appropriate tackle for this phase.

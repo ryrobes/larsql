@@ -234,6 +234,23 @@ const DropZone = ({ position }) => {
 };
 
 /**
+ * CanvasDropZone - Background drop target for creating independent phases
+ */
+const CanvasDropZone = () => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: 'canvas-background',
+    data: { type: 'canvas-background' },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`cascade-canvas-drop-zone ${isOver ? 'cascade-canvas-drop-active' : ''}`}
+    />
+  );
+};
+
+/**
  * CascadeTimeline - Horizontal cascade builder (DAW-style)
  *
  * Layout:
@@ -680,8 +697,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         className="cascade-timeline-strip"
         ref={timelineRef}
         style={{
-          minHeight: layoutMode === 'linear' ? '180px' : '150px',
-          maxHeight: layoutMode === 'linear' ? '180px' : '400px',
+          minHeight: phases.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px'),
+          maxHeight: phases.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px'),
           flex: phases.length === 0 ? 1 : undefined, // Expand to fill when empty
         }}
       >
@@ -694,6 +711,9 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             minHeight: '100%',
           }}
         >
+          {/* Background drop zone - always available for creating independent phases */}
+          <CanvasDropZone />
+
           {/* SVG layer for phase-to-phase edges (scrolls with content) */}
           <svg
             className="cascade-edges"
@@ -764,14 +784,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             </div>
           ))}
 
-          {/* Empty state - large centered drop target */}
+          {/* Empty state hint */}
           {phases.length === 0 && (
-            <div className="cascade-empty-state">
-              <DropZone position={0} />
-              <div className="cascade-empty-hint">
-                <Icon icon="mdi:hand-back-left" width="32" />
-                <span>Drag phase types from the sidebar to start</span>
-              </div>
+            <div className="cascade-empty-hint">
+              <Icon icon="mdi:hand-back-left" width="32" />
+              <span>Drag phase types from the sidebar to start</span>
             </div>
           )}
         </div>

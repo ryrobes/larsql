@@ -288,6 +288,15 @@
   overflow-x: auto;
   overflow-y: visible;
   position: relative;
+  display: flex; /* Allow canvas to center */
+}
+
+/* When empty, fill all available space */
+.cascade-timeline-strip:has(.cascade-empty-hint) {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* FBP Canvas - absolute positioned nodes */
@@ -296,6 +305,15 @@
   background-color: #000000;
   min-width: 100%; /* Fill container when empty */
   min-height: 100%;
+}
+
+/* When empty, ensure canvas fills parent for proper centering */
+.cascade-timeline-strip:has(.cascade-empty-hint) .cascade-fbp-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .fbp-node {
@@ -313,6 +331,23 @@
 
 .cascade-edges path {
   transition: opacity 0.2s ease;
+}
+
+/* Canvas background drop zone - invisible but always droppable */
+.cascade-canvas-drop-zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0; /* Behind cards and edges */
+  pointer-events: auto;
+}
+
+.cascade-canvas-drop-active {
+  background-color: rgba(0, 229, 255, 0.05);
+  outline: 2px dashed rgba(0, 229, 255, 0.3);
+  outline-offset: -8px;
 }
 
 /* Simple track line for linear flows */
@@ -657,15 +692,20 @@
    ============================================ */
 
 .cascade-empty-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #475569;
+  color: #64748b;
   padding: 40px;
-  width: 100%;
   text-align: center;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .cascade-empty-hint span {

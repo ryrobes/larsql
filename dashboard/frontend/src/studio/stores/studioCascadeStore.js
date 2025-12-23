@@ -490,7 +490,7 @@ const useStudioCascadeStore = create(
       // ============================================
       // CELL CRUD
       // ============================================
-      addCell: (type = 'sql_data', afterIndex = null, templateCode = null) => {
+      addCell: (type = 'sql_data', afterIndex = null, templateCode = null, autoChain = true) => {
         // Save state before modification
         get()._saveToUndoStack();
 
@@ -553,9 +553,29 @@ output_schema:
           // Create phase based on type
           let newCell;
 
+          // Generate type-specific name
+          const nameMap = {
+            llm_phase: 'llm',
+            sql_data: 'sql',
+            python_data: 'python',
+            js_data: 'js',
+            clojure_data: 'clojure',
+            windlass_data: 'llm_data',
+            rabbitize_batch: 'browser',
+          };
+          const baseName = nameMap[type] || type.replace(/_data$/, '');
+
+          // Find unique name with counter
+          let phaseName = `${baseName}_${cellCount}`;
+          let counter = cellCount;
+          while (phases.some(p => p.name === phaseName)) {
+            counter++;
+            phaseName = `${baseName}_${counter}`;
+          }
+
           if (type === 'llm_phase') {
             newCell = {
-              name: `phase_${cellCount}`,
+              name: phaseName,
               instructions: templateCode || defaultCode,
               model: 'anthropic/claude-sonnet-4',
               tackle: [],
@@ -563,7 +583,6 @@ output_schema:
           } else if (type === 'rabbitize_batch') {
             // Rabbitize automation phase - uses linux_shell_dangerous to run on host
             const cascadeId = state.cascade?.cascade_id || 'untitled_cascade';
-            const phaseName = `browser_${cellCount}`;
 
             newCell = {
               name: phaseName,
@@ -582,7 +601,7 @@ output_schema:
           } else {
             // Data tools (SQL, Python, JS, Clojure, etc.)
             newCell = {
-              name: `cell_${cellCount}`,
+              name: phaseName,
               tool: type,
               inputs: type === 'sql_data'
                 ? { query: templateCode || defaultCode }
@@ -593,18 +612,29 @@ output_schema:
           // Add handoff to previous cell if exists
           if (afterIndex === null) {
             // Add at end
-            if (phases.length > 0) {
+            if (autoChain && phases.length > 0) {
               phases[phases.length - 1].handoffs = [newCell.name];
             }
             phases.push(newCell);
           } else {
             // Insert after specific index
-            if (afterIndex >= 0 && phases[afterIndex]) {
-              phases[afterIndex].handoffs = [newCell.name];
-            }
-            // Update new cell to point to next cell if exists
-            if (afterIndex + 1 < phases.length) {
-              newCell.handoffs = [phases[afterIndex + 1].name];
+            if (autoChain) {
+              // Auto-chain mode: create linear flow
+              if (afterIndex >= 0 && phases[afterIndex]) {
+                phases[afterIndex].handoffs = [newCell.name];
+              }
+              // Update new cell to point to next cell if exists
+              if (afterIndex + 1 < phases.length) {
+                newCell.handoffs = [phases[afterIndex + 1].name];
+              }
+            } else {
+              // Manual mode: only set parent handoff, no forward chain
+              if (afterIndex >= 0 && phases[afterIndex]) {
+                const existing = phases[afterIndex].handoffs || [];
+                phases[afterIndex].handoffs = existing.includes(newCell.name)
+                  ? existing
+                  : [...existing, newCell.name];
+              }
             }
             phases.splice(afterIndex + 1, 0, newCell);
           }

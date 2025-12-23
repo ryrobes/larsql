@@ -1,0 +1,49 @@
+cascade_id: "bash_json_transform"
+description: "Generate and consume JSON using bash - demonstrates JSON data flow"
+
+phases:
+  # Phase 1: Generate JSON data with bash
+  - name: generate_users
+    tool: bash_data
+    inputs:
+      script: |
+        # Generate JSON array using jq
+        cat <<EOF | jq -c .
+        [
+          {"id": 1, "name": "Alice", "score": 95},
+          {"id": 2, "name": "Bob", "score": 87},
+          {"id": 3, "name": "Charlie", "score": 92},
+          {"id": 4, "name": "Diana", "score": 88},
+          {"id": 5, "name": "Eve", "score": 98}
+        ]
+        EOF
+      output_format: json
+
+  # Phase 2: Filter and transform with bash + jq
+  # Input: _generate_users table as CSV from stdin
+  # Output: JSON array to stdout
+  - name: high_scorers
+    tool: bash_data
+    inputs:
+      script: |
+        # Read CSV, convert to JSON, filter, and transform
+        # Skip header, convert to JSON objects
+        tail -n +2 | awk -F',' '
+        {
+          print "{\"id\":" $1 ",\"name\":\"" $2 "\",\"score\":" $3 "}"
+        }
+        ' | jq -s 'map(select(.score >= 90)) | map({id, name, score, grade: (if .score >= 95 then "A" else "B" end)})'
+      output_format: json
+
+  # Phase 3: Query the result with SQL
+  - name: analyze
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          grade,
+          COUNT(*) as student_count,
+          AVG(score) as avg_score
+        FROM _high_scorers
+        GROUP BY grade
+        ORDER BY grade

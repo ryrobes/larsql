@@ -99,43 +99,42 @@ function StudioPage({
         const sourcePhaseName = dropTarget.phaseName;
         const sourcePhaseIndex = dropTarget.phaseIndex;
 
-        // Get current cascade state
+        // Get current phase count to predict new name (matches addCell logic)
         const cascadeStore = useStudioCascadeStore.getState();
-        const phases = cascadeStore.cascade?.phases || [];
+        const phasesBefore = cascadeStore.cascade?.phases || [];
+        const cellCount = phasesBefore.length + 1;
 
-        // Generate new phase name
-        const baseName = phaseType.replace(/_data$/, '');
-        let newName = baseName;
-        let counter = 1;
-        while (phases.some(p => p.name === newName)) {
-          newName = `${baseName}_${counter}`;
+        // Predict what name addCell will generate (MUST match studioCascadeStore naming)
+        const nameMap = {
+          llm_phase: 'llm',
+          sql_data: 'sql',
+          python_data: 'python',
+          js_data: 'js',
+          clojure_data: 'clojure',
+          windlass_data: 'llm_data',
+          rabbitize_batch: 'browser',
+        };
+        const baseName = nameMap[phaseType] || phaseType.replace(/_data$/, '');
+
+        // Find unique name with counter
+        let predictedName = `${baseName}_${cellCount}`;
+        let counter = cellCount;
+        while (phasesBefore.some(p => p.name === predictedName)) {
           counter++;
+          predictedName = `${baseName}_${counter}`;
         }
 
-        // Check for cycles: would adding source→new create a cycle?
-        // (New phase has no targets yet, so we're just checking if source is reachable from... nothing)
-        // No cycle possible for new phase!
-
         // Add new phase after source
-        addCell(phaseType, sourcePhaseIndex + 1);
+        // Pass autoChain=false to prevent creating linear chain (only set parent handoff)
+        addCell(phaseType, sourcePhaseIndex, null, false);
 
-        // Update source phase to add handoff to new phase
-        setTimeout(() => {
-          const state = useStudioCascadeStore.getState();
-          // Deep clone to avoid frozen object issues
-          const updatedPhases = JSON.parse(JSON.stringify(state.cascade.phases));
-          const sourcePhase = updatedPhases[sourcePhaseIndex];
+        return;
+      }
 
-          if (sourcePhase) {
-            const existingHandoffs = sourcePhase.handoffs || [];
-            if (!existingHandoffs.includes(newName)) {
-              sourcePhase.handoffs = [...existingHandoffs, newName];
-            }
-          }
-
-          state.updateCascade({ phases: updatedPhases });
-        }, 100); // Small delay to let addCell complete
-
+      // Drop on canvas background → Create independent phase (no handoffs)
+      if (dropTarget?.type === 'canvas-background') {
+        // Add at end with no auto-chaining
+        addCell(phaseType, null, null, false);
         return;
       }
 

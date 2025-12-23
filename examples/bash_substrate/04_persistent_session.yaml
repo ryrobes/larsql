@@ -1,0 +1,97 @@
+cascade_id: "bash_persistent_session"
+description: "Demonstrate persistent bash sessions - env vars, cwd, functions survive"
+
+phases:
+  # Phase 1: Setup environment
+  - name: setup
+    tool: bash_data
+    inputs:
+      script: |
+        # Export environment variables (persist across phases)
+        export PROJECT_NAME="windlass_demo"
+        export DATA_SOURCE="mock_api"
+
+        # Change directory (persists)
+        mkdir -p workspace/data
+        cd workspace/data
+
+        # Define shell functions (persist)
+        function log_msg() {
+          echo "[$(date '+%H:%M:%S')] $1"
+        }
+
+        function generate_id() {
+          echo "ID_$(date +%s)_$$"
+        }
+
+        # Output confirmation
+        echo "name,value"
+        echo "project,$PROJECT_NAME"
+        echo "source,$DATA_SOURCE"
+      output_format: csv
+    handoffs: [check_persistence]
+
+  # Phase 2: Verify persistence
+  - name: check_persistence
+    tool: bash_data
+    inputs:
+      script: |
+        # Use exported variables (should still exist)
+        log_msg "Project: $PROJECT_NAME, Source: $DATA_SOURCE"
+
+        # Check working directory (should be workspace/data)
+        current_dir=$(basename $(pwd))
+        log_msg "Current directory: $current_dir"
+
+        # Use shell function
+        job_id=$(generate_id)
+        log_msg "Generated job ID: $job_id"
+
+        # Output CSV
+        echo "check,status"
+        echo "env_vars,${PROJECT_NAME:+PASS}"
+        echo "cwd,$([ "$current_dir" = "data" ] && echo "PASS" || echo "FAIL")"
+        echo "functions,PASS"
+      output_format: csv
+    handoffs: [simulate_workflow]
+
+  # Phase 3: Simulate real workflow
+  - name: simulate_workflow
+    tool: bash_data
+    inputs:
+      script: |
+        # Create mock data file (in persistent workspace/data directory)
+        log_msg "Generating data for $PROJECT_NAME..."
+
+        cat > raw_data.csv <<'EOF'
+        id,name,value
+        1,alpha,100
+        2,beta,200
+        3,gamma,300
+        EOF
+
+        log_msg "Data saved to $(pwd)/raw_data.csv"
+
+        # Process the data
+        log_msg "Processing data from $DATA_SOURCE..."
+
+        # Output processed CSV
+        echo "id,name,value,source"
+        tail -n +2 raw_data.csv | while read line; do
+          echo "$line,$DATA_SOURCE"
+        done
+      output_format: csv
+    handoffs: [analyze]
+
+  # Phase 4: SQL analysis of bash-generated data
+  - name: analyze
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          source,
+          COUNT(*) as record_count,
+          SUM(value) as total_value,
+          AVG(value) as avg_value
+        FROM _simulate_workflow
+        GROUP BY source

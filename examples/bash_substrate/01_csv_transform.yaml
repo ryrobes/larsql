@@ -1,0 +1,60 @@
+cascade_id: "bash_csv_transform"
+description: "Clean CSV transformation using bash - demonstrates stdin/stdout data flow"
+
+phases:
+  # Phase 1: Extract data with SQL
+  - name: extract
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (VALUES
+          (1, 'alice@gmail.com', '2024-01-15'),
+          (2, 'bob@yahoo.com', '2024-01-16'),
+          (3, 'charlie@gmail.com', '2024-01-17'),
+          (4, 'diana@outlook.com', '2024-01-18'),
+          (5, 'eve@gmail.com', '2024-01-19')
+        ) AS t(user_id, email, signup_date)
+    handoffs: [extract_domains]
+
+  # Phase 2: Transform with bash
+  # Input: Reads _extract table as CSV from stdin
+  # Output: Writes CSV to stdout, becomes _extract_domains table
+  - name: extract_domains
+    tool: bash_data
+    inputs:
+      script: |
+        # Skip CSV header line, extract domain from email
+        tail -n +2 | awk -F',' '
+        {
+          user_id = $1
+          email = $2
+          signup_date = $3
+
+          # Remove quotes from email field
+          gsub(/"/, "", email)
+
+          # Extract domain (everything after @)
+          split(email, parts, "@")
+          domain = parts[2]
+
+          # Output: user_id, email, domain, signup_date
+          print user_id "," email "," domain "," signup_date
+        }
+        '
+      output_format: csv
+    handoffs: [analyze_domains]
+
+  # Phase 3: Analyze with SQL
+  # Can query _extract_domains just like any other temp table
+  - name: analyze_domains
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          column2 as domain,
+          COUNT(*) as user_count,
+          MIN(column3) as first_signup,
+          MAX(column3) as last_signup
+        FROM _extract_domains
+        GROUP BY domain
+        ORDER BY user_count DESC, domain
