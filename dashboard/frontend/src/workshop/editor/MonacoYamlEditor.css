@@ -4,49 +4,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--midnight-fjord);
-  border-radius: 8px;
+  background: #050508;
   overflow: hidden;
-}
-
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  background: var(--storm-cloud);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.header-left svg {
-  color: var(--ocean-primary);
-}
-
-.header-hints {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.hint {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--mist-gray);
-}
-
-.hint svg {
-  opacity: 0.7;
 }
 
 .editor-container {
@@ -61,7 +20,7 @@
   justify-content: center;
   gap: 12px;
   height: 100%;
-  color: var(--mist-gray);
+  color: #64748b;
   font-size: 13px;
 }
 
@@ -80,9 +39,9 @@
 }
 
 .monaco-yaml-editor .monaco-editor .margin {
-  background: var(--midnight-fjord) !important;
+  background: #050508 !important;
 }
 
 .monaco-yaml-editor .monaco-editor .monaco-scrollable-element {
-  background: var(--midnight-fjord) !important;
+  background: #050508 !important;
 }

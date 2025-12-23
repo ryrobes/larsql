@@ -1,6 +1,7 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { Icon } from '@iconify/react';
+import { configureMonacoTheme, STUDIO_THEME_NAME } from '../../studio/utils/monacoTheme';
 import './MonacoYamlEditor.css';
 
 /**
@@ -67,10 +68,10 @@ function MonacoYamlEditor({
 
   // Monaco editor options
   const editorOptions = {
-    minimap: { enabled: true, scale: 0.8 },
-    fontSize: 13,
-    fontFamily: "'Google Sans Code', monospace",
-    lineNumbers: 'on',
+    minimap: { enabled: false },
+    fontSize: 12,
+    fontFamily: "'Monaco', 'Menlo', monospace",
+    lineNumbers: 'off',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,
     scrollBeyondLastLine: false,
@@ -94,59 +95,9 @@ function MonacoYamlEditor({
     readOnly,
   };
 
-  // Custom dark theme - GitHub Dark inspired, pastels on black
-  const handleEditorWillMount = useCallback((monaco) => {
-    monaco.editor.defineTheme('windlass-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: 'key', foreground: '79c0ff' },           // pastel cyan (keys)
-        { token: 'string', foreground: '9be9a8' },        // subtle pastel green
-        { token: 'string.yaml', foreground: '9be9a8' },   // subtle pastel green
-        { token: 'number', foreground: 'd2a8ff' },        // pastel purple
-        { token: 'keyword', foreground: 'ff9eb8' },       // pastel pink
-        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
-        { token: 'type', foreground: '79c0ff' },          // pastel cyan
-      ],
-      colors: {
-        'editor.background': '#000000',                   // pure black
-        'editor.foreground': '#e6edf3',                   // light gray
-        'editor.lineHighlightBackground': '#161b22',
-        'editor.selectionBackground': '#264f78',
-        'editorLineNumber.foreground': '#6e7681',
-        'editorLineNumber.activeForeground': '#e6edf3',
-        'editorCursor.foreground': '#79c0ff',             // pastel cyan
-        'editor.inactiveSelectionBackground': '#1d2d3e',
-        'editorIndentGuide.background': '#21262d',
-        'editorIndentGuide.activeBackground': '#30363d',
-        'editorGutter.background': '#000000',
-        'minimap.background': '#0d1117',
-        'scrollbarSlider.background': '#6e768180',
-        'scrollbarSlider.hoverBackground': '#8b949e80',
-        'scrollbarSlider.activeBackground': '#8b949e',
-      },
-    });
-  }, []);
 
   return (
     <div className="monaco-yaml-editor">
-      <div className="editor-header">
-        <div className="header-left">
-          <Icon icon="mdi:code-braces" width="16" />
-          <span>YAML Editor</span>
-        </div>
-        <div className="header-hints">
-          <span className="hint">
-            <Icon icon="mdi:content-save-outline" width="12" />
-            Auto-saves on blur
-          </span>
-          <span className="hint">
-            <Icon icon="mdi:format-indent-increase" width="12" />
-            2-space indent
-          </span>
-        </div>
-      </div>
-
       <div className="editor-container">
         <Editor
           height="100%"
@@ -154,8 +105,8 @@ function MonacoYamlEditor({
           value={value}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}
-          beforeMount={handleEditorWillMount}
-          theme="windlass-dark"
+          beforeMount={configureMonacoTheme}
+          theme={STUDIO_THEME_NAME}
           options={editorOptions}
           loading={
             <div className="editor-loading">

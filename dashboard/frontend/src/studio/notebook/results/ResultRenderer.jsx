@@ -6,6 +6,7 @@ import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js/dist/plotly';
 import RichMarkdown from '../../../components/RichMarkdown';
 import AnsiRenderer from '../../../components/AnsiRenderer';
+import { configureMonacoTheme, STUDIO_THEME_NAME } from '../../utils/monacoTheme';
 
 // Create Plot component
 const Plot = createPlotlyComponent(Plotly);
@@ -118,7 +119,7 @@ const detailGridTheme = themeQuartz.withParams({
  * NOTE: This component contains brittle type detection logic.
  * Extracted as-is for separation. Internals should be refactored later.
  */
-const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
+const ResultRenderer = ({ result, error, images }) => {
   // Prepare data for AG Grid
   const gridColumnDefs = React.useMemo(() => {
     if (!result?.columns) return [];
@@ -251,8 +252,8 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
           height="100%"
           language="markdown"
           value={result}
-          theme="detail-dark"
-          beforeMount={handleMonacoBeforeMount}
+          theme={STUDIO_THEME_NAME}
+          beforeMount={configureMonacoTheme}
           options={{
             readOnly: true,
             minimap: { enabled: false },
@@ -331,8 +332,8 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
           height="100%"
           language="markdown"
           value={outputString}
-          theme="detail-dark"
-          beforeMount={handleMonacoBeforeMount}
+          theme={STUDIO_THEME_NAME}
+          beforeMount={configureMonacoTheme}
           options={{
             readOnly: true,
             minimap: { enabled: false },
@@ -356,8 +357,8 @@ const ResultRenderer = ({ result, error, images, handleMonacoBeforeMount }) => {
           height="100%"
           language="json"
           value={JSON.stringify(result.result, null, 2)}
-          theme="detail-dark"
-          beforeMount={handleMonacoBeforeMount}
+          theme={STUDIO_THEME_NAME}
+          beforeMount={configureMonacoTheme}
           options={{
             readOnly: true,
             minimap: { enabled: false },

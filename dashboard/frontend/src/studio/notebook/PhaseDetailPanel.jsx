@@ -8,6 +8,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
 import { detectPhaseEditors } from '../editors';
+import { configureMonacoTheme, STUDIO_THEME_NAME } from '../utils/monacoTheme';
 import './PhaseDetailPanel.css';
 
 /**
@@ -631,72 +632,6 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [phase.name, checkpointData]);
 
-  // Monaco theme - Deep purple-black with comprehensive syntax highlighting
-  const handleMonacoBeforeMount = (monaco) => {
-    monaco.editor.defineTheme('detail-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        // Keywords (SQL, Python, JS, YAML, etc.)
-        { token: 'keyword', foreground: 'ff9eb8', fontStyle: 'bold' },
-        { token: 'keyword.sql', foreground: 'ff9eb8', fontStyle: 'bold' },
-        { token: 'keyword.json', foreground: 'ff9eb8', fontStyle: 'bold' },
-
-        // Strings - bright cyan
-        { token: 'string', foreground: '00e5ff' },
-        { token: 'string.sql', foreground: '00e5ff' },
-        { token: 'string.yaml', foreground: '00e5ff' },
-        { token: 'string.json', foreground: '00e5ff' },
-        { token: 'string.key', foreground: '00e5ff' },
-        { token: 'string.value', foreground: '00e5ff' },
-        { token: 'string.quoted', foreground: '00e5ff' },
-
-        // JSON-specific
-        { token: 'string.key.json', foreground: 'a78bfa' },            // purple for JSON keys
-        { token: 'string.value.json', foreground: '00e5ff' },          // cyan for JSON values
-        { token: 'number.json', foreground: 'd2a8ff' },
-        { token: 'keyword.json', foreground: 'ffd700' },               // true/false/null
-
-        // Numbers
-        { token: 'number', foreground: 'd2a8ff' },
-        { token: 'number.sql', foreground: 'd2a8ff' },
-
-        // Comments
-        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
-        { token: 'comment.sql', foreground: '8b949e', fontStyle: 'italic' },
-
-        // Operators
-        { token: 'operator', foreground: 'ffc9e3' },
-        { token: 'delimiter', foreground: '94a3b8' },
-        { token: 'delimiter.bracket', foreground: '94a3b8' },
-        { token: 'delimiter.array', foreground: '94a3b8' },
-        { token: 'delimiter.colon', foreground: '94a3b8' },
-
-        // Functions
-        { token: 'predefined', foreground: 'ffd700' },
-        { token: 'predefined.sql', foreground: 'ffd700' },
-
-        // Types & Identifiers
-        { token: 'type', foreground: '79c0ff' },
-        { token: 'identifier', foreground: 'e6edf3' },
-
-        // YAML-specific
-        { token: 'tag', foreground: 'a78bfa' },
-      ],
-      colors: {
-        'editor.background': '#000000',                                 // pure black
-        'editor.foreground': '#e6edf3',
-        'editorLineNumber.foreground': '#6e7681',
-        'editor.lineHighlightBackground': '#0a0510',
-        'editor.selectionBackground': '#1a0f2f',
-        'editorCursor.foreground': '#00e5ff',
-        'editor.inactiveSelectionBackground': '#0f0a1e',
-        'editorIndentGuide.background': '#0f0a16',
-        'editorIndentGuide.activeBackground': '#1a1428',
-        'editorGutter.background': '#000000',
-      }
-    });
-  };
 
 
   return (
@@ -870,8 +805,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           language="yaml"
                           value={phaseYaml}
                           onChange={handleYamlChange}
-                          theme="detail-dark"
-                          beforeMount={handleMonacoBeforeMount}
+                          theme={STUDIO_THEME_NAME}
+                          beforeMount={configureMonacoTheme}
                           onMount={(editor) => {
                             yamlEditorRef.current = editor;
                             // Add focus/blur handlers
@@ -944,8 +879,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         language={info.language}
                         value={code}
                         onChange={handleCodeChange}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
+                        theme={STUDIO_THEME_NAME}
+                        beforeMount={configureMonacoTheme}
                         onMount={(editor) => {
                           editorRef.current = editor;
                           window.__activeMonacoEditor = editor;
@@ -986,8 +921,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           language="yaml"
                           value={phaseYaml}
                           onChange={handleYamlChange}
-                          theme="detail-dark"
-                          beforeMount={handleMonacoBeforeMount}
+                          theme={STUDIO_THEME_NAME}
+                          beforeMount={configureMonacoTheme}
                           onMount={(editor) => {
                             yamlEditorRef.current = editor;
                             window.__activeMonacoEditor = editor; // Enable drag-and-drop
@@ -1041,8 +976,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         language={info.language}
                         value={code}
                         onChange={handleCodeChange}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
+                        theme={STUDIO_THEME_NAME}
+                        beforeMount={configureMonacoTheme}
                         onMount={(editor) => {
                           editorRef.current = editor;
                           window.__activeMonacoEditor = editor;
@@ -1263,7 +1198,6 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           result={result}
                           error={error}
                           images={activeOutputTab === 'output' ? images : null}
-                          handleMonacoBeforeMount={handleMonacoBeforeMount}
                         />
                       </>
                     ) : (
@@ -1440,8 +1374,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         height="100%"
                         language="json"
                         value={JSON.stringify(result, null, 2)}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
+                        theme={STUDIO_THEME_NAME}
+                        beforeMount={configureMonacoTheme}
                         options={{
                           readOnly: true,
                           minimap: { enabled: false },
@@ -1470,8 +1404,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         height="100%"
                         language="json"
                         value={JSON.stringify(fullRequest, null, 2)}
-                        theme="detail-dark"
-                        beforeMount={handleMonacoBeforeMount}
+                        theme={STUDIO_THEME_NAME}
+                        beforeMount={configureMonacoTheme}
                         options={{
                           readOnly: true,
                           minimap: { enabled: false },

@@ -622,7 +622,7 @@
   justify-content: center;
   gap: 12px;
   color: #475569;
-  background-color: #0a0a0a;
+  /* background-color: #0a0a0a; */
 }
 
 .cascade-empty-detail p {

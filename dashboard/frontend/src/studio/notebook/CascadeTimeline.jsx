@@ -726,7 +726,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             // Left panel contains: cascade header (~50px) + inputs section
             // inputY is offset from cascade header start
             const SIDEBAR_TOP = 0; // Left panel starts at top of viewport
-            const y1 = SIDEBAR_TOP + inputY + 60; // Sidebar top + input offset + adjustment
+            const y1 = SIDEBAR_TOP + inputY + 52; // Sidebar top + input offset + adjustment
 
             // x2: Phase card left edge (in viewport coords)
             const x2 = timelineOffset.left + (node.x - scrollOffset.x);

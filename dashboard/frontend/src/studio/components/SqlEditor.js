@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import useStudioQueryStore from '../stores/studioQueryStore';
+import { configureMonacoTheme, STUDIO_THEME_NAME } from '../utils/monacoTheme';
 import './SqlEditor.css';
 
 function SqlEditor() {
@@ -127,73 +128,6 @@ function SqlEditor() {
     }
   }, [activeTab, updateTab]);
 
-  // Define custom dark theme - Deep purple-black with pastels
-  const handleEditorWillMount = useCallback((monaco) => {
-    monaco.editor.defineTheme('windlass-sql-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        // SQL Keywords
-        { token: 'keyword', foreground: 'ff9eb8', fontStyle: 'bold' },
-        { token: 'keyword.sql', foreground: 'ff9eb8', fontStyle: 'bold' },
-
-        // SQL Strings - bright cyan
-        { token: 'string', foreground: '00e5ff' },
-        { token: 'string.sql', foreground: '00e5ff' },
-        { token: 'string.double', foreground: '00e5ff' },
-        { token: 'string.single', foreground: '00e5ff' },
-        { token: 'string.quoted', foreground: '00e5ff' },
-        { token: 'string.quoted.single', foreground: '00e5ff' },
-        { token: 'string.quoted.double', foreground: '00e5ff' },
-        { token: 'string.quoted.single.sql', foreground: '00e5ff' },
-        { token: 'string.quoted.double.sql', foreground: '00e5ff' },
-        { token: 'string.escape', foreground: '00e5ff' },
-
-        // SQL Functions
-        { token: 'predefined', foreground: 'ffd700' },
-        { token: 'predefined.sql', foreground: 'ffd700' },
-
-        // Numbers
-        { token: 'number', foreground: 'd2a8ff' },
-        { token: 'number.sql', foreground: 'd2a8ff' },
-
-        // Comments
-        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
-        { token: 'comment.sql', foreground: '8b949e', fontStyle: 'italic' },
-
-        // Operators
-        { token: 'operator', foreground: 'ffc9e3' },
-        { token: 'operator.sql', foreground: 'ffc9e3' },
-
-        // Identifiers & Types
-        { token: 'identifier', foreground: 'e6edf3' },
-        { token: 'identifier.sql', foreground: 'e6edf3' },
-        { token: 'type', foreground: '79c0ff' },
-        { token: 'type.sql', foreground: '79c0ff' },
-
-        // Delimiters
-        { token: 'delimiter', foreground: '94a3b8' },
-        { token: 'delimiter.sql', foreground: '94a3b8' },
-      ],
-      colors: {
-        'editor.background': '#000000',                                 // pure black
-        'editor.foreground': '#e6edf3',
-        'editor.lineHighlightBackground': '#0a0510',
-        'editor.selectionBackground': '#1a0f2f',
-        'editorLineNumber.foreground': '#6e7681',
-        'editorLineNumber.activeForeground': '#e6edf3',
-        'editorCursor.foreground': '#00e5ff',                           // bright cyan
-        'editor.inactiveSelectionBackground': '#0f0a1e',
-        'editorIndentGuide.background': '#0f0a16',
-        'editorIndentGuide.activeBackground': '#1a1428',
-        'editorGutter.background': '#000000',
-        'scrollbarSlider.background': '#6e768180',
-        'scrollbarSlider.hoverBackground': '#8b949e80',
-        'scrollbarSlider.activeBackground': '#8b949e',
-      },
-    });
-  }, []);
-
   // Editor options
   const editorOptions = {
     minimap: { enabled: false },
@@ -236,11 +170,11 @@ function SqlEditor() {
       <Editor
         height="100%"
         language="sql"
-        theme="windlass-sql-dark"
+        theme={STUDIO_THEME_NAME}
         value={activeTab.sql}
         onChange={handleEditorChange}
         onMount={handleEditorDidMount}
-        beforeMount={handleEditorWillMount}
+        beforeMount={configureMonacoTheme}
         options={editorOptions}
       />
     </div>
