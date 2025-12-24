@@ -46,13 +46,52 @@ def sync_tools_to_db():
         console.print(f"[red]✗ Failed to get manifest: {e}[/red]")
         return
 
-    # Step 2: Transform to table rows
+    # Step 2: Generate embeddings for all tool descriptions
+    console.print("[cyan]Generating embeddings for tool descriptions...[/cyan]")
+
+    try:
+        from .rag.indexer import embed_texts
+
+        # Collect all descriptions
+        tool_names_ordered = list(manifest.keys())
+        descriptions = []
+        for tool_name in tool_names_ordered:
+            tool_info = manifest[tool_name]
+            description = tool_info.get('description', '')
+            if not description:
+                description = f"{tool_info.get('type', 'tool')}: {tool_name}"
+            descriptions.append(description)
+
+        # Batch embed all at once (more efficient)
+        embed_result = embed_texts(
+            texts=descriptions,
+            model=config.default_embed_model,
+            session_id="tool_sync",
+            cascade_id="tool_registry_sync",
+            phase_name="embed_tools"
+        )
+
+        embeddings = embed_result['embeddings']
+        embedding_model = embed_result['model']
+        embedding_dim = embed_result['dim']
+
+        console.print(f"[green]✓[/green] Generated {len(embeddings)} embeddings using {embedding_model}")
+
+    except Exception as e:
+        console.print(f"[yellow]⚠[/yellow] Could not generate embeddings: {e}")
+        console.print("[dim]Continuing without embeddings (text search only)...[/dim]")
+        embeddings = [[] for _ in manifest]
+        embedding_model = ""
+        embedding_dim = 0
+
+    # Step 3: Transform to table rows
     console.print("[cyan]Transforming tool metadata...[/cyan]")
 
     rows = []
     current_time = datetime.now(timezone.utc)
 
-    for tool_name, tool_info in manifest.items():
+    for i, tool_name in enumerate(tool_names_ordered):
+        tool_info = manifest[tool_name]
         # Determine tool type from manifest
         tool_type_str = tool_info.get('type', 'function')
 
@@ -87,15 +126,15 @@ def sync_tools_to_db():
             "tool_description": description,
             "schema_json": schema_json,
             "source_path": source_path,
-            "embedding": [],  # Empty for now - could add later
-            "embedding_model": "",
-            "embedding_dim": 0,
+            "embedding": embeddings[i] if i < len(embeddings) else [],
+            "embedding_model": embedding_model,
+            "embedding_dim": embedding_dim,
             "last_updated": current_time
         }
 
         rows.append(row)
 
-    # Step 3: Insert into ClickHouse
+    # Step 4: Insert into ClickHouse
     console.print(f"[cyan]Inserting {len(rows)} tools into ClickHouse...[/cyan]")
 
     try:
@@ -105,7 +144,7 @@ def sync_tools_to_db():
         console.print(f"[red]✗ Failed to insert tools: {e}[/red]")
         raise
 
-    # Step 4: Show summary
+    # Step 5: Show summary
     console.print("\n[bold green]✓ Sync complete![/bold green]\n")
     show_tool_summary()
 
@@ -415,3 +454,88 @@ def find_tool_by_description(search_query: str, limit: int = 10):
 
     console.print(table)
     console.print()
+
+
+def semantic_find_tools(query: str, limit: int = 10):
+    """
+    Find tools using semantic search (vector similarity).
+
+    Args:
+        query: Natural language query (e.g., "parse PDF documents")
+        limit: Max results to return
+    """
+    config = get_config()
+    db = get_db()
+
+    console.print(f"\n[bold]Semantic search for: [cyan]{query}[/cyan][/bold]\n")
+
+    try:
+        from .rag.indexer import embed_texts
+
+        # Embed the query
+        console.print("[dim]Embedding query...[/dim]")
+        embed_result = embed_texts(
+            texts=[query],
+            model=config.default_embed_model,
+            session_id="tool_search",
+            cascade_id="tool_search",
+            phase_name="search"
+        )
+
+        query_embedding = embed_result['embeddings'][0]
+
+        # Vector search in ClickHouse
+        # Note: ClickHouse cosineDistance returns 0 for identical vectors, higher for dissimilar
+        search_query = f"""
+            SELECT
+                tool_name,
+                tool_type,
+                tool_description,
+                source_path,
+                cosineDistance(embedding, {query_embedding}) as distance
+            FROM tool_manifest_vectors FINAL
+            WHERE length(embedding) > 0
+            ORDER BY distance ASC
+            LIMIT {limit}
+        """
+
+        results = db.query(search_query)
+
+        if not results:
+            console.print("[yellow]No tools with embeddings found[/yellow]")
+            console.print("[dim]Run 'windlass tools sync' to generate embeddings[/dim]\n")
+            return
+
+        # Display results
+        table = Table()
+        table.add_column("Tool Name", style="cyan")
+        table.add_column("Type", style="magenta")
+        table.add_column("Similarity", justify="right", style="green")
+        table.add_column("Description", style="white")
+
+        for row in results:
+            type_name = row["tool_type"]
+
+            # Convert distance to similarity score (0-1, higher is better)
+            similarity = 1.0 - min(row["distance"], 1.0)
+            similarity_pct = f"{similarity * 100:.1f}%"
+
+            # Truncate description
+            desc = row["tool_description"][:70]
+            if len(row["tool_description"]) > 70:
+                desc += "..."
+
+            table.add_row(
+                row["tool_name"],
+                type_name,
+                similarity_pct,
+                desc
+            )
+
+        console.print(table)
+        console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error during semantic search: {e}[/red]")
+        import traceback
+        traceback.print_exc()

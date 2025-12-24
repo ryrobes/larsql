@@ -1,0 +1,110 @@
+/* ============================================
+   ERROR BOUNDARY - Crash recovery UI
+   ============================================ */
+
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+  background-color: var(--color-bg-primary);
+  padding: var(--space-xl);
+}
+
+.error-boundary-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  max-width: 600px;
+  text-align: center;
+}
+
+/* ============================================
+   ICON
+   ============================================ */
+
+.error-boundary-icon {
+  color: var(--color-accent-pink);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ============================================
+   TEXT
+   ============================================ */
+
+.error-boundary-title {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+
+  /* Neon gradient text */
+  background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.error-boundary-message {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-relaxed);
+}
+
+/* ============================================
+   ERROR DETAILS
+   ============================================ */
+
+.error-boundary-details {
+  width: 100%;
+  max-width: 500px;
+  margin-top: var(--space-md);
+}
+
+.error-boundary-details summary {
+  padding: var(--space-sm) var(--space-md);
+  background-color: rgba(255, 0, 110, 0.1);
+  border: 1px solid rgba(255, 0, 110, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-normal);
+}
+
+.error-boundary-details summary:hover {
+  background-color: rgba(255, 0, 110, 0.15);
+  border-color: rgba(255, 0, 110, 0.3);
+}
+
+.error-boundary-stack {
+  margin: var(--space-sm) 0 0 0;
+  padding: var(--space-md);
+  background-color: rgba(10, 6, 20, 0.8);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  text-align: left;
+}
+
+.error-boundary-stack code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-pink);
+  line-height: 1.5;
+}
+
+/* ============================================
+   ACTIONS
+   ============================================ */
+
+.error-boundary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}

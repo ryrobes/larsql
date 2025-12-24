@@ -1,7 +1,11 @@
 import React, { Suspense, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import useNavigationStore from '../stores/navigationStore';
+import useToastStore from '../stores/toastStore';
 import useRunningSessions from '../studio/hooks/useRunningSessions';
 import VerticalSidebar from './VerticalSidebar';
+import ErrorBoundary from './ErrorBoundary';
+import { ToastContainer } from '../components/Toast/Toast';
 import { views } from '../views';
 import './AppShell.css';
 
@@ -44,6 +48,9 @@ const AppShell = ({
   } = useNavigationStore();
 
   const { sessions: runningSessions } = useRunningSessions(5000);
+
+  // Toast system
+  const { toasts, dismissToast } = useToastStore();
 
   // Initialize from URL on mount
   useEffect(() => {
@@ -97,40 +104,56 @@ const AppShell = ({
         onBlocked={onBlocked}
       />
 
-      {/* Main Content Area */}
+      {/* Main Content Area with Framer Motion transitions */}
       <main className="app-main">
-        <Suspense fallback={<ViewLoading />}>
-          {ViewComponent ? (
-            <ViewComponent
-              params={viewParams}
-              navigate={navigate}
-              // Studio-specific props (map from params)
-              initialCascade={viewParams.cascade || viewParams.id}
-              initialSession={viewParams.session}
-              onCascadeLoaded={() => {
-                // Optional callback when cascade loads
-                console.log('[AppShell] Cascade loaded');
-              }}
-              // Legacy props (during migration)
-              onMessageFlow={onMessageFlow}
-              onCockpit={onCockpit}
-              onSextant={onSextant}
-              onWorkshop={onWorkshop}
-              onPlayground={onPlayground}
-              onTools={onTools}
-              onSearch={onSearch}
-              onSqlQuery={onSqlQuery}
-              onArtifacts={onArtifacts}
-              onBrowser={onBrowser}
-              onSessions={onSessions}
-              onBlocked={onBlocked}
-              blockedCount={blockedCount}
-            />
-          ) : (
-            <ViewNotFound view={currentView} />
-          )}
-        </Suspense>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentView}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <Suspense fallback={<ViewLoading />}>
+              <ErrorBoundary onReset={() => navigate('studio')}>
+                {ViewComponent ? (
+                  <ViewComponent
+                  params={viewParams}
+                  navigate={navigate}
+                  // Studio-specific props (map from params)
+                  initialCascade={viewParams.cascade || viewParams.id}
+                  initialSession={viewParams.session}
+                  onCascadeLoaded={() => {
+                    // Optional callback when cascade loads
+                    console.log('[AppShell] Cascade loaded');
+                  }}
+                  // Legacy props (during migration)
+                  onMessageFlow={onMessageFlow}
+                  onCockpit={onCockpit}
+                  onSextant={onSextant}
+                  onWorkshop={onWorkshop}
+                  onPlayground={onPlayground}
+                  onTools={onTools}
+                  onSearch={onSearch}
+                  onSqlQuery={onSqlQuery}
+                  onArtifacts={onArtifacts}
+                  onBrowser={onBrowser}
+                  onSessions={onSessions}
+                  onBlocked={onBlocked}
+                  blockedCount={blockedCount}
+                />
+                ) : (
+                  <ViewNotFound view={currentView} />
+                )}
+              </ErrorBoundary>
+            </Suspense>
+          </motion.div>
+        </AnimatePresence>
       </main>
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 };

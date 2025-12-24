@@ -564,17 +564,17 @@ def get_running_sessions():
         session_states = {}
         if session_ids:
             try:
-                # Build parameterized query to prevent SQL injection
-                placeholders = ','.join(['?' for _ in session_ids])
+                # Build IN clause with quoted session IDs (safe: session_ids from ClickHouse, not user input)
+                session_ids_str = ','.join(f"'{sid}'" for sid in session_ids)
                 state_query = f"""
                 SELECT
                     session_id,
-                    status,
+                    CAST(status AS String) as status,
                     error_message
                 FROM session_state FINAL
-                WHERE session_id IN ({placeholders})
+                WHERE session_id IN ({session_ids_str})
                 """
-                state_results = db.query(state_query, params=session_ids, output_format="raw")
+                state_results = db.query(state_query, output_format="raw")
                 for state_row in state_results:
                     session_id, status, error_message = state_row
                     session_states[session_id] = {
@@ -637,7 +637,7 @@ def get_running_sessions():
                 'cascade_id': cascade_id,
                 'cascade_file': cascade_file,
                 'status': status,
-                'duration_seconds': round(current_time - start_ts, 1),
+                'age_seconds': round(current_time - start_ts, 1),
                 'cost': round(cost, 6),
                 'start_time': start_ts,
             })

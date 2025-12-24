@@ -14,6 +14,8 @@ Windlass is a declarative agent framework for Python that orchestrates multi-ste
 
 The framework handles context accumulation, state management, execution tracing, and provides both CLI and web-based interfaces.
 
+**🆕 NEW: SQL Integration (2025-12-24)** - Query Windlass from **ANY SQL client**! Use `windlass_udf()` for simple LLM extraction or `windlass_cascade_udf()` to run complete workflows (with soundings!) per database row. Includes PostgreSQL wire protocol server (DBeaver, psql, Tableau) and HTTP API (Python, Jupyter). See [CONNECT_NOW.md](CONNECT_NOW.md).
+
 **The Four Self-* Properties**:
 1. **Self-Orchestrating** (Manifest/Quartermaster): Workflows pick their own tools based on context
 2. **Self-Testing** (Snapshot System): Tests write themselves from real executions
@@ -80,6 +82,23 @@ windlass sql "SELECT * FROM all_data LIMIT 5" --format json
 ```
 
 **Magic Tables**: `all_data` → main logs, `all_evals` → evaluation data
+
+### PostgreSQL Server (NEW! 2025-12-24)
+```bash
+# Start server (connect from DBeaver, psql, Tableau, etc.)
+windlass server --port 5432
+
+# Connect from any PostgreSQL client:
+psql postgresql://windlass@localhost:5432/default
+
+# Use LLM UDFs in SQL!
+SELECT windlass_udf('Extract brand', product_name) FROM products;
+
+# Run cascades per row!
+SELECT windlass_cascade_udf('tackle/fraud.yaml', json_object('id', id)) FROM txns;
+```
+
+See [CONNECT_NOW.md](CONNECT_NOW.md) for complete setup guide.
 
 ### Testing
 ```bash
@@ -328,9 +347,16 @@ windlass/
 │   └── chart.py         # create_chart
 └── sql_tools/           # SQL utilities
     ├── session_db.py    # Session-scoped DuckDB
-    └── udf.py           # windlass_udf() LLM SQL function (NEW)
+    └── udf.py           # windlass_udf() + windlass_cascade_udf() (NEW)
+└── server/              # PostgreSQL wire protocol server (NEW)
+    ├── __init__.py
+    ├── postgres_protocol.py  # Message encoding/decoding
+    └── postgres_server.py    # TCP server
+└── client/              # SQL client library (NEW)
+    ├── __init__.py
+    └── sql_client.py    # WindlassClient for HTTP API
 
-dashboard/               # Web UI (NEW)
+dashboard/               # Web UI
 ├── backend/
 │   ├── app.py           # Main Flask application
 │   ├── notebook_api.py  # Data Cascades notebook endpoints

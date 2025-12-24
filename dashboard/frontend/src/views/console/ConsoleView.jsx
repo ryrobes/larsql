@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
+import { Button, useToast } from '../../components';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import './ConsoleView.css';
 
@@ -39,11 +40,16 @@ const ConsoleView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const gridRef = useRef(null);
+  const { showToast } = useToast();
+  const prevDataHashRef = useRef(null);
 
   // Fetch recent sessions from sessions API
   const fetchSessions = async () => {
     try {
-      setLoading(true);
+      // Only show loading on first fetch
+      if (sessions.length === 0) {
+        setLoading(true);
+      }
 
       // Use sessions API with limit parameter
       const res = await fetch('http://localhost:5001/api/sessions?limit=100');
@@ -70,7 +76,20 @@ const ConsoleView = () => {
           : session.status === 'RUNNING' ? 'Running...' : '-',
       }));
 
-      setSessions(rows);
+      // Only update state if data actually changed (prevent unnecessary re-renders)
+      const newHash = JSON.stringify(rows.map(r => ({
+        id: r.session_id,
+        status: r.status,
+        phase: r.current_phase,
+        updated: r.updated_at
+      })));
+
+      if (newHash !== prevDataHashRef.current) {
+        console.log('[Console] Data changed, updating grid');
+        setSessions(rows);
+        prevDataHashRef.current = newHash;
+      }
+
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -79,10 +98,10 @@ const ConsoleView = () => {
     }
   };
 
-  // Poll every 5 seconds
+  // Poll every 10 seconds (slower to reduce flicker, data doesn't change that fast)
   useEffect(() => {
     fetchSessions();
-    const interval = setInterval(fetchSessions, 5000);
+    const interval = setInterval(fetchSessions, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -174,6 +193,17 @@ const ConsoleView = () => {
         <div className="console-subtitle">
           System analytics and recent activity
         </div>
+        {/* Test toast button (for demo) */}
+        {process.env.NODE_ENV === 'development' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="mdi:bell"
+            onClick={() => showToast('Toast test!', { type: 'success' })}
+          >
+            Test Toast
+          </Button>
+        )}
       </div>
 
       {/* Cost Chart Section */}
@@ -210,6 +240,7 @@ const ConsoleView = () => {
               rowData={sessions}
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
+              getRowId={(params) => params.data.session_id} // Stable row tracking
               domLayout="autoHeight"
               suppressCellFocus={true}
               suppressMovableColumns={false}

@@ -9,6 +9,7 @@ import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
 import { detectPhaseEditors } from '../editors';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
+import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../components';
 import './PhaseDetailPanel.css';
 
 /**
@@ -51,6 +52,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   const [yamlEditorFocused, setYamlEditorFocused] = useState(false);
   const [localYaml, setLocalYaml] = useState('');
   const [yamlParseError, setYamlParseError] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const lastSyncedYamlRef = useRef('');
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
@@ -588,10 +590,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Delete phase "${phase.name}"?`)) {
-      removeCell(index);
-      onClose();
-    }
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = () => {
+    removeCell(index);
+    setIsDeleteModalOpen(false);
+    onClose();
   };
 
   // Determine if this is a LIVE decision (actively waiting) vs replay
@@ -1460,6 +1465,41 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
             </Split>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        size="sm"
+      >
+        <ModalHeader
+          title="Delete Phase"
+          icon="mdi:delete-alert"
+        />
+        <ModalContent>
+          <p style={{ color: 'var(--color-text-secondary)', lineHeight: '1.5' }}>
+            Are you sure you want to delete <strong style={{ color: 'var(--color-accent-cyan)' }}>"{phase.name}"</strong>?
+          </p>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)', marginTop: '8px' }}>
+            This action cannot be undone.
+          </p>
+        </ModalContent>
+        <ModalFooter align="right">
+          <Button
+            variant="secondary"
+            onClick={() => setIsDeleteModalOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            icon="mdi:delete"
+            onClick={confirmDelete}
+          >
+            Delete
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 };

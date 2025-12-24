@@ -74,7 +74,7 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     outDegree[idx] = 0;
   });
 
-  // Extract dependencies from {{ outputs.X }} AND {{ input.X }}
+  // Extract dependencies from {{ outputs.X }} AND {{ input.X }} AND context.from
   phases.forEach((phase, idx) => {
     const phaseYaml = JSON.stringify(phase);
     const outputDeps = new Set();
@@ -92,6 +92,18 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     const inputPattern = /\{\{\s*input\.(\w+)/g;
     while ((match = inputPattern.exec(phaseYaml)) !== null) {
       inputRefs.add(match[1]);
+    }
+
+    // context.from dependencies (explicit phase context imports)
+    if (phase.context && phase.context.from) {
+      const contextFrom = Array.isArray(phase.context.from)
+        ? phase.context.from
+        : [phase.context.from];
+
+      contextFrom.forEach(phaseName => {
+        const depIdx = phases.findIndex(p => p.name === phaseName);
+        if (depIdx !== -1 && depIdx !== idx) outputDeps.add(depIdx);
+      });
     }
 
     graph[idx].implicitDeps = Array.from(outputDeps);
@@ -749,13 +761,13 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             </Button>
           </Tooltip>
 
-          <Tooltip label="Restart" description="Clear session and start fresh">
+          {/* <Tooltip label="Restart" description="Clear session and start fresh">
             <Button
               variant="secondary"
               icon="mdi:restart"
               onClick={handleRestart}
             />
-          </Tooltip>
+          </Tooltip> */}
 
           <Tooltip label="Save" description="Save cascade changes">
             <Button

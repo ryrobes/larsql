@@ -133,7 +133,8 @@
 
 /* Message Counts - Shows breakdown by role */
 .cascade-message-counts-compact {
-  display: inline-flex;
+  /* display: inline-flex; */
+  display: none;
   align-items: center;
   gap: 4px;
   background-color: rgba(96, 165, 250, 0.1);

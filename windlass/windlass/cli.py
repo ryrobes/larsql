@@ -482,10 +482,43 @@ def main():
     # tools search
     tools_search_parser = tools_subparsers.add_parser(
         'search',
-        help='Search for tools by description'
+        help='Search for tools by description (text search)'
     )
     tools_search_parser.add_argument('query', help='Search query (text to find in tool names/descriptions)')
     tools_search_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
+
+    # tools find (semantic)
+    tools_find_parser = tools_subparsers.add_parser(
+        'find',
+        help='Find tools using semantic search (natural language)'
+    )
+    tools_find_parser.add_argument('query', help='Natural language query (e.g., "parse PDF documents")')
+    tools_find_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
+
+    # ========================================================================
+    # SERVER COMMAND - PostgreSQL wire protocol server
+    # ========================================================================
+    server_parser = subparsers.add_parser(
+        'server',
+        help='Start PostgreSQL wire protocol server (connect from DBeaver, psql, Tableau, etc.)'
+    )
+    server_parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0 = all interfaces)'
+    )
+    server_parser.add_argument(
+        '--port',
+        type=int,
+        default=5433,
+        help='Port to listen on (default: 5433; use 5432 for standard PostgreSQL port, may require sudo)'
+    )
+    server_parser.add_argument(
+        '--session-prefix',
+        default='pg_client',
+        help='Prefix for DuckDB session IDs (default: pg_client)'
+    )
+    server_parser.set_defaults(func=cmd_server)
 
     args = parser.parse_args()
 
@@ -657,9 +690,14 @@ def main():
             cmd_tools_stats(args)
         elif args.tools_command == 'search':
             cmd_tools_search(args)
+        elif args.tools_command == 'find':
+            cmd_tools_find(args)
         else:
             tools_parser.print_help()
             sys.exit(1)
+    elif args.command == 'server':
+        # Start PostgreSQL wire protocol server
+        cmd_server(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -3004,6 +3042,31 @@ def cmd_tools_search(args):
     from windlass.tools_mgmt import find_tool_by_description
 
     find_tool_by_description(args.query, limit=args.limit)
+
+
+def cmd_tools_find(args):
+    """Find tools using semantic search."""
+    from windlass.tools_mgmt import semantic_find_tools
+
+    semantic_find_tools(args.query, limit=args.limit)
+
+
+def cmd_server(args):
+    """Start Windlass PostgreSQL wire protocol server."""
+    from windlass.server import start_postgres_server
+
+    print(f"🚀 Starting Windlass PostgreSQL server...")
+    print(f"   Host: {args.host}")
+    print(f"   Port: {args.port}")
+    print(f"   Session prefix: {args.session_prefix}")
+    print()
+
+    # Start server (blocking call)
+    start_postgres_server(
+        host=args.host,
+        port=args.port,
+        session_prefix=args.session_prefix
+    )
 
 
 if __name__ == "__main__":

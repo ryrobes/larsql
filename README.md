@@ -4,6 +4,8 @@
 
 Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
 
+**🆕 NEW: Query Windlass with SQL! (2025-12-24)** Connect DBeaver, psql, Tableau, or any SQL client to Windlass and run LLMs directly in SQL queries! Execute `windlass_udf('Extract brand', product_name)` or run complete cascades per row with `windlass_cascade_udf()`. Includes PostgreSQL wire protocol server + HTTP API. [See SQL Integration →](#sql-integration-new)
+
 **NEW: Data Cascades (Polyglot Notebooks)!** Execute SQL, Python, JavaScript, Clojure, and LLM phases in a single pipeline with seamless data flow. "Jupyter for Cascades" with auto-fix debugging, multi-modal outputs, and session-scoped temp tables. [See Data Cascades →](#data-cascades-polyglot-notebooks)
 
 **NEW: Web Dashboard!** Full-featured web IDE with SQL notebook mode, visual playground canvas (stacked deck UI for soundings), and session explorer. Build cascades visually or write polyglot data pipelines. [See Dashboard →](#web-dashboard)
@@ -394,6 +396,61 @@ export WINDLASS_GRAPH_DIR="./graphs"
 export WINDLASS_STATE_DIR="./states"
 export WINDLASS_IMAGE_DIR="./images"
 ```
+
+---
+
+## SQL Integration (NEW! 2025-12-24)
+
+**Query Windlass with LLMs from ANY SQL client!**
+
+### **Start Server**:
+```bash
+# PostgreSQL wire protocol (DBeaver, psql, Tableau)
+windlass server --port 5432
+
+# Or HTTP API (already running with dashboard)
+cd dashboard/backend && python app.py  # Port 5001
+```
+
+### **Connect from DBeaver**:
+```
+Type: PostgreSQL
+Host: localhost
+Port: 5432
+Database: default
+Username: windlass
+```
+
+### **Run LLMs in SQL**:
+```sql
+-- Simple extraction
+SELECT windlass_udf('Extract brand', product_name) FROM products;
+
+-- Multi-column enrichment
+SELECT
+  product_name,
+  windlass_udf('Brand', product_name) as brand,
+  windlass_udf('Category', product_name) as category,
+  windlass_udf('Color', product_name) as color
+FROM products;
+
+-- Complete cascade per row (with soundings!)
+SELECT windlass_cascade_udf('tackle/fraud.yaml', json_object('id', id)) FROM txns;
+
+-- Aggregate by LLM-extracted fields
+SELECT
+  windlass_udf('Category', product_name) as category,
+  COUNT(*) as count,
+  AVG(price) as avg_price
+FROM products
+GROUP BY category;
+```
+
+**Features**: LLM UDFs | Cascades per row | Soundings per row | 90-99% cache hit rates | ATTACH support
+
+**Guides**: [CONNECT_NOW.md](CONNECT_NOW.md) | [SQL_CLIENT_GUIDE.md](SQL_CLIENT_GUIDE.md)
+
+---
 
 ## Quick Start
 

@@ -81,6 +81,10 @@ app.register_blueprint(studio_bp)
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
 
+# SQL Server API - HTTP endpoint for external SQL clients (NEW!)
+from sql_server_api import sql_server_api
+app.register_blueprint(sql_server_api)
+
 
 # Set query context for each request (tracks which endpoint/page made the query)
 @app.before_request

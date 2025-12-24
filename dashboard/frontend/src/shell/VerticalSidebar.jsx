@@ -110,6 +110,19 @@ const VerticalSidebar = ({
                   .join('')
                   .slice(0, 2) || 'C';
 
+                // Format cost for display (always 3 decimal places)
+                const costDisplay = session.cost != null && !isNaN(session.cost)
+                  ? `$${session.cost.toFixed(3)}`
+                  : '$0.000';
+
+                // Format duration for display
+                const ageSeconds = session.age_seconds != null ? session.age_seconds : 0;
+                const durationDisplay = ageSeconds < 60
+                  ? `${Math.round(ageSeconds)}s`
+                  : ageSeconds < 3600
+                  ? `${Math.floor(ageSeconds / 60)}m`
+                  : `${Math.floor(ageSeconds / 3600)}h`;
+
                 return (
                   <RichTooltip
                     key={session.session_id}
@@ -121,6 +134,7 @@ const VerticalSidebar = ({
                         ageSeconds={session.age_seconds}
                         cascadeFile={session.cascade_file}
                         status={session.status}
+                        cost={session.cost}
                       />
                     }
                   >
@@ -130,6 +144,10 @@ const VerticalSidebar = ({
                     >
                       <span className="vsidebar-running-avatar">
                         {displayName}
+                      </span>
+                      <span className="vsidebar-running-stats">
+                        <span className="vsidebar-running-stat">{durationDisplay}</span>
+                        <span className="vsidebar-running-stat">{costDisplay}</span>
                       </span>
                       <span className="vsidebar-running-pulse" />
                     </button>

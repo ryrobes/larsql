@@ -212,8 +212,9 @@
 .vsidebar-running-btn {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   width: 38px;
   height: 38px;
   background: linear-gradient(
@@ -226,6 +227,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   overflow: visible;
+  padding: 3px 2px 2px 2px;
 }
 
 .vsidebar-running-btn:hover {
@@ -292,4 +294,34 @@
 
 .vsidebar-running-btn.current .vsidebar-running-pulse {
   border-color: rgba(52, 211, 153, 0.4);
+}
+
+/* Running cascade stats (duration and cost) */
+.vsidebar-running-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 7px;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.vsidebar-running-stat {
+  display: block;
+  white-space: nowrap;
+  padding: 1px 2px;
+}
+
+.vsidebar-running-btn:hover .vsidebar-running-stats {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.vsidebar-running-btn.current .vsidebar-running-stats {
+  color: rgba(52, 211, 153, 0.9);
 }

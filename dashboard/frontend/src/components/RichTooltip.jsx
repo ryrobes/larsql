@@ -188,11 +188,19 @@ export const RunningCascadeTooltipContent = ({
   ageSeconds,
   cascadeFile,
   status,
+  cost,
 }) => {
   const formatAge = (seconds) => {
     if (seconds < 60) return `${Math.round(seconds)}s ago`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
     return `${Math.floor(seconds / 3600)}h ago`;
+  };
+
+  const formatCost = (cost) => {
+    if (!cost || cost === 0) return '$0.00';
+    if (cost < 0.001) return `$${cost.toFixed(6)}`;
+    if (cost < 0.01) return `$${cost.toFixed(4)}`;
+    return `$${cost.toFixed(3)}`;
   };
 
   return (
@@ -211,6 +219,12 @@ export const RunningCascadeTooltipContent = ({
           <span className="rct-meta-label">Started</span>
           <span className="rct-meta-value">{formatAge(ageSeconds)}</span>
         </div>
+        {cost !== undefined && (
+          <div className="rct-meta-row">
+            <span className="rct-meta-label">Cost</span>
+            <span className="rct-meta-value rct-cost">{formatCost(cost)}</span>
+          </div>
+        )}
         {cascadeFile && (
           <div className="rct-meta-row">
             <span className="rct-meta-label">File</span>

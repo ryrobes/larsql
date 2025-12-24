@@ -963,6 +963,7 @@ class PhaseConfig(BaseModel):
     instructions: Optional[str] = None
     tackle: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
+    manifest_limit: int = 30  # Max tools to send to Quartermaster (semantic pre-filtering if embeddings available)
     model: Optional[str] = None  # Override default model for this phase
     image_config: Optional[ImageConfig] = None  # Config for image generation models (FLUX, SDXL, etc.)
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)

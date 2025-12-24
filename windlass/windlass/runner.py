@@ -4509,7 +4509,69 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Get full tackle manifest
         manifest = get_tackle_manifest()
-        manifest_text = format_manifest_for_quartermaster(manifest)
+
+        # Semantic pre-filtering: Use vector search to reduce manifest size
+        filtered_manifest = manifest
+        used_semantic_filtering = False
+
+        if len(manifest) > phase.manifest_limit:
+            try:
+                from .db_adapter import get_db
+                from .rag.indexer import embed_texts
+                from .config import get_config
+
+                config = get_config()
+                db = get_db()
+
+                # Embed phase instructions for semantic matching
+                console.print(f"{indent}  [dim cyan]🔍 Semantic pre-filtering ({len(manifest)} → {phase.manifest_limit} tools)...[/dim cyan]")
+
+                embed_result = embed_texts(
+                    texts=[phase.instructions],
+                    model=config.default_embed_model,
+                    session_id=self.session_id,
+                    phase_name=phase.name,
+                    trace_id=qm_trace.id,
+                    parent_id=trace.id
+                )
+
+                query_embedding = embed_result['embeddings'][0]
+
+                # Vector search for most relevant tools
+                search_query = f"""
+                    SELECT
+                        tool_name,
+                        tool_type,
+                        tool_description,
+                        source_path,
+                        cosineDistance(embedding, {query_embedding}) as distance
+                    FROM tool_manifest_vectors FINAL
+                    WHERE length(embedding) > 0
+                    ORDER BY distance ASC
+                    LIMIT {phase.manifest_limit}
+                """
+
+                relevant_tools = db.query(search_query)
+
+                if relevant_tools:
+                    # Rebuild manifest with only top N tools
+                    filtered_manifest = {}
+                    for row in relevant_tools:
+                        tool_name = row['tool_name']
+                        if tool_name in manifest:
+                            filtered_manifest[tool_name] = manifest[tool_name]
+
+                    used_semantic_filtering = True
+                    console.print(f"{indent}  [green]✓[/green] Pre-filtered to {len(filtered_manifest)} most relevant tools")
+                else:
+                    console.print(f"{indent}  [yellow]⚠[/yellow] No embeddings found, using full manifest")
+
+            except Exception as e:
+                console.print(f"{indent}  [yellow]⚠[/yellow] Semantic filtering failed: {e}")
+                console.print(f"{indent}  [dim]Falling back to full manifest[/dim]")
+                # Fall through to use full manifest
+
+        manifest_text = format_manifest_for_quartermaster(filtered_manifest)
 
         # Build context for quartermaster
         if phase.manifest_context == "full":
@@ -4586,6 +4648,10 @@ If no tools are needed, return an empty array: []
                "selected_tackle": valid_tackle,
                "reasoning": response_content,  # Full content, no truncation
                "manifest_context": phase.manifest_context,
+               "manifest_limit": phase.manifest_limit,
+               "semantic_filtering_used": used_semantic_filtering,
+               "tools_considered": len(filtered_manifest),
+               "tools_available": len(manifest),
                "model": qm_model
            }, semantic_actor="quartermaster", semantic_purpose="tool_selection"))
 
