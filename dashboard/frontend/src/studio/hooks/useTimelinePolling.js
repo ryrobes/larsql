@@ -47,11 +47,11 @@ export function useTimelinePolling(sessionId, isRunning) {
   // Poll function
   const poll = useCallback(async () => {
     if (!sessionId) {
-      console.log('[TimelinePolling] No sessionId, skipping poll');
+      //console.log('[TimelinePolling] No sessionId, skipping poll');
       return;
     }
 
-    console.log('[TimelinePolling] Polling session:', sessionId, 'cursor:', cursorRef.current);
+    //console.log('[TimelinePolling] Polling session:', sessionId, 'cursor:', cursorRef.current);
 
     try {
       // Use a lookback window instead of strict cursor to catch cost updates on existing rows
@@ -64,9 +64,9 @@ export function useTimelinePolling(sessionId, isRunning) {
       const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
       const isLookback = effectiveCursor !== cursorRef.current;
 
-      if (isLookback && Math.random() < 0.1) { // Log 10% of lookbacks to avoid spam
-        console.log('[TimelinePolling] Using lookback window to catch cost updates', { cursor: cursorRef.current, lookback: lookbackTimestamp });
-      }
+      // if (isLookback && Math.random() < 0.1) { // Log 10% of lookbacks to avoid spam
+      //   console.log('[TimelinePolling] Using lookback window to catch cost updates', { cursor: cursorRef.current, lookback: lookbackTimestamp });
+      // }
 
       const url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
       const response = await fetch(url);
@@ -77,7 +77,7 @@ export function useTimelinePolling(sessionId, isRunning) {
 
       const data = await response.json();
 
-      console.log('[TimelinePolling] Fetched', data.rows?.length || 0, 'rows for session:', sessionId);
+      //console.log('[TimelinePolling] Fetched', data.rows?.length || 0, 'rows for session:', sessionId);
 
       if (data.error) {
         throw new Error(data.error);

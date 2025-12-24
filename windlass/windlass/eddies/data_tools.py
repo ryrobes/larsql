@@ -267,6 +267,16 @@ def sql_data(
         # Get session DuckDB for temp table operations
         session_db = _get_session_duckdb(_session_id)
 
+        # Register windlass_udf if session_db is available
+        if session_db:
+            from ..sql_tools.udf import register_windlass_udf
+            try:
+                register_windlass_udf(session_db, config={})
+            except Exception as e:
+                # Non-fatal if UDF registration fails
+                import logging
+                logging.getLogger(__name__).debug(f"Could not register windlass_udf: {e}")
+
         # If we have a connection, use the standard run_sql
         if connection:
             result = _run_sql_with_connection(query, connection, limit)

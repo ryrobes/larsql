@@ -8097,6 +8097,10 @@ Refinement directive: {reforge_config.honing_prompt}
             browser_session = self._setup_browser_session(phase, input_data, trace)
 
         try:
+            # Check if SQL-native mapping phase (for_each_row)
+            if phase.for_each_row:
+                return self._execute_sql_mapping_phase(phase, input_data, trace)
+
             # Check if this is a deterministic (tool-based) phase
             if phase.is_deterministic():
                 return self._execute_deterministic_phase(phase, input_data, trace)
@@ -8779,6 +8783,209 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # All attempts failed
         raise last_error
+
+    def _execute_sql_mapping_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
+        """
+        Execute SQL-native mapping: fan out over rows from a temp table.
+
+        This is like map_cascade but reads from DuckDB temp tables instead of arrays.
+        Perfect for data pipeline patterns where you want to process each row.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from .sql_tools.session_db import get_session_db
+        from .prompts import render_instruction
+        import time
+        import uuid
+
+        indent = "  " * self.depth
+        config = phase.for_each_row
+
+        console.print(f"{indent}[bold magenta]🗂️  SQL Mapping: {config.table} → {config.max_parallel} parallel[/bold magenta]")
+
+        # Get session DuckDB
+        session_db = get_session_db(self.session_id)
+
+        # Query the temp table to get rows
+        try:
+            result = session_db.execute(f"SELECT * FROM {config.table}").fetchdf()
+            rows = result.to_dict('records')  # Convert to list of dicts
+        except Exception as e:
+            console.print(f"{indent}[red]✗ Failed to read table {config.table}: {e}[/red]")
+            return {
+                "_route": "error",
+                "error": f"Failed to read table {config.table}: {str(e)}",
+                "results": [],
+                "count": 0,
+                "total": 0
+            }
+
+        total_rows = len(rows)
+        console.print(f"{indent}  Found {total_rows} rows in {config.table}")
+
+        if total_rows == 0:
+            return {
+                "results": [],
+                "count": 0,
+                "total": 0,
+                "_route": "success"
+            }
+
+        results = []
+        errors = []
+        successful_count = 0
+
+        def process_single_row(index: int, row: dict) -> dict:
+            """Process a single row."""
+            # Generate session ID for this row
+            row_session_id = f"{self.session_id}_row_{index}"
+
+            # Build context for Jinja2 rendering
+            render_context = {
+                "row": row,
+                "index": index,
+                "total": total_rows,
+                "input": input_data,
+                "state": self.echo.state,
+                "outputs": {item['phase']: item['output'] for item in self.echo.lineage}
+            }
+
+            try:
+                if config.cascade:
+                    # Spawn cascade per row
+                    from .runner import run_cascade
+
+                    # Render inputs with row data
+                    cascade_inputs = {}
+                    if config.inputs:
+                        for key, template in config.inputs.items():
+                            cascade_inputs[key] = render_instruction(template, render_context)
+
+                    result = run_cascade(
+                        config.cascade,
+                        cascade_inputs,
+                        session_id=row_session_id,
+                        parent_trace=trace,
+                        parent_session_id=self.session_id
+                    )
+
+                    return {
+                        "index": index,
+                        "row": row,
+                        "result": result,
+                        "error": None,
+                        "session_id": row_session_id
+                    }
+
+                elif config.instructions:
+                    # Run LLM phase per row
+                    # Render instructions with row data
+                    rendered_instructions = render_instruction(config.instructions, render_context)
+
+                    # Create a mini LLM phase
+                    from .agent import Agent
+                    agent = Agent(model=self.model)
+
+                    response = agent.run(
+                        system_prompt=rendered_instructions,
+                        user_message="",
+                        tools=[],
+                        max_turns=1
+                    )
+
+                    return {
+                        "index": index,
+                        "row": row,
+                        "result": response,
+                        "error": None,
+                        "session_id": row_session_id
+                    }
+
+                else:
+                    raise ValueError("for_each_row must specify either 'cascade' or 'instructions'")
+
+            except Exception as e:
+                error_info = {
+                    "index": index,
+                    "row": row,
+                    "result": None,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "session_id": row_session_id
+                }
+
+                if config.on_error == "fail_fast":
+                    raise
+
+                return error_info
+
+        # Execute in parallel
+        with ThreadPoolExecutor(max_workers=min(config.max_parallel, total_rows)) as executor:
+            futures = {
+                executor.submit(process_single_row, i, row): i
+                for i, row in enumerate(rows)
+            }
+
+            for future in as_completed(futures):
+                try:
+                    result_dict = future.result()
+
+                    if result_dict["error"] is None:
+                        successful_count += 1
+                        results.append(result_dict)
+                    else:
+                        errors.append(result_dict)
+                        if config.on_error == "fail_fast":
+                            # Cancel remaining
+                            for f in futures:
+                                f.cancel()
+                            break
+
+                except Exception as e:
+                    errors.append({
+                        "error": str(e),
+                        "error_type": type(e).__name__
+                    })
+
+        console.print(f"{indent}  [bold green]✓ Processed {successful_count}/{total_rows} rows[/bold green]")
+
+        # Optionally materialize results as temp table
+        if config.result_table and len(results) > 0:
+            try:
+                import pandas as pd
+                # Extract result data and create DataFrame
+                result_rows = []
+                for r in results:
+                    result_row = {"_index": r["index"]}
+                    # Merge original row data
+                    result_row.update(r["row"])
+                    # Add result (if it's a dict, flatten it)
+                    if isinstance(r["result"], dict):
+                        for k, v in r["result"].items():
+                            if k not in result_row:  # Don't overwrite original columns
+                                result_row[f"result_{k}"] = v
+                    else:
+                        result_row["result"] = r["result"]
+                    result_rows.append(result_row)
+
+                df = pd.DataFrame(result_rows)
+                session_db.register("_temp_results", df)
+                session_db.execute(f"CREATE OR REPLACE TABLE {config.result_table} AS SELECT * FROM _temp_results")
+                session_db.unregister("_temp_results")
+
+                console.print(f"{indent}  [dim]Created temp table: {config.result_table}[/dim]")
+
+            except Exception as e:
+                console.print(f"{indent}  [yellow]⚠ Warning: Could not create result table: {e}[/yellow]")
+
+        # Return results
+        return {
+            "results": [r["result"] for r in results],
+            "count": successful_count,
+            "total": total_rows,
+            "errors": errors if config.on_error == "collect_errors" else None,
+            "session_ids": [r["session_id"] for r in results],
+            "_route": "success" if successful_count > 0 else "error"
+        }
 
     def _execute_deterministic_phase(self, phase: PhaseConfig, input_data: dict, trace: TraceNode) -> Any:
         """

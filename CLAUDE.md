@@ -194,8 +194,9 @@ Cascades are JSON files validated via Pydantic models in `windlass/cascade.py`.
 
 **Built-in Tools**:
 - **Core**: `linux_shell`, `run_code`, `set_state`, `spawn_cascade`
+- **Mapping**: `map_cascade` (fan-out over arrays), **NEW!**
 - **Data**: `sql_data`, `python_data`, `js_data`, `clojure_data`, `windlass_data` (polyglot execution)
-- **SQL**: `smart_sql_run` (LLM-powered query generation)
+- **SQL**: `smart_sql_run` (LLM-powered query generation), `windlass_udf()` (LLM in SQL queries) **NEW!**
 - **Human-in-the-loop**: `ask_human`, `ask_human_custom`
 - **Visualization**: `create_chart`, `take_screenshot`
 - **Browser**: `rabbitize_*` (visual browser automation)
@@ -216,6 +217,12 @@ register_tackle("my_tool", my_tool)
 
 **Manifest (Quartermaster)**: Set `tackle: "manifest"` for automatic tool selection based on context.
 
+**Dynamic Mapping (NEW!)**: Fan-out over runtime-determined arrays:
+1. **Dynamic Soundings Factor**: `soundings.factor: "{{ outputs.files | length }}"` → N parallel soundings
+2. **Map Cascade Tool**: `map_cascade` spawns cascade per array item
+3. **SQL-Native Mapping**: `for_each_row` maps over temp table rows
+4. **windlass_udf()**: LLM-powered SQL UDF for inline enrichment
+
 ### Execution Flow
 
 The core engine is `WindlassRunner` in `runner.py`.
@@ -231,6 +238,12 @@ The core engine is `WindlassRunner` in `runner.py`.
 
 | Feature | Purpose | Reference |
 |---------|---------|-----------|
+| **NEW FEATURES (2025-12-24)** | |
+| **Dynamic Soundings Factor** | Runtime-determined soundings count: `factor: "{{ outputs.list \| length }}"` | `MAPPING_FEATURES_SUMMARY.md` |
+| **Map Cascade Tool** | Fan-out over arrays: spawn cascade per item | `MAPPING_FEATURES_SUMMARY.md` |
+| **SQL-Native Mapping** | Map over temp table rows with `for_each_row` | `MAPPING_FEATURES_SUMMARY.md` |
+| **windlass_udf()** | LLM-powered SQL UDF (NOVEL!) | `MAPPING_FEATURES_SUMMARY.md` |
+| **CORE FEATURES** | | |
 | **Data Cascades** | Polyglot notebooks: SQL, Python, JS, Clojure, LLM cells | `docs/claude/data-cascades-reference.md` |
 | **Deterministic Execution** | Tool-based phases without LLM mediation | `docs/claude/deterministic-reference.md` |
 | **Playground Canvas** | Visual cascade builder with stacked deck UI | `docs/claude/playground-reference.md` |
@@ -246,6 +259,43 @@ The core engine is `WindlassRunner` in `runner.py`.
 | **Rabbitize** | Visual browser automation | `docs/claude/tools-reference.md` |
 | **Generative UI** | Rich human-in-the-loop interfaces | `docs/claude/tools-reference.md` |
 | **Harbor** | HuggingFace Spaces as tools | `docs/harbor-design.md` |
+
+### Dynamic Mapping Quick Reference (NEW!)
+
+**1. Soundings-as-Mapping** (fan-out over arrays):
+```yaml
+soundings:
+  factor: "{{ outputs.list_files.result | length }}"  # Dynamic!
+  mode: aggregate
+```
+
+**2. Map Cascade Tool** (spawn cascades):
+```yaml
+- tool: map_cascade
+  inputs:
+    cascade: "tackle/process_item.yaml"
+    map_over: "{{ outputs.items }}"
+    max_parallel: "10"
+```
+
+**3. SQL-Native Mapping** (temp table rows):
+```yaml
+- for_each_row:
+    table: _customers
+    cascade: "tackle/analyze_customer.yaml"
+    inputs: {customer_id: "{{ row.id }}"}
+    result_table: _results
+```
+
+**4. windlass_udf()** (LLM in SQL):
+```sql
+SELECT
+  product_name,
+  windlass_udf('Extract brand', product_name) as brand
+FROM products
+```
+
+See `MAPPING_FEATURES_SUMMARY.md` for complete documentation.
 
 ## Module Structure
 
@@ -271,13 +321,14 @@ windlass/
 ├── prompts.py           # Jinja2 prompt rendering
 ├── eddies/              # Built-in tools
 │   ├── extras.py        # linux_shell, run_code, take_screenshot
-│   ├── data_tools.py    # sql_data, python_data, js_data, clojure_data, windlass_data (NEW)
+│   ├── data_tools.py    # sql_data, python_data, js_data, clojure_data, windlass_data
 │   ├── human.py         # ask_human, ask_human_custom
 │   ├── state_tools.py   # set_state
-│   ├── system.py        # spawn_cascade
+│   ├── system.py        # spawn_cascade, map_cascade (NEW)
 │   └── chart.py         # create_chart
-└── sql_tools/           # SQL utilities (NEW)
-    └── session_db.py    # Session-scoped DuckDB
+└── sql_tools/           # SQL utilities
+    ├── session_db.py    # Session-scoped DuckDB
+    └── udf.py           # windlass_udf() LLM SQL function (NEW)
 
 dashboard/               # Web UI (NEW)
 ├── backend/
@@ -339,7 +390,14 @@ The `examples/` directory contains reference implementations:
 **Context**: `context_selective_demo.json`, `context_sugar_demo.json`
 **Tools**: `manifest_flow.json`, `rabbitize_*.json`, `hitl_flow.json`
 **Voice**: `voice_transcription_demo.json`, `voice_assistant_demo.json`, `voice_conversation_demo.json`
-**Data Cascades (Notebooks)** (NEW):
+**Dynamic Mapping** (NEW - 2025-12-24):
+- `test_dynamic_soundings.yaml` - Dynamic soundings factor with Jinja2 templates
+- `test_map_cascade.yaml` - Map cascade tool for array fan-out
+- `map_with_soundings_demo.yaml` - Soundings-as-mapping pattern
+- `test_sql_mapping.yaml` - SQL-native mapping with for_each_row
+- `test_windlass_udf.yaml` - LLM-powered SQL UDF demonstration
+
+**Data Cascades (Notebooks)**:
 - `notebook_polyglot_showcase.yaml` - SQL → Python → JS → Clojure → SQL pipeline (demonstrates temp tables)
 - `notebook_llm_classification.yaml` - LLM-powered data classification
 - `notebook_etl_pipeline.yaml` - Full ETL workflow

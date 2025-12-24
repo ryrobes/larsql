@@ -1,0 +1,52 @@
+# Test: SQL-Native Mapping with for_each_row
+# Demonstrates mapping over temp table rows
+
+cascade_id: test_sql_mapping
+description: Test SQL-native mapping with for_each_row
+
+phases:
+  # Create a temp table with customer data
+  - name: load_customers
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (VALUES
+          (1, 'Acme Corp', 'acme@example.com', 'enterprise'),
+          (2, 'Small Shop', 'shop@small.com', 'smb'),
+          (3, 'Big Enterprise', 'contact@bigco.com', 'enterprise'),
+          (4, 'Startup Inc', 'hello@startup.io', 'startup')
+        ) AS t(customer_id, customer_name, email, segment)
+      materialize: "true"
+    # Creates _load_customers temp table
+
+  # Map over each customer row
+  - name: analyze_customers
+    for_each_row:
+      table: _load_customers
+      cascade: "tackle/analyze_customer.yaml"
+      inputs:
+        customer_id: "{{ row.customer_id }}"
+        customer_name: "{{ row.customer_name }}"
+        email: "{{ row.email }}"
+      max_parallel: 4
+      result_table: _customer_analysis
+      on_error: continue
+    context:
+      from: ["load_customers"]
+
+  # Query the results (extract JSON fields from cascade outputs)
+  - name: summary_query
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          customer_name,
+          email,
+          segment,
+          CAST(json_extract_string(result_state.output_analyze, '$.risk_score') AS DOUBLE) as risk_score,
+          json_extract_string(result_state.output_analyze, '$.recommendation') as recommendation,
+          json_extract_string(result_state.output_analyze, '$.insights') as insights
+        FROM _customer_analysis
+        ORDER BY risk_score DESC
+    context:
+      from: ["analyze_customers"]

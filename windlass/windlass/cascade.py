@@ -930,8 +930,33 @@ class ImageConfig(BaseModel):
     n: int = 1  # Number of images to generate
 
 
+class SqlMappingConfig(BaseModel):
+    """
+    SQL-native mapping: fan out over rows from a temp table.
+
+    Example:
+        for_each_row:
+          table: _customers
+          cascade: "tackle/process_customer.yaml"
+          inputs:
+            customer_id: "{{ row.id }}"
+            customer_name: "{{ row.name }}"
+          max_parallel: 10
+          result_table: _customer_results  # Optional: collect results into temp table
+    """
+    table: str  # Temp table name (e.g., "_customers")
+    cascade: Optional[str] = None  # Cascade to spawn per row
+    instructions: Optional[str] = None  # Or use instructions for LLM phase per row
+    inputs: Optional[Dict[str, str]] = None  # Jinja2 templates for cascade inputs ({{ row.column_name }})
+    max_parallel: int = 5
+    result_table: Optional[str] = None  # Optional: collect results into temp table
+    on_error: str = "continue"  # continue, fail_fast, collect_errors
+
 class PhaseConfig(BaseModel):
     name: str
+
+    # ===== SQL-Native Mapping (NEW) =====
+    for_each_row: Optional[SqlMappingConfig] = None  # SQL table row fan-out
 
     # ===== LLM Phase Fields (existing) =====
     # For LLM phases, instructions is required and defines the agent's task
@@ -1031,14 +1056,18 @@ class PhaseConfig(BaseModel):
 
     def model_post_init(self, __context) -> None:
         """Validate phase configuration after initialization."""
-        # Must have either tool (deterministic) or instructions (LLM)
-        if not self.tool and not self.instructions:
-            raise ValueError(f"Phase '{self.name}' must have either 'tool' (deterministic) or 'instructions' (LLM)")
+        # Must have either tool (deterministic), instructions (LLM), or for_each_row (SQL mapping)
+        has_tool = bool(self.tool)
+        has_instructions = bool(self.instructions)
+        has_for_each_row = bool(self.for_each_row)
 
-        # If tool is set, instructions should not be (clear separation)
-        # Note: on_error can have embedded instructions for hybrid phases
-        if self.tool and self.instructions:
-            raise ValueError(f"Phase '{self.name}' cannot have both 'tool' and 'instructions'. Use 'on_error' for hybrid fallback.")
+        execution_types = sum([has_tool, has_instructions, has_for_each_row])
+
+        if execution_types == 0:
+            raise ValueError(f"Phase '{self.name}' must have either 'tool' (deterministic), 'instructions' (LLM), or 'for_each_row' (SQL mapping)")
+
+        if execution_types > 1:
+            raise ValueError(f"Phase '{self.name}' can only have ONE of: 'tool', 'instructions', or 'for_each_row'")
 
 
 # ===== Trigger Configuration =====

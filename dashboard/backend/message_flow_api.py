@@ -526,6 +526,7 @@ def get_running_sessions():
     """
     Get list of recently active cascade sessions from ClickHouse.
     Returns session IDs with their cascade_id and age for quick selection.
+    Uses session_state table as source of truth for status.
     """
     try:
         #print("[API] get_running_sessions called")
@@ -542,7 +543,8 @@ def get_running_sessions():
             argMax(cascade_file, timestamp) as cascade_file,
             MIN(timestamp) as start_time,
             MAX(timestamp) as last_activity,
-            COUNT(*) as message_count
+            COUNT(*) as message_count,
+            SUM(cost) as total_cost
         FROM unified_logs
         WHERE timestamp > subtractMinutes(now64(), 10)
         GROUP BY session_id
@@ -553,10 +555,42 @@ def get_running_sessions():
         #print(f"[API] Executing query: {query}")
         results = db.query(query, output_format="raw")
         #print(f"[API] Query returned {len(results) if results else 0} rows")
-        sessions_info = []
 
+        # Extract session IDs for session_state lookup
+        session_ids = [row[0] for row in results]
+
+        # Query session_state table for authoritative status (source of truth)
+        # Use FINAL to get deduplicated records from ReplacingMergeTree
+        session_states = {}
+        if session_ids:
+            try:
+                # Build parameterized query to prevent SQL injection
+                placeholders = ','.join(['?' for _ in session_ids])
+                state_query = f"""
+                SELECT
+                    session_id,
+                    status,
+                    error_message
+                FROM session_state FINAL
+                WHERE session_id IN ({placeholders})
+                """
+                state_results = db.query(state_query, params=session_ids, output_format="raw")
+                for state_row in state_results:
+                    session_id, status, error_message = state_row
+                    session_states[session_id] = {
+                        'status': status,
+                        'error_message': error_message
+                    }
+            except Exception as e:
+                # session_state table might not exist in all setups
+                print(f"[WARNING] Could not query session_state table: {e}")
+
+        # Terminal statuses that should NOT show as running
+        terminal_statuses = ('completed', 'error', 'cancelled', 'orphaned')
+
+        sessions_info = []
         for row in results:
-            session_id, cascade_id, cascade_file, start_time, last_activity, msg_count = row
+            session_id, cascade_id, cascade_file, start_time, last_activity, msg_count, total_cost = row
 
             # Parse timestamps
             if hasattr(start_time, 'timestamp'):
@@ -569,15 +603,42 @@ def get_running_sessions():
             else:
                 last_ts = float(last_activity) if last_activity else current_time
 
-            # Consider "running" if activity in last 30 seconds
-            is_running = (current_time - last_ts) < 30
+            # Parse cost (handle None, NaN, etc.)
+            cost = 0.0
+            if total_cost is not None:
+                try:
+                    cost = float(total_cost)
+                    # Handle NaN/Infinity
+                    if not (cost == cost and cost != float('inf') and cost != float('-inf')):
+                        cost = 0.0
+                except (ValueError, TypeError):
+                    cost = 0.0
+
+            # Determine status:
+            # 1. Use session_state as source of truth if available
+            # 2. Fall back to timestamp heuristic (activity in last 30 seconds)
+            if session_id in session_states:
+                # Use authoritative status from session_state table
+                state_status = session_states[session_id]['status']
+                # Filter out terminal statuses - they should NOT show as running
+                if state_status in terminal_statuses:
+                    status = state_status  # Show actual terminal status
+                else:
+                    # Non-terminal status from session_state ('starting', 'running', 'blocked')
+                    status = state_status
+            else:
+                # Fall back to timestamp heuristic if no session_state entry
+                # Consider "running" if activity in last 30 seconds
+                is_running = (current_time - last_ts) < 30
+                status = 'running' if is_running else 'completed'
 
             sessions_info.append({
                 'session_id': session_id,
                 'cascade_id': cascade_id,
                 'cascade_file': cascade_file,
-                'status': 'running' if is_running else 'completed',
-                'age_seconds': round(current_time - start_ts, 1),
+                'status': status,
+                'duration_seconds': round(current_time - start_ts, 1),
+                'cost': round(cost, 6),
                 'start_time': start_ts,
             })
 
