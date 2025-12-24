@@ -1,0 +1,59 @@
+cascade_id: chart_refinement_reforge
+
+description: Create a chart, then refine it through reforge with image context
+
+inputs_schema:
+  data: Comma-separated data values (e.g., '10,20,30,25,35')
+  title: Chart title
+
+phases:
+  - handoffs:
+      - finalize
+    instructions: "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nUse the\
+      \ create_chart tool to generate an initial visualization.\n\nAfter seeing the chart, describe what\
+      \ you observe and any improvements you'd suggest. Please be creative and style them for a dark mode\
+      \ system."
+    name: create_and_refine_chart
+    rules:
+      max_turns: 2
+    soundings:
+      evaluator_instructions: |-
+        Evaluate the chart descriptions and suggested improvements based on:
+        1. Clarity of observations about the chart
+        2. Quality of improvement suggestions
+        3. Relevance to data visualization best practices
+
+        Select the BEST analysis.
+      factor: 3
+      reforge:
+        evaluator_override: |-
+          Evaluate refined analyses on:
+          1. Specificity of recommendations
+          2. Feasibility of implementation
+          3. Impact on chart effectiveness
+          4. Consideration of accessibility
+
+          Pick the most actionable, production-ready recommendations.
+        factor_per_step: 2
+        honing_prompt: |-
+          Looking at the chart image from the previous output, provide specific, actionable improvements:
+          - Suggest color palette changes for better accessibility
+          - Recommend axis label enhancements
+          - Propose legend positioning improvements
+          - Add annotations for key data points
+          - Suggest chart type alternatives if appropriate
+        mutate: yes
+        steps: 2
+    tackle:
+      - create_vega_lite
+      - create_plotly
+  - context:
+      from:
+        - previous
+    instructions: "Summarize the chart refinement process:\n- Original chart observations\n- Key improvements\
+      \ identified through reforge\n- Final recommendations\n\nThe images from the refinement process\
+      \ have been saved to the images directory and can be reviewed later."
+    name: finalize
+    rules:
+      max_turns: 1
+    tackle: []

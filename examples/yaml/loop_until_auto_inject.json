@@ -1,0 +1,31 @@
+{
+  "cascade_id": "loop_until_auto_inject_demo",
+  "description": "Demonstrates automatic loop_until validation prompt injection (both auto-generated and custom)",
+  "inputs_schema": {
+    "task": "The task to complete"
+  },
+  "phases": [
+    {
+      "name": "auto_validation_goal",
+      "instructions": "Complete this task: {{ input.task }}\n\nProvide a thoughtful response.",
+      "handoffs": ["custom_validation_goal"],
+      "tackle": ["route_to"],
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "grammar_check"
+      }
+    },
+    {
+      "name": "custom_validation_goal",
+      "instructions": "Now provide a summary of what you did in the previous phase.",
+      "context": {"from": ["previous"]},
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "satisfied",
+        "loop_until_prompt": "Make sure your response explicitly confirms you are satisfied with the work completed. Use phrases like 'I am satisfied' or 'This meets the requirements'."
+      }
+    }
+  ]
+}

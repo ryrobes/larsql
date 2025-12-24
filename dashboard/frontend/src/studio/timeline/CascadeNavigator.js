@@ -857,10 +857,15 @@ function CascadeNavigator() {
             <motion.div
               key="yaml"
               className="nav-yaml-view nav-flip-card"
-              initial={{ rotateY: 90 }}
-              animate={{ rotateY: 0 }}
-              exit={{ rotateY: -90 }}
+              initial={{ rotateY: 90, zIndex: 200 }}
+              animate={{ rotateY: 0, zIndex: 200 }}
+              exit={{ rotateY: -90, zIndex: 200 }}
               transition={{ duration: 0.4, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }} // Hide overflow during animation
+              onAnimationComplete={() => {
+                // Re-enable scroll after flip completes
+                document.querySelector('.nav-yaml-view')?.style.setProperty('overflow-y', 'auto');
+              }}
             >
               {/* Warning banners */}
               {viewMode === 'replay' && (
@@ -906,10 +911,15 @@ function CascadeNavigator() {
             <motion.div
               key="navigator"
               className="nav-normal-view nav-flip-card"
-              initial={{ rotateY: -90 }}
-              animate={{ rotateY: 0 }}
-              exit={{ rotateY: 90 }}
+              initial={{ rotateY: -90, zIndex: 200 }}
+              animate={{ rotateY: 0, zIndex: 1 }}
+              exit={{ rotateY: 90, zIndex: 200 }}
               transition={{ duration: 0.4, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }} // Hide overflow during animation
+              onAnimationComplete={() => {
+                // Re-enable scroll after flip completes
+                document.querySelector('.nav-normal-view')?.style.setProperty('overflow-y', 'auto');
+              }}
             >
           {/* Inputs Form (if cascade has inputs_schema) */}
           {hasInputs && (

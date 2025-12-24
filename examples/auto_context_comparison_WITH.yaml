@@ -1,0 +1,78 @@
+auto_context:
+  inter_phase:
+    enabled: yes
+    selection:
+      max_tokens: 15000
+      strategy: hybrid
+  intra_phase:
+    enabled: yes
+    mask_observations_after: 2
+    window: 3
+
+cascade_id: auto_context_comparison_WITH
+
+description: Multi-phase cascade WITH auto-context enabled. Compare with auto_context_comparison_WITHOUT.json
+
+phases:
+  - handoffs:
+      - analysis
+    instructions: |-
+      You are a research assistant. Research the topic: {{ input.topic }}
+
+      Provide:
+      1. A clear definition (2-3 sentences)
+      2. Three key concepts or components
+      3. Two real-world applications
+      4. One current challenge
+
+      Be thorough but concise.
+    name: research
+    rules:
+      max_turns: 1
+  - context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
+      mode: auto
+      selection:
+        max_tokens: 10000
+        strategy: hybrid
+    handoffs:
+      - synthesis
+    instructions: |-
+      You are a technical analyst. Based on the research context provided, analyze the topic more deeply.
+
+      Provide:
+      1. A comparative analysis with a related technology or concept
+      2. Pros and cons (2-3 each)
+      3. Future outlook (2-3 predictions)
+
+      Build on the research findings.
+    name: analysis
+    rules:
+      max_turns: 1
+  - context:
+      anchors:
+        from_phases:
+          - research
+          - analysis
+        include:
+          - output
+      mode: auto
+      selection:
+        max_tokens: 8000
+        strategy: hybrid
+    instructions: |-
+      You are a technical writer. Create a final summary based on all prior research and analysis.
+
+      Provide:
+      1. Executive summary (3-4 sentences)
+      2. Key takeaways (3 bullet points)
+      3. Recommended next steps (2 bullet points)
+
+      Be concise and actionable.
+    name: synthesis
+    rules:
+      max_turns: 1

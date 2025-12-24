@@ -1,0 +1,11 @@
+{
+  "cascade_id": "meta_flow",
+  "phases": [
+    {
+      "name": "meta_step",
+      "instructions": "I have a string 'hello'. I need to validate if it is uppercase. Use the 'validator_tool' tool.",
+      "tackle": ["run_code"],
+      "rules": {"max_turns": 2}
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+# Map Pattern Using Soundings (Works Today!)
+#
+# This demonstrates how to use soundings + aggregate mode for fan-out/reduce patterns.
+# Each sounding processes a different file using {{ sounding_index }} to select from an array.
+#
+# Run:
+#   windlass examples/map_with_soundings_demo.yaml
+
+cascade_id: map_with_soundings_demo
+description: >
+  Demonstrates dynamic mapping pattern using soundings with aggregate mode.
+  Three files are processed in parallel, each by a different sounding.
+
+phases:
+  # Phase 1: Generate list of files to process
+  - name: list_files
+    tool: python_data
+    inputs:
+      code: |
+        # In real world, this could be: os.listdir('/data/'), s3.list_objects(), etc.
+        return {
+          "files": [
+            "/tmp/sales_jan.csv",
+            "/tmp/sales_feb.csv",
+            "/tmp/sales_mar.csv"
+          ],
+          "metadata": {
+            "total_files": 3,
+            "file_type": "sales_data"
+          }
+        }
+
+  # Phase 2: Process each file in parallel (MAP pattern)
+  # Each sounding gets a different file via {{ sounding_index }}
+  - name: process_file
+    instructions: |
+      You are processing file {{ sounding_index + 1 }} of {{ sounding_factor }}.
+
+      File path: {{ state.output_list_files.files[sounding_index] }}
+
+      Your task:
+      1. Read the file (simulate: imagine it has sales data)
+      2. Calculate summary statistics (simulate: return random counts)
+      3. Return results as JSON: {"file": "filename", "total_sales": 12345, "row_count": 500}
+
+      Since this is a demo, you can simulate the file contents. In production, you'd use:
+      - sql_data tool to read CSV
+      - python_data to process
+      - linux_shell to download from S3
+
+      Return ONLY valid JSON, no markdown fences.
+
+    soundings:
+      factor: 3  # Hard-coded to match number of files
+      mode: aggregate  # Keep all results (don't pick winner)
+      max_parallel: 3  # Process all in parallel
+
+      # Aggregator phase - REDUCE pattern
+      aggregator_instructions: |
+        You have {{ soundings | length }} results from processing files in parallel.
+
+        Results:
+        {% for sounding in soundings %}
+        - Sounding {{ loop.index }}: {{ sounding.output }}
+        {% endfor %}
+
+        Your task:
+        1. Parse each sounding's JSON output
+        2. Calculate total sales across all files
+        3. Calculate total row count across all files
+        4. Return summary report as JSON:
+        {
+          "total_sales": sum_of_all,
+          "total_rows": sum_of_all_rows,
+          "files_processed": 3,
+          "breakdown": [
+            {"file": "jan", "sales": 123},
+            {"file": "feb", "sales": 456},
+            ...
+          ]
+        }
+
+        Return ONLY valid JSON.
+
+  # Phase 3: Final reporting
+  - name: report
+    instructions: |
+      Generate a human-readable summary report.
+
+      Aggregated data: {{ outputs.process_file }}
+
+      Create a markdown report with:
+      - Executive summary (total sales, total records)
+      - Per-file breakdown table
+      - Any insights or observations
+
+    tackle: []

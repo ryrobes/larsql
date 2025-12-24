@@ -1,0 +1,27 @@
+{
+  "cascade_id": "generative_ui_demo",
+  "description": "Demonstrates the Generative UI system with rich interactive components for human-in-the-loop workflows",
+  "inputs_schema": {
+    "demo_type": "Type of demo to run: 'image_review', 'data_analysis', 'comparison', or 'full'"
+  },
+  "phases": [
+    {
+      "name": "generate_content",
+      "instructions": "Generate demo content based on the requested demo type: {{ input.demo_type }}\n\nFor 'image_review': Create a chart using create_chart and then ask the human to review it.\nFor 'data_analysis': Generate sample data and ask the human to analyze it in a data table.\nFor 'comparison': Create multiple options and ask the human to compare them.\nFor 'full': Demonstrate all UI features together.\n\nUse the ask_human_custom tool to create rich, interactive UIs for human input.",
+      "tackle": ["create_chart", "ask_human_custom", "set_state"],
+      "rules": {
+        "max_turns": 5
+      },
+      "handoffs": [
+        {"target": "process_feedback", "description": "Process the human's feedback"}
+      ]
+    },
+    {
+      "name": "process_feedback",
+      "instructions": "The human provided feedback on the demo content.\n\nFeedback received: {{ outputs.generate_content }}\n\nSummarize what the human said and provide a final response based on their input.",
+      "context": {
+        "from": ["generate_content"]
+      }
+    }
+  ]
+}

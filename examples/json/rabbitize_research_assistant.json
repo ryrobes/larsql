@@ -1,0 +1,36 @@
+{
+  "cascade_id": "rabbitize_research_assistant",
+  "description": "Advanced demo: Use web_navigator as a tool to research multiple websites and synthesize findings",
+  "inputs_schema": {
+    "research_topic": "What to research (e.g., 'competitor pricing for SaaS analytics tools')",
+    "websites": "List of websites to check (comma-separated URLs)"
+  },
+  "phases": [
+    {
+      "name": "plan_research",
+      "instructions": "You need to research: {{ input.research_topic }}\n\nWebsites to check: {{ input.websites }}\n\nPlan your research strategy. For each website, define what specific information you want to find.",
+      "handoffs": ["execute_research"],
+      "rules": {
+        "max_turns": 1
+      }
+    },
+    {
+      "name": "execute_research",
+      "instructions": "Research: {{ input.research_topic }}\n\nYou have access to web_navigator tool which can browse websites for you.\n\nFor each website in {{ input.websites }}, use web_navigator to find relevant information.\n\nCall web_navigator once per site with specific goals.\n\nWhen you have data from all sites, route to synthesize.",
+      "tackle": ["web_navigator", "route_to"],
+      "handoffs": ["synthesize"],
+      "rules": {
+        "max_turns": 10,
+        "loop_until": "satisfied",
+        "loop_until_prompt": "Continue until you've gathered information from all websites about: {{ input.research_topic }}"
+      }
+    },
+    {
+      "name": "synthesize",
+      "instructions": "Synthesize your research findings about {{ input.research_topic }}.\n\nCreate a structured report with:\n1. Key findings from each website\n2. Comparisons and patterns\n3. Recommendations\n\nBe concise but comprehensive.",
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

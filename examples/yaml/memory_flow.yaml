@@ -1,0 +1,15 @@
+cascade_id: memory_flow
+phases:
+  - handoffs:
+      - phase2
+    instructions: The user's name is {{ input.user_name }}. Acknowledge this.
+    name: phase1
+    tackle: []
+  - context:
+      from:
+        - previous
+    instructions: What is the user's name? Answer only with the name.
+    name: phase2
+    rules:
+      max_turns: 1
+    tackle: []

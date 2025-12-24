@@ -1,0 +1,67 @@
+{
+  "cascade_id": "auto_context_comparison_WITH",
+  "description": "Multi-phase cascade WITH auto-context enabled. Compare with auto_context_comparison_WITHOUT.json",
+
+  "auto_context": {
+    "intra_phase": {
+      "enabled": true,
+      "window": 3,
+      "mask_observations_after": 2
+    },
+    "inter_phase": {
+      "enabled": true,
+      "selection": {
+        "strategy": "hybrid",
+        "max_tokens": 15000
+      }
+    }
+  },
+
+  "phases": [
+    {
+      "name": "research",
+      "instructions": "You are a research assistant. Research the topic: {{ input.topic }}\n\nProvide:\n1. A clear definition (2-3 sentences)\n2. Three key concepts or components\n3. Two real-world applications\n4. One current challenge\n\nBe thorough but concise.",
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": ["analysis"]
+    },
+    {
+      "name": "analysis",
+      "instructions": "You are a technical analyst. Based on the research context provided, analyze the topic more deeply.\n\nProvide:\n1. A comparative analysis with a related technology or concept\n2. Pros and cons (2-3 each)\n3. Future outlook (2-3 predictions)\n\nBuild on the research findings.",
+      "context": {
+        "mode": "auto",
+        "anchors": {
+          "from_phases": ["previous"],
+          "include": ["output"]
+        },
+        "selection": {
+          "strategy": "hybrid",
+          "max_tokens": 10000
+        }
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": ["synthesis"]
+    },
+    {
+      "name": "synthesis",
+      "instructions": "You are a technical writer. Create a final summary based on all prior research and analysis.\n\nProvide:\n1. Executive summary (3-4 sentences)\n2. Key takeaways (3 bullet points)\n3. Recommended next steps (2 bullet points)\n\nBe concise and actionable.",
+      "context": {
+        "mode": "auto",
+        "anchors": {
+          "from_phases": ["research", "analysis"],
+          "include": ["output"]
+        },
+        "selection": {
+          "strategy": "hybrid",
+          "max_tokens": 8000
+        }
+      },
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

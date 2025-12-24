@@ -1,0 +1,31 @@
+cascade_id: signal_producer_demo
+description: Demonstrates fire_signal - fires a signal to wake up waiting cascades. Run signal_consumer_demo
+  first, then run this to fire the signal.
+phases:
+  - handoffs:
+      - fire_completion_signal
+    instructions: |-
+      Simulate completing some upstream work (like an ETL pipeline).
+
+      Describe the work being done:
+      - Extracting data from source
+      - Transforming records
+      - Loading to destination
+
+      When done, proceed to fire the signal to notify waiting cascades.
+    name: simulate_work
+  - instructions: |-
+      The upstream work is complete! Now fire the 'data_ready' signal to wake up any waiting cascades.
+
+      Use the fire_signal tool with:
+      - signal_name: 'data_ready'
+      - payload: {"table": "analytics.events", "row_count": 150000, "status": "complete"}
+
+      This will wake up any cascades waiting on this signal.
+    name: fire_completion_signal
+  - instructions: |-
+      Signal fired! Any cascades waiting for 'data_ready' should now continue.
+
+      Report the result from the fire_signal tool:
+      {{ state.output_fire_completion_signal }}
+    name: complete

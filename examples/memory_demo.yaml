@@ -1,0 +1,13 @@
+cascade_id: memory_demo
+description: Demonstrates conversational memory with RAG-based semantic search
+inputs_schema:
+  query: A question or statement to process
+memory: demo_memory
+phases:
+  - instructions: "You are a helpful assistant. The user says: {{ input.query }}\n\nRespond naturally\
+      \ and helpfully. If this seems related to previous conversations, you can search your memory."
+    name: process
+    rules:
+      max_turns: 3
+    tackle:
+      - demo_memory

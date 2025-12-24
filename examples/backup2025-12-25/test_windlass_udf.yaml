@@ -1,0 +1,74 @@
+# Test: windlass_udf() - LLM-Powered SQL UDF
+# This demonstrates using LLMs directly in SQL queries!
+
+cascade_id: test_windlass_udf
+description: Test windlass_udf() for LLM-powered data enrichment in SQL
+
+phases:
+  # Load raw product data
+  - name: load_products
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (VALUES
+          ('Apple iPhone 15 Pro Max 256GB Space Black', 1199.99),
+          ('Samsung Galaxy S24 Ultra Titanium Gray', 1299.99),
+          ('Levis 501 Original Fit Jeans - Blue', 59.99),
+          ('KitchenAid Artisan Stand Mixer Red', 429.99),
+          ('Sony WH-1000XM5 Noise Canceling Headphones', 399.99)
+        ) AS t(product_name, price)
+      materialize: "true"
+    # Creates _load_products temp table
+
+  # Enrich with LLM using windlass_udf()
+  - name: enrich_products
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          product_name,
+          price,
+
+          -- Extract structured attributes using LLM
+          windlass_udf(
+            'Extract the brand name from this product title. Return just the brand, nothing else.',
+            product_name
+          ) as brand,
+
+          windlass_udf(
+            'Extract the color from this product title. If no color mentioned, return NULL.',
+            product_name
+          ) as color,
+
+          windlass_udf(
+            'Classify this product category in one word: Electronics, Clothing, or Home',
+            product_name
+          ) as category,
+
+          windlass_udf(
+            'Based on the product name and price, classify as: budget, mid-range, premium, or luxury. Return just one word.',
+            product_name || ' - $' || price
+          ) as price_tier
+
+        FROM _load_products
+      materialize: "true"
+    context:
+      from: ["load_products"]
+
+  # Aggregate analysis
+  - name: analyze_by_category
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          category,
+          COUNT(*) as product_count,
+          ROUND(AVG(price), 2) as avg_price,
+          MIN(price) as min_price,
+          MAX(price) as max_price,
+          STRING_AGG(brand, ', ') as brands
+        FROM _enrich_products
+        GROUP BY category
+        ORDER BY avg_price DESC
+    context:
+      from: ["enrich_products"]

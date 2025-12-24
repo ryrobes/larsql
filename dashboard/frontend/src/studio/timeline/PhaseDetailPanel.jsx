@@ -506,38 +506,58 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [phase.name, messagesBySounding]);
 
+  // Initialize/reset localYaml when phase changes or YAML editor is opened
+  React.useEffect(() => {
+    if (!showYamlEditor) return; // Only initialize when editor is visible
+
+    if (!localYaml && phase) {
+      const initialYaml = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+      setLocalYaml(initialYaml);
+      lastSyncedYamlRef.current = initialYaml;
+    }
+  }, [phase.name, showYamlEditor]); // Re-init when phase changes or editor opens
+
+  // Clear localYaml when YAML editor is closed (free memory)
+  React.useEffect(() => {
+    if (!showYamlEditor && localYaml) {
+      setLocalYaml('');
+      lastSyncedYamlRef.current = '';
+      setYamlParseError(null);
+      yamlEditorEverFocusedRef.current = false;
+    }
+  }, [showYamlEditor, localYaml]);
+
   // Sync phase → localYaml when phase changes externally (not when focused)
   React.useEffect(() => {
     if (yamlEditorFocused) return;
+    if (!localYaml) return; // Let initialization effect handle it
 
-    // Check if we already have a local YAML version
-    if (localYaml && lastSyncedYamlRef.current) {
-      // Don't overwrite user's formatting unless phase structure actually changed
-      try {
-        const currentParsed = yaml.load(localYaml);
-        // Deep comparison - only update if structure changed
-        if (JSON.stringify(currentParsed) === JSON.stringify(phase)) {
-          return; // No structural change, keep user's formatting
-        }
-      } catch (e) {
-        // Parse error - fall through to regenerate
-      }
-    }
-
+    // Don't overwrite user's formatting unless phase structure actually changed
     try {
+      const currentParsed = yaml.load(localYaml);
+      // Deep comparison - only update if structure changed
+      if (JSON.stringify(currentParsed) === JSON.stringify(phase)) {
+        return; // No structural change, keep user's formatting and comments!
+      }
+
+      // Structure changed externally - regenerate YAML
       const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
-      // Only update if different from last synced (prevents overwriting user edits)
       if (yamlStr !== lastSyncedYamlRef.current) {
+        console.log('[PhaseDetailPanel] Phase structure changed externally, regenerating YAML');
         setLocalYaml(yamlStr);
         lastSyncedYamlRef.current = yamlStr;
       }
     } catch (e) {
-      console.error('Error serializing phase:', e);
+      // Parse error in localYaml - regenerate
+      console.warn('[PhaseDetailPanel] Parse error in localYaml, regenerating:', e);
+      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+      setLocalYaml(yamlStr);
+      lastSyncedYamlRef.current = yamlStr;
     }
   }, [phase, yamlEditorFocused, localYaml]);
 
-  // Use localYaml as the editor value (with fallback)
-  const phaseYaml = localYaml || yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+  // Use localYaml as the editor value
+  const phaseYaml = localYaml;
 
   const handleYamlChange = useCallback((value) => {
     // Only update local YAML for display, don't sync to store until blur

@@ -1,0 +1,34 @@
+cascade_id: ward_retry_flow
+description: Demonstrates retry mode - wards that automatically retry on failure
+inputs_schema:
+  task: The task to complete
+phases:
+  - handoffs:
+      - done
+    instructions: 'Complete this task: {{ input.task }}'
+    name: complete_task
+    rules:
+      max_attempts: 3
+      max_turns: 1
+      retry_instructions: |-
+        Ward validation failed: {{ validation_error }}
+
+        Please revise your response. Attempt {{ attempt }}/{{ max_attempts }}
+    wards:
+      post:
+        - max_attempts: 3
+          mode: retry
+          validator: keyword_validator
+        - max_attempts: 2
+          mode: retry
+          validator: grammar_check
+  - context:
+      from:
+        - previous
+    instructions: |-
+      All post-wards passed!
+
+      Summarize what you did.
+    name: done
+    tackle:
+      - set_state

@@ -1,0 +1,52 @@
+cascade_id: context_system_test
+
+description: 'Tests all context patterns: clean slate, previous, all, exclude'
+
+phases:
+
+  - handoffs:
+      - phase_b
+    instructions: 'Say exactly: ''PHASE_A_OUTPUT: Hello from phase A''. Nothing else.'
+    name: phase_a
+    rules:
+      max_turns: 1
+
+  - context:
+      from:
+        - previous
+    handoffs:
+      - phase_c
+    instructions: 'Say exactly: ''PHASE_B_OUTPUT: Hello from phase B''. Nothing else.'
+    name: phase_b
+    rules:
+      max_turns: 1
+
+  - handoffs:
+      - phase_d
+    instructions: 'You should see NO prior context. If you see PHASE_A_OUTPUT or PHASE_B_OUTPUT, something
+      is wrong. Say exactly: ''PHASE_C_OUTPUT: Clean slate confirmed''. Nothing else.'
+    name: phase_c
+    rules:
+      max_turns: 1
+
+  - context:
+      from:
+        - all
+    handoffs:
+      - phase_e
+    instructions: 'You should see ALL prior phases (A, B, C). List which PHASE_X_OUTPUT markers you can
+      see. Say: ''PHASE_D_OUTPUT: I see [list markers]''.'
+    name: phase_d
+    rules:
+      max_turns: 1
+
+  - context:
+      exclude:
+        - phase_b
+      from:
+        - all
+    instructions: 'You should see all phases EXCEPT phase_b. List which PHASE_X_OUTPUT markers you can
+      see. Say: ''PHASE_E_OUTPUT: I see [list markers]''. You should NOT see PHASE_B_OUTPUT.'
+    name: phase_e
+    rules:
+      max_turns: 1

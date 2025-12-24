@@ -1,0 +1,9 @@
+cascade_id: meta_flow
+phases:
+  - instructions: I have a string 'hello'. I need to validate if it is uppercase. Use the 'validator_tool'
+      tool.
+    name: meta_step
+    rules:
+      max_turns: 2
+    tackle:
+      - run_code

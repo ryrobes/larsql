@@ -1,0 +1,48 @@
+cascade_id: callouts_demo
+
+description: Demonstrates the callouts feature for semantic message tagging
+
+inputs_schema:
+  company: Company name
+  year: The year to analyze
+
+phases:
+  - callouts:
+      messages: Research Finding for {{input.company}} {{input.year}}
+      messages_filter: assistant_only
+    handoffs:
+      - detailed_analysis
+    instructions: You are analyzing quarterly sales data for {{input.company}} in {{input.year}}. Generate
+      3 key findings about the company's performance. Each finding should be detailed and data-driven.
+      Make up realistic numbers for demonstration.
+    name: research
+    rules:
+      max_turns: 1
+    tackle: []
+  - callouts: Quarterly Breakdown {{input.year}}
+    handoffs:
+      - recommendations
+    instructions: Provide a detailed quarterly breakdown. For each quarter (Q1-Q4), analyze the sales
+      performance. Make this detailed with specific metrics.
+    name: detailed_analysis
+    rules:
+      max_turns: 1
+    tackle: []
+  - callouts:
+      output: Strategic Recommendations - {{input.company}}
+    handoffs:
+      - summary
+    instructions: Based on the analysis, provide 3-5 strategic recommendations for {{input.company}}.
+      Be specific and actionable.
+    name: recommendations
+    rules:
+      max_turns: 1
+    tackle: []
+  - context:
+      from:
+        - all
+    instructions: Create a brief executive summary of the entire analysis (2-3 sentences).
+    name: summary
+    rules:
+      max_turns: 1
+    tackle: []

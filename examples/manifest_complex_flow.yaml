@@ -1,0 +1,36 @@
+cascade_id: research_assistant_with_manifest
+description: Adaptive research assistant that manifests tackle based on full conversation context
+inputs_schema:
+  research_topic: The topic to research and analyze
+phases:
+  - handoffs:
+      - deep_dive
+    instructions: |-
+      Research Topic: {{ input.research_topic }}
+
+      Provide an initial analysis of this topic. What are the key aspects to explore?
+    manifest_context: current
+    name: initial_analysis
+    rules:
+      max_turns: 2
+    tackle: manifest
+  - context:
+      from:
+        - previous
+    handoffs:
+      - synthesize
+    instructions: Based on the initial analysis, dive deeper into the most important aspects. Use appropriate
+      tools to enhance your analysis.
+    manifest_context: full
+    name: deep_dive
+    rules:
+      max_turns: 3
+    tackle: manifest
+  - context:
+      from:
+        - all
+    instructions: Synthesize all findings into a coherent summary with key insights and conclusions.
+    name: synthesize
+    rules:
+      max_turns: 2
+    tackle: []

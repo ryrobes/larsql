@@ -1,0 +1,20 @@
+# Thinking Token Budget Test
+# Tests max_tokens specification for reasoning tokens
+
+cascade_id: thinking_token_budget
+description: Tests explicit token budget for thinking mode
+
+inputs_schema:
+  puzzle: A puzzle to solve
+
+phases:
+  - name: solve
+    # Pure token budget without effort level
+    model: "anthropic/claude-sonnet-4::8000"
+    instructions: |
+      Solve this puzzle using careful reasoning:
+
+      {{ input.puzzle }}
+
+      Show your work and explain each step.
+    tackle: []

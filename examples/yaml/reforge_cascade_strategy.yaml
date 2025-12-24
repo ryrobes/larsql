@@ -1,0 +1,123 @@
+cascade_id: strategic_plan_reforge
+
+description: Create a strategic plan with cascade-level reforge for iterative improvement
+
+inputs_schema:
+  business_challenge: The challenge or opportunity to address
+  timeframe: Timeline for the strategy (e.g., Q1 2025, 6 months)
+
+phases:
+  - handoffs:
+      - strategize
+    instructions: |-
+      Analyze the business challenge: {{ input.business_challenge }}
+
+      Timeframe: {{ input.timeframe }}
+
+      Provide:
+      1. Current state assessment
+      2. Root cause analysis
+      3. Key stakeholders affected
+      4. Market context
+
+      If '_refinement_context' is provided in input, incorporate that feedback:
+      {{ input._refinement_context | default('') }}
+    name: analyze_challenge
+    rules:
+      max_turns: 1
+    tackle: []
+  - context:
+      from:
+        - previous
+    handoffs:
+      - risk_assessment
+    instructions: |-
+      Based on the analysis, develop a strategic approach to address {{ input.business_challenge }}.
+
+      Include:
+      1. Strategic goals (3-5 key objectives)
+      2. Approach and methodology
+      3. Success criteria
+      4. Initial resource estimates
+
+      Refinement context (if reforging):
+      {{ input._refinement_context | default('') }}
+    name: strategize
+    rules:
+      max_turns: 1
+    tackle: []
+  - context:
+      from:
+        - previous
+    handoffs:
+      - finalize_plan
+    instructions: |-
+      Identify and analyze risks for the proposed strategy.
+
+      Provide:
+      1. Top 5 risks (with likelihood and impact)
+      2. Mitigation strategies
+      3. Contingency plans
+      4. Early warning indicators
+
+      Refinement context:
+      {{ input._refinement_context | default('') }}
+    name: risk_assessment
+    rules:
+      max_turns: 1
+    tackle: []
+  - context:
+      from:
+        - all
+    instructions: |-
+      Synthesize the complete strategic plan.
+
+      Provide an executive summary including:
+      1. Vision statement
+      2. Strategic goals
+      3. Execution approach
+      4. Risk overview
+      5. Success metrics
+      6. Timeline and milestones
+
+      Refinement context:
+      {{ input._refinement_context | default('') }}
+
+      Store the final plan using set_state.
+    name: finalize_plan
+    rules:
+      max_turns: 1
+    tackle:
+      - set_state
+
+soundings:
+  evaluator_instructions: |-
+    Evaluate complete strategic plans based on:
+    1. Clarity of vision and goals
+    2. Feasibility of execution
+    3. Comprehensive risk analysis
+    4. Measurable success criteria
+
+    Select the most complete and actionable strategy.
+  factor: 3
+  reforge:
+    evaluator_override: |-
+      Evaluate refined strategies on:
+      1. Executive-ready presentation quality
+      2. Resource planning completeness
+      3. Risk management depth
+      4. Metric-driven accountability
+
+      Pick the most polished, board-ready strategy.
+    factor_per_step: 2
+    honing_prompt: |-
+      Refine the complete strategic plan:
+      - Add detailed resource requirements (budget, team, tools)
+      - Include specific risk mitigation strategies
+      - Tighten timeline with milestones and dependencies
+      - Enhance success metrics with leading and lagging indicators
+    mutate: yes
+    steps: 2
+    threshold:
+      mode: blocking
+      validator: length_check

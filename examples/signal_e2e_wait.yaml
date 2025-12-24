@@ -1,0 +1,15 @@
+cascade_id: signal_e2e_wait
+phases:
+  - handoffs:
+      - report
+    instructions: Use await_signal to wait for signal named 'e2e_test' with timeout '30s'.
+    name: wait_for_signal
+    tackle:
+      - await_signal
+  - instructions: |-
+      Report what happened:
+
+      {{ state.output_wait_for_signal }}
+
+      If fired, describe the payload. If timeout, say so.
+    name: report

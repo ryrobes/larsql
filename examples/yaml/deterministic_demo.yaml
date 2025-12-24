@@ -1,0 +1,57 @@
+cascade_id: deterministic_demo
+
+description: Demonstrates deterministic (tool-based) phases mixed with LLM phases. Shows direct tool execution,
+  routing, and hybrid error handling.
+
+inputs_schema:
+  query: A SQL query to analyze
+
+phases:
+  - handoffs:
+      - execute_query
+      - fix_query
+    inputs:
+      query: '{{ input.query }}'
+    name: validate_query
+    routing:
+      invalid: fix_query
+      valid: execute_query
+    tool: python:windlass.demo_tools.validate_sql
+  - handoffs:
+      - execute_query
+    instructions: |-
+      The SQL query was invalid. Please analyze and fix the following query:
+
+      Original Query: {{ input.query }}
+
+      Validation Error: {{ state.output_validate_query.error }}
+
+      Provide the corrected SQL query.
+    name: fix_query
+    tackle: []
+  - handoffs:
+      - summarize_results
+    inputs:
+      query: '{{ state.output_validate_query.cleaned_query | default(input.query) }}'
+    name: execute_query
+    on_error:
+      instructions: |-
+        SQL execution failed with error: {{ state.last_deterministic_error.error }}
+
+        Original query: {{ input.query }}
+
+        Please diagnose the issue and suggest a fix.
+      rules:
+        max_turns: 3
+      tackle:
+        - smart_sql_run
+    tool: smart_sql_run
+  - instructions: |-
+      Summarize the query results:
+
+      Query: {{ input.query }}
+      Results: {{ state.output_execute_query | tojson }}
+
+      Provide a human-readable summary of what the data shows.
+    name: summarize_results
+    tackle: []

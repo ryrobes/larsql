@@ -1,0 +1,102 @@
+cascade_id: hybrid_etl_demo
+
+description: Demonstrates a hybrid ETL pipeline where deterministic phases handle data operations and
+  LLM phases handle intelligent error recovery and summarization.
+
+inputs_schema:
+  operation: Transform operation to apply (identity, count, sum_numeric)
+  source_path: Path to source data file
+
+phases:
+  - handoffs:
+      - load_data
+      - handle_missing_file
+    inputs:
+      path: '{{ input.source_path }}'
+    name: check_source
+    routing:
+      exists: load_data
+      not_found: handle_missing_file
+    tool: python:windlass.demo_tools.file_exists
+  - instructions: |-
+      The source file was not found:
+
+      Path: {{ input.source_path }}
+
+      Please suggest alternatives or explain what might have gone wrong.
+    name: handle_missing_file
+    tackle:
+      - linux_shell
+  - handoffs:
+      - parse_data
+    inputs:
+      command: cat {{ state.output_check_source.path }}
+    name: load_data
+    on_error: handle_load_error
+    tool: linux_shell
+  - instructions: |-
+      Failed to load data from file:
+
+      Path: {{ input.source_path }}
+      Error: {{ state.last_deterministic_error.error }}
+
+      Diagnose the issue and suggest a solution.
+    name: handle_load_error
+    tackle:
+      - linux_shell
+  - handoffs:
+      - transform_data
+      - handle_parse_error
+    inputs:
+      text: '{{ state.output_load_data.stdout }}'
+    name: parse_data
+    routing:
+      error: handle_parse_error
+      success: transform_data
+    tool: python:windlass.demo_tools.parse_json
+  - instructions: |-
+      Failed to parse data as JSON:
+
+      Raw content: {{ state.output_load_data.stdout[:500] }}
+      Parse error: {{ state.output_parse_data.error }}
+
+      Analyze the format and suggest how to fix the data or parse it differently.
+    name: handle_parse_error
+    tackle:
+      - run_code
+  - handoffs:
+      - summarize
+      - handle_empty_data
+      - handle_transform_error
+    inputs:
+      data: '{{ state.output_parse_data.data }}'
+      operation: '{{ input.operation }}'
+    name: transform_data
+    routing:
+      empty: handle_empty_data
+      error: handle_transform_error
+      success: summarize
+    tool: python:windlass.demo_tools.transform_data
+  - instructions: The data source was empty. Suggest next steps.
+    name: handle_empty_data
+    tackle: []
+  - instructions: |-
+      Transform operation failed:
+
+      Operation: {{ input.operation }}
+      Error: {{ state.output_transform_data.error }}
+
+      Suggest an alternative approach.
+    name: handle_transform_error
+    tackle: []
+  - instructions: |-
+      Provide a summary of the ETL pipeline results:
+
+      **Source**: {{ input.source_path }}
+      **Operation**: {{ input.operation }}
+      **Records Processed**: {{ state.output_transform_data.count }}
+      **Result**: {{ state.output_transform_data.result | tojson }}
+
+      Explain what the data shows and any insights.
+    name: summarize
+    tackle: []

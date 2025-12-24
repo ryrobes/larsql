@@ -1,0 +1,69 @@
+cascade_id: "data_cascade_test"
+description: "Test data cascade tools - sql_data and python_data"
+
+inputs_schema:
+  threshold: "Minimum value to filter (integer)"
+
+phases:
+  # Phase 1: Generate test data using pure SQL (no connection needed)
+  - name: "generate"
+    tool: "sql_data"
+    inputs:
+      query: |
+        SELECT * FROM (VALUES
+          (1, 'alice', 100),
+          (2, 'bob', 200),
+          (3, 'charlie', 300),
+          (4, 'diana', 400),
+          (5, 'eve', 500)
+        ) AS t(id, name, amount)
+        WHERE id >= {{ input.threshold | int }}
+    handoffs: ["transform"]
+
+  # Phase 2: Transform using Python - access prior phase via data.generate
+  - name: "transform"
+    tool: "python_data"
+    inputs:
+      code: |
+        df = data.generate
+
+        # Add a category column based on amount
+        df['category'] = df['amount'].apply(
+            lambda x: 'high' if x >= 300 else 'low'
+        )
+
+        # Add double amount
+        df['double_amount'] = df['amount'] * 2
+
+        result = df
+    handoffs: ["summary"]
+
+  # Phase 3: Query the transformed data using temp table reference
+  - name: "summary"
+    tool: "sql_data"
+    inputs:
+      query: |
+        SELECT
+          category,
+          COUNT(*) as count,
+          SUM(amount) as total_amount,
+          AVG(double_amount) as avg_double
+        FROM _transform
+        GROUP BY category
+        ORDER BY category
+    handoffs: ["final"]
+
+  # Phase 4: Final Python processing - create summary dict
+  - name: "final"
+    tool: "python_data"
+    inputs:
+      code: |
+        summary_df = data.summary
+        transform_df = data.transform
+
+        result = {
+            "total_records": len(transform_df),
+            "categories": summary_df.to_dict('records'),
+            "high_value_names": transform_df[transform_df['category'] == 'high']['name'].tolist(),
+            "grand_total": int(transform_df['amount'].sum())
+        }

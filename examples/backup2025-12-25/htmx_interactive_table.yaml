@@ -1,0 +1,71 @@
+cascade_id: htmx_interactive_table
+description: |
+  Demonstrates interactive data tables with HTMX.
+  Shows filtering, sorting, and row selection for data review workflows.
+
+inputs_schema:
+  data_topic: "What kind of data to generate and review"
+
+phases:
+  - name: generate_and_review_data
+    tackle: ["request_decision", "route_to"]
+    handoffs:
+      - process_selection
+    rules:
+      max_turns: 5
+    instructions: |
+      Generate sample data about: {{ input.data_topic }}
+
+      Create 10-15 rows of realistic data with 4-6 columns.
+
+      Use request_decision with HTMX to build an interactive table UI:
+      - Sortable columns (click header to sort)
+      - Filter input (type to filter rows)
+      - Checkboxes to select rows
+      - Submit selected rows for approval
+
+      Example pattern:
+      <div>
+        <input type="text" id="filter" placeholder="Filter..."
+               oninput="filterTable(this.value)">
+
+        <table id="dataTable" style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="background:#2C3B4B;">
+              <th><input type="checkbox" onclick="toggleAll(this)"></th>
+              <th onclick="sortTable(0)">Column 1 ▼</th>
+              <th onclick="sortTable(1)">Column 2 ▼</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" name="selected[]" value="row1"></td>
+              <td>Data</td>
+              <td>Data</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <script>
+          function sortTable(col) { /* sort logic */ }
+          function filterTable(query) { /* filter logic */ }
+          function toggleAll(cb) { /* select all */ }
+        </script>
+
+        <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+          <input type="hidden" name="response[selected_rows]" id="selectedRows">
+          <button type="submit" onclick="captureSelection()">Submit Selection</button>
+        </form>
+      </div>
+
+      Make it fully functional with vanilla JS.
+      When submitted, route to process_selection.
+
+  - name: process_selection
+    instructions: |
+      User selected: {{ outputs.generate_and_review_data.selected_rows }}
+
+      Provide analysis of the selected data.
+
+    context:
+      from: [generate_and_review_data]

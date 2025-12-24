@@ -1,0 +1,34 @@
+{
+  "cascade_id": "token_budget_summarize_demo",
+  "description": "Demonstrates token budget with SUMMARIZE strategy - compresses old context using cheap LLM",
+  "inputs_schema": {
+    "topic": "Topic to research deeply"
+  },
+  "token_budget": {
+    "max_total": 12000,
+    "reserve_for_output": 3000,
+    "strategy": "summarize",
+    "warning_threshold": 0.75,
+    "summarizer": {
+      "model": "google/gemini-2.5-flash-lite",
+      "target_size": 2000
+    }
+  },
+  "phases": [
+    {
+      "name": "deep_research",
+      "instructions": "Conduct deep research on {{ input.topic }}. Use as many searches as needed - the token budget will automatically compress old RAG results into summaries when context gets too large.",
+      "tackle": ["sql_search"],
+      "rules": {
+        "max_turns": 8
+      },
+      "handoffs": ["synthesize"]
+    },
+    {
+      "name": "synthesize",
+      "instructions": "Synthesize all research findings into a comprehensive report. Note that old tool results have been compressed into concise summaries to fit within token budget.",
+      "tackle": [],
+      "context": {"from": ["previous"]}
+    }
+  ]
+}

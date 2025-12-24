@@ -1,0 +1,100 @@
+cascade_id: scheduled_etl_demo
+
+description: Demonstrates trigger definitions for scheduled and sensor-based cascade execution. Use `windlass
+  triggers export` to generate scheduler configs.
+
+phases:
+  - handoffs:
+      - extract_data
+      - log_error
+    inputs:
+      query: SELECT '{{ input.mode }}' as mode, '{{ input.date | default("today") }}' as date
+    name: validate_inputs
+    routing:
+      invalid: log_error
+      valid: extract_data
+    tool: python:windlass.demo_tools.validate_sql
+  - instructions: Log the validation error and notify the team.
+    name: log_error
+    tackle: []
+  - handoffs:
+      - transform_data
+    instructions: |-
+      Extract data for {{ input.mode }} run on date {{ input.date | default('today') }}.
+
+      Simulate data extraction and return a sample dataset.
+    name: extract_data
+    tackle: []
+  - handoffs:
+      - load_data
+      - log_empty
+      - handle_transform_error
+    inputs:
+      data: '[{"id": 1, "value": 100}, {"id": 2, "value": 200}]'
+      operation: sum_numeric
+    name: transform_data
+    routing:
+      empty: log_empty
+      error: handle_transform_error
+      success: load_data
+    tool: python:windlass.demo_tools.transform_data
+  - instructions: No data to process. Log this and exit gracefully.
+    name: log_empty
+    tackle: []
+  - instructions: |-
+      Transform failed: {{ state.last_deterministic_error.error }}
+
+      Diagnose and suggest remediation.
+    name: handle_transform_error
+    tackle:
+      - linux_shell
+  - instructions: |-
+      Load the transformed data:
+
+      {{ state.output_transform_data | tojson }}
+
+      Simulate loading to warehouse and confirm success.
+    name: load_data
+    tackle: []
+
+triggers:
+  - description: Run every day at 6 AM Eastern
+    inputs:
+      date: yesterday
+      mode: incremental
+    name: daily_morning
+    schedule: 0 6 * * *
+    timezone: America/New_York
+    type: cron
+  - description: Full refresh every Sunday at 2 AM UTC
+    inputs:
+      mode: full
+    name: weekly_full
+    schedule: 0 2 * * 0
+    timezone: UTC
+    type: cron
+  - args:
+      min_size_bytes: 1000
+      path: /data/incoming/daily_feed.csv
+    check: python:windlass.triggers.sensor_file_exists
+    description: Trigger when daily feed file appears
+    inputs:
+      mode: incremental
+      source: file
+    name: on_source_ready
+    poll_interval: 5m
+    timeout: 4h
+    type: sensor
+  - description: Manual trigger for ad-hoc runs
+    inputs_schema:
+      date:
+        description: Date to process (YYYY-MM-DD)
+        type: string
+      mode:
+        default: incremental
+        enum:
+          - full
+          - incremental
+        type: string
+    name: manual_run
+    type: manual

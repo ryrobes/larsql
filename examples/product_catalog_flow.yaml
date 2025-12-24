@@ -1,0 +1,97 @@
+cascade_id: product_catalog_flow
+
+description: Create a product catalog entry with nested schema validation
+
+inputs_schema:
+  product_description: Description of the product
+
+phases:
+  - handoffs:
+      - summary
+    instructions: |-
+      Create a structured product catalog entry for:
+
+      {{ input.product_description }}
+
+      Return ONLY a JSON object (no markdown, no extra text) with this structure:
+      {
+        "product_name": "Name of product",
+        "category": "Product category",
+        "price": 29.99,
+        "in_stock": true,
+        "specifications": {
+          "dimensions": "measurements",
+          "weight": "weight info",
+          "material": "material type"
+        },
+        "tags": ["tag1", "tag2"]
+      }
+    name: create_catalog_entry
+    output_schema:
+      properties:
+        category:
+          minLength: 3
+          type: string
+        in_stock:
+          type: boolean
+        price:
+          minimum: 0
+          type: number
+        product_name:
+          minLength: 3
+          type: string
+        specifications:
+          properties:
+            dimensions:
+              type: string
+            material:
+              type: string
+            weight:
+              type: string
+          required:
+            - dimensions
+            - weight
+            - material
+          type: object
+        tags:
+          items:
+            type: string
+          minItems: 1
+          type: array
+      required:
+        - product_name
+        - category
+        - price
+        - in_stock
+        - specifications
+        - tags
+      type: object
+    rules:
+      max_attempts: 3
+      max_turns: 1
+      retry_instructions: |-
+        📦 Product Schema Validation Failed:
+
+        {{ schema_error }}
+
+        Please return valid JSON matching the catalog schema:
+        - product_name (string, 3+ chars)
+        - category (string, 3+ chars)
+        - price (number >= 0)
+        - in_stock (boolean)
+        - specifications object (dimensions, weight, material)
+        - tags array (at least 1 tag)
+
+        Attempt {{ attempt }}/{{ max_attempts }}
+  - instructions: |-
+      ✅ Product catalog entry validated!
+
+      Product: {{ state.validated_output.product_name }}
+      Category: {{ state.validated_output.category }}
+      Price: ${{ state.validated_output.price }}
+      In Stock: {{ state.validated_output.in_stock }}
+
+      Provide a brief confirmation that the catalog entry is ready.
+    name: summary
+    tackle:
+      - set_state

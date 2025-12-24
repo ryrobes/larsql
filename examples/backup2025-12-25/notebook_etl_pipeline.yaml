@@ -1,0 +1,128 @@
+cascade_id: etl_pipeline_demo
+description: "ETL pipeline demonstrating data extraction, transformation across languages, and loading back to SQL for querying."
+inputs_schema:
+  min_score: "Minimum score threshold for filtering (default: 50)"
+
+phases:
+  - name: extract
+    tool: sql_data
+    inputs:
+      query: |
+        -- Extract: Generate user activity data
+        SELECT * FROM (
+          VALUES
+            (1, 'alice', 'login', '2024-03-01 09:00:00', 100),
+            (1, 'alice', 'purchase', '2024-03-01 09:15:00', 250),
+            (1, 'alice', 'logout', '2024-03-01 10:00:00', 50),
+            (2, 'bob', 'login', '2024-03-01 10:30:00', 100),
+            (2, 'bob', 'view', '2024-03-01 10:35:00', 30),
+            (2, 'bob', 'view', '2024-03-01 10:40:00', 30),
+            (2, 'bob', 'purchase', '2024-03-01 11:00:00', 300),
+            (3, 'charlie', 'login', '2024-03-01 08:00:00', 100),
+            (3, 'charlie', 'view', '2024-03-01 08:05:00', 30),
+            (3, 'charlie', 'logout', '2024-03-01 08:30:00', 50),
+            (4, 'diana', 'login', '2024-03-01 14:00:00', 100),
+            (4, 'diana', 'purchase', '2024-03-01 14:10:00', 500),
+            (4, 'diana', 'purchase', '2024-03-01 14:20:00', 350),
+            (4, 'diana', 'logout', '2024-03-01 15:00:00', 50)
+        ) AS t(user_id, username, action, timestamp, points)
+    handoffs: [transform_python]
+
+  - name: transform_python
+    tool: python_data
+    inputs:
+      code: |
+        # Transform: Calculate user engagement metrics
+        import pandas as pd
+
+        df = data.extract.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        # Calculate per-user metrics
+        user_metrics = df.groupby(['user_id', 'username']).agg(
+            total_actions=('action', 'count'),
+            total_points=('points', 'sum'),
+            purchases=('action', lambda x: (x == 'purchase').sum()),
+            first_action=('timestamp', 'min'),
+            last_action=('timestamp', 'max')
+        ).reset_index()
+
+        # Calculate session duration in minutes
+        user_metrics['session_minutes'] = (
+            (user_metrics['last_action'] - user_metrics['first_action'])
+            .dt.total_seconds() / 60
+        ).round(1)
+
+        # Convert timestamps to strings for JSON serialization
+        user_metrics['first_action'] = user_metrics['first_action'].astype(str)
+        user_metrics['last_action'] = user_metrics['last_action'].astype(str)
+
+        result = user_metrics
+    handoffs: [enrich_js]
+
+  - name: enrich_js
+    tool: js_data
+    inputs:
+      code: |
+        // Enrich: Add engagement scores and tiers
+        const users = data.transform_python;
+        const minScore = parseInt(input.min_score) || 50;
+
+        const enriched = users.map(user => {
+          // Calculate engagement score (weighted formula)
+          const engagementScore = Math.round(
+            (user.purchases * 50) +
+            (user.total_actions * 10) +
+            (user.session_minutes * 2)
+          );
+
+          // Assign tier based on score
+          let tier, tierColor;
+          if (engagementScore >= 200) {
+            tier = 'Gold'; tierColor = '#FFD700';
+          } else if (engagementScore >= 100) {
+            tier = 'Silver'; tierColor = '#C0C0C0';
+          } else {
+            tier = 'Bronze'; tierColor = '#CD7F32';
+          }
+
+          return {
+            ...user,
+            engagement_score: engagementScore,
+            tier,
+            tier_color: tierColor,
+            meets_threshold: engagementScore >= minScore
+          };
+        });
+
+        // Sort by engagement score descending
+        enriched.sort((a, b) => b.engagement_score - a.engagement_score);
+        result = enriched;
+    handoffs: [load_summary]
+
+  - name: load_summary
+    tool: sql_data
+    inputs:
+      query: |
+        -- Load: Final summary with tier breakdown
+        WITH enriched AS (
+          SELECT * FROM _enrich_js
+        ),
+        tier_stats AS (
+          SELECT
+            tier,
+            COUNT(*) as user_count,
+            AVG(engagement_score) as avg_score,
+            SUM(purchases) as total_purchases,
+            SUM(total_points) as total_points
+          FROM enriched
+          GROUP BY tier
+        )
+        SELECT
+          tier,
+          user_count,
+          ROUND(avg_score, 1) as avg_engagement_score,
+          total_purchases,
+          total_points
+        FROM tier_stats
+        ORDER BY avg_score DESC

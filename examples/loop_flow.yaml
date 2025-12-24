@@ -1,0 +1,18 @@
+cascade_id: iterative_joke
+phases:
+  - handoffs:
+      - refine_joke
+    instructions: Draft a joke about a pirate who is learning Python programming. Do not output the final
+      joke yet, just brainstorm concepts.
+    name: draft_joke
+    tackle: []
+  - context:
+      from:
+        - previous
+    handoffs: []
+    instructions: Take the concepts from the previous turn and write the best possible joke. Then critique
+      it. Then rewrite it to be funnier.
+    name: refine_joke
+    rules:
+      max_turns: 3
+    tackle: []

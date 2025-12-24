@@ -1,0 +1,40 @@
+{
+  "cascade_id": "rabbitize_navigation_demo",
+  "description": "Navigate a website step-by-step with visual feedback - demonstrates interactive browsing with loop_until validation",
+  "inputs_schema": {
+    "url": "Starting URL",
+    "goal": "What to accomplish on the website (e.g., 'find the pricing page and tell me the cost')"
+  },
+  "phases": [
+    {
+      "name": "start_session",
+      "instructions": "Start a browser session at {{ input.url }} and describe what you see in the initial screenshot.",
+      "tackle": ["rabbitize_start"],
+      "handoffs": ["navigate"],
+      "rules": {
+        "max_turns": 1
+      }
+    },
+    {
+      "name": "navigate",
+      "instructions": "Your goal: {{ input.goal }}\n\nYou can see the current page in the screenshot. Take actions to accomplish your goal.\n\nCRITICAL: To click, you MUST move mouse first, then click!\n\nAvailable actions:\n- rabbitize_execute('[\":move-mouse\", \":to\", x, y]') - Move cursor to position (REQUIRED before click!)\n- rabbitize_execute('[\":click\"]') - Click at current cursor position (NO ARGS!)\n- rabbitize_execute('[\":type\", \"text here\"]') - Type text  \n- rabbitize_execute('[\":scroll-wheel-down\", 5]') - Scroll down\n- rabbitize_execute('[\":keypress\", \"Enter\"]') - Press key\n- rabbitize_extract() - Get page content and coordinates\n\nTake ONE action at a time. After each action, you'll see the result screenshot.\n\nWhen you've accomplished the goal, use route_to to go to complete_goal.",
+      "tackle": ["rabbitize_execute", "rabbitize_extract", "route_to"],
+      "handoffs": ["complete_goal"],
+      "rules": {
+        "max_turns": 15,
+        "max_attempts": 3,
+        "loop_until": "satisfied",
+        "loop_until_prompt": "Continue navigating until you have accomplished: {{ input.goal }}\nThen use route_to to complete_goal.",
+        "retry_instructions": "The goal was not accomplished yet. Keep navigating to achieve: {{ input.goal }}"
+      }
+    },
+    {
+      "name": "complete_goal",
+      "instructions": "Close the browser session and summarize what you accomplished.",
+      "tackle": ["rabbitize_close"],
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

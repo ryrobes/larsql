@@ -1,0 +1,17 @@
+{
+  "cascade_id": "simple_retry_test",
+  "description": "Tests validation retry with simple_validator (needs 10+ chars)",
+  "inputs_schema": {
+    "task": "The task to perform"
+  },
+  "phases": [{
+    "name": "respond",
+    "instructions": "{{ input.task }}\n\nIMPORTANT: Your response should be very brief - just 2-3 words.",
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "loop_until": "simple_validator",
+      "retry_instructions": "Your response was rejected: {{ validation_error }}\n\nPlease provide a LONGER response (at least 50 characters). Attempt {{ attempt }}/{{ max_attempts }}."
+    }
+  }]
+}

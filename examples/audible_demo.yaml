@@ -1,0 +1,32 @@
+cascade_id: audible_demo
+description: Demonstrates the audible system for real-time cascade steering. Run this cascade and click
+  the '🏈 Audible' button in the UI to inject feedback mid-phase.
+inputs_schema:
+  topic: The topic to write about (e.g., 'climate change', 'artificial intelligence')
+phases:
+  - audibles:
+      allow_retry: yes
+      budget: 3
+      enabled: yes
+      timeout_seconds: 120
+    instructions: "Write a comprehensive essay about {{ input.topic }}.\n\nStructure your essay with:\n\
+      1. An engaging introduction\n2. Three main body paragraphs\n3. A thoughtful conclusion\n\nTake your\
+      \ time and be thorough. After each paragraph, pause and reflect on what you've written.\n\nIMPORTANT:\
+      \ If you receive feedback during writing (marked with [AUDIBLE]), incorporate it immediately in\
+      \ your next response."
+    model: anthropic/claude-sonnet-4
+    name: generate_essay
+    rules:
+      max_turns: 5
+      turn_prompt: Continue writing the essay. Review what you've written and expand on it.
+  - context:
+      from:
+        - previous
+    instructions: |-
+      Summarize the essay from the previous phase in 2-3 sentences.
+
+      Previous output:
+      {{ outputs.generate_essay }}
+    name: summarize
+    rules:
+      max_turns: 1

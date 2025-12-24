@@ -1,0 +1,66 @@
+cascade_id: htmx_wizard_demo
+description: |
+  Demonstrates a multi-step wizard using HTMX for progressive disclosure.
+  Shows how LLMs can create complex, stateful UIs for data collection.
+
+inputs_schema:
+  workflow_type: "What kind of workflow to configure"
+
+phases:
+  - name: wizard_flow
+    tackle: ["request_decision", "route_to"]
+    handoffs:
+      - process_config
+    rules:
+      max_turns: 10
+    instructions: |
+      Create a 3-step configuration wizard for: {{ input.workflow_type }}
+
+      Use request_decision with HTMX to build:
+
+      Step 1: Basic Settings (name, description)
+      Step 2: Advanced Options (2-3 configuration choices)
+      Step 3: Review & Confirm (show all selections)
+
+      IMPORTANT: Use HTMX to make it interactive:
+      - Each step loads the next via hx-post
+      - Use hidden inputs to carry forward previous values
+      - Final step submits to /api/checkpoints/{{ checkpoint_id }}/respond
+
+      Pattern for multi-step:
+      <div id="wizard-container">
+        <div id="step-indicator">Step 1 of 3</div>
+        <div id="wizard-content">
+          <h3>Step 1: Basic Settings</h3>
+          <input name="config[name]" placeholder="Name" required>
+          <!-- Next button posts to same form, swaps wizard-content -->
+          <button hx-post="#" hx-target="#wizard-content"
+                  onclick="showStep2(this.form)">Next →</button>
+        </div>
+      </div>
+      <script>
+        function showStep2(form) {
+          var name = form.elements['config[name]'].value;
+          document.getElementById('wizard-content').innerHTML = \`
+            <h3>Step 2: Options</h3>
+            <p>Name: \${name}</p>
+            <input type="hidden" name="config[name]" value="\${name}">
+            <select name="config[mode]">...</select>
+            <button onclick="showStep3(this.form)">Next →</button>
+          \`;
+          return false;
+        }
+      </script>
+
+      Build a complete wizard, final step submits to checkpoint endpoint.
+      When submitted, route to process_config.
+
+  - name: process_config
+    instructions: |
+      Configuration received:
+      {{ outputs.wizard_flow }}
+
+      Validate and summarize the configuration.
+
+    context:
+      from: [wizard_flow]

@@ -1,0 +1,28 @@
+cascade_id: content_processor_with_manifest
+description: Demonstrates Quartermaster selecting appropriate tackle based on task
+inputs_schema:
+  content: The content to process
+  task: Description of the content processing task
+phases:
+  - handoffs:
+      - review
+    instructions: |-
+      Task: {{ input.task }}
+
+      Content: {{ input.content }}
+
+      Complete the requested task using the available tools. Use tools when they would be helpful.
+    manifest_context: current
+    name: process_content
+    rules:
+      max_turns: 5
+    tackle: manifest
+  - context:
+      from:
+        - previous
+    instructions: Review the work completed in the previous phase. Provide a brief summary of what was
+      accomplished.
+    name: review
+    rules:
+      max_turns: 1
+    tackle: []

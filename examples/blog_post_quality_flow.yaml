@@ -1,0 +1,65 @@
+cascade_id: blog_post_quality_flow
+
+description: Write a blog post with automatic quality validation and retry
+
+inputs_schema:
+  target_audience: Who is the target audience
+  topic: The blog post topic
+
+phases:
+  - handoffs:
+      - add_conclusion
+    instructions: |-
+      Write a professional blog post about: {{ input.topic }}
+
+      Target audience: {{ input.target_audience }}
+
+      The post should:
+      - Have a clear introduction
+      - Provide valuable insights
+      - Be at least 200 characters
+      - Use proper grammar and spelling
+    name: draft_post
+    rules:
+      loop_until: grammar_check
+      max_attempts: 3
+      max_turns: 1
+      retry_instructions: |-
+        Editor's Feedback:
+
+        {{ validation_error }}
+
+        Please revise your blog post to address these issues. Focus on grammar, spelling, and clarity.
+
+        Attempt {{ attempt }}/{{ max_attempts }}
+  - context:
+      from:
+        - previous
+    handoffs:
+      - finalize
+    instructions: |-
+      Your blog post was approved! Now add a compelling conclusion paragraph that:
+      - Summarizes the main points
+      - Includes a call-to-action
+      - Mentions the word 'important' (this is an editorial requirement)
+
+      Provide ONLY the conclusion paragraph.
+    name: add_conclusion
+    rules:
+      loop_until: keyword_validator
+      max_attempts: 2
+      max_turns: 1
+      retry_instructions: |-
+        Editorial requirement not met: {{ validation_error }}
+
+        Revise the conclusion to include the required keyword. Attempt {{ attempt }}/{{ max_attempts }}
+  - context:
+      from:
+        - all
+    handoffs:
+      - end
+    instructions: |-
+      Excellent! Both the main content and conclusion have been validated.
+
+      Provide a brief summary of the final blog post structure.
+    name: finalize

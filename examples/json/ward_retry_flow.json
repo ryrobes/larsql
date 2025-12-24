@@ -1,0 +1,35 @@
+{
+  "cascade_id": "ward_retry_flow",
+  "description": "Demonstrates retry mode - wards that automatically retry on failure",
+  "inputs_schema": {
+    "task": "The task to complete"
+  },
+  "phases": [{
+    "name": "complete_task",
+    "instructions": "Complete this task: {{ input.task }}",
+    "wards": {
+      "post": [{
+        "validator": "keyword_validator",
+        "mode": "retry",
+        "max_attempts": 3
+      }, {
+        "validator": "grammar_check",
+        "mode": "retry",
+        "max_attempts": 2
+      }]
+    },
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "retry_instructions": "Ward validation failed: {{ validation_error }}\n\nPlease revise your response. Attempt {{ attempt }}/{{ max_attempts }}"
+    },
+    "handoffs": ["done"]
+  }, {
+    "name": "done",
+    "instructions": "All post-wards passed!\n\nSummarize what you did.",
+    "context": {
+      "from": ["previous"]
+    },
+    "tackle": ["set_state"]
+  }]
+}

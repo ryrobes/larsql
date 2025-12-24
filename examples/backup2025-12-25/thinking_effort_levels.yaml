@@ -1,0 +1,20 @@
+# Thinking Effort Levels Test
+# Tests different thinking effort levels to verify parsing and token capture
+
+cascade_id: thinking_effort_levels
+description: Single-phase test for different thinking effort levels
+
+inputs_schema:
+  question: A question requiring thought
+
+phases:
+  - name: reason
+    # Using high effort level - should produce thinking tokens
+    model: "anthropic/claude-sonnet-4::high"
+    instructions: |
+      Think carefully about this question:
+
+      {{ input.question }}
+
+      Reason through it step by step before answering.
+    tackle: []

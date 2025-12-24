@@ -1,0 +1,30 @@
+{
+  "cascade_id": "rag_qa_example",
+  "description": "Answer a question using the local RAG index for the examples directory.",
+  "inputs_schema": {
+    "question": "Question to answer using local files"
+  },
+  "phases": [
+    {
+      "name": "answer",
+      "instructions": "You are a helpful analyst. Use the RAG tools to answer the user's question: {{ input.question }}. Search before answering and cite sources as path#line_start-line_end.",
+      "tackle": ["rag_search", "rag_read_chunk", "rag_list_sources"],
+      "rag": {
+        "model": "qwen/qwen3-embedding-8b",
+        "directory": "/home/ryanr/repos/windlass/examples"
+      },
+      "handoffs": ["follow_up"],
+      "rules": {
+        "max_turns": 1
+      }
+    },
+    {
+      "name": "follow_up",
+      "instructions": "Based on your previous answer and the same RAG context, propose 3 concise follow-up questions to clarify or extend the answer. Keep each to one sentence. Cite the most relevant source for each question using path#line_start-line_end.",
+      "tackle": ["rag_search", "rag_read_chunk", "rag_list_sources"],
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

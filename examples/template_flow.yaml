@@ -1,0 +1,16 @@
+cascade_id: template_demo
+phases:
+  - handoffs:
+      - analyze_phase
+    instructions: 'You are a helpful parrot. Repeat the following phrase exactly: ''{{ input.phrase }}'''
+    name: echo_phase
+    tackle: []
+  - context:
+      from:
+        - previous
+    handoffs: []
+    instructions: '@examples/prompts/sentiment.j2'
+    name: analyze_phase
+    rules:
+      max_turns: 1
+    tackle: []

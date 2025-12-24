@@ -1,0 +1,21 @@
+cascade_id: tool_demo
+phases:
+  - handoffs:
+      - query_phase
+    instructions: Calculate the factorial of 7 using Python code. Use the 'run_code' tool.
+    name: calc_phase
+    rules:
+      max_turns: 3
+    tackle:
+      - run_code
+  - context:
+      from:
+        - previous
+    handoffs: []
+    instructions: Query the 'crew.csv' file to list all roles. Use 'smart_sql_run'. The table name is
+      simply the file path 'windlass/examples/crew.csv'. e.g. SELECT * FROM 'windlass/examples/crew.csv'
+    name: query_phase
+    rules:
+      max_turns: 3
+    tackle:
+      - smart_sql_run

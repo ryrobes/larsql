@@ -1,0 +1,165 @@
+cascade_id: js_analytics_demo
+description: "Demonstrates JavaScript's modern array methods, destructuring, and functional patterns for data analytics."
+inputs_schema: {}
+
+phases:
+  - name: events
+    tool: sql_data
+    inputs:
+      query: |
+        -- Generate clickstream events
+        SELECT * FROM (
+          VALUES
+            ('2024-03-01 10:00:00', 'sess_001', 'page_view', '/home', null),
+            ('2024-03-01 10:00:30', 'sess_001', 'click', '/home', 'hero_cta'),
+            ('2024-03-01 10:01:00', 'sess_001', 'page_view', '/products', null),
+            ('2024-03-01 10:02:00', 'sess_001', 'click', '/products', 'product_123'),
+            ('2024-03-01 10:02:30', 'sess_001', 'page_view', '/product/123', null),
+            ('2024-03-01 10:03:00', 'sess_001', 'add_to_cart', '/product/123', 'product_123'),
+            ('2024-03-01 10:05:00', 'sess_001', 'purchase', '/checkout', 'order_456'),
+            ('2024-03-01 11:00:00', 'sess_002', 'page_view', '/home', null),
+            ('2024-03-01 11:00:20', 'sess_002', 'page_view', '/about', null),
+            ('2024-03-01 11:01:00', 'sess_002', 'page_view', '/home', null),
+            ('2024-03-01 14:00:00', 'sess_003', 'page_view', '/products', null),
+            ('2024-03-01 14:01:00', 'sess_003', 'click', '/products', 'product_789'),
+            ('2024-03-01 14:01:30', 'sess_003', 'page_view', '/product/789', null),
+            ('2024-03-01 14:02:00', 'sess_003', 'add_to_cart', '/product/789', 'product_789'),
+            ('2024-03-01 14:10:00', 'sess_003', 'page_view', '/cart', null)
+        ) AS t(timestamp, session_id, event_type, page, target)
+    handoffs: [js_sessionize]
+
+  - name: js_sessionize
+    tool: js_data
+    inputs:
+      code: |
+        // Modern JS: Sessionize and enrich clickstream data
+        const events = data.events;
+
+        // Group by session using reduce with Map
+        const sessionMap = events.reduce((acc, event) => {
+          const { session_id, ...rest } = event;
+          if (!acc.has(session_id)) {
+            acc.set(session_id, []);
+          }
+          acc.get(session_id).push({ ...rest, session_id });
+          return acc;
+        }, new Map());
+
+        // Process each session
+        const sessions = [...sessionMap.entries()].map(([sessionId, events]) => {
+          const timestamps = events.map(e => new Date(e.timestamp));
+          const firstEvent = Math.min(...timestamps);
+          const lastEvent = Math.max(...timestamps);
+
+          // Funnel analysis
+          const eventTypes = new Set(events.map(e => e.event_type));
+          const funnelSteps = {
+            viewed: eventTypes.has('page_view'),
+            clicked: eventTypes.has('click'),
+            addedToCart: eventTypes.has('add_to_cart'),
+            purchased: eventTypes.has('purchase')
+          };
+
+          // Calculate furthest funnel step
+          const funnelOrder = ['viewed', 'clicked', 'addedToCart', 'purchased'];
+          const maxStep = funnelOrder.filter(step => funnelSteps[step]).pop();
+
+          return {
+            session_id: sessionId,
+            event_count: events.length,
+            duration_seconds: (lastEvent - firstEvent) / 1000,
+            pages_viewed: [...new Set(events.filter(e => e.event_type === 'page_view').map(e => e.page))],
+            page_view_count: events.filter(e => e.event_type === 'page_view').length,
+            max_funnel_step: maxStep,
+            converted: funnelSteps.purchased,
+            bounce: events.length <= 2 && !funnelSteps.clicked
+          };
+        });
+
+        result = sessions;
+    handoffs: [js_funnel]
+
+  - name: js_funnel
+    tool: js_data
+    inputs:
+      code: |
+        // Funnel analysis with modern JS patterns
+        const sessions = data.js_sessionize;
+
+        // Define funnel stages
+        const funnelStages = ['viewed', 'clicked', 'addedToCart', 'purchased'];
+
+        // Calculate conversion at each stage
+        const funnelAnalysis = funnelStages.map((stage, index) => {
+          const stageOrder = funnelStages.slice(0, index + 1);
+          const reachedCount = sessions.filter(s =>
+            stageOrder.includes(s.max_funnel_step) ||
+            funnelStages.indexOf(s.max_funnel_step) >= index
+          ).length;
+
+          const conversionRate = sessions.length > 0
+            ? ((reachedCount / sessions.length) * 100).toFixed(1)
+            : 0;
+
+          return {
+            stage,
+            stage_number: index + 1,
+            sessions_reached: reachedCount,
+            conversion_rate: `${conversionRate}%`,
+            drop_off: index === 0 ? 0 : sessions.length - reachedCount
+          };
+        });
+
+        // Overall metrics using destructuring and spread
+        const metrics = {
+          total_sessions: sessions.length,
+          converted_sessions: sessions.filter(s => s.converted).length,
+          bounced_sessions: sessions.filter(s => s.bounce).length,
+          avg_duration: (sessions.reduce((sum, s) => sum + s.duration_seconds, 0) / sessions.length).toFixed(1),
+          avg_pages_per_session: (sessions.reduce((sum, s) => sum + s.page_view_count, 0) / sessions.length).toFixed(1),
+          funnel: funnelAnalysis
+        };
+
+        result = metrics;
+    handoffs: [python_viz_prep]
+
+  - name: python_viz_prep
+    tool: python_data
+    inputs:
+      code: |
+        # Prepare data for visualization
+        import pandas as pd
+
+        metrics = data.js_funnel
+        funnel_data = pd.DataFrame(metrics['funnel'])
+
+        # Add visualization-ready columns
+        funnel_data['bar_width'] = funnel_data['sessions_reached'] / funnel_data['sessions_reached'].max() * 100
+        funnel_data['stage_label'] = funnel_data['stage'].str.replace('addedToCart', 'Added to Cart').str.title()
+
+        # Summary stats
+        summary = {
+            'total_sessions': metrics['total_sessions'],
+            'conversion_rate': f"{(metrics['converted_sessions'] / metrics['total_sessions'] * 100):.1f}%",
+            'bounce_rate': f"{(metrics['bounced_sessions'] / metrics['total_sessions'] * 100):.1f}%",
+            'avg_duration': f"{float(metrics['avg_duration']):.0f}s",
+            'avg_pages': metrics['avg_pages_per_session']
+        }
+
+        # Return both for final SQL
+        result = {'funnel': funnel_data.to_dict('records'), 'summary': summary}
+    handoffs: [final_report]
+
+  - name: final_report
+    tool: sql_data
+    inputs:
+      query: |
+        -- Final funnel report
+        SELECT
+          stage_label as "Funnel Stage",
+          sessions_reached as "Sessions",
+          conversion_rate as "Rate",
+          drop_off as "Drop-off",
+          REPEAT('█', CAST(bar_width/5 AS INTEGER)) as "Visualization"
+        FROM _python_viz_prep_funnel
+        ORDER BY stage_number

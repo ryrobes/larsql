@@ -1,0 +1,78 @@
+cascade_id: llm_classification_demo
+description: "Demonstrates LLM cells for data classification: SQL generates messy data, LLM classifies and cleans, SQL aggregates results."
+inputs_schema: {}
+
+phases:
+  - name: raw_support_tickets
+    tool: sql_data
+    inputs:
+      query: |
+        -- Messy support ticket data that needs classification
+        SELECT * FROM (
+          VALUES
+            ('T001', 'john@acme.com', 'My laptop wont turn on anymore!! URGENT', '2024-01-15'),
+            ('T002', 'sarah@bigco.net', 'How do I reset my password? Thanks', '2024-01-15'),
+            ('T003', 'mike@startup.io', 'The API is returning 500 errors consistently', '2024-01-16'),
+            ('T004', 'lisa@corp.com', 'Can you add dark mode to the dashboard?', '2024-01-16'),
+            ('T005', 'tom@enterprise.org', 'CRITICAL: Production database is down!!!', '2024-01-17'),
+            ('T006', 'amy@small.biz', 'Just wanted to say great product, love it!', '2024-01-17'),
+            ('T007', 'bob@mega.inc', 'billing issue - charged twice last month', '2024-01-18'),
+            ('T008', 'carol@tech.co', 'Feature request: export to CSV please', '2024-01-18'),
+            ('T009', 'dan@global.net', 'App crashes when I click the submit button', '2024-01-19'),
+            ('T010', 'eve@local.org', 'Question about enterprise pricing', '2024-01-19')
+        ) AS t(ticket_id, email, message, created_date)
+    handoffs: [llm_classify]
+
+  - name: llm_classify
+    instructions: |
+      You are a support ticket classifier. Analyze each ticket and classify it.
+
+      Tickets to classify:
+      {{outputs.raw_support_tickets}}
+
+      For each ticket, determine:
+      1. category: one of [bug, feature_request, billing, account, feedback, critical]
+      2. priority: one of [low, medium, high, critical]
+      3. sentiment: one of [positive, neutral, negative, angry]
+      4. clean_subject: A clean, normalized subject line (max 50 chars)
+
+      Return ALL tickets with their classifications.
+    model: google/gemini-2.5-flash
+    tackle: []
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          ticket_id: { type: string }
+          email: { type: string }
+          category: { type: string }
+          priority: { type: string }
+          sentiment: { type: string }
+          clean_subject: { type: string }
+        required: [ticket_id, category, priority, sentiment, clean_subject]
+    handoffs: [aggregate_stats]
+
+  - name: aggregate_stats
+    tool: sql_data
+    inputs:
+      query: |
+        -- Aggregate the LLM-classified tickets
+        WITH classified AS (
+          SELECT * FROM _llm_classify
+        )
+        SELECT
+          category,
+          priority,
+          COUNT(*) as ticket_count,
+          array_agg(ticket_id) as ticket_ids
+        FROM classified
+        GROUP BY category, priority
+        ORDER BY
+          CASE priority
+            WHEN 'critical' THEN 1
+            WHEN 'high' THEN 2
+            WHEN 'medium' THEN 3
+            ELSE 4
+          END,
+          ticket_count DESC

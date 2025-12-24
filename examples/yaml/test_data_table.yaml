@@ -1,0 +1,31 @@
+cascade_id: test_data_table
+description: Test data table rendering in checkpoint UI
+inputs_schema: {}
+phases:
+  - instructions: |-
+      Call ask_human_custom with a data table to test rendering. Use the exact call below:
+
+      ```json
+      {
+        "tool": "ask_human_custom",
+        "arguments": {
+          "question": "Please review this sales data",
+          "context": "Q4 2024 sales performance by region",
+          "data": {
+            "Sales by Region": [
+              {"Region": "North", "Sales": "$125,000", "Growth": "+15%"},
+              {"Region": "South", "Sales": "$98,000", "Growth": "+8%"},
+              {"Region": "East", "Sales": "$142,000", "Growth": "+22%"},
+              {"Region": "West", "Sales": "$87,000", "Growth": "-3%"}
+            ]
+          },
+          "ui_hint": "confirmation",
+          "layout_hint": "two-column"
+        }
+      }
+      ```
+    name: show_data_table
+    rules:
+      max_turns: 2
+    tackle:
+      - ask_human_custom

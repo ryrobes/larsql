@@ -1223,9 +1223,10 @@
 .nav-card-flip-container {
   flex: 1;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* Allow 3D flip to extend beyond bounds */
   perspective: 1200px; /* 3D perspective depth */
   transform-style: preserve-3d;
+  z-index: 1; /* Base z-index */
 }
 
 .nav-flip-card {
@@ -1234,8 +1235,9 @@
   left: 0;
   right: 0;
   bottom: 0;
-  overflow-y: auto;
+  overflow-y: auto; /* Scroll enabled by default, disabled during flip via inline style */
   overflow-x: hidden;
   backface-visibility: hidden; /* Hide back face during flip */
   transform-style: preserve-3d;
+  /* z-index and overflow set by Framer Motion during animation */
 }

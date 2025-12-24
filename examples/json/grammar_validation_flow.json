@@ -1,0 +1,22 @@
+{
+  "cascade_id": "grammar_validation_flow",
+  "description": "Demonstrates grammar validation with retry mechanism",
+  "inputs_schema": {
+    "topic": "The topic to write about",
+    "style": "Writing style (formal, casual, technical)"
+  },
+  "phases": [{
+    "name": "draft_content",
+    "instructions": "Write a well-structured paragraph about: {{ input.topic }}\n\nStyle: {{ input.style | default('professional') }}\n\nEnsure proper grammar, spelling, and punctuation.",
+    "rules": {
+      "max_turns": 1,
+      "max_attempts": 3,
+      "loop_until": "grammar_check",
+      "retry_instructions": "Grammar validation failed: {{ validation_error }}\n\nPlease revise your text to fix these issues. This is attempt {{ attempt }} of {{ max_attempts }}."
+    }
+  }, {
+    "name": "finalize",
+    "instructions": "The content has been validated. Confirm it's ready for publication with a brief summary.",
+    "handoffs": ["end"]
+  }]
+}

@@ -1,0 +1,35 @@
+cascade_id: generative_ui_demo
+description: Demonstrates the Generative UI system with rich interactive components for human-in-the-loop
+  workflows
+inputs_schema:
+  demo_type: 'Type of demo to run: ''image_review'', ''data_analysis'', ''comparison'', or ''full'''
+phases:
+  - handoffs:
+      - description: Process the human's feedback
+        target: process_feedback
+    instructions: |-
+      Generate demo content based on the requested demo type: {{ input.demo_type }}
+
+      For 'image_review': Create a chart using create_chart and then ask the human to review it.
+      For 'data_analysis': Generate sample data and ask the human to analyze it in a data table.
+      For 'comparison': Create multiple options and ask the human to compare them.
+      For 'full': Demonstrate all UI features together.
+
+      Use the ask_human_custom tool to create rich, interactive UIs for human input.
+    name: generate_content
+    rules:
+      max_turns: 5
+    tackle:
+      - create_chart
+      - ask_human_custom
+      - set_state
+  - context:
+      from:
+        - generate_content
+    instructions: |-
+      The human provided feedback on the demo content.
+
+      Feedback received: {{ outputs.generate_content }}
+
+      Summarize what the human said and provide a final response based on their input.
+    name: process_feedback

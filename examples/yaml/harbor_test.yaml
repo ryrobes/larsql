@@ -1,0 +1,24 @@
+cascade_id: harbor_test
+description: Test Harbor (HF Spaces) integration with a simple LLM call
+inputs_schema:
+  question: A question to ask
+phases:
+  - instructions: |-
+      Use the llama_chat tool to answer the user's question: {{ input.question }}
+
+      Call the tool with:
+      - message: the question
+      - system_prompt: 'You are a helpful assistant. Be concise and direct.'
+    name: ask_llama
+    rules:
+      max_turns: 3
+    tackle:
+      - llama_chat
+  - context:
+      from:
+        - ask_llama
+    instructions: The previous phase asked Llama a question and got an answer. Provide a brief reflection
+      on the quality of the response - was it accurate and helpful?
+    name: reflect
+    rules:
+      max_turns: 1

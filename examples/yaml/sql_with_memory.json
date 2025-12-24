@@ -1,0 +1,21 @@
+{
+  "cascade_id": "sql_with_memory",
+  "description": "SQL query generation that learns from past queries",
+  "memory": "sql_patterns_memory",
+  "inputs_schema": {
+    "question": "Natural language question about data"
+  },
+  "phases": [
+    {
+      "name": "search_memory",
+      "instructions": "Search the memory for similar past SQL queries that might help answer this question: {{ input.question }}\n\nUse the sql_patterns_memory tool to find relevant examples.",
+      "tackle": ["sql_patterns_memory"]
+    },
+    {
+      "name": "generate_query",
+      "instructions": "Based on the question: {{ input.question }}\n\nAnd any relevant examples from memory, generate an appropriate SQL query.\n\nIf you found similar queries in memory, explain how they informed your approach.",
+      "tackle": [],
+      "context": {"from": ["previous"]}
+    }
+  ]
+}

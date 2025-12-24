@@ -1,0 +1,51 @@
+cascade_id: safe_content_flow
+
+description: Multi-stage content creation with safety and quality validation
+
+inputs_schema:
+  tone: Desired tone (professional, casual, educational)
+  topic: Topic for the content
+
+phases:
+  - handoffs:
+      - polish_grammar
+    instructions: |-
+      Create engaging content about: {{ input.topic }}
+
+      Tone: {{ input.tone }}
+
+      Write 2-3 paragraphs that are informative and appropriate for all audiences.
+    name: draft_content
+    rules:
+      loop_until: content_safety
+      max_attempts: 2
+      max_turns: 1
+      retry_instructions: "\U0001F6E1️ Content Safety Alert:\n\n{{ validation_error }}\n\nPlease revise\
+        \ to ensure content is appropriate and professional. Attempt {{ attempt }}/{{ max_attempts }}"
+  - handoffs:
+      - finalize
+    instructions: |-
+      Content safety check passed! Now let's polish the writing.
+
+      Review your content and ensure:
+      - Perfect grammar and spelling
+      - Clear sentence structure
+      - Professional presentation
+
+      Provide the polished version.
+    name: polish_grammar
+    rules:
+      loop_until: grammar_check
+      max_attempts: 3
+      max_turns: 1
+      retry_instructions: |-
+        ✏️ Grammar & Style Issues:
+
+        {{ validation_error }}
+
+        Please fix these issues for a more polished final product. Attempt {{ attempt }}/{{ max_attempts }}
+  - instructions: "Excellent! Your content has passed both safety and quality checks.\n\nProvide a meta-summary:\
+      \ How many validation attempts did each phase require, and what was learned from the feedback?"
+    name: finalize
+    tackle:
+      - set_state

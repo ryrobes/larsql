@@ -1,0 +1,48 @@
+cascade_id: hitl_ui_hint_demo
+
+description: Demonstrates using the ui_hint parameter to explicitly specify UI type, bypassing the LLM
+  classifier. This saves the classification LLM call when the agent knows what UI type it needs.
+
+inputs_schema: {}
+
+phases:
+  - handoffs:
+      - explicit_rating
+    instructions: 'Ask for approval using ask_human with an explicit ui_hint. Use ask_human with parameters:
+      question=''Approve this action?'', ui_hint=''confirmation''. This should skip LLM classification
+      and directly create a confirmation UI.'
+    name: explicit_confirmation
+    rules:
+      max_turns: 2
+    tackle:
+      - ask_human
+  - context:
+      from:
+        - explicit_confirmation
+      include:
+        - state
+    handoffs:
+      - result
+    instructions: "User response: {{ state.explicit_confirmation }}\n\nNow ask for a rating with explicit\
+      \ ui_hint. Use ask_human with parameters: question='Score this interaction', ui_hint='rating'. This\
+      \ should create a rating UI without calling the classifier."
+    name: explicit_rating
+    rules:
+      max_turns: 2
+    tackle:
+      - ask_human
+  - context:
+      from:
+        - all
+      include:
+        - state
+    instructions: |-
+      Summarize:
+      - Approval: {{ state.explicit_confirmation }}
+      - Rating: {{ state.explicit_rating }}
+
+      The ui_hint parameter saved two LLM classifier calls.
+    name: result
+    rules:
+      max_turns: 1
+    tackle: []

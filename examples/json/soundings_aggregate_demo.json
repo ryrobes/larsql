@@ -1,0 +1,30 @@
+{
+  "cascade_id": "soundings_aggregate_demo",
+  "description": "Demonstrates aggregate mode for soundings - combines all outputs instead of picking one winner",
+  "inputs_schema": {
+    "topic": "The topic to brainstorm ideas about"
+  },
+  "phases": [
+    {
+      "name": "brainstorm",
+      "instructions": "Generate 3 creative ideas for {{ input.topic }}. Be creative and think outside the box. Number your ideas 1-3.",
+      "tackle": [],
+      "soundings": {
+        "factor": 3,
+        "mode": "aggregate",
+        "aggregator_instructions": "You have received brainstorming outputs from multiple AI models. Synthesize these into a comprehensive list of unique ideas. Remove duplicates, organize by theme, and create a final consolidated list of the best ideas."
+      },
+      "rules": {"max_turns": 1},
+      "handoffs": ["select_best"]
+    },
+    {
+      "name": "select_best",
+      "instructions": "From this comprehensive brainstorm:\n\n{{ outputs.brainstorm }}\n\nSelect the top 3 most promising ideas and explain why they stand out.",
+      "tackle": [],
+      "context": {
+        "from": ["previous"]
+      },
+      "rules": {"max_turns": 1}
+    }
+  ]
+}

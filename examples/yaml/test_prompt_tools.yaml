@@ -1,0 +1,15 @@
+cascade_id: test_prompt_based_tools
+description: Test prompt-based tools with any model (Gemini, etc.)
+inputs_schema:
+  problem: A coding problem to solve
+phases:
+  - instructions: 'Solve this coding problem: {{ input.problem }}. Write code and test it using the run_code
+      tool.'
+    model: google/gemini-3-pro-preview
+    name: solve_and_test
+    rules:
+      max_turns: 3
+    tackle:
+      - run_code
+      - set_state
+    use_native_tools: no

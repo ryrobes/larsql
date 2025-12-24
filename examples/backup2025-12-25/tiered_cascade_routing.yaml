@@ -1,0 +1,94 @@
+# Tiered Cascade Routing Example
+# Demonstrates routing to different cascades based on row data
+
+cascade_id: tiered_cascade_routing
+description: Route to different cascades (simple/standard/premium) based on customer tier and amount
+
+phases:
+  # Create test data with different customer tiers
+  - name: load_customers
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (VALUES
+          (1, 'Free User', 100, 'free'),
+          (2, 'Paid Customer', 5000, 'paid'),
+          (3, 'Enterprise Client', 150000, 'enterprise'),
+          (4, 'Another Free User', 50, 'free'),
+          (5, 'Premium Customer', 25000, 'paid')
+        ) AS t(customer_id, customer_name, transaction_amount, tier)
+      materialize: "true"
+
+  # Route to different cascades based on tier
+  - name: tiered_fraud_check
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          customer_id,
+          customer_name,
+          transaction_amount,
+          tier,
+
+          -- DATA-DRIVEN CASCADE ROUTING!
+          CASE tier
+            -- Free tier: Simple UDF (fastest, cheapest)
+            WHEN 'free' THEN
+              json_object(
+                'risk_score', 0.1,  -- Simplified for demo
+                'method', 'simple_udf',
+                'cascade', 'none',
+                'recommendation', 'Low value - auto-approve'
+              )
+
+            -- Paid tier: Standard cascade (validated, single analysis)
+            WHEN 'paid' THEN
+              windlass_cascade_udf(
+                'tackle/analyze_customer.yaml',  -- Reuse existing cascade
+                json_object(
+                  'customer_id', CAST(customer_id AS VARCHAR),
+                  'customer_name', customer_name,
+                  'email', customer_name || '@example.com'
+                )
+              )
+
+            -- Enterprise tier: Premium cascade with soundings!
+            WHEN 'enterprise' THEN
+              windlass_cascade_udf(
+                'tackle/fraud_assessment_with_soundings.yaml',  -- 3 soundings!
+                json_object(
+                  'customer_id', customer_id,
+                  'customer_name', customer_name,
+                  'transaction_amount', transaction_amount
+                )
+              )
+
+          END as analysis_json
+
+        FROM _load_customers
+      materialize: "true"
+    context:
+      from: ["load_customers"]
+
+  # Extract and summarize results
+  - name: summary
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          tier,
+          COUNT(*) as customer_count,
+          AVG(transaction_amount) as avg_amount,
+
+          -- Show which method was used
+          json_extract_string(analysis_json, '$.method') as method_used,
+
+          -- For cascade results, show session IDs
+          json_extract_string(analysis_json, '$.session_id') as cascade_session
+
+        FROM _tiered_fraud_check
+        GROUP BY tier, json_extract_string(analysis_json, '$.method'),
+                 json_extract_string(analysis_json, '$.session_id')
+        ORDER BY tier
+    context:
+      from: ["tiered_fraud_check"]

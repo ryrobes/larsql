@@ -1,0 +1,58 @@
+cascade_id: contact_extractor_flow
+
+description: Extract contact information with schema validation
+
+inputs_schema:
+  text: Text containing contact information
+
+phases:
+  - handoffs:
+      - confirm
+    instructions: |-
+      Extract contact information from the following text:
+
+      {{ input.text }}
+
+      Return ONLY a JSON object with this structure:
+      {
+        "name": "Full name",
+        "email": "email@example.com",
+        "phone": "phone number"
+      }
+
+      Do not include any other text or markdown formatting.
+    name: extract_contact
+    output_schema:
+      properties:
+        email:
+          pattern: ^[^@]+@[^@]+\.[^@]+$
+          type: string
+        name:
+          minLength: 1
+          type: string
+        phone:
+          minLength: 7
+          type: string
+      required:
+        - name
+        - email
+        - phone
+      type: object
+    rules:
+      max_attempts: 3
+      max_turns: 1
+      retry_instructions: "\U0001F4CB Schema Error:\n\n{{ schema_error }}\n\nPlease return a valid JSON\
+        \ object with name, email, and phone fields. Ensure email has @ symbol and phone is at least 7\
+        \ characters.\n\nAttempt {{ attempt }}/{{ max_attempts }}"
+  - instructions: |-
+      Contact information extracted successfully!
+
+      Validated data:
+      - Name: {{ state.validated_output.name }}
+      - Email: {{ state.validated_output.email }}
+      - Phone: {{ state.validated_output.phone }}
+
+      Provide a brief confirmation message.
+    name: confirm
+    tackle:
+      - set_state

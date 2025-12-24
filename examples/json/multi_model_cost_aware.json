@@ -1,0 +1,32 @@
+{
+  "cascade_id": "multi_model_cost_aware",
+  "description": "Phase 2 Multi-Model Soundings - Cost-aware evaluation balancing quality and cost",
+  "inputs_schema": {
+    "task": "The task to complete with cost-quality tradeoff"
+  },
+  "phases": [
+    {
+      "name": "generate",
+      "instructions": "Complete this task: {{ input.task }}",
+      "tackle": [],
+      "soundings": {
+        "factor": 3,
+        "evaluator_instructions": "Evaluate the quality of each response. Consider clarity, completeness, and usefulness.",
+        "models": [
+          "anthropic/claude-sonnet-4.5",
+          "x-ai/grok-4.1-fast",
+          "google/gemini-2.5-flash-lite"
+        ],
+        "model_strategy": "round_robin",
+        "mutate": false,
+        "cost_aware_evaluation": {
+          "enabled": true,
+          "quality_weight": 0.7,
+          "cost_weight": 0.3,
+          "show_costs_to_evaluator": true,
+          "cost_normalization": "min_max"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+cascade_id: htmx_show_ui_demo
+description: |
+  Demonstrates the show_ui tool for non-blocking rich content display.
+  Shows how LLMs can progressively build visual narratives with charts,
+  tables, and interactive content mixed with markdown explanations.
+
+inputs_schema:
+  topic: "What to analyze and visualize"
+
+phases:
+  - name: progressive_analysis
+    tackle: ["show_ui"]
+    instructions: |
+      Perform a comprehensive analysis of: {{ input.topic }}
+
+      Build a rich visual narrative by calling show_ui multiple times:
+
+      1. **Introduction**: Write markdown explaining what you'll analyze
+
+      2. **Data Overview**: Use show_ui to display:
+         - A Plotly bar chart showing key metrics
+         - Title: "Data Overview"
+         - Include sample/synthetic data inline
+
+      3. **Trend Analysis**: Write markdown explaining trends, then use show_ui to display:
+         - A Vega-Lite line chart showing trends over time
+         - Title: "Trend Analysis"
+
+      4. **Key Findings**: Use show_ui to display:
+         - An interactive table with top 10 findings
+         - Include filter/sort functionality
+         - Title: "Top Findings"
+
+      5. **Summary**: Write final markdown summary with conclusions
+
+      Each show_ui call creates an inline visualization that appears in the conversation.
+      Mix markdown explanations between visualizations for a rich narrative.
+
+      Remember: show_ui returns immediately, so you can call it multiple times and
+      continue your analysis without waiting for user interaction.

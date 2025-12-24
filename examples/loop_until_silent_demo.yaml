@@ -1,0 +1,26 @@
+cascade_id: loop_until_silent_demo
+description: Demonstrates loop_until_silent for impartial validation vs auto-injection for objective checks
+inputs_schema:
+  topic: The topic to write about
+phases:
+  - handoffs:
+      - subjective_validation
+    instructions: Write a short technical paragraph about {{ input.topic }}. Focus on accuracy and clarity.
+    name: objective_validation
+    rules:
+      loop_until: grammar_check
+      max_attempts: 3
+      max_turns: 1
+    tackle:
+      - route_to
+  - context:
+      from:
+        - previous
+    instructions: Now write a creative, engaging summary of what you just explained. Make it interesting
+      and readable for a general audience.
+    name: subjective_validation
+    rules:
+      loop_until: satisfied
+      loop_until_silent: yes
+      max_attempts: 3
+      max_turns: 1
