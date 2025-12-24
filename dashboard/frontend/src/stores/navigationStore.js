@@ -26,7 +26,7 @@ const useNavigationStore = create((set, get) => ({
 
   // Global app state
   blockedCount: 0,
-  sseConnected: false,
+  // Note: No SSE in new architecture - views use polling instead
 
   // ============================================
   // NAVIGATION ACTIONS
@@ -122,7 +122,6 @@ const useNavigationStore = create((set, get) => ({
   // ============================================
 
   setBlockedCount: (count) => set({ blockedCount: count }),
-  setSSEConnected: (connected) => set({ sseConnected: connected }),
 }));
 
 // ============================================

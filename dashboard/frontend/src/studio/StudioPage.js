@@ -4,7 +4,6 @@ import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useStudioQueryStore from './stores/studioQueryStore';
 import useStudioCascadeStore from './stores/studioCascadeStore';
-import useRunningSessions from './hooks/useRunningSessions';
 import SchemaTree from './components/SchemaTree';
 import QueryTabManager from './components/QueryTabManager';
 import SqlEditor from './components/SqlEditor';
@@ -12,7 +11,6 @@ import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import { CascadeNavigator } from './timeline';
 import CascadeTimeline from './timeline/CascadeTimeline';
-import VerticalSidebar from '../shell/VerticalSidebar';
 import Header from '../components/Header';
 import CascadeBrowserModal from './components/CascadeBrowserModal';
 import './editors'; // Initialize phase editor registry
@@ -32,7 +30,7 @@ function StudioPage({
   onSessions,
   onBlocked,
   blockedCount,
-  sseConnected,
+  sseConnected, // Only used for Header in query mode (not used in AppShell/timeline mode)
   initialCascade,
   initialSession,
   onCascadeLoaded
@@ -60,14 +58,8 @@ function StudioPage({
     joinLiveSession
   } = useStudioCascadeStore();
 
-  // Poll for running sessions
-  const { sessions: runningSessions } = useRunningSessions(5000);
-
-  // Handler for joining a running session from the sidebar
-  const handleJoinSession = useCallback(async (session) => {
-    console.log('[StudioPage] Joining session:', session);
-    await joinLiveSession(session.session_id, session.cascade_id, session.cascade_file);
-  }, [joinLiveSession]);
+  // Note: Running sessions and sidebar navigation now handled by AppShell
+  // StudioPage just renders the main content area
 
   // Persist split sizes in state
   const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
@@ -395,30 +387,9 @@ function StudioPage({
   return (
     <div className="studio-page">
       {mode === 'timeline' ? (
-        /* Timeline Mode - Vertical sidebar with drag-drop context */
+        /* Timeline Mode - Drag-drop context without sidebar (AppShell provides it) */
         <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="studio-timeline-layout">
-            <VerticalSidebar
-              currentView="studio"
-              onNavigate={null}
-              onMessageFlow={onMessageFlow}
-              onCockpit={onCockpit}
-              onSextant={onSextant}
-              onWorkshop={onWorkshop}
-              onPlayground={onPlayground}
-              onTools={onTools}
-              onSearch={onSearch}
-              onSqlQuery={onSqlQuery}
-              onArtifacts={onArtifacts}
-              onBrowser={onBrowser}
-              onSessions={onSessions}
-              onBlocked={onBlocked}
-              blockedCount={blockedCount}
-              sseConnected={sseConnected}
-              runningSessions={runningSessions}
-              currentSessionId={cascadeSessionId}
-              onJoinSession={handleJoinSession}
-            />
             <Split
               className="studio-horizontal-split"
               sizes={timelineSplitSizes}

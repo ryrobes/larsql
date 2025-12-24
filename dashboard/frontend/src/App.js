@@ -26,9 +26,29 @@ import CheckpointBadge from './components/CheckpointBadge';
 import CheckpointView from './components/CheckpointView';
 import Toast from './components/Toast';
 import GlobalVoiceInput from './components/GlobalVoiceInput';
+import AppShell from './shell/AppShell';
 import './App.css';
 
 function App() {
+  // ============================================
+  // DUAL-MODE ROUTING: New vs Old Architecture
+  // ============================================
+  // Check if current route should use new AppShell or old routing
+  const [useNewShell, setUseNewShell] = useState(() => {
+    const hash = window.location.hash;
+    return hash.startsWith('#/studio');
+  });
+
+  // Listen for hash changes to switch modes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      setUseNewShell(hash.startsWith('#/studio'));
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
   const [currentView, setCurrentView] = useState('cascades');  // 'cascades' | 'instances' | 'hotornot' | 'detail' | 'messageflow' | 'checkpoint' | 'sextant' | 'browser' | 'browser-detail'
   const [selectedCascadeId, setSelectedCascadeId] = useState(null);
   const [activeCheckpointId, setActiveCheckpointId] = useState(null);  // Currently viewing checkpoint
@@ -1015,6 +1035,70 @@ function App() {
     sseConnected,
   });
 
+  // ============================================
+  // DUAL-MODE RENDER: AppShell (new) or Legacy (old)
+  // ============================================
+
+  // NEW ARCHITECTURE: Use AppShell for Studio
+  if (useNewShell) {
+    return (
+      <AppShell
+        blockedCount={blockedCount}
+        // Note: sseConnected NOT passed - new architecture uses polling only
+        // Pass through navigation callbacks for legacy support
+        onMessageFlow={() => {
+          setCurrentView('messageflow');
+          updateHash('messageflow');
+        }}
+        onCockpit={() => {
+          setCurrentView('cockpit');
+          updateHash('cockpit');
+        }}
+        onSextant={() => {
+          setCurrentView('sextant');
+          updateHash('sextant');
+        }}
+        onWorkshop={() => {
+          setCurrentView('workshop');
+          updateHash('workshop');
+        }}
+        onPlayground={() => {
+          setCurrentView('playground');
+          updateHash('playground');
+        }}
+        onTools={() => {
+          setCurrentView('tools');
+          updateHash('tools');
+        }}
+        onSearch={() => {
+          setCurrentView('search');
+          updateHash('search', null, null, 'rag');
+        }}
+        onSqlQuery={() => {
+          setCurrentView('studio');
+          window.location.hash = '#/studio';
+        }}
+        onArtifacts={() => {
+          setCurrentView('artifacts');
+          window.location.hash = '#/artifacts';
+        }}
+        onBrowser={() => {
+          setCurrentView('browser');
+          updateHash('browser');
+        }}
+        onSessions={() => {
+          setCurrentView('sessions');
+          updateHash('sessions');
+        }}
+        onBlocked={() => {
+          setCurrentView('blocked');
+          updateHash('blocked');
+        }}
+      />
+    );
+  }
+
+  // OLD ARCHITECTURE: Legacy routing for all other pages
   return (
     <div className="app">
       {currentView === 'cascades' && (

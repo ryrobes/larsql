@@ -33,7 +33,7 @@ const AppShell = ({
   onSessions,
   onBlocked,
   blockedCount,
-  sseConnected,
+  // Note: sseConnected removed - new architecture uses polling only
 }) => {
   const {
     currentView,
@@ -68,6 +68,10 @@ const AppShell = ({
     joinSession(session.session_id, session.cascade_id, session.cascade_file);
   };
 
+  // Get current session ID for running cascade highlighting
+  // Check both viewParams.session (new routing) and cascadeSessionId (Studio internal)
+  const activeSessionId = viewParams.session || viewParams.cascade;
+
   return (
     <div className="app-shell">
       {/* Vertical Sidebar Navigation */}
@@ -75,10 +79,9 @@ const AppShell = ({
         currentView={currentView}
         onNavigate={navigate}
         runningSessions={runningSessions}
-        currentSessionId={viewParams.session}
+        currentSessionId={activeSessionId}
         onJoinSession={handleJoinSession}
         blockedCount={blockedCount}
-        sseConnected={sseConnected}
         // Legacy callbacks (during migration)
         onMessageFlow={onMessageFlow}
         onCockpit={onCockpit}
@@ -101,6 +104,13 @@ const AppShell = ({
             <ViewComponent
               params={viewParams}
               navigate={navigate}
+              // Studio-specific props (map from params)
+              initialCascade={viewParams.cascade || viewParams.id}
+              initialSession={viewParams.session}
+              onCascadeLoaded={() => {
+                // Optional callback when cascade loads
+                console.log('[AppShell] Cascade loaded');
+              }}
               // Legacy props (during migration)
               onMessageFlow={onMessageFlow}
               onCockpit={onCockpit}
@@ -115,7 +125,6 @@ const AppShell = ({
               onSessions={onSessions}
               onBlocked={onBlocked}
               blockedCount={blockedCount}
-              sseConnected={sseConnected}
             />
           ) : (
             <ViewNotFound view={currentView} />

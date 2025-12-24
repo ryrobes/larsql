@@ -28,7 +28,6 @@ const VerticalSidebar = ({
 
   // Global state
   blockedCount = 0,
-  sseConnected = false,
 
   // Legacy callbacks (during migration) - will be removed
   onMessageFlow,
@@ -161,12 +160,6 @@ const VerticalSidebar = ({
           );
         })}
 
-        {/* SSE Connection Status */}
-        <Tooltip label={sseConnected ? 'Connected' : 'Disconnected'} placement="right">
-          <div
-            className={`vsidebar-sse-indicator ${sseConnected ? 'connected' : 'disconnected'}`}
-          />
-        </Tooltip>
       </div>
     </div>
   );

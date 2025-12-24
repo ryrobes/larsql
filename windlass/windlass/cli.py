@@ -274,6 +274,28 @@ def main():
         help='Show summary of all your HF Spaces with cost estimates'
     )
 
+    # harbor refresh - Refresh spaces from HF API to database (NEW)
+    harbor_refresh_parser = harbor_subparsers.add_parser(
+        'refresh',
+        help='Refresh your HF Spaces from API and cache in database'
+    )
+    harbor_refresh_parser.add_argument('--author', help='HuggingFace username (default: infer from HF_TOKEN)', default=None)
+
+    # harbor list-cached - List from database (NEW)
+    harbor_list_cached_parser = harbor_subparsers.add_parser(
+        'list-cached',
+        help='List spaces from database (fast, offline)'
+    )
+    harbor_list_cached_parser.add_argument('--include-sleeping', action='store_true', help='Include sleeping spaces')
+    harbor_list_cached_parser.add_argument('--sdk', help='Filter by SDK (gradio, streamlit, etc.)', default=None)
+    harbor_list_cached_parser.add_argument('--limit', type=int, default=50, help='Max spaces to show')
+
+    # harbor stats - Show statistics from database (NEW)
+    harbor_stats_parser = harbor_subparsers.add_parser(
+        'stats',
+        help='Show HF Spaces statistics from database'
+    )
+
     # Triggers command group
     triggers_parser = subparsers.add_parser('triggers', help='Cascade trigger management and scheduling')
     triggers_subparsers = triggers_parser.add_subparsers(dest='triggers_command', help='Triggers subcommands')
@@ -425,6 +447,46 @@ def main():
         help='Show model statistics'
     )
 
+    # Tools command group - Tool registry management
+    tools_parser = subparsers.add_parser('tools', help='Tool registry management and analytics')
+    tools_subparsers = tools_parser.add_subparsers(dest='tools_command', help='Tools subcommands')
+
+    # tools sync
+    tools_sync_parser = tools_subparsers.add_parser(
+        'sync',
+        help='Sync tool manifest to database'
+    )
+
+    # tools list
+    tools_list_parser = tools_subparsers.add_parser(
+        'list',
+        help='List tools from database'
+    )
+    tools_list_parser.add_argument('--type', choices=['function', 'cascade', 'memory', 'validator'],
+                                   help='Filter by tool type')
+    tools_list_parser.add_argument('--limit', type=int, default=50, help='Max tools to show')
+
+    # tools usage
+    tools_usage_parser = tools_subparsers.add_parser(
+        'usage',
+        help='Show tool usage statistics'
+    )
+    tools_usage_parser.add_argument('--days', type=int, default=7, help='Number of days to look back (default: 7)')
+
+    # tools stats
+    tools_stats_parser = tools_subparsers.add_parser(
+        'stats',
+        help='Show tool registry statistics'
+    )
+
+    # tools search
+    tools_search_parser = tools_subparsers.add_parser(
+        'search',
+        help='Search for tools by description'
+    )
+    tools_search_parser.add_argument('query', help='Search query (text to find in tool names/descriptions)')
+    tools_search_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -529,6 +591,12 @@ def main():
             cmd_harbor_pause(args)
         elif args.harbor_command == 'status':
             cmd_harbor_status(args)
+        elif args.harbor_command == 'refresh':
+            cmd_harbor_refresh(args)
+        elif args.harbor_command == 'list-cached':
+            cmd_harbor_list_cached(args)
+        elif args.harbor_command == 'stats':
+            cmd_harbor_stats(args)
         else:
             harbor_parser.print_help()
             sys.exit(1)
@@ -577,6 +645,20 @@ def main():
             cmd_models_stats(args)
         else:
             models_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'tools':
+        if args.tools_command == 'sync':
+            cmd_tools_sync(args)
+        elif args.tools_command == 'list':
+            cmd_tools_list(args)
+        elif args.tools_command == 'usage':
+            cmd_tools_usage(args)
+        elif args.tools_command == 'stats':
+            cmd_tools_stats(args)
+        elif args.tools_command == 'search':
+            cmd_tools_search(args)
+        else:
+            tools_parser.print_help()
             sys.exit(1)
     else:
         parser.print_help()
@@ -2859,6 +2941,69 @@ def cmd_models_stats(args):
     from windlass.models_mgmt import show_stats
 
     show_stats()
+
+
+def cmd_harbor_refresh(args):
+    """Refresh HuggingFace Spaces from API and cache in database."""
+    from windlass.harbor_mgmt import refresh_spaces
+
+    refresh_spaces(author=args.author)
+
+
+def cmd_harbor_list_cached(args):
+    """List HuggingFace Spaces from database cache."""
+    from windlass.harbor_mgmt import list_spaces
+
+    list_spaces(
+        include_sleeping=args.include_sleeping,
+        sdk_filter=args.sdk,
+        limit=args.limit
+    )
+
+
+def cmd_harbor_stats(args):
+    """Show HuggingFace Spaces statistics from database."""
+    from windlass.harbor_mgmt import show_stats
+
+    show_stats()
+
+
+def cmd_tools_sync(args):
+    """Sync tool manifest to database."""
+    from windlass.tools_mgmt import sync_tools_to_db
+
+    sync_tools_to_db()
+
+
+def cmd_tools_list(args):
+    """List tools from database."""
+    from windlass.tools_mgmt import list_tools
+
+    list_tools(
+        tool_type=args.type,
+        limit=args.limit
+    )
+
+
+def cmd_tools_usage(args):
+    """Show tool usage statistics."""
+    from windlass.tools_mgmt import show_usage_stats
+
+    show_usage_stats(days=args.days)
+
+
+def cmd_tools_stats(args):
+    """Show tool registry statistics."""
+    from windlass.tools_mgmt import show_tool_stats
+
+    show_tool_stats()
+
+
+def cmd_tools_search(args):
+    """Search for tools by description."""
+    from windlass.tools_mgmt import find_tool_by_description
+
+    find_tool_by_description(args.query, limit=args.limit)
 
 
 if __name__ == "__main__":
