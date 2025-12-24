@@ -5,6 +5,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useTimelinePolling from '../hooks/useTimelinePolling';
 import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
+import { PhaseAnatomyPanel } from '../phase-anatomy';
 import './CascadeTimeline.css';
 
 /**
@@ -381,6 +382,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   const [layoutMode, setLayoutMode] = useState('linear'); // 'linear' or 'graph'
   const [scrollOffset, setScrollOffset] = useState({ x: 0, y: 0 });
   const [timelineOffset, setTimelineOffset] = useState({ left: 0, top: 0 });
+  const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
 
   // Measure timeline position relative to viewport (for input lines)
   useEffect(() => {
@@ -626,6 +628,16 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               <div className="legend-dot legend-dot-gradient" title="Warm colors: Input parameters (color varies per input)" />
             </div>
           </div>
+
+          {/* Anatomy Panel Toggle */}
+          <button
+            className={`cascade-btn cascade-btn-anatomy ${showAnatomyPanel ? 'active' : ''}`}
+            onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
+            title="Phase anatomy (internal structure visualization)"
+          >
+            <Icon icon="mdi:cpu" width="16" />
+            Anatomy
+          </button>
 
           <div className="cascade-control-divider" />
 
@@ -878,6 +890,18 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             <p>Select a phase above to view details</p>
           </div>
         )
+      )}
+
+      {/* Right Side Panel - Phase Anatomy */}
+      {showAnatomyPanel && selectedPhase && (
+        <div className="cascade-anatomy-panel-container">
+          <PhaseAnatomyPanel
+            phase={selectedPhase}
+            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
+            cellState={cellStates[selectedPhase.name]}
+            onClose={() => setShowAnatomyPanel(false)}
+          />
+        </div>
       )}
 
     </div>

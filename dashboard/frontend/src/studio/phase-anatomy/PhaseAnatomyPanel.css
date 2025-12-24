@@ -1,0 +1,273 @@
+/* ============================================
+   PHASE ANATOMY PANEL
+   Geological layers + stacked lanes visualization
+   ============================================ */
+
+.phase-anatomy-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  border-left: 1px solid #1a1628;
+  overflow: hidden;
+  font-family: 'Google Sans', system-ui, sans-serif;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.phase-anatomy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #0a0816 0%, #050410 100%);
+  border-bottom: 1px solid #1a1628;
+  flex-shrink: 0;
+}
+
+.phase-anatomy-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phase-anatomy-icon {
+  color: #00e5ff;
+}
+
+.phase-anatomy-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-anatomy-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f4f8;
+  padding-left: 8px;
+  border-left: 1px solid #1a1628;
+}
+
+.phase-anatomy-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-anatomy-type-llm {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(139, 92, 246, 0.1));
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+.phase-anatomy-type-deterministic {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(59, 130, 246, 0.1));
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.phase-anatomy-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phase-anatomy-mode {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.phase-anatomy-mode.spec {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.phase-anatomy-mode.execution {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.2), rgba(16, 185, 129, 0.1));
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.phase-anatomy-close {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phase-anatomy-close:hover {
+  color: #f0f4f8;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================
+   BODY - Scrollable Layers Container
+   ============================================ */
+
+.phase-anatomy-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+}
+
+/* ============================================
+   LAYER BASE STYLES
+   ============================================ */
+
+.phase-anatomy-layer {
+  padding: 12px 16px;
+  border-left: 3px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.phase-anatomy-layer:hover {
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+.phase-anatomy-layer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.phase-anatomy-layer-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.phase-anatomy-layer-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-anatomy-layer-content {
+  padding-left: 28px;
+}
+
+/* ============================================
+   LAYER DIVIDERS
+   ============================================ */
+
+.phase-anatomy-divider {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.phase-anatomy-divider-minor {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, #1a1628 20%, #1a1628 80%, transparent 100%);
+  margin: 4px 0;
+}
+
+.phase-anatomy-divider-major {
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #00e5ff40 20%, #00e5ff40 80%, transparent 100%);
+  margin: 8px 0;
+  position: relative;
+}
+
+.phase-anatomy-divider-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #000000;
+  padding: 0 12px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #00e5ff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ============================================
+   SUMMARY BAR
+   ============================================ */
+
+.phase-anatomy-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, #050410 0%, #0a0816 100%);
+  border-top: 1px solid #1a1628;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.phase-anatomy-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #64748b;
+}
+
+.phase-anatomy-summary-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.phase-anatomy-summary-stat-value {
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.phase-anatomy-summary-stat-cost {
+  color: #34d399;
+}
+
+.phase-anatomy-summary-stat-tokens {
+  color: #60a5fa;
+}
+
+.phase-anatomy-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-anatomy-winner-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 4px;
+  color: #fbbf24;
+  font-weight: 600;
+}

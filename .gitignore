@@ -21,3 +21,4 @@ dashboard/backend/workshop_temp/
 node_modules
 marimo/docs
 
+research_dbs/market_research.duckdb.wal

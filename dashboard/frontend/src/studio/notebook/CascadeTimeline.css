@@ -742,3 +742,54 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+/* ============================================
+   PHASE ANATOMY PANEL CONTAINER
+   ============================================ */
+
+.cascade-anatomy-panel-container {
+  position: fixed;
+  top: 50px; /* Below the control bar header */
+  right: 0;
+  width: 800px;
+  height: calc(100vh - 50px);
+  z-index: 100; /* Below modals but above content */
+  background-color: #000000;
+  border-left: 1px solid #1a1628;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.5);
+  animation: slideInRight 0.2s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Adjust main content when anatomy panel is open */
+.cascade-timeline.anatomy-open {
+  margin-right: 800px;
+}
+
+/* Anatomy button - distinctive styling */
+.cascade-btn-anatomy {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(0, 200, 225, 0.05));
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: #00e5ff;
+}
+
+.cascade-btn-anatomy:hover {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.2), rgba(0, 200, 225, 0.1));
+  border-color: #00e5ff;
+}
+
+.cascade-btn-anatomy.active {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.3), rgba(0, 200, 225, 0.2));
+  border-color: #00e5ff;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
