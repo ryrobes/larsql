@@ -28,11 +28,6 @@ import './PhaseAnatomyPanel.css';
 const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) => {
   // Derive execution data from logs
   const executionData = useMemo(() => {
-    console.log('[PhaseAnatomy] Processing phaseLogs:', {
-      phaseName: phase?.name,
-      logCount: phaseLogs?.length,
-      logs: phaseLogs?.map(l => ({ role: l.role, node_type: l.node_type, phase_name: l.phase_name }))
-    });
     if (!phaseLogs || phaseLogs.length === 0) return null;
 
     // Group logs by sounding index
@@ -309,14 +304,6 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       // Track quartermaster/manifest selection (role='quartermaster', node_type='quartermaster_result')
       if (log.role === 'quartermaster' || log.node_type === 'quartermaster_result') {
         // Manifest data is in metadata_json: selected_tackle, model, manifest_context
-        console.log('[PhaseAnatomy] Found quartermaster log:', {
-          role: log.role,
-          node_type: log.node_type,
-          phase_name: log.phase_name,
-          metadata_json: log.metadata_json,
-          parsedMetadata: metadata,
-          selected_tackle: metadata.selected_tackle
-        });
         manifestSelection = {
           selectedTools: metadata.selected_tackle || [],
           model: metadata.model || log.model || null,
@@ -341,7 +328,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       }
     }
 
-    const result = {
+    return {
       soundings: soundingsList,
       winnerIndex,
       toolCalls,
@@ -351,12 +338,6 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       manifestSelection,
       hasSoundings: soundingsList.length > 0
     };
-    console.log('[PhaseAnatomy] executionData result:', {
-      hasSoundings: result.hasSoundings,
-      soundingsCount: soundingsList.length,
-      manifestSelection: result.manifestSelection
-    });
-    return result;
   }, [phaseLogs]);
 
   // Determine mode based on whether we have execution data

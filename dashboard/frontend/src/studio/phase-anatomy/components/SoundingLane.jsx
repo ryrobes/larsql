@@ -32,11 +32,16 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
     const slots = [];
     for (let i = 0; i < maxTurns; i++) {
       const turn = turns[i] || null;
+      const validationResult = turn?.validationResult || null;
+      const validationPassed = validationResult?.valid === true;
+      const validationFailed = validationResult?.valid === false;
       slots.push({
         index: i,
         data: turn,
         isUsed: !!turn && turn.status !== 'pending',
-        isEarlyExit: turn?.status === 'complete' && turn?.validationPassed,
+        isEarlyExit: turn?.status === 'complete' && validationPassed,
+        validationFailed,
+        validationReason: validationResult?.reason || null,
         toolCalls: turn?.toolCalls || [],
         duration: turn?.duration || null
       });
@@ -100,7 +105,7 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
         {turnSlots.map((slot) => (
           <div
             key={slot.index}
-            className={`sounding-lane-turn ${slot.isUsed ? 'used' : 'unused'} ${slot.isEarlyExit ? 'early-exit' : ''}`}
+            className={`sounding-lane-turn ${slot.isUsed ? 'used' : 'unused'} ${slot.isEarlyExit ? 'early-exit' : ''} ${slot.validationFailed ? 'validation-failed' : ''}`}
           >
             <span className="sounding-lane-turn-index">T{slot.index}</span>
 
@@ -127,13 +132,27 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
 
             {/* Validation marker */}
             {loopUntil && slot.isUsed && (
-              <span className={`sounding-lane-turn-validation ${slot.isEarlyExit ? 'passed' : 'pending'}`}>
+              <span className={`sounding-lane-turn-validation ${slot.isEarlyExit ? 'passed' : ''} ${slot.validationFailed ? 'failed' : ''}`}>
                 {slot.isEarlyExit ? (
                   <Icon icon="mdi:lightning-bolt" width="10" title="Early exit - validation passed" />
+                ) : slot.validationFailed ? (
+                  <Icon icon="mdi:close-circle" width="10" title={`Validation failed: ${slot.validationReason || 'Unknown'}`} />
                 ) : (
                   <Icon icon="mdi:sync" width="10" title="Loop-until check" />
                 )}
               </span>
+            )}
+
+            {/* Inline failure reason for loop_until failures */}
+            {slot.validationFailed && slot.validationReason && (
+              <div className="sounding-lane-turn-validation-failure">
+                <Icon icon="mdi:alert-circle" width="10" />
+                <span className="sounding-lane-turn-validation-reason">
+                  {slot.validationReason.length > 50
+                    ? slot.validationReason.substring(0, 50) + '...'
+                    : slot.validationReason}
+                </span>
+              </div>
             )}
           </div>
         ))}

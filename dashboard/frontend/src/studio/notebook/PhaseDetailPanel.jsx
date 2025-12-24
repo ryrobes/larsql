@@ -474,7 +474,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       }
     }
 
-    console.log('[PhaseDetailPanel] No checkpoint or decision found');
+    //console.log('[PhaseDetailPanel] No checkpoint or decision found');
     return null;
   }, [phaseLogs, allSessionLogs, buildDecisionHTML]);
 

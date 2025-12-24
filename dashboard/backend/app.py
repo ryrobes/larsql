@@ -4058,11 +4058,35 @@ def playground_session_stream(session_id):
         if rows_to_return:
             cursor = rows_to_return[-1]['timestamp']
 
-        # Check if session is complete by looking for cascade_complete role
-        session_complete = any(
+        # Check if session is complete by looking for cascade_complete role in logs
+        session_complete_from_logs = any(
             r.get('role') in ('cascade_complete', 'cascade_error')
             for r in rows_to_return
         )
+
+        # Also check session_state table for authoritative status
+        # This is the source of truth and catches cases where the cascade errors
+        # before logging cascade_complete/cascade_error events
+        session_status = None
+        session_error = None
+        try:
+            status_query = f"""
+                SELECT status, error_message
+                FROM session_state FINAL
+                WHERE session_id = '{session_id}'
+                LIMIT 1
+            """
+            status_result = db.query(status_query)
+            if status_result and len(status_result) > 0:
+                session_status = status_result[0].get('status')
+                session_error = status_result[0].get('error_message')
+        except Exception as e:
+            # session_state table might not exist in all setups
+            print(f"[session-stream] Could not check session_state: {e}")
+
+        # Session is complete if either logs show completion OR session_state shows terminal state
+        terminal_statuses = ('completed', 'error', 'cancelled', 'orphaned')
+        session_complete = session_complete_from_logs or (session_status in terminal_statuses)
 
         # Calculate total cost for the ENTIRE session (not just returned rows)
         # This ensures the UI shows accurate total regardless of pagination/polling
@@ -4080,6 +4104,8 @@ def playground_session_stream(session_id):
             'has_more': has_more,
             'cursor': cursor,
             'session_complete': session_complete,
+            'session_status': session_status,  # 'running', 'completed', 'error', 'cancelled', 'orphaned'
+            'session_error': session_error,    # Error message if session_status == 'error'
             'total_cost': round(total_cost, 6)
         })
 

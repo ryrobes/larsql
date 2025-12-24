@@ -20,7 +20,7 @@ export function derivePhaseState(logs, phaseName) {
     return { status: 'pending', result: null, error: null, duration: null, images: null, cost: null, model: null, tokens_in: null, tokens_out: null };
   }
 
-  console.log('[derivePhaseState]', phaseName, 'has', phaseLogs.length, 'log rows');
+  //console.log('[derivePhaseState]', phaseName, 'has', phaseLogs.length, 'log rows');
 
   let status = 'pending';
   let result = null;
@@ -37,13 +37,13 @@ export function derivePhaseState(logs, phaseName) {
 
     // Phase running
     if (role === 'phase_start' || role === 'structure') {
-      console.log('[derivePhaseState]', phaseName, 'Setting status to running (role:', role, ')');
+      //console.log('[derivePhaseState]', phaseName, 'Setting status to running (role:', role, ')');
       status = 'running';
     }
 
     // Phase complete
     if (role === 'phase_complete') {
-      console.log('[derivePhaseState]', phaseName, 'Setting status to SUCCESS (found phase_complete)');
+      //console.log('[derivePhaseState]', phaseName, 'Setting status to SUCCESS (found phase_complete)');
       status = 'success';
     }
 
@@ -62,15 +62,15 @@ export function derivePhaseState(logs, phaseName) {
         try {
           const parsed = JSON.parse(toolResult);
           toolResult = parsed;
-          console.log('[derivePhaseState]', phaseName, '✓ Parsed tool result, now type:', typeof toolResult);
+          //console.log('[derivePhaseState]', phaseName, '✓ Parsed tool result, now type:', typeof toolResult);
         } catch (e) {
           // Can't parse further - it's a plain string result
-          console.log('[derivePhaseState]', phaseName, 'Result is plain string (not JSON)');
+          //console.log('[derivePhaseState]', phaseName, 'Result is plain string (not JSON)');
           break;
         }
       }
 
-      console.log('[derivePhaseState]', phaseName, '✓ Found tool result, type:', typeof toolResult, 'has rows?', toolResult?.rows?.length);
+      //console.log('[derivePhaseState]', phaseName, '✓ Found tool result, type:', typeof toolResult, 'has rows?', toolResult?.rows?.length);
       result = toolResult;
     }
 
@@ -83,14 +83,14 @@ export function derivePhaseState(logs, phaseName) {
         try {
           const parsed = JSON.parse(content);
           content = parsed;
-          console.log('[derivePhaseState]', phaseName, '✓ Parsed assistant content, now type:', typeof content);
+          //console.log('[derivePhaseState]', phaseName, '✓ Parsed assistant content, now type:', typeof content);
         } catch {
           // Can't parse further
           break;
         }
       }
 
-      console.log('[derivePhaseState]', phaseName, '✓ Found assistant result, type:', typeof content);
+      //console.log('[derivePhaseState]', phaseName, '✓ Found assistant result, type:', typeof content);
       result = content;
     }
 
@@ -108,7 +108,7 @@ export function derivePhaseState(logs, phaseName) {
 
       // Check for images in metadata
       if (metadata?.images && Array.isArray(metadata.images)) {
-        console.log('[derivePhaseState]', phaseName, 'Found images in metadata:', metadata.images);
+        //console.log('[derivePhaseState]', phaseName, 'Found images in metadata:', metadata.images);
         images = metadata.images;
       }
     }
@@ -118,7 +118,7 @@ export function derivePhaseState(logs, phaseName) {
       const ms = parseFloat(row.duration_ms);
       if (!isNaN(ms) && ms > 0) {
         duration = (duration || 0) + ms;
-        console.log('[derivePhaseState]', phaseName, '✓ Added duration:', ms, 'ms from', role, '- Total:', duration);
+        //console.log('[derivePhaseState]', phaseName, '✓ Added duration:', ms, 'ms from', role, '- Total:', duration);
       }
     }
 

@@ -6,6 +6,7 @@ import useTimelinePolling from '../hooks/useTimelinePolling';
 import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
 import { PhaseAnatomyPanel } from '../phase-anatomy';
+import SessionMessagesLog from '../components/SessionMessagesLog';
 import './CascadeTimeline.css';
 
 /**
@@ -334,7 +335,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  const { logs, phaseStates, totalCost } = useTimelinePolling(sessionToPoll, shouldPoll);
+  const { logs, phaseStates, totalCost, sessionStatus, sessionError } = useTimelinePolling(sessionToPoll, shouldPoll);
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
@@ -343,6 +344,24 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   //   shouldPoll,
   //   phaseCount: Object.keys(phaseStates || {}).length
   // });
+
+  // Handle session terminal states (error, completed, cancelled, orphaned)
+  // This is the authoritative check from session_state table
+  useEffect(() => {
+    if (!sessionStatus || !cascadeSessionId) return;
+
+    const terminalStatuses = ['completed', 'error', 'cancelled', 'orphaned'];
+    if (terminalStatuses.includes(sessionStatus) && isRunningAll) {
+      console.log(`[CascadeTimeline] Session ${sessionStatus}, stopping execution:`, {
+        sessionId: cascadeSessionId,
+        sessionStatus,
+        sessionError
+      });
+
+      // Update the store to stop execution
+      useStudioCascadeStore.setState({ isRunningAll: false });
+    }
+  }, [sessionStatus, cascadeSessionId, isRunningAll, sessionError]);
 
   // Debug polling state
   React.useEffect(() => {
@@ -951,6 +970,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             allSessionLogs={logs}
             onClose={() => setSelectedPhaseIndex(null)}
           />
+        ) : logs.length > 0 ? (
+          <SessionMessagesLog
+            logs={logs}
+            onSelectPhase={(phaseName) => {
+              const idx = phases.findIndex(p => p.name === phaseName);
+              if (idx !== -1) setSelectedPhaseIndex(idx);
+            }}
+          />
         ) : (
           <div className="cascade-empty-detail">
             <Icon icon="mdi:cursor-pointer" width="32" />
@@ -960,27 +987,16 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       )}
 
       {/* Right Side Panel - Phase Anatomy */}
-      {showAnatomyPanel && selectedPhase && (() => {
-        const filteredLogs = logs.filter(log => log.phase_name === selectedPhase.name);
-        const quartermasterLogs = logs.filter(log => log.role === 'quartermaster' || log.node_type === 'quartermaster_result');
-        console.log('[CascadeTimeline] Logs for PhaseAnatomy:', {
-          selectedPhaseName: selectedPhase.name,
-          totalLogs: logs.length,
-          filteredLogsCount: filteredLogs.length,
-          allQuartermasterLogs: quartermasterLogs.map(l => ({ phase_name: l.phase_name, role: l.role })),
-          phaseTackle: selectedPhase.tackle
-        });
-        return (
-          <div className="cascade-anatomy-panel-container">
-            <PhaseAnatomyPanel
-              phase={selectedPhase}
-              phaseLogs={filteredLogs}
-              cellState={cellStates[selectedPhase.name]}
-              onClose={() => setShowAnatomyPanel(false)}
-            />
-          </div>
-        );
-      })()}
+      {showAnatomyPanel && selectedPhase && (
+        <div className="cascade-anatomy-panel-container">
+          <PhaseAnatomyPanel
+            phase={selectedPhase}
+            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
+            cellState={cellStates[selectedPhase.name]}
+            onClose={() => setShowAnatomyPanel(false)}
+          />
+        </div>
+      )}
 
     </div>
   );

@@ -268,6 +268,59 @@
   color: #f87171;
 }
 
+/* Aborted ward (blocking failure) - highlight the whole row */
+.layer-ward.layer-ward-aborted {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 6px;
+  padding: 8px;
+  margin: -4px;
+  flex-wrap: wrap;
+}
+
+.layer-ward-abort-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  animation: pulse-abort 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-abort {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.layer-ward-failure-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #fca5a5;
+  line-height: 1.4;
+}
+
+.layer-ward-failure-reason svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #f87171;
+}
+
+.layer-ward-failure-reason span {
+  word-break: break-word;
+}
+
 .layer-ward-name {
   font-family: 'Google Sans Code', monospace;
   color: #f0f4f8;
@@ -730,12 +783,19 @@
 .sounding-lane-turn {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px 6px;
   background-color: rgba(0, 0, 0, 0.3);
   border-radius: 3px;
   border-left: 2px solid #1a1628;
   min-height: 22px;
+}
+
+/* Highlight turns with validation failures */
+.sounding-lane-turn.validation-failed {
+  background: rgba(248, 113, 113, 0.05);
+  border-left-color: #f87171;
 }
 
 .sounding-lane-turn.used {
@@ -796,6 +856,36 @@
 
 .sounding-lane-turn-validation.passed {
   color: #fbbf24;
+}
+
+.sounding-lane-turn-validation.failed {
+  color: #f87171;
+}
+
+/* Inline validation failure reason in sounding lane turns */
+.sounding-lane-turn-validation-failure {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: rgba(248, 113, 113, 0.1);
+  border-left: 2px solid #f87171;
+  border-radius: 2px;
+  font-size: 9px;
+  color: #f87171;
+}
+
+.sounding-lane-turn-validation-failure svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.sounding-lane-turn-validation-reason {
+  flex: 1;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 .sounding-lane-unused {

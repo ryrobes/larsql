@@ -1,0 +1,588 @@
+/* ============================================
+   SESSION MESSAGES LOG
+   Virtual table showing all session messages
+   ============================================ */
+
+.session-messages-log {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  background-color: #000000;
+  overflow: hidden;
+}
+
+/* Main table area - takes remaining space after filter panel */
+.sml-table-area {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Stats bar */
+.sml-stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #050410;
+  border-bottom: 1px solid #1a1628;
+  flex-shrink: 0;
+}
+
+.sml-stats-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+}
+
+.sml-stats-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.sml-stats-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sml-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sml-stat-cost {
+  color: #34d399;
+  font-weight: 500;
+}
+
+/* Grid container */
+.sml-grid-container {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* AG Grid customization */
+.sml-grid-container .ag-root-wrapper {
+  border: none !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.sml-grid-container .ag-header-cell-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sml-grid-container .ag-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+/* Ensure cell contents don't overflow */
+.sml-grid-container .ag-cell-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+/* ============================================
+   CELL RENDERERS
+   ============================================ */
+
+/* Role cell */
+.sml-role-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--role-color, #64748b);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Phase link */
+.sml-phase-link {
+  background: none;
+  border: none;
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.sml-phase-link:hover {
+  background-color: rgba(167, 139, 250, 0.15);
+  color: #c4b5fd;
+}
+
+/* Time cell */
+.sml-time {
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.sml-time-ms {
+  color: #475569;
+  font-size: 10px;
+}
+
+/* Content cell */
+.sml-content {
+  font-size: 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  max-width: 100%;
+}
+
+/* Model cell */
+.sml-model {
+  font-size: 11px;
+  color: #64748b;
+  background-color: #0a0815;
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Metric cells */
+.sml-cost {
+  color: #34d399;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 11px;
+}
+
+.sml-duration {
+  color: #60a5fa;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 11px;
+}
+
+.sml-tokens {
+  color: #94a3b8;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 11px;
+}
+
+/* Null/empty values */
+.sml-null {
+  color: #334155;
+  font-size: 12px;
+}
+
+/* ============================================
+   FILTER PANEL (RIGHT SIDE)
+   ============================================ */
+
+.sml-filter-panel {
+  width: 200px;
+  min-width: 200px;
+  flex-shrink: 0;
+  background-color: #050410;
+  border-left: 1px solid #1a1628;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sml-filter-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1a1628;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sml-filter-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.sml-filter-clear:hover {
+  background-color: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+}
+
+.sml-filter-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid #0a0815;
+}
+
+.sml-filter-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+/* Search input */
+.sml-search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #0a0815;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #64748b;
+}
+
+.sml-search-input input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  font-size: 12px;
+  outline: none;
+  min-width: 0;
+}
+
+.sml-search-input input::placeholder {
+  color: #475569;
+}
+
+.sml-search-input:focus-within {
+  border-color: #a78bfa;
+}
+
+.sml-search-clear {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sml-search-clear:hover {
+  color: #f87171;
+}
+
+/* Filter chips */
+.sml-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sml-filter-chips-vertical {
+  flex-direction: column;
+}
+
+.sml-filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #0a0815;
+  border: 1px solid #1a1628;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: capitalize;
+}
+
+.sml-filter-chip:hover {
+  border-color: var(--chip-color, #475569);
+  color: var(--chip-color, #94a3b8);
+}
+
+.sml-filter-chip.active {
+  background-color: rgba(167, 139, 250, 0.15);
+  border-color: var(--chip-color, #a78bfa);
+  color: var(--chip-color, #a78bfa);
+}
+
+.sml-filter-chip-phase {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 11px;
+}
+
+.sml-filter-chip-phase.active {
+  background-color: rgba(167, 139, 250, 0.1);
+  border-color: #a78bfa;
+  color: #cbd5e1;
+}
+
+/* ============================================
+   ROW SELECTION
+   ============================================ */
+
+.sml-grid-container .ag-row.sml-row-selected {
+  background-color: rgba(167, 139, 250, 0.15) !important;
+}
+
+.sml-grid-container .ag-row {
+  cursor: pointer;
+}
+
+.sml-grid-container .ag-row:hover {
+  background-color: #0a0815 !important;
+}
+
+/* ============================================
+   SPLIT CONTAINER
+   ============================================ */
+
+.sml-split-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sml-split-container > .gutter {
+  background-color: #0a0815;
+  border-top: 1px solid #1a1628;
+  border-bottom: 1px solid #1a1628;
+  cursor: row-resize;
+  position: relative;
+}
+
+.sml-split-container > .gutter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 3px;
+  background-color: #334155;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.sml-split-container > .gutter:hover::after {
+  background-color: #a78bfa;
+}
+
+/* ============================================
+   DETAIL PANEL (BOTTOM)
+   ============================================ */
+
+.sml-detail-panel {
+  background-color: #050410;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sml-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #0a0815;
+  border-bottom: 1px solid #1a1628;
+  flex-shrink: 0;
+}
+
+.sml-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sml-detail-role {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.sml-detail-sep {
+  color: #334155;
+}
+
+.sml-detail-phase {
+  font-size: 12px;
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.sml-detail-model {
+  font-size: 11px;
+  color: #64748b;
+  background-color: #0f0a19;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.sml-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sml-detail-duration {
+  font-size: 11px;
+  color: #60a5fa;
+  font-family: 'Google Sans Code', monospace;
+}
+
+.sml-detail-tokens {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'Google Sans Code', monospace;
+}
+
+.sml-detail-cost {
+  font-size: 11px;
+  color: #34d399;
+  font-weight: 500;
+  font-family: 'Google Sans Code', monospace;
+}
+
+.sml-detail-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-left: 8px;
+  transition: all 0.15s ease;
+}
+
+.sml-detail-close:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+/* Scrollable body containing all content */
+.sml-detail-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Content/Metadata sections */
+.sml-detail-section {
+  padding: 0;
+}
+
+.sml-detail-section-metadata {
+  border-top: 1px solid #1a1628;
+  margin-top: 12px;
+}
+
+.sml-detail-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background-color: #0a0815;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.sml-detail-pre {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.sml-detail-pre-muted {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+
+.sml-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #475569;
+  padding: 32px;
+}
+
+.sml-empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.sml-empty span {
+  font-size: 12px;
+  color: #475569;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 900px) {
+  .sml-filter-panel {
+    width: 160px;
+    min-width: 160px;
+  }
+}

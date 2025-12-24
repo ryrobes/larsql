@@ -57,13 +57,6 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
   const isManifestMode = tackle === 'manifest' || (Array.isArray(tackle) && tackle.includes('manifest'));
   const manifestSelection = execution?.manifestSelection;
 
-  console.log('[SoundingsLayer] Manifest check:', {
-    tackle,
-    isManifestMode,
-    execution: execution ? { hasSoundings: execution.hasSoundings, manifestSelection: execution.manifestSelection } : null,
-    manifestSelectionDirect: manifestSelection
-  });
-
   // Check if there's a winner (evaluation complete)
   const hasWinner = execution?.winnerIndex !== null && execution?.winnerIndex !== undefined;
 

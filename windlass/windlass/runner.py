@@ -9141,7 +9141,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         tackle_list = phase.tackle
-        if phase.tackle == "manifest":
+        # Handle manifest mode: tackle can be "manifest" (string) or ["manifest"] (list)
+        is_manifest = (
+            phase.tackle == "manifest" or
+            (isinstance(phase.tackle, list) and "manifest" in phase.tackle)
+        )
+        if is_manifest:
             console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting tackle...[/bold cyan]")
             tackle_list = self._run_quartermaster(phase, input_data, trace, phase_model)
             console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(tackle_list)}[/bold cyan]")

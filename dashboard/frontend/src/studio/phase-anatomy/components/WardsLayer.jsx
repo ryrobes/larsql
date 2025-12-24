@@ -53,8 +53,12 @@ const WardsLayer = ({ type, wards = [], results = [] }) => {
             const wardConfig = typeof ward === 'string' ? { validator: ward, mode: 'blocking' } : ward;
             const result = getWardResult(ward, idx);
 
+            const isBlocking = (wardConfig.mode || 'blocking') === 'blocking';
+            const isFailed = result?.status === 'failed';
+            const causedAbort = isFailed && isBlocking;
+
             return (
-              <div key={idx} className="layer-ward">
+              <div key={idx} className={`layer-ward ${causedAbort ? 'layer-ward-aborted' : ''}`}>
                 {/* Status indicator */}
                 <div className={`layer-ward-status ${result?.status || 'pending'}`}>
                   {result?.status === 'passed' && <Icon icon="mdi:check" width="12" />}
@@ -72,11 +76,26 @@ const WardsLayer = ({ type, wards = [], results = [] }) => {
                   {wardConfig.mode || 'blocking'}
                 </span>
 
-                {/* Result reason (if available) */}
-                {result?.reason && (
-                  <span className="layer-ward-reason" title={result.reason}>
-                    <Icon icon="mdi:information-outline" width="12" />
+                {/* Abort indicator for blocking failures */}
+                {causedAbort && (
+                  <span className="layer-ward-abort-badge">
+                    <Icon icon="mdi:alert-octagon" width="10" />
+                    ABORTED
                   </span>
+                )}
+
+                {/* Result reason - show inline for failures, tooltip for passes */}
+                {result?.reason && (
+                  isFailed ? (
+                    <div className="layer-ward-failure-reason">
+                      <Icon icon="mdi:alert-circle" width="12" />
+                      <span>{result.reason}</span>
+                    </div>
+                  ) : (
+                    <span className="layer-ward-reason" title={result.reason}>
+                      <Icon icon="mdi:information-outline" width="12" />
+                    </span>
+                  )
                 )}
               </div>
             );

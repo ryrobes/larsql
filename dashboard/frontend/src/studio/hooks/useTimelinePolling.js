@@ -32,6 +32,8 @@ export function useTimelinePolling(sessionId, isRunning) {
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState(null);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState(null);  // 'running', 'completed', 'error', 'cancelled', 'orphaned'
+  const [sessionError, setSessionError] = useState(null);    // Error message if status == 'error'
   const [totalCost, setTotalCost] = useState(0);
 
   const cursorRef = useRef('1970-01-01 00:00:00');
@@ -40,7 +42,7 @@ export function useTimelinePolling(sessionId, isRunning) {
   const seenIdsRef = useRef(new Set());
   const prevSessionRef = useRef(null);
 
-  console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
+  //console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
 
   // Poll function
   const poll = useCallback(async () => {
@@ -101,7 +103,6 @@ export function useTimelinePolling(sessionId, isRunning) {
 
       // Update logs: add new rows AND update existing rows with backfilled cost
       if (newRows.length > 0 || updatedMessageIds.size > 0) {
-        console.log('[TimelinePolling] Adding', newRows.length, 'new rows. Sample roles:', newRows.slice(0, 5).map(r => r.role));
         setLogs(prev => {
           if (updatedMessageIds.size === 0) {
             // No updates, just append new rows
@@ -132,6 +133,14 @@ export function useTimelinePolling(sessionId, isRunning) {
         setSessionComplete(true);
       }
 
+      // Update session status from authoritative session_state table
+      if (data.session_status !== undefined) {
+        setSessionStatus(data.session_status);
+      }
+      if (data.session_error !== undefined) {
+        setSessionError(data.session_error);
+      }
+
       // Update total cost if present
       if (data.total_cost !== undefined) {
         setTotalCost(data.total_cost);
@@ -154,10 +163,12 @@ export function useTimelinePolling(sessionId, isRunning) {
       setLogs([]);
       setIsPolling(false);
       setSessionComplete(false);
+      setSessionStatus(null);
+      setSessionError(null);
       setTotalCost(0);
       cursorRef.current = '1970-01-01 00:00:00';
       seenIdsRef.current.clear();
-      prevSessionRef.current = sessionId; 
+      prevSessionRef.current = sessionId;
     }
   }, [sessionId]);
 
@@ -231,7 +242,9 @@ export function useTimelinePolling(sessionId, isRunning) {
     logs,              // Raw log rows (for debugging)
     phaseStates,       // Derived state by phase name (memoized!)
     isPolling,         // Currently polling
-    sessionComplete,   // Session finished
+    sessionComplete,   // Session finished (from logs or session_state)
+    sessionStatus,     // Authoritative status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
+    sessionError,      // Error message if sessionStatus == 'error'
     totalCost,         // Accumulated session cost
     error,             // Polling error
   };

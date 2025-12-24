@@ -449,6 +449,8 @@ export function useSessionStream(sessionId) {
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState(null);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState(null);  // 'running', 'completed', 'error', etc.
+  const [sessionError, setSessionError] = useState(null);
   const [totalCost, setTotalCost] = useState(0);
 
   const cursorRef = useRef('1970-01-01 00:00:00');
@@ -456,8 +458,9 @@ export function useSessionStream(sessionId) {
   const completeTimeoutRef = useRef(null);
   const seenUuidsRef = useRef(new Set());
 
-  // Get execution status from store
+  // Get execution status and handlers from store
   const executionStatus = usePlaygroundStore((state) => state.executionStatus);
+  const handleCascadeError = usePlaygroundStore((state) => state.handleCascadeError);
 
   // Poll function
   const poll = useCallback(async () => {
@@ -497,12 +500,26 @@ export function useSessionStream(sessionId) {
         setSessionComplete(true);
       }
 
+      // Update session status from authoritative session_state table
+      if (data.session_status !== undefined) {
+        setSessionStatus(data.session_status);
+
+        // If session is in terminal error state, update the store
+        if (data.session_status === 'error' && executionStatus === 'running') {
+          console.log('[SessionStream] Session errored, updating store:', data.session_error);
+          handleCascadeError(data.session_error || 'Session ended with error');
+        }
+      }
+      if (data.session_error !== undefined) {
+        setSessionError(data.session_error);
+      }
+
       setError(null);
     } catch (err) {
       console.error('[SessionStream] Poll error:', err);
       setError(err.message);
     }
-  }, [sessionId]);
+  }, [sessionId, executionStatus, handleCascadeError]);
 
   // Track previous sessionId to detect changes
   const prevSessionIdRef = useRef(null);
@@ -514,6 +531,8 @@ export function useSessionStream(sessionId) {
       setLogs([]);
       setIsPolling(false);
       setSessionComplete(false);
+      setSessionStatus(null);
+      setSessionError(null);
       setTotalCost(0);
       cursorRef.current = '1970-01-01 00:00:00';
       seenUuidsRef.current.clear();
@@ -588,6 +607,8 @@ export function useSessionStream(sessionId) {
     isPolling,
     error,
     sessionComplete,
+    sessionStatus,     // Authoritative status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
+    sessionError,      // Error message if sessionStatus == 'error'
     totalCost,
   };
 }
