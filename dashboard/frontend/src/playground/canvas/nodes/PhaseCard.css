@@ -959,19 +959,58 @@
   transform: rotate(0deg);
 }
 
-/* Running = Yellow border, no glow */
+/* Running = Cyan pulsing glow (cyberpunk style) */
 .phase-card.status-running .card-face {
-  border-color: #fbbf24;
+  border-color: #00e5ff;
+  box-shadow:
+    0 0 8px rgba(0, 229, 255, 0.4),
+    0 0 16px rgba(0, 229, 255, 0.2);
+  animation: playground-running-pulse 2s ease-in-out infinite;
 }
 
-/* Completed = Untapped with green border, no glow */
+@keyframes playground-running-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 8px rgba(0, 229, 255, 0.4),
+      0 0 16px rgba(0, 229, 255, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 12px rgba(0, 229, 255, 0.6),
+      0 0 24px rgba(0, 229, 255, 0.35);
+  }
+}
+
+/* Completed = Green border with settle glow */
 .phase-card.status-completed .card-face {
   border-color: #10b981;
+  box-shadow:
+    0 0 6px rgba(16, 185, 129, 0.4),
+    0 0 12px rgba(16, 185, 129, 0.2);
+  animation: playground-complete-pop 0.5s ease-out;
 }
 
-/* Error = Red border */
+@keyframes playground-complete-pop {
+  0% {
+    transform: scale(1.015);
+    box-shadow:
+      0 0 16px rgba(16, 185, 129, 0.6),
+      0 0 32px rgba(16, 185, 129, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 6px rgba(16, 185, 129, 0.4),
+      0 0 12px rgba(16, 185, 129, 0.2);
+  }
+}
+
+/* Error = Shocking pink glow */
 .phase-card.status-error .card-face {
-  border-color: #ef4444;
+  border-color: #ff006e;
+  box-shadow:
+    0 0 8px rgba(255, 0, 110, 0.4),
+    0 0 16px rgba(255, 0, 110, 0.2);
 }
 
 /* =============================================================================

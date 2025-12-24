@@ -3225,9 +3225,98 @@ def run_cascade():
 
                 execute_cascade(cascade_path, inputs, session_id, hooks=hooks)
             except Exception as e:
-                print(f"Cascade execution error: {e}")
+                # Handle early cascade failures (e.g., validation errors before runner starts)
+                # This ensures the UI knows the cascade failed and can display the error
                 import traceback
-                traceback.print_exc()
+                error_tb = traceback.format_exc()
+                print(f"Cascade execution error: {e}")
+                print(error_tb)
+
+                # Try to extract cascade_id from the file for better error context
+                cascade_id = "unknown"
+                try:
+                    import yaml
+                    with open(cascade_path, 'r') as f:
+                        cascade_data = yaml.safe_load(f)
+                        cascade_id = cascade_data.get('cascade_id', os.path.basename(cascade_path))
+                except:
+                    cascade_id = os.path.basename(cascade_path) if cascade_path else "unknown"
+
+                # Update session state to ERROR
+                try:
+                    from windlass.session_state import (
+                        get_session_state_manager,
+                        SessionStatus,
+                        SessionState
+                    )
+                    from windlass.events import get_event_bus, Event
+                    from windlass.unified_logs import log_unified
+                    from datetime import datetime, timezone
+
+                    manager = get_session_state_manager()
+                    now = datetime.now(timezone.utc)
+
+                    # Create session in ERROR state (it may not exist if runner never started)
+                    state = manager.get_session(session_id)
+                    if state is None:
+                        # Session was never created - create it now in error state
+                        state = manager.create_session(
+                            session_id=session_id,
+                            cascade_id=cascade_id,
+                            depth=0
+                        )
+
+                    # Update to ERROR status with error details
+                    manager.update_status(
+                        session_id=session_id,
+                        status=SessionStatus.ERROR,
+                        error_message=str(e),
+                        error_phase="initialization"
+                    )
+
+                    # Publish cascade_error event for UI
+                    event_bus = get_event_bus()
+                    event_bus.publish(Event(
+                        type="cascade_error",
+                        session_id=session_id,
+                        timestamp=now.isoformat(),
+                        data={
+                            "cascade_id": cascade_id,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "traceback": error_tb,
+                            "phase": "initialization"
+                        }
+                    ))
+
+                    # Log to unified logs for queryability
+                    log_unified(
+                        session_id=session_id,
+                        trace_id=None,
+                        parent_id=None,
+                        parent_session_id=None,
+                        node_type="cascade_error",
+                        role="error",
+                        depth=0,
+                        cascade_id=cascade_id,
+                        cascade_config=None,
+                        content=f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{error_tb}",
+                        phase_name="initialization",
+                        model=None,
+                        tokens_in=0,
+                        tokens_out=0,
+                        cost=0.0,
+                        duration_ms=0,
+                        tool_name=None,
+                        tool_args=None,
+                        tool_result=None,
+                    )
+
+                    print(f"[Cascade Error] Session {session_id} marked as ERROR in database")
+
+                except Exception as state_error:
+                    print(f"[Cascade Error] Failed to record error state: {state_error}")
+                    traceback.print_exc()
 
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -3376,9 +3465,89 @@ def playground_run_from():
                 print(f"[Playground RunFrom] Cascade completed: {new_session_id}")
 
             except Exception as e:
-                print(f"[Playground RunFrom] Cascade error: {e}")
+                # Handle early cascade failures (e.g., validation errors before runner starts)
                 import traceback
-                traceback.print_exc()
+                error_tb = traceback.format_exc()
+                print(f"[Playground RunFrom] Cascade error: {e}")
+                print(error_tb)
+
+                # Try to extract cascade_id from the config
+                cascade_id_for_error = cascade_data.get('cascade_id', 'unknown') if cascade_data else 'unknown'
+
+                # Update session state to ERROR and publish event
+                try:
+                    from windlass.session_state import (
+                        get_session_state_manager,
+                        SessionStatus
+                    )
+                    from windlass.events import get_event_bus, Event
+                    from windlass.unified_logs import log_unified
+                    from datetime import datetime, timezone
+
+                    manager = get_session_state_manager()
+                    now = datetime.now(timezone.utc)
+
+                    # Create session if it doesn't exist
+                    state = manager.get_session(new_session_id)
+                    if state is None:
+                        state = manager.create_session(
+                            session_id=new_session_id,
+                            cascade_id=cascade_id_for_error,
+                            depth=0
+                        )
+
+                    # Update to ERROR status
+                    manager.update_status(
+                        session_id=new_session_id,
+                        status=SessionStatus.ERROR,
+                        error_message=str(e),
+                        error_phase="initialization"
+                    )
+
+                    # Publish cascade_error event for UI
+                    event_bus = get_event_bus()
+                    event_bus.publish(Event(
+                        type="cascade_error",
+                        session_id=new_session_id,
+                        timestamp=now.isoformat(),
+                        data={
+                            "cascade_id": cascade_id_for_error,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "traceback": error_tb,
+                            "phase": "initialization",
+                            "run_from": node_id
+                        }
+                    ))
+
+                    # Log to unified logs
+                    log_unified(
+                        session_id=new_session_id,
+                        trace_id=None,
+                        parent_id=None,
+                        parent_session_id=None,
+                        node_type="cascade_error",
+                        role="error",
+                        depth=0,
+                        cascade_id=cascade_id_for_error,
+                        cascade_config=None,
+                        content=f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{error_tb}",
+                        phase_name="initialization",
+                        model=None,
+                        tokens_in=0,
+                        tokens_out=0,
+                        cost=0.0,
+                        duration_ms=0,
+                        tool_name=None,
+                        tool_args=None,
+                        tool_result=None,
+                    )
+
+                    print(f"[Playground RunFrom] Session {new_session_id} marked as ERROR in database")
+
+                except Exception as state_error:
+                    print(f"[Playground RunFrom] Failed to record error state: {state_error}")
+                    traceback.print_exc()
 
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -3895,12 +4064,16 @@ def playground_session_stream(session_id):
             for r in rows_to_return
         )
 
-        # Calculate total cost from all returned rows
-        total_cost = sum(
-            float(r.get('cost', 0) or 0)
-            for r in rows_to_return
-            if r.get('cost')
-        )
+        # Calculate total cost for the ENTIRE session (not just returned rows)
+        # This ensures the UI shows accurate total regardless of pagination/polling
+        cost_query = f"""
+            SELECT SUM(cost) as total
+            FROM unified_logs
+            WHERE startsWith(session_id, '{session_id}')
+              AND cost > 0
+        """
+        cost_result = db.query(cost_query)
+        total_cost = float(cost_result[0]['total'] or 0) if cost_result and cost_result[0].get('total') else 0
 
         return jsonify({
             'rows': rows_to_return,

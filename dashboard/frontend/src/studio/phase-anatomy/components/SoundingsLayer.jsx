@@ -20,6 +20,9 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
   const mutate = config.mutate;
   const models = config.models;
 
+  // Check if there's a winner (evaluation complete)
+  const hasWinner = execution?.winnerIndex !== null && execution?.winnerIndex !== undefined;
+
   // Generate lane data - spec or execution
   const lanes = React.useMemo(() => {
     if (execution?.soundings && execution.soundings.length > 0) {
@@ -33,7 +36,9 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
         cost: s.cost || 0,
         duration: s.duration || 0,
         status: s.status || 'pending',
-        isWinner: execution.winnerIndex === idx
+        isWinner: execution.winnerIndex === idx,
+        isLoser: hasWinner && execution.winnerIndex !== idx,
+        output: s.output || null  // Include output preview for winner
       }));
     }
 
@@ -51,9 +56,11 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
       cost: null,
       duration: null,
       status: 'pending',
-      isWinner: false
+      isWinner: false,
+      isLoser: false,
+      output: null
     }));
-  }, [factor, maxTurns, mutate, models, execution]);
+  }, [factor, maxTurns, mutate, models, execution, hasWinner]);
 
   const hasSoundings = factor > 1;
 

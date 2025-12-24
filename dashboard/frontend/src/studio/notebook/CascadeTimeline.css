@@ -507,6 +507,29 @@
   background: #050508;
 }
 
+/* Grab-to-scroll behavior */
+.cascade-timeline-strip {
+  cursor: grab;
+}
+
+.cascade-timeline-strip.grabbing {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* Override grab cursor for interactive elements */
+.cascade-timeline-strip .phase-card,
+.cascade-timeline-strip button,
+.cascade-timeline-strip input,
+.cascade-timeline-strip textarea,
+.cascade-timeline-strip .cascade-drop-zone {
+  cursor: pointer;
+}
+
+.cascade-timeline-strip .phase-card:hover {
+  cursor: pointer;
+}
+
 
 /* ============================================
    ADD PHASE BUTTON

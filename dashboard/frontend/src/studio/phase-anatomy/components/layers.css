@@ -455,10 +455,52 @@
   background: linear-gradient(180deg, #0f0b1f 0%, #070512 100%);
 }
 
+/* Winner lane - prominent gold glow with crown indicator */
 .sounding-lane-winner {
-  border-color: rgba(251, 191, 36, 0.5) !important;
-  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
-  background: linear-gradient(180deg, rgba(251, 191, 36, 0.08) 0%, #050410 100%);
+  border-color: #fbbf24 !important;
+  box-shadow:
+    0 0 8px rgba(251, 191, 36, 0.4),
+    0 0 16px rgba(251, 191, 36, 0.2),
+    inset 0 0 20px rgba(251, 191, 36, 0.05);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.1) 0%, #050410 100%);
+  animation: winner-glow 2s ease-in-out infinite;
+  position: relative;
+}
+
+@keyframes winner-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 8px rgba(251, 191, 36, 0.4),
+      0 0 16px rgba(251, 191, 36, 0.2),
+      inset 0 0 20px rgba(251, 191, 36, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 12px rgba(251, 191, 36, 0.5),
+      0 0 24px rgba(251, 191, 36, 0.3),
+      inset 0 0 24px rgba(251, 191, 36, 0.08);
+  }
+}
+
+.sounding-lane-winner .sounding-lane-header {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15) 0%, transparent 100%);
+  border-radius: 4px 4px 0 0;
+}
+
+.sounding-lane-winner .sounding-lane-index {
+  color: #fbbf24;
+}
+
+/* Loser lanes - dimmed when there's a winner */
+.sounding-lane-loser {
+  opacity: 0.5;
+  border-color: #1a1628 !important;
+  filter: grayscale(0.3);
+  position: relative;
+}
+
+.sounding-lane-loser .sounding-lane-header {
+  opacity: 0.7;
 }
 
 .sounding-lane-complete {
@@ -487,6 +529,19 @@
 
 .sounding-lane-crown {
   color: #fbbf24;
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.8));
+  animation: crown-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes crown-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.sounding-lane-loser-icon {
+  color: #f87171;
+  opacity: 0.6;
+  margin-right: 2px;
 }
 
 .sounding-lane-row {
@@ -1073,6 +1128,104 @@
   color: #f472b6;
   font-size: 11px;
   font-weight: 600;
+}
+
+.layer-reforge-final.final-complete {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.1), rgba(16, 185, 129, 0.05));
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+.layer-reforge-final-stats {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 400;
+}
+
+/* Reforge step complete state */
+.layer-reforge-step.step-complete {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+/* Final step star icon */
+.step-final-icon {
+  color: #fbbf24;
+  margin-right: 4px;
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+}
+
+/* Loser attempt - dimmed */
+.layer-reforge-attempt.attempt-loser {
+  opacity: 0.4;
+  filter: grayscale(0.4);
+}
+
+.layer-reforge-attempt.attempt-loser .layer-reforge-attempt-label {
+  text-decoration: line-through;
+  color: #475569;
+}
+
+/* Winner attempt - gold glow */
+.layer-reforge-attempt.attempt-winner {
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.15) 0%, rgba(0, 0, 0, 0.4) 100%) !important;
+}
+
+.attempt-crown {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.8));
+  margin-right: 2px;
+}
+
+/* Attempt cost */
+.layer-reforge-attempt-cost {
+  font-size: 8px;
+  color: #34d399;
+  margin-top: 2px;
+  font-family: 'Google Sans Code', monospace;
+}
+
+/* Turn complete state */
+.layer-reforge-attempt-turn.turn-complete {
+  background-color: rgba(0, 229, 255, 0.5);
+}
+
+/* Eval header row */
+.layer-reforge-eval-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layer-reforge-step-eval.eval-complete {
+  color: #fbbf24;
+}
+
+.layer-reforge-step-eval.eval-complete .layer-reforge-step-eval-label {
+  color: #fbbf24;
+}
+
+/* Eval result container */
+.layer-reforge-eval-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Evaluator reasoning preview */
+.layer-reforge-eval-reason {
+  font-size: 9px;
+  color: #94a3b8;
+  font-style: italic;
+  text-align: center;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
 }
 
 /* ============================================

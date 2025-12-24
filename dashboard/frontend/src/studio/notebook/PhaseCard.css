@@ -82,24 +82,137 @@
   z-index: -2; /* Further back than ::before */
 }
 
+/* ============================================
+   STATUS-BASED VISUAL EFFECTS
+   Cyberpunk/Tron aesthetic - solid black with glows
+   ============================================ */
+
+/* Diagonal scan lines pattern for active states */
+.phase-card-running:not(.phase-card-selected),
+.phase-card-success:not(.phase-card-selected) {
+  background-color: #0c0a1a; /* Solid black base */
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 229, 255, 0.02) 3px,
+      rgba(0, 229, 255, 0.02) 4px
+    );
+}
+
+/* RUNNING - Cyan/teal pulsing glow */
+.phase-card-running:not(.phase-card-selected) {
+  border-color: #00e5ff;
+  animation: running-pulse 2s ease-in-out infinite;
+}
+
+@keyframes running-pulse {
+  0%, 100% {
+    border-color: #00e5ff;
+    box-shadow:
+      0 0 8px rgba(0, 229, 255, 0.4),
+      0 0 16px rgba(0, 229, 255, 0.2),
+      inset 0 0 1px rgba(0, 229, 255, 0.1);
+  }
+  50% {
+    border-color: #5eead4;
+    box-shadow:
+      0 0 12px rgba(0, 229, 255, 0.6),
+      0 0 24px rgba(0, 229, 255, 0.3),
+      inset 0 0 2px rgba(0, 229, 255, 0.15);
+  }
+}
+
+/* SUCCESS - Settled green/cyan glow with pop */
+.phase-card-success:not(.phase-card-selected) {
+  border-color: #10b981;
+  box-shadow:
+    0 0 6px rgba(16, 185, 129, 0.4),
+    0 0 12px rgba(16, 185, 129, 0.2);
+  animation: success-pop 0.5s ease-out;
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 3px,
+      rgba(16, 185, 129, 0.015) 3px,
+      rgba(16, 185, 129, 0.015) 4px
+    );
+}
+
+@keyframes success-pop {
+  0% {
+    transform: scale(1.015);
+    border-color: #34d399;
+    box-shadow:
+      0 0 16px rgba(16, 185, 129, 0.6),
+      0 0 32px rgba(16, 185, 129, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    border-color: #10b981;
+    box-shadow:
+      0 0 6px rgba(16, 185, 129, 0.4),
+      0 0 12px rgba(16, 185, 129, 0.2);
+  }
+}
+
+/* ERROR - Shocking pink/red glow */
+.phase-card-error:not(.phase-card-selected) {
+  border-color: #ff006e;
+  background-color: #0c0a1a;
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 3px,
+      rgba(255, 0, 110, 0.02) 3px,
+      rgba(255, 0, 110, 0.02) 4px
+    );
+  box-shadow:
+    0 0 8px rgba(255, 0, 110, 0.4),
+    0 0 16px rgba(255, 0, 110, 0.2);
+}
+
+/* SELECTED state - brightest cyan, always wins */
 .phase-card-selected {
   border-color: #00e5ff !important;
-  /* Keep dark background consistent, only border changes */
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.4);
+  background-color: #0c0a1a !important;
+  background-image:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 229, 255, 0.03) 2px,
+      rgba(0, 229, 255, 0.03) 3px
+    ) !important;
+  box-shadow:
+    0 0 8px rgba(0, 229, 255, 0.5),
+    0 0 20px rgba(0, 229, 255, 0.3),
+    inset 0 0 1px rgba(0, 229, 255, 0.2) !important;
+  animation: none !important;
 }
 
-/* Status-based borders - REMOVED, using icon colors instead */
-.phase-card-running {
-  /* No border change */
+/* Selected + Running: cyan with breathing glow */
+.phase-card-selected.phase-card-running {
+  animation: selected-running-hint 1.5s ease-in-out infinite !important;
 }
 
-.phase-card-success {
-  /* No border change */
-}
-
-.phase-card-error {
-  /* Keep error border for visibility */
-  border-color: #f87171;
+@keyframes selected-running-hint {
+  0%, 100% {
+    box-shadow:
+      0 0 8px rgba(0, 229, 255, 0.5),
+      0 0 20px rgba(0, 229, 255, 0.3),
+      inset 0 0 1px rgba(0, 229, 255, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 12px rgba(0, 229, 255, 0.7),
+      0 0 28px rgba(0, 229, 255, 0.4),
+      0 0 40px rgba(167, 139, 250, 0.15),
+      inset 0 0 2px rgba(0, 229, 255, 0.25);
+  }
 }
 
 .phase-card-stale {

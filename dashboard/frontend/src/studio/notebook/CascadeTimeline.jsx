@@ -384,6 +384,63 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   const [timelineOffset, setTimelineOffset] = useState({ left: 0, top: 0 });
   const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
 
+  // Grab-to-scroll state
+  const [isGrabbing, setIsGrabbing] = useState(false);
+  const grabStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  // Grab-to-scroll handlers
+  const handleGrabStart = useCallback((e) => {
+    // Only grab on left mouse button, and not on interactive elements
+    if (e.button !== 0) return;
+    const target = e.target;
+    // Don't grab if clicking on a card, button, input, or other interactive element
+    if (target.closest('.phase-card, button, input, textarea, .cascade-drop-zone')) return;
+
+    const strip = timelineRef.current;
+    if (!strip) return;
+
+    setIsGrabbing(true);
+    grabStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: strip.scrollLeft,
+      scrollTop: strip.scrollTop,
+    };
+
+    // Prevent text selection while dragging
+    e.preventDefault();
+  }, []);
+
+  const handleGrabMove = useCallback((e) => {
+    if (!isGrabbing) return;
+
+    const strip = timelineRef.current;
+    if (!strip) return;
+
+    const dx = e.clientX - grabStartRef.current.x;
+    const dy = e.clientY - grabStartRef.current.y;
+
+    strip.scrollLeft = grabStartRef.current.scrollLeft - dx;
+    strip.scrollTop = grabStartRef.current.scrollTop - dy;
+  }, [isGrabbing]);
+
+  const handleGrabEnd = useCallback(() => {
+    setIsGrabbing(false);
+  }, []);
+
+  // Attach grab-to-scroll listeners
+  useEffect(() => {
+    if (isGrabbing) {
+      // Listen on window so we can track mouse even outside the element
+      window.addEventListener('mousemove', handleGrabMove);
+      window.addEventListener('mouseup', handleGrabEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleGrabMove);
+        window.removeEventListener('mouseup', handleGrabEnd);
+      };
+    }
+  }, [isGrabbing, handleGrabMove, handleGrabEnd]);
+
   // Measure timeline position relative to viewport (for input lines)
   // AND track scroll position for input edges
   useEffect(() => {
@@ -769,12 +826,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
       {/* FBP Graph Layout */}
       <div
-        className="cascade-timeline-strip"
+        className={`cascade-timeline-strip ${isGrabbing ? 'grabbing' : ''}`}
         ref={timelineRef}
+        onMouseDown={handleGrabStart}
         style={{
           minHeight: phases.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px'),
           maxHeight: phases.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px'),
           flex: phases.length === 0 ? 1 : undefined, // Expand to fill when empty
+          cursor: isGrabbing ? 'grabbing' : 'grab',
         }}
       >
         <div

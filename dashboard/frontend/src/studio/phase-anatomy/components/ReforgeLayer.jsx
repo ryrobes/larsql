@@ -30,15 +30,23 @@ const ReforgeLayer = ({ config, execution }) => {
       attempts: Array.from({ length: factor_per_step }, (_, a) => ({
         index: a,
         turns: [{ index: 0 }, { index: 1 }],
-        status: 'pending'
+        status: 'pending',
+        cost: null,
+        duration: null
       })),
       winner: null,
-      thresholdPassed: null
+      thresholdPassed: null,
+      evaluatorReason: null
     }));
   }, [steps, factor_per_step, execution]);
 
   // Find early stop step
   const earlyStopStep = stepData.findIndex(s => s.thresholdPassed === true);
+
+  // Calculate totals for execution mode
+  const hasExecution = execution?.steps && execution.steps.length > 0;
+  const totalAttempts = stepData.reduce((sum, step) => sum + (step.attempts?.length || 0), 0);
+  const completedSteps = stepData.filter(s => s.winner !== null).length;
 
   // Early return after hooks
   if (!config) return null;
@@ -50,7 +58,7 @@ const ReforgeLayer = ({ config, execution }) => {
           <Icon icon="mdi:anvil" width="14" />
         </div>
         <span className="phase-anatomy-layer-title">
-          Reforge (steps: {steps})
+          Reforge ({completedSteps}/{steps} steps)
         </span>
 
         {/* Config badges */}
@@ -81,71 +89,124 @@ const ReforgeLayer = ({ config, execution }) => {
             <Icon icon="mdi:text-box-edit" width="12" />
             <span className="layer-reforge-honing-label">Honing:</span>
             <span className="layer-reforge-honing-preview">
-              {honing_prompt.length > 80 ? honing_prompt.substring(0, 80) + '...' : honing_prompt}
+              {honing_prompt.length > 120 ? honing_prompt.substring(0, 120) + '...' : honing_prompt}
             </span>
           </div>
         )}
 
         {/* Steps container */}
         <div className="layer-reforge-steps">
-          {stepData.map((step, idx) => (
-            <div
-              key={idx}
-              className={`layer-reforge-step ${step.thresholdPassed ? 'step-stopped' : ''} ${earlyStopStep === idx ? 'step-final' : ''}`}
-            >
-              <div className="layer-reforge-step-header">
-                <span className="layer-reforge-step-label">Step {idx + 1}</span>
-                {step.thresholdPassed && (
-                  <span className="layer-reforge-step-stopped">
-                    <Icon icon="mdi:check-circle" width="12" />
-                    Threshold Met
+          {stepData.map((step, idx) => {
+            const isComplete = step.winner !== null;
+            const isFinal = earlyStopStep === idx || (idx === stepData.length - 1 && isComplete);
+
+            return (
+              <div
+                key={idx}
+                className={`layer-reforge-step ${step.thresholdPassed ? 'step-stopped' : ''} ${isFinal ? 'step-final' : ''} ${isComplete ? 'step-complete' : ''}`}
+              >
+                <div className="layer-reforge-step-header">
+                  <span className="layer-reforge-step-label">
+                    {isFinal && <Icon icon="mdi:star" width="10" className="step-final-icon" />}
+                    Step {idx + 1}
                   </span>
-                )}
-              </div>
-
-              {/* Mini lanes for attempts */}
-              <div className="layer-reforge-attempts">
-                {step.attempts.map((attempt, aIdx) => (
-                  <div
-                    key={aIdx}
-                    className={`layer-reforge-attempt ${step.winner === aIdx ? 'attempt-winner' : ''}`}
-                  >
-                    <span className="layer-reforge-attempt-label">R{idx}.{aIdx}</span>
-                    <div className="layer-reforge-attempt-turns">
-                      {attempt.turns.map((_, tIdx) => (
-                        <span key={tIdx} className="layer-reforge-attempt-turn" />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Eval arrow */}
-              <div className="layer-reforge-step-eval">
-                <Icon icon="mdi:chevron-down" width="14" />
-                <span className="layer-reforge-step-eval-label">EVAL</span>
-                {step.winner !== null && (
-                  <span className="layer-reforge-step-winner">
-                    <Icon icon="mdi:crown" width="10" />
-                    R{idx}.{step.winner}
-                  </span>
-                )}
-              </div>
-
-              {/* Arrow to next step */}
-              {idx < stepData.length - 1 && !step.thresholdPassed && (
-                <div className="layer-reforge-step-arrow">
-                  <Icon icon="mdi:arrow-right" width="16" />
+                  {step.thresholdPassed && (
+                    <span className="layer-reforge-step-stopped">
+                      <Icon icon="mdi:check-circle" width="12" />
+                      Threshold Met
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Mini lanes for attempts */}
+                <div className="layer-reforge-attempts">
+                  {step.attempts.map((attempt, aIdx) => {
+                    const isWinner = step.winner === aIdx;
+                    const isLoser = step.winner !== null && step.winner !== aIdx;
+
+                    return (
+                      <div
+                        key={aIdx}
+                        className={`layer-reforge-attempt ${isWinner ? 'attempt-winner' : ''} ${isLoser ? 'attempt-loser' : ''}`}
+                      >
+                        <span className="layer-reforge-attempt-label">
+                          {isWinner && <Icon icon="mdi:crown" width="8" className="attempt-crown" />}
+                          R{idx}.{aIdx}
+                        </span>
+                        <div className="layer-reforge-attempt-turns">
+                          {attempt.turns.map((turn, tIdx) => (
+                            <span
+                              key={tIdx}
+                              className={`layer-reforge-attempt-turn ${turn.status === 'complete' ? 'turn-complete' : ''}`}
+                            />
+                          ))}
+                        </div>
+                        {/* Cost/duration for completed attempts */}
+                        {attempt.cost > 0 && (
+                          <span className="layer-reforge-attempt-cost">
+                            ${attempt.cost < 0.01 ? '<.01' : attempt.cost.toFixed(3)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Eval section */}
+                <div className={`layer-reforge-step-eval ${isComplete ? 'eval-complete' : ''}`}>
+                  <div className="layer-reforge-eval-header">
+                    <Icon icon={isComplete ? "mdi:scale-balance" : "mdi:chevron-down"} width="14" />
+                    <span className="layer-reforge-step-eval-label">
+                      {isComplete ? 'EVALUATED' : 'EVAL'}
+                    </span>
+                  </div>
+
+                  {step.winner !== null && (
+                    <div className="layer-reforge-eval-result">
+                      <span className="layer-reforge-step-winner">
+                        <Icon icon="mdi:crown" width="10" />
+                        R{idx}.{step.winner} wins
+                      </span>
+
+                      {/* Evaluator reasoning if available */}
+                      {step.evaluatorReason && (
+                        <span className="layer-reforge-eval-reason" title={step.evaluatorReason}>
+                          {step.evaluatorReason.length > 60
+                            ? step.evaluatorReason.substring(0, 60) + '...'
+                            : step.evaluatorReason}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Arrow to next step */}
+                {idx < stepData.length - 1 && !step.thresholdPassed && (
+                  <div className="layer-reforge-step-arrow">
+                    <Icon icon="mdi:arrow-right" width="16" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Final output indicator */}
-        <div className="layer-reforge-final">
+        <div className={`layer-reforge-final ${hasExecution && completedSteps > 0 ? 'final-complete' : ''}`}>
           <Icon icon="mdi:shimmer" width="14" />
-          <span>Final Output: {earlyStopStep >= 0 ? `Step ${earlyStopStep + 1}` : `Step ${steps}`}</span>
+          <span>
+            {earlyStopStep >= 0
+              ? `Early stop at Step ${earlyStopStep + 1} (threshold met)`
+              : hasExecution && completedSteps > 0
+                ? `Final Output from Step ${completedSteps}`
+                : `Will output from Step ${steps}`
+            }
+          </span>
+          {hasExecution && (
+            <span className="layer-reforge-final-stats">
+              ({totalAttempts} total attempts)
+            </span>
+          )}
         </div>
       </div>
     </div>

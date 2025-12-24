@@ -233,14 +233,7 @@ phases:
 
       reforge:
         steps: 3
-        validator: |
-          def validate(output):
-              word_count = len(output.split())
-              if word_count < 300:
-                  return {"valid": False, "reason": f"Only {word_count} words, need at least 300"}
-              return {"valid": True, "reason": f"Good length: {word_count} words"}
-
-        prompt: |
+        honing_prompt: |
           The current output needs improvement: {{ validation_reason }}
 
           Please expand and enhance the synthesis while maintaining quality.
@@ -329,9 +322,7 @@ phases:
     tackle:
       - set_state
 
-    callouts:
-      - decision_point
-      - routing
+    callouts: "Decision Point: Routing Next Action"
 
   # ============================================================
   # PHASE 9: Output Extraction
@@ -350,10 +341,8 @@ phases:
       Format with clear headers.
 
     output_extraction:
-      - pattern: "APPROVED:\\s*(.+)"
-        target: approval_status
-      - pattern: "Implementation Start:\\s*(\\d{4}-\\d{2}-\\d{2})"
-        target: start_date
+      pattern: "APPROVED:\\s*(.+)"
+      store_as: approval_status
 
     output_schema:
       type: object
@@ -398,6 +387,4 @@ phases:
     rules:
       max_turns: 1
 
-    callouts:
-      - escalation
-      - high_priority
+    callouts: "Escalation: High Priority Review"

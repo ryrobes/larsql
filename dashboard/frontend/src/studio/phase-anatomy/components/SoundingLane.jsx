@@ -14,7 +14,7 @@ import './layers.css';
  * - Cost/duration footer
  */
 const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
-  const { index, mutation, model, turns, toolCalls, cost, duration, status, isWinner } = lane;
+  const { index, mutation, model, turns, toolCalls, cost, duration, status, isWinner, isLoser } = lane;
 
   // Format duration
   const formatDuration = (ms) => {
@@ -54,11 +54,12 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
   const durationDisplay = formatDuration(duration);
 
   return (
-    <div className={`sounding-lane ${isWinner ? 'sounding-lane-winner' : ''} sounding-lane-${status}`}>
+    <div className={`sounding-lane ${isWinner ? 'sounding-lane-winner' : ''} ${isLoser ? 'sounding-lane-loser' : ''} sounding-lane-${status}`}>
       {/* Lane header */}
       <div className="sounding-lane-header">
         <span className="sounding-lane-index">
           {isWinner && <Icon icon="mdi:crown" width="12" className="sounding-lane-crown" />}
+          {isLoser && <Icon icon="mdi:close-circle" width="10" className="sounding-lane-loser-icon" />}
           S{index}
         </span>
       </div>
