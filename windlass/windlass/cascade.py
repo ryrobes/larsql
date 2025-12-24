@@ -245,7 +245,7 @@ class ParetoFrontier(BaseModel):
     include_dominated: bool = True  # Log dominated solutions for analysis
 
 class SoundingsConfig(BaseModel):
-    factor: int = 1
+    factor: Union[int, str] = 1  # Can be static int or Jinja2 template string (e.g., "{{ outputs.list_files | length }}")
     max_parallel: int = 3  # Max concurrent sounding executions (default: 3, set to 1 for sequential)
     evaluator_instructions: Optional[str] = None  # Required unless evaluator="human" or mode="aggregate"
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop

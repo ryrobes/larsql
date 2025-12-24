@@ -27,7 +27,7 @@ from .eddies.research_sessions import (
     _fetch_checkpoints_for_session
 )
 from .eddies.state_tools import set_state
-from .eddies.system import spawn_cascade
+from .eddies.system import spawn_cascade, map_cascade
 from .eddies.research_db import research_query, research_execute
 from .eddies.chart import create_chart, create_vega_lite, create_plotly
 from .eddies.filesystem import read_file, write_file, append_file, list_files, file_info
@@ -52,6 +52,7 @@ register_tackle("list_research_sessions", list_research_sessions)
 register_tackle("get_research_session", get_research_session)
 register_tackle("set_state", set_state)
 register_tackle("spawn_cascade", spawn_cascade)
+register_tackle("map_cascade", map_cascade)
 register_tackle("research_query", research_query)
 register_tackle("research_execute", research_execute)
 register_tackle("create_chart", create_chart)

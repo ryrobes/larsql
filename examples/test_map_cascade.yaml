@@ -1,0 +1,44 @@
+# Test: Map Cascade Tool
+# Demonstrates dynamic fan-out using map_cascade
+
+cascade_id: test_map_cascade
+description: Test the new map_cascade tool with dynamic array mapping
+
+phases:
+  # Generate a list of items
+  - name: list_items
+    tool: python_data
+    inputs:
+      code: |
+        result = ["apple", "banana", "cherry", "date", "elderberry"]
+
+  # Map the cascade over each item
+  - name: process_all_items
+    tool: map_cascade
+    inputs:
+      cascade: "tackle/process_single_item.yaml"
+      map_over: "{{ outputs.list_items.result }}"
+      input_key: "item"
+      mode: "aggregate"
+      max_parallel: "5"
+    context:
+      from: ["list_items"]
+
+  # Generate summary report
+  - name: summary
+    instructions: |
+      Create a summary report of all processed items.
+
+      Results: {{ outputs.process_all_items.results }}
+
+      For each item, create a markdown table row showing:
+      - Fruit name
+      - Length (characters)
+      - Vowel count
+      - Color
+
+      Include total count and any interesting observations.
+
+    tackle: []
+    context:
+      from: ["process_all_items"]

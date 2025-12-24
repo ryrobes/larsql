@@ -1,0 +1,140 @@
+/* ============================================
+   CONSOLE VIEW
+   System analytics and session monitoring
+   ============================================ */
+
+.console-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  width: 100%;
+  height: 100vh;
+  overflow-y: auto;
+  background-color: var(--color-bg-primary);
+  box-sizing: border-box;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.console-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.console-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.console-title h1 {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.console-subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  margin-left: 44px; /* Align with title text */
+}
+
+/* ============================================
+   SECTIONS (Flat Studio-style)
+   ============================================ */
+
+.console-section {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-dim);
+  padding-bottom: var(--space-xl);
+}
+
+.console-section:last-child {
+  border-bottom: none;
+  flex: 1; /* Sessions table takes remaining space */
+}
+
+.console-chart-wrapper {
+  padding: 0 var(--space-lg);
+}
+
+.console-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background-color: transparent;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+  margin-bottom: var(--space-md);
+}
+
+.console-section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.console-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   ERROR STATE
+   ============================================ */
+
+.console-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  color: var(--color-error);
+  background-color: rgba(255, 0, 110, 0.05);
+  border: 1px solid rgba(255, 0, 110, 0.2);
+  border-radius: var(--radius-md);
+  margin: var(--space-md);
+}
+
+/* ============================================
+   AG GRID CONTAINER
+   ============================================ */
+
+.console-grid-container {
+  width: 100%;
+  height: 500px;
+  background-color: var(--color-bg-primary);
+  overflow: hidden;
+  padding: 0 var(--space-lg);
+}
+
+/* Custom cell styles */
+.console-session-id {
+  font-family: var(--font-mono);
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-sm);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 1200px) {
+  .console-view {
+    padding: var(--space-lg);
+    gap: var(--space-lg);
+  }
+}

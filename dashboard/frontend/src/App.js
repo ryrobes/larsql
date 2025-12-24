@@ -36,14 +36,14 @@ function App() {
   // Check if current route should use new AppShell or old routing
   const [useNewShell, setUseNewShell] = useState(() => {
     const hash = window.location.hash;
-    return hash.startsWith('#/studio');
+    return hash.startsWith('#/studio') || hash.startsWith('#/console');
   });
 
   // Listen for hash changes to switch modes
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      setUseNewShell(hash.startsWith('#/studio'));
+      setUseNewShell(hash.startsWith('#/studio') || hash.startsWith('#/console'));
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -399,6 +399,13 @@ function App() {
   // Hash-based routing: parse hash on mount and listen for changes
   useEffect(() => {
     const handleHashChange = async () => {
+      // Skip old routing logic if in AppShell mode
+      const hash = window.location.hash;
+      if (hash.startsWith('#/studio') || hash.startsWith('#/console')) {
+        console.log('[Router] AppShell mode detected, skipping legacy routing');
+        return;
+      }
+
       const route = parseHash();
       console.log('[Router] Hash changed, route:', route);
 
@@ -543,9 +550,15 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [parseHash, selectedCascadeId]);
 
-  // SSE connection for real-time updates
+  // SSE connection for real-time updates (legacy pages only)
   useEffect(() => {
-    console.log('Setting up SSE connection...');
+    // Skip SSE if in AppShell mode (new architecture uses polling)
+    if (useNewShell) {
+      console.log('[SSE] Skipping SSE setup - AppShell mode uses polling');
+      return;
+    }
+
+    console.log('[SSE] Setting up SSE connection for legacy pages...');
     const eventSource = new EventSource('http://localhost:5001/api/events/stream');
 
     eventSource.onopen = () => {
@@ -878,11 +891,11 @@ function App() {
     };
 
     return () => {
-      console.log('Closing SSE connection');
+      console.log('[SSE] Closing SSE connection');
       setSseConnected(false);
       eventSource.close();
     };
-  }, []);
+  }, [useNewShell]); // Re-run when mode changes
 
   // Fetch blocked sessions count (excluding research cockpit by default)
   const fetchBlockedCount = async () => {

@@ -34,6 +34,14 @@ export const views = {
     enabled: true,
   },
 
+  console: {
+    component: lazy(() => import('./console/ConsoleView')),
+    icon: 'mdi:console',
+    label: 'Console',
+    position: 'top',
+    enabled: true,
+  },
+
   // ============================================
   // VIEWS TO BE MIGRATED
   // All disabled until migrated from old App.js pages

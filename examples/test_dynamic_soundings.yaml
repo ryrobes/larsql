@@ -1,0 +1,55 @@
+# Test: Dynamic Soundings Factor
+# This tests the new ability to use Jinja2 templates for soundings.factor
+
+cascade_id: test_dynamic_soundings
+description: Test dynamic soundings factor with Jinja2 templates
+
+phases:
+  # Generate a dynamic list
+  - name: generate_list
+    tool: python_data
+    inputs:
+      code: |
+        result = ["apple", "banana", "cherry"]
+
+  # Process each item using dynamic factor
+  - name: process_items
+    instructions: |
+      You are processing item {{ sounding_index + 1 }} of {{ sounding_factor }}.
+
+      The item is: {{ outputs.generate_list.result[sounding_index] }}
+
+      Return a JSON object with:
+      {
+        "item": "the item name",
+        "length": number_of_characters,
+        "uppercase": "ITEM IN UPPERCASE"
+      }
+
+    # Explicit dependency to ensure sequential execution
+    context:
+      from: ["generate_list"]
+
+    soundings:
+      factor: "{{ outputs.generate_list.result | length }}"  # DYNAMIC!
+      mode: aggregate
+      max_parallel: 3
+      mutate: false  # Disable mutations for this test (mutations need sounding_index fix)
+      aggregator_instructions: |
+        Combine all {{ soundings | length }} sounding results.
+
+        Return a JSON array of all processed items:
+        [
+          {"item": "apple", "length": 5, "uppercase": "APPLE"},
+          ...
+        ]
+
+  - name: report
+    instructions: |
+      Create a summary report.
+
+      Results: {{ outputs.process_items }}
+
+      List each item with its length.
+
+    tackle: []

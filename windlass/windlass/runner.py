@@ -453,6 +453,20 @@ class WindlassRunner:
                     if ref_phase in phase_names and ref_phase != phase.name:
                         deps.add(ref_phase)
 
+            # 3. Check soundings.factor for template variable references (for dynamic factors)
+            if phase.soundings and isinstance(phase.soundings.factor, str):
+                # Find {{ outputs.X }} references in soundings.factor
+                for match in outputs_pattern.finditer(phase.soundings.factor):
+                    ref_phase = match.group(1)
+                    if ref_phase in phase_names and ref_phase != phase.name:
+                        deps.add(ref_phase)
+
+                # Find {{ state.output_X }} references in soundings.factor
+                for match in state_output_pattern.finditer(phase.soundings.factor):
+                    ref_phase = match.group(1)
+                    if ref_phase in phase_names and ref_phase != phase.name:
+                        deps.add(ref_phase)
+
             dependencies[phase.name] = deps
 
         return dependencies
@@ -3394,7 +3408,27 @@ To call this tool, output a JSON code block:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         indent = "  " * self.depth
-        factor = self.config.soundings.factor
+
+        # Resolve soundings factor (may be Jinja2 template string)
+        if isinstance(self.config.soundings.factor, str):
+            from .prompts import render_instruction
+            # For cascade-level soundings, we have limited context (just inputs)
+            render_context = {
+                "input": input_data or {},
+                "state": {},
+                "history": [],
+                "outputs": {},
+                "lineage": [],
+            }
+            rendered_factor = render_instruction(self.config.soundings.factor, render_context)
+            try:
+                factor = int(rendered_factor.strip())
+            except ValueError:
+                console.print(f"{indent}[red]⚠ Warning: Could not parse cascade soundings factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                factor = 1
+        else:
+            factor = self.config.soundings.factor
+
         max_parallel = self.config.soundings.max_parallel or 3
         max_workers = min(factor, max_parallel)
 
@@ -4130,7 +4164,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Log Phase Structure with rich metadata
             phase_meta = {
                 "phase_name": phase.name,
-                "has_soundings": phase.soundings is not None and phase.soundings.factor > 1,
+                "has_soundings": phase.soundings is not None and (isinstance(phase.soundings.factor, str) or phase.soundings.factor > 1),
                 "has_wards": phase.wards is not None,
                 "has_sub_cascades": len(phase.sub_cascades) > 0 if phase.sub_cascades else False,
                 "handoffs": [h.target if hasattr(h, 'target') else h for h in phase.handoffs] if phase.handoffs else []
@@ -4342,7 +4376,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 pass  # Don't fail if status update fails
 
             # Check if cascade has soundings configured
-            if self.config.soundings and self.config.soundings.factor > 1:
+            if self.config.soundings and (isinstance(self.config.soundings.factor, str) or self.config.soundings.factor > 1):
                 result = self._run_with_cascade_soundings(input_data)
             else:
                 # Normal execution (no cascade soundings)
@@ -4361,7 +4395,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # For cascade soundings, emit cascade_complete event here since
             # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent
-            if self.config.soundings and self.config.soundings.factor > 1:
+            if self.config.soundings and (isinstance(self.config.soundings.factor, str) or self.config.soundings.factor > 1):
                 final_status_str = "error" if result.get("has_errors") else "completed"
 
                 # Hook: Cascade Complete
@@ -5571,7 +5605,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _assign_models(self, soundings_config) -> List[str]:
+    def _assign_models(self, soundings_config, resolved_factor: int = None) -> List[str]:
         """
         Assign models to sounding attempts based on configuration.
 
@@ -5579,15 +5613,26 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         Args:
             soundings_config: SoundingsConfig with optional multi-model settings
+            resolved_factor: Resolved factor value (optional, overrides soundings_config.factor)
 
         Returns:
             List of model names to use for each sounding
         """
         import random
 
+        # Use resolved_factor if provided, otherwise get from config (and handle string/int)
+        if resolved_factor is not None:
+            factor = resolved_factor
+        elif isinstance(soundings_config.factor, str):
+            # If factor is still a string template, we can't resolve it here
+            # This shouldn't happen if caller passes resolved_factor
+            raise ValueError(f"Cannot assign models with unresolved factor template: {soundings_config.factor}")
+        else:
+            factor = soundings_config.factor
+
         # Case 1: No multi-model configuration - use default model for all
         if soundings_config.models is None:
-            return [self.model] * soundings_config.factor
+            return [self.model] * factor
 
         # Case 2: List of models - apply strategy (round-robin, random, etc.)
         if isinstance(soundings_config.models, list):
@@ -5596,15 +5641,15 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
             if strategy == "round_robin":
                 # Cycle through models in order
-                return [models[i % len(models)] for i in range(soundings_config.factor)]
+                return [models[i % len(models)] for i in range(factor)]
 
             elif strategy == "random":
                 # Random selection for each sounding
-                return [random.choice(models) for _ in range(soundings_config.factor)]
+                return [random.choice(models) for _ in range(factor)]
 
             else:
                 # Default to round-robin if unknown strategy
-                return [models[i % len(models)] for i in range(soundings_config.factor)]
+                return [models[i % len(models)] for i in range(factor)]
 
         # Case 3: Dict with per-model factors - expand based on each model's factor
         elif isinstance(soundings_config.models, dict):
@@ -5615,7 +5660,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             return assigned
 
         # Fallback: use default
-        return [self.model] * soundings_config.factor
+        return [self.model] * factor
 
     def _filter_models_by_context(
         self,
@@ -6264,8 +6309,31 @@ Use only numbers 0-100 for scores."""
         """
         indent = "  " * self.depth
 
-        # Assign models first to determine actual factor
-        assigned_models = self._assign_models(phase.soundings)
+        # Resolve soundings factor FIRST (may be Jinja2 template string)
+        # Build context for rendering
+        outputs = {item['phase']: item['output'] for item in self.echo.lineage}
+        render_context = {
+            "input": input_data,
+            "state": self.echo.state,
+            "history": self.echo.history,
+            "outputs": outputs,
+            "lineage": self.echo.lineage,
+        }
+
+        # Render factor if it's a string (Jinja2 template)
+        if isinstance(phase.soundings.factor, str):
+            from .prompts import render_instruction
+            rendered_factor = render_instruction(phase.soundings.factor, render_context)
+            try:
+                resolved_factor = int(rendered_factor.strip())
+            except ValueError:
+                console.print(f"{indent}[red]⚠ Warning: Could not parse soundings factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                resolved_factor = 1
+        else:
+            resolved_factor = phase.soundings.factor
+
+        # Assign models using resolved factor
+        assigned_models = self._assign_models(phase.soundings, resolved_factor)
 
         # Filter models by context window if multi-model soundings
         if phase.soundings.models and len(set(assigned_models)) > 1:
@@ -6353,10 +6421,10 @@ Use only numbers 0-100 for scores."""
         # is determined by the model assignments, not the top-level factor
         if isinstance(phase.soundings.models, dict):
             factor = len(assigned_models)
-            if phase.soundings.factor != factor:
-                console.print(f"{indent}[yellow]Note: Using {factor} soundings from per-model factors (top-level factor: {phase.soundings.factor} ignored)[/yellow]")
+            if resolved_factor != factor:
+                console.print(f"{indent}[yellow]Note: Using {factor} soundings from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
         else:
-            factor = phase.soundings.factor
+            factor = resolved_factor
 
         console.print(f"{indent}[bold blue]🔱 Taking {factor} Soundings (Parallel Attempts)...[/bold blue]")
 
@@ -8039,7 +8107,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 return self._execute_image_generation_phase(phase, input_data, trace)
 
             # Check if soundings (Tree of Thought) is enabled
-            if phase.soundings and phase.soundings.factor > 1:
+            if phase.soundings and (isinstance(phase.soundings.factor, str) or phase.soundings.factor > 1):
                 return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
 
             return self._execute_phase_internal(phase, input_data, trace, initial_injection)
@@ -8076,7 +8144,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     "error_message": display_msg,
                     "phase_name": phase.name,
                     "phase_type": "deterministic" if phase.is_deterministic() else "llm",
-                    "has_soundings": phase.soundings is not None and phase.soundings.factor > 1 if phase.soundings else False,
+                    "has_soundings": phase.soundings is not None and (isinstance(phase.soundings.factor, str) or phase.soundings.factor > 1) if phase.soundings else False,
                 }
             )
 

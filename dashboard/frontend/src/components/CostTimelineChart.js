@@ -55,25 +55,25 @@ function CostTimelineChart({ cascadeFilter = null }) {
     }
   };
 
-  // Harmonious color palette - blues, teals, and subtle accents
+  // Cyberpunk color palette - cyan, purple, pink neon
   const colorPalette = useMemo(() => ({
     primary: [
-      '#4A9EDD',  // Dashboard blue
-      '#5EEAD4',  // Teal accent
-      '#60A5FA',  // Sky blue
-      '#818CF8',  // Indigo
-      '#A78BFA',  // Purple
-      '#F472B6',  // Pink
-      '#FB923C',  // Orange (for contrast)
-      '#6B7280',  // Gray for "Other"
+      '#00e5ff',  // Cyan (primary accent)
+      '#a78bfa',  // Purple (secondary accent)
+      '#ff006e',  // Hot pink (error/accent)
+      '#34d399',  // Green (success)
+      '#fbbf24',  // Yellow (warning)
+      '#60a5fa',  // Blue (info)
+      '#f472b6',  // Pink variant
+      '#64748b',  // Gray for "Other"
     ],
     gradient: {
-      start: 'rgba(74, 158, 221, 0.4)',
-      end: 'rgba(74, 158, 221, 0.02)'
+      start: 'rgba(0, 229, 255, 0.3)',
+      end: 'rgba(0, 229, 255, 0.01)'
     },
     tokens: {
-      input: '#5EEAD4',   // Teal for input
-      output: '#A78BFA',  // Purple for output
+      input: '#00e5ff',   // Cyan for input tokens
+      output: '#a78bfa',  // Purple for output tokens
     }
   }), []);
 
