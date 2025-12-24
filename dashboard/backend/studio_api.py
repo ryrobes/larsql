@@ -965,7 +965,7 @@ def load_notebook():
         path: Relative path to the notebook (e.g., 'tackle/my_notebook.yaml')
 
     Returns:
-        JSON with notebook content
+        JSON with notebook content AND raw YAML text (preserves comments/formatting)
     """
     try:
         path = request.args.get('path')
@@ -977,12 +977,22 @@ def load_notebook():
         if not os.path.exists(full_path):
             return jsonify({'error': f'Notebook not found: {path}'}), 404
 
+        # Load parsed cascade
         cascade = load_yaml_file(full_path)
         if not cascade:
             return jsonify({'error': 'Failed to parse YAML'}), 400
 
+        # Also load raw YAML text (preserves comments and formatting)
+        raw_yaml = None
+        try:
+            with open(full_path, 'r') as f:
+                raw_yaml = f.read()
+        except Exception as e:
+            print(f"Warning: Failed to read raw YAML: {e}")
+
         return jsonify({
             'notebook': cascade,
+            'raw_yaml': raw_yaml,  # NEW: Raw YAML text
             'path': path
         })
 
@@ -997,7 +1007,8 @@ def save_notebook():
 
     Request body:
         - path: Relative path to save (e.g., 'tackle/my_notebook.yaml')
-        - notebook: Notebook content (cascade definition)
+        - notebook: Notebook content (cascade definition) - used as fallback
+        - raw_yaml: (Optional) Raw YAML text - preserves comments/formatting if provided
 
     Returns:
         JSON with success status
@@ -1006,18 +1017,24 @@ def save_notebook():
         data = request.json
         path = data.get('path')
         notebook = data.get('notebook')
+        raw_yaml = data.get('raw_yaml')  # NEW: Optional raw YAML text
 
         if not path:
             return jsonify({'error': 'Path is required'}), 400
 
-        if not notebook:
-            return jsonify({'error': 'Notebook content is required'}), 400
+        if not notebook and not raw_yaml:
+            return jsonify({'error': 'Notebook content or raw_yaml is required'}), 400
 
         full_path = os.path.join(WINDLASS_ROOT, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         with open(full_path, 'w') as f:
-            yaml.dump(notebook, f, default_flow_style=False, sort_keys=False)
+            if raw_yaml:
+                # Use raw YAML text (preserves comments and formatting)
+                f.write(raw_yaml)
+            else:
+                # Fall back to serializing notebook object
+                yaml.dump(notebook, f, default_flow_style=False, sort_keys=False)
 
         return jsonify({
             'success': True,

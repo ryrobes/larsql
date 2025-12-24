@@ -54,6 +54,7 @@ const useStudioCascadeStore = create(
       // CASCADE STATE
       // ============================================
       cascade: null,  // Current cascade object
+      cascadeYamlText: null,  // Raw YAML text (preserves comments/formatting)
       cascadePath: null,  // Path to loaded cascade
       cascadeDirty: false,  // Unsaved changes
 
@@ -489,6 +490,7 @@ const useStudioCascadeStore = create(
 
           set(state => {
             state.cascade = data.cascade || data.notebook;
+            state.cascadeYamlText = data.raw_yaml || null;  // NEW: Store raw YAML (preserves comments/formatting)
             state.cascadePath = path;
             state.cascadeDirty = false;
             state.cascadeInputs = {};
@@ -520,13 +522,20 @@ const useStudioCascadeStore = create(
         }
 
         try {
+          const payload = {
+            path: savePath,
+            notebook: state.cascade  // Backend expects 'notebook' not 'cascade'
+          };
+
+          // If we have raw YAML text, include it (preserves comments/formatting)
+          if (state.cascadeYamlText) {
+            payload.raw_yaml = state.cascadeYamlText;
+          }
+
           const res = await fetch(`${API_BASE_URL}/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              path: savePath,
-              notebook: state.cascade  // Backend expects 'notebook' not 'cascade'
-            })
+            body: JSON.stringify(payload)
           });
 
           const data = await res.json();
@@ -1307,6 +1316,9 @@ output_schema:
               inputs_schema: parsed.inputs_schema || {},
               phases: parsed.phases
             };
+
+            // Store raw YAML text (preserves comments and formatting)
+            state.cascadeYamlText = yamlString;
 
             // Mark as dirty (unsaved changes)
             state.cascadeDirty = true;

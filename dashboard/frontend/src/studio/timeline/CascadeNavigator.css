@@ -1214,3 +1214,28 @@
   box-shadow: inset 0 0 0 2px rgba(167, 139, 250, 0.4);
   background-color: rgba(167, 139, 250, 0.05);
 }
+
+
+/* ============================================
+   3D CARD FLIP CONTAINER
+   ============================================ */
+
+.nav-card-flip-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  perspective: 1200px; /* 3D perspective depth */
+  transform-style: preserve-3d;
+}
+
+.nav-flip-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  backface-visibility: hidden; /* Hide back face during flip */
+  transform-style: preserve-3d;
+}

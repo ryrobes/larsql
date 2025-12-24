@@ -123,6 +123,11 @@ class ClientConnection:
                 self._handle_set_command(query)
                 return
 
+            # Handle PostgreSQL catalog queries (pg_catalog, information_schema)
+            if self._is_catalog_query(query):
+                self._handle_catalog_query(query)
+                return
+
             # Execute on DuckDB
             result_df = self.duckdb_conn.execute(query).fetchdf()
 
@@ -139,6 +144,110 @@ class ClientConnection:
             send_error(self.sock, error_message, detail=error_detail)
 
             print(f"[{self.session_id}]   ✗ Query error: {error_message}")
+
+    def _is_catalog_query(self, query: str) -> bool:
+        """
+        Check if query is a PostgreSQL catalog query.
+
+        DBeaver and other clients query pg_catalog, information_schema, pg_class, etc.
+        to get metadata (tables, columns, types).
+
+        Returns:
+            True if this is a catalog/metadata query
+        """
+        query_upper = query.upper()
+
+        # Common catalog patterns
+        catalog_indicators = [
+            'PG_CATALOG',
+            'PG_CLASS',
+            'PG_NAMESPACE',
+            'PG_TYPE',
+            'PG_ATTRIBUTE',
+            'PG_INDEX',
+            'PG_DATABASE',
+            'PG_TABLES',
+            'PG_PROC',
+            'PG_DESCRIPTION',
+            'PG_SETTINGS',
+            'INFORMATION_SCHEMA',
+            '::REGCLASS',  # PostgreSQL type casting
+            '::REGPROC',
+            '::REGTYPE',
+            '::OID',
+            'CURRENT_SCHEMA',
+            'CURRENT_DATABASE',
+            'VERSION()',
+            'HAS_TABLE_PRIVILEGE',
+            'HAS_SCHEMA_PRIVILEGE'
+        ]
+
+        return any(indicator in query_upper for indicator in catalog_indicators)
+
+    def _handle_catalog_query(self, query: str):
+        """
+        Handle PostgreSQL catalog queries by returning minimal/fake metadata.
+
+        DBeaver queries system catalogs to discover tables, schemas, types, etc.
+        We return minimal results to keep it happy.
+
+        Args:
+            query: Catalog query
+        """
+        import pandas as pd
+
+        query_upper = query.upper()
+
+        print(f"[{self.session_id}]   📋 Catalog query detected: {query[:80]}...")
+
+        # Return empty result for most catalog queries
+        # DBeaver will think there are no system tables (which is fine!)
+        empty_df = pd.DataFrame()
+
+        try:
+            # Try to map to DuckDB equivalent if possible
+            if 'CURRENT_DATABASE' in query_upper:
+                # Return fake database name
+                result_df = pd.DataFrame({'current_database': ['default']})
+
+            elif 'CURRENT_SCHEMA' in query_upper or 'CURRENT_SCHEMAS' in query_upper:
+                # Return fake schema
+                result_df = pd.DataFrame({'current_schema': ['public']})
+
+            elif 'VERSION()' in query_upper:
+                # Return version string
+                result_df = pd.DataFrame({'version': ['PostgreSQL 14.0 (Windlass/DuckDB)']})
+
+            elif 'PG_TABLES' in query_upper or 'INFORMATION_SCHEMA.TABLES' in query_upper:
+                # Return actual tables from DuckDB
+                try:
+                    result_df = self.duckdb_conn.execute("SHOW TABLES").fetchdf()
+                    # Rename columns to match PostgreSQL
+                    if 'name' in result_df.columns:
+                        result_df = result_df.rename(columns={'name': 'tablename'})
+                        result_df['schemaname'] = 'public'
+                except:
+                    result_df = pd.DataFrame(columns=['schemaname', 'tablename'])
+
+            elif 'PG_CLASS' in query_upper or 'PG_NAMESPACE' in query_upper or 'PG_TYPE' in query_upper:
+                # System catalog queries - return empty
+                # DBeaver is looking for PostgreSQL internals we don't have
+                print(f"[{self.session_id}]   ℹ️  Returning empty result for pg_catalog query")
+                result_df = empty_df
+
+            else:
+                # Unknown catalog query - return empty
+                print(f"[{self.session_id}]   ℹ️  Returning empty result for unknown catalog query")
+                result_df = empty_df
+
+            # Send results
+            send_query_results(self.sock, result_df)
+            print(f"[{self.session_id}]   ✓ Catalog query handled ({len(result_df)} rows)")
+
+        except Exception as e:
+            # If anything fails, return empty result (DBeaver will survive)
+            print(f"[{self.session_id}]   ⚠️  Catalog query error: {e}, returning empty")
+            send_query_results(self.sock, empty_df)
 
     def _handle_set_command(self, query: str):
         """

@@ -510,8 +510,22 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   React.useEffect(() => {
     if (yamlEditorFocused) return;
 
+    // Check if we already have a local YAML version
+    if (localYaml && lastSyncedYamlRef.current) {
+      // Don't overwrite user's formatting unless phase structure actually changed
+      try {
+        const currentParsed = yaml.load(localYaml);
+        // Deep comparison - only update if structure changed
+        if (JSON.stringify(currentParsed) === JSON.stringify(phase)) {
+          return; // No structural change, keep user's formatting
+        }
+      } catch (e) {
+        // Parse error - fall through to regenerate
+      }
+    }
+
     try {
-      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1 });
+      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
       // Only update if different from last synced (prevents overwriting user edits)
       if (yamlStr !== lastSyncedYamlRef.current) {
         setLocalYaml(yamlStr);
@@ -520,10 +534,10 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     } catch (e) {
       console.error('Error serializing phase:', e);
     }
-  }, [phase, yamlEditorFocused]);
+  }, [phase, yamlEditorFocused, localYaml]);
 
-  // Use localYaml as the editor value
-  const phaseYaml = localYaml || yaml.dump(phase, { indent: 2, lineWidth: -1 });
+  // Use localYaml as the editor value (with fallback)
+  const phaseYaml = localYaml || yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
 
   const handleYamlChange = useCallback((value) => {
     // Only update local YAML for display, don't sync to store until blur

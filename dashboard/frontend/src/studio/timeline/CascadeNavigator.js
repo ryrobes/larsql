@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
 import yaml from 'js-yaml';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
@@ -647,8 +648,13 @@ function CascadeNavigator() {
   useEffect(() => {
     if (!cascade || yamlViewMode === false || editorFocused) return;
 
+    // Get raw YAML from store if available (preserves formatting/comments)
+    const { cascadeYamlText } = useStudioCascadeStore.getState();
+
     try {
-      const yamlStr = yaml.dump({
+      // Prefer raw YAML text from store (preserves comments/formatting)
+      // Fall back to yaml.dump() only if no raw text available
+      const yamlStr = cascadeYamlText || yaml.dump({
         cascade_id: cascade.cascade_id,
         description: cascade.description || '',
         inputs_schema: cascade.inputs_schema || {},
@@ -843,11 +849,21 @@ function CascadeNavigator() {
         </div>
       </div>
 
-      {/* YAML Editor View */}
-      {yamlViewMode && (
-        <div className="nav-yaml-view">
-          {/* Warning banners */}
-          {viewMode === 'replay' && (
+      {/* Card flip container with 3D perspective */}
+      <div className="nav-card-flip-container">
+        <AnimatePresence mode="wait" initial={false}>
+          {/* YAML Editor View (back of card) */}
+          {yamlViewMode && (
+            <motion.div
+              key="yaml"
+              className="nav-yaml-view nav-flip-card"
+              initial={{ rotateY: 90 }}
+              animate={{ rotateY: 0 }}
+              exit={{ rotateY: -90 }}
+              transition={{ duration: 0.4, ease: 'easeInOut' }}
+            >
+              {/* Warning banners */}
+              {viewMode === 'replay' && (
             <div className="nav-yaml-warning replay-warning">
               <Icon icon="mdi:information" width="14" />
               <span>Viewing historical session - YAML editor is read-only</span>
@@ -882,12 +898,19 @@ function CascadeNavigator() {
               onValidationError={(err) => setYamlParseError(err)}
             />
           </div>
-        </div>
-      )}
+            </motion.div>
+          )}
 
-      {/* Normal Navigator View (hide when YAML mode active) */}
-      {!yamlViewMode && (
-        <div className="nav-normal-view">
+          {/* Normal Navigator View (front of card) */}
+          {!yamlViewMode && (
+            <motion.div
+              key="navigator"
+              className="nav-normal-view nav-flip-card"
+              initial={{ rotateY: -90 }}
+              animate={{ rotateY: 0 }}
+              exit={{ rotateY: 90 }}
+              transition={{ duration: 0.4, ease: 'easeInOut' }}
+            >
           {/* Inputs Form (if cascade has inputs_schema) */}
           {hasInputs && (
             <div className="nav-inputs-section">
@@ -950,8 +973,10 @@ function CascadeNavigator() {
 
           {/* Connections Section */}
           <ConnectionsSection />
-        </div>
-      )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

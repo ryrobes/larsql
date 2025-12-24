@@ -1,0 +1,37 @@
+# Test Cascade - YAML Comment Preservation
+# This file tests that comments and blank lines are preserved
+
+cascade_id: test_comments_preservation
+description: Test that YAML editor preserves comments and formatting
+
+# Input schema with comments
+inputs_schema:
+  user_input: "Test input parameter"
+
+# Phase definitions
+phases:
+  - name: phase_1
+    tool: sql_data
+    # This is a comment about the SQL query
+    inputs:
+      connection: windlass
+      query: |
+        -- SQL comment preserved?
+        SELECT 'test' as message
+
+  - name: phase_2
+    tool: python_data
+    # Python phase with comments
+    inputs:
+      code: |
+        # Python comment
+        result = {"status": "ok"}
+
+  # Another comment between phases
+
+  - name: phase_3
+    tool: js_data
+    inputs:
+      code: |
+        // JavaScript comment
+        const result = { status: "ok" };
