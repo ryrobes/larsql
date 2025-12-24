@@ -3200,18 +3200,40 @@ def run_cascade():
         if not session_id:
             session_id = f"workshop_{uuid.uuid4().hex[:12]}"
 
-        # If cascade_yaml provided, write to temp file
+        # Handle cascade_yaml + cascade_path combinations
         temp_file = None
-        if cascade_yaml and not cascade_path:
-            # Create temp file in playground_scratchpad directory (easier debugging)
-            scratchpad_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
-            os.makedirs(scratchpad_dir, exist_ok=True)
+        if cascade_path and cascade_yaml:
+            # STUDIO MODE: Original path provided + edited YAML content
+            # Create temp file in SAME DIRECTORY as original (for sub-cascade resolution)
+            # DO NOT modify the original file - user must explicitly save!
+            print(f"[run-cascade] Studio mode: Creating temp file in original directory")
+            full_original_path = os.path.join(WINDLASS_ROOT, cascade_path)
+            original_dir = os.path.dirname(full_original_path)
 
-            temp_file = os.path.join(scratchpad_dir, f"{session_id}.yaml")
+            # Create temp file with .tmp_ prefix in same directory
+            temp_file = os.path.join(original_dir, f".tmp_{session_id}.yaml")
+            with open(temp_file, 'w') as f:
+                f.write(cascade_yaml)
+
+            cascade_path = temp_file
+            print(f"[run-cascade] Created temp file (sub-cascades resolve relative to original dir): {temp_file}")
+
+        elif cascade_yaml and not cascade_path:
+            # PLAYGROUND MODE: No original file, create temp file in playground_scratchpad
+            print(f"[run-cascade] Playground mode: Creating temp file")
+            temp_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
+            os.makedirs(temp_dir, exist_ok=True)
+
+            temp_file = os.path.join(temp_dir, f"{session_id}.yaml")
             with open(temp_file, 'w') as f:
                 f.write(cascade_yaml)
             cascade_path = temp_file
-            print(f"[Playground] Saved cascade to: {temp_file}")
+            print(f"[run-cascade] Created temp file: {temp_file}")
+
+        elif cascade_path and not cascade_yaml:
+            # FILE MODE: Just use the existing file
+            print(f"[run-cascade] File mode: Using existing file {cascade_path}")
+            cascade_path = os.path.join(WINDLASS_ROOT, cascade_path)
 
         import threading
         from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
@@ -3311,9 +3333,7 @@ def run_cascade():
                         tokens_out=0,
                         cost=0.0,
                         duration_ms=0,
-                        tool_name=None,
-                        tool_args=None,
-                        tool_result=None,
+                        # Removed: tool_name, tool_args, tool_result (not valid parameters)
                     )
 
                     print(f"[Cascade Error] Session {session_id} marked as ERROR in database")
@@ -3321,6 +3341,14 @@ def run_cascade():
                 except Exception as state_error:
                     print(f"[Cascade Error] Failed to record error state: {state_error}")
                     traceback.print_exc()
+            finally:
+                # Clean up temp file if one was created
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                        print(f"[run-cascade] Cleaned up temp file: {temp_file}")
+                    except Exception as cleanup_error:
+                        print(f"[run-cascade] Failed to clean up temp file: {cleanup_error}")
 
         thread = threading.Thread(target=run_in_background, daemon=True)
         thread.start()
@@ -3990,15 +4018,18 @@ def playground_session_stream(session_id):
         after = request.args.get('after', '1970-01-01 00:00:00')
         limit = int(request.args.get('limit', 200))
 
-        # Query for relevant execution events
-        # We include all event types that are useful for UI state derivation
-        # Note: Use startsWith instead of LIKE to avoid % escaping issues with ClickHouse driver
+        # Query for relevant execution events INCLUDING child sub-cascades
+        # We include:
+        # 1. Parent session data (session_id = X)
+        # 2. Child session data (parent_session_id = X)
+        # This gives us full visibility into sub-cascade launches
         query = f"""
             SELECT
                 toString(message_id) as message_id,
                 timestamp,
                 timestamp_iso,
                 session_id,
+                parent_session_id,
                 trace_id,
                 phase_name,
                 role,
@@ -4020,7 +4051,7 @@ def playground_session_stream(session_id):
                 images_json,
                 has_images
             FROM unified_logs
-            WHERE startsWith(session_id, '{session_id}')
+            WHERE (startsWith(session_id, '{session_id}') OR parent_session_id = '{session_id}')
               AND timestamp > '{after}'
             ORDER BY timestamp ASC
             LIMIT {limit + 1}
@@ -4103,6 +4134,20 @@ def playground_session_stream(session_id):
         cost_result = db.query(cost_query)
         total_cost = float(cost_result[0]['total'] or 0) if cost_result and cost_result[0].get('total') else 0
 
+        # Extract child session info (sub-cascades that were spawned)
+        child_sessions = {}
+        for row in rows_to_return:
+            # If this row has a parent_session_id matching our session, it's a child
+            if row.get('parent_session_id') == session_id and row.get('session_id') != session_id:
+                child_session_id = row['session_id']
+                if child_session_id not in child_sessions:
+                    child_sessions[child_session_id] = {
+                        'session_id': child_session_id,
+                        'parent_session_id': session_id,
+                        'parent_phase': row.get('phase_name'),  # Phase that spawned the child
+                        'first_seen': row.get('timestamp_iso')
+                    }
+
         return jsonify({
             'rows': rows_to_return,
             'has_more': has_more,
@@ -4110,7 +4155,8 @@ def playground_session_stream(session_id):
             'session_complete': session_complete,
             'session_status': session_status,  # 'running', 'completed', 'error', 'cancelled', 'orphaned'
             'session_error': session_error,    # Error message if session_status == 'error'
-            'total_cost': round(total_cost, 6)
+            'total_cost': round(total_cost, 6),
+            'child_sessions': list(child_sessions.values())  # NEW: List of spawned sub-cascades
         })
 
     except Exception as e:

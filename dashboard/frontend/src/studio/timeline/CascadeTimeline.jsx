@@ -349,7 +349,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  const { logs, phaseStates, totalCost, sessionStatus, sessionError } = useTimelinePolling(sessionToPoll, shouldPoll);
+  const { logs, phaseStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll);
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
@@ -410,6 +410,19 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     prevPhaseStatesHashRef.current = currentHash;
     updateCellStatesFromPolling(phaseStates);
   }, [phaseStates, updateCellStatesFromPolling]);
+
+  // Update childSessions when polling returns new data
+  const prevChildSessionsHashRef = useRef('');
+  useEffect(() => {
+    if (!childSessions || Object.keys(childSessions).length === 0) return;
+
+    const currentHash = JSON.stringify(childSessions);
+    if (currentHash === prevChildSessionsHashRef.current) return;
+
+    console.log('[CascadeTimeline] Updating childSessions from polling:', Object.keys(childSessions));
+    prevChildSessionsHashRef.current = currentHash;
+    useStudioCascadeStore.setState({ childSessions });
+  }, [childSessions]);
 
   const timelineRef = useRef(null);
   const [layoutMode, setLayoutMode] = useState('linear'); // 'linear' or 'graph'
@@ -995,11 +1008,13 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             cellState={cellStates[selectedPhase.name]}
             phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
             allSessionLogs={logs}
+            currentSessionId={sessionToPoll}
             onClose={() => setSelectedPhaseIndex(null)}
           />
         ) : logs.length > 0 ? (
           <SessionMessagesLog
             logs={logs}
+            currentSessionId={sessionToPoll}
             onSelectPhase={(phaseName) => {
               const idx = phases.findIndex(p => p.name === phaseName);
               if (idx !== -1) setSelectedPhaseIndex(idx);

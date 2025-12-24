@@ -5,6 +5,11 @@ color: "#a78bfa"
 name_prefix: llm_schema
 description: "LLM phase with output schema validation for structured data extraction"
 category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "validation"
+  - "popular"
 
 template:
   instructions: |

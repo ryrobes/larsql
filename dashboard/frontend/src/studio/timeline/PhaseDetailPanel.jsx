@@ -44,7 +44,7 @@ const formatDuration = (ms) => {
  * - Config: Phase configuration (LLM settings, soundings, wards)
  * - Output: Results table/JSON
  */
-const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionLogs = [], onClose }) => {
+const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionLogs = [], currentSessionId = null, onClose }) => {
   const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode } = useStudioCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
@@ -309,7 +309,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
         timestamp: log.timestamp_iso,
         trace_id: log.trace_id,
         images,
-        has_images: log.has_images
+        has_images: log.has_images,
+        session_id: log.session_id  // Include session_id for child session detection
       });
     }
 
@@ -365,7 +366,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
           timestamp: log.timestamp_iso,
           trace_id: log.trace_id,
           images,
-          has_images: log.has_images
+          has_images: log.has_images,
+          session_id: log.session_id  // Include session_id for child session detection
         };
       });
   }, [phaseLogs]);
@@ -1267,8 +1269,11 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                                 This sounding was selected as the winner
                               </div>
                             )}
-                            {messages.map((msg, idx) => (
-                              <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role}`}>
+                            {messages.map((msg, idx) => {
+                              // Check if this message is from a child session
+                              const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
+                              return (
+                              <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role} ${isChildSession ? 'phase-detail-message-child-session' : ''}`}>
                                 <div className="phase-detail-message-header">
                                   <div className="phase-detail-message-role">
                                     {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
@@ -1326,7 +1331,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                                   </div>
                                 )}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="phase-detail-messages-empty">
@@ -1342,8 +1348,11 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     <div className="phase-detail-messages">
                       {phaseMessages && phaseMessages.length > 0 ? (
                         <div className="phase-detail-messages-list">
-                          {phaseMessages.map((msg, idx) => (
-                            <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role}`}>
+                          {phaseMessages.map((msg, idx) => {
+                            // Check if this message is from a child session
+                            const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
+                            return (
+                            <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role} ${isChildSession ? 'phase-detail-message-child-session' : ''}`}>
                               <div className="phase-detail-message-header">
                                 <div className="phase-detail-message-role">
                                   {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
@@ -1401,7 +1410,8 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                                 </div>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="phase-detail-messages-empty">

@@ -366,6 +366,19 @@
   background-color: #0a0815 !important;
 }
 
+/* Child session messages (sub-cascades) - subtle teal tint */
+.sml-grid-container .ag-row.sml-row-child-session {
+  background-color: rgba(45, 212, 191, 0.04) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-child-session:hover {
+  background-color: rgba(45, 212, 191, 0.08) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-child-session.sml-row-selected {
+  background-color: rgba(45, 212, 191, 0.18) !important;
+}
+
 /* ============================================
    SPLIT CONTAINER
    ============================================ */

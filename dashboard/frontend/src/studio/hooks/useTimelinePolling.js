@@ -35,6 +35,7 @@ export function useTimelinePolling(sessionId, isRunning) {
   const [sessionStatus, setSessionStatus] = useState(null);  // 'running', 'completed', 'error', 'cancelled', 'orphaned'
   const [sessionError, setSessionError] = useState(null);    // Error message if status == 'error'
   const [totalCost, setTotalCost] = useState(0);
+  const [childSessions, setChildSessions] = useState({});    // Child sub-cascades spawned by this session
 
   const cursorRef = useRef('1970-01-01 00:00:00');
   const pollIntervalRef = useRef(null);
@@ -146,6 +147,17 @@ export function useTimelinePolling(sessionId, isRunning) {
         setTotalCost(data.total_cost);
       }
 
+      // Update child sessions if present
+      if (data.child_sessions) {
+        setChildSessions(prev => {
+          const updated = { ...prev };
+          data.child_sessions.forEach(child => {
+            updated[child.session_id] = child;
+          });
+          return updated;
+        });
+      }
+
       // Only clear error if there was one
       if (error) {
         setError(null);
@@ -166,6 +178,7 @@ export function useTimelinePolling(sessionId, isRunning) {
       setSessionStatus(null);
       setSessionError(null);
       setTotalCost(0);
+      setChildSessions({});
       cursorRef.current = '1970-01-01 00:00:00';
       seenIdsRef.current.clear();
       prevSessionRef.current = sessionId;
@@ -246,6 +259,7 @@ export function useTimelinePolling(sessionId, isRunning) {
     sessionStatus,     // Authoritative status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
     sessionError,      // Error message if sessionStatus == 'error'
     totalCost,         // Accumulated session cost
+    childSessions,     // Child sub-cascades spawned by this session
     error,             // Polling error
   };
 }

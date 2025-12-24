@@ -1,0 +1,33 @@
+type_id: context_selective
+display_name: Selective Context
+icon: mdi:filter
+color: "#06b6d4"
+name_prefix: ctx
+description: "Phase with selective context from specific prior phases - efficient context management"
+category: "llm"
+tags:
+  - "intermediate"
+  - "orchestration"
+  - "chain"
+
+template:
+  instructions: |
+    Process data using selective context from specific prior phases.
+
+    You have access to:
+    - {{ outputs.phase_a }}
+    - {{ outputs.phase_b }}
+    - {{ state.variable_name }}
+
+    Other phases are excluded to reduce context size.
+  model: google/gemini-2.5-flash
+  tackle: []
+  context:
+    from:
+      - phase_a  # Include only these phases
+      - phase_b
+    include:
+      - state    # Also include state
+      - lineage  # Optional: outputs, history, lineage
+  rules:
+    max_turns: 1

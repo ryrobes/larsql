@@ -87,6 +87,13 @@ const useStudioCascadeStore = create(
       sessionId: null,
 
       // ============================================
+      // SUB-CASCADE TRACKING
+      // ============================================
+      childSessions: {},  // { [child_session_id]: { session_id, parent_phase, first_seen } }
+      parentSessionId: null,  // If this is a child session, ID of parent
+      parentPhase: null,  // If this is a child session, phase in parent that spawned it
+
+      // ============================================
       // UI STATE
       // ============================================
       selectedPhaseIndex: null,  // Currently selected phase in timeline view
@@ -260,7 +267,19 @@ const useStudioCascadeStore = create(
               state.viewMode = 'replay';
               state.replaySessionId = sessionId;
               state.cascade = data.cascade;
-              state.cascadePath = data.config_path || null;
+
+              // Only update cascadePath if we don't already have one
+              // (prevents overwriting original path with temp file path)
+              if (!state.cascadePath) {
+                const configPath = data.config_path || null;
+                // Filter out temp files (session_*.yaml or .tmp_*.yaml in any directory)
+                if (configPath &&
+                    !configPath.includes('/session_') && !configPath.includes('\\session_') &&
+                    !configPath.includes('/.tmp_') && !configPath.includes('\\.tmp_')) {
+                  state.cascadePath = configPath;
+                }
+              }
+
               state.cascadeDirty = false;
               // Load historical inputs if available
               if (data.input_data && Object.keys(data.input_data).length > 0) {
@@ -314,18 +333,41 @@ const useStudioCascadeStore = create(
           }
 
           console.log('[fetchReplayData] Got', data.rows?.length || 0, 'rows');
+          console.log('[fetchReplayData] Child sessions:', data.child_sessions?.length || 0);
 
-          // Derive phase states using shared logic
+          // Derive phase states using shared logic (only for parent session)
           const logs = data.rows || [];
-          const phaseNames = [...new Set(logs.map(r => r.phase_name).filter(Boolean))];
+          const parentLogs = logs.filter(r => r.session_id === sessionId);
+          const phaseNames = [...new Set(parentLogs.map(r => r.phase_name).filter(Boolean))];
           const phaseStates = {};
 
           for (const phaseName of phaseNames) {
-            phaseStates[phaseName] = derivePhaseState(logs, phaseName);
+            phaseStates[phaseName] = derivePhaseState(parentLogs, phaseName);
           }
 
           // Update cellStates immediately
           get().updateCellStatesFromPolling(phaseStates);
+
+          // Update child sessions
+          if (data.child_sessions && data.child_sessions.length > 0) {
+            set(state => {
+              state.childSessions = {};
+              data.child_sessions.forEach(child => {
+                state.childSessions[child.session_id] = child;
+              });
+            });
+            console.log('[fetchReplayData] ✓ Child sessions updated:', Object.keys(get().childSessions));
+          }
+
+          // Check if this session has a parent (look for parent_session_id in any row)
+          const parentRow = logs.find(r => r.parent_session_id && r.session_id === sessionId);
+          if (parentRow && parentRow.parent_session_id) {
+            set(state => {
+              state.parentSessionId = parentRow.parent_session_id;
+              // We don't know parent_phase from child's perspective - would need separate query
+            });
+            console.log('[fetchReplayData] ✓ This is a child session, parent:', parentRow.parent_session_id);
+          }
 
           console.log('[fetchReplayData] ✓ Cell states updated:', Object.keys(phaseStates));
 
@@ -368,7 +410,19 @@ const useStudioCascadeStore = create(
             // Load cascade if available
             if (data.cascade) {
               state.cascade = data.cascade;
-              state.cascadePath = data.config_path || cascadeFile || null;
+
+              // Only update cascadePath if we don't already have one
+              // (prevents overwriting original path with temp file path)
+              if (!state.cascadePath) {
+                const configPath = data.config_path || cascadeFile || null;
+                // Filter out temp files (session_*.yaml or .tmp_*.yaml in any directory)
+                if (configPath &&
+                    !configPath.includes('/session_') && !configPath.includes('\\session_') &&
+                    !configPath.includes('/.tmp_') && !configPath.includes('\\.tmp_')) {
+                  state.cascadePath = configPath;
+                }
+              }
+
               state.cascadeDirty = false;
 
               // Load inputs if available
@@ -1032,9 +1086,9 @@ output_schema:
         });
 
         try {
-          // Export cascade to YAML
+          // Export cascade to YAML (prefer raw text to preserve comments/formatting)
           const yaml = require('js-yaml');
-          const cascadeYaml = yaml.dump(state.cascade, { indent: 2, lineWidth: -1 });
+          const cascadeYaml = state.cascadeYamlText || yaml.dump(state.cascade, { indent: 2, lineWidth: -1 });
 
           // POST to standard run-cascade endpoint
           const res = await fetch('http://localhost:5001/api/run-cascade', {
@@ -1042,6 +1096,7 @@ output_schema:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               cascade_yaml: cascadeYaml,
+              cascade_path: state.cascadePath,  // Include original path for sub-cascade resolution
               inputs: state.cascadeInputs,
               session_id: sessionId,
             }),
@@ -1057,6 +1112,7 @@ output_schema:
           console.log('[runCascadeStandard] Polling will update cell states');
           // Polling (via useTimelinePolling) will update cellStates automatically
           // isRunningAll will be set to false when all phases complete
+          // Note: Running does NOT save the file - user must explicitly click Save
 
         } catch (err) {
           console.error('[runCascadeStandard] Error:', err);

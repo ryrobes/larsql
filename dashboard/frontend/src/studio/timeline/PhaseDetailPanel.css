@@ -743,6 +743,12 @@
   border-left: 3px solid #64748b;
 }
 
+/* Child session messages (sub-cascades) - subtle teal background tint */
+.phase-detail-message-child-session {
+  background-color: rgba(45, 212, 191, 0.04);
+  border-left-color: #2dd4bf;
+}
+
 .phase-detail-message-tool {
   border-left-color: #60a5fa;
 }

@@ -5,6 +5,11 @@ color: "#fbbf24"
 name_prefix: python
 description: "Python data transformation phase"
 category: "data"
+tags:
+  - "beginner"
+  - "quick-start"
+  - "data-processing"
+  - "popular"
 
 template:
   tool: python_data

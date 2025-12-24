@@ -1,0 +1,26 @@
+type_id: retry_phase
+display_name: Retry on Failure
+icon: mdi:reload
+color: "#f87171"
+name_prefix: retry
+description: "Deterministic phase with automatic retry and exponential backoff"
+category: "tools"
+tags:
+  - "intermediate"
+  - "integration"
+  - "iterative"
+
+template:
+  tool: linux_shell
+  inputs:
+    command: |
+      # Command that might fail (API call, network operation, etc.)
+      curl -f https://api.example.com/data
+
+      # Exit with non-zero on failure
+  timeout: 30s
+  retry:
+    max_attempts: 3
+    backoff: exponential  # exponential, linear, or fixed
+    initial_delay: 1s
+    max_delay: 30s

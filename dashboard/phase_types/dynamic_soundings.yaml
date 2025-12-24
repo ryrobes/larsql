@@ -1,0 +1,35 @@
+type_id: dynamic_soundings
+display_name: Dynamic Fan-Out
+icon: mdi:vector-arrange-below
+color: "#f472b6"
+name_prefix: dynamic
+description: "Soundings with runtime-determined factor - dynamic parallel processing"
+category: "llm"
+tags:
+  - "advanced"
+  - "parallel"
+  - "orchestration"
+  - "novel"
+  - "powerful"
+
+template:
+  instructions: |
+    Process item {{ sounding_index + 1 }} of {{ sounding_factor }}.
+
+    Item data: {{ outputs.list_phase.items[sounding_index] }}
+
+    Complete the task for this item.
+  model: google/gemini-2.5-flash
+  tackle: []
+  soundings:
+    factor: "{{ outputs.list_phase.items | length }}"  # Dynamic!
+    mode: aggregate
+    max_parallel: 10
+    aggregator_instructions: |
+      Combine results from all {{ soundings | length }} parallel executions:
+
+      {% for sounding in soundings %}
+      - Item {{ loop.index }}: {{ sounding.output }}
+      {% endfor %}
+
+      Create a summary or aggregated result.

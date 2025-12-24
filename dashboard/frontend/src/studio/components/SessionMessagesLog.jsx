@@ -52,8 +52,9 @@ const ROLE_CONFIG = {
  * - Descending time order
  * - Role-based styling
  * - Row selection with detail panel
+ * - Visual distinction for child session messages (sub-cascades)
  */
-const SessionMessagesLog = ({ logs = [], onSelectPhase }) => {
+const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null }) => {
   const gridRef = useRef(null);
 
   // Selected row state
@@ -451,9 +452,17 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase }) => {
                 getRowId={(params) => params.data.message_id}
                 onRowClicked={onRowClicked}
                 rowSelection="single"
-                getRowClass={(params) =>
-                  params.data.message_id === selectedMessage?.message_id ? 'sml-row-selected' : ''
-                }
+                getRowClass={(params) => {
+                  const classes = [];
+                  if (params.data.message_id === selectedMessage?.message_id) {
+                    classes.push('sml-row-selected');
+                  }
+                  // Highlight child session messages with different background
+                  if (currentSessionId && params.data.session_id && params.data.session_id !== currentSessionId) {
+                    classes.push('sml-row-child-session');
+                  }
+                  return classes.join(' ');
+                }}
               />
             </div>
 
@@ -537,9 +546,17 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase }) => {
               getRowId={(params) => params.data.message_id}
               onRowClicked={onRowClicked}
               rowSelection="single"
-              getRowClass={(params) =>
-                params.data.message_id === selectedMessage?.message_id ? 'sml-row-selected' : ''
-              }
+              getRowClass={(params) => {
+                const classes = [];
+                if (params.data.message_id === selectedMessage?.message_id) {
+                  classes.push('sml-row-selected');
+                }
+                // Highlight child session messages with different background
+                if (currentSessionId && params.data.session_id && params.data.session_id !== currentSessionId) {
+                  classes.push('sml-row-child-session');
+                }
+                return classes.join(' ');
+              }}
             />
           </div>
         )}

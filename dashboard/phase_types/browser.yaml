@@ -5,6 +5,11 @@ color: "#f87171"
 name_prefix: browser
 description: "Browser automation with Rabbitize"
 category: "tools"
+tags:
+  - "advanced"
+  - "integration"
+  - "automation"
+  - "powerful"
 
 template:
   tool: linux_shell_dangerous

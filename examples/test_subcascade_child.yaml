@@ -1,0 +1,15 @@
+# Child cascade called by parent
+# Should be found when parent is run from Studio
+
+cascade_id: test_subcascade_child
+description: Child cascade for testing path resolution
+
+phases:
+  - name: simple_task
+    tool: python_data
+    inputs:
+      code: |
+        result = {
+          "message": "Child cascade executed successfully!",
+          "status": "ok"
+        }

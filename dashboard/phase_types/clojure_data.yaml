@@ -5,6 +5,10 @@ color: "#63b132"
 name_prefix: clojure
 description: "Clojure data transformation phase"
 category: "data"
+tags:
+  - "advanced"
+  - "data-processing"
+  - "chain"
 
 template:
   tool: clojure_data

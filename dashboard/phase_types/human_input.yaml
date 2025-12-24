@@ -1,0 +1,23 @@
+type_id: human_input
+display_name: Human Input
+icon: mdi:account-question
+color: "#2dd4bf"
+name_prefix: ask
+description: "Human-in-the-loop phase - ask user for input and store response in state"
+category: "hitl"
+tags:
+  - "beginner"
+  - "quick-start"
+  - "hitl"
+  - "standalone"
+
+template:
+  instructions: |
+    Ask the human: {{ input.question | default("What information do you need?") }}
+
+    Use the ask_human tool to gather their response.
+    The response will be automatically stored in state.{{PHASE_NAME}}.
+  tackle:
+    - ask_human
+  rules:
+    max_turns: 2

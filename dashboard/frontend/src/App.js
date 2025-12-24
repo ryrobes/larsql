@@ -34,16 +34,19 @@ function App() {
   // DUAL-MODE ROUTING: New vs Old Architecture
   // ============================================
   // Check if current route should use new AppShell or old routing
+  // New architecture routes (AppShell):
+  const newShellRoutes = ['#/studio', '#/console', '#/cascades', '#/outputs', '#/receipts', '#/interrupts', '#/explore'];
+
   const [useNewShell, setUseNewShell] = useState(() => {
     const hash = window.location.hash;
-    return hash.startsWith('#/studio') || hash.startsWith('#/console');
+    return newShellRoutes.some(route => hash.startsWith(route));
   });
 
   // Listen for hash changes to switch modes
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      setUseNewShell(hash.startsWith('#/studio') || hash.startsWith('#/console'));
+      setUseNewShell(newShellRoutes.some(route => hash.startsWith(route)));
     };
 
     window.addEventListener('hashchange', handleHashChange);

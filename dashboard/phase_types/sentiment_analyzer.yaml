@@ -1,0 +1,40 @@
+type_id: sentiment_analyzer
+display_name: Sentiment Analysis
+icon: mdi:emoticon-happy-outline
+color: "#34d399"
+name_prefix: sentiment
+description: "Classify sentiment (positive/negative/neutral) with confidence scores"
+category: "llm"
+tags:
+  - "beginner"
+  - "ai-ml"
+  - "standalone"
+  - "popular"
+
+template:
+  instructions: |
+    Analyze the sentiment of this text:
+    {{ input.text | default(outputs.previous_phase) }}
+
+    Classify as: positive, negative, or neutral
+    Provide confidence score (0-1)
+    Explain key sentiment indicators
+
+    Return JSON: {"sentiment": "positive", "confidence": 0.85, "reasoning": "..."}
+  model: google/gemini-2.5-flash
+  tackle: []
+  output_schema:
+    type: object
+    properties:
+      sentiment:
+        type: string
+        enum: [positive, negative, neutral]
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+      reasoning:
+        type: string
+    required: [sentiment, confidence, reasoning]
+  rules:
+    max_turns: 1

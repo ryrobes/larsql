@@ -1,0 +1,30 @@
+type_id: code_reviewer
+display_name: Code Reviewer
+icon: mdi:code-braces-box
+color: "#8b5cf6"
+name_prefix: review
+description: "LLM code review agent - analyzes code quality, bugs, and best practices"
+category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "standalone"
+  - "popular"
+
+template:
+  instructions: |
+    Review the following code for:
+    - Bugs and potential errors
+    - Security vulnerabilities
+    - Performance issues
+    - Code style and best practices
+    - Suggested improvements
+
+    Code to review:
+    {{ input.code | default(outputs.previous_phase) }}
+
+    Provide constructive feedback with specific line references and examples.
+  model: anthropic/claude-sonnet-4
+  tackle: []
+  rules:
+    max_turns: 1

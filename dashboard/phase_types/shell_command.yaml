@@ -1,0 +1,28 @@
+type_id: shell_command
+display_name: Shell
+icon: mdi:console
+color: "#64748b"
+name_prefix: shell
+description: "Execute shell command - useful for file operations, git, curl, etc."
+category: "tools"
+tags:
+  - "beginner"
+  - "integration"
+  - "standalone"
+
+template:
+  tool: linux_shell
+  inputs:
+    command: |
+      # Example: List files
+      ls -la
+
+      # Example: Git status
+      # git status
+
+      # Example: Download file
+      # curl -o output.json https://api.example.com/data
+
+      # Example: Process with jq
+      # cat data.json | jq '.items[] | select(.active == true)'
+  timeout: 30s

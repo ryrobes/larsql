@@ -1,0 +1,38 @@
+type_id: bash_data
+display_name: Bash Script
+icon: mdi:bash
+color: "#22c55e"
+name_prefix: bash
+description: "Bash script with persistent session - CSV/JSON output, stdin data flow, access to $SESSION_DB"
+category: "data"
+tags:
+  - "data-processing"
+  - "etl"
+  - "intermediate"
+
+template:
+  tool: bash_data
+  inputs:
+    script: |
+      # Persistent bash session across phases
+      # - Environment vars & functions persist
+      # - Can read stdin (prior phase data as CSV)
+      # - Output to stdout (becomes temp table)
+      # - Access $SESSION_DB to query temp tables
+
+      # Example: Generate CSV
+      echo "id,name,value"
+      echo "1,Alice,100"
+      echo "2,Bob,200"
+      echo "3,Charlie,150"
+
+      # Example: Transform stdin
+      # tail -n +2 | awk -F',' '{print $1 "," toupper($2) "," $3*2}'
+
+      # Example: Query session DB
+      # duckdb $SESSION_DB "SELECT * FROM _previous_phase" -csv
+
+      # Example: Setup persistent env/functions
+      # export PROJECT="my_project"
+      # function log() { echo "[$(date)] $1" >&2; }
+    output_format: csv  # csv, json, jsonl, parquet

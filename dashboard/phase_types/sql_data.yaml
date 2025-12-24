@@ -5,6 +5,11 @@ color: "#60a5fa"
 name_prefix: sql
 description: "SQL query phase - query DuckDB or ClickHouse"
 category: "data"
+tags:
+  - "beginner"
+  - "quick-start"
+  - "data-processing"
+  - "popular"
 
 template:
   tool: sql_data

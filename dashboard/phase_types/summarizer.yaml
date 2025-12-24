@@ -1,0 +1,31 @@
+type_id: summarizer
+display_name: Summarizer
+icon: mdi:text-box-outline
+color: "#94a3b8"
+name_prefix: summary
+description: "Condense long text into concise summaries - configurable length and style"
+category: "llm"
+tags:
+  - "beginner"
+  - "ai-ml"
+  - "standalone"
+  - "popular"
+
+template:
+  instructions: |
+    Summarize the following text:
+    {{ input.text | default(outputs.previous_phase) }}
+
+    Length: {{ input.length | default("3-5 sentences") }}
+    Style: {{ input.style | default("professional and objective") }}
+
+    Focus on:
+    - Key points and main ideas
+    - Important facts and conclusions
+    - Actionable insights
+
+    Create a clear, concise summary.
+  model: google/gemini-2.5-flash
+  tackle: []
+  rules:
+    max_turns: 1

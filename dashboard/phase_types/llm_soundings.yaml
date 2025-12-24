@@ -5,6 +5,11 @@ color: "#ff006e"
 name_prefix: sounding
 description: "LLM phase with soundings pre-configured for best-of-N attempts"
 category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "parallel"
+  - "powerful"
 
 template:
   instructions: |

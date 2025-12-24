@@ -1,0 +1,35 @@
+type_id: json_array_extract
+display_name: Extract JSON Array
+icon: mdi:code-json
+color: "#facc15"
+name_prefix: extract
+description: "Extract structured data as JSON array with schema validation"
+category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "validation"
+
+template:
+  instructions: |
+    Extract structured information from:
+    {{ outputs.previous_phase }}
+
+    Find all instances and return as a JSON array matching the schema.
+    Be thorough and accurate.
+  model: google/gemini-2.5-flash
+  tackle: []
+  output_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        category:
+          type: string
+      required: [name, value]
+  rules:
+    max_turns: 1

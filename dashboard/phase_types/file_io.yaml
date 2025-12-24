@@ -1,0 +1,31 @@
+type_id: file_io
+display_name: File I/O
+icon: mdi:file-document
+color: "#94a3b8"
+name_prefix: file
+description: "Read or write files using shell commands - file system operations"
+category: "tools"
+tags:
+  - "beginner"
+  - "integration"
+  - "standalone"
+
+template:
+  tool: linux_shell
+  inputs:
+    command: |
+      # Example: Read file
+      cat /path/to/file.txt
+
+      # Example: Write file
+      # echo "content" > /path/to/output.txt
+
+      # Example: Append to file
+      # echo "more content" >> /path/to/output.txt
+
+      # Example: Read JSON and extract field
+      # cat data.json | jq '.field'
+
+      # Example: List directory
+      # ls -lh /path/to/dir
+  timeout: 30s

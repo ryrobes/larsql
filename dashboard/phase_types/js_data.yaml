@@ -5,6 +5,10 @@ color: "#f7df1e"
 name_prefix: js
 description: "JavaScript data transformation phase"
 category: "data"
+tags:
+  - "intermediate"
+  - "data-processing"
+  - "chain"
 
 template:
   tool: js_data

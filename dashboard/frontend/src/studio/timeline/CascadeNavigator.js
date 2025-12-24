@@ -528,7 +528,40 @@ function PhaseTypePill({ type, icon, label, color }) {
   );
 }
 
-// Phase Types section (draggable palette)
+// Phase type subsection
+function PhaseTypeSubsection({ title, icon, phaseTypes, defaultExpanded = true }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  if (phaseTypes.length === 0) return null;
+
+  return (
+    <div className="nav-phase-subsection">
+      <div
+        className="nav-phase-subsection-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          width="12"
+          className="nav-chevron"
+        />
+        <Icon icon={icon} width="14" className="nav-subsection-icon" />
+        <span className="nav-subsection-title">{title}</span>
+        <span className="nav-subsection-count">{phaseTypes.length}</span>
+      </div>
+
+      {isExpanded && (
+        <div className="nav-phase-types-content">
+          {phaseTypes.map(type => (
+            <PhaseTypePill key={type.type} {...type} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Phase Types section (draggable palette with organized subsections)
 function PhaseTypesSection() {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -539,8 +572,28 @@ function PhaseTypesSection() {
     type: pt.type_id,
     icon: pt.icon,
     label: pt.display_name,
-    color: pt.color
+    color: pt.color,
+    tags: pt.tags || []
   }));
+
+  // Group phase types by category (based on tags)
+  const groupedTypes = React.useMemo(() => {
+    // Helper to check if phase has any of the tags
+    const hasAnyTag = (phase, tags) => tags.some(tag => phase.tags.includes(tag));
+
+    return {
+      quickStart: phaseTypes.filter(p => hasAnyTag(p, ['quick-start', 'popular'])),
+      aiMl: phaseTypes.filter(p => p.tags.includes('ai-ml') && !hasAnyTag(p, ['quick-start', 'popular'])),
+      dataProcessing: phaseTypes.filter(p => p.tags.includes('data-processing') && !hasAnyTag(p, ['ai-ml', 'quick-start', 'popular'])),
+      visualization: phaseTypes.filter(p => p.tags.includes('visualization')),
+      orchestration: phaseTypes.filter(p => p.tags.includes('orchestration') && !hasAnyTag(p, ['ai-ml'])),
+      integration: phaseTypes.filter(p => p.tags.includes('integration')),
+      advanced: phaseTypes.filter(p =>
+        hasAnyTag(p, ['advanced', 'novel', 'powerful']) &&
+        !hasAnyTag(p, ['quick-start', 'popular', 'visualization', 'integration'])
+      )
+    };
+  }, [phaseTypes]);
 
   return (
     <div className="nav-section">
@@ -554,14 +607,53 @@ function PhaseTypesSection() {
         />
         <Icon icon="mdi:puzzle" className="nav-section-icon" />
         <span className="nav-section-title">Phase Types</span>
+        <span className="nav-section-count">{phaseTypes.length}</span>
       </div>
 
       {isExpanded && (
-        <div className="nav-section-content nav-phase-types-content">
-
-          {phaseTypes.map(type => (
-            <PhaseTypePill key={type.type} {...type} />
-          ))}
+        <div className="nav-section-content">
+          <PhaseTypeSubsection
+            title="Quick Start"
+            icon="mdi:rocket-launch-outline"
+            phaseTypes={groupedTypes.quickStart}
+            defaultExpanded={true}
+          />
+          <PhaseTypeSubsection
+            title="AI & Machine Learning"
+            icon="mdi:brain"
+            phaseTypes={groupedTypes.aiMl}
+            defaultExpanded={false}
+          />
+          <PhaseTypeSubsection
+            title="Data Processing"
+            icon="mdi:database-cog"
+            phaseTypes={groupedTypes.dataProcessing}
+            defaultExpanded={false}
+          />
+          <PhaseTypeSubsection
+            title="Visualization"
+            icon="mdi:chart-line"
+            phaseTypes={groupedTypes.visualization}
+            defaultExpanded={false}
+          />
+          <PhaseTypeSubsection
+            title="Orchestration"
+            icon="mdi:git-network"
+            phaseTypes={groupedTypes.orchestration}
+            defaultExpanded={false}
+          />
+          <PhaseTypeSubsection
+            title="Integration & Tools"
+            icon="mdi:tools"
+            phaseTypes={groupedTypes.integration}
+            defaultExpanded={false}
+          />
+          <PhaseTypeSubsection
+            title="Advanced Features"
+            icon="mdi:star-circle"
+            phaseTypes={groupedTypes.advanced}
+            defaultExpanded={false}
+          />
         </div>
       )}
     </div>
@@ -616,7 +708,9 @@ function CascadeNavigator() {
     setYamlViewMode,
     updateCascadeFromYaml,
     viewMode,
-    replaySessionId
+    replaySessionId,
+    parentSessionId,
+    parentPhase
   } = useStudioCascadeStore();
 
   const [activePhase, setActivePhase] = useState(null);
@@ -796,6 +890,31 @@ function CascadeNavigator() {
 
   return (
     <div className="cascade-navigator">
+      {/* Parent Session Banner (if this is a sub-cascade) */}
+      {parentSessionId && (
+        <div className="nav-parent-banner">
+          <Icon icon="mdi:arrow-up-bold" width="14" />
+          <span>Sub-cascade of</span>
+          <a
+            href={`#/studio/${parentSessionId}`}
+            className="nav-parent-link"
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.hash = `/studio/${parentSessionId}`;
+              window.location.reload();
+            }}
+          >
+            {parentSessionId.slice(0, 16)}...
+          </a>
+          {parentPhase && (
+            <>
+              <span className="nav-parent-sep">·</span>
+              <span className="nav-parent-phase">Phase: {parentPhase}</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Cascade Header */}
       <div className="nav-cascade-header">
         <div className="nav-cascade-header-left">

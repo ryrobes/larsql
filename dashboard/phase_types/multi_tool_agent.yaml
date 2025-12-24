@@ -1,0 +1,33 @@
+type_id: multi_tool_agent
+display_name: Multi-Tool Agent
+icon: mdi:tools
+color: "#f59e0b"
+name_prefix: agent
+description: "LLM agent with multiple tools - can use shell, Python, state management together"
+category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "orchestration"
+  - "popular"
+
+template:
+  instructions: |
+    Complete this task using the available tools:
+    {{ input.task }}
+
+    You have access to:
+    - linux_shell: Execute shell commands
+    - run_code: Run Python code
+    - set_state: Persist values to state
+    - sql_query: Query databases
+
+    Work step-by-step and use tools as needed.
+  model: anthropic/claude-sonnet-4
+  tackle:
+    - linux_shell
+    - run_code
+    - set_state
+    - sql_query
+  rules:
+    max_turns: 8

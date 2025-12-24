@@ -65,6 +65,45 @@
 }
 
 /* ============================================
+   PARENT SESSION BANNER (for sub-cascades)
+   ============================================ */
+
+.nav-parent-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.1), rgba(20, 184, 166, 0.05));
+  border-bottom: 1px solid rgba(45, 212, 191, 0.2);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.nav-parent-link {
+  color: #2dd4bf;
+  font-weight: 500;
+  text-decoration: none;
+  font-family: 'Google Sans Code', monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.nav-parent-link:hover {
+  background-color: rgba(45, 212, 191, 0.15);
+  color: #5eead4;
+}
+
+.nav-parent-sep {
+  color: #334155;
+}
+
+.nav-parent-phase {
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+/* ============================================
    SECTIONS
    ============================================ */
 
@@ -439,6 +478,54 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Phase Type Subsections */
+.nav-phase-subsection {
+  border-top: 1px solid rgba(26, 22, 40, 0.5);
+  margin-top: 8px;
+}
+
+.nav-phase-subsection:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.nav-phase-subsection-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.nav-phase-subsection-header:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.nav-subsection-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.nav-subsection-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.nav-subsection-count {
+  font-size: 10px;
+  color: #475569;
+  background-color: rgba(100, 116, 139, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 20px;
+  text-align: center;
 }
 
 

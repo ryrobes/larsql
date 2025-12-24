@@ -1,0 +1,39 @@
+type_id: plotly_chart
+display_name: Chart (Plotly)
+icon: mdi:chart-scatter-plot-hexbin
+color: "#14b8a6"
+name_prefix: plotly
+description: "Create interactive Plotly charts from data - renders as interactive visualization"
+category: "data"
+tags:
+  - "intermediate"
+  - "visualization"
+  - "chain"
+
+template:
+  tool: python_data
+  inputs:
+    code: |
+      import plotly.express as px
+
+      # Get data from prior cell
+      df = data.previous_phase
+
+      # Create interactive chart
+      fig = px.scatter(
+        df,
+        x='x_column',
+        y='y_column',
+        color='category',
+        size='size_column',
+        hover_data=['additional_info'],
+        title='Interactive Chart'
+      )
+
+      # Dark theme
+      fig.update_layout(
+        template='plotly_dark',
+        title_font_size=20
+      )
+
+      result = fig  # Return Plotly figure

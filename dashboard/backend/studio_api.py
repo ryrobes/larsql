@@ -1748,6 +1748,7 @@ def get_phase_types():
                         'name_prefix': type_def.get('name_prefix', type_def['type_id']),
                         'description': type_def.get('description', ''),
                         'category': type_def.get('category', 'other'),
+                        'tags': type_def.get('tags', []),
                         'template': type_def.get('template', {}),
                     })
             except Exception as e:

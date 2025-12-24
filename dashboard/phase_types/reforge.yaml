@@ -1,0 +1,34 @@
+type_id: reforge
+display_name: Reforge (Iterative)
+icon: mdi:hammer-wrench
+color: "#fb923c"
+name_prefix: reforge
+description: "Soundings with reforge - iteratively refine the winning sounding response"
+category: "llm"
+tags:
+  - "advanced"
+  - "ai-ml"
+  - "iterative"
+  - "powerful"
+
+template:
+  instructions: |
+    Generate a high-quality response to:
+    {{ input.task }}
+
+    Be creative and thoughtful. Your response may be refined iteratively.
+  model: google/gemini-2.5-flash
+  tackle: []
+  soundings:
+    factor: 3
+    evaluator_instructions: "Pick the most promising response to refine further"
+    reforge:
+      iterations: 2  # Number of refinement rounds
+      reforge_instructions: |
+        Previous attempt:
+        {{ winner.output }}
+
+        Evaluator feedback:
+        {{ winner.reason }}
+
+        Improve this response by addressing weaknesses and enhancing strengths.

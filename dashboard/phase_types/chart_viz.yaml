@@ -1,0 +1,36 @@
+type_id: chart_viz
+display_name: Chart (Matplotlib)
+icon: mdi:chart-line
+color: "#34d399"
+name_prefix: viz
+description: "Create matplotlib charts from data - returns Figure object for multi-modal display"
+category: "data"
+tags:
+  - "intermediate"
+  - "visualization"
+  - "chain"
+
+template:
+  tool: python_data
+  inputs:
+    code: |
+      import matplotlib
+      matplotlib.use('Agg')  # Non-interactive backend
+      import matplotlib.pyplot as plt
+
+      # Get data from prior cell
+      df = data.previous_phase
+
+      # Create chart
+      fig, ax = plt.subplots(figsize=(10, 6))
+      plt.style.use('dark_background')
+
+      # Example: Line chart
+      ax.plot(df.index, df['value'], color='#2dd4bf', linewidth=2)
+      ax.set_title('Chart Title', color='white', fontsize=16)
+      ax.set_xlabel('X Axis', color='#94a3b8')
+      ax.set_ylabel('Y Axis', color='#94a3b8')
+      ax.tick_params(colors='#64748b')
+
+      plt.tight_layout()
+      result = fig  # Return Figure object

@@ -5,6 +5,11 @@ color: "#a78bfa"
 name_prefix: llm
 description: "General-purpose LLM phase with full tool access"
 category: "llm"
+tags:
+  - "beginner"
+  - "quick-start"
+  - "ai-ml"
+  - "popular"
 
 template:
   instructions: |

@@ -1,0 +1,33 @@
+type_id: llm_sql_enrich
+display_name: SQL + LLM Enrich
+icon: mdi:database-plus
+color: "#9333ea"
+name_prefix: enrich
+description: "SQL query with windlass_udf() for LLM-powered data enrichment"
+category: "data"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "data-processing"
+  - "novel"
+  - "powerful"
+
+template:
+  tool: sql_data
+  inputs:
+    query: |
+      -- Use windlass_udf() to enrich data with LLM-powered extraction
+      -- Reference prior cells: SELECT * FROM _phase_name
+
+      SELECT
+        column_name,
+
+        -- Extract/classify/transform using LLM
+        windlass_udf(
+          'Your extraction prompt here',
+          column_name
+        ) as enriched_field
+
+      FROM _previous_phase
+      LIMIT 10
+    materialize: "true"

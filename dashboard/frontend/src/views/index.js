@@ -26,10 +26,34 @@ export const views = {
   // TOP NAVIGATION VIEWS
   // ============================================
 
+  cascades: {
+    component: lazy(() => import('./cascades/CascadesView')),
+    icon: 'mdi:file-tree',
+    label: 'Cascades',
+    position: 'top',
+    enabled: true,
+  },
+
   studio: {
     component: lazy(() => import('../studio/StudioPage').then(m => ({ default: m.default }))),
     icon: 'mdi:database-search',
     label: 'Studio',
+    position: 'top',
+    enabled: true,
+  },
+
+  outputs: {
+    component: lazy(() => import('./outputs/OutputsView')),
+    icon: 'mdi:folder-image',
+    label: 'Outputs',
+    position: 'top',
+    enabled: true,
+  },
+
+  receipts: {
+    component: lazy(() => import('./receipts/ReceiptsView')),
+    icon: 'mdi:receipt-text',
+    label: 'Receipts',
     position: 'top',
     enabled: true,
   },
@@ -39,6 +63,22 @@ export const views = {
     icon: 'mdi:console',
     label: 'Console',
     position: 'top',
+    enabled: true,
+  },
+
+  explore: {
+    component: lazy(() => import('./explore/ExploreView')),
+    icon: 'mdi:compass',
+    label: 'Explore',
+    position: 'top',
+    enabled: true,
+  },
+
+  interrupts: {
+    component: lazy(() => import('./interrupts/InterruptsView')),
+    icon: 'mdi:hand-back-right',
+    label: 'Interrupts',
+    position: 'bottom',
     enabled: true,
   },
 

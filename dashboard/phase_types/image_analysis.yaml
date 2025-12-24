@@ -1,0 +1,28 @@
+type_id: image_analysis
+display_name: Image Analysis
+icon: mdi:image-search
+color: "#ec4899"
+name_prefix: vision
+description: "Analyze images using vision-capable models - multi-modal input processing"
+category: "llm"
+tags:
+  - "intermediate"
+  - "ai-ml"
+  - "standalone"
+
+template:
+  instructions: |
+    Analyze the provided image(s):
+    {{ input.image_path }}
+
+    Describe what you see in detail:
+    - Main subjects and objects
+    - Colors, composition, and style
+    - Text or data visible in the image
+    - Any relevant insights or patterns
+
+    If analyzing charts/graphs, extract the data and insights.
+  model: google/gemini-2.5-flash  # Vision-capable model
+  tackle: []
+  rules:
+    max_turns: 1
