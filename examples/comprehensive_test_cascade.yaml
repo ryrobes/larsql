@@ -1,240 +1,176 @@
 cascade_id: comprehensive_test
-description: "Comprehensive test: deterministic data, LLM soundings, validation, decision points, artifacts"
+description: 'Comprehensive test: deterministic data, LLM soundings, validation, decision
+  points, artifacts'
 inputs_schema:
-  analysis_type: "Type of analysis (sales/customer/product)"
-
+  analysis_type: Type of analysis (sales/customer/product)
 phases:
-  # ========================================================================
-  # PHASE 1: Deterministic SQL Data Extraction
-  # ========================================================================
-  - name: extract_sales_data
-    tool: sql_data
-    inputs:
-      query: |
-        -- Generate sample sales data
-        SELECT * FROM (
-          VALUES
-            ('2024-12-01', 'Electronics', 'Laptop', 1200, 5),
-            ('2024-12-02', 'Electronics', 'Phone', 800, 12),
-            ('2024-12-03', 'Clothing', 'Jacket', 150, 25),
-            ('2024-12-04', 'Home', 'Chair', 300, 8),
-            ('2024-12-05', 'Electronics', 'Tablet', 600, 15),
-            ('2024-12-06', 'Clothing', 'Shoes', 120, 30),
-            ('2024-12-07', 'Home', 'Desk', 450, 6),
-            ('2024-12-08', 'Electronics', 'Headphones', 200, 20)
-        ) AS sales(date, category, product, price, quantity)
-    handoffs:
-      - enrich_data
+- handoffs:
+  - enrich_data
+  inputs:
+    query: "-- Generate sample sales data\nSELECT * FROM (\n  VALUES\n    ('2024-12-01',\
+      \ 'Electronics', 'Laptop', 1200, 5),\n    ('2024-12-02', 'Electronics', 'Phone',\
+      \ 800, 12),\n    ('2024-12-03', 'Clothing', 'Jacket', 150, 25),\n    ('2024-12-04',\
+      \ 'Home', 'Chair', 300, 8),\n    ('2024-12-05', 'Electronics', 'Tablet', 600,\
+      \ 15),\n    ('2024-12-06', 'Clothing', 'Shoes', 120, 30),\n    ('2024-12-07',\
+      \ 'Home', 'Desk', 450, 6),\n    ('2024-12-08', 'Electronics', 'Headphones',\
+      \ 200, 20)\n) AS sales(date, category, product, price, quantity)\n"
+  name: extract_sales_data
+  tool: sql_data
+- handoffs:
+  - analyze_with_soundings
+  inputs:
+    code: "import pandas as pd\n\n# Access prior phase data (zero-copy from temp table!)\n\
+      df = data.extract_sales_data\n\n# Calculate metrics\ndf['revenue'] = df['price']\
+      \ * df['quantity']\ndf['profit_margin'] = df['category'].map({\n    'Electronics':\
+      \ 0.15,\n    'Clothing': 0.40,\n    'Home': 0.25\n})\ndf['profit'] = df['revenue']\
+      \ * df['profit_margin']\ndf['date'] = pd.to_datetime(df['date'])\n\n# Performance\
+      \ classification\ndf['tier'] = pd.cut(df['revenue'],\n                    bins=[0,\
+      \ 2000, 5000, float('inf')],\n                    labels=['Low', 'Medium', 'High'])\n\
+      \nresult = df\n# Auto-creates temp table: _enrich_data\n"
+  name: enrich_data
+  tool: python_data
+- handoffs:
+  - validate_analysis
+  instructions: "Analyze the sales data and provide business insights.\n\nFocus: {{\
+    \ input.analysis_type }}\n\nYou can query the enriched data from temp table _enrich_data.\n\
+    \nProvide structured analysis as JSON:\n{\n  \"key_insights\": [\"insight 1\"\
+    , \"insight 2\", \"insight 3\"],\n  \"top_performers\": [\"product/category with\
+    \ metrics\"],\n  \"recommendations\": [\"actionable rec 1\", \"actionable rec\
+    \ 2\"],\n  \"confidence\": 0.85\n}\n\nBe specific - reference actual products,\
+    \ categories, and numbers.\n"
+  name: analyze_with_soundings
+  output_schema:
+    properties:
+      confidence:
+        maximum: 1
+        minimum: 0
+        type: number
+      key_insights:
+        items:
+          type: string
+        minItems: 3
+        type: array
+      recommendations:
+        items:
+          type: string
+        minItems: 2
+        type: array
+      top_performers:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - key_insights
+    - top_performers
+    - recommendations
+    - confidence
+    type: object
+  soundings:
+    evaluator_instructions: 'Pick the most data-driven and actionable analysis.
 
-  # ========================================================================
-  # PHASE 2: Deterministic Python Enrichment
-  # ========================================================================
-  - name: enrich_data
-    tool: python_data
-    inputs:
-      code: |
-        import pandas as pd
 
-        # Access prior phase data (zero-copy from temp table!)
-        df = data.extract_sales_data
+      Criteria:
 
-        # Calculate metrics
-        df['revenue'] = df['price'] * df['quantity']
-        df['profit_margin'] = df['category'].map({
-            'Electronics': 0.15,
-            'Clothing': 0.40,
-            'Home': 0.25
-        })
-        df['profit'] = df['revenue'] * df['profit_margin']
-        df['date'] = pd.to_datetime(df['date'])
+      - References specific products/categories from the data
 
-        # Performance classification
-        df['tier'] = pd.cut(df['revenue'],
-                            bins=[0, 2000, 5000, float('inf')],
-                            labels=['Low', 'Medium', 'High'])
+      - Uses actual numbers (not generic percentages)
 
-        result = df
-        # Auto-creates temp table: _enrich_data
-    handoffs:
-      - analyze_with_soundings
+      - Recommendations are concrete and achievable
 
-  # ========================================================================
-  # PHASE 3: LLM Analysis with Soundings (3 parallel attempts)
-  # ========================================================================
-  - name: analyze_with_soundings
-    instructions: |
-      Analyze the sales data and provide business insights.
 
-      Focus: {{ input.analysis_type }}
+      (Note: Indexes is zero-based)
 
-      You can query the enriched data from temp table _enrich_data.
 
-      Provide structured analysis as JSON:
-      {
-        "key_insights": ["insight 1", "insight 2", "insight 3"],
-        "top_performers": ["product/category with metrics"],
-        "recommendations": ["actionable rec 1", "actionable rec 2"],
-        "confidence": 0.85
-      }
+      Return: {"winner_index": 0, "reason": "why this one is best", "confidence":
+      0.85}
 
-      Be specific - reference actual products, categories, and numbers.
-    tackle:
-      - set_state
-    soundings:
-      factor: 3
-      mode: evaluate
-      evaluator_instructions: |
-        Pick the most data-driven and actionable analysis.
+      '
+    factor: 3
+    mode: evaluate
+  tackle:
+  - set_state
+- handoffs:
+  - request_approval
+  instructions: "Validate and refine the business analysis.\n\nAnalysis: {{ outputs.analyze_with_soundings\
+    \ }}\n\nCheck:\n1. Do insights reference actual products from our data? (Laptop,\
+    \ Phone, Jacket, Chair, Tablet, Shoes, Desk, Headphones)\n2. Are recommendations\
+    \ specific and achievable?\n3. Is the confidence score reasonable given depth\
+    \ of analysis?\n\nIf issues found: revise the analysis.\nIf all good: confirm\
+    \ validation passed.\n\nOutput same JSON structure with added field:\n{\n  \"\
+    key_insights\": [...],\n  \"top_performers\": [...],\n  \"recommendations\": [...],\n\
+    \  \"confidence\": 0.XX,\n  \"validation_status\": \"passed\" or \"revised\",\n\
+    \  \"validation_notes\": \"what you checked/changed\"\n}\n"
+  name: validate_analysis
+  output_schema:
+    required:
+    - key_insights
+    - recommendations
+    - confidence
+    - validation_status
+    type: object
+  rules:
+    loop_until: satisfied
+    loop_until_prompt: Ensure validation_status is explicitly set to 'passed' to confirm
+      validation succeeded
+    max_attempts: 3
+    max_turns: 1
+  tackle:
+  - set_state
+- decision_points:
+    enabled: true
+    routing:
+      _timeout: create_dashboard
+      publish: create_dashboard
+      skip: finalize
+    timeout_seconds: 60
+    trigger: output
+  instructions: "Request human approval before publishing.\n\nValidated analysis:\n\
+    {{ outputs.validate_analysis | tojson(indent=2) }}\n\nOutput a decision block\
+    \ asking for approval:\n\n<decision>\n{\n  \"question\": \"Publish this analysis\
+    \ as an artifact?\",\n  \"context\": \"Analysis passed validation. Review findings\
+    \ and recommendations above.\",\n  \"severity\": \"info\",\n  \"options\": [\n\
+    \    {\n      \"id\": \"publish\",\n      \"label\": \"Publish Now\",\n      \"\
+    description\": \"Create artifact and complete\",\n      \"style\": \"primary\"\
+    \n    },\n    {\n      \"id\": \"skip\",\n      \"label\": \"Skip Publishing\"\
+    ,\n      \"description\": \"Complete without artifact\",\n      \"style\": \"\
+    secondary\"\n    }\n  ]\n}\n</decision>\n"
+  name: request_approval
+  tackle:
+  - route_to
+- handoffs:
+  - finalize
+  instructions: 'Create an interactive HTML dashboard artifact.
 
-        Criteria:
-        - References specific products/categories from the data
-        - Uses actual numbers (not generic percentages)
-        - Recommendations are concrete and achievable
 
-        Return: {"winner_index": 0, "reason": "why this one is best"}
-    output_schema:
-      type: object
-      required: ["key_insights", "top_performers", "recommendations", "confidence"]
-      properties:
-        key_insights:
-          type: array
-          items: {type: string}
-          minItems: 3
-        top_performers:
-          type: array
-          items: {type: string}
-          minItems: 1
-        recommendations:
-          type: array
-          items: {type: string}
-          minItems: 2
-        confidence:
-          type: number
-          minimum: 0
-          maximum: 1
-    handoffs:
-      - validate_analysis
+    Analysis data: {{ outputs.validate_analysis }}
 
-  # ========================================================================
-  # PHASE 4: Validation with Repair Loop
-  # ========================================================================
-  - name: validate_analysis
-    instructions: |
-      Validate and refine the business analysis.
 
-      Analysis: {{ outputs.analyze_with_soundings }}
+    Use create_artifact to publish a dashboard titled "Sales Analysis Report".
 
-      Check:
-      1. Do insights reference actual products from our data? (Laptop, Phone, Jacket, Chair, Tablet, Shoes, Desk, Headphones)
-      2. Are recommendations specific and achievable?
-      3. Is the confidence score reasonable given depth of analysis?
 
-      If issues found: revise the analysis.
-      If all good: confirm validation passed.
+    Include:
 
-      Output same JSON structure with added field:
-      {
-        "key_insights": [...],
-        "top_performers": [...],
-        "recommendations": [...],
-        "confidence": 0.XX,
-        "validation_status": "passed" or "revised",
-        "validation_notes": "what you checked/changed"
-      }
-    tackle:
-      - set_state
-    rules:
-      max_turns: 1
-      max_attempts: 3
-      loop_until: satisfied
-      loop_until_prompt: "Ensure validation_status is explicitly set to 'passed' to confirm validation succeeded"
-    output_schema:
-      type: object
-      required: ["key_insights", "recommendations", "confidence", "validation_status"]
-    handoffs:
-      - request_approval
+    - Key insights in a card grid
 
-  # ========================================================================
-  # PHASE 5: Decision Point (Human Interrupt with Timeout)
-  # ========================================================================
-  - name: request_approval
-    instructions: |
-      Request human approval before publishing.
+    - Top performers list
 
-      Validated analysis:
-      {{ outputs.validate_analysis | tojson(indent=2) }}
+    - Recommendations section
 
-      Output a decision block asking for approval:
+    - Dark theme (#0a0a0a background, #60a5fa accents)
 
-      <decision>
-      {
-        "question": "Publish this analysis as an artifact?",
-        "context": "Analysis passed validation. Review findings and recommendations above.",
-        "severity": "info",
-        "options": [
-          {
-            "id": "publish",
-            "label": "Publish Now",
-            "description": "Create artifact and complete",
-            "style": "primary"
-          },
-          {
-            "id": "skip",
-            "label": "Skip Publishing",
-            "description": "Complete without artifact",
-            "style": "secondary"
-          }
-        ]
-      }
-      </decision>
-    decision_points:
-      enabled: true
-      trigger: output
-      timeout_seconds: 60
-      routing:
-        publish: create_dashboard
-        skip: finalize
-        _timeout: create_dashboard
-    tackle:
-      - route_to
 
-  # ========================================================================
-  # PHASE 6: Create Artifact (if approved)
-  # ========================================================================
-  - name: create_dashboard
-    instructions: |
-      Create an interactive HTML dashboard artifact.
+    Keep it simple - focus on readability.
 
-      Analysis data: {{ outputs.validate_analysis }}
-
-      Use create_artifact to publish a dashboard titled "Sales Analysis Report".
-
-      Include:
-      - Key insights in a card grid
-      - Top performers list
-      - Recommendations section
-      - Dark theme (#0a0a0a background, #60a5fa accents)
-
-      Keep it simple - focus on readability.
-    tackle:
-      - create_artifact
-      - set_state
-    handoffs:
-      - finalize
-
-  # ========================================================================
-  # PHASE 7: Finalize
-  # ========================================================================
-  - name: finalize
-    instructions: |
-      Cascade complete! Summarize what was accomplished.
-
-      {% if outputs.create_dashboard %}
-      ✓ Published artifact
-      {% else %}
-      ℹ️  Skipped artifact publishing
-      {% endif %}
-
-      Analysis results: {{ outputs.validate_analysis.validation_status }}
-    tackle:
-      - set_state
+    '
+  name: create_dashboard
+  tackle:
+  - create_artifact
+  - set_state
+- instructions: "Cascade complete! Summarize what was accomplished.\n\n{% if outputs.create_dashboard\
+    \ %}\n\u2713 Published artifact\n{% else %}\n\u2139\uFE0F  Skipped artifact publishing\n\
+    {% endif %}\n\nAnalysis results: {{ outputs.validate_analysis.validation_status\
+    \ }}\n"
+  name: finalize
+  tackle:
+  - set_state

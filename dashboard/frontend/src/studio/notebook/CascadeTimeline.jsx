@@ -385,6 +385,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
 
   // Measure timeline position relative to viewport (for input lines)
+  // AND track scroll position for input edges
   useEffect(() => {
     const stripEl = timelineRef.current;
     if (!stripEl) return;
@@ -399,11 +400,30 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       //console.log('[Timeline Offset]', newOffset);
     };
 
+    // Handle scroll on the timeline strip (horizontal scroll)
+    const handleStripScroll = () => {
+      setScrollOffset({
+        x: stripEl.scrollLeft,
+        y: stripEl.scrollTop,
+      });
+    };
+
+    // Handle window/document scroll (vertical page scroll)
+    const handleWindowScroll = () => {
+      // Re-measure timeline position when page scrolls
+      updateOffset();
+    };
+
     // Immediate update
     updateOffset();
+    handleStripScroll();
 
     // Update on resize and when split panel moves
     window.addEventListener('resize', updateOffset);
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+
+    // Listen for scroll on the timeline strip itself
+    stripEl.addEventListener('scroll', handleStripScroll, { passive: true });
 
     // Use ResizeObserver to detect split panel changes
     const resizeObserver = new ResizeObserver(updateOffset);
@@ -417,28 +437,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
     return () => {
       window.removeEventListener('resize', updateOffset);
+      window.removeEventListener('scroll', handleWindowScroll);
+      stripEl.removeEventListener('scroll', handleStripScroll);
       resizeObserver.disconnect();
       clearTimeout(timeout1);
       clearTimeout(timeout2);
       clearTimeout(timeout3);
     };
   }, [layoutMode, cascade?.cascade_id]); // Re-measure when layout or cascade changes
-
-  // Track scroll position for input edges
-  useEffect(() => {
-    const stripEl = timelineRef.current;
-    if (!stripEl) return;
-
-    const handleScroll = () => {
-      setScrollOffset({
-        x: stripEl.scrollLeft,
-        y: stripEl.scrollTop,
-      });
-    };
-
-    stripEl.addEventListener('scroll', handleScroll, { passive: true });
-    return () => stripEl.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // Build FBP layout (must be before early returns)
   const phases = cascade?.phases || [];
@@ -778,6 +784,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             height: phases.length === 0 ? '100%' : `${layout.height}px`,
             position: 'relative',
             minHeight: '100%',
+            overflow: 'visible', // Allow SVG edges to extend beyond
           }}
         >
           {/* Background drop zone - always available for creating independent phases */}
@@ -790,10 +797,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               position: 'absolute',
               left: 0,
               top: 0,
-              width: '100%',
-              height: '100%',
+              width: `${layout.width + 100}px`,  // Extra margin for bezier curves
+              height: `${layout.height + 100}px`,
               pointerEvents: 'none',
               zIndex: 0,
+              overflow: 'visible',
             }}
           >
             {/* Phase-to-phase edges - color coded by context type */}
