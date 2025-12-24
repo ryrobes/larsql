@@ -3,7 +3,7 @@
    ============================================ */
 
 .rich-tooltip-trigger {
-  display: inline-flex;
+  display: contents;
 }
 
 .rich-tooltip {
@@ -191,4 +191,50 @@
   padding-top: 6px;
   border-top: 1px solid rgba(100, 116, 139, 0.15);
   font-style: italic;
+}
+
+/* ============================================
+   SIMPLE TEXT TOOLTIP
+   ============================================ */
+
+.simple-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 60px;
+}
+
+.simple-tooltip-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #f1f5f9;
+  white-space: nowrap;
+}
+
+.simple-tooltip-shortcut {
+  display: inline-block;
+  padding: 2px 6px;
+  background: rgba(100, 116, 139, 0.3);
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  border-radius: 4px;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.simple-tooltip-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+  max-width: 200px;
+}
+
+/* Smaller tooltip styling for simple tooltips */
+.rich-tooltip:has(.simple-tooltip) {
+  min-width: auto;
+}
+
+.rich-tooltip:has(.simple-tooltip) .rich-tooltip-content {
+  padding: 8px 12px;
 }

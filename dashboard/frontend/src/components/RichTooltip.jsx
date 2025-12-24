@@ -27,6 +27,7 @@ const RichTooltip = ({
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [effectivePlacement, setEffectivePlacement] = useState(placement);
   const triggerRef = useRef(null);
   const tooltipRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -35,15 +36,34 @@ const RichTooltip = ({
   const calculatePosition = useCallback(() => {
     if (!triggerRef.current) return;
 
-    const triggerRect = triggerRef.current.getBoundingClientRect();
+    // Use first child element for measurement if wrapper has display:contents
+    const measureElement = triggerRef.current.firstElementChild || triggerRef.current;
+    const triggerRect = measureElement.getBoundingClientRect();
     const tooltipWidth = tooltipRef.current?.offsetWidth || 280;
     const tooltipHeight = tooltipRef.current?.offsetHeight || 100;
     const gap = 12; // Gap between trigger and tooltip
 
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Determine effective placement (flip if not enough room)
+    let actualPlacement = placement;
+
+    // Check if we need to flip
+    if (placement === 'top' && triggerRect.top - tooltipHeight - gap < 10) {
+      actualPlacement = 'bottom';
+    } else if (placement === 'bottom' && triggerRect.bottom + tooltipHeight + gap > viewportHeight - 10) {
+      actualPlacement = 'top';
+    } else if (placement === 'left' && triggerRect.left - tooltipWidth - gap < 10) {
+      actualPlacement = 'right';
+    } else if (placement === 'right' && triggerRect.right + tooltipWidth + gap > viewportWidth - 10) {
+      actualPlacement = 'left';
+    }
+
     let top = 0;
     let left = 0;
 
-    switch (placement) {
+    switch (actualPlacement) {
       case 'right':
         top = triggerRect.top + (triggerRect.height / 2) - (tooltipHeight / 2);
         left = triggerRect.right + gap;
@@ -65,16 +85,15 @@ const RichTooltip = ({
         left = triggerRect.right + gap;
     }
 
-    // Keep tooltip within viewport bounds
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
+    // Keep tooltip within viewport bounds (horizontal)
     if (left + tooltipWidth > viewportWidth - 10) {
       left = viewportWidth - tooltipWidth - 10;
     }
     if (left < 10) {
       left = 10;
     }
+
+    // Keep tooltip within viewport bounds (vertical)
     if (top + tooltipHeight > viewportHeight - 10) {
       top = viewportHeight - tooltipHeight - 10;
     }
@@ -83,6 +102,7 @@ const RichTooltip = ({
     }
 
     setPosition({ top, left });
+    setEffectivePlacement(actualPlacement);
   }, [placement]);
 
   const handleMouseEnter = useCallback(() => {
@@ -124,7 +144,7 @@ const RichTooltip = ({
   const tooltipElement = isVisible && content && createPortal(
     <div
       ref={tooltipRef}
-      className={`rich-tooltip rich-tooltip-${placement} ${className}`}
+      className={`rich-tooltip rich-tooltip-${effectivePlacement} ${className}`}
       style={{
         position: 'fixed',
         top: `${position.top}px`,
@@ -141,23 +161,21 @@ const RichTooltip = ({
       <div className="rich-tooltip-content">
         {content}
       </div>
-      <div className={`rich-tooltip-arrow rich-tooltip-arrow-${placement}`} />
+      <div className={`rich-tooltip-arrow rich-tooltip-arrow-${effectivePlacement}`} />
     </div>,
     document.body
   );
 
   return (
-    <>
-      <div
-        ref={triggerRef}
-        className="rich-tooltip-trigger"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        {children}
-      </div>
+    <span
+      ref={triggerRef}
+      className="rich-tooltip-trigger"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {children}
       {tooltipElement}
-    </>
+    </span>
   );
 };
 
@@ -202,6 +220,36 @@ export const RunningCascadeTooltipContent = ({
       </div>
       <div className="rct-action-hint">Click to join</div>
     </div>
+  );
+};
+
+/**
+ * Simple text tooltip content - for basic label tooltips
+ */
+export const SimpleTooltipContent = ({ label, shortcut, description }) => {
+  return (
+    <div className="simple-tooltip">
+      <div className="simple-tooltip-label">{label}</div>
+      {shortcut && <kbd className="simple-tooltip-shortcut">{shortcut}</kbd>}
+      {description && <div className="simple-tooltip-desc">{description}</div>}
+    </div>
+  );
+};
+
+/**
+ * Helper wrapper for simple text tooltips
+ */
+export const Tooltip = ({ children, label, shortcut, description, placement = 'top', delay = 300 }) => {
+  if (!label) return children;
+
+  return (
+    <RichTooltip
+      placement={placement}
+      delay={delay}
+      content={<SimpleTooltipContent label={label} shortcut={shortcut} description={description} />}
+    >
+      {children}
+    </RichTooltip>
   );
 };
 

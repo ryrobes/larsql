@@ -1,4 +1,0 @@
-verifyDepsBeforeRun: install
-packages:
-  - 'frontend'
-  - 'packages/*'

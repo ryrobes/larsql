@@ -1,5 +1,0 @@
-@reference "../../css/globals.css";
-
-.marimo {
-  @apply bg-background text-foreground;
-}

@@ -7,6 +7,7 @@ import PhaseCard from './PhaseCard';
 import PhaseDetailPanel from './PhaseDetailPanel';
 import { PhaseAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
+import { Tooltip } from '../../components/RichTooltip';
 import './CascadeTimeline.css';
 
 /**
@@ -683,43 +684,51 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
           {/* Layout Toggle */}
           <div className="cascade-view-toggle">
-            <button
-              className={`cascade-view-btn ${layoutMode === 'linear' ? 'active' : ''}`}
-              onClick={() => setLayoutMode('linear')}
-              title="Linear view (IDE mode)"
-            >
-              <Icon icon="mdi:view-sequential" width="16" />
-            </button>
-            <button
-              className={`cascade-view-btn ${layoutMode === 'graph' ? 'active' : ''}`}
-              onClick={() => setLayoutMode('graph')}
-              title="Graph view (DAG structure)"
-            >
-              <Icon icon="mdi:graph" width="16" />
-            </button>
+            <Tooltip label="Linear view" description="IDE-style sequential layout">
+              <button
+                className={`cascade-view-btn ${layoutMode === 'linear' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('linear')}
+              >
+                <Icon icon="mdi:view-sequential" width="16" />
+              </button>
+            </Tooltip>
+            <Tooltip label="Graph view" description="DAG structure visualization">
+              <button
+                className={`cascade-view-btn ${layoutMode === 'graph' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('graph')}
+              >
+                <Icon icon="mdi:graph" width="16" />
+              </button>
+            </Tooltip>
           </div>
 
           {/* Edge Legend */}
-          <div className="cascade-edge-legend" title="Edge color legend: shows data flow type">
-            <Icon icon="mdi:information-outline" width="14" />
-            <div className="legend-dots">
-              <div className="legend-dot" style={{ backgroundColor: '#00e5ff' }} title="Cyan: Data flow ({{ outputs.X }})" />
-              <div className="legend-dot" style={{ backgroundColor: '#a78bfa' }} title="Purple: Selective context" />
-              <div className="legend-dot" style={{ backgroundColor: '#64748b' }} title="Gray: Execution order only" />
-              <div className="legend-dot" style={{ backgroundColor: '#ff006e' }} title="Pink: Branch/merge" />
-              <div className="legend-dot legend-dot-gradient" title="Warm colors: Input parameters (color varies per input)" />
+          <Tooltip
+            label="Edge Legend"
+            description="Cyan: Data flow • Purple: Context • Gray: Execution order • Pink: Branch/merge • Warm: Input params"
+          >
+            <div className="cascade-edge-legend">
+              <Icon icon="mdi:information-outline" width="14" />
+              <div className="legend-dots">
+                <div className="legend-dot" style={{ backgroundColor: '#00e5ff' }} />
+                <div className="legend-dot" style={{ backgroundColor: '#a78bfa' }} />
+                <div className="legend-dot" style={{ backgroundColor: '#64748b' }} />
+                <div className="legend-dot" style={{ backgroundColor: '#ff006e' }} />
+                <div className="legend-dot legend-dot-gradient" />
+              </div>
             </div>
-          </div>
+          </Tooltip>
 
           {/* Anatomy Panel Toggle */}
-          <button
-            className={`cascade-btn cascade-btn-anatomy ${showAnatomyPanel ? 'active' : ''}`}
-            onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
-            title="Phase anatomy (internal structure visualization)"
-          >
-            <Icon icon="mdi:cpu" width="16" />
-            Anatomy
-          </button>
+          <Tooltip label="Phase Anatomy" description="Internal structure visualization">
+            <button
+              className={`cascade-btn cascade-btn-anatomy ${showAnatomyPanel ? 'active' : ''}`}
+              onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
+            >
+              <Icon icon="mdi:cpu" width="16" />
+              Anatomy
+            </button>
+          </Tooltip>
 
           <div className="cascade-control-divider" />
 
@@ -728,40 +737,45 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           </span>
 
           {/* Open Cascade Button */}
-          <button
-            className="cascade-btn cascade-btn-secondary"
-            onClick={() => onOpenBrowser && onOpenBrowser()}
-            title="Open cascade file"
-          >
-            <Icon icon="mdi:folder-open" width="16" />
-            Open
-          </button>
+          <Tooltip label="Open" description="Open cascade file">
+            <button
+              className="cascade-btn cascade-btn-secondary"
+              onClick={() => onOpenBrowser && onOpenBrowser()}
+            >
+              <Icon icon="mdi:folder-open" width="16" />
+              Open
+            </button>
+          </Tooltip>
 
-          <button
-            className="cascade-btn cascade-btn-secondary"
-            onClick={handleRestart}
-            title="Restart session"
-          >
-            <Icon icon="mdi:restart" width="16" />
-          </button>
+          <Tooltip label="Restart" description="Clear session and start fresh">
+            <button
+              className="cascade-btn cascade-btn-secondary"
+              onClick={handleRestart}
+            >
+              <Icon icon="mdi:restart" width="16" />
+            </button>
+          </Tooltip>
 
-          <button
-            className="cascade-btn cascade-btn-secondary"
-            onClick={handleSave}
-            disabled={!cascadeDirty && cascadePath}
-          >
-            <Icon icon="mdi:content-save" width="16" />
-            Save
-          </button>
+          <Tooltip label="Save" description="Save cascade changes">
+            <button
+              className="cascade-btn cascade-btn-secondary"
+              onClick={handleSave}
+              disabled={!cascadeDirty && cascadePath}
+            >
+              <Icon icon="mdi:content-save" width="16" />
+              Save
+            </button>
+          </Tooltip>
 
-          <button
-            className="cascade-btn cascade-btn-tool"
-            onClick={handleSaveAsTool}
-            title="Save to tackle/ as reusable tool"
-          >
-            <Icon icon="mdi:package" width="16" />
-            As Tool
-          </button>
+          <Tooltip label="Save as Tool" description="Save to tackle/ as reusable tool">
+            <button
+              className="cascade-btn cascade-btn-tool"
+              onClick={handleSaveAsTool}
+            >
+              <Icon icon="mdi:package" width="16" />
+              As Tool
+            </button>
+          </Tooltip>
 
         </div>
       </div>

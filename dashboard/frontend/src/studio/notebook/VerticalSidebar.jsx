@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Icon } from '@iconify/react';
-import RichTooltip, { RunningCascadeTooltipContent } from '../../components/RichTooltip';
+import RichTooltip, { RunningCascadeTooltipContent, Tooltip } from '../../components/RichTooltip';
 import './VerticalSidebar.css';
 
 /**
@@ -30,8 +30,6 @@ const VerticalSidebar = ({
   currentSessionId = null,
   onJoinSession,
 }) => {
-  const [activeTooltip, setActiveTooltip] = useState(null);
-
   const navItems = [
     {
       id: 'cockpit',
@@ -95,19 +93,14 @@ const VerticalSidebar = ({
       {/* Navigation Items */}
       <div className="vsidebar-nav">
         {navItems.filter(item => item.enabled).map(item => (
-          <button
-            key={item.id}
-            className={`vsidebar-nav-btn ${item.active ? 'active' : ''}`}
-            onClick={item.onClick}
-            onMouseEnter={() => setActiveTooltip(item.id)}
-            onMouseLeave={() => setActiveTooltip(null)}
-            title={item.label}
-          >
-            <Icon icon={item.icon} width="24" />
-            {activeTooltip === item.id && (
-              <span className="vsidebar-tooltip">{item.label}</span>
-            )}
-          </button>
+          <Tooltip key={item.id} label={item.label} placement="right">
+            <button
+              className={`vsidebar-nav-btn ${item.active ? 'active' : ''}`}
+              onClick={item.onClick}
+            >
+              <Icon icon={item.icon} width="24" />
+            </button>
+          </Tooltip>
         ))}
       </div>
 
@@ -163,36 +156,25 @@ const VerticalSidebar = ({
 
         {/* Blocked sessions */}
         {onBlocked && (
-          <button
-            className="vsidebar-nav-btn vsidebar-blocked-btn"
-            onClick={onBlocked}
-            onMouseEnter={() => setActiveTooltip('blocked')}
-            onMouseLeave={() => setActiveTooltip(null)}
-            title="Blocked Sessions"
-          >
-            <Icon icon="mdi:block-helper" width="24" />
-            {blockedCount > 0 && (
-              <span className="vsidebar-badge">{blockedCount}</span>
-            )}
-            {activeTooltip === 'blocked' && (
-              <span className="vsidebar-tooltip">Blocked ({blockedCount})</span>
-            )}
-          </button>
+          <Tooltip label={`Blocked Sessions (${blockedCount})`} placement="right">
+            <button
+              className="vsidebar-nav-btn vsidebar-blocked-btn"
+              onClick={onBlocked}
+            >
+              <Icon icon="mdi:block-helper" width="24" />
+              {blockedCount > 0 && (
+                <span className="vsidebar-badge">{blockedCount}</span>
+              )}
+            </button>
+          </Tooltip>
         )}
 
         {/* SSE Connection Status */}
-        <div
-          className={`vsidebar-sse-indicator ${sseConnected ? 'connected' : 'disconnected'}`}
-          onMouseEnter={() => setActiveTooltip('sse')}
-          onMouseLeave={() => setActiveTooltip(null)}
-          title={sseConnected ? 'Connected' : 'Disconnected'}
-        >
-          {activeTooltip === 'sse' && (
-            <span className="vsidebar-tooltip">
-              {sseConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          )}
-        </div>
+        <Tooltip label={sseConnected ? 'Connected' : 'Disconnected'} placement="right">
+          <div
+            className={`vsidebar-sse-indicator ${sseConnected ? 'connected' : 'disconnected'}`}
+          />
+        </Tooltip>
       </div>
     </div>
   );

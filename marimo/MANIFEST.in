@@ -1,6 +1,0 @@
-recursive-include marimo/_static *
-recursive-include marimo/_lsp *
-recursive-include marimo/_tutorials *
-include marimo/py.typed
-include third_party.txt
-include third_party_licenses.txt

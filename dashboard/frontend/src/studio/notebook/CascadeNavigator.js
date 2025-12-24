@@ -10,6 +10,7 @@ import VariablePalette from './VariablePalette';
 import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
 import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
+import { Tooltip } from '../../components/RichTooltip';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -62,22 +63,25 @@ function inferType(value) {
 // Status icon component
 function StatusIcon({ status }) {
   const config = {
-    pending: { icon: 'mdi:clock-outline', color: '#64748b', title: 'Pending' },
-    running: { icon: 'mdi:loading', color: '#fbbf24', title: 'Running', spin: true },
-    success: { icon: 'mdi:check-circle', color: '#34d399', title: 'Success' },
-    error: { icon: 'mdi:alert-circle', color: '#f87171', title: 'Error' },
-    stale: { icon: 'mdi:clock-alert-outline', color: '#fb923c', title: 'Stale - needs re-run' }
+    pending: { icon: 'mdi:clock-outline', color: '#64748b', label: 'Pending' },
+    running: { icon: 'mdi:loading', color: '#fbbf24', label: 'Running', spin: true },
+    success: { icon: 'mdi:check-circle', color: '#34d399', label: 'Success' },
+    error: { icon: 'mdi:alert-circle', color: '#f87171', label: 'Error' },
+    stale: { icon: 'mdi:clock-alert-outline', color: '#fb923c', label: 'Stale - needs re-run' }
   };
 
-  const { icon, color, title, spin } = config[status] || config.pending;
+  const { icon, color, label, spin } = config[status] || config.pending;
 
   return (
-    <Icon
-      icon={icon}
-      className={`phase-status-icon ${spin ? 'spin' : ''}`}
-      style={{ color }}
-      title={title}
-    />
+    <Tooltip label={label}>
+      <span className="phase-status-icon-wrapper">
+        <Icon
+          icon={icon}
+          className={`phase-status-icon ${spin ? 'spin' : ''}`}
+          style={{ color }}
+        />
+      </span>
+    </Tooltip>
   );
 }
 
@@ -225,19 +229,25 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
         {/* Stats: row count, duration, and cache indicator */}
         <div className="nav-phase-stats">
           {cellState?.cached && (
-            <span className="nav-phase-cached" title="Result from cache">
-              cached
-            </span>
+            <Tooltip label="Result from cache">
+              <span className="nav-phase-cached">
+                cached
+              </span>
+            </Tooltip>
           )}
           {hasResult && rowCount > 0 && (
-            <span className="nav-phase-rows" title={`${rowCount} rows`}>
-              {formatRowCount(rowCount)} rows
-            </span>
+            <Tooltip label={`${rowCount} rows`}>
+              <span className="nav-phase-rows">
+                {formatRowCount(rowCount)} rows
+              </span>
+            </Tooltip>
           )}
           {duration !== undefined && duration !== null && (
-            <span className="nav-phase-duration" title={`Execution time: ${duration}ms`}>
-              {formatDuration(duration)}
-            </span>
+            <Tooltip label={`Execution time: ${duration}ms`}>
+              <span className="nav-phase-duration">
+                {formatDuration(duration)}
+              </span>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -290,17 +300,18 @@ function ArtifactPill({ phaseName, artifactType, index, label }) {
   });
 
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={`var-pill ${isDragging ? 'dragging' : ''}`}
-      style={{ borderColor: config.color + '34' }}
-      title={`{{ ${jinjaPath} }}`}
-    >
-      <Icon icon={config.icon} width="12" style={{ color: config.color }} />
-      <span style={{ color: config.color }}>{label}</span>
-    </div>
+    <Tooltip label={`{{ ${jinjaPath} }}`}>
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        className={`var-pill ${isDragging ? 'dragging' : ''}`}
+        style={{ borderColor: config.color + '34' }}
+      >
+        <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+        <span style={{ color: config.color }}>{label}</span>
+      </div>
+    </Tooltip>
   );
 }
 
@@ -474,18 +485,18 @@ function MediaSection({ phases, cellStates, onNavigateToPhase }) {
               : item.imagePath;
 
             return (
-              <div
-                key={item.key}
-                className="nav-media-item"
-                onClick={() => onNavigateToPhase(item.phaseName, { outputTab: 'images' })}
-                title={`${item.phaseName} - Image ${item.imageIndex + 1}`}
-              >
-                <img src={imageUrl} alt={`${item.phaseName} output`} />
-                <div className="nav-media-label">
-                  <Icon icon="mdi:image" width="12" />
-                  <span>{item.phaseName}</span>
+              <Tooltip key={item.key} label={`${item.phaseName} - Image ${item.imageIndex + 1}`}>
+                <div
+                  className="nav-media-item"
+                  onClick={() => onNavigateToPhase(item.phaseName, { outputTab: 'images' })}
+                >
+                  <img src={imageUrl} alt={`${item.phaseName} output`} />
+                  <div className="nav-media-label">
+                    <Icon icon="mdi:image" width="12" />
+                    <span>{item.phaseName}</span>
+                  </div>
                 </div>
-              </div>
+              </Tooltip>
             );
           })}
         </div>
@@ -789,30 +800,32 @@ function CascadeNavigator() {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
           {/* Toggle button row */}
           <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              className="nav-yaml-toggle-btn"
-              onClick={() => setYamlViewMode(!yamlViewMode)}
-              title={yamlViewMode ? "Show Navigator" : "Show YAML Editor"}
-            >
-              <Icon
-                icon={yamlViewMode ? 'mdi:view-dashboard' : 'mdi:code-braces'}
-                width="14"
-              />
-            </button>
+            <Tooltip label={yamlViewMode ? "Show Navigator" : "Show YAML Editor"}>
+              <button
+                className="nav-yaml-toggle-btn"
+                onClick={() => setYamlViewMode(!yamlViewMode)}
+              >
+                <Icon
+                  icon={yamlViewMode ? 'mdi:view-dashboard' : 'mdi:code-braces'}
+                  width="14"
+                />
+              </button>
+            </Tooltip>
 
-            <button
-              className="nav-run-all-btn"
-              onClick={handleRunAll}
-              disabled={isRunningAll || phases.length === 0}
-              title={inputValidationError || "Run all phases"}
-            >
-              {isRunningAll ? (
-                <Icon icon="mdi:loading" className="spin" width="14" />
-              ) : (
-                <Icon icon="mdi:play" width="14" />
-              )}
-              Run All
-            </button>
+            <Tooltip label={inputValidationError || "Run all phases"}>
+              <button
+                className="nav-run-all-btn"
+                onClick={handleRunAll}
+                disabled={isRunningAll || phases.length === 0}
+              >
+                {isRunningAll ? (
+                  <Icon icon="mdi:loading" className="spin" width="14" />
+                ) : (
+                  <Icon icon="mdi:play" width="14" />
+                )}
+                Run All
+              </button>
+            </Tooltip>
           </div>
 
           {inputValidationError && (
