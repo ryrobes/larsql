@@ -793,6 +793,61 @@ PARTITION BY model_type;
 
 
 # =============================================================================
+# HUGGINGFACE SPACES TABLE - Harbor System Cache
+# =============================================================================
+# Stores user's HuggingFace Spaces with status/cost tracking.
+# Replaces in-memory cache with ClickHouse-backed persistence.
+
+HF_SPACES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS hf_spaces (
+    -- Core Identity
+    space_id String,                    -- e.g., "ryrobes/Qwen-Image-Layered"
+    author String,                      -- e.g., "ryrobes"
+    space_name String,                  -- e.g., "Qwen-Image-Layered"
+
+    -- Status & Runtime
+    status LowCardinality(String),      -- RUNNING, SLEEPING, BUILDING, PAUSED, STOPPED, RUNTIME_ERROR
+    hardware LowCardinality(Nullable(String)),  -- t4-medium, a100-large, cpu-basic, etc.
+    sdk LowCardinality(Nullable(String)),       -- gradio, streamlit, docker, static
+
+    -- Cost Information
+    hourly_cost Nullable(Float64),      -- Computed from hardware tier
+    is_billable Bool DEFAULT false,     -- True if RUNNING and costs > 0
+    is_callable Bool DEFAULT false,     -- True if Gradio + RUNNING
+
+    -- API Schema (cached introspection)
+    endpoints_json Nullable(String),    -- Gradio API endpoints and parameters
+
+    -- Metadata
+    private Bool DEFAULT false,
+    space_url String DEFAULT '',
+    sleep_time Nullable(Int32),         -- Seconds until auto-sleep
+    requested_hardware Nullable(String),
+
+    -- Tracking Timestamps
+    first_seen DateTime64(3) DEFAULT now64(3),
+    last_seen DateTime64(3) DEFAULT now64(3),
+    last_refreshed DateTime64(3) DEFAULT now64(3),
+
+    -- Usage Stats (computed from unified_logs)
+    total_invocations Nullable(UInt64) DEFAULT 0,
+    last_invocation Nullable(DateTime64(3)),
+
+    -- Indexes
+    INDEX idx_space_id space_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_author author TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_status status TYPE set(10) GRANULARITY 1,
+    INDEX idx_hardware hardware TYPE set(50) GRANULARITY 1,
+    INDEX idx_sdk sdk TYPE set(10) GRANULARITY 1,
+    INDEX idx_is_billable is_billable TYPE set(2) GRANULARITY 1,
+    INDEX idx_is_callable is_callable TYPE set(2) GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(last_refreshed)
+ORDER BY (space_id);
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -865,6 +920,7 @@ def get_all_schemas() -> dict:
         "context_cards": CONTEXT_CARDS_SCHEMA,
         "ui_sql_log": UI_SQL_LOG_SCHEMA,
         "openrouter_models": OPENROUTER_MODELS_SCHEMA,
+        "hf_spaces": HF_SPACES_SCHEMA,
     }
 
 

@@ -11,6 +11,7 @@ import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
 import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
 import { Tooltip } from '../../components/RichTooltip';
+import { Button } from '../../components';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -801,30 +802,25 @@ function CascadeNavigator() {
           {/* Toggle button row */}
           <div style={{ display: 'flex', gap: '6px' }}>
             <Tooltip label={yamlViewMode ? "Show Navigator" : "Show YAML Editor"}>
-              <button
-                className="nav-yaml-toggle-btn"
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={yamlViewMode ? 'mdi:view-dashboard' : 'mdi:code-braces'}
                 onClick={() => setYamlViewMode(!yamlViewMode)}
-              >
-                <Icon
-                  icon={yamlViewMode ? 'mdi:view-dashboard' : 'mdi:code-braces'}
-                  width="14"
-                />
-              </button>
+              />
             </Tooltip>
 
             <Tooltip label={inputValidationError || "Run all phases"}>
-              <button
-                className="nav-run-all-btn"
+              <Button
+                variant="primary"
+                size="sm"
+                icon={isRunningAll ? "mdi:loading" : "mdi:play"}
                 onClick={handleRunAll}
                 disabled={isRunningAll || phases.length === 0}
+                loading={isRunningAll}
               >
-                {isRunningAll ? (
-                  <Icon icon="mdi:loading" className="spin" width="14" />
-                ) : (
-                  <Icon icon="mdi:play" width="14" />
-                )}
                 Run All
-              </button>
+              </Button>
             </Tooltip>
           </div>
 

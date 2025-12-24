@@ -8,6 +8,7 @@ import PhaseDetailPanel from './PhaseDetailPanel';
 import { PhaseAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
 import { Tooltip } from '../../components/RichTooltip';
+import { Button } from '../../components';
 import './CascadeTimeline.css';
 
 /**
@@ -721,13 +722,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
           {/* Anatomy Panel Toggle */}
           <Tooltip label="Phase Anatomy" description="Internal structure visualization">
-            <button
-              className={`cascade-btn cascade-btn-anatomy ${showAnatomyPanel ? 'active' : ''}`}
+            <Button
+              variant="secondary"
+              active={showAnatomyPanel}
+              icon="mdi:cpu"
               onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
             >
-              <Icon icon="mdi:cpu" width="16" />
               Anatomy
-            </button>
+            </Button>
           </Tooltip>
 
           <div className="cascade-control-divider" />
@@ -738,43 +740,42 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
           {/* Open Cascade Button */}
           <Tooltip label="Open" description="Open cascade file">
-            <button
-              className="cascade-btn cascade-btn-secondary"
+            <Button
+              variant="secondary"
+              icon="mdi:folder-open"
               onClick={() => onOpenBrowser && onOpenBrowser()}
             >
-              <Icon icon="mdi:folder-open" width="16" />
               Open
-            </button>
+            </Button>
           </Tooltip>
 
           <Tooltip label="Restart" description="Clear session and start fresh">
-            <button
-              className="cascade-btn cascade-btn-secondary"
+            <Button
+              variant="secondary"
+              icon="mdi:restart"
               onClick={handleRestart}
-            >
-              <Icon icon="mdi:restart" width="16" />
-            </button>
+            />
           </Tooltip>
 
           <Tooltip label="Save" description="Save cascade changes">
-            <button
-              className="cascade-btn cascade-btn-secondary"
+            <Button
+              variant="secondary"
+              icon="mdi:content-save"
               onClick={handleSave}
               disabled={!cascadeDirty && cascadePath}
             >
-              <Icon icon="mdi:content-save" width="16" />
               Save
-            </button>
+            </Button>
           </Tooltip>
 
           <Tooltip label="Save as Tool" description="Save to tackle/ as reusable tool">
-            <button
-              className="cascade-btn cascade-btn-tool"
+            <Button
+              variant="tool"
+              icon="mdi:package"
               onClick={handleSaveAsTool}
             >
-              <Icon icon="mdi:package" width="16" />
               As Tool
-            </button>
+            </Button>
           </Tooltip>
 
         </div>

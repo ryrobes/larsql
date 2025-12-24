@@ -2,6 +2,7 @@ import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import ModelIcon, { getProviderColor, getProvider } from '../../components/ModelIcon';
+import { Badge } from '../../components';
 import './PhaseCard.css';
 
 /**
@@ -198,23 +199,23 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
         {/* Reforge steps - from YAML (BEFORE execution) */}
         {reforgeSteps && !soundingInfo && (
-          <span className="phase-card-badge phase-card-badge-reforge" title={`${reforgeSteps} reforge iterations`}>
+          <Badge variant="label" color="purple" size="sm">
             {reforgeSteps}x reforge
-          </span>
+          </Badge>
         )}
 
         {/* Cached indicator (after execution) */}
         {isCached && status === 'success' && (
-          <span className="phase-card-badge phase-card-badge-cached" title="Cached result">
+          <Badge variant="label" color="purple" size="sm">
             cached
-          </span>
+          </Badge>
         )}
 
         {/* Auto-fix indicator (after execution) */}
         {autoFixed && (
-          <span className="phase-card-badge phase-card-badge-fixed" title="Auto-fixed">
+          <Badge variant="label" color="green" size="sm">
             🔧 fixed
-          </span>
+          </Badge>
         )}
       </div>
 
