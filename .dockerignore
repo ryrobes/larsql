@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Node
+node_modules/
+npm-debug.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local data (mounted as volumes instead)
+data/
+logs/
+graphs/
+states/
+images/
+audio/
+session_dbs/
+rabbitize-runs/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/snapshots/
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+
+# Local config
+.env
+.env.local
+*.local
+
+# Marimo (separate project)
+marimo/
+
+# OS
+.DS_Store
+Thumbs.db

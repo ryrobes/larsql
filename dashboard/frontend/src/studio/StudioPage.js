@@ -4,6 +4,7 @@ import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import useStudioQueryStore from './stores/studioQueryStore';
 import useStudioCascadeStore from './stores/studioCascadeStore';
+import useRunningSessions from './hooks/useRunningSessions';
 import SchemaTree from './components/SchemaTree';
 import QueryTabManager from './components/QueryTabManager';
 import SqlEditor from './components/SqlEditor';
@@ -55,8 +56,18 @@ function StudioPage({
     replaySessionId,
     cascadeSessionId,
     fetchDefaultModel,
-    fetchPhaseTypes
+    fetchPhaseTypes,
+    joinLiveSession
   } = useStudioCascadeStore();
+
+  // Poll for running sessions
+  const { sessions: runningSessions } = useRunningSessions(5000);
+
+  // Handler for joining a running session from the sidebar
+  const handleJoinSession = useCallback(async (session) => {
+    console.log('[StudioPage] Joining session:', session);
+    await joinLiveSession(session.session_id, session.cascade_id, session.cascade_file);
+  }, [joinLiveSession]);
 
   // Persist split sizes in state
   const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
@@ -402,6 +413,9 @@ function StudioPage({
               onBlocked={onBlocked}
               blockedCount={blockedCount}
               sseConnected={sseConnected}
+              runningSessions={runningSessions}
+              currentSessionId={cascadeSessionId}
+              onJoinSession={handleJoinSession}
             />
             <Split
               className="studio-horizontal-split"

@@ -254,47 +254,53 @@ The `_query_lock` is not a real bottleneck because:
 
 ## Deployment Strategy
 
-### Docker Image Contents
+### Quick Start with Docker Compose
 
-```dockerfile
-FROM python:3.11-slim
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your OPENROUTER_API_KEY
 
-# System dependencies
-RUN apt-get update && apt-get install -y \
-    nodejs npm \
-    # ... other deps
+# 2. Start (Windlass + ClickHouse)
+docker compose up
 
-# Python package
-COPY . /app
-RUN pip install /app
-
-# Rabbitize (browser automation)
-COPY rabbitize /app/rabbitize
-RUN cd /app/rabbitize && npm install
-
-# Environment
-ENV WINDLASS_ROOT=/data
-ENV WINDLASS_USE_CLICKHOUSE_SERVER=true
-
-EXPOSE 5001
-CMD ["python", "dashboard/backend/app.py"]
+# 3. Access UI at http://localhost:5001
 ```
+
+### Deployment Tiers
+
+| Tier | Command | What You Get |
+|------|---------|--------------|
+| **Default** | `docker compose up` | Windlass + ClickHouse |
+| **Full** | `docker compose --profile full up` | + Elasticsearch + Kibana |
+| **BYOI** | `WINDLASS_CLICKHOUSE_HOST=xxx docker compose up windlass` | Just Windlass (you provide ClickHouse) |
+| **Scale** | `docker compose up --scale windlass=3` | Multiple workers |
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Multi-stage build: Python + Node.js + Rabbitize + Frontend |
+| `docker-compose.yml` | Tiered deployment with profiles |
+| `.env.example` | Environment configuration template |
+| `.dockerignore` | Build optimization |
 
 ### Environment Variables
 
-**Required:**
-```bash
-OPENROUTER_API_KEY=xxx
-WINDLASS_CLICKHOUSE_HOST=clickhouse.internal
-WINDLASS_USE_CLICKHOUSE_SERVER=true
-```
+See `.env.example` for full list. Key variables:
 
-**Optional:**
 ```bash
-WINDLASS_ROOT=/data              # Workspace root
-WINDLASS_DEFAULT_MODEL=...       # Default LLM
-HF_TOKEN=xxx                     # HuggingFace (Harbor)
-ELEVENLABS_API_KEY=xxx           # TTS
+# Required
+OPENROUTER_API_KEY=sk-or-v1-xxx
+
+# ClickHouse (defaults work for bundled instance)
+WINDLASS_CLICKHOUSE_HOST=clickhouse  # or your-clickhouse.example.com
+WINDLASS_CLICKHOUSE_PORT=9000
+
+# Optional
+WINDLASS_DEFAULT_MODEL=google/gemini-2.5-flash-lite
+HF_TOKEN=hf_xxx                      # HuggingFace Harbor
+ELEVENLABS_API_KEY=xxx               # TTS
 ```
 
 ### Kubernetes Example
@@ -303,7 +309,7 @@ ELEVENLABS_API_KEY=xxx           # TTS
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: windlass-worker
+  name: windlass
 spec:
   replicas: 3
   selector:
@@ -392,7 +398,7 @@ spec:
 | Session cleanup | 5/10 | 🟡 Needs Fix | No automatic cleanup |
 | Orphan recovery | 5/10 | 🟡 Optional | Manual but functional |
 | Configuration | 9/10 | ✅ Ready | Clean env-var based |
-| Docker readiness | 7/10 | 🟡 Needs Work | No Dockerfile yet |
+| Docker readiness | 9/10 | ✅ Ready | Dockerfile + docker-compose.yml |
 
 ---
 
@@ -408,9 +414,10 @@ spec:
    - Move `_audible_signals` to ClickHouse table
    - Simple: `INSERT/SELECT` with session_id key
 
-3. **Create Docker Image**
-   - Single image for worker + UI
-   - All dependencies bundled (Node.js, Rabbitize)
+3. **Add Health Endpoint**
+   - Add `/api/health` endpoint to Flask app
+   - Check ClickHouse connectivity
+   - Return worker status for load balancer probes
 
 ### Phase 2: Hardening (Next Sprint)
 

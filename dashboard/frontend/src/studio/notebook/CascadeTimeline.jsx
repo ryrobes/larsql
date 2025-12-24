@@ -960,16 +960,27 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       )}
 
       {/* Right Side Panel - Phase Anatomy */}
-      {showAnatomyPanel && selectedPhase && (
-        <div className="cascade-anatomy-panel-container">
-          <PhaseAnatomyPanel
-            phase={selectedPhase}
-            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
-            cellState={cellStates[selectedPhase.name]}
-            onClose={() => setShowAnatomyPanel(false)}
-          />
-        </div>
-      )}
+      {showAnatomyPanel && selectedPhase && (() => {
+        const filteredLogs = logs.filter(log => log.phase_name === selectedPhase.name);
+        const quartermasterLogs = logs.filter(log => log.role === 'quartermaster' || log.node_type === 'quartermaster_result');
+        console.log('[CascadeTimeline] Logs for PhaseAnatomy:', {
+          selectedPhaseName: selectedPhase.name,
+          totalLogs: logs.length,
+          filteredLogsCount: filteredLogs.length,
+          allQuartermasterLogs: quartermasterLogs.map(l => ({ phase_name: l.phase_name, role: l.role })),
+          phaseTackle: selectedPhase.tackle
+        });
+        return (
+          <div className="cascade-anatomy-panel-container">
+            <PhaseAnatomyPanel
+              phase={selectedPhase}
+              phaseLogs={filteredLogs}
+              cellState={cellStates[selectedPhase.name]}
+              onClose={() => setShowAnatomyPanel(false)}
+            />
+          </div>
+        );
+      })()}
 
     </div>
   );

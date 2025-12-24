@@ -42,7 +42,7 @@ phases:
       max_turns: 2
 
     tackle:
-      - set_state
+      - manifest
 
     output_schema:
       type: object
@@ -88,17 +88,19 @@ phases:
 
         Explain your reasoning and declare the winner by index (0, 1, or 2).
 
-      validator: |
-        def validate(output):
-            if not output or len(output) < 100:
-                return {"valid": False, "reason": "Output too short"}
-            return {"valid": True, "reason": "Output meets minimum length"}
+      # Polyglot validator - inline Python code for pre-filtering soundings
+      validator:
+        python: |
+          if not content or len(content) < 100:
+              result = {"valid": False, "reason": "Output too short"}
+          else:
+              result = {"valid": True, "reason": "Output meets minimum length"}
 
     rules:
       max_turns: 3
 
     tackle:
-      - set_state
+      - manifest
 
   # ============================================================
   # PHASE 3: Wards (Pre and Post Validators)
@@ -125,32 +127,37 @@ phases:
 
     wards:
       pre:
-        - name: input_quality_check
-          mode: blocking
-          validator: |
-            def validate(context):
-                if not context.get('outputs', {}).get('parallel_brainstorm'):
-                    return {"valid": False, "reason": "No brainstorm output available"}
-                return {"valid": True, "reason": "Input quality verified"}
+        - mode: blocking
+          # Polyglot pre-ward - inline Python validation
+          validator:
+            python: |
+              # Check if brainstorm output exists
+              if not content or len(content) < 50:
+                  result = {"valid": False, "reason": "No brainstorm output available"}
+              else:
+                  result = {"valid": True, "reason": "Input quality verified"}
 
       post:
-        - name: proposal_completeness
-          mode: advisory
-          validator: |
-            def validate(output):
-                required = ['summary', 'steps', 'resources', 'timeline']
-                missing = [r for r in required if r.lower() not in output.lower()]
-                if missing:
-                    return {"valid": False, "reason": f"Missing sections: {missing}"}
-                return {"valid": True, "reason": "All required sections present"}
+        - mode: advisory
+          # Polyglot post-ward - check for required sections
+          validator:
+            python: |
+              required = ['summary', 'steps', 'resources', 'timeline']
+              missing = [r for r in required if r.lower() not in content.lower()]
+              if missing:
+                  result = {"valid": False, "reason": f"Missing sections: {missing}"}
+              else:
+                  result = {"valid": True, "reason": "All required sections present"}
 
-        - name: length_check
-          mode: blocking
-          validator: |
-            def validate(output):
-                if len(output) < 500:
-                    return {"valid": False, "reason": "Proposal too brief"}
-                return {"valid": True, "reason": "Sufficient detail provided"}
+        - mode: blocking
+          # Simple length check using polyglot JavaScript
+          validator:
+            javascript: |
+              const valid = content.length >= 500;
+              result = {
+                valid: valid,
+                reason: valid ? "Sufficient detail provided" : "Proposal too brief"
+              };
 
     rules:
       max_turns: 2
@@ -180,20 +187,22 @@ phases:
     rules:
       max_turns: 5
       max_attempts: 3
-      loop_until: |
-        def validate(output):
-            # Check for all required elements
-            checks = {
-                'actionable': 'step' in output.lower() or 'action' in output.lower(),
-                'timeline': 'week' in output.lower() or 'month' in output.lower() or 'day' in output.lower(),
-                'risks': 'risk' in output.lower() or 'challenge' in output.lower(),
-                'metrics': 'metric' in output.lower() or 'measure' in output.lower() or 'kpi' in output.lower()
-            }
-            passed = all(checks.values())
-            failed = [k for k, v in checks.items() if not v]
-            if passed:
-                return {"valid": True, "reason": "All quality criteria met"}
-            return {"valid": False, "reason": f"Missing elements: {failed}"}
+      # Polyglot loop_until - inline Python validation that runs after each turn
+      loop_until:
+        python: |
+          # Check for all required elements in the output
+          checks = {
+              'actionable': 'step' in content.lower() or 'action' in content.lower(),
+              'timeline': 'week' in content.lower() or 'month' in content.lower() or 'day' in content.lower(),
+              'risks': 'risk' in content.lower() or 'challenge' in content.lower(),
+              'metrics': 'metric' in content.lower() or 'measure' in content.lower() or 'kpi' in content.lower()
+          }
+          passed = all(checks.values())
+          failed = [k for k, v in checks.items() if not v]
+          if passed:
+              result = {"valid": True, "reason": "All quality criteria met"}
+          else:
+              result = {"valid": False, "reason": f"Missing elements: {failed}"}
 
       turn_prompt: |
         Your previous response was missing some elements: {{ validation_reason }}
@@ -320,7 +329,7 @@ phases:
       max_turns: 2
 
     tackle:
-      - set_state
+      - manifest
 
     callouts: "Decision Point: Routing Next Action"
 

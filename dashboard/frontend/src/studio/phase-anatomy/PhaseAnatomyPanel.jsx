@@ -28,6 +28,11 @@ import './PhaseAnatomyPanel.css';
 const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) => {
   // Derive execution data from logs
   const executionData = useMemo(() => {
+    console.log('[PhaseAnatomy] Processing phaseLogs:', {
+      phaseName: phase?.name,
+      logCount: phaseLogs?.length,
+      logs: phaseLogs?.map(l => ({ role: l.role, node_type: l.node_type, phase_name: l.phase_name }))
+    });
     if (!phaseLogs || phaseLogs.length === 0) return null;
 
     // Group logs by sounding index
@@ -37,6 +42,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
     const toolCalls = [];
     const wardResults = { pre: [], post: [] };
     let evaluatorResult = null;
+    let manifestSelection = null; // Quartermaster auto-tool selection
 
     // Helper to parse timestamp
     const parseTs = (ts) => {
@@ -44,7 +50,18 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       return new Date(ts).getTime();
     };
 
+    // Helper to parse metadata_json
+    const parseMetadata = (meta) => {
+      if (!meta) return {};
+      if (typeof meta === 'string') {
+        try { return JSON.parse(meta); } catch { return {}; }
+      }
+      return meta;
+    };
+
     for (const log of phaseLogs) {
+      const metadata = parseMetadata(log.metadata_json);
+
       // Track winning sounding
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winnerIndex = log.winning_sounding_index;
@@ -64,11 +81,24 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         };
       }
 
-      // Group by sounding
-      if (log.sounding_index !== null && log.sounding_index !== undefined) {
-        if (!soundings[log.sounding_index]) {
-          soundings[log.sounding_index] = {
-            index: log.sounding_index,
+      // Group by sounding - prefer top-level sounding_index, fall back to metadata
+      // Use explicit null/undefined check since log.sounding_index may be null
+      let soundingIdx = (log.sounding_index !== null && log.sounding_index !== undefined)
+        ? log.sounding_index
+        : metadata.sounding_index;
+
+      // For non-sounding phases (factor=1), logs won't have sounding_index
+      // Use index 0 as fallback for relevant execution logs
+      const isExecutionLog = ['assistant', 'tool_call', 'structure', 'tool', 'phase_complete', 'error'].includes(log.role) ||
+                             ['agent', 'turn', 'tool_call', 'tool_result'].includes(log.node_type);
+      if ((soundingIdx === null || soundingIdx === undefined) && isExecutionLog) {
+        soundingIdx = 0; // Virtual sounding for non-sounding phases
+      }
+
+      if (soundingIdx !== null && soundingIdx !== undefined && soundingIdx >= 0) {
+        if (!soundings[soundingIdx]) {
+          soundings[soundingIdx] = {
+            index: soundingIdx,
             turns: [],
             toolCalls: [],
             model: null,
@@ -81,7 +111,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           };
         }
 
-        const sounding = soundings[log.sounding_index];
+        const sounding = soundings[soundingIdx];
 
         // Track timestamps for duration calculation
         const logTs = parseTs(log.timestamp_iso);
@@ -90,9 +120,11 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           if (!sounding.lastTs || logTs > sounding.lastTs) sounding.lastTs = logTs;
         }
 
-        // Track turns
-        if (log.turn_number !== null && log.turn_number !== undefined) {
-          const turnIdx = log.turn_number;
+        // Track turns from structure/turn markers OR from metadata.turn_number
+        const turnNumber = metadata.turn_number;
+        if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
+          // Use 0-indexed (turn_number starts at 1 in logs)
+          const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
           while (sounding.turns.length <= turnIdx) {
             sounding.turns.push({
               index: sounding.turns.length,
@@ -113,23 +145,76 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
             if (!turn.lastTs || logTs > turn.lastTs) turn.lastTs = logTs;
           }
 
-          if (log.role === 'tool') {
-            sounding.turns[turnIdx].toolCalls.push({
-              name: log.tool_name || 'unknown',
-              duration: log.duration_ms
-            });
-            sounding.toolCalls.push(log.tool_name || 'unknown');
-            // Accumulate duration per turn (if available)
-            if (log.duration_ms) {
-              sounding.turns[turnIdx].duration += parseFloat(log.duration_ms);
+          // Mark turn as used when we see a turn structure marker
+          if (log.node_type === 'turn') {
+            turn.status = 'running';
+          }
+        }
+
+        // Track tool calls (role='tool_call' or node_type='tool_call')
+        if (log.role === 'tool_call' || log.node_type === 'tool_call') {
+          const toolName = metadata.tool_name || 'unknown';
+          sounding.toolCalls.push(toolName);
+
+          // Add to current turn if we know which turn
+          const turnNumber = metadata.turn_number;
+          let turnIdx = 0;
+          if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
+            turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
+          }
+
+          // Ensure turn exists
+          if (!sounding.turns[turnIdx]) {
+            while (sounding.turns.length <= turnIdx) {
+              sounding.turns.push({
+                index: sounding.turns.length,
+                toolCalls: [],
+                validationResult: null,
+                status: 'running',
+                duration: 0,
+                firstTs: null,
+                lastTs: null
+              });
             }
           }
 
-          if (log.role === 'assistant' || log.role === 'phase_complete') {
-            sounding.turns[turnIdx].status = 'complete';
-            // Track LLM call duration for this turn (if available)
-            if (log.duration_ms) {
-              sounding.turns[turnIdx].duration += parseFloat(log.duration_ms);
+          sounding.turns[turnIdx].toolCalls.push({
+            name: toolName,
+            duration: log.duration_ms
+          });
+        }
+
+        // Mark turn complete on assistant response
+        if (log.role === 'assistant' && log.node_type === 'agent') {
+          // Find the current turn and mark it complete
+          const turnNumber = metadata.turn_number;
+          if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
+            const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
+            if (sounding.turns[turnIdx]) {
+              sounding.turns[turnIdx].status = 'complete';
+              if (log.duration_ms) {
+                sounding.turns[turnIdx].duration += parseFloat(log.duration_ms);
+              }
+            }
+          } else {
+            // No explicit turn_number - create/update turn 0 as fallback
+            if (sounding.turns.length === 0) {
+              sounding.turns.push({
+                index: 0,
+                toolCalls: [],
+                validationResult: null,
+                status: 'complete',
+                duration: log.duration_ms ? parseFloat(log.duration_ms) : 0,
+                firstTs: null,
+                lastTs: null
+              });
+            } else {
+              // Mark last turn as complete
+              const lastTurn = sounding.turns[sounding.turns.length - 1];
+              lastTurn.status = 'complete';
+              if (log.duration_ms) {
+                lastTurn.duration += parseFloat(log.duration_ms);
+              }
             }
           }
         }
@@ -142,7 +227,12 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         // Accumulate cost
         if (log.cost) sounding.cost += parseFloat(log.cost);
 
-        // Track completion
+        // Track completion from sounding_attempt or phase_complete
+        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
+          // Mark all turns as complete
+          sounding.status = 'complete';
+          sounding.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
+        }
         if (log.role === 'phase_complete') {
           sounding.status = 'complete';
         }
@@ -152,30 +242,59 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       }
 
       // Track tool calls globally
-      if (log.role === 'tool' && log.tool_name) {
+      if (log.role === 'tool_call' || log.node_type === 'tool_call') {
+        const toolName = metadata.tool_name || 'unknown';
+        const toolSoundingIdx = (log.sounding_index !== null && log.sounding_index !== undefined)
+          ? log.sounding_index
+          : metadata.sounding_index;
         toolCalls.push({
-          name: log.tool_name,
-          sounding: log.sounding_index,
-          turn: log.turn_number,
+          name: toolName,
+          sounding: toolSoundingIdx,
+          turn: metadata.turn_number,
           duration: log.duration_ms
         });
       }
 
-      // Track ward results
-      if (log.node_type === 'ward' || log.role === 'ward') {
+      // Track ward results (pre_ward, post_ward node types)
+      if (log.node_type === 'pre_ward' || log.node_type === 'post_ward' || log.role === 'ward') {
+        // Ward data is in metadata_json: valid, reason, mode, validator
         const wardResult = {
-          name: log.tool_name || 'validator',
-          status: log.content_json?.valid === true ? 'passed' :
-                  log.content_json?.valid === false ? 'failed' : 'unknown',
-          mode: log.metadata_json?.mode || 'blocking',
-          reason: log.content_json?.reason
+          name: metadata.validator || metadata.tool_name || 'validator',
+          status: metadata.valid === true ? 'passed' :
+                  metadata.valid === false ? 'failed' : 'unknown',
+          mode: metadata.mode || 'blocking',
+          reason: metadata.reason || null
         };
 
-        // Determine if pre or post ward based on timing/position
-        if (log.metadata_json?.position === 'pre') {
+        // Determine if pre or post ward based on node_type or ward_type
+        if (log.node_type === 'pre_ward' || metadata.ward_type === 'pre') {
           wardResults.pre.push(wardResult);
         } else {
           wardResults.post.push(wardResult);
+        }
+      }
+
+      // Track loop_until validation results (role='validation', node_type='validation')
+      if (log.role === 'validation' && log.node_type === 'validation') {
+        // Validation data is in metadata_json: valid, reason, validator, attempt, max_attempts
+        const validationResult = {
+          validator: metadata.validator || 'validator',
+          valid: metadata.valid,
+          reason: metadata.reason || null,
+          attempt: metadata.attempt || 1,
+          maxAttempts: metadata.max_attempts || 1,
+          timestamp: log.timestamp_iso
+        };
+
+        // Associate with the current turn in sounding 0 (or the active sounding)
+        const targetSounding = soundings[0];
+        if (targetSounding && targetSounding.turns.length > 0) {
+          const lastTurn = targetSounding.turns[targetSounding.turns.length - 1];
+          lastTurn.validationResult = validationResult;
+          // Mark as early exit if validation passed
+          if (validationResult.valid) {
+            lastTurn.validationPassed = true;
+          }
         }
       }
 
@@ -185,6 +304,25 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           reforgeData = { steps: [] };
         }
         // Add reforge tracking here
+      }
+
+      // Track quartermaster/manifest selection (role='quartermaster', node_type='quartermaster_result')
+      if (log.role === 'quartermaster' || log.node_type === 'quartermaster_result') {
+        // Manifest data is in metadata_json: selected_tackle, model, manifest_context
+        console.log('[PhaseAnatomy] Found quartermaster log:', {
+          role: log.role,
+          node_type: log.node_type,
+          phase_name: log.phase_name,
+          metadata_json: log.metadata_json,
+          parsedMetadata: metadata,
+          selected_tackle: metadata.selected_tackle
+        });
+        manifestSelection = {
+          selectedTools: metadata.selected_tackle || [],
+          model: metadata.model || log.model || null,
+          context: metadata.manifest_context || 'current',
+          timestamp: log.timestamp_iso
+        };
       }
     }
 
@@ -203,15 +341,22 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       }
     }
 
-    return {
+    const result = {
       soundings: soundingsList,
       winnerIndex,
       toolCalls,
       wardResults,
       reforgeData,
       evaluatorResult,
+      manifestSelection,
       hasSoundings: soundingsList.length > 0
     };
+    console.log('[PhaseAnatomy] executionData result:', {
+      hasSoundings: result.hasSoundings,
+      soundingsCount: soundingsList.length,
+      manifestSelection: result.manifestSelection
+    });
+    return result;
   }, [phaseLogs]);
 
   // Determine mode based on whether we have execution data

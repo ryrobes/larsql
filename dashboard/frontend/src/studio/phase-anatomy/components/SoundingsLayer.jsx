@@ -4,6 +4,39 @@ import SoundingLane from './SoundingLane';
 import './layers.css';
 
 /**
+ * Format a validator spec for display.
+ * Handles: string (cascade name), or object with language key (polyglot validator)
+ */
+const formatValidatorDisplay = (validator) => {
+  if (!validator) return null;
+  if (typeof validator === 'string') {
+    return { type: 'cascade', name: validator, preview: validator };
+  }
+
+  // Polyglot validator - extract language and code
+  if (validator.python) {
+    return { type: 'python', name: 'python (inline)', preview: validator.python };
+  }
+  if (validator.javascript) {
+    return { type: 'javascript', name: 'javascript (inline)', preview: validator.javascript };
+  }
+  if (validator.sql) {
+    return { type: 'sql', name: 'sql (inline)', preview: validator.sql };
+  }
+  if (validator.clojure) {
+    return { type: 'clojure', name: 'clojure (inline)', preview: validator.clojure };
+  }
+  if (validator.bash) {
+    return { type: 'bash', name: 'bash (inline)', preview: validator.bash };
+  }
+  if (validator.tool) {
+    return { type: 'tool', name: `${validator.tool} (inline)`, preview: JSON.stringify(validator.inputs || {}) };
+  }
+
+  return { type: 'unknown', name: 'polyglot (inline)', preview: JSON.stringify(validator) };
+};
+
+/**
  * SoundingsLayer - The main execution chamber with parallel lanes
  *
  * Shows:
@@ -19,6 +52,17 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
   const loopUntil = config.loopUntil;
   const mutate = config.mutate;
   const models = config.models;
+
+  // Check if manifest/quartermaster was used for tool selection
+  const isManifestMode = tackle === 'manifest' || (Array.isArray(tackle) && tackle.includes('manifest'));
+  const manifestSelection = execution?.manifestSelection;
+
+  console.log('[SoundingsLayer] Manifest check:', {
+    tackle,
+    isManifestMode,
+    execution: execution ? { hasSoundings: execution.hasSoundings, manifestSelection: execution.manifestSelection } : null,
+    manifestSelectionDirect: manifestSelection
+  });
 
   // Check if there's a winner (evaluation complete)
   const hasWinner = execution?.winnerIndex !== null && execution?.winnerIndex !== undefined;
@@ -98,8 +142,57 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
       </div>
 
       <div className="phase-anatomy-layer-content">
-        {/* Tackle (tools available) */}
-        {tackle.length > 0 && (
+        {/* Loop-Until validation condition */}
+        {loopUntil && (() => {
+          const validatorInfo = formatValidatorDisplay(loopUntil);
+          const previewText = validatorInfo?.preview || '';
+          const truncatedPreview = previewText.length > 150 ? previewText.substring(0, 150) + '...' : previewText;
+
+          return (
+            <div className="layer-soundings-loop-until">
+              <Icon icon="mdi:sync" width="12" />
+              <span className="layer-soundings-loop-until-label">Loop Until:</span>
+              {validatorInfo?.type !== 'cascade' && (
+                <span className={`layer-soundings-loop-until-type type-${validatorInfo?.type}`}>
+                  {validatorInfo?.name}
+                </span>
+              )}
+              <span className="layer-soundings-loop-until-preview">
+                {truncatedPreview}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Tackle (tools available) - show quartermaster selection if manifest mode */}
+        {isManifestMode && manifestSelection && manifestSelection.selectedTools.length > 0 ? (
+          <div className="layer-soundings-manifest">
+            <div className="layer-soundings-manifest-header">
+              <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
+              <span className="layer-soundings-manifest-label">Quartermaster Selected:</span>
+              {manifestSelection.model && (
+                <span className="layer-soundings-manifest-model" title={manifestSelection.model}>
+                  via {manifestSelection.model.split('/').pop()}
+                </span>
+              )}
+            </div>
+            <div className="layer-soundings-tackle-list">
+              {manifestSelection.selectedTools.map((tool, idx) => (
+                <span key={idx} className="layer-soundings-tackle-item manifest-selected">
+                  {tool}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : isManifestMode ? (
+          <div className="layer-soundings-manifest">
+            <div className="layer-soundings-manifest-header">
+              <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
+              <span className="layer-soundings-manifest-label">Manifest Mode</span>
+              <span className="layer-soundings-manifest-pending">(Quartermaster will select tools)</span>
+            </div>
+          </div>
+        ) : tackle.length > 0 && (
           <div className="layer-soundings-tackle">
             <span className="layer-soundings-tackle-label">
               <Icon icon="mdi:tools" width="12" />
@@ -108,14 +201,7 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
             <div className="layer-soundings-tackle-list">
               {(Array.isArray(tackle) ? tackle : [tackle]).map((tool, idx) => (
                 <span key={idx} className="layer-soundings-tackle-item">
-                  {tool === 'manifest' ? (
-                    <>
-                      <Icon icon="mdi:auto-fix" width="10" />
-                      manifest
-                    </>
-                  ) : (
-                    tool
-                  )}
+                  {tool}
                 </span>
               ))}
             </div>

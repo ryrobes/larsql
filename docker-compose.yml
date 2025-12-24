@@ -1,0 +1,161 @@
+# Windlass Docker Compose - Tiered Deployment
+#
+# USAGE:
+#   Default (Windlass + ClickHouse):
+#     docker compose up
+#
+#   Full stack (+ Elasticsearch/Kibana):
+#     docker compose --profile full up
+#
+#   Standalone (BYOI - you provide ClickHouse):
+#     WINDLASS_CLICKHOUSE_HOST=your-clickhouse.example.com docker compose up windlass
+#
+#   Scale workers:
+#     docker compose up --scale windlass=3
+#
+# ENVIRONMENT:
+#   Copy .env.example to .env and configure your API keys
+#
+
+services:
+  # ===========================================================================
+  # WINDLASS SERVER
+  # ===========================================================================
+  windlass:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: windlass:latest
+    ports:
+      - "5001:5001"
+    environment:
+      # Required
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in .env}
+
+      # ClickHouse connection
+      - WINDLASS_USE_CLICKHOUSE_SERVER=true
+      - WINDLASS_CLICKHOUSE_HOST=${WINDLASS_CLICKHOUSE_HOST:-clickhouse}
+      - WINDLASS_CLICKHOUSE_PORT=${WINDLASS_CLICKHOUSE_PORT:-9000}
+      - WINDLASS_CLICKHOUSE_DATABASE=${WINDLASS_CLICKHOUSE_DATABASE:-windlass}
+
+      # Optional integrations
+      - HF_TOKEN=${HF_TOKEN:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+
+      # Model configuration
+      - WINDLASS_DEFAULT_MODEL=${WINDLASS_DEFAULT_MODEL:-google/gemini-2.5-flash-lite}
+      - WINDLASS_PROVIDER_BASE_URL=${WINDLASS_PROVIDER_BASE_URL:-https://openrouter.ai/api/v1}
+    volumes:
+      - windlass-data:/data
+      # Development: mount local cascades
+      # - ./cascades:/app/cascades
+      # - ./tackle:/app/tackle
+    networks:
+      - windlass
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    # Only wait for ClickHouse if using bundled instance
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+        required: false
+
+  # ===========================================================================
+  # CLICKHOUSE
+  # ===========================================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: windlass-clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native protocol
+    environment:
+      - CLICKHOUSE_DB=windlass
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      - windlass
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # ===========================================================================
+  # ELASTICSEARCH (profile: full)
+  # ===========================================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: windlass-elasticsearch
+    profiles:
+      - full
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - windlass
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================================================
+  # KIBANA (profile: full)
+  # ===========================================================================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.3
+    container_name: windlass-kibana
+    profiles:
+      - full
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    networks:
+      - windlass
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  windlass-data:
+  clickhouse-data:
+  clickhouse-logs:
+  elasticsearch-data:
+
+networks:
+  windlass:
+    driver: bridge

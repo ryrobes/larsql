@@ -28,7 +28,7 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig, AutoFixConfig
+from .cascade import load_cascade_config, CascadeConfig, PhaseConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig, AutoFixConfig, PolyglotValidatorConfig
 from .auto_context import IntraPhaseContextBuilder, IntraContextConfig, ContextSelectionStats
 import re
 from .echo import get_echo, Echo
@@ -65,6 +65,31 @@ from .browser_manager import (
 # NOTE: Old cost.py track_request() no longer used - cost tracking via unified_logs.py
 
 from rich.tree import Tree
+
+
+def _format_validator_name(validator_spec) -> str:
+    """
+    Format a validator spec for display/logging.
+    Handles: string (cascade name), or PolyglotValidatorConfig object.
+    """
+    if isinstance(validator_spec, str):
+        return validator_spec
+    if isinstance(validator_spec, PolyglotValidatorConfig):
+        if validator_spec.python:
+            return "python (inline)"
+        if validator_spec.javascript:
+            return "javascript (inline)"
+        if validator_spec.sql:
+            return "sql (inline)"
+        if validator_spec.clojure:
+            return "clojure (inline)"
+        if validator_spec.bash:
+            return "bash (inline)"
+        if validator_spec.tool:
+            return f"{validator_spec.tool} (inline)"
+        return "polyglot (inline)"
+    return str(validator_spec)
+
 
 class HookAction:
     CONTINUE = "continue"
@@ -4124,6 +4149,27 @@ Refinement directive: {reforge_config.honing_prompt}
             output_or_next_phase = self.execute_phase(phase, input_data, phase_trace, initial_injection=hook_result)
             phase_duration_ms = (time_module.time() - phase_start_time) * 1000
 
+            # Check if phase was blocked by a ward
+            phase_was_blocked = isinstance(output_or_next_phase, str) and output_or_next_phase.startswith("[BLOCKED by")
+
+            if phase_was_blocked:
+                # Phase failed due to ward blocking - log as error and abort cascade
+                console.print(f"{indent}[bold red]⛔ Cascade aborted: {output_or_next_phase}[/bold red]")
+                log_message(self.session_id, "phase_error", f"Phase {phase.name} blocked",
+                           trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase_error",
+                           depth=self.depth, phase_name=phase.name, cascade_id=self.config.cascade_id,
+                           parent_session_id=self.parent_session_id,
+                           metadata={"error": output_or_next_phase, "blocked": True})
+
+                # Add to echo errors
+                self.echo.add_error(phase.name, "ward_blocked", output_or_next_phase)
+
+                # Hook: Phase Error
+                self.hooks.on_phase_error(phase.name, self.session_id, Exception(output_or_next_phase))
+
+                # Abort cascade - break out of phase loop
+                break
+
             # Log phase completion for UI visibility
             log_message(self.session_id, "phase_complete", f"Phase {phase.name} completed",
                        trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase",
@@ -4762,6 +4808,171 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
 
         return memory_query_tool
 
+    def _run_polyglot_validator(
+        self,
+        validator_config: PolyglotValidatorConfig,
+        content: str,
+        original_input: dict,
+        trace: TraceNode,
+        validator_name: str = "polyglot_validator"
+    ) -> dict:
+        """
+        Run a polyglot validator (Python, JS, SQL, etc.) and return validation result.
+
+        The polyglot code receives:
+        - content: The output to validate (string)
+        - original_input: The original cascade input (dict)
+
+        And must return {"valid": bool, "reason": str}.
+
+        Args:
+            validator_config: The PolyglotValidatorConfig with the code
+            content: The content to validate
+            original_input: Original cascade input for context
+            trace: Parent trace node
+            validator_name: Name for logging/tracing
+
+        Returns:
+            dict with: valid, reason, validator
+        """
+        indent = "  " * self.depth
+        console.print(f"{indent}    [cyan]🔧 Running polyglot validator...[/cyan]")
+
+        try:
+            # Get the tool and inputs from the config
+            tool_name, tool_inputs = validator_config.get_tool_and_inputs(content, original_input)
+
+            # Get the polyglot tool
+            polyglot_tool = get_tackle(tool_name)
+            if not polyglot_tool:
+                return {
+                    "valid": False,
+                    "reason": f"Polyglot tool '{tool_name}' not found",
+                    "validator": validator_name
+                }
+
+            # Prepare the execution context
+            # For python_data, js_data, etc., we need to inject content and original_input
+            # into the code's execution environment
+
+            # Build the code with context injection based on language
+            if validator_config.python:
+                # Inject validation context at the start of the code
+                code_with_context = f'''
+# Validation context
+content = """{content.replace('"', '\\"').replace("'''", "\\'\\'\\'")}"""
+original_input = {json.dumps(original_input)}
+
+# User validation code
+{validator_config.python}
+'''
+                tool_inputs = {"code": code_with_context}
+
+            elif validator_config.javascript:
+                # Inject validation context for JS
+                code_with_context = f'''
+// Validation context
+const content = {json.dumps(content)};
+const original_input = {json.dumps(original_input)};
+
+// User validation code
+{validator_config.javascript}
+'''
+                tool_inputs = {"code": code_with_context}
+
+            elif validator_config.sql:
+                # SQL validators work differently - they query and return valid/reason columns
+                # The query should be designed to return a single row with valid (bool) and reason (text)
+                tool_inputs = {"query": validator_config.sql}
+
+            elif validator_config.clojure:
+                # Inject validation context for Clojure
+                code_with_context = f'''
+;; Validation context
+(def content {json.dumps(content)})
+(def original-input {json.dumps(original_input)})
+
+;; User validation code
+{validator_config.clojure}
+'''
+                tool_inputs = {"code": code_with_context}
+
+            elif validator_config.bash:
+                # Inject validation context via environment variables
+                # The bash script receives CONTENT and ORIGINAL_INPUT as env vars
+                code_with_context = f'''
+export CONTENT={json.dumps(content)}
+export ORIGINAL_INPUT='{json.dumps(original_input)}'
+
+{validator_config.bash}
+'''
+                tool_inputs = {"script": code_with_context}
+
+            # Add required context for tool execution
+            tool_inputs["_phase_name"] = f"validator_{validator_name}"
+            tool_inputs["_session_id"] = self.session_id
+            tool_inputs["_outputs"] = self.echo.outputs if hasattr(self.echo, 'outputs') else {}
+            tool_inputs["_state"] = self.echo.state if hasattr(self.echo, 'state') else {}
+            tool_inputs["_input"] = original_input
+
+            # Execute the polyglot tool
+            set_current_trace(trace)
+            result = polyglot_tool(**tool_inputs)
+
+            # Extract the validation result
+            if isinstance(result, dict):
+                # Check if result is in the expected format
+                if "result" in result:
+                    # The polyglot tool wraps the output in a 'result' field for python_data
+                    validator_result = result.get("result", result)
+                elif "data" in result and isinstance(result["data"], list) and len(result["data"]) > 0:
+                    # SQL result - first row should have valid and reason columns
+                    row = result["data"][0]
+                    validator_result = {
+                        "valid": bool(row.get("valid", False)),
+                        "reason": str(row.get("reason", "No reason provided"))
+                    }
+                else:
+                    # Direct result from tool
+                    validator_result = result
+
+                # Ensure we have the expected structure
+                if "valid" not in validator_result:
+                    validator_result = {"valid": False, "reason": f"Invalid validator result format: {validator_result}"}
+
+            elif isinstance(result, str):
+                # Try to parse as JSON
+                try:
+                    validator_result = json.loads(result)
+                except:
+                    validator_result = {"valid": False, "reason": result}
+            else:
+                validator_result = {"valid": False, "reason": f"Unexpected result type: {type(result)}"}
+
+            is_valid = validator_result.get("valid", False)
+            reason = validator_result.get("reason", "No reason provided")
+
+            # Log result
+            if is_valid:
+                console.print(f"{indent}    [bold green]✓ PASSED:[/bold green] {reason}")
+            else:
+                console.print(f"{indent}    [bold red]✗ FAILED:[/bold red] {reason}")
+
+            return {
+                "valid": is_valid,
+                "reason": reason,
+                "validator": validator_name
+            }
+
+        except Exception as e:
+            error_msg = f"Polyglot validator error: {str(e)}"
+            console.print(f"{indent}    [bold red]✗ ERROR:[/bold red] {error_msg}")
+            return {
+                "valid": False,
+                "reason": error_msg,
+                "validator": validator_name
+            }
+
     def _run_ward(self, ward_config, content: str, trace: TraceNode, ward_type: str = "post") -> dict:
         """
         Run a single ward (validator) and return validation result.
@@ -4772,8 +4983,55 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         - mode: str (blocking, retry, advisory)
         """
         indent = "  " * self.depth
-        validator_name = ward_config.validator
+        validator_spec = ward_config.validator
         mode = ward_config.mode
+
+        # Check if validator is a PolyglotValidatorConfig (inline polyglot code)
+        if isinstance(validator_spec, PolyglotValidatorConfig):
+            validator_name = "polyglot_validator"
+            mode_icons = {
+                "blocking": "🛡️",
+                "retry": "🔄",
+                "advisory": "ℹ️"
+            }
+            icon = mode_icons.get(mode, "🛡️")
+            console.print(f"{indent}  {icon} [{ward_type.upper()} WARD] polyglot ({mode} mode)")
+
+            # Create ward trace
+            ward_trace = trace.create_child(f"{ward_type}_ward", "polyglot")
+
+            # Run the polyglot validator
+            result = self._run_polyglot_validator(
+                validator_spec,
+                content,
+                self.echo.input if hasattr(self.echo, 'input') else {},
+                ward_trace,
+                validator_name="polyglot"
+            )
+
+            # Add ward to Echo history for visualization
+            self.echo.add_history({
+                "role": "ward",
+                "content": f"{ward_type.title()} Ward: polyglot",
+                "node_type": f"{ward_type}_ward"
+            }, trace_id=ward_trace.id, parent_id=trace.id, node_type=f"{ward_type}_ward",
+               metadata=self._get_metadata({
+                   "ward_type": ward_type,
+                   "validator": "polyglot",
+                   "mode": mode,
+                   "valid": result.get("valid", False),
+                   "reason": result.get("reason", "")[:100]
+               }, semantic_actor="validator", semantic_purpose="validation_output"))
+
+            return {
+                "valid": result.get("valid", False),
+                "reason": result.get("reason", "No reason provided"),
+                "mode": mode,
+                "validator": "polyglot"
+            }
+
+        # String validator - existing behavior
+        validator_name = validator_spec
 
         mode_icons = {
             "blocking": "🛡️",
@@ -4899,7 +5157,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
             "validator": validator_name
         }
 
-    def _run_sounding_validator(self, validator_name: str, content: str, sounding_index: int, trace: TraceNode) -> dict:
+    def _run_sounding_validator(self, validator_spec: Union[str, PolyglotValidatorConfig], content: str, sounding_index: int, trace: TraceNode) -> dict:
         """
         Run a validator on a sounding result to determine if it should be evaluated.
 
@@ -4911,6 +5169,28 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         - reason: str
         """
         indent = "  " * self.depth
+
+        # Check if validator is a PolyglotValidatorConfig (inline polyglot code)
+        if isinstance(validator_spec, PolyglotValidatorConfig):
+            validator_trace = trace.create_child("sounding_validator", f"polyglot_{sounding_index}")
+
+            result = self._run_polyglot_validator(
+                validator_spec,
+                content,
+                self.echo.input if hasattr(self.echo, 'input') else {},
+                validator_trace,
+                validator_name=f"polyglot_{sounding_index}"
+            )
+
+            return {
+                "valid": result.get("valid", False),
+                "reason": result.get("reason", "No reason provided"),
+                "validator": "polyglot",
+                "sounding_index": sounding_index
+            }
+
+        # String validator - existing behavior
+        validator_name = validator_spec
 
         # Create validator trace
         validator_trace = trace.create_child("sounding_validator", f"{validator_name}_{sounding_index}")
@@ -5001,7 +5281,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
 
     def _run_loop_until_validator(
         self,
-        validator_name: str,
+        validator_spec: Union[str, PolyglotValidatorConfig],
         content: str,
         input_data: dict,
         trace: TraceNode,
@@ -5017,7 +5297,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         breaking out of the turn loop early, preventing unnecessary context snowballing.
 
         Args:
-            validator_name: Name of the validator (function or cascade)
+            validator_spec: Validator specification - can be string name or PolyglotValidatorConfig
             content: The content to validate (agent response + tool outputs)
             input_data: Original cascade input (passed to cascade validators)
             trace: Parent trace node for logging
@@ -5033,6 +5313,44 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         """
         indent = "  " * self.depth
         check_type = "per-turn" if is_per_turn else "post-loop"
+
+        # === PRIORITY 0: Check if validator is a PolyglotValidatorConfig (inline polyglot code) ===
+        if isinstance(validator_spec, PolyglotValidatorConfig):
+            validation_trace = trace.create_child("loop_until_validation", f"polyglot_t{turn}")
+
+            console.print(f"{indent}  🔁 [{check_type}] Running polyglot validator...")
+
+            result = self._run_polyglot_validator(
+                validator_spec,
+                content,
+                input_data,
+                validation_trace,
+                validator_name="loop_until_polyglot"
+            )
+
+            # Log validation result
+            self.echo.add_history({
+                "role": "loop_until_validation",
+                "content": f"Loop-until polyglot validation ({check_type})",
+                "node_type": "loop_until_validation"
+            }, trace_id=validation_trace.id, parent_id=trace.id, node_type="loop_until_validation",
+               metadata=self._get_metadata({
+                   "validator": "polyglot",
+                   "valid": result.get("valid", False),
+                   "reason": result.get("reason", "")[:100],
+                   "check_type": check_type,
+                   "attempt": attempt,
+                   "turn": turn
+               }, semantic_actor="validator", semantic_purpose="validation_output"))
+
+            return {
+                "valid": result.get("valid", False),
+                "reason": result.get("reason", "No reason provided"),
+                "validator": "polyglot"
+            }
+
+        # String validator - existing behavior
+        validator_name = validator_spec
 
         # Create validation trace
         validation_trace = trace.create_child("loop_until_validation", f"{validator_name}_t{turn}")
@@ -6356,14 +6674,15 @@ Use only numbers 0-100 for scores."""
         # Filters out soundings that fail validation before sending to evaluator
         valid_sounding_results = sounding_results
         if phase.soundings.validator:
-            validator_name = phase.soundings.validator
-            console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_name}'...[/bold cyan]")
+            validator_spec = phase.soundings.validator
+            validator_display_name = _format_validator_name(validator_spec)
+            console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_display_name}'...[/bold cyan]")
 
             validation_results = []
             for sr in sounding_results:
                 result_content = str(sr.get("result", ""))
                 validation = self._run_sounding_validator(
-                    validator_name,
+                    validator_spec,
                     result_content,
                     sr["index"],
                     soundings_trace
@@ -8724,7 +9043,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Update progress with current ward
                 update_phase_progress(
                     self.session_id, self.config.cascade_id, phase.name, self.depth,
-                    ward_name=ward_config.validator,
+                    ward_name=_format_validator_name(ward_config.validator),
                     ward_type="pre",
                     ward_index=ward_idx + 1,
                     total_wards=total_pre_wards
@@ -8775,25 +9094,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # If loop_until is configured, tell the agent upfront what validation it needs to pass
         # Unless loop_until_silent is True (for impartial/subjective validation)
         if phase.rules.loop_until and not phase.rules.loop_until_silent:
-            validator_name = phase.rules.loop_until
+            validator_spec = phase.rules.loop_until
+            validator_display_name = _format_validator_name(validator_spec)
             max_attempts = phase.rules.max_attempts if phase.rules.max_attempts else 5
 
             # Use custom prompt if provided, otherwise auto-generate from validator description
             if phase.rules.loop_until_prompt:
                 validation_prompt = phase.rules.loop_until_prompt
             else:
-                # Try to get validator description from manifest
+                # Try to get validator description from manifest (only for string validators)
                 validator_description = None
-                from .tackle_manifest import get_tackle_manifest
-                manifest = get_tackle_manifest()
-                if validator_name in manifest:
-                    validator_description = manifest[validator_name].get("description", "")
+                if isinstance(validator_spec, str):
+                    from .tackle_manifest import get_tackle_manifest
+                    manifest = get_tackle_manifest()
+                    if validator_spec in manifest:
+                        validator_description = manifest[validator_spec].get("description", "")
 
                 # Build validation prompt
                 if validator_description:
-                    validation_prompt = f"Your output will be validated using '{validator_name}' which checks: {validator_description}"
+                    validation_prompt = f"Your output will be validated using '{validator_display_name}' which checks: {validator_description}"
                 else:
-                    validation_prompt = f"Your output will be validated using the '{validator_name}' validator"
+                    validation_prompt = f"Your output will be validated using the '{validator_display_name}' validator"
 
             # Inject validation requirement into instructions
             rendered_instructions += f"\n\n---\n**VALIDATION REQUIREMENT:**\n{validation_prompt}\nYou have {max_attempts} attempt(s) to satisfy this validator.\n---"
@@ -9206,7 +9527,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                           "phase_name": phase.name,
                                           "attempt": attempt + 1,
                                           "max_attempts": max_attempts,
-                                          "loop_until": phase.rules.loop_until if phase.rules.loop_until else None,
+                                          "loop_until": _format_validator_name(phase.rules.loop_until) if phase.rules.loop_until else None,
                                           "semantic_actor": "framework",
                                           "semantic_purpose": "validation_output"
                                       })
@@ -10155,7 +10476,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Only runs if loop_until is configured and we have more turns remaining.
                     if phase.rules.loop_until and i < max_turns - 1:
                         per_turn_result = self._run_loop_until_validator(
-                            validator_name=phase.rules.loop_until,
+                            validator_spec=phase.rules.loop_until,
                             content=response_content,
                             input_data=input_data,
                             trace=turn_trace,
@@ -10361,21 +10682,22 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # After schema validation: Check if validator is required (loop_until)
             # Skip if validation already passed from per-turn early exit
             if phase.rules.loop_until and not validation_passed:
-                validator_name = phase.rules.loop_until
-                console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_name}[/bold cyan]")
+                validator_spec = phase.rules.loop_until
+                validator_display_name = _format_validator_name(validator_spec)
+                console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_display_name}[/bold cyan]")
 
                 # Create validation trace
-                validation_trace = trace.create_child("validation", validator_name)
+                validation_trace = trace.create_child("validation", validator_display_name)
 
                 # Add to echo history (auto-logs via unified system - no need for separate log_message)
                 self.echo.add_history({
                     "role": "validation",
-                    "content": f"🛡️ Running validator: {validator_name}",
+                    "content": f"🛡️ Running validator: {validator_display_name}",
                     "node_type": "validation_start"
                 }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation_start",
                    metadata={
                        "phase_name": phase.name,
-                       "validator": validator_name,
+                       "validator": validator_display_name,
                        "attempt": attempt + 1,
                        "content_preview": response_content[:200] if response_content else "(empty)",
                        "semantic_actor": "framework",
@@ -10385,11 +10707,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Initialize validator_result to None (ensures it's in scope for logging later)
                 validator_result = None
 
-                # Try to get validator as Python function first
-                validator_tool = get_tackle(validator_name)
+                # Check if this is a polyglot validator (inline code)
+                if isinstance(validator_spec, PolyglotValidatorConfig):
+                    # Run the polyglot validator directly
+                    polyglot_result = self._run_polyglot_validator(
+                        validator_spec,
+                        response_content,
+                        input_data,
+                        validation_trace,
+                        validator_name="loop_until"
+                    )
+                    validator_result = polyglot_result
+                    validator_name = validator_display_name  # For logging below
+                else:
+                    # String validator - use existing lookup logic
+                    validator_name = validator_spec
 
-                # If not found as function, check if it's a cascade tool
-                if not validator_tool:
+                # Try to get validator as Python function first (only for string validators)
+                validator_tool = get_tackle(validator_name) if isinstance(validator_spec, str) else None
+
+                # If not found as function, check if it's a cascade tool (skip for polyglot validators)
+                if not validator_tool and isinstance(validator_spec, str):
                     from .tackle_manifest import get_tackle_manifest
                     manifest = get_tackle_manifest()
 
@@ -10577,7 +10915,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Update progress with current ward
                     update_phase_progress(
                         self.session_id, self.config.cascade_id, phase.name, self.depth,
-                        ward_name=ward_config.validator,
+                        ward_name=_format_validator_name(ward_config.validator),
                         ward_type="post",
                         ward_index=ward_idx + 1,
                         total_wards=total_post_wards

@@ -4,6 +4,25 @@ import ModelIcon, { getProviderColor, getProvider } from '../../../components/Mo
 import './layers.css';
 
 /**
+ * Format a validator spec for display.
+ * Handles: string (cascade name), or object with language key (polyglot validator)
+ */
+const formatValidatorName = (validator) => {
+  if (!validator) return 'validator';
+  if (typeof validator === 'string') return validator;
+
+  // Polyglot validator - show language type
+  if (validator.python) return 'python (inline)';
+  if (validator.javascript) return 'javascript (inline)';
+  if (validator.sql) return 'sql (inline)';
+  if (validator.clojure) return 'clojure (inline)';
+  if (validator.bash) return 'bash (inline)';
+  if (validator.tool) return `${validator.tool} (inline)`;
+
+  return 'polyglot (inline)';
+};
+
+/**
  * ConvergenceSection - Shows where soundings converge
  *
  * Contains:
@@ -30,7 +49,7 @@ const ConvergenceSection = ({ config, winnerIndex, mode = 'evaluate', evaluatorR
           </div>
           <div className="convergence-section-content">
             <span className="convergence-section-label">Pre-Validator</span>
-            <span className="convergence-section-name">{preValidator}</span>
+            <span className="convergence-section-name">{formatValidatorName(preValidator)}</span>
           </div>
         </div>
       )}

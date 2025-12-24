@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import RichTooltip, { RunningCascadeTooltipContent } from '../../components/RichTooltip';
 import './VerticalSidebar.css';
 
 /**
@@ -7,6 +8,7 @@ import './VerticalSidebar.css';
  *
  * Replaces horizontal header to maximize vertical space.
  * Shows navigation icons vertically on left edge.
+ * Includes running cascade indicators in the bottom section.
  */
 const VerticalSidebar = ({
   onMessageFlow,
@@ -23,6 +25,10 @@ const VerticalSidebar = ({
   onBlocked,
   blockedCount = 0,
   sseConnected = false,
+  // Running cascades
+  runningSessions = [],
+  currentSessionId = null,
+  onJoinSession,
 }) => {
   const [activeTooltip, setActiveTooltip] = useState(null);
 
@@ -107,6 +113,54 @@ const VerticalSidebar = ({
 
       {/* Bottom section */}
       <div className="vsidebar-bottom">
+        {/* Running Cascades */}
+        {runningSessions.length > 0 && (
+          <div className="vsidebar-running-section">
+            <div className="vsidebar-running-label">
+              <span className="vsidebar-running-dot" />
+              <span>{runningSessions.length}</span>
+            </div>
+            <div className="vsidebar-running-list">
+              {runningSessions.map((session) => {
+                const isCurrent = session.session_id === currentSessionId;
+                // Generate a short display name from cascade_id
+                const displayName = (session.cascade_id || 'cascade')
+                  .replace(/[_-]/g, ' ')
+                  .split(' ')
+                  .map(word => word[0]?.toUpperCase() || '')
+                  .join('')
+                  .slice(0, 2) || 'C';
+
+                return (
+                  <RichTooltip
+                    key={session.session_id}
+                    placement="right"
+                    content={
+                      <RunningCascadeTooltipContent
+                        cascadeId={session.cascade_id}
+                        sessionId={session.session_id}
+                        ageSeconds={session.age_seconds}
+                        cascadeFile={session.cascade_file}
+                        status={session.status}
+                      />
+                    }
+                  >
+                    <button
+                      className={`vsidebar-running-btn ${isCurrent ? 'current' : ''}`}
+                      onClick={() => onJoinSession && onJoinSession(session)}
+                    >
+                      <span className="vsidebar-running-avatar">
+                        {displayName}
+                      </span>
+                      <span className="vsidebar-running-pulse" />
+                    </button>
+                  </RichTooltip>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Blocked sessions */}
         {onBlocked && (
           <button

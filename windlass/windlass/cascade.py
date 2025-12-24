@@ -159,7 +159,10 @@ class BrowserConfig(BaseModel):
 class RuleConfig(BaseModel):
     max_turns: Optional[int] = None
     max_attempts: Optional[int] = None
-    loop_until: Optional[str] = None
+    # loop_until can be:
+    #   - string: Name of validator tool/cascade (e.g., "my_validator")
+    #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
+    loop_until: Optional[Union[str, "PolyglotValidatorConfig"]] = None
     loop_until_prompt: Optional[str] = None  # Auto-injected validation goal prompt
     loop_until_silent: bool = False  # Skip auto-injection for impartial validation
     retry_instructions: Optional[str] = None
@@ -182,7 +185,10 @@ class AsyncCascadeRef(BaseModel):
     trigger: str = "on_start" # on_start, on_end
 
 class WardConfig(BaseModel):
-    validator: str  # Name of validator tool/cascade
+    # Validator can be:
+    #   - string: Name of validator tool/cascade (e.g., "my_validator")
+    #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
+    validator: Union[str, "PolyglotValidatorConfig"]  # Forward reference, resolved at runtime
     mode: Literal["blocking", "advisory", "retry"] = "blocking"
     max_attempts: int = 1  # For retry mode
 
@@ -254,7 +260,10 @@ class SoundingsConfig(BaseModel):
 
     # Pre-evaluation validator - filters soundings before evaluator sees them
     # Useful for code execution (only evaluate code that runs) or format validation
-    validator: Optional[str] = None  # Name of validator tool/cascade to pre-filter soundings
+    # Can be:
+    #   - string: Name of validator tool/cascade (e.g., "my_validator")
+    #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
+    validator: Optional[Union[str, "PolyglotValidatorConfig"]] = None
 
     # Multi-model soundings (Phase 1: Simple Model Pool)
     models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
@@ -1130,6 +1139,100 @@ Trigger = Union[CronTrigger, SensorTrigger, WebhookTrigger, ManualTrigger]
 
 # ===== Inline Validator Configuration =====
 
+class PolyglotValidatorConfig(BaseModel):
+    """
+    Inline polyglot validator - execute code directly for validation.
+
+    The code receives validation context and must return {"valid": bool, "reason": str}.
+
+    For Python/JS/Clojure:
+        - `content`: The output to validate (string)
+        - `original_input`: The original cascade input (dict)
+        - Code must set a `result` variable with {"valid": bool, "reason": str}
+
+    For SQL:
+        - Query should return a single row with `valid` (boolean) and `reason` (string) columns
+        - Can reference temp tables from prior phases via `_phase_name`
+
+    For Bash:
+        - Receives content via $CONTENT and original input via $ORIGINAL_INPUT (JSON)
+        - Must output JSON with {"valid": bool, "reason": str}
+
+    Usage (shorthand - language key directly):
+        validator:
+          python: |
+            result = {"valid": len(content) > 100, "reason": "Output too short" if len(content) <= 100 else "OK"}
+
+        validator:
+          javascript: |
+            const valid = content.includes("expected");
+            result = {valid, reason: valid ? "Found expected" : "Missing expected"};
+
+        validator:
+          sql: |
+            SELECT COUNT(*) > 0 as valid, 'Has data' as reason FROM _previous_phase
+
+        validator:
+          bash: |
+            len=${#CONTENT}
+            if [ $len -gt 100 ]; then
+              echo '{"valid": true, "reason": "OK"}'
+            else
+              echo '{"valid": false, "reason": "Too short"}'
+            fi
+
+    Usage (explicit tool format):
+        validator:
+          tool: python_data
+          inputs:
+            code: |
+              result = {"valid": len(content) > 100, "reason": "..."}
+    """
+    # Language-specific code (exactly one should be set)
+    python: Optional[str] = None
+    javascript: Optional[str] = None
+    sql: Optional[str] = None
+    clojure: Optional[str] = None
+    bash: Optional[str] = None
+
+    # Alternative explicit format - specify tool and inputs directly
+    tool: Optional[str] = None  # e.g., "python_data", "sql_data", "javascript_data"
+    inputs: Optional[Dict[str, str]] = None  # Jinja2-templated inputs for the tool
+
+    def get_tool_and_inputs(self, content: str, original_input: Dict[str, Any]) -> tuple:
+        """
+        Resolve the tool name and inputs for execution.
+
+        Returns (tool_name, inputs_dict) tuple.
+        """
+        # Explicit tool format
+        if self.tool:
+            # Render inputs with validation context
+            rendered_inputs = {}
+            for key, value in (self.inputs or {}).items():
+                # Simple template substitution for content and original_input
+                rendered_inputs[key] = value
+            return self.tool, rendered_inputs
+
+        # Language shorthand
+        if self.python:
+            return "python_data", {"code": self.python}
+        if self.javascript:
+            return "javascript_data", {"code": self.javascript}
+        if self.sql:
+            return "sql_data", {"query": self.sql}
+        if self.clojure:
+            return "clojure_data", {"code": self.clojure}
+        if self.bash:
+            return "bash_data", {"script": self.bash}
+
+        raise ValueError("PolyglotValidatorConfig must have either a language (python/javascript/sql/clojure/bash) or explicit tool defined")
+
+
+# Type alias for validator field - can be string (cascade ref) or polyglot config
+ValidatorSpec = Union[str, PolyglotValidatorConfig]
+
+
 class InlineValidatorConfig(BaseModel):
     """
     Inline validator definition - a simplified single-phase cascade for validation.
@@ -1189,6 +1292,12 @@ class CascadeConfig(BaseModel):
     # Controls both intra-phase (per-turn) and inter-phase (between phases) context
     # Phase-level configs override these cascade-level defaults
     auto_context: Optional[AutoContextConfig] = None
+
+# Rebuild models to resolve forward references for PolyglotValidatorConfig
+WardConfig.model_rebuild()
+RuleConfig.model_rebuild()
+SoundingsConfig.model_rebuild()
+
 
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is

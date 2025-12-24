@@ -342,6 +342,68 @@ const useStudioCascadeStore = create(
         });
       },
 
+      // Join a currently running session (switch to live view of an active cascade)
+      joinLiveSession: async (sessionId, cascadeId, cascadeFile) => {
+        console.log('[joinLiveSession] Joining session:', sessionId, 'cascade:', cascadeId);
+
+        try {
+          // First, try to load the cascade structure from the session
+          const res = await fetch(`${API_BASE_URL}/session-cascade/${sessionId}`);
+          const data = await res.json();
+
+          if (data.error) {
+            console.error('[joinLiveSession] Failed to load session cascade:', data.error);
+            // Still proceed - we can view the session without the cascade definition
+          }
+
+          set(state => {
+            // Set to live mode watching this session
+            state.viewMode = 'live';
+            state.cascadeSessionId = sessionId;
+            state.replaySessionId = null;
+            state.isRunningAll = true; // Enable polling
+
+            // Load cascade if available
+            if (data.cascade) {
+              state.cascade = data.cascade;
+              state.cascadePath = data.config_path || cascadeFile || null;
+              state.cascadeDirty = false;
+
+              // Load inputs if available
+              if (data.input_data && Object.keys(data.input_data).length > 0) {
+                state.cascadeInputs = data.input_data;
+              }
+            }
+
+            // Clear cell states - they'll be populated from polling
+            state.cellStates = {};
+          });
+
+          // Trigger immediate data fetch
+          const state = get();
+          if (state.fetchReplayData) {
+            await state.fetchReplayData(sessionId);
+          }
+
+          console.log('[joinLiveSession] Successfully joined session:', sessionId);
+          return { success: true };
+
+        } catch (err) {
+          console.error('[joinLiveSession] Error:', err);
+
+          // Still set up the session even if cascade load failed
+          set(state => {
+            state.viewMode = 'live';
+            state.cascadeSessionId = sessionId;
+            state.replaySessionId = null;
+            state.isRunningAll = true;
+            state.cellStates = {};
+          });
+
+          return { success: false, error: err.message };
+        }
+      },
+
       // ============================================
       // SESSION MANAGEMENT
       // ============================================

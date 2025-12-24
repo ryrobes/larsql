@@ -385,6 +385,75 @@
   border-color: rgba(251, 191, 36, 0.3);
 }
 
+/* Loop-Until Validation Display */
+.layer-soundings-loop-until {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 6px;
+  color: #fbbf24;
+}
+
+.layer-soundings-loop-until > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.layer-soundings-loop-until-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.layer-soundings-loop-until-preview {
+  font-size: 10px;
+  font-family: 'Google Sans Code', monospace;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.layer-soundings-loop-until-type {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.layer-soundings-loop-until-type.type-python {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.layer-soundings-loop-until-type.type-javascript {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fbbf24;
+}
+
+.layer-soundings-loop-until-type.type-sql {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a78bfa;
+}
+
+.layer-soundings-loop-until-type.type-bash {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.layer-soundings-loop-until-type.type-clojure {
+  background: rgba(236, 72, 153, 0.2);
+  color: #f472b6;
+}
+
 .layer-soundings-tackle {
   display: flex;
   align-items: center;
@@ -419,6 +488,50 @@
   border: 1px solid #1a1628;
   border-radius: 3px;
   color: #94a3b8;
+}
+
+/* Manifest/Quartermaster Selection */
+.layer-soundings-manifest {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(6, 182, 212, 0.04));
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 6px;
+}
+
+.layer-soundings-manifest-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.layer-soundings-manifest-header .manifest-icon {
+  color: #00e5ff;
+}
+
+.layer-soundings-manifest-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #00e5ff;
+}
+
+.layer-soundings-manifest-model {
+  font-size: 9px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.layer-soundings-manifest-pending {
+  font-size: 9px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.layer-soundings-tackle-item.manifest-selected {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(6, 182, 212, 0.08));
+  border-color: rgba(0, 229, 255, 0.3);
+  color: #67e8f9;
 }
 
 /* ============================================
@@ -632,7 +745,7 @@
 
 .sounding-lane-turn.unused {
   opacity: 0.4;
-  border-style: dashed;
+  border-style: none;
 }
 
 .sounding-lane-turn.early-exit {

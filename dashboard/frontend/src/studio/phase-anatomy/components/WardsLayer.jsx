@@ -3,6 +3,25 @@ import { Icon } from '@iconify/react';
 import './layers.css';
 
 /**
+ * Format a validator spec for display.
+ * Handles: string (cascade name), or object with language key (polyglot validator)
+ */
+const formatValidatorName = (validator) => {
+  if (!validator) return 'validator';
+  if (typeof validator === 'string') return validator;
+
+  // Polyglot validator - show language type
+  if (validator.python) return 'python (inline)';
+  if (validator.javascript) return 'javascript (inline)';
+  if (validator.sql) return 'sql (inline)';
+  if (validator.clojure) return 'clojure (inline)';
+  if (validator.bash) return 'bash (inline)';
+  if (validator.tool) return `${validator.tool} (inline)`;
+
+  return 'polyglot (inline)';
+};
+
+/**
  * WardsLayer - Shows pre or post validation wards
  */
 const WardsLayer = ({ type, wards = [], results = [] }) => {
@@ -15,7 +34,7 @@ const WardsLayer = ({ type, wards = [], results = [] }) => {
   const getWardResult = (ward, idx) => {
     if (!results || results.length === 0) return null;
 
-    const wardName = typeof ward === 'string' ? ward : ward.validator || ward.name;
+    const wardName = typeof ward === 'string' ? ward : formatValidatorName(ward.validator || ward.name);
     return results.find(r => r.name === wardName) || results[idx] || null;
   };
 
@@ -45,7 +64,7 @@ const WardsLayer = ({ type, wards = [], results = [] }) => {
 
                 {/* Ward name */}
                 <span className="layer-ward-name">
-                  {wardConfig.validator || wardConfig.name || 'validator'}
+                  {formatValidatorName(wardConfig.validator || wardConfig.name)}
                 </span>
 
                 {/* Mode badge */}

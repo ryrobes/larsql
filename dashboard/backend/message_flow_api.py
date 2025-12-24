@@ -533,18 +533,19 @@ def get_running_sessions():
         current_time = time.time()
 
         # Query recent sessions from ClickHouse (last 10 minutes, most recent first)
-        # Use subtractMinutes for ClickHouse compatibility
+        # Use argMax to get the latest cascade_id/cascade_file for each session_id
+        # This handles ClickHouse merge timing and ensures one row per session
         query = """
         SELECT
             session_id,
-            cascade_id,
-            cascade_file,
+            argMax(cascade_id, timestamp) as cascade_id,
+            argMax(cascade_file, timestamp) as cascade_file,
             MIN(timestamp) as start_time,
             MAX(timestamp) as last_activity,
             COUNT(*) as message_count
         FROM unified_logs
         WHERE timestamp > subtractMinutes(now64(), 10)
-        GROUP BY session_id, cascade_id, cascade_file
+        GROUP BY session_id
         ORDER BY start_time DESC
         LIMIT 20
         """

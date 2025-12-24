@@ -40,7 +40,7 @@ export function useTimelinePolling(sessionId, isRunning) {
   const seenIdsRef = useRef(new Set());
   const prevSessionRef = useRef(null);
 
-  //console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
+  console.log('[useTimelinePolling] sessionId:', sessionId, 'isRunning:', isRunning);
 
   // Poll function
   const poll = useCallback(async () => {
@@ -101,6 +101,7 @@ export function useTimelinePolling(sessionId, isRunning) {
 
       // Update logs: add new rows AND update existing rows with backfilled cost
       if (newRows.length > 0 || updatedMessageIds.size > 0) {
+        console.log('[TimelinePolling] Adding', newRows.length, 'new rows. Sample roles:', newRows.slice(0, 5).map(r => r.role));
         setLogs(prev => {
           if (updatedMessageIds.size === 0) {
             // No updates, just append new rows
