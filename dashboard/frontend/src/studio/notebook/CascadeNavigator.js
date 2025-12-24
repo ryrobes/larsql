@@ -789,7 +789,7 @@ function CascadeNavigator() {
 
   return (
     <div className="cascade-navigator">
-      {/* Notebook Header */}
+      {/* Cascade Header */}
       <div className="nav-cascade-header">
         <div className="nav-cascade-header-left">
           <Icon icon="mdi:cascade-edit" className="nav-cascade-icon" />

@@ -575,7 +575,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     fetchCascades();
   }, [fetchCascades]);
 
-  // Create new cascade if none exists (same pattern as NotebookEditor)
+  // Create new cascade if none exists
   useEffect(() => {
     if (!cascade) {
       newCascade();

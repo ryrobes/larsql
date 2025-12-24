@@ -309,7 +309,7 @@ const ResultRenderer = ({ result, error, images }) => {
   }
 
 
-  // LLM output from lineage (legacy notebook API)
+  // LLM output from lineage (legacy API)
   if (result?.result?.lineage?.[0]?.output) {
     const llmOutput = result.result.lineage[0].output;
     const outputString = typeof llmOutput === 'string'

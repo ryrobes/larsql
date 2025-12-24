@@ -1017,7 +1017,7 @@ class TestInlineValidatorConfig:
     def test_load_cascade_with_inline_validators(self):
         """Load a cascade file that uses inline validators."""
         # Load the actual sql_chart_gen_analysis_full.yaml
-        config = load_cascade_config("../examples/sql_chart_gen_analysis_full.yaml")
+        config = load_cascade_config("examples/sql_chart_gen_analysis_full.yaml")
         assert config.validators is not None
         assert "question_formulated" in config.validators
         assert "schema_discovered" in config.validators

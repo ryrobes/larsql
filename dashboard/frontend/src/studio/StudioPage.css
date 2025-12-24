@@ -32,7 +32,7 @@
   height: 100%;
 }
 
-/* Notebook mode - no header needed, navigator handles it */
+/* Timeline mode - no header needed, navigator handles it */
 .studio-schema-panel.timeline-mode {
   background-color: #000000;
 }
@@ -220,10 +220,10 @@
 }
 
 /* ============================================
-   NOTEBOOK AREA
+   CASCADE AREA
    ============================================ */
 
-.studio-notebook-area {
+.studio-cascade-area {
   display: flex;
   flex-direction: column;
   height: 100%;

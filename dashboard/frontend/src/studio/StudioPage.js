@@ -12,7 +12,7 @@ import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import { CascadeNavigator } from './notebook';
 import CascadeTimeline from './notebook/CascadeTimeline';
-import VerticalSidebar from './notebook/VerticalSidebar';
+import VerticalSidebar from '../shell/VerticalSidebar';
 import Header from '../components/Header';
 import CascadeBrowserModal from './components/CascadeBrowserModal';
 import './editors'; // Initialize phase editor registry
@@ -399,6 +399,8 @@ function StudioPage({
         <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="studio-timeline-layout">
             <VerticalSidebar
+              currentView="studio"
+              onNavigate={null}
               onMessageFlow={onMessageFlow}
               onCockpit={onCockpit}
               onSextant={onSextant}

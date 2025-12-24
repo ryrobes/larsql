@@ -5583,156 +5583,122 @@ def get_available_tools():
 @app.route('/api/available-models', methods=['GET'])
 def get_available_models():
     """
-    Get list of available models from OpenRouter.
-    Fetches from OpenRouter API and caches results.
+    Get list of available models from ClickHouse.
+    Replaces OpenRouter API + file cache with database query.
     """
-    import requests
+    from windlass.db_adapter import get_db
 
-    # Check for cached models (cache for 1 hour)
-    cache_file = os.path.join(DATA_DIR, '.openrouter_models_cache.json')
-    cache_max_age = 3600  # 1 hour
-
-    if os.path.exists(cache_file):
-        try:
-            cache_mtime = os.path.getmtime(cache_file)
-            if time.time() - cache_mtime < cache_max_age:
-                with open(cache_file, 'r') as f:
-                    cached_data = json.load(f)
-                    return jsonify(cached_data)
-        except:
-            pass
+    # Get query params
+    include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
 
     try:
-        # Fetch from OpenRouter
-        api_key = os.environ.get('OPENROUTER_API_KEY', '')
-        headers = {}
-        if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
+        db = get_db()
 
-        response = requests.get(
-            'https://openrouter.ai/api/v1/models',
-            headers=headers,
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
+        # Build query
+        where_clause = "1=1" if include_inactive else "is_active = true"
 
-        # Process models into our format
+        query = f"""
+            SELECT
+                model_id as id,
+                model_name as name,
+                provider,
+                tier,
+                popular,
+                context_length,
+                prompt_price,
+                completion_price,
+                is_active
+            FROM openrouter_models FINAL
+            WHERE {where_clause} AND model_type = 'text'
+            ORDER BY popular DESC, tier, model_id
+        """
+
+        results = db.query(query)
+
+        # Transform to frontend format
         models = []
-        popular_models = {
-            'anthropic/claude-sonnet-4', 'anthropic/claude-opus-4', 'anthropic/claude-haiku',
-            'openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o1', 'openai/o1-mini',
-            'google/gemini-2.5-flash', 'google/gemini-2.5-pro',
-            'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat',
-        }
-
-        for model in data.get('data', []):
-            model_id = model.get('id', '')
-            name = model.get('name', model_id)
-            provider = model_id.split('/')[0] if '/' in model_id else 'other'
-
-            # Determine tier based on pricing and capabilities
-            pricing = model.get('pricing', {})
-            prompt_price = float(pricing.get('prompt', 0))
-            context_length = model.get('context_length', 0)
-
-            if prompt_price > 0.01:  # > $10/M tokens
-                tier = 'flagship'
-            elif prompt_price > 0.0001:  # > $0.10/M tokens
-                tier = 'standard'
-            else:
-                tier = 'fast'
-
-            # Check if it's an open model
-            if 'llama' in model_id.lower() or 'mixtral' in model_id.lower() or 'mistral' in model_id.lower():
-                tier = 'open'
-
+        for row in results:
             models.append({
-                'id': model_id,
-                'name': name,
-                'provider': provider,
-                'tier': tier,
-                'popular': model_id in popular_models,
-                'context_length': context_length,
+                'id': row['id'],
+                'name': row['name'],
+                'provider': row['provider'],
+                'tier': row['tier'],
+                'popular': row['popular'],
+                'context_length': row['context_length'],
                 'pricing': {
-                    'prompt': prompt_price,
-                    'completion': float(pricing.get('completion', 0))
-                }
+                    'prompt': row['prompt_price'],
+                    'completion': row['completion_price']
+                },
+                'is_active': row['is_active']
             })
-
-        # Sort by popularity first, then by name
-        models.sort(key=lambda m: (not m['popular'], m['id']))
 
         # Get default model from environment
         default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
 
-        result = {'models': models, 'default_model': default_model}
-
-        # Cache the results
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            with open(cache_file, 'w') as f:
-                json.dump(result, f)
-        except:
-            pass
-
-        return jsonify(result)
+        return jsonify({'models': models, 'default_model': default_model})
 
     except Exception as e:
-        # Return fallback models if API fails
+        # Fallback models if database query fails
         fallback_models = [
-            {'id': 'anthropic/claude-sonnet-4', 'name': 'Claude Sonnet 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': True},
-            {'id': 'anthropic/claude-opus-4', 'name': 'Claude Opus 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': False},
-            {'id': 'anthropic/claude-haiku', 'name': 'Claude Haiku', 'provider': 'anthropic', 'tier': 'fast', 'popular': True},
-            {'id': 'openai/gpt-4o', 'name': 'GPT-4o', 'provider': 'openai', 'tier': 'flagship', 'popular': True},
-            {'id': 'openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'provider': 'openai', 'tier': 'fast', 'popular': True},
-            {'id': 'openai/o1', 'name': 'o1', 'provider': 'openai', 'tier': 'flagship', 'popular': True},
-            {'id': 'openai/o1-mini', 'name': 'o1-mini', 'provider': 'openai', 'tier': 'fast', 'popular': True},
-            {'id': 'google/gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'provider': 'google', 'tier': 'fast', 'popular': True},
-            {'id': 'google/gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'provider': 'google', 'tier': 'flagship', 'popular': False},
-            {'id': 'meta-llama/llama-3.3-70b-instruct', 'name': 'Llama 3.3 70B', 'provider': 'meta-llama', 'tier': 'open', 'popular': True},
-            {'id': 'deepseek/deepseek-chat', 'name': 'DeepSeek Chat', 'provider': 'deepseek', 'tier': 'fast', 'popular': True},
+            {'id': 'anthropic/claude-sonnet-4', 'name': 'Claude Sonnet 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': True, 'is_active': True},
+            {'id': 'anthropic/claude-opus-4', 'name': 'Claude Opus 4', 'provider': 'anthropic', 'tier': 'flagship', 'popular': False, 'is_active': True},
+            {'id': 'anthropic/claude-haiku', 'name': 'Claude Haiku', 'provider': 'anthropic', 'tier': 'fast', 'popular': True, 'is_active': True},
+            {'id': 'openai/gpt-4o', 'name': 'GPT-4o', 'provider': 'openai', 'tier': 'flagship', 'popular': True, 'is_active': True},
+            {'id': 'openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'provider': 'openai', 'tier': 'fast', 'popular': True, 'is_active': True},
+            {'id': 'google/gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'provider': 'google', 'tier': 'fast', 'popular': True, 'is_active': True},
         ]
         default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
-        return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'cached': False})
+        return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'fallback': True})
 
 
 @app.route('/api/image-generation-models', methods=['GET'])
 def get_image_generation_models():
     """
-    Get list of models that can generate images.
-
-    Uses the dynamic ModelRegistry which:
-    - Queries OpenRouter API for models with 'image' in output_modalities
-    - Caches results for 24 hours
-    - Includes unlisted models (FLUX, Riverflow) via known prefixes
-
-    Returns models formatted for the playground palette.
+    Get list of models that can generate images from ClickHouse.
+    Replaces ModelRegistry with database query.
     """
-    try:
-        from windlass.model_registry import ModelRegistry
+    from windlass.db_adapter import get_db
 
-        # Get all image output models
-        image_models = ModelRegistry.get_image_output_models()
+    try:
+        db = get_db()
+
+        # Query image generation models
+        query = """
+            SELECT
+                model_id as id,
+                model_name as name,
+                provider,
+                input_modalities,
+                output_modalities,
+                description
+            FROM openrouter_models FINAL
+            WHERE is_active = true
+              AND model_type = 'image'
+            ORDER BY provider, model_id
+        """
+
+        results = db.query(query)
 
         # Format for palette consumption
         palette_items = []
-        for model in image_models:
-            # Determine icon and color based on provider
-            provider = model.provider.lower()
-            if 'google' in provider or 'gemini' in model.id.lower():
+        for model in results:
+            provider = model['provider'].lower()
+            model_id_lower = model['id'].lower()
+
+            # Icon/color mapping (same as current implementation)
+            if 'google' in provider or 'gemini' in model_id_lower:
                 icon = 'mdi:google'
                 color = '#4285f4'
-            elif 'openai' in provider or 'gpt' in model.id.lower():
+            elif 'openai' in provider or 'gpt' in model_id_lower:
                 icon = 'mdi:robot'
                 color = '#10a37f'
-            elif 'flux' in model.id.lower() or 'black-forest' in provider:
+            elif 'flux' in model_id_lower or 'black-forest' in provider:
                 icon = 'mdi:fire'
                 color = '#7c3aed'
-            elif 'riverflow' in model.id.lower() or 'sourceful' in provider:
+            elif 'riverflow' in model_id_lower or 'sourceful' in provider:
                 icon = 'mdi:waves'
                 color = '#06b6d4'
-            elif 'stability' in provider or 'sdxl' in model.id.lower():
+            elif 'stability' in provider or 'sdxl' in model_id_lower:
                 icon = 'mdi:image-filter-hdr'
                 color = '#8b5cf6'
             else:
@@ -5740,16 +5706,15 @@ def get_image_generation_models():
                 color = '#a78bfa'
 
             palette_items.append({
-                'id': model.id.replace('/', '_').replace('.', '_').replace('-', '_'),
-                'name': model.name,
+                'id': model['id'].replace('/', '_').replace('.', '_').replace('-', '_'),
+                'name': model['name'],
                 'category': 'generator',
-                'openrouter': {'model': model.id},
-                'inputs': {'prompt': True, 'image': 'image' in model.input_modalities},
+                'openrouter': {'model': model['id']},
+                'inputs': {'prompt': True, 'image': 'image' in model['input_modalities']},
                 'outputs': {'mode': 'single'},
                 'icon': icon,
                 'color': color,
-                'description': model.description[:200] if model.description else f'Image generation via {model.provider}',
-                'pricing': model.pricing,
+                'description': model['description'][:200] if model['description'] else f"Image generation via {model['provider']}",
             })
 
         # Sort by name
@@ -5761,7 +5726,7 @@ def get_image_generation_models():
         })
 
     except Exception as e:
-        # Return fallback models if registry fails
+        # Return fallback models on error
         fallback_models = [
             {
                 'id': 'gemini_2_5_flash_image',
@@ -5773,17 +5738,6 @@ def get_image_generation_models():
                 'icon': 'mdi:google',
                 'color': '#4285f4',
                 'description': 'Google Gemini image generation',
-            },
-            {
-                'id': 'gpt_5_image',
-                'name': 'GPT-5 Image',
-                'category': 'generator',
-                'openrouter': {'model': 'openai/gpt-5-image'},
-                'inputs': {'prompt': True, 'image': True},
-                'outputs': {'mode': 'single'},
-                'icon': 'mdi:robot',
-                'color': '#10a37f',
-                'description': 'OpenAI GPT-5 image generation',
             },
         ]
         return jsonify({

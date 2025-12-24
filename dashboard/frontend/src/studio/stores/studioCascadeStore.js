@@ -30,10 +30,11 @@ function hashCellInputs(phase, cascadeInputs, priorOutputHashes) {
 }
 
 /**
- * Notebook Store - State management for Data Cascade notebooks
+ * Studio Cascade Store - State management for cascade builder
  *
- * A notebook is a cascade with only deterministic phases (sql_data, python_data,
- * js_data, clojure_data) that can be edited, run, and saved as reusable tools.
+ * Manages cascade editing, execution, and state for the Studio view.
+ * Supports both LLM-powered and deterministic phases (sql_data, python_data,
+ * js_data, clojure_data, windlass_data) that can be edited, run, and saved.
  *
  * Polyglot support: Data flows between languages via JSON serialization.
  * - SQL: rows as array of objects, accessed via _cell_name tables
@@ -77,11 +78,11 @@ const useStudioCascadeStore = create(
       cellStates: {},  // { [phaseName]: { status, result, error, duration } }
       // status: 'pending' | 'running' | 'success' | 'error' | 'stale'
 
-      isRunningAll: false,  // Full notebook execution in progress
+      isRunningAll: false,  // Full cascade execution in progress
       cascadeSessionId: null,  // Session ID when running full cascade (for SSE tracking)
 
       // Session ID for temp table persistence across cell executions
-      // Generated when notebook loads, persists until restart/reload
+      // Generated when cascade loads, persists until restart/reload
       sessionId: null,
 
       // ============================================
@@ -492,7 +493,7 @@ const useStudioCascadeStore = create(
             state.cascadeDirty = false;
             state.cascadeInputs = {};
             state.cellStates = {};
-            // Generate fresh session for loaded notebook
+            // Generate fresh session for loaded cascade
             state.sessionId = autoGenerateSessionId();
             // Clear undo/redo history
             state.undoStack = [];
@@ -1022,7 +1023,7 @@ output_schema:
         });
 
         try {
-          // Export notebook to YAML
+          // Export cascade to YAML
           const yaml = require('js-yaml');
           const cascadeYaml = yaml.dump(state.cascade, { indent: 2, lineWidth: -1 });
 
@@ -1133,7 +1134,7 @@ output_schema:
         });
       },
 
-      // Legacy: Run cells sequentially via notebook API (for isolated testing)
+      // Legacy: Run cells sequentially via cell API (for isolated testing)
       runAllCells: async () => {
         const state = get();
         if (!state.cascade || state.isRunningAll) return;
@@ -1207,7 +1208,7 @@ output_schema:
           }
 
           set(state => {
-            state.cascades = data.cascades || data.notebooks || [];
+            state.cascades = data.cascades || data.notebooks || []; // Backend may return 'notebooks' key
             state.cascadesLoading = false;
           });
         } catch (err) {

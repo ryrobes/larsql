@@ -385,6 +385,46 @@ def main():
     sessions_cleanup_parser.add_argument('--dry-run', action='store_true', help='Show zombies without marking them')
     sessions_cleanup_parser.add_argument('--grace', type=int, default=30, help='Grace period in seconds beyond heartbeat lease (default: 30)')
 
+    # Models command group - OpenRouter model management
+    models_parser = subparsers.add_parser('models', help='OpenRouter model management')
+    models_subparsers = models_parser.add_subparsers(dest='models_command', help='Models subcommands')
+
+    # models refresh
+    models_refresh_parser = models_subparsers.add_parser(
+        'refresh',
+        help='Fetch models from OpenRouter and verify availability'
+    )
+    models_refresh_parser.add_argument('--skip-verification', action='store_true',
+                                       help='Skip verification step (faster but less accurate)')
+    models_refresh_parser.add_argument('--workers', type=int, default=10,
+                                       help='Number of parallel verification workers (default: 10)')
+
+    # models list
+    models_list_parser = models_subparsers.add_parser(
+        'list',
+        help='List models from database'
+    )
+    models_list_parser.add_argument('--inactive', action='store_true', help='Include inactive models')
+    models_list_parser.add_argument('--type', choices=['text', 'image', 'all'], default='all',
+                                    help='Filter by model type')
+    models_list_parser.add_argument('--provider', help='Filter by provider (e.g., openai, anthropic)')
+    models_list_parser.add_argument('--limit', type=int, default=50, help='Max models to show')
+
+    # models verify
+    models_verify_parser = models_subparsers.add_parser(
+        'verify',
+        help='Re-verify existing models without re-fetching from API'
+    )
+    models_verify_parser.add_argument('--workers', type=int, default=10,
+                                      help='Number of parallel verification workers')
+    models_verify_parser.add_argument('--model-id', help='Verify a specific model only')
+
+    # models stats
+    models_stats_parser = models_subparsers.add_parser(
+        'stats',
+        help='Show model statistics'
+    )
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -525,6 +565,18 @@ def main():
             cmd_sessions_cleanup(args)
         else:
             sessions_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'models':
+        if args.models_command == 'refresh':
+            cmd_models_refresh(args)
+        elif args.models_command == 'list':
+            cmd_models_list(args)
+        elif args.models_command == 'verify':
+            cmd_models_verify(args)
+        elif args.models_command == 'stats':
+            cmd_models_stats(args)
+        else:
+            models_parser.print_help()
             sys.exit(1)
     else:
         parser.print_help()
@@ -2768,6 +2820,45 @@ def cmd_sessions_cleanup(args):
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+def cmd_models_refresh(args):
+    """Fetch models from OpenRouter and verify availability."""
+    from windlass.models_mgmt import refresh_models
+
+    refresh_models(
+        skip_verification=args.skip_verification,
+        workers=args.workers
+    )
+
+
+def cmd_models_list(args):
+    """List models from database."""
+    from windlass.models_mgmt import list_models
+
+    list_models(
+        include_inactive=args.inactive,
+        model_type=args.type,
+        provider=args.provider,
+        limit=args.limit
+    )
+
+
+def cmd_models_verify(args):
+    """Re-verify existing models."""
+    from windlass.models_mgmt import verify_models
+
+    verify_models(
+        workers=args.workers,
+        model_id=args.model_id
+    )
+
+
+def cmd_models_stats(args):
+    """Show model statistics."""
+    from windlass.models_mgmt import show_stats
+
+    show_stats()
 
 
 if __name__ == "__main__":
