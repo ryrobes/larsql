@@ -508,10 +508,12 @@ class UnifiedLogger:
             print(f"[Unified Log] INSERT error: {e}")
 
         # Queue for cost UPDATE if needed (LLM response with no cost yet)
+        # Only fetch from OpenRouter - other providers (Ollama, etc.) handle cost inline
         needs_cost_update = (
             request_id is not None and
             cost is None and
-            role == "assistant"
+            role == "assistant" and
+            provider != "ollama"  # Skip cost fetch for local Ollama models
         )
 
         if needs_cost_update:
@@ -525,6 +527,7 @@ class UnifiedLogger:
                     'sounding_index': sounding_index,
                     'turn_number': turn_number,
                     'model': model,
+                    'provider': provider,  # Include provider for debugging
                     'queued_at': time.time()
                 })
 

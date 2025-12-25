@@ -1628,23 +1628,15 @@ _models_cache = {
 @studio_bp.route('/models', methods=['GET'])
 def get_models():
     """
-    Fetch available LLM models from OpenRouter API.
+    Fetch available LLM models from OpenRouter API and Ollama local models.
 
     Returns cached data if available and fresh (< 3 hours old).
 
     Response:
         {
-            "models": [
-                {
-                    "id": "anthropic/claude-opus-4.5",
-                    "name": "Claude Opus 4.5",
-                    "context_length": 200000,
-                    "pricing": {...},
-                    "architecture": {...},
-                    "top_provider": {...}
-                },
-                ...
-            ],
+            "models": [...],           # OpenRouter models
+            "ollama_models": [...],    # Local Ollama models
+            "default_model": "...",
             "cached": true,
             "cache_age_seconds": 1234
         }
@@ -1659,8 +1651,13 @@ def get_models():
         age = now - _models_cache['timestamp']
         if age < _models_cache['ttl_seconds']:
             cfg = get_config()
+
+            # Fetch fresh Ollama models from database (fast, always up-to-date)
+            ollama_models = _fetch_ollama_models_from_db()
+
             return jsonify({
                 'models': _models_cache['data'],
+                'ollama_models': ollama_models,
                 'default_model': cfg.default_model,
                 'cached': True,
                 'cache_age_seconds': int(age)
@@ -1696,8 +1693,12 @@ def get_models():
         # Get default model from config
         default_model = cfg.default_model
 
+        # Fetch Ollama models from database
+        ollama_models = _fetch_ollama_models_from_db()
+
         return jsonify({
             'models': models,
+            'ollama_models': ollama_models,
             'default_model': default_model,
             'cached': False,
             'cache_age_seconds': 0
@@ -1712,11 +1713,194 @@ def get_models():
         except:
             default_model = 'google/gemini-2.5-flash-lite'
 
+        # Still try to fetch Ollama models on error
+        try:
+            ollama_models = _fetch_ollama_models_from_db()
+        except:
+            ollama_models = []
+
         return jsonify({
             'error': str(e),
             'traceback': traceback.format_exc(),
             'default_model': default_model,
-            'models': []
+            'models': [],
+            'ollama_models': ollama_models
+        }), 500
+
+
+def _fetch_ollama_models_from_db():
+    """
+    Fetch Ollama models from the openrouter_models table in ClickHouse.
+
+    Returns:
+        List of model dicts compatible with OpenRouter schema
+    """
+    try:
+        # Use ClickHouse connection from windlass (not DuckDB)
+        from windlass.db_adapter import get_db
+
+        db = get_db()
+        if not db:
+            return []
+
+        # Query Ollama models from ClickHouse database
+        query = """
+            SELECT
+                model_id,
+                model_name,
+                description,
+                context_length,
+                prompt_price,
+                completion_price
+            FROM openrouter_models
+            WHERE provider = 'ollama'
+            ORDER BY model_id
+        """
+
+        rows = db.query(query)
+
+        models = []
+        for row in rows:
+            models.append({
+                'id': row['model_id'],
+                'name': row['model_name'],
+                'description': row['description'],
+                'context_length': row['context_length'],
+                'pricing': {
+                    'prompt': str(row['prompt_price']),
+                    'completion': str(row['completion_price']),
+                },
+                'architecture': {
+                    'modality': 'text->text',
+                    'input_modalities': ['text'],
+                    'output_modalities': ['text'],
+                },
+                'top_provider': {
+                    'is_moderated': False,
+                    'is_local': True,
+                }
+            })
+
+        return models
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Failed to fetch Ollama models from DB: {e}")
+        print(traceback.format_exc())
+        return []
+
+
+@studio_bp.route('/tools', methods=['GET'])
+def get_tools():
+    """
+    Fetch available tools from tool_manifest_vectors and hf_spaces tables.
+
+    Returns:
+        {
+            "tools": [
+                {
+                    "name": "ask_human",
+                    "type": "function",
+                    "description": "Ask the human a question",
+                    "source": "builtin"
+                },
+                ...
+            ],
+            "hf_spaces": [
+                {
+                    "id": "black-forest-labs/FLUX.1-schnell",
+                    "name": "FLUX.1-schnell",
+                    "author": "black-forest-labs",
+                    "sdk": "gradio",
+                    "is_callable": true
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        from windlass.db_adapter import get_db
+        db = get_db()
+
+        # Fetch all tools from database
+        tools_query = """
+            SELECT
+                tool_name,
+                tool_type,
+                tool_description,
+                source_path
+            FROM tool_manifest_vectors
+            ORDER BY tool_name, last_updated DESC
+        """
+        tools_rows = db.query(tools_query)
+
+        # Deduplicate in Python (prefer cascade > function > memory > validator)
+        tools_dict = {}
+        type_priority = {'cascade': 0, 'function': 1, 'memory': 2, 'validator': 3}
+
+        for row in tools_rows:
+            tool_name = row['tool_name']
+
+            # If this tool not seen yet, or has higher priority type, use it
+            if tool_name not in tools_dict:
+                tools_dict[tool_name] = row
+            else:
+                # Compare priorities
+                current_priority = type_priority.get(tools_dict[tool_name]['tool_type'], 99)
+                new_priority = type_priority.get(row['tool_type'], 99)
+
+                if new_priority < current_priority:
+                    tools_dict[tool_name] = row
+
+        # Convert to list
+        tools = []
+        for row in sorted(tools_dict.values(), key=lambda x: x['tool_name']):
+            tools.append({
+                'name': row['tool_name'],
+                'type': row['tool_type'],
+                'description': row['tool_description'],
+                'source': 'cascade' if row['source_path'] else 'builtin'
+            })
+
+        # Fetch HuggingFace Spaces
+        hf_query = """
+            SELECT
+                space_id,
+                author,
+                space_name,
+                sdk,
+                is_callable,
+                status
+            FROM hf_spaces
+            WHERE is_callable = true
+            ORDER BY space_id
+            LIMIT 100
+        """
+        hf_rows = db.query(hf_query)
+
+        hf_spaces = []
+        for row in hf_rows:
+            hf_spaces.append({
+                'id': row['space_id'],
+                'name': row['space_name'],
+                'author': row['author'],
+                'sdk': row['sdk'],
+                'is_callable': row['is_callable'],
+                'status': row['status']
+            })
+
+        return jsonify({
+            'tools': tools,
+            'hf_spaces': hf_spaces
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'tools': [],
+            'hf_spaces': []
         }), 500
 
 

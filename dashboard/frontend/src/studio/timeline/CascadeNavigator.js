@@ -7,6 +7,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useStudioQueryStore from '../stores/studioQueryStore';
 import InputsForm from './InputsForm';
 import ModelBrowserPalette from './ModelBrowserPalette';
+import ToolBrowserPalette from './ToolBrowserPalette';
 import VariablePalette from './VariablePalette';
 import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
@@ -1052,6 +1053,9 @@ function CascadeNavigator() {
 
           {/* Model Browser Palette */}
           <ModelBrowserPalette />
+
+          {/* Tool Browser Palette */}
+          <ToolBrowserPalette />
 
           {/* Variable Palette */}
           <VariablePalette />

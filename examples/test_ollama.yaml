@@ -1,0 +1,15 @@
+cascade_id: ollama_test
+description: Test Ollama local GPU integration with database logging
+
+inputs_schema:
+  question: "Question to ask the local model"
+
+phases:
+  - name: local_reasoning
+    instructions: |
+      You are a helpful AI assistant running on local GPU via Ollama.
+
+      Answer this question concisely: {{ input.question }}
+
+      After answering, add a note that you are running locally on GPU for free!
+    model: "ollama/gpt-oss:20b"

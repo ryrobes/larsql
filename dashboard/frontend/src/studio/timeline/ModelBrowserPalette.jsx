@@ -172,11 +172,13 @@ function ModelGroup({ title, iconName, models, defaultOpen = true }) {
  */
 function ModelBrowserPalette() {
   const [models, setModels] = useState([]);
+  const [ollamaModels, setOllamaModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
+  const [isOllamaExpanded, setIsOllamaExpanded] = useState(true); // Ollama expanded by default
 
   // Fetch models from backend
   useEffect(() => {
@@ -196,6 +198,7 @@ function ModelBrowserPalette() {
 
         if (mounted) {
           setModels(data.models || []);
+          setOllamaModels(data.ollama_models || []);
           setLoading(false);
         }
       } catch (err) {
@@ -281,7 +284,7 @@ function ModelBrowserPalette() {
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
             className="nav-chevron"
           />
-          <Icon icon="mdi:robot-outline" className="nav-section-icon" />
+          <img src="/openrouter.svg" alt="OpenRouter" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
           <span className="nav-section-title">Models</span>
         </div>
         {isExpanded && (
@@ -305,7 +308,7 @@ function ModelBrowserPalette() {
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
             className="nav-chevron"
           />
-          <Icon icon="mdi:robot-outline" className="nav-section-icon" />
+          <img src="/openrouter.svg" alt="OpenRouter" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
           <span className="nav-section-title">Models</span>
         </div>
         {isExpanded && (
@@ -319,84 +322,119 @@ function ModelBrowserPalette() {
   }
 
   return (
-    <div className="nav-section model-browser-section">
-      <div
-        className="nav-section-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <Icon
-          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
-          className="nav-chevron"
-        />
-        <Icon icon="mdi:robot-outline" className="nav-section-icon" />
-        <span className="nav-section-title">Models</span>
-        <span className="nav-section-count">{filteredModels.length}</span>
-      </div>
-
-      {isExpanded && (
-        <div className="nav-section-content model-browser-content">
-        {/* Search bar */}
-        <div className="model-search-bar">
-          <Icon icon="mdi:magnify" width="14" className="model-search-icon" />
-          <input
-            type="text"
-            placeholder="Search models..."
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            className="model-search-input"
-          />
-          {searchText && (
-            <Icon
-              icon="mdi:close"
-              width="14"
-              className="model-search-clear"
-              onClick={() => setSearchText('')}
-            />
-          )}
-        </div>
-
-        {/* Category filters */}
-        <div className="model-category-filters">
-          <button
-            className={`model-filter-btn ${categoryFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setCategoryFilter('all')}
+    <>
+      {/* LOCAL MODELS Section */}
+      {ollamaModels.length > 0 && (
+        <div className="nav-section model-browser-section">
+          <div
+            className="nav-section-header"
+            onClick={() => setIsOllamaExpanded(!isOllamaExpanded)}
           >
-            All
-          </button>
-          {Object.entries(MODEL_CATEGORIES).map(([key, config]) => (
-            <button
-              key={key}
-              className={`model-filter-btn ${categoryFilter === key ? 'active' : ''}`}
-              onClick={() => setCategoryFilter(key)}
-              title={config.label}
-            >
-              <Icon icon={config.icon} width="12" style={{ color: config.color }} />
-            </button>
-          ))}
-        </div>
+            <Icon
+              icon={isOllamaExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+              className="nav-chevron"
+            />
+            <img src="/ollama.png" alt="Ollama" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
+            <span className="nav-section-title">Local Models</span>
+            <span className="nav-section-count">{ollamaModels.length}</span>
+          </div>
 
-        {/* Model groups by provider */}
-        <div className="model-groups-container">
-          {grouped.length === 0 && (
-            <div className="model-browser-empty">
-              <Icon icon="mdi:folder-open-outline" width="24" />
-              <span>No models found</span>
+          {isOllamaExpanded && (
+            <div className="nav-section-content model-browser-content">
+              {/* Ollama models - no search or filters, just list all */}
+              <div className="model-groups-container">
+                <ModelGroup
+                  title="ollama"
+                  iconName="mdi:chip"
+                  models={ollamaModels}
+                  defaultOpen={true}
+                />
+              </div>
             </div>
           )}
-
-          {grouped.map(({ provider, models }) => (
-            <ModelGroup
-              key={provider}
-              title={provider}
-              iconName="mdi:domain"
-              models={models}
-              defaultOpen={provider === 'anthropic' || provider === 'openai'}
-            />
-          ))}
         </div>
-      </div>
       )}
-    </div>
+
+      {/* CLOUD MODELS Section */}
+      <div className="nav-section model-browser-section">
+        <div
+          className="nav-section-header"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          <Icon
+            icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+            className="nav-chevron"
+          />
+          <img src="/openrouter.svg" alt="OpenRouter" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
+          <span className="nav-section-title">Models</span>
+          <span className="nav-section-count">{filteredModels.length}</span>
+        </div>
+
+        {isExpanded && (
+          <div className="nav-section-content model-browser-content">
+          {/* Search bar */}
+          <div className="model-search-bar">
+            <Icon icon="mdi:magnify" width="14" className="model-search-icon" />
+            <input
+              type="text"
+              placeholder="Search models..."
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              className="model-search-input"
+            />
+            {searchText && (
+              <Icon
+                icon="mdi:close"
+                width="14"
+                className="model-search-clear"
+                onClick={() => setSearchText('')}
+              />
+            )}
+          </div>
+
+          {/* Category filters */}
+          <div className="model-category-filters">
+            <button
+              className={`model-filter-btn ${categoryFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setCategoryFilter('all')}
+            >
+              All
+            </button>
+            {Object.entries(MODEL_CATEGORIES).map(([key, config]) => (
+              <button
+                key={key}
+                className={`model-filter-btn ${categoryFilter === key ? 'active' : ''}`}
+                onClick={() => setCategoryFilter(key)}
+                title={config.label}
+              >
+                <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+              </button>
+            ))}
+          </div>
+
+          {/* Model groups by provider */}
+          <div className="model-groups-container">
+            {grouped.length === 0 && (
+              <div className="model-browser-empty">
+                <Icon icon="mdi:folder-open-outline" width="24" />
+                <span>No models found</span>
+              </div>
+            )}
+
+            {grouped.map(({ provider, models }) => (
+              <ModelGroup
+                key={provider}
+                title={provider}
+                iconName="mdi:domain"
+                models={models}
+                defaultOpen={provider === 'anthropic' || provider === 'openai'}
+              />
+            ))}
+          </div>
+        </div>
+        )}
+      </div>
+    </>
   );
 }
 

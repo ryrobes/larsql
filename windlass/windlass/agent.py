@@ -85,10 +85,13 @@ class Agent:
              args["custom_llm_provider"] = "openai"
 
         # Explicitly set provider for Ollama (local GPU)
+        # Override base_url even if set to OpenRouter (model prefix takes precedence)
         if self.base_url and "ollama" in self.base_url.lower():
             args["custom_llm_provider"] = "ollama"
         elif self.model and self.model.startswith("ollama/"):
             args["custom_llm_provider"] = "ollama"
+            # Always use localhost for Ollama models (ignore configured base_url)
+            args["base_url"] = "http://localhost:11434"
 
         if self.tools:
             args["tools"] = self.tools
@@ -218,25 +221,36 @@ class Agent:
                 from .blocking_cost import extract_provider_from_model
                 provider = extract_provider_from_model(self.model)
 
-                # Extract reasoning tokens from response if available
-                # OpenRouter returns reasoning_tokens in usage for models that support it
+                # Extract token counts from response (available immediately from LiteLLM)
+                tokens_in = 0
+                tokens_out = 0
                 tokens_reasoning = None
                 if hasattr(response, 'usage'):
-                    # Try different field names that providers might use
+                    tokens_in = response.usage.prompt_tokens if hasattr(response.usage, 'prompt_tokens') else 0
+                    tokens_out = response.usage.completion_tokens if hasattr(response.usage, 'completion_tokens') else 0
+
+                    # Try different field names for reasoning tokens
                     if hasattr(response.usage, 'reasoning_tokens'):
                         tokens_reasoning = response.usage.reasoning_tokens
                     elif hasattr(response.usage, 'thinking_tokens'):
                         tokens_reasoning = response.usage.thinking_tokens
 
-                # Add metadata to response - cost will be fetched later by unified logger
+                # Cost handling:
+                # - Ollama: cost=0 (local/free), no need to fetch
+                # - OpenRouter: cost=None (will be fetched by unified logger)
+                cost = None
+                if provider == "ollama":
+                    cost = 0.0  # Local models are free
+
+                # Add metadata to response
                 msg_dict.update({
                     "full_request": full_request,
                     "full_response": full_response,
                     "model": response.model if hasattr(response, 'model') else self.model,
                     "model_requested": self.model_requested,  # Original model string with reasoning spec
-                    "cost": None,  # Will be fetched by unified logger
-                    "tokens_in": 0,  # Will be fetched by unified logger
-                    "tokens_out": 0,  # Will be fetched by unified logger
+                    "cost": cost,  # 0.0 for Ollama, None for OpenRouter (fetched later)
+                    "tokens_in": tokens_in,  # Use immediate counts from LiteLLM
+                    "tokens_out": tokens_out,  # Use immediate counts from LiteLLM
                     "tokens_reasoning": tokens_reasoning,
                     "provider": provider,
                     # Reasoning config info for logging

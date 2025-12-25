@@ -53,6 +53,137 @@ def fetch_models_from_openrouter() -> List[Dict]:
         raise
 
 
+def scrape_ollama_model_metadata(model_name: str) -> Dict:
+    """
+    Scrape model metadata from ollama.com library page using regex.
+
+    The page structure uses divs rather than traditional tables.
+    We search for the model variant name and extract nearby GB/K values.
+
+    Args:
+        model_name: Model name without 'ollama/' prefix (e.g., 'gpt-oss:20b')
+
+    Returns:
+        Dict with context_length, parameters, size_gb
+        Returns empty dict on error.
+    """
+    import re
+
+    try:
+        # Extract base model name (without tag)
+        # e.g., "gpt-oss:20b" -> "gpt-oss"
+        base_name = model_name.split(':')[0]
+
+        url = f"https://ollama.com/library/{base_name}"
+
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+
+        html = response.text
+
+        metadata = {
+            'context_length': 0,
+            'parameters': None,
+            'size_gb': 0,
+        }
+
+        # Search for the model variant and extract data after it
+        # Pattern: model_name followed by size (GB) and context (K)
+        escaped_name = re.escape(model_name).replace('\\:', ':')
+        pattern = rf'{escaped_name}.*?(\d+(?:\.\d+)?)\s*GB.*?(\d+)\s*K'
+
+        match = re.search(pattern, html, re.DOTALL | re.IGNORECASE)
+
+        if match:
+            # Extract size and context from regex groups
+            metadata['size_gb'] = float(match.group(1))
+            context_k = int(match.group(2))
+            metadata['context_length'] = context_k * 1000
+
+            # Extract parameters from variant name (e.g., "20b" -> "20B")
+            param_match = re.search(r'(\d+(?:\.\d+)?)\s*b\b', model_name, re.IGNORECASE)
+            if param_match:
+                metadata['parameters'] = f"{param_match.group(1)}B"
+
+        return metadata
+
+    except Exception as e:
+        # Silently fail - metadata is optional
+        return {}
+
+
+def fetch_models_from_ollama(ollama_base_url: str = "http://localhost:11434") -> List[Dict]:
+    """
+    Fetch all models from local Ollama instance.
+
+    Args:
+        ollama_base_url: Base URL for Ollama API (default: http://localhost:11434)
+
+    Returns:
+        List of model dicts compatible with OpenRouter schema
+    """
+    console.print(f"[cyan]Fetching models from Ollama ({ollama_base_url})...[/cyan]")
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"{ollama_base_url}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+
+        ollama_models = []
+        raw_models = data.get("models", [])
+
+        console.print(f"[cyan]Scraping metadata from ollama.com...[/cyan]")
+
+        for m in raw_models:
+            model_name = m.get("name", "")
+            model_id = f"ollama/{model_name}"
+            size_bytes = m.get("size", 0)
+
+            # Format size as human-readable
+            size_gb = size_bytes / (1024**3)
+
+            # Scrape metadata from ollama.com
+            metadata = scrape_ollama_model_metadata(model_name)
+            context_length = metadata.get('context_length', 0)
+            parameters = metadata.get('parameters', '')
+
+            # Build description with parameters if available
+            description_parts = [f"Local Ollama model ({size_gb:.1f}GB)"]
+            if parameters:
+                description_parts.append(f"{parameters} parameters")
+
+            ollama_models.append({
+                "id": model_id,
+                "name": model_name,
+                "description": " · ".join(description_parts),
+                "context_length": context_length,
+                "pricing": {
+                    "prompt": "0",
+                    "completion": "0",
+                },
+                "architecture": {
+                    "modality": "text->text",
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                },
+                "top_provider": {
+                    "is_moderated": False,
+                },
+            })
+
+        console.print(f"[green]✓[/green] Fetched {len(ollama_models)} Ollama models with metadata")
+        return ollama_models
+
+    except httpx.ConnectError:
+        console.print("[yellow]⚠[/yellow] Ollama not running (skipping local models)")
+        return []
+    except Exception as e:
+        console.print(f"[yellow]⚠[/yellow] Failed to fetch Ollama models: {e}")
+        return []
+
+
 def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
     """
     Classify model into tier based on pricing and characteristics.
@@ -63,8 +194,12 @@ def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
         model_id: Full model ID
 
     Returns:
-        Tier string: 'flagship', 'standard', 'fast', or 'open'
+        Tier string: 'local', 'flagship', 'standard', 'fast', or 'open'
     """
+    # Check if it's a local Ollama model
+    if model_id.startswith("ollama/"):
+        return "local"
+
     prompt_price = float(pricing.get("prompt", 0))
 
     # Check if it's an open-source model
@@ -206,7 +341,7 @@ def verify_models_parallel(
 
 def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
-    Main refresh function: fetch models from API and populate ClickHouse.
+    Main refresh function: fetch models from OpenRouter and Ollama, then populate ClickHouse.
 
     Args:
         skip_verification: If True, skip verification step (faster but less accurate)
@@ -216,21 +351,29 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     db = get_db()
 
     console.print("\n[bold cyan]╔══════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║  OpenRouter Model Refresh           ║[/bold cyan]")
+    console.print("[bold cyan]║  Model Refresh (Cloud + Local)      ║[/bold cyan]")
     console.print("[bold cyan]╚══════════════════════════════════════╝[/bold cyan]\n")
 
-    # Step 1: Fetch models from API
+    # Step 1a: Fetch models from OpenRouter
     try:
-        raw_models = fetch_models_from_openrouter()
+        openrouter_models = fetch_models_from_openrouter()
     except Exception:
-        console.print("\n[red]✗ Refresh failed - keeping existing data[/red]")
+        console.print("\n[red]✗ OpenRouter fetch failed - keeping existing data[/red]")
         return
 
-    # Step 2: Verify models (optional)
+    # Step 1b: Fetch models from Ollama (non-fatal if unavailable)
+    ollama_models = fetch_models_from_ollama()
+
+    # Combine all models
+    raw_models = openrouter_models + ollama_models
+    console.print(f"\n[green]✓[/green] Total models: {len(raw_models)} "
+                 f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)})\n")
+
+    # Step 2: Verify OpenRouter models only (Ollama models are always active)
     verification_results = {}
     if not skip_verification:
         verification_results = verify_models_parallel(
-            raw_models,
+            openrouter_models,  # Only verify OpenRouter models
             config.provider_api_key,
             workers=workers
         )
@@ -288,10 +431,14 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
 
         rows.append(row)
 
-    # Step 4: Insert into ClickHouse
-    console.print(f"[cyan]Inserting {len(rows)} models into ClickHouse...[/cyan]")
+    # Step 4: Truncate existing data and insert fresh models
+    console.print(f"[cyan]Replacing models in ClickHouse...[/cyan]")
 
     try:
+        # Truncate table to avoid duplicates
+        db.execute("TRUNCATE TABLE openrouter_models")
+
+        # Insert fresh data
         db.insert_rows("openrouter_models", rows)
         console.print(f"[green]✓[/green] Successfully inserted {len(rows)} models")
     except Exception as e:

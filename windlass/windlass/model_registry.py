@@ -65,6 +65,11 @@ class ModelInfo:
         """Extract short name from model ID."""
         return self.id.split("/")[1] if "/" in self.id else self.id
 
+    @property
+    def is_local(self) -> bool:
+        """Whether this is a local Ollama model."""
+        return self.top_provider.get("is_local", False) or self.id.startswith("ollama/")
+
 
 class ModelRegistry:
     """
@@ -234,8 +239,66 @@ class ModelRegistry:
             logger.debug(f"Could not validate model {model_id}: {e}")
             return True
 
+    def _fetch_ollama_models(self, ollama_base_url: str = "http://localhost:11434") -> List[Dict]:
+        """
+        Fetch models from local Ollama instance.
+
+        Args:
+            ollama_base_url: Base URL for Ollama API (default: http://localhost:11434)
+
+        Returns:
+            List of model dicts compatible with ModelInfo format
+        """
+        import httpx
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(f"{ollama_base_url}/api/tags")
+                response.raise_for_status()
+                data = response.json()
+
+            ollama_models = []
+            for m in data.get("models", []):
+                # Ollama returns: {"name": "gpt-oss:20b", "size": 13GB, "modified_at": ...}
+                model_name = m.get("name", "")
+
+                # Format as ollama/model for consistency with LiteLLM
+                model_id = f"ollama/{model_name}"
+
+                ollama_models.append({
+                    "id": model_id,
+                    "name": model_name,
+                    "description": f"Local Ollama model (size: {self._format_size(m.get('size', 0))})",
+                    "modality": "text->text",
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                    "context_length": 0,  # Ollama doesn't expose this via API
+                    "pricing": {"prompt": "0", "completion": "0"},  # Local = free!
+                    "top_provider": {"name": "ollama", "is_local": True},
+                })
+
+            if ollama_models:
+                logger.info(f"Fetched {len(ollama_models)} models from Ollama")
+
+            return ollama_models
+
+        except Exception as e:
+            logger.debug(f"Could not fetch Ollama models (is Ollama running?): {e}")
+            return []
+
+    def _format_size(self, size_bytes: int) -> str:
+        """Format byte size as human-readable string."""
+        if size_bytes == 0:
+            return "unknown"
+
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f}{unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f}PB"
+
     def _fetch_from_api(self) -> bool:
-        """Fetch models from OpenRouter API. Returns True on success."""
+        """Fetch models from OpenRouter API and Ollama. Returns True on success."""
         import httpx
         from .config import get_config
 
@@ -254,6 +317,7 @@ class ModelRegistry:
             self._models = {}
             self._image_output_models = set()
 
+            # Fetch OpenRouter models
             for m in data.get("data", []):
                 arch = m.get("architecture", {})
 
@@ -274,6 +338,14 @@ class ModelRegistry:
                 self._models[model.id] = model
                 if model.can_output_images:
                     self._image_output_models.add(model.id)
+
+            # Fetch Ollama models (local GPU)
+            ollama_models = self._fetch_ollama_models()
+            for model_data in ollama_models:
+                models_data.append(model_data)
+                model = ModelInfo(**model_data)
+                self._models[model.id] = model
+                # Ollama models don't generate images (yet)
 
             # Add unlisted image models (with validation)
             # These are models that work but don't appear in /models endpoint
@@ -306,8 +378,12 @@ class ModelRegistry:
             self._last_fetch = time.time()
             self._save_cache(models_data)
 
+            ollama_count = len(ollama_models)
+            openrouter_count = len(self._models) - ollama_count
+
             logger.info(
-                f"Fetched {len(self._models)} models from API "
+                f"Fetched {len(self._models)} models total: "
+                f"{openrouter_count} from OpenRouter, {ollama_count} from Ollama "
                 f"({len(self._image_output_models)} image output, {validated_unlisted} unlisted)"
             )
             return True
@@ -419,6 +495,22 @@ class ModelRegistry:
         instance = cls.get_instance()
         instance._ensure_initialized()
         return list(instance._models.values())
+
+    @classmethod
+    def get_local_models(cls) -> List[ModelInfo]:
+        """
+        Get all local Ollama models.
+
+        Returns:
+            List of ModelInfo for Ollama models (free, local GPU)
+        """
+        instance = cls.get_instance()
+        instance._ensure_initialized()
+
+        return [
+            model for model in instance._models.values()
+            if model.is_local
+        ]
 
     @classmethod
     def register_runtime_image_model(cls, model_id: str):
