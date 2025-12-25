@@ -25,9 +25,10 @@ const COST_BACKFILL_LOOKBACK_MS = 30000; // Look back 30s for cost updates
  *
  * @param {string} sessionId - Session to poll
  * @param {boolean} isRunning - Whether execution is active
+ * @param {boolean} isReplayMode - True if viewing historical session (default: false)
  * @returns {Object} { logs, cellStates, isPolling, error }
  */
-export function useTimelinePolling(sessionId, isRunning) {
+export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
   const [logs, setLogs] = useState([]);
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState(null);
@@ -48,28 +49,26 @@ export function useTimelinePolling(sessionId, isRunning) {
   // Poll function
   const poll = useCallback(async () => {
     if (!sessionId) {
-      //console.log('[TimelinePolling] No sessionId, skipping poll');
       return;
     }
 
-    //console.log('[TimelinePolling] Polling session:', sessionId, 'cursor:', cursorRef.current);
-
     try {
-      // Use a lookback window instead of strict cursor to catch cost updates on existing rows
-      // Calculate timestamp 30s ago to catch backfilled cost data
-      const now = new Date();
-      const lookbackTime = new Date(now.getTime() - COST_BACKFILL_LOOKBACK_MS);
-      const lookbackTimestamp = lookbackTime.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+      // Different strategies for replay vs live mode
+      let url;
 
-      // Use the older of cursorRef or lookbackTimestamp to catch updates
-      const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
-      const isLookback = effectiveCursor !== cursorRef.current;
+      if (isReplayMode) {
+        // REPLAY MODE: Fetch all data once (full replacement)
+        url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+      } else {
+        // LIVE MODE: Incremental updates using cursor
+        const now = new Date();
+        const lookbackTime = new Date(now.getTime() - COST_BACKFILL_LOOKBACK_MS);
+        const lookbackTimestamp = lookbackTime.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+        const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
 
-      // if (isLookback && Math.random() < 0.1) { // Log 10% of lookbacks to avoid spam
-      //   console.log('[TimelinePolling] Using lookback window to catch cost updates', { cursor: cursorRef.current, lookback: lookbackTimestamp });
-      // }
+        url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
+      }
 
-      const url = `http://localhost:5001/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -78,55 +77,62 @@ export function useTimelinePolling(sessionId, isRunning) {
 
       const data = await response.json();
 
-      //console.log('[TimelinePolling] Fetched', data.rows?.length || 0, 'rows for session:', sessionId);
-
       if (data.error) {
         throw new Error(data.error);
       }
 
-      // Handle duplicates intelligently: update existing rows if data changed (e.g., cost backfilled)
-      const newRows = [];
-      const updatedMessageIds = new Set();
+      // Filter to only this session and its direct children (no other sessions!)
+      const validRows = (data.rows || []).filter(row => {
+        return row.session_id === sessionId ||
+               row.parent_session_id === sessionId ||
+               row.session_id?.startsWith(`${sessionId}_`);
+      });
 
-      for (const row of (data.rows || [])) {
-        if (seenIdsRef.current.has(row.message_id)) {
-          // Already seen this message_id - check if cost was backfilled
-          if (row.cost && row.cost > 0) {
-            updatedMessageIds.add(row.message_id);
-          }
-          // Skip adding to newRows, but track for potential update
-        } else {
-          // Brand new row
-          seenIdsRef.current.add(row.message_id);
-          newRows.push(row);
-        }
-      }
+      if (isReplayMode) {
+        // REPLAY: Replace entire logs array
+        setLogs(validRows);
+      } else {
+        // LIVE: Incremental append with deduplication
+        const newRows = [];
+        const updatedMessageIds = new Set();
 
-      // Update logs: add new rows AND update existing rows with backfilled cost
-      if (newRows.length > 0 || updatedMessageIds.size > 0) {
-        setLogs(prev => {
-          if (updatedMessageIds.size === 0) {
-            // No updates, just append new rows
-            return [...prev, ...newRows];
-          }
-
-          // Update existing rows with backfilled data
-          const updated = prev.map(existingRow => {
-            if (updatedMessageIds.has(existingRow.message_id)) {
-              // Find the new version of this row
-              const newVersion = (data.rows || []).find(r => r.message_id === existingRow.message_id);
-              if (newVersion && newVersion.cost && (!existingRow.cost || existingRow.cost === 0)) {
-                console.log('[TimelinePolling] Backfilling cost for message', existingRow.message_id, 'from', existingRow.cost, 'to', newVersion.cost);
-                return { ...existingRow, cost: newVersion.cost };
-              }
+        for (const row of validRows) {
+          if (seenIdsRef.current.has(row.message_id)) {
+            // Already seen - check if cost was backfilled
+            if (row.cost && row.cost > 0) {
+              updatedMessageIds.add(row.message_id);
             }
-            return existingRow;
+          } else {
+            // Brand new row
+            seenIdsRef.current.add(row.message_id);
+            newRows.push(row);
+          }
+        }
+
+        // Update logs: add new rows AND update existing rows with backfilled cost
+        if (newRows.length > 0 || updatedMessageIds.size > 0) {
+          setLogs(prev => {
+            if (updatedMessageIds.size === 0) {
+              // No updates, just append new rows
+              return [...prev, ...newRows];
+            }
+
+            // Update existing rows with backfilled data
+            const updated = prev.map(existingRow => {
+              if (updatedMessageIds.has(existingRow.message_id)) {
+                const newVersion = validRows.find(r => r.message_id === existingRow.message_id);
+                if (newVersion && newVersion.cost && (!existingRow.cost || existingRow.cost === 0)) {
+                  return { ...existingRow, cost: newVersion.cost };
+                }
+              }
+              return existingRow;
+            });
+
+            return [...updated, ...newRows];
           });
+        }
 
-          return [...updated, ...newRows];
-        });
-
-        cursorRef.current = data.cursor;
+        cursorRef.current = data.cursor || cursorRef.current;
       }
 
       // Only update session complete if it changed
@@ -167,11 +173,20 @@ export function useTimelinePolling(sessionId, isRunning) {
       setError(err.message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, isReplayMode]);
 
   // Reset when session changes
   useEffect(() => {
     if (sessionId !== prevSessionRef.current) {
+      console.log('[useTimelinePolling] Session changed:', prevSessionRef.current, '→', sessionId, '- CLEARING ALL DATA');
+
+      // Clear any active polling interval FIRST to prevent race
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+
+      // Then clear all state
       setLogs([]);
       setIsPolling(false);
       setSessionComplete(false);

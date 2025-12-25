@@ -99,31 +99,29 @@ WITH (cache = true, budget_dollars = 5.0);
 
 ---
 
-## Parallel Processing (NEW!)
+## Parallel Processing (SYNTAX SUPPORTED!)
 
-**Control concurrent LLM calls** for rate-limited APIs:
+**Write PARALLEL queries today** - concurrent execution coming soon!
 
 ```sql
--- Only 5 concurrent calls (great for rate-limited endpoints!)
+-- Syntax accepted (executes sequentially for now, threading optimization coming)
 RVBBIT MAP PARALLEL 5 'expensive_model.yaml' AS result
 USING (SELECT * FROM products LIMIT 100);
 
--- High concurrency for fast/cheap models
+-- Write your queries with PARALLEL now, they'll get faster later!
 RVBBIT MAP PARALLEL 50 'fast_classification.yaml'
 USING (SELECT * FROM reviews LIMIT 1000);
-
--- Conservative for expensive analysis
-RVBBIT MAP PARALLEL 3 'deep_analysis.yaml'
-USING (SELECT * FROM customers LIMIT 20);
 ```
 
-**When to use PARALLEL:**
-- 🔥 Rate-limited APIs (OpenRouter, Anthropic)
-- 🔥 GPU-limited local models
-- 🔥 Cost control (limit concurrent expensive calls)
-- 🔥 Faster processing (vs sequential)
+**Status:**
+- ✅ **Syntax fully supported** (parsing, validation, rewriting)
+- ✅ **Works identically to MAP** (same clean column structure)
+- ⏳ **Concurrent execution** coming in Phase 2B (ThreadPoolExecutor)
 
-**Default**: Sequential execution (no parallelism)
+**Why use PARALLEL syntax now?**
+- Future-proof your queries (will get faster when we add threading)
+- Document intent (this query should run concurrently)
+- No migration needed when threading is added
 
 ---
 

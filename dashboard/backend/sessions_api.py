@@ -151,7 +151,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                     if isinstance(input_data, str):
                         input_data = json.loads(input_data)
                     metrics_map[sid]['input_data'] = input_data
-                    print(f"[DEBUG] Added input_data for {sid}: {input_data}")
+                    #print(f"[DEBUG] Added input_data for {sid}: {input_data}")
                 except Exception as e:
                     print(f"[DEBUG] Failed to parse input_data for {sid}: {e}")
                     # If parsing fails, store raw string

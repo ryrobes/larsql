@@ -15,11 +15,11 @@ cells:
       Do not include model numbers, colors, or other details.
       If no clear brand is present, return "Unknown".
 
-    output_schema:
-      type: object
-      properties:
-        brand:
-          type: string
-          description: The extracted brand name
-      required:
-        - brand
+    # output_schema:
+    #   type: object
+    #   properties:
+    #     brand:
+    #       type: string
+    #       description: The extracted brand name
+    #   required:
+    #     - brand

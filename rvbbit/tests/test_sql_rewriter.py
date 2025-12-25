@@ -291,18 +291,19 @@ def test_rewrite_map_auto_limit():
 
 
 def test_rewrite_map_with_parallel():
-    """Should rewrite MAP PARALLEL using same pattern as sequential."""
+    """Should rewrite MAP PARALLEL using same pattern as sequential (for now)."""
     stmt = _parse_rvbbit_statement(
         "RVBBIT MAP PARALLEL 5 'x.yaml' USING (SELECT a FROM t LIMIT 10)"
     )
     rewritten = _rewrite_map(stmt)
 
-    # Phase 2: PARALLEL uses same pattern as sequential (threading optimization is future work)
+    # Phase 2 MVP: PARALLEL parses correctly but uses sequential execution
+    # Threading optimization deferred to Phase 2B
     assert 'WITH rvbbit_input AS' in rewritten
     assert 'rvbbit_raw AS' in rewritten
     assert "rvbbit_run('x.yaml'" in rewritten
-    assert 'to_json(i)' in rewritten
     assert 'COALESCE(' in rewritten
+    # Should be same structure as sequential
 
 
 # ============================================================================

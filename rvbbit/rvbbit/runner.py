@@ -542,15 +542,15 @@ class RVBBITRunner:
 
             # Set thread-local context vars
             session_token = set_current_session_id(self.session_id)
-            phase_token = set_current_cell_name(phase.name)
+            phase_token = set_current_cell_name(cell.name)
             cascade_token = set_current_cascade_id(self.config.cascade_id)
 
             try:
                 # Create trace for this phase
-                phase_trace = self.trace.create_child("phase", phase.name)
+                phase_trace = self.trace.create_child("phase", cell.name)
 
                 # Hook: Phase Start (emits SSE event)
-                self.hooks.on_phase_start(phase.name, {
+                self.hooks.on_phase_start(cell.name, {
                     "echo": self.echo,
                     "input": phase_input,
                     "parallel_execution": True,
@@ -558,32 +558,32 @@ class RVBBITRunner:
 
                 # Publish phase_start event
                 self._publish_event("phase_start", {
-                    "cell_name": phase.name,
+                    "cell_name": cell.name,
                     "cascade_id": self.config.cascade_id,
                     "parallel_execution": True,
                 })
 
                 # Log phase start
-                log_message(self.session_id, "system", f"Phase {phase.name} starting (parallel)",
+                log_message(self.session_id, "system", f"Phase {cell.name} starting (parallel)",
                            trace_id=phase_trace.id, parent_id=phase_trace.parent_id,
-                           node_type="phase", depth=self.depth, cell_name=phase.name,
+                           node_type="phase", depth=self.depth, cell_name=cell.name,
                            cascade_id=self.config.cascade_id)
 
                 # Execute the phase with timing
                 import time as time_module
                 phase_start_time = time_module.time()
-                result = self.execute_phase(phase, phase_input, phase_trace)
+                result = self.execute_phase(cell, phase_input, phase_trace)
                 phase_duration_ms = (time_module.time() - phase_start_time) * 1000
 
                 # Store in echo state (thread-safe for simple dict updates)
-                self.echo.state[f"output_{phase.name}"] = result
+                self.echo.state[f"output_{cell.name}"] = result
 
                 # Add to lineage
-                self.echo.add_lineage(phase.name, result, trace_id=phase_trace.id)
+                self.echo.add_lineage(cell.name, result, trace_id=phase_trace.id)
 
                 # Hook: Phase Complete (emits SSE event)
                 # In parallel execution, ALWAYS call this to ensure phase_complete is logged
-                self.hooks.on_phase_complete(phase.name, self.session_id, {
+                self.hooks.on_phase_complete(cell.name, self.session_id, {
                     "output": result,
                     "duration_ms": phase_duration_ms,
                 })
@@ -592,22 +592,22 @@ class RVBBITRunner:
                 log_message(
                     self.session_id,
                     "phase_complete",
-                    f"Phase {phase.name} completed",
+                    f"Phase {cell.name} completed",
                     trace_id=phase_trace.id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     cascade_id=self.config.cascade_id,
                     duration_ms=phase_duration_ms
                 )
 
                 return {
-                    "cell_name": phase.name,
+                    "cell_name": cell.name,
                     "result": result,
                     "success": True,
                 }
             except Exception as e:
-                console.print(f"{indent}  [red]✗ Phase {phase.name} failed: {e}[/red]")
+                console.print(f"{indent}  [red]✗ Phase {cell.name} failed: {e}[/red]")
                 return {
-                    "cell_name": phase.name,
+                    "cell_name": cell.name,
                     "error": str(e),
                     "success": False,
                 }

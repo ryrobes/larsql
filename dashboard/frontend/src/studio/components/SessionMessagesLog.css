@@ -599,3 +599,183 @@
     min-width: 160px;
   }
 }
+
+/* ============================================
+   REUSABILITY MODES
+   For use in different contexts (tab view, etc.)
+   ============================================ */
+
+/* Table area takes full width when filters are hidden */
+.sml-table-area-full {
+  flex: 1 1 100%;
+}
+
+/* Compact mode for tab view */
+.sml-compact {
+  /* Reduce padding/margins for tighter spacing */
+}
+
+.sml-compact .sml-stats-bar {
+  padding: 8px 12px;
+}
+
+.sml-compact .sml-detail-panel {
+  /* Slightly smaller detail panel in compact mode */
+}
+
+.sml-compact .sml-detail-header {
+  padding: 10px 12px;
+}
+
+.sml-compact .sml-detail-body {
+  padding: 8px 12px;
+}
+
+/* ============================================
+   MEDIA RENDERING (Images & Audio)
+   ============================================ */
+
+/* Media count in grid */
+.sml-media-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #a78bfa;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Images grid in detail panel */
+.sml-detail-images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 12px;
+  background-color: #030308;
+  border-radius: 6px;
+}
+
+.sml-detail-image-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: #0a0510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 8px;
+  transition: border-color 0.2s;
+}
+
+.sml-detail-image-item:hover {
+  border-color: #a78bfa;
+}
+
+.sml-detail-image {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 4px;
+  background-color: #000000;
+  cursor: pointer;
+}
+
+.sml-detail-image-label {
+  font-size: 11px;
+  color: #64748b;
+  font-family: var(--font-mono);
+  word-break: break-all;
+  text-align: center;
+}
+
+/* Audio list in detail panel */
+.sml-detail-audio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background-color: #030308;
+  border-radius: 6px;
+}
+
+.sml-detail-audio-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: #0a0510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.sml-detail-audio {
+  width: 100%;
+  height: 40px;
+}
+
+.sml-detail-audio-label {
+  font-size: 11px;
+  color: #64748b;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* ============================================
+   IMAGE MODAL (Full Size View)
+   ============================================ */
+
+.sml-image-modal .wl-modal {
+  /* Ensure modal content stretches to full size */
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--space-xl) * 2);
+}
+
+.sml-modal-image-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background-color: #000000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sml-modal-image-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background-color: #0a0510;
+  border-bottom: 1px solid #1a1628;
+  flex-shrink: 0;
+}
+
+.sml-modal-image-title {
+  font-size: 14px;
+  font-family: var(--font-mono);
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+.sml-modal-image-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  overflow: auto;
+  background-color: #000000;
+  min-height: 0;
+}
+
+.sml-modal-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(167, 139, 250, 0.3),
+              0 8px 24px rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}

@@ -7,8 +7,9 @@ import yaml from 'js-yaml';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
 import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
+import SessionMessagesLog from '../components/SessionMessagesLog';
 import { detectPhaseEditors } from '../editors';
-import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
+import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount} from '../utils/monacoTheme';
 import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../components';
 import './CellDetailPanel.css';
 
@@ -1310,172 +1311,42 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     )
                   )}
                   {/* Candidate-specific message tabs */}
-                  {messagesByCandidate && activeOutputTab.startsWith('candidate-') && (
-                    <div className="cell-detail-messages">
-                      {(() => {
-                        const candidateIdx = activeOutputTab.replace('candidate-', '');
-                        const messages = messagesByCandidate.grouped[candidateIdx] || [];
-                        const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
+                  {messagesByCandidate && activeOutputTab.startsWith('candidate-') && (() => {
+                    const candidateIdx = activeOutputTab.replace('candidate-', '');
+                    const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
 
-                        return messages.length > 0 ? (
-                          <div className="cell-detail-messages-list">
-                            {isWinner && (
-                              <div className="cell-detail-candidate-winner-banner">
-                                <Icon icon="mdi:crown" width="16" />
-                                This candidate was selected as the winner
-                              </div>
-                            )}
-                            {messages.map((msg, idx) => {
-                              // Check if this message is from a child session
-                              const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
-                              return (
-                              <div key={idx} className={`cell-detail-message cell-detail-message-${msg.role} ${isChildSession ? 'cell-detail-message-child-session' : ''}`}>
-                                <div className="cell-detail-message-header">
-                                  <div className="cell-detail-message-role">
-                                    {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
-                                    {msg.role === 'assistant' && <Icon icon="mdi:robot" width="16" />}
-                                    {msg.role === 'user' && <Icon icon="mdi:account" width="16" />}
-                                    {msg.role === 'system' && <Icon icon="mdi:cog" width="16" />}
-                                    <span>{msg.role}</span>
-                                    {msg.node_type && msg.node_type !== msg.role && (
-                                      <span className="cell-detail-message-node-type">({msg.node_type})</span>
-                                    )}
-                                  </div>
-                                  <div className="cell-detail-message-meta">
-                                    {msg.duration_ms && (
-                                      <span className="cell-detail-message-duration">
-                                        <Icon icon="mdi:clock-outline" width="12" />
-                                        {Math.round(msg.duration_ms)}ms
-                                      </span>
-                                    )}
-                                    {msg.turn_number && (
-                                      <span className="cell-detail-message-turn">Turn {msg.turn_number}</span>
-                                    )}
-                                    {msg.cost > 0 && (
-                                      <span className="cell-detail-message-cost">
-                                        <Icon icon="mdi:currency-usd" width="12" />
-                                        ${msg.cost.toFixed(4)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="cell-detail-message-content">
-                                  {typeof msg.content === 'string' ? (
-                                    msg.content.length > 50 && (msg.content.includes('#') || msg.content.includes('**') || msg.content.includes('```')) ? (
-                                      <div className="cell-detail-message-markdown">
-                                        <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
-                                      </div>
-                                    ) : (
-                                      <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
-                                    )
-                                  ) : (
-                                    <pre>{JSON.stringify(msg.content, null, 2)}</pre>
-                                  )}
-                                </div>
-                                {msg.tool_calls && msg.tool_calls.length > 0 && (
-                                  <div className="cell-detail-message-tool-calls">
-                                    <div className="cell-detail-message-tool-calls-header">
-                                      <Icon icon="mdi:hammer-wrench" width="14" />
-                                      Tool Calls ({msg.tool_calls.length})
-                                    </div>
-                                    {msg.tool_calls.map((call, callIdx) => (
-                                      <div key={callIdx} className="cell-detail-tool-call">
-                                        <strong>{call.function?.name || call.name}</strong>
-                                        <pre>{JSON.stringify(call.function?.arguments || call.arguments, null, 2)}</pre>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              );
-                            })}
+                    return (
+                      <div className="cell-detail-candidate-messages-wrapper">
+                        {isWinner && (
+                          <div className="cell-detail-candidate-winner-banner">
+                            <Icon icon="mdi:crown" width="16" />
+                            This candidate was selected as the winner
                           </div>
-                        ) : (
-                          <div className="cell-detail-messages-empty">
-                            <Icon icon="mdi:message-off" width="48" />
-                            <p>No messages found for candidate {candidateIdx}</p>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
+                        )}
+                        <SessionMessagesLog
+                          logs={cellLogs || []}
+                          currentSessionId={currentSessionId}
+                          showFilters={true}
+                          filterByCell={cell.name}
+                          filterByCandidate={candidateIdx}
+                          showCellColumn={false}
+                          compact={true}
+                          className="cell-detail-messages-log"
+                        />
+                      </div>
+                    );
+                  })()}
                   {/* Fallback single Messages tab for non-candidate cells */}
                   {activeOutputTab === 'messages' && (
-                    <div className="cell-detail-messages">
-                      {cellMessages && cellMessages.length > 0 ? (
-                        <div className="cell-detail-messages-list">
-                          {cellMessages.map((msg, idx) => {
-                            // Check if this message is from a child session
-                            const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
-                            return (
-                            <div key={idx} className={`cell-detail-message cell-detail-message-${msg.role} ${isChildSession ? 'cell-detail-message-child-session' : ''}`}>
-                              <div className="cell-detail-message-header">
-                                <div className="cell-detail-message-role">
-                                  {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
-                                  {msg.role === 'assistant' && <Icon icon="mdi:robot" width="16" />}
-                                  {msg.role === 'user' && <Icon icon="mdi:account" width="16" />}
-                                  {msg.role === 'system' && <Icon icon="mdi:cog" width="16" />}
-                                  <span>{msg.role}</span>
-                                  {msg.node_type && msg.node_type !== msg.role && (
-                                    <span className="cell-detail-message-node-type">({msg.node_type})</span>
-                                  )}
-                                </div>
-                                <div className="cell-detail-message-meta">
-                                  {msg.duration_ms && (
-                                    <span className="cell-detail-message-duration">
-                                      <Icon icon="mdi:clock-outline" width="12" />
-                                      {Math.round(msg.duration_ms)}ms
-                                    </span>
-                                  )}
-                                  {msg.turn_number && (
-                                    <span className="cell-detail-message-turn">Turn {msg.turn_number}</span>
-                                  )}
-                                  {msg.cost > 0 && (
-                                    <span className="cell-detail-message-cost">
-                                      <Icon icon="mdi:currency-usd" width="12" />
-                                      ${msg.cost.toFixed(4)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="cell-detail-message-content">
-                                {typeof msg.content === 'string' ? (
-                                  msg.content.length > 50 && (msg.content.includes('#') || msg.content.includes('**') || msg.content.includes('```')) ? (
-                                    <div className="cell-detail-message-markdown">
-                                      <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
-                                    </div>
-                                  ) : (
-                                    <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
-                                  )
-                                ) : (
-                                  <pre>{JSON.stringify(msg.content, null, 2)}</pre>
-                                )}
-                              </div>
-                              {msg.tool_calls && msg.tool_calls.length > 0 && (
-                                <div className="cell-detail-message-tool-calls">
-                                  <div className="cell-detail-message-tool-calls-header">
-                                    <Icon icon="mdi:hammer-wrench" width="14" />
-                                    Tool Calls ({msg.tool_calls.length})
-                                  </div>
-                                  {msg.tool_calls.map((call, callIdx) => (
-                                    <div key={callIdx} className="cell-detail-tool-call">
-                                      <strong>{call.function?.name || call.name}</strong>
-                                      <pre>{JSON.stringify(call.function?.arguments || call.arguments, null, 2)}</pre>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="cell-detail-messages-empty">
-                          <Icon icon="mdi:message-off" width="48" />
-                          <p>No messages for this phase</p>
-                        </div>
-                      )}
-                    </div>
+                    <SessionMessagesLog
+                      logs={cellLogs || []}
+                      currentSessionId={currentSessionId}
+                      showFilters={true}
+                      filterByCell={cell.name}
+                      showCellColumn={false}
+                      compact={true}
+                      className="cell-detail-messages-log"
+                    />
                   )}
                   {activeOutputTab === 'raw' && result && (
                     <div className="cell-detail-monaco-readonly">

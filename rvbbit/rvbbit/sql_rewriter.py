@@ -228,10 +228,14 @@ def _rewrite_map(stmt: RVBBITStatement) -> str:
     using_query = _ensure_limit(stmt.using_query)
     result_column = stmt.result_alias or stmt.with_options.get('result_column', DEFAULT_RESULT_COLUMN)
 
-    # For Phase 2: PARALLEL uses same row-by-row pattern as sequential
-    # Actual threading optimization is future work
-    # This keeps UX consistent between MAP and MAP PARALLEL
+    # For Phase 2 MVP: PARALLEL syntax is accepted but executes sequentially
+    # Real ThreadPoolExecutor optimization deferred to Phase 2B
+    # This allows users to write PARALLEL queries that work today and get faster later
+    if stmt.parallel is not None:
+        # TODO Phase 2B: Add actual concurrent execution with ThreadPoolExecutor
+        pass  # Fall through to sequential logic
 
+    # Sequential execution (works for both MAP and MAP PARALLEL currently)
     rewritten = f"""
 WITH rvbbit_input AS (
   {using_query}

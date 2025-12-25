@@ -1245,3 +1245,37 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ============================================
+   SESSION MESSAGES LOG IN TAB CONTEXT
+   Reuse SessionMessagesLog component in cell detail tabs
+   ============================================ */
+
+.cell-detail-messages-log {
+  flex: 1;
+  min-height: 0;
+  /* Don't override flex-direction - let SessionMessagesLog handle its own layout */
+}
+
+/* Wrapper for candidate messages with winner banner */
+.cell-detail-candidate-messages-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background-color: #000000;
+}
+
+/* Keep existing winner banner styles */
+.cell-detail-candidate-winner-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.05));
+  border-bottom: 2px solid #fbbf24;
+  color: #fbbf24;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}

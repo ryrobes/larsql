@@ -40,6 +40,11 @@ const formatDuration = (ms) => {
  * - Quick actions
  */
 const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel }) => {
+  // Development-only render logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[CellCard] Rendering ${cell.name}`, { status: cellState?.status, logsCount: cellLogs.length });
+  }
+
   const status = cellState?.status || 'pending';
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
@@ -55,23 +60,15 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     },
   });
 
+  // Memoized click handler to prevent creating new functions on every render
+  const handleClick = React.useCallback(() => {
+    onSelect(index);
+  }, [onSelect, index]);
+
   // Extract model - from cell YAML or cellState (executed) or default
   // Only show for LLM cells (deterministic data cells don't use models)
   const isLLMCell = !!(cell.tool === 'windlass_data' || cell.instructions);
   const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
-
-  // Debug logging
-  React.useEffect(() => {
-    if (isLLMCell) {
-      console.log('[CellCard]', cell.name, {
-        isLLMCell,
-        cellModel: cell.model,
-        cellStateModel: cellState?.model,
-        defaultModel,
-        modelToDisplay
-      });
-    }
-  }, [cell.name, isLLMCell, cell.model, cellState?.model, defaultModel, modelToDisplay]);
 
   // Extract candidates config from YAML (before execution)
   const candidatesConfig = cell.candidates;
@@ -137,7 +134,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     <div
       ref={setNodeRef}
       className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasCandidates ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''}`}
-      onClick={onSelect}
+      onClick={handleClick}
       data-cell-name={cell.name}
     >
       {/* Top row: Type (Icon + Label) + Status */}
@@ -235,4 +232,49 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   );
 };
 
-export default React.memo(CellCard);
+// Custom comparison function for React.memo
+// Prevents re-renders when props haven't actually changed
+const arePropsEqual = (prevProps, nextProps) => {
+  // Primitives - direct comparison
+  if (prevProps.index !== nextProps.index) return false;
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.defaultModel !== nextProps.defaultModel) return false;
+  if (prevProps.onSelect !== nextProps.onSelect) return false;
+
+  // Cell config - compare by reference (should be stable from layout memoization)
+  if (prevProps.cell !== nextProps.cell) {
+    // If references differ, do deep comparison as fallback
+    if (JSON.stringify(prevProps.cell) !== JSON.stringify(nextProps.cell)) {
+      return false;
+    }
+  }
+
+  // CellState - compare by reference first (we stabilize these in parent)
+  if (prevProps.cellState !== nextProps.cellState) {
+    // If references differ, check if both are undefined/null
+    if (!prevProps.cellState && !nextProps.cellState) {
+      // Both undefined/null - no change
+    } else if (!prevProps.cellState || !nextProps.cellState) {
+      // One is undefined/null, the other isn't - changed
+      return false;
+    } else {
+      // Both exist but different references - do deep comparison
+      if (JSON.stringify(prevProps.cellState) !== JSON.stringify(nextProps.cellState)) {
+        return false;
+      }
+    }
+  }
+
+  // CellLogs - compare by reference (should be stable from parent memoization)
+  if (prevProps.cellLogs !== nextProps.cellLogs) {
+    // If references differ, compare length as quick check
+    if (prevProps.cellLogs.length !== nextProps.cellLogs.length) {
+      return false;
+    }
+  }
+
+  // All checks passed - props are equal, prevent re-render
+  return true;
+};
+
+export default React.memo(CellCard, arePropsEqual);

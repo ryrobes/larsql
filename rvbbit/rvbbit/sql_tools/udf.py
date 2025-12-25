@@ -231,8 +231,13 @@ def rvbbit_cascade_udf_impl(
         if not os.path.exists(resolved_path):
             return json.dumps({"error": f"Cascade not found: {cascade_path}", "status": "failed"})
 
-        # Generate unique session ID for this UDF call
-        session_id = f"cascade_udf_{uuid.uuid4().hex[:8]}"
+        # Generate unique session ID using woodland naming system
+        from ..session_naming import generate_woodland_id
+        woodland_id = generate_woodland_id()
+        session_id = f"udf-{woodland_id}"  # Prefix with 'udf-' to indicate UDF origin
+
+        # Debug: Print each UDF invocation
+        print(f"🔧 [UDF] Calling rvbbit_run: session={session_id}, input={str(inputs)[:50]}...")
 
         # Run cascade
         from ..runner import run_cascade
@@ -260,6 +265,10 @@ def rvbbit_cascade_udf_impl(
             "has_errors": result.get("has_errors", False)
         })
 
+        # Debug: Print completion
+        state_output = result.get("state", {}).get("output_extract", "N/A")
+        print(f"✅ [UDF] Completed: session={session_id}, output={str(state_output)[:30]}...")
+
         # Cache result
         if use_cache:
             _cascade_udf_cache[cache_key] = json_result
@@ -283,6 +292,77 @@ def rvbbit_cascade_udf_impl(
         import traceback
         logging.getLogger(__name__).error(f"rvbbit_cascade_udf error for '{cascade_path}': {e}\n{traceback.format_exc()}")
         return json.dumps({"error": str(e), "status": "failed"})
+
+
+def rvbbit_run_parallel_batch(
+    cascade_path: str,
+    rows_json_array: str,
+    max_workers: int
+) -> str:
+    """
+    Execute cascade on multiple rows in parallel.
+
+    Returns NDJSON (newline-delimited JSON) for easy parsing.
+
+    Args:
+        cascade_path: Path to cascade file
+        rows_json_array: JSON array of row objects
+        max_workers: Max concurrent executions
+
+    Returns:
+        NDJSON string (one JSON object per line)
+
+    Example:
+        result = rvbbit_run_parallel_batch('x.yaml', '[{"id":1},{"id":2}]', 5)
+        # Returns: '{"id":1,"result":"..."}\n{"id":2,"result":"..."}'
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import json as json_module
+
+    try:
+        # Parse input rows
+        rows = json_module.loads(rows_json_array)
+        if not isinstance(rows, list):
+            raise ValueError("Expected JSON array of rows")
+
+        # Process rows in parallel
+        results = [None] * len(rows)  # Preserve order
+
+        def process_row(index, row):
+            """Process single row, return (index, enriched_row)."""
+            try:
+                row_json = json_module.dumps(row)
+                result_json = rvbbit_cascade_udf_impl(cascade_path, row_json, use_cache=True)
+                result_obj = json_module.loads(result_json)
+
+                # Extract useful value
+                extracted = (
+                    result_obj.get("state", {}).get("output_extract") or
+                    result_obj.get("outputs", {}) or
+                    result_json
+                )
+
+                return index, {**row, "result": extracted}
+            except Exception as e:
+                return index, {**row, "result": f"ERROR: {str(e)}"}
+
+        # Execute in parallel with ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_row, i, row): i for i, row in enumerate(rows)}
+            for future in as_completed(futures):
+                index, result = future.result()
+                results[index] = result
+
+        # Return as NDJSON (one JSON object per line)
+        ndjson_lines = [json_module.dumps(row) for row in results]
+        return '\n'.join(ndjson_lines)
+
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).error(f"rvbbit_run_parallel_batch error: {e}\n{traceback.format_exc()}")
+        # Return error as NDJSON
+        return json_module.dumps({"error": str(e)})
 
 
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):
@@ -370,6 +450,17 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_run: {e}")
+
+    # TODO Phase 2B: Register parallel batch UDF when threading is implemented
+    # try:
+    #     connection.create_function(
+    #         "rvbbit_run_parallel_batch",
+    #         rvbbit_run_parallel_batch,
+    #         return_type="VARCHAR"
+    #     )
+    # except Exception as e:
+    #     import logging
+    #     logging.getLogger(__name__).warning(f"Could not register rvbbit_run_parallel_batch: {e}")
 
 
 

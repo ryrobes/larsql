@@ -2,9 +2,9 @@
 RVBBIT Mermaid Visualizer
 
 Generates execution flow diagrams from Echo history showing:
-- Cascade structure with nested phases
-- Phase-to-phase handoffs
-- Soundings (Tree of Thought) with parallel attempts and winner selection
+- Cascade structure with nested cells
+- Cell-to-cell handoffs
+- Candidates (Tree of Thought) with parallel attempts and winner selection
 - Reforge (iterative refinement) with sequential steps
 - Sub-cascades as nested containers
 - Wards as validation checkpoints
@@ -1089,7 +1089,7 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             "cell_name": node.metadata.get("cell_name"),
             "cascade_id": node.metadata.get("cascade_id"),
 
-            # Soundings/Reforge
+            # Candidates/Reforge
             "candidate_index": node.candidate_index,
             "is_winner": node.is_winner,
             "reforge_step": node.reforge_step,
@@ -1113,11 +1113,11 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
                 "edge_type": "parent_child"
             })
 
-    # Collect phases in order
+    # Collect cells in order
     cells = []
     for item in echo.lineage:
-        phases.append({
-            "phase": item.get("phase"),
+        cells.append({
+            "cell": item.get("phase"),  # Note: lineage still uses "phase" key internally
             "trace_id": item.get("trace_id"),
             "output_preview": str(item.get("output", ""))[:100]
         })
@@ -1131,14 +1131,14 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             "edge_type": "phase_sequence"
         })
 
-    # Collect soundings info
-    soundings_groups = {}
+    # Collect candidates info
+    candidates_groups = {}
     for node in nodes:
         if node["candidate_index"] is not None:
             cell = node.get("cell_name", "unknown")
-            if phase not in soundings_groups:
-                soundings_groups[phase] = []
-            soundings_groups[phase].append({
+            if cell not in candidates_groups:
+                candidates_groups[cell] = []
+            candidates_groups[cell].append({
                 "trace_id": node["trace_id"],
                 "candidate_index": node["candidate_index"],
                 "is_winner": node["is_winner"],
@@ -1204,8 +1204,8 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
         "nodes": nodes,
         "edges": edges,
 
-        "cells": phases,
-        "candidates": soundings_groups,
+        "cells": cells,
+        "candidates": candidates_groups,
 
         # NEW: Sub-cascade mapping for UI
         "sub_cascade_mapping": sub_cascade_mapping,
@@ -1213,8 +1213,8 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
         "summary": {
             "total_nodes": len(nodes),
             "total_edges": len(edges),
-            "total_phases": len(phases),
-            "has_soundings": len(soundings_groups) > 0,
+            "total_cells": len(cells),
+            "has_candidates": len(candidates_groups) > 0,
             "has_sub_cascades": len(sub_echoes) > 0
         }
     }
@@ -2358,20 +2358,20 @@ def generate_state_diagram_string(echo: Echo) -> str:
     Generate a Mermaid state diagram string from Echo history.
 
     State diagrams provide a compact, semantic representation with encapsulated complexity:
-    - Phases are composite states that contain their internal complexity
-    - Fork/join pseudo-states show parallel execution (soundings)
-    - Sub-cascades appear as nested composite states within parent phases
+    - Cells are composite states that contain their internal complexity
+    - Fork/join pseudo-states show parallel execution (candidates)
+    - Sub-cascades appear as nested composite states within parent cells
     - Wards chain as sequential validation steps
-    - Reforge chains sequentially after soundings
+    - Reforge chains sequentially after candidates
     - Dynamic routing shown with taken (✓) vs available (○) paths
-    - Blocked phases terminate at error states (⛔)
-    - Live running state shows currently executing phase (▶)
+    - Blocked cells terminate at error states (⛔)
+    - Live running state shows currently executing cell (▶)
     - Mutation strategies shown on candidate attempts
 
     Visual language:
-    - ▶ running (currently executing phase) + gold glow border
+    - ▶ running (currently executing cell) + gold glow border
     - ✓ completed, ○ pending, ⛔ blocked
-    - 🔱 soundings (parallel attempts)
+    - 🔱 candidates (parallel attempts)
     - 🔨 reforge (iterative refinement)
     - 📦 sub-cascade (nested workflow)
     - 🛡️ blocking ward, 🔄 retry ward, ℹ️ advisory ward
@@ -2383,12 +2383,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - ▶️ Resumed (checkpoint resumed with human response)
 
     CSS Classes (applied via Mermaid classDef):
-    - running: thick gold border (4px), gold fill - for currently executing phase
-    - blocked: red border, red fill - for blocked phases
-    - checkpoint_paused: yellow border - for phases waiting for HITL input
+    - running: thick gold border (4px), gold fill - for currently executing cell
+    - blocked: red border, red fill - for blocked cells
+    - checkpoint_paused: yellow border - for cells waiting for HITL input
     - checkpoint_resumed: blue border - for checkpoints that have been resumed
 
-    Sounding labels:
+    Candidate labels:
     - [baseline] = first attempt, no mutation
     - [mutation...] = mutation strategy applied (truncated)
     - ✓ = winner
@@ -3739,9 +3739,8 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     # Generate the state diagram (more compact than flowchart)
     mermaid_content = generate_state_diagram_string(echo)
 
-    # Generate companion JSON files
+    # Generate companion JSON file
     json_path = output_path.replace(".mmd", ".json")
-    reactflow_path = output_path.replace(".mmd", "_reactflow.json")
 
     try:
         export_execution_graph_json(echo, json_path)
@@ -3749,17 +3748,12 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
         # Don't fail mermaid generation if JSON fails
         print(f"[Warning] Failed to generate execution graph JSON: {e}")
 
-    try:
-        export_react_flow_graph(echo, reactflow_path)
-    except Exception as e:
-        print(f"[Warning] Failed to generate React Flow JSON: {e}")
-
     # Validate and write with source context for debugging
     context = {
         "session_id": echo.session_id,
-        "phase_count": len(echo.lineage),
+        "cell_count": len(echo.lineage),
         "message_count": len(echo.history),
-        "has_soundings": any("candidate_index" in str(msg) for msg in echo.history),
+        "has_candidates": any("candidate_index" in str(msg) for msg in echo.history),
     }
 
     is_valid, path = validate_and_write_mermaid(mermaid_content, output_path, context)
@@ -3790,7 +3784,7 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         "    %% Static Structure Styles - Midnight Fjord Dark Theme",
         "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
         "    classDef deterministic fill:#16202A,stroke:#6366f1,stroke-width:2px,color:#F0F4F8;",
-        "    classDef soundings fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef candidates fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef reforge fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef sub_cascade fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
         "    classDef ward fill:#16202A,stroke:#f97316,stroke-width:1px,color:#F0F4F8;",
@@ -3808,14 +3802,14 @@ def generate_mermaid_string_from_config(config: Any) -> str:
 
         # Determine phase type and decorations
         is_deterministic = phase.is_deterministic()
-        has_soundings = cell.candidates and cell.candidates.factor > 1
-        has_reforge = has_soundings and cell.candidates.reforge
+        has_candidates = cell.candidates and cell.candidates.factor > 1
+        has_reforge = has_candidates and cell.candidates.reforge
         has_sub_cascades = bool(phase.sub_cascades)
         has_wards = phase.wards and (phase.wards.pre or phase.wards.post)
 
         # Build label with icons
         icons = []
-        if has_soundings:
+        if has_candidates:
             icons.append("🔱ToT")
         if has_reforge:
             icons.append("🔨R")
@@ -3833,8 +3827,8 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         # Determine style class
         if has_reforge:
             style = "reforge"
-        elif has_soundings:
-            style = "soundings"
+        elif has_candidates:
+            style = "candidates"
         elif has_sub_cascades:
             style = "sub_cascade"
         elif is_deterministic:
@@ -3854,20 +3848,20 @@ def generate_mermaid_string_from_config(config: Any) -> str:
                 routes = ", ".join(f"{k}→{v}" for k, v in phase.routing.items())
                 details.append(f"Routes: {routes}")
         else:
-            if phase.tackle:
-                if phase.tackle == "manifest":
-                    details.append("Tackle: Auto (Quartermaster)")
+            if phase.traits:
+                if phase.traits == "manifest":
+                    details.append("Traits: Auto (Quartermaster)")
                 else:
-                    tools = ", ".join(phase.tackle[:3])
-                    if len(phase.tackle) > 3:
-                        tools += f"... (+{len(phase.tackle) - 3})"
+                    tools = ", ".join(phase.traits[:3])
+                    if len(phase.traits) > 3:
+                        tools += f"... (+{len(phase.traits) - 3})"
                     details.append(f"Tools: {tools}")
 
         if phase.rules and phase.rules.max_turns:
             details.append(f"Max turns: {phase.rules.max_turns}")
 
-        if has_soundings:
-            details.append(f"Soundings: {cell.candidates.factor}x")
+        if has_candidates:
+            details.append(f"Candidates: {cell.candidates.factor}x")
             if cell.candidates.mode == "aggregate":
                 details.append("Mode: Aggregate")
 

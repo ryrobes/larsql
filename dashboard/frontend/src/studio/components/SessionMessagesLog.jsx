@@ -3,6 +3,7 @@ import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
 import Split from 'react-split';
+import { Modal } from '../../components';
 import './SessionMessagesLog.css';
 
 // Register AG Grid modules
@@ -43,22 +44,50 @@ const ROLE_CONFIG = {
 };
 
 /**
- * SessionMessagesLog - Virtual table displaying all session messages
+ * SessionMessagesLog - Virtual table displaying session messages
  *
- * Shows all log messages when no cell is selected in the Studio timeline.
+ * Reusable component for displaying messages in two contexts:
+ * 1. All cascade messages (when no cell selected) - with filters
+ * 2. Cell-specific messages (when cell selected) - compact mode
+ *
  * Features:
  * - Virtualized table (ag-grid) for performance with large message counts
- * - Filter panel on the right side
+ * - Optional filter panel on the right side
  * - Descending time order
  * - Role-based styling
  * - Row selection with detail panel
  * - Visual distinction for child session messages (sub-cascades)
+ *
+ * @param {Array} logs - Message logs to display
+ * @param {Function} onSelectCell - Callback when clicking cell name
+ * @param {String} currentSessionId - Current session ID for child session highlighting
+ * @param {Boolean} showFilters - Show filter panel (default: true)
+ * @param {String} filterByCell - Pre-filter to specific cell name (optional)
+ * @param {Number|String} filterByCandidate - Pre-filter to specific candidate_index (optional)
+ * @param {Boolean} showCellColumn - Show cell name column (default: true)
+ * @param {Boolean} compact - Compact mode for tab view (default: false)
+ * @param {String} className - Additional CSS class names
+ * @param {Boolean} includeChildSessions - Include child session logs (default: true)
  */
-const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }) => {
+const SessionMessagesLog = ({
+  logs = [],
+  onSelectCell,
+  currentSessionId = null,
+  showFilters = true,
+  filterByCell = null,
+  filterByCandidate = null,
+  showCellColumn = true,
+  compact = false,
+  className = '',
+  includeChildSessions = true,
+}) => {
   const gridRef = useRef(null);
 
   // Selected row state
   const [selectedMessage, setSelectedMessage] = useState(null);
+
+  // Image modal state
+  const [modalImage, setModalImage] = useState(null);
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -88,6 +117,22 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
   // Filter and sort logs
   const filteredLogs = useMemo(() => {
     let result = [...logs];
+
+    // Pre-filter by cell if specified (for cell-specific view)
+    if (filterByCell) {
+      result = result.filter(log => log.cell_name === filterByCell);
+    }
+
+    // Pre-filter by candidate if specified (for candidate tabs)
+    if (filterByCandidate !== null && filterByCandidate !== undefined) {
+      const candidateStr = String(filterByCandidate);
+      result = result.filter(log => {
+        const logCandidate = log.candidate_index !== null && log.candidate_index !== undefined
+          ? String(log.candidate_index)
+          : 'main';
+        return logCandidate === candidateStr;
+      });
+    }
 
     // Filter by roles
     if (filters.roles.size > 0) {
@@ -123,7 +168,7 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
     });
 
     return result;
-  }, [logs, filters]);
+  }, [logs, filters, filterByCell, filterByCandidate]);
 
   // Cell renderers
   const RoleCellRenderer = useCallback(({ value }) => {
@@ -205,77 +250,158 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
     return <span className="sml-model" title={value}>{modelName}</span>;
   }, []);
 
+  const MediaCellRenderer = useCallback(({ data }) => {
+    let mediaCount = 0;
+    const mediaTypes = [];
+
+    // Count images from images_json field
+    if (data.has_images && data.images_json) {
+      try {
+        const images = typeof data.images_json === 'string'
+          ? JSON.parse(data.images_json)
+          : data.images_json;
+        if (Array.isArray(images) && images.length > 0) {
+          mediaCount += images.length;
+          mediaTypes.push(`${images.length} image${images.length > 1 ? 's' : ''}`);
+        }
+      } catch {}
+    }
+
+    // ALSO check metadata_json.images (common for tool outputs)
+    if (data.metadata_json) {
+      try {
+        const metadata = typeof data.metadata_json === 'string'
+          ? JSON.parse(data.metadata_json)
+          : data.metadata_json;
+        if (metadata && metadata.images && Array.isArray(metadata.images) && metadata.images.length > 0) {
+          const metaImageCount = metadata.images.length;
+          if (!data.has_images) { // Don't double count
+            mediaCount += metaImageCount;
+            mediaTypes.push(`${metaImageCount} image${metaImageCount > 1 ? 's' : ''}`);
+          }
+        }
+      } catch {}
+    }
+
+    // Count audio
+    if (data.has_audio && data.audio_json) {
+      try {
+        const audio = typeof data.audio_json === 'string'
+          ? JSON.parse(data.audio_json)
+          : data.audio_json;
+        if (Array.isArray(audio) && audio.length > 0) {
+          mediaCount += audio.length;
+          mediaTypes.push(`${audio.length} audio`);
+        }
+      } catch {}
+    }
+
+    if (mediaCount === 0) {
+      return <span className="sml-null">—</span>;
+    }
+
+    return (
+      <span className="sml-media-count" title={mediaTypes.join(', ')}>
+        <Icon icon="mdi:image-multiple" width="14" />
+        {mediaCount}
+      </span>
+    );
+  }, []);
+
   // Column definitions
-  const columnDefs = useMemo(() => [
-    {
-      field: 'timestamp_iso',
-      headerName: 'Time',
-      width: 110,
-      cellRenderer: TimeCellRenderer,
-      sortable: true,
-      sort: 'desc',
-    },
-    {
-      field: 'role',
-      headerName: 'Role',
-      width: 130,
-      cellRenderer: RoleCellRenderer,
-      sortable: true,
-      filter: true,
-    },
-    {
-      field: 'cell_name',
-      headerName: 'Cell',
-      width: 120,
-      cellRenderer: CellNameCellRenderer,
-      sortable: true,
-      filter: true,
-    },
-    {
-      field: 'content_json',
-      headerName: 'Content',
-      flex: 1,
-      minWidth: 150,
-      maxWidth: 600,
-      cellRenderer: ContentCellRenderer,
-      suppressSizeToFit: false,
-    },
-    {
-      field: 'model',
-      headerName: 'Model',
-      width: 140,
-      cellRenderer: ModelCellRenderer,
-      sortable: true,
-    },
-    {
-      field: 'duration_ms',
-      headerName: 'Duration',
-      width: 90,
-      cellRenderer: MetricCellRenderer,
-      sortable: true,
-    },
-    {
-      field: 'tokens_in',
-      headerName: 'In',
-      width: 70,
-      cellRenderer: MetricCellRenderer,
-      sortable: true,
-    },
-    {
-      field: 'tokens_out',
-      headerName: 'Out',
-      width: 70,
-      cellRenderer: MetricCellRenderer,
-      sortable: true,
-    },
-    {
-      field: 'cost',
-      headerName: 'Cost',
-      width: 80,
-      cellRenderer: MetricCellRenderer,
-      sortable: true,
-    },
-  ], [TimeCellRenderer, RoleCellRenderer, CellNameCellRenderer, ContentCellRenderer, ModelCellRenderer, MetricCellRenderer]);
+  const columnDefs = useMemo(() => {
+    const cols = [
+      {
+        field: 'timestamp_iso',
+        headerName: 'Time',
+        width: 110,
+        cellRenderer: TimeCellRenderer,
+        sortable: true,
+        sort: 'desc',
+      },
+      {
+        field: 'role',
+        headerName: 'Role',
+        flex: 1,
+        minWidth: 110,
+        maxWidth: 140,
+        cellRenderer: RoleCellRenderer,
+        sortable: true,
+        filter: true,
+      },
+    ];
+
+    // Conditionally add cell column
+    if (showCellColumn) {
+      cols.push({
+        field: 'cell_name',
+        headerName: 'Cell',
+        flex: 1,
+        minWidth: 100,
+        maxWidth: 150,
+        cellRenderer: CellNameCellRenderer,
+        sortable: true,
+        filter: true,
+      });
+    }
+
+    cols.push(
+      {
+        field: 'content_json',
+        headerName: 'Content',
+        flex: 3,
+        minWidth: 200,
+        cellRenderer: ContentCellRenderer,
+        suppressSizeToFit: false,
+      },
+      {
+        field: 'model',
+        headerName: 'Model',
+        flex: 1.5,
+        minWidth: 120,
+        maxWidth: 180,
+        cellRenderer: ModelCellRenderer,
+        sortable: true,
+      },
+      {
+        field: 'has_images',
+        headerName: 'Media',
+        width: 75,
+        cellRenderer: MediaCellRenderer,
+        sortable: true,
+      },
+      {
+        field: 'duration_ms',
+        headerName: 'Duration',
+        width: 90,
+        cellRenderer: MetricCellRenderer,
+        sortable: true,
+      },
+      {
+        field: 'tokens_in',
+        headerName: 'In',
+        width: 70,
+        cellRenderer: MetricCellRenderer,
+        sortable: true,
+      },
+      {
+        field: 'tokens_out',
+        headerName: 'Out',
+        width: 70,
+        cellRenderer: MetricCellRenderer,
+        sortable: true,
+      },
+      {
+        field: 'cost',
+        headerName: 'Cost',
+        width: 80,
+        cellRenderer: MetricCellRenderer,
+        sortable: true,
+      }
+    );
+
+    return cols;
+  }, [showCellColumn, TimeCellRenderer, RoleCellRenderer, CellNameCellRenderer, ContentCellRenderer, ModelCellRenderer, MediaCellRenderer, MetricCellRenderer]);
 
   const defaultColDef = useMemo(() => ({
     resizable: true,
@@ -390,9 +516,9 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
   }
 
   return (
-    <div className="session-messages-log">
+    <div className={`session-messages-log ${compact ? 'sml-compact' : ''} ${className}`}>
       {/* Main table area */}
-      <div className="sml-table-area">
+      <div className={`sml-table-area ${!showFilters ? 'sml-table-area-full' : ''}`}>
         {/* Stats bar */}
         <div className="sml-stats-bar">
           <div className="sml-stats-left">
@@ -449,7 +575,7 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
                 animateRows={false}
                 suppressCellFocus={true}
                 enableCellTextSelection={true}
-                getRowId={(params) => params.data.message_id}
+                getRowId={(params) => params.data.message_id || `${params.data.timestamp_iso}-${params.data.trace_id || params.node.id}`}
                 onRowClicked={onRowClicked}
                 rowSelection="single"
                 getRowClass={(params) => {
@@ -517,6 +643,106 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
                   </div>
                   <pre className="sml-detail-pre">{formatContent(selectedMessage.content_json)}</pre>
                 </div>
+
+                {/* Images Section */}
+                {(() => {
+                  const allImages = [];
+
+                  // Collect from images_json
+                  if (selectedMessage.has_images && selectedMessage.images_json) {
+                    try {
+                      const images = typeof selectedMessage.images_json === 'string'
+                        ? JSON.parse(selectedMessage.images_json)
+                        : selectedMessage.images_json;
+                      if (Array.isArray(images)) {
+                        allImages.push(...images);
+                      }
+                    } catch {}
+                  }
+
+                  // ALSO collect from metadata_json.images
+                  if (selectedMessage.metadata_json) {
+                    try {
+                      const metadata = typeof selectedMessage.metadata_json === 'string'
+                        ? JSON.parse(selectedMessage.metadata_json)
+                        : selectedMessage.metadata_json;
+                      if (metadata && metadata.images && Array.isArray(metadata.images)) {
+                        allImages.push(...metadata.images);
+                      }
+                    } catch {}
+                  }
+
+                  if (allImages.length === 0) return null;
+
+                  return (
+                    <div className="sml-detail-section sml-detail-section-images">
+                      <div className="sml-detail-section-header">
+                        <Icon icon="mdi:image-multiple" width="14" />
+                        <span>Images ({allImages.length})</span>
+                      </div>
+                      <div className="sml-detail-images-grid">
+                        {allImages.map((imagePath, idx) => {
+                          // Handle both full URLs and relative paths
+                          const imageUrl = imagePath.startsWith('/api/')
+                            ? imagePath
+                            : `/api/images/${selectedMessage.session_id}/${imagePath}`;
+                          return (
+                            <div key={idx} className="sml-detail-image-item">
+                              <img
+                                src={imageUrl}
+                                alt={`Image ${idx + 1}`}
+                                className="sml-detail-image"
+                                loading="lazy"
+                                onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
+                                title="Click to view full size"
+                              />
+                              <div className="sml-detail-image-label">{imagePath}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Audio Section */}
+                {selectedMessage.has_audio && selectedMessage.audio_json && (() => {
+                  try {
+                    const audio = typeof selectedMessage.audio_json === 'string'
+                      ? JSON.parse(selectedMessage.audio_json)
+                      : selectedMessage.audio_json;
+
+                    if (Array.isArray(audio) && audio.length > 0) {
+                      return (
+                        <div className="sml-detail-section sml-detail-section-audio">
+                          <div className="sml-detail-section-header">
+                            <Icon icon="mdi:music" width="14" />
+                            <span>Audio ({audio.length})</span>
+                          </div>
+                          <div className="sml-detail-audio-list">
+                            {audio.map((audioPath, idx) => {
+                              // Build audio URL from session and path
+                              const audioUrl = `/api/audio/${selectedMessage.session_id}/${audioPath}`;
+                              return (
+                                <div key={idx} className="sml-detail-audio-item">
+                                  <audio controls className="sml-detail-audio">
+                                    <source src={audioUrl} type="audio/mpeg" />
+                                    Your browser does not support audio playback.
+                                  </audio>
+                                  <div className="sml-detail-audio-label">{audioPath}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                  } catch (e) {
+                    console.error('[SessionMessagesLog] Error parsing audio:', e);
+                  }
+                  return null;
+                })()}
+
                 {selectedMessage.metadata_json && (
                   <div className="sml-detail-section sml-detail-section-metadata">
                     <div className="sml-detail-section-header">
@@ -543,7 +769,7 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
               animateRows={false}
               suppressCellFocus={true}
               enableCellTextSelection={true}
-              getRowId={(params) => params.data.message_id}
+              getRowId={(params) => params.data.message_id || `${params.data.timestamp_iso}-${params.data.trace_id || params.node.id}`}
               onRowClicked={onRowClicked}
               rowSelection="single"
               getRowClass={(params) => {
@@ -562,8 +788,9 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
         )}
       </div>
 
-      {/* Filter panel on right */}
-      <div className="sml-filter-panel">
+      {/* Filter panel on right - only show if showFilters is true */}
+      {showFilters && (
+        <div className="sml-filter-panel">
         <div className="sml-filter-header">
           <Icon icon="mdi:filter-variant" width="16" />
           <span>Filters</span>
@@ -638,7 +865,35 @@ const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
+
+      {/* Image Modal - Full size view */}
+      <Modal
+        isOpen={!!modalImage}
+        onClose={() => setModalImage(null)}
+        size="full"
+        closeOnBackdrop={true}
+        closeOnEscape={true}
+        className="sml-image-modal"
+      >
+        {modalImage && (
+          <div className="sml-modal-image-container">
+            <div className="sml-modal-image-header">
+              <Icon icon="mdi:image" width="20" />
+              <span className="sml-modal-image-title">{modalImage.path}</span>
+            </div>
+            <div className="sml-modal-image-body">
+              <img
+                src={modalImage.url}
+                alt="Full size"
+                className="sml-modal-image"
+                onClick={() => setModalImage(null)}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

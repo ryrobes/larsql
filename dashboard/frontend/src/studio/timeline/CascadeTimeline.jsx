@@ -12,6 +12,150 @@ import { Button } from '../../components';
 import './CascadeTimeline.css';
 
 /**
+ * InputEdgesSVG - Memoized SVG layer for input parameter connections
+ * Only re-renders when layout, positions, or viewport changes
+ */
+const InputEdgesSVG = React.memo(({
+  nodes,
+  inputPositions,
+  inputColorMap,
+  timelineOffset,
+  scrollOffset
+}) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[InputEdgesSVG] Rendering');
+  }
+
+  return (
+    <svg
+      className="cascade-input-edges"
+      style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        width: '100vw',
+        height: '100vh',
+        pointerEvents: 'none',
+        zIndex: 5,
+      }}
+    >
+      <defs>
+        <clipPath id="timeline-clip">
+          <rect
+            x="0"
+            y="0"
+            width="100%"
+            height={timelineOffset.top + 600} // Approximate timeline height
+          />
+        </clipPath>
+      </defs>
+
+      <g clipPath="url(#timeline-clip)">
+        {nodes.map(node => {
+          if (!node.inputDeps || node.inputDeps.length === 0) return null;
+
+          return node.inputDeps.map(inputName => {
+            const inputY = inputPositions[inputName] || 50;
+            const inputColor = inputColorMap[inputName] || '#ffd700';
+
+            const x1 = timelineOffset.left;
+            const SIDEBAR_TOP = 0;
+            const y1 = SIDEBAR_TOP + inputY + 52;
+            const x2 = timelineOffset.left + (node.x - scrollOffset.x);
+            const y2 = timelineOffset.top + (node.y + 50 - scrollOffset.y);
+
+            // Don't draw if target is off-screen
+            if (x2 < timelineOffset.left - 240 || x2 > window.innerWidth) return null;
+
+            const dx = x2 - x1;
+            const cx1 = x1 + Math.min(60, dx * 0.3);
+            const cx2 = x2 - Math.min(60, dx * 0.3);
+
+            return (
+              <path
+                key={`input-${node.cellIdx}-${inputName}`}
+                d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+                stroke={inputColor}
+                strokeWidth="2.5"
+                fill="none"
+                opacity="0.75"
+                strokeLinecap="round"
+                strokeDasharray="5 5"
+              />
+            );
+          });
+        })}
+      </g>
+    </svg>
+  );
+});
+
+InputEdgesSVG.displayName = 'InputEdgesSVG';
+
+/**
+ * CellEdgesSVG - Memoized SVG layer for cell-to-cell connections
+ * Only re-renders when layout changes
+ */
+const CellEdgesSVG = React.memo(({ edges, width, height }) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[CellEdgesSVG] Rendering');
+  }
+
+  return (
+    <svg
+      className="cascade-edges"
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: `${width + 100}px`,
+        height: `${height + 100}px`,
+        pointerEvents: 'none',
+        zIndex: 0,
+        overflow: 'visible',
+      }}
+    >
+      {edges.map((edge, idx) => {
+        const { source, target, contextType, isBranch, isMerge } = edge;
+
+        const x1 = source.x + 240;
+        const y1 = source.y + 65;
+        const x2 = target.x;
+        const y2 = target.y + 65;
+
+        const colorMap = {
+          data: '#00e5ff',
+          selective: '#a78bfa',
+          execution: '#64748b',
+        };
+        const color = colorMap[contextType] || '#64748b';
+        const isSpecial = isBranch || isMerge;
+        const finalColor = isSpecial ? '#ff006e' : color;
+        const opacity = contextType === 'execution' ? 0.3 : 0.6;
+
+        const dx = x2 - x1;
+        const cx1 = x1 + dx * 0.5;
+        const cx2 = x2 - dx * 0.5;
+
+        return (
+          <path
+            key={`edge-${idx}`}
+            d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+            stroke={finalColor}
+            strokeWidth="3"
+            fill="none"
+            opacity={opacity}
+            strokeLinecap="round"
+          />
+        );
+      })}
+    </svg>
+  );
+});
+
+CellEdgesSVG.displayName = 'CellEdgesSVG';
+
+/**
  * Build FBP-style layered graph layout
  * Returns positioned nodes and edges for rendering
  *
@@ -317,30 +461,31 @@ const CanvasDropZone = () => {
 const CascadeTimeline = ({ onOpenBrowser }) => {
   console.log('[CascadeTimeline] Component mounting/rendering');
 
-  const {
-    cascade,
-    cascadePath,
-    cascadeDirty,
-    cellStates,
-    isRunningAll,
-    cascadeSessionId,
-    viewMode,
-    replaySessionId,
-    sessionId,
-    cascades,
-    fetchCascades,
-    loadCascade,
-    newCascade,
-    addCell,
-    restartSession,
-    updateCascade,
-    saveCascade,
-    selectedCellIndex,
-    setSelectedCellIndex,
-    setLiveMode,
-    updateCellStatesFromPolling,
-    defaultModel,
-  } = useStudioCascadeStore();
+  // Optimized store selectors - only subscribe to what we need
+  const cascade = useStudioCascadeStore(state => state.cascade);
+  const cascadePath = useStudioCascadeStore(state => state.cascadePath);
+  const cascadeDirty = useStudioCascadeStore(state => state.cascadeDirty);
+  const cellStates = useStudioCascadeStore(state => state.cellStates);
+  const isRunningAll = useStudioCascadeStore(state => state.isRunningAll);
+  const cascadeSessionId = useStudioCascadeStore(state => state.cascadeSessionId);
+  const viewMode = useStudioCascadeStore(state => state.viewMode);
+  const replaySessionId = useStudioCascadeStore(state => state.replaySessionId);
+  const sessionId = useStudioCascadeStore(state => state.sessionId);
+  const cascades = useStudioCascadeStore(state => state.cascades);
+  const selectedCellIndex = useStudioCascadeStore(state => state.selectedCellIndex);
+  const defaultModel = useStudioCascadeStore(state => state.defaultModel);
+
+  // Actions
+  const fetchCascades = useStudioCascadeStore(state => state.fetchCascades);
+  const loadCascade = useStudioCascadeStore(state => state.loadCascade);
+  const newCascade = useStudioCascadeStore(state => state.newCascade);
+  const addCell = useStudioCascadeStore(state => state.addCell);
+  const restartSession = useStudioCascadeStore(state => state.restartSession);
+  const updateCascade = useStudioCascadeStore(state => state.updateCascade);
+  const saveCascade = useStudioCascadeStore(state => state.saveCascade);
+  const setSelectedCellIndex = useStudioCascadeStore(state => state.setSelectedCellIndex);
+  const setLiveMode = useStudioCascadeStore(state => state.setLiveMode);
+  const updateCellStatesFromPolling = useStudioCascadeStore(state => state.updateCellStatesFromPolling);
 
   console.log('[CascadeTimeline] Store data:', {
     hasCascade: !!cascade,
@@ -357,7 +502,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll);
+  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
@@ -441,6 +586,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   // Grab-to-scroll state
   const [isGrabbing, setIsGrabbing] = useState(false);
   const grabStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  const scrollRafRef = useRef(null);
 
   // Grab-to-scroll handlers
   const handleGrabStart = useCallback((e) => {
@@ -512,10 +658,16 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     };
 
     // Handle scroll on the timeline strip (horizontal scroll)
+    // Throttled with requestAnimationFrame to reduce re-renders
     const handleStripScroll = () => {
-      setScrollOffset({
-        x: stripEl.scrollLeft,
-        y: stripEl.scrollTop,
+      if (scrollRafRef.current) return; // Already scheduled
+
+      scrollRafRef.current = requestAnimationFrame(() => {
+        setScrollOffset({
+          x: stripEl.scrollLeft,
+          y: stripEl.scrollTop,
+        });
+        scrollRafRef.current = null;
       });
     };
 
@@ -554,6 +706,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       clearTimeout(timeout1);
       clearTimeout(timeout2);
       clearTimeout(timeout3);
+      // Cancel any pending RAF
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
     };
   }, [layoutMode, cascade?.cascade_id]); // Re-measure when layout or cascade changes
 
@@ -638,9 +795,47 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     }
   }, [cascade, newCascade]);
 
-  const handleSelectCell = (index) => {
+  // Memoized cell selection callback
+  const handleSelectCell = useCallback((index) => {
     setSelectedCellIndex(index);
-  };
+  }, [setSelectedCellIndex]);
+
+  // Memoize cell logs grouped by cell name to avoid filtering on every render
+  // Also create a stable empty array to prevent || [] from creating new arrays
+  const EMPTY_LOGS_ARRAY = useMemo(() => [], []);
+
+  const cellLogsByName = useMemo(() => {
+    const logMap = {};
+    logs.forEach(log => {
+      if (!log.cell_name) return;
+      if (!logMap[log.cell_name]) logMap[log.cell_name] = [];
+      logMap[log.cell_name].push(log);
+    });
+    return logMap;
+  }, [logs]);
+
+  // Stabilize individual cell state references - only update when content actually changes
+  // This prevents CellCard from re-rendering when other cells' states change
+  const stableCellStatesRef = useRef({});
+  const stableCellStates = useMemo(() => {
+    const newStableStates = {};
+
+    Object.keys(cellStates).forEach(cellName => {
+      const currentState = cellStates[cellName];
+      const previousState = stableCellStatesRef.current[cellName];
+
+      // Deep comparison: only create new reference if state actually changed
+      if (!previousState || JSON.stringify(currentState) !== JSON.stringify(previousState)) {
+        newStableStates[cellName] = currentState;
+      } else {
+        // Reuse previous reference - prevents unnecessary re-renders
+        newStableStates[cellName] = previousState;
+      }
+    });
+
+    stableCellStatesRef.current = newStableStates;
+    return newStableStates;
+  }, [cellStates]);
 
   // Count messages by role, filtering out system messages (phase_*)
   let messageCounts = null;
@@ -844,79 +1039,13 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
       {/* Fixed overlay for input parameter connections - only if inputs exist */}
       {Object.keys(inputsSchema).length > 0 && (
-        <svg
-          className="cascade-input-edges"
-          style={{
-            position: 'fixed',
-            left: 0,
-            top: 0,
-            width: '100vw',
-            height: '100vh',
-            pointerEvents: 'none',
-            zIndex: 5, // Above background
-          }}
-        >
-          {/* Clip path to cut off lines at editor panel boundary */}
-          <defs>
-            <clipPath id="timeline-clip">
-              <rect
-                x="0"
-                y="0"
-                width="100%"
-                height={timelineOffset.top + (timelineRef.current?.clientHeight || 0)}
-              />
-            </clipPath>
-          </defs>
-
-          <g clipPath="url(#timeline-clip)">
-            {/* Input parameter edges - from sidebar to phases (stays fixed during scroll) */}
-            {layout.nodes.map(node => {
-          if (!node.inputDeps || node.inputDeps.length === 0) return null;
-
-          return node.inputDeps.map(inputName => {
-            // Get calculated Y position and color for this input
-            const inputY = layout.inputPositions[inputName] || 50;
-            const inputColor = layout.inputColorMap[inputName] || '#ffd700';
-
-            // VIEWPORT coordinates (since SVG is position:fixed)
-            // x1: Right edge of left panel
-            const x1 = timelineOffset.left;
-
-            // y1: Input field position in viewport
-            // Left panel contains: cascade header (~50px) + inputs section
-            // inputY is offset from cascade header start
-            const SIDEBAR_TOP = 0; // Left panel starts at top of viewport
-            const y1 = SIDEBAR_TOP + inputY + 52; // Sidebar top + input offset + adjustment
-
-            // x2: Phase card left edge (in viewport coords)
-            const x2 = timelineOffset.left + (node.x - scrollOffset.x);
-
-            // y2: Phase card connection point (in viewport coords)
-            const y2 = timelineOffset.top + (node.y + 50 - scrollOffset.y);
-
-            // Don't draw if target is off-screen
-            if (x2 < timelineOffset.left - 240 || x2 > window.innerWidth) return null;
-
-            const dx = x2 - x1;
-            const cx1 = x1 + Math.min(60, dx * 0.3);
-            const cx2 = x2 - Math.min(60, dx * 0.3);
-
-            return (
-              <path
-                key={`input-${node.cellIdx}-${inputName}`}
-                d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                stroke={inputColor}
-                strokeWidth="2.5"
-                fill="none"
-                opacity="0.75"
-                strokeLinecap="round"
-                strokeDasharray="5 5"
-              />
-            );
-          });
-        })}
-        </g>
-      </svg>
+        <InputEdgesSVG
+          nodes={layout.nodes}
+          inputPositions={layout.inputPositions}
+          inputColorMap={layout.inputColorMap}
+          timelineOffset={timelineOffset}
+          scrollOffset={scrollOffset}
+        />
       )}
 
       {/* FBP Graph Layout */}
@@ -945,60 +1074,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           <CanvasDropZone />
 
           {/* SVG layer for cell-to-cell edges (scrolls with content) */}
-          <svg
-            className="cascade-edges"
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: `${layout.width + 100}px`,  // Extra margin for bezier curves
-              height: `${layout.height + 100}px`,
-              pointerEvents: 'none',
-              zIndex: 0,
-              overflow: 'visible',
-            }}
-          >
-            {/* Cell-to-cell edges - color coded by context type */}
-            {layout.edges.map((edge, idx) => {
-              const { source, target, contextType, isBranch, isMerge } = edge;
-
-              // Connection points: right side of source to left side of target
-              const x1 = source.x + 240; // Right edge of source card
-              const y1 = source.y + 65;  // Center of source card
-              const x2 = target.x;       // Left edge of target card
-              const y2 = target.y + 65;  // Center of target card
-
-              // Color based on context type
-              const colorMap = {
-                data: '#00e5ff',      // Bright cyan - direct data flow {{ outputs.X }}
-                selective: '#a78bfa', // Purple - selective context.from
-                execution: '#64748b', // Dim gray - execution order only
-              };
-              const color = colorMap[contextType] || '#64748b';
-
-              // Highlight branch/merge with pink overlay
-              const isSpecial = isBranch || isMerge;
-              const finalColor = isSpecial ? '#ff006e' : color;
-              const opacity = contextType === 'execution' ? 0.3 : 0.6;
-
-              // Bezier curve for smooth connections
-              const dx = x2 - x1;
-              const cx1 = x1 + dx * 0.5;
-              const cx2 = x2 - dx * 0.5;
-
-              return (
-                <path
-                  key={`edge-${idx}`}
-                  d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
-                  stroke={finalColor}
-                  strokeWidth="3"
-                  fill="none"
-                  opacity={opacity}
-                  strokeLinecap="round"
-                />
-              );
-            })}
-          </svg>
+          <CellEdgesSVG
+            edges={layout.edges}
+            width={layout.width}
+            height={layout.height}
+          />
 
           {/* Positioned cell cards */}
           {layout.nodes.map(node => (
@@ -1016,10 +1096,10 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               <CellCard
                 cell={node.cell}
                 index={node.cellIdx}
-                cellState={cellStates[node.cell.name]}
-                cellLogs={logs.filter(log => log.cell_name === node.cell.name)}
+                cellState={stableCellStates[node.cell.name]}
+                cellLogs={cellLogsByName[node.cell.name] || EMPTY_LOGS_ARRAY}
                 isSelected={selectedCellIndex === node.cellIdx}
-                onSelect={() => handleSelectCell(node.cellIdx)}
+                onSelect={handleSelectCell}
                 defaultModel={defaultModel}
               />
             </div>
@@ -1041,8 +1121,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           <CellDetailPanel
             cell={selectedCell}
             index={selectedCellIndex}
-            cellState={cellStates[selectedCell.name]}
-            cellLogs={logs.filter(log => log.cell_name === selectedCell.name)}
+            cellState={stableCellStates[selectedCell.name]}
+            cellLogs={cellLogsByName[selectedCell.name] || EMPTY_LOGS_ARRAY}
             allSessionLogs={logs}
             currentSessionId={sessionToPoll}
             onClose={() => setSelectedCellIndex(null)}
@@ -1069,8 +1149,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         <div className="cascade-anatomy-panel-container">
           <CellAnatomyPanel
             cell={selectedCell}
-            cellLogs={logs.filter(log => log.cell_name === selectedCell.name)}
-            cellState={cellStates[selectedCell.name]}
+            cellLogs={cellLogsByName[selectedCell.name] || EMPTY_LOGS_ARRAY}
+            cellState={stableCellStates[selectedCell.name]}
             onClose={() => setShowAnatomyPanel(false)}
           />
         </div>
