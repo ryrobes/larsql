@@ -1862,7 +1862,8 @@ def get_tools():
                 'source': 'cascade' if row['source_path'] else 'builtin'
             })
 
-        # Fetch HuggingFace Spaces
+        # Fetch HuggingFace Spaces (all except RUNTIME_ERROR)
+        # Include PAUSED/SLEEPING spaces since they can be awakened
         hf_query = """
             SELECT
                 space_id,
@@ -1872,7 +1873,7 @@ def get_tools():
                 is_callable,
                 status
             FROM hf_spaces
-            WHERE is_callable = true
+            WHERE status <> 'RUNTIME_ERROR'
             ORDER BY space_id
             LIMIT 100
         """
@@ -1884,7 +1885,7 @@ def get_tools():
                 'id': row['space_id'],
                 'name': row['space_name'],
                 'author': row['author'],
-                'sdk': row['sdk'],
+                'sdk': row['sdk'] or 'unknown',
                 'is_callable': row['is_callable'],
                 'status': row['status']
             })

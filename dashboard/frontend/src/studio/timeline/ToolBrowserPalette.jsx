@@ -39,8 +39,16 @@ function ToolPill({ tool, isHfSpace = false }) {
 
   // Build tooltip content
   const tooltipContent = isHfSpace
-    ? `${tool.author}/${tool.name}\n${tool.sdk || 'unknown'} SDK`
+    ? `${tool.author}/${tool.name}\nSDK: ${tool.sdk || 'unknown'}\nStatus: ${tool.status || 'unknown'}`
     : tool.description;
+
+  // Status indicator color for HF Spaces
+  const statusColor = isHfSpace
+    ? tool.status === 'RUNNING' ? '#34d399'
+      : tool.status === 'SLEEPING' ? '#fbbf24'
+      : tool.status === 'PAUSED' ? '#94a3b8'
+      : '#f87171'
+    : null;
 
   return (
     <Tooltip label={tooltipContent}>
@@ -56,8 +64,16 @@ function ToolPill({ tool, isHfSpace = false }) {
           {toolName}
         </span>
         {isHfSpace && (
-          <span className="model-pill-context" style={{ fontSize: '9px', opacity: 0.5 }}>
-            {tool.sdk || '?'}
+          <span
+            className="model-pill-context"
+            style={{
+              fontSize: '9px',
+              opacity: 0.7,
+              color: statusColor,
+              fontWeight: tool.status === 'RUNNING' ? '600' : '400'
+            }}
+          >
+            {tool.status || '?'}
           </span>
         )}
       </div>
@@ -68,7 +84,7 @@ function ToolPill({ tool, isHfSpace = false }) {
 /**
  * Collapsible tool group
  */
-function ToolGroup({ title, iconName, tools, isHfSpace = false, defaultOpen = true }) {
+function ToolGroup({ title, iconName, iconImage, tools, isHfSpace = false, defaultOpen = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
   if (tools.length === 0) return null;
@@ -84,7 +100,16 @@ function ToolGroup({ title, iconName, tools, isHfSpace = false, defaultOpen = tr
           width="12"
           className="model-group-chevron"
         />
-        <Icon icon={iconName} width="12" className="model-group-icon" />
+        {iconImage ? (
+          <img
+            src={iconImage}
+            alt={title}
+            className="model-group-icon"
+            style={{ width: '12px', height: '12px', objectFit: 'contain', opacity: 0.6 }}
+          />
+        ) : (
+          <Icon icon={iconName} width="12" className="model-group-icon" />
+        )}
         <span className="model-group-title">{title}</span>
         <span className="model-group-count">{tools.length}</span>
       </div>
@@ -320,7 +345,7 @@ function ToolBrowserPalette() {
             {filteredHfSpaces.length > 0 && (
               <ToolGroup
                 title="HuggingFace Spaces"
-                iconName="mdi:cube-outline"
+                iconImage="/huggingface_logo-noborder_greyscale.svg"
                 tools={filteredHfSpaces}
                 isHfSpace={true}
                 defaultOpen={false}

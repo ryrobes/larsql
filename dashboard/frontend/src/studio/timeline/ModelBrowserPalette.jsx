@@ -334,7 +334,7 @@ function ModelBrowserPalette() {
               icon={isOllamaExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
               className="nav-chevron"
             />
-            <img src="/ollama.png" alt="Ollama" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
+            <img src="/ollama_vector.svg" alt="Ollama" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
             <span className="nav-section-title">Local Models</span>
             <span className="nav-section-count">{ollamaModels.length}</span>
           </div>
