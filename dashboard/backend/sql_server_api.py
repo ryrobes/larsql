@@ -1,7 +1,7 @@
 """
 SQL Server API - HTTP endpoint for external SQL clients.
 
-This allows ANY HTTP client to execute SQL queries against Windlass DuckDB
+This allows ANY HTTP client to execute SQL queries against RVBBIT DuckDB
 with full access to windlass_udf() and windlass_cascade_udf().
 
 Perfect for:
@@ -22,7 +22,7 @@ sql_server_api = Blueprint('sql_server_api', __name__)
 @sql_server_api.route('/api/sql/execute', methods=['POST'])
 def execute_sql():
     """
-    Execute SQL query with Windlass UDFs.
+    Execute SQL query with RVBBIT UDFs.
 
     POST /api/sql/execute
     {
@@ -76,14 +76,14 @@ def execute_sql():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from windlass.sql_tools.session_db import get_session_db
-        from windlass.sql_tools.udf import register_windlass_udf
+        from rvbbit.sql_tools.session_db import get_session_db
+        from rvbbit.sql_tools.udf import register_rvbbit_udf
 
         # Get or create session DuckDB
         conn = get_session_db(session_id)
 
-        # Register Windlass UDFs (idempotent - won't re-register)
-        register_windlass_udf(conn)
+        # Register RVBBIT UDFs (idempotent - won't re-register)
+        register_rvbbit_udf(conn)
 
         # Execute query
         result_df = conn.execute(query).fetchdf()
@@ -156,7 +156,7 @@ def list_sessions():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from windlass.sql_tools.session_db import _session_dbs
+        from rvbbit.sql_tools.session_db import _session_dbs
 
         sessions = []
         for session_id, conn in _session_dbs.items():
@@ -200,7 +200,7 @@ def list_tables_in_session(session_id):
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from windlass.sql_tools.session_db import get_session_db
+        from rvbbit.sql_tools.session_db import get_session_db
 
         conn = get_session_db(session_id)
 
@@ -252,7 +252,7 @@ def get_table_schema(session_id, table_name):
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from windlass.sql_tools.session_db import get_session_db
+        from rvbbit.sql_tools.session_db import get_session_db
 
         conn = get_session_db(session_id)
 
@@ -288,13 +288,13 @@ def health_check():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from windlass.sql_tools.session_db import get_session_db
-        from windlass.sql_tools.udf import register_windlass_udf
+        from rvbbit.sql_tools.session_db import get_session_db
+        from rvbbit.sql_tools.udf import register_rvbbit_udf
 
         # Test UDF registration
         test_session = f"health_check_{uuid.uuid4().hex[:8]}"
         conn = get_session_db(test_session)
-        register_windlass_udf(conn)
+        register_rvbbit_udf(conn)
 
         # Test simple UDF
         simple_result = conn.execute("SELECT windlass_udf('Test', 'input') as test").fetchone()
@@ -310,7 +310,7 @@ def health_check():
         cascade_udf_works = cascade_result is not None
 
         # Cleanup test session
-        from windlass.sql_tools.session_db import cleanup_session_db
+        from rvbbit.sql_tools.session_db import cleanup_session_db
         cleanup_session_db(test_session, delete_file=True)
 
         return jsonify({

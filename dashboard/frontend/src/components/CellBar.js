@@ -1,9 +1,9 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
 import { getSequentialColor } from './CascadeBar';
-import './PhaseBar.css';
+import './CellBar.css';
 
-function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, runningSoundingsSet = new Set(), onPhaseClick = null, onSoundingClick = null }) {
+function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, runningSoundingsSet = new Set(), onPhaseClick = null, onSoundingClick = null }) {
   // Calculate bar width based on cost (relative to max)
   // Apply logarithmic scaling to prevent extreme ratios
   const costPercent = maxCost > 0 ? (phase.avg_cost / maxCost) * 100 : 10;
@@ -30,7 +30,7 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, r
   };
 
   // Get phase color for the legend indicator
-  const phaseColor = phaseIndex !== null ? getSequentialColor(phaseIndex) : null;
+  const phaseColor = cellIndex !== null ? getSequentialColor(cellIndex) : null;
 
   // Handle phase header click - scroll to phase start
   const handlePhaseHeaderClick = (e) => {
@@ -62,7 +62,7 @@ function PhaseBar({ phase, maxCost, status = null, onClick, phaseIndex = null, r
             <span
               className="phase-color-indicator"
               style={{ backgroundColor: phaseColor }}
-              title={`Phase ${phaseIndex + 1}`}
+              title={`Phase ${cellIndex + 1}`}
             />
           )}
           <span className="phase-name">{phase.name}</span>

@@ -1,45 +1,71 @@
 {
   "cascade_id": "context_system_test",
   "description": "Tests all context patterns: clean slate, previous, all, exclude",
-  "phases": [
+  "cells": [
     {
       "name": "phase_a",
       "instructions": "Say exactly: 'PHASE_A_OUTPUT: Hello from phase A'. Nothing else.",
-      "rules": {"max_turns": 1},
-      "handoffs": ["phase_b"]
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "phase_b"
+      ]
     },
     {
       "name": "phase_b",
       "instructions": "Say exactly: 'PHASE_B_OUTPUT: Hello from phase B'. Nothing else.",
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "rules": {"max_turns": 1},
-      "handoffs": ["phase_c"]
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "phase_c"
+      ]
     },
     {
       "name": "phase_c",
       "instructions": "You should see NO prior context. If you see PHASE_A_OUTPUT or PHASE_B_OUTPUT, something is wrong. Say exactly: 'PHASE_C_OUTPUT: Clean slate confirmed'. Nothing else.",
-      "rules": {"max_turns": 1},
-      "handoffs": ["phase_d"]
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "phase_d"
+      ]
     },
     {
       "name": "phase_d",
       "instructions": "You should see ALL prior phases (A, B, C). List which PHASE_X_OUTPUT markers you can see. Say: 'PHASE_D_OUTPUT: I see [list markers]'.",
       "context": {
-        "from": ["all"]
+        "from": [
+          "all"
+        ]
       },
-      "rules": {"max_turns": 1},
-      "handoffs": ["phase_e"]
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "phase_e"
+      ]
     },
     {
       "name": "phase_e",
       "instructions": "You should see all phases EXCEPT phase_b. List which PHASE_X_OUTPUT markers you can see. Say: 'PHASE_E_OUTPUT: I see [list markers]'. You should NOT see PHASE_B_OUTPUT.",
       "context": {
-        "from": ["all"],
-        "exclude": ["phase_b"]
+        "from": [
+          "all"
+        ],
+        "exclude": [
+          "phase_b"
+        ]
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

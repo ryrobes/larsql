@@ -1,7 +1,6 @@
 {
   "cascade_id": "signal_etl_pipeline",
   "description": "Complete ETL pipeline using signals for coordination. Demonstrates how deterministic phases, signals, and LLM phases work together.",
-
   "triggers": [
     {
       "name": "daily_run",
@@ -28,8 +27,7 @@
       }
     }
   ],
-
-  "phases": [
+  "cells": [
     {
       "name": "wait_for_source",
       "tool": "await_signal",
@@ -42,7 +40,10 @@
         "fired": "validate_source",
         "timeout": "handle_timeout"
       },
-      "handoffs": ["validate_source", "handle_timeout"]
+      "handoffs": [
+        "validate_source",
+        "handle_timeout"
+      ]
     },
     {
       "name": "handle_timeout",
@@ -58,7 +59,10 @@
         "valid": "extract_data",
         "invalid": "handle_validation_error"
       },
-      "handoffs": ["extract_data", "handle_validation_error"]
+      "handoffs": [
+        "extract_data",
+        "handle_validation_error"
+      ]
     },
     {
       "name": "handle_validation_error",
@@ -67,7 +71,9 @@
     {
       "name": "extract_data",
       "instructions": "Source validation passed. Now extract the data for processing.\n\nExtraction details:\n- Mode: {{ input.mode | default('incremental') }}\n- Source payload: {{ state.output_wait_for_source }}\n\nSimulate data extraction and return the extracted record count.",
-      "handoffs": ["transform_data"]
+      "handoffs": [
+        "transform_data"
+      ]
     },
     {
       "name": "transform_data",
@@ -80,7 +86,10 @@
         "success": "load_data",
         "error": "handle_transform_error"
       },
-      "handoffs": ["load_data", "handle_transform_error"]
+      "handoffs": [
+        "load_data",
+        "handle_transform_error"
+      ]
     },
     {
       "name": "handle_transform_error",
@@ -89,13 +98,19 @@
     {
       "name": "load_data",
       "instructions": "Transformation complete with results:\n\n{{ state.output_transform_data }}\n\nSimulate loading to the destination warehouse. Include:\n- Target table name\n- Row count loaded\n- Load timestamp",
-      "handoffs": ["notify_downstream"]
+      "handoffs": [
+        "notify_downstream"
+      ]
     },
     {
       "name": "notify_downstream",
       "instructions": "Use fire_signal to notify downstream systems:\n\n- Signal name: 'etl_complete'\n- Payload: {\"cascade_id\": \"signal_etl_pipeline\", \"status\": \"success\", \"records_processed\": \"{{ state.output_transform_data.count }}\"}",
-      "tackle": ["fire_signal"],
-      "handoffs": ["complete"]
+      "traits": [
+        "fire_signal"
+      ],
+      "handoffs": [
+        "complete"
+      ]
     },
     {
       "name": "complete",

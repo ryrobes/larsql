@@ -66,7 +66,7 @@ function SplitDetailView({
 
     // Find the first message in this phase
     const firstMessageIndex = messageFlowData.all_messages.findIndex(
-      msg => msg.phase_name === phaseName
+      msg => msg.cell_name === phaseName
     );
 
     if (firstMessageIndex >= 0) {
@@ -83,7 +83,7 @@ function SplitDetailView({
 
     // Find the first message in this phase+sounding combination
     const firstMessageIndex = messageFlowData.all_messages.findIndex(
-      msg => msg.phase_name === phaseName && msg.sounding_index === soundingIndex
+      msg => msg.cell_name === phaseName && msg.candidate_index === soundingIndex
     );
 
     if (firstMessageIndex >= 0) {

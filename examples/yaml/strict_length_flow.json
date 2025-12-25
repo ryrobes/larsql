@@ -6,21 +6,26 @@
     "min_length": "Minimum characters required",
     "max_length": "Maximum characters allowed"
   },
-  "phases": [{
-    "name": "constrained_writing",
-    "instructions": "Write about: {{ input.topic }}\n\n⚠️ STRICT REQUIREMENTS:\n- Minimum {{ input.min_length }} characters\n- Maximum {{ input.max_length }} characters\n- Make it engaging and complete\n\nCount your characters carefully!",
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 4,
-      "loop_until": "length_check",
-      "retry_instructions": "📏 Length Constraint Violation:\n\n{{ validation_error }}\n\nRequired: {{ input.min_length }}-{{ input.max_length }} characters\n\nPlease adjust your response length. This is attempt {{ attempt }}/{{ max_attempts }}."
+  "cells": [
+    {
+      "name": "constrained_writing",
+      "instructions": "Write about: {{ input.topic }}\n\n\u26a0\ufe0f STRICT REQUIREMENTS:\n- Minimum {{ input.min_length }} characters\n- Maximum {{ input.max_length }} characters\n- Make it engaging and complete\n\nCount your characters carefully!",
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 4,
+        "loop_until": "length_check",
+        "retry_instructions": "\ud83d\udccf Length Constraint Violation:\n\n{{ validation_error }}\n\nRequired: {{ input.min_length }}-{{ input.max_length }} characters\n\nPlease adjust your response length. This is attempt {{ attempt }}/{{ max_attempts }}."
+      },
+      "traits": [
+        "set_state"
+      ]
     },
-    "tackle": ["set_state"]
-  }, {
-    "name": "reflect",
-    "instructions": "Success! You met the length constraints.\n\nReflect on the challenge: Was it difficult to write within the constraints? What strategies did you use?",
-    "rules": {
-      "max_turns": 1
+    {
+      "name": "reflect",
+      "instructions": "Success! You met the length constraints.\n\nReflect on the challenge: Was it difficult to write within the constraints? What strategies did you use?",
+      "rules": {
+        "max_turns": 1
+      }
     }
-  }]
+  ]
 }

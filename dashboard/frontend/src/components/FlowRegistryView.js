@@ -10,7 +10,7 @@ import './FlowRegistryView.css';
  * - List all saved flows with metadata
  * - View/edit flow details
  * - Parameterize flows (turn hardcoded values into dynamic inputs)
- * - Register flows as Windlass tools
+ * - Register flows as RVBBIT tools
  * - Test flow execution
  */
 function FlowRegistryView({
@@ -118,7 +118,7 @@ function FlowRegistryView({
     }
   };
 
-  // Register flow as Windlass tool
+  // Register flow as RVBBIT tool
   const handleRegisterAsTool = async (flowId, e) => {
     e?.stopPropagation();
     setRegistering(flowId);
@@ -311,7 +311,7 @@ function FlowRegistryView({
                       className="action-btn register"
                       onClick={(e) => handleRegisterAsTool(flow.flow_id, e)}
                       disabled={registering === flow.flow_id}
-                      title="Register as Windlass tool"
+                      title="Register as RVBBIT tool"
                     >
                       {registering === flow.flow_id ? (
                         <Icon icon="mdi:loading" width="16" className="spin" />

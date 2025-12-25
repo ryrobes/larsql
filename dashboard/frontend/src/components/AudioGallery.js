@@ -79,7 +79,7 @@ function AudioGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
 
   // Filter audio by phase if phaseName is provided
   const filteredAudio = phaseName
-    ? audioFiles.filter(audio => audio.phase_name === phaseName)
+    ? audioFiles.filter(audio => audio.cell_name === phaseName)
     : audioFiles;
 
   if (filteredAudio.length === 0 && !loading) {

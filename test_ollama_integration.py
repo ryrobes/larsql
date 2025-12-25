@@ -13,9 +13,9 @@ import sys
 # Add windlass to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "windlass"))
 
-from windlass.model_registry import ModelRegistry
-from windlass.agent import Agent
-from windlass.config import set_provider
+from rvbbit.model_registry import ModelRegistry
+from rvbbit.agent import Agent
+from rvbbit.config import set_provider
 from rich.console import Console
 from rich.table import Table
 
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     console.print('[dim]   export WINDLASS_DEFAULT_MODEL="gpt-oss:20b"[/dim]\n')
 
     console.print("[cyan]3. Runtime Configuration:[/cyan]")
-    console.print('[dim]   from windlass.config import set_provider[/dim]')
+    console.print('[dim]   from rvbbit.config import set_provider[/dim]')
     console.print('[dim]   set_provider(base_url="http://localhost:11434", model="gpt-oss:20b")[/dim]\n')
 
     console.print("[bold]Available Models:[/bold]")

@@ -5,23 +5,31 @@
     "task": "Description of the content processing task",
     "content": "The content to process"
   },
-  "phases": [
+  "cells": [
     {
       "name": "process_content",
       "instructions": "Task: {{ input.task }}\n\nContent: {{ input.content }}\n\nComplete the requested task using the available tools. Use tools when they would be helpful.",
-      "tackle": "manifest",
+      "traits": "manifest",
       "manifest_context": "current",
-      "rules": {"max_turns": 5},
-      "handoffs": ["review"]
+      "rules": {
+        "max_turns": 5
+      },
+      "handoffs": [
+        "review"
+      ]
     },
     {
       "name": "review",
       "instructions": "Review the work completed in the previous phase. Provide a brief summary of what was accomplished.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

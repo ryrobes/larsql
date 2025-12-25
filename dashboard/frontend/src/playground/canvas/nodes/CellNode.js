@@ -5,7 +5,7 @@ import Editor from '@monaco-editor/react';
 import yaml from 'js-yaml';
 import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
-import './PhaseNode.css';
+import './CellNode.css';
 
 // Default dimensions (grid-aligned to 16px)
 const DEFAULT_WIDTH = 320;  // 20 * 16

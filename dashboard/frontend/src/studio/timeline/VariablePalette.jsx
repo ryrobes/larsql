@@ -8,9 +8,9 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
  *
  * Introspects cascade to show available variables:
  * - input.* (from inputs_schema)
- * - outputs.* (from previous phases)
+ * - outputs.* (from previous cells)
  * - state.* (from state usage)
- * - Built-ins (lineage, history, sounding_index, etc.)
+ * - Built-ins (lineage, history, candidate_index, etc.)
  */
 
 // Variable type metadata
@@ -21,13 +21,13 @@ const VARIABLE_TYPES = {
   builtin: { icon: 'mdi:cog-outline', color: '#fbbf24', label: 'Built-in' },
 };
 
-// Built-in variables available in all phases
+// Built-in variables available in all cells
 const BUILTIN_VARIABLES = [
-  { path: 'lineage', description: 'Execution path through phases' },
+  { path: 'lineage', description: 'Execution path through cells' },
   { path: 'history', description: 'Full conversation history' },
-  { path: 'sounding_index', description: 'Current sounding index (0, 1, 2...)' },
-  { path: 'sounding_factor', description: 'Total number of soundings' },
-  { path: 'is_sounding', description: 'True when running as sounding' },
+  { path: 'candidate_index', description: 'Current candidate index (0, 1, 2...)' },
+  { path: 'candidate_factor', description: 'Total number of candidates' },
+  { path: 'is_candidate', description: 'True when running as candidate' },
 ];
 
 /**
@@ -130,13 +130,13 @@ function VariablePalette() {
       });
     }
 
-    // 2. Previous phase outputs
-    if (cascade.phases) {
-      cascade.phases.forEach((phase) => {
-        if (phase.name) {
+    // 2. Previous cell outputs
+    if (cascade.cells) {
+      cascade.cells.forEach((cell) => {
+        if (cell.name) {
           vars.push({
-            path: `outputs.${phase.name}`,
-            description: `Output from phase "${phase.name}"`,
+            path: `outputs.${cell.name}`,
+            description: `Output from cell "${cell.name}"`,
           });
         }
       });
@@ -145,8 +145,8 @@ function VariablePalette() {
     // 3. State variables (scan for state.* usage)
     const stateVars = new Set();
     const statePattern = /state\.(\w+)/g;
-    cascade.phases?.forEach((phase) => {
-      const codeToScan = phase.inputs?.code || phase.inputs?.query || phase.instructions || '';
+    cascade.cells?.forEach((cell) => {
+      const codeToScan = cell.inputs?.code || cell.inputs?.query || cell.instructions || '';
       let match;
       while ((match = statePattern.exec(codeToScan)) !== null) {
         stateVars.add(match[1]);
@@ -199,7 +199,7 @@ function VariablePalette() {
           variables={grouped.input}
         />
         <VariableGroup
-          title="Previous Phases"
+          title="Previous Cells"
           iconName="mdi:export-variant"
           variables={grouped.output}
         />

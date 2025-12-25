@@ -1,20 +1,26 @@
 {
   "cascade_id": "data_analysis",
-  "phases": [
+  "cells": [
     {
       "name": "ingest",
       "instructions": "You are a data ingest assistant. Receive the input data and confirm its structure.",
-      "tackle": [],
-      "handoffs": ["summarize"]
+      "traits": [],
+      "handoffs": [
+        "summarize"
+      ]
     },
     {
       "name": "summarize",
       "instructions": "Summarize the ingested data concisely.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "rules": {"max_turns": 1},
+      "rules": {
+        "max_turns": 1
+      },
       "handoffs": []
     }
   ]

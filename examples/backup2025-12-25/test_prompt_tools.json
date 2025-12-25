@@ -4,11 +4,14 @@
   "inputs_schema": {
     "problem": "A coding problem to solve"
   },
-  "phases": [
+  "cells": [
     {
       "name": "solve_and_test",
       "instructions": "Solve this coding problem: {{ input.problem }}. Write code and test it using the run_code tool.",
-      "tackle": ["run_code", "set_state"],
+      "traits": [
+        "run_code",
+        "set_state"
+      ],
       "use_native_tools": false,
       "model": "google/gemini-3-pro-preview",
       "rules": {

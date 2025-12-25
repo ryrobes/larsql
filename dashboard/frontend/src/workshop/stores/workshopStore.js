@@ -88,23 +88,23 @@ const useWorkshopStore = create(
 
     // Add a new phase
     addPhase: (phase = null, afterIndex = null) => set((state) => {
-      const newPhase = phase || createEmptyPhase(`phase_${state.cascade.phases.length + 1}`);
+      const newPhase = phase || createEmptyPhase(`phase_${state.cascade.cells.length + 1}`);
 
       if (afterIndex !== null && afterIndex >= 0) {
-        state.cascade.phases.splice(afterIndex + 1, 0, newPhase);
+        state.cascade.cells.splice(afterIndex + 1, 0, newPhase);
         state.selectedPhaseIndex = afterIndex + 1;
       } else {
-        state.cascade.phases.push(newPhase);
-        state.selectedPhaseIndex = state.cascade.phases.length - 1;
+        state.cascade.cells.push(newPhase);
+        state.selectedPhaseIndex = state.cascade.cells.length - 1;
       }
       state.isDirty = true;
     }),
 
     // Update a phase by index
     // Keys with undefined values will be deleted from the phase
-    updatePhase: (phaseIndex, updates) => set((state) => {
-      if (phaseIndex >= 0 && phaseIndex < state.cascade.phases.length) {
-        const phase = state.cascade.phases[phaseIndex];
+    updatePhase: (cellIndex, updates) => set((state) => {
+      if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
+        const phase = state.cascade.cells[cellIndex];
         for (const [key, value] of Object.entries(updates)) {
           if (value === undefined) {
             delete phase[key];
@@ -117,9 +117,9 @@ const useWorkshopStore = create(
     }),
 
     // Update a specific nested field in a phase
-    updatePhaseField: (phaseIndex, path, value) => set((state) => {
-      if (phaseIndex >= 0 && phaseIndex < state.cascade.phases.length) {
-        const phase = state.cascade.phases[phaseIndex];
+    updatePhaseField: (cellIndex, path, value) => set((state) => {
+      if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
+        const phase = state.cascade.cells[cellIndex];
 
         // Handle nested paths like 'soundings.factor' or 'rules.max_turns'
         const parts = path.split('.');
@@ -138,14 +138,14 @@ const useWorkshopStore = create(
     }),
 
     // Remove a phase
-    removePhase: (phaseIndex) => set((state) => {
-      if (phaseIndex >= 0 && phaseIndex < state.cascade.phases.length) {
-        state.cascade.phases.splice(phaseIndex, 1);
+    removePhase: (cellIndex) => set((state) => {
+      if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
+        state.cascade.cells.splice(cellIndex, 1);
 
         // Adjust selection
-        if (state.selectedPhaseIndex >= state.cascade.phases.length) {
-          state.selectedPhaseIndex = state.cascade.phases.length > 0
-            ? state.cascade.phases.length - 1
+        if (state.selectedPhaseIndex >= state.cascade.cells.length) {
+          state.selectedPhaseIndex = state.cascade.cells.length > 0
+            ? state.cascade.cells.length - 1
             : null;
         }
         state.isDirty = true;
@@ -156,7 +156,7 @@ const useWorkshopStore = create(
     reorderPhases: (fromIndex, toIndex) => set((state) => {
       if (fromIndex === toIndex) return;
 
-      const phases = state.cascade.phases;
+      const phases = state.cascade.cells;
       const [removed] = phases.splice(fromIndex, 1);
       phases.splice(toIndex, 0, removed);
 
@@ -229,14 +229,14 @@ const useWorkshopStore = create(
     setSelectedPhase: (index) => set({ selectedPhaseIndex: index }),
 
     // Track which drawers are expanded per phase
-    expandedDrawers: {}, // { phaseIndex: ['execution', 'soundings', ...] }
+    expandedDrawers: {}, // { cellIndex: ['execution', 'soundings', ...] }
 
-    toggleDrawer: (phaseIndex, drawerName) => set((state) => {
-      if (!state.expandedDrawers[phaseIndex]) {
-        state.expandedDrawers[phaseIndex] = [];
+    toggleDrawer: (cellIndex, drawerName) => set((state) => {
+      if (!state.expandedDrawers[cellIndex]) {
+        state.expandedDrawers[cellIndex] = [];
       }
 
-      const drawers = state.expandedDrawers[phaseIndex];
+      const drawers = state.expandedDrawers[cellIndex];
       const idx = drawers.indexOf(drawerName);
 
       if (idx >= 0) {
@@ -246,9 +246,9 @@ const useWorkshopStore = create(
       }
     }),
 
-    isDrawerExpanded: (phaseIndex, drawerName) => {
+    isDrawerExpanded: (cellIndex, drawerName) => {
       const state = get();
-      return state.expandedDrawers[phaseIndex]?.includes(drawerName) || false;
+      return state.expandedDrawers[cellIndex]?.includes(drawerName) || false;
     },
 
     // Editor mode: 'visual' or 'yaml'
@@ -362,7 +362,7 @@ const useWorkshopStore = create(
       state.executionLog = [];
 
       // Initialize all phases as pending
-      state.cascade.phases.forEach((phase) => {
+      state.cascade.cells.forEach((phase) => {
         state.phaseResults[phase.name] = {
           status: 'pending',
           cost: 0,
@@ -419,8 +419,8 @@ const useWorkshopStore = create(
 
       if (soundingIndex !== null && soundingIndex !== undefined) {
         // Complete specific sounding
-        if (phase.soundings[soundingIndex]) {
-          const sounding = phase.soundings[soundingIndex];
+        if (phase.candidates[soundingIndex]) {
+          const sounding = phase.candidates[soundingIndex];
           sounding.status = 'completed';
           sounding.endTime = Date.now();
           if (sounding.startTime) {
@@ -722,7 +722,7 @@ const useWorkshopStore = create(
         set((state) => {
           state.cascade = normalized;
           state.isDirty = false;
-          state.selectedPhaseIndex = normalized.phases?.length > 0 ? 0 : null;
+          state.selectedPhaseIndex = normalized.cells?.length > 0 ? 0 : null;
         });
 
         return { success: true };
@@ -822,7 +822,7 @@ function normalizeFromYaml(obj, isRoot = true) {
     if (isRoot) {
       result.cascade_id = result.cascade_id || 'new_cascade';
       result.description = result.description || '';
-      result.phases = result.phases || [];
+      result.cells = result.cells || [];
       result.inputs_schema = result.inputs_schema || {};
       result.validators = result.validators || {};
     }

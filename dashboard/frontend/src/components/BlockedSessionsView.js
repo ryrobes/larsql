@@ -300,10 +300,10 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
               {cp.ui_spec && (
                 <div className="checkpoint-ui-full">
                   {/* Sounding badge if this checkpoint is from a sounding */}
-                  {cp.ui_spec._meta?.sounding_index !== undefined && cp.ui_spec._meta.sounding_index !== null && (
+                  {cp.ui_spec._meta?.candidate_index !== undefined && cp.ui_spec._meta.candidate_index !== null && (
                     <div className="checkpoint-sounding-badge">
                       <Icon icon="mdi:source-fork" width="16" />
-                      <span>Sounding {cp.ui_spec._meta.sounding_index}</span>
+                      <span>Sounding {cp.ui_spec._meta.candidate_index}</span>
                     </div>
                   )}
 
@@ -345,10 +345,10 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
           {!session.checkpoints && checkpoint && checkpoint.ui_spec && (
             <div className="checkpoint-ui-full">
               {/* Sounding badge if this checkpoint is from a sounding */}
-              {checkpoint.ui_spec._meta?.sounding_index !== undefined && checkpoint.ui_spec._meta.sounding_index !== null && (
+              {checkpoint.ui_spec._meta?.candidate_index !== undefined && checkpoint.ui_spec._meta.candidate_index !== null && (
                 <div className="checkpoint-sounding-badge">
                   <Icon icon="mdi:source-fork" width="16" />
-                  <span>Sounding {checkpoint.ui_spec._meta.sounding_index}</span>
+                  <span>Sounding {checkpoint.ui_spec._meta.candidate_index}</span>
                 </div>
               )}
 
@@ -509,7 +509,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
           sessionMap[sid] = {
             session_id: sid,
             cascade_id: cp.cascade_id,
-            current_phase: cp.phase_name,
+            current_phase: cp.cell_name,
             blocked_type: cp.checkpoint_type,
             blocked_on: cp.id,
             timeout_at: cp.timeout_at,

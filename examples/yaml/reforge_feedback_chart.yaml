@@ -1,80 +1,117 @@
 cascade_id: chart_feedback_refinement
-
-description: Create a chart, validate it visually through feedback loops, and refine via reforge
-
+description: Create a chart, validate it visually through feedback loops, and refine
+  via reforge
 inputs_schema:
   data: Comma-separated data values (e.g., '10,20,30,25,35')
   requirements: Visual requirements (e.g., 'high contrast colors, large labels')
   title: Chart title
+cells:
+- handoffs:
+  - summarize
+  instructions: 'Create a chart with title ''{{ input.title }}'' and data: {{ input.data
+    }}
 
-phases:
-  - handoffs:
-      - summarize
-    instructions: "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nRequirements:\
-      \ {{ input.requirements }}\n\nUse the create_chart tool. After creating it, the image will be automatically\
-      \ injected for you to see.\n\nOnce you see the chart image, analyze it against the requirements\
-      \ and describe:\n1. What you observe visually\n2. How well it meets the requirements\n3. What specific\
-      \ improvements are needed"
-    name: create_initial_chart
-    rules:
-      max_turns: 1
-    soundings:
-      evaluator_instructions: |-
-        Evaluate based on:
-        1. Accuracy of visual observations about the chart
-        2. Depth of analysis against requirements
-        3. Specificity of improvement suggestions
 
-        Select the analysis that is most detailed and actionable.
-      factor: 2
-      reforge:
-        evaluator_override: |-
-          Evaluate refinements on:
-          1. Specificity (exact values, not vague suggestions)
-          2. Visual awareness (referencing actual chart elements)
-          3. Implementation feasibility
-          4. Completeness of improvements
+    Requirements: {{ input.requirements }}
 
-          Pick the most production-ready, implementable analysis.
-        factor_per_step: 2
-        honing_prompt: "You previously analyzed this chart. Looking at the chart image again, provide\
-          \ even MORE specific improvements:\n\n- Exact color codes for better contrast (hex values)\n\
-          - Precise font sizes for labels\n- Specific axis range adjustments\n- Data point annotation\
-          \ placement\n- Legend positioning coordinates\n\nBe EXTREMELY specific and actionable. Reference\
-          \ exact elements you see in the image."
-        mutate: no
-        steps: 2
-    tackle:
-      - create_vega_lite
-      - create_plotly
-  - context:
-      from:
-        - previous
-    handoffs:
-      - say_summary_summarize
-    instructions: |-
-      Summarize the complete chart refinement process:
 
-      ## Initial Chart Analysis
-      {{ state.validated_output }}
+    Use the create_chart tool. After creating it, the image will be automatically
+    injected for you to see.
 
-      ## Refinement Journey
-      Describe how the analysis evolved through reforge iterations.
 
-      ## Final Recommendations
-      List the top 5 most critical improvements identified.
+    Once you see the chart image, analyze it against the requirements and describe:
 
-      Note: All chart images have been saved to the images directory for review.
-    name: summarize
-    rules:
-      max_turns: 1
-    tackle: []
-  - context:
-      from:
-        - previous
-    instructions: Use the `say` tool to speak to the user and give a VERY short summary of the findings.
-    name: say_summary_summarize
-    rules:
-      max_turns: 1
-    tackle:
-      - say
+    1. What you observe visually
+
+    2. How well it meets the requirements
+
+    3. What specific improvements are needed'
+  name: create_initial_chart
+  rules:
+    max_turns: 1
+  candidates:
+    evaluator_instructions: 'Evaluate based on:
+
+      1. Accuracy of visual observations about the chart
+
+      2. Depth of analysis against requirements
+
+      3. Specificity of improvement suggestions
+
+
+      Select the analysis that is most detailed and actionable.'
+    factor: 2
+    reforge:
+      evaluator_override: 'Evaluate refinements on:
+
+        1. Specificity (exact values, not vague suggestions)
+
+        2. Visual awareness (referencing actual chart elements)
+
+        3. Implementation feasibility
+
+        4. Completeness of improvements
+
+
+        Pick the most production-ready, implementable analysis.'
+      factor_per_step: 2
+      honing_prompt: 'You previously analyzed this chart. Looking at the chart image
+        again, provide even MORE specific improvements:
+
+
+        - Exact color codes for better contrast (hex values)
+
+        - Precise font sizes for labels
+
+        - Specific axis range adjustments
+
+        - Data point annotation placement
+
+        - Legend positioning coordinates
+
+
+        Be EXTREMELY specific and actionable. Reference exact elements you see in
+        the image.'
+      mutate: false
+      steps: 2
+  traits:
+  - create_vega_lite
+  - create_plotly
+- context:
+    from:
+    - previous
+  handoffs:
+  - say_summary_summarize
+  instructions: 'Summarize the complete chart refinement process:
+
+
+    ## Initial Chart Analysis
+
+    {{ state.validated_output }}
+
+
+    ## Refinement Journey
+
+    Describe how the analysis evolved through reforge iterations.
+
+
+    ## Final Recommendations
+
+    List the top 5 most critical improvements identified.
+
+
+    Note: All chart images have been saved to the images directory for review.'
+  name: summarize
+  rules:
+    max_turns: 1
+  traits: []
+- context:
+    from:
+    - previous
+  instructions: Use the `say` tool to speak to the user and give a VERY short summary
+    of the findings.
+  name: say_summary_summarize
+  rules:
+    max_turns: 1
+  traits:
+  - say

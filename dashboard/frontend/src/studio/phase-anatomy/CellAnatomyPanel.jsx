@@ -3,35 +3,35 @@ import { Icon } from '@iconify/react';
 import InputLayer from './components/InputLayer';
 import ContextLayer from './components/ContextLayer';
 import WardsLayer from './components/WardsLayer';
-import SoundingsLayer from './components/SoundingsLayer';
+import CandidatesLayer from './components/CandidatesLayer';
 import ConvergenceSection from './components/ConvergenceSection';
 import ReforgeLayer from './components/ReforgeLayer';
 import OutputLayer from './components/OutputLayer';
 import SummaryBar from './components/SummaryBar';
 import LayerDivider from './components/LayerDivider';
-import './PhaseAnatomyPanel.css';
+import './CellAnatomyPanel.css';
 
 /**
- * PhaseAnatomyPanel - Visualizes the internal structure of a Windlass phase
+ * CellAnatomyPanel - Visualizes the internal structure of a WRVBBITcell
  *
- * Shows all the machinery inside a phase:
+ * Shows all the machinery inside a cell:
  * - Entry: Context injection, pre-wards
- * - Soundings: Parallel execution lanes with turns
+ * - Candidates: Parallel execution lanes with turns
  * - Convergence: Evaluator, pre-validator
  * - Reforge: Iterative refinement loop
  * - Exit: Post-wards, output extraction
  *
  * Two modes:
- * - Spec mode: Shows phase configuration (what CAN happen)
+ * - Spec mode: Shows cell configuration (what CAN happen)
  * - Execution mode: Shows actual execution data (what DID happen)
  */
-const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) => {
+const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
   // Derive execution data from logs
   const executionData = useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return null;
+    if (!cellLogs || cellLogs.length === 0) return null;
 
-    // Group logs by sounding index
-    const soundings = {};
+    // Group logs by candidate index
+    const candidates = {};
     let winnerIndex = null;
     let reforgeData = null;
     const toolCalls = [];
@@ -54,10 +54,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       return meta;
     };
 
-    for (const log of phaseLogs) {
+    for (const log of cellLogs) {
       const metadata = parseMetadata(log.metadata_json);
 
-      // Track winning sounding
+      // Track winning candidate
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winnerIndex = log.winning_sounding_index;
       }
@@ -76,24 +76,24 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         };
       }
 
-      // Group by sounding - prefer top-level sounding_index, fall back to metadata
-      // Use explicit null/undefined check since log.sounding_index may be null
-      let soundingIdx = (log.sounding_index !== null && log.sounding_index !== undefined)
-        ? log.sounding_index
-        : metadata.sounding_index;
+      // Group by candidate - prefer top-level candidate_index, fall back to metadata
+      // Use explicit null/undefined check since log.candidate_index may be null
+      let candidateIdx = (log.candidate_index !== null && log.candidate_index !== undefined)
+        ? log.candidate_index
+        : metadata.candidate_index;
 
-      // For non-sounding phases (factor=1), logs won't have sounding_index
+      // For non-candidate cells (factor=1), logs won't have candidate_index
       // Use index 0 as fallback for relevant execution logs
       const isExecutionLog = ['assistant', 'tool_call', 'structure', 'tool', 'phase_complete', 'error'].includes(log.role) ||
                              ['agent', 'turn', 'tool_call', 'tool_result'].includes(log.node_type);
-      if ((soundingIdx === null || soundingIdx === undefined) && isExecutionLog) {
-        soundingIdx = 0; // Virtual sounding for non-sounding phases
+      if ((candidateIdx === null || candidateIdx === undefined) && isExecutionLog) {
+        candidateIdx = 0; // Virtual candidate for non-candidate cells
       }
 
-      if (soundingIdx !== null && soundingIdx !== undefined && soundingIdx >= 0) {
-        if (!soundings[soundingIdx]) {
-          soundings[soundingIdx] = {
-            index: soundingIdx,
+      if (candidateIdx !== null && candidateIdx !== undefined && candidateIdx >= 0) {
+        if (!candidates[candidateIdx]) {
+          candidates[candidateIdx] = {
+            index: candidateIdx,
             turns: [],
             toolCalls: [],
             model: null,
@@ -106,13 +106,13 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           };
         }
 
-        const sounding = soundings[soundingIdx];
+        const candidate = candidates[candidateIdx];
 
         // Track timestamps for duration calculation
         const logTs = parseTs(log.timestamp_iso);
         if (logTs) {
-          if (!sounding.firstTs || logTs < sounding.firstTs) sounding.firstTs = logTs;
-          if (!sounding.lastTs || logTs > sounding.lastTs) sounding.lastTs = logTs;
+          if (!candidate.firstTs || logTs < candidate.firstTs) candidate.firstTs = logTs;
+          if (!candidate.lastTs || logTs > candidate.lastTs) candidate.lastTs = logTs;
         }
 
         // Track turns from structure/turn markers OR from metadata.turn_number
@@ -120,9 +120,9 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
           // Use 0-indexed (turn_number starts at 1 in logs)
           const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
-          while (sounding.turns.length <= turnIdx) {
-            sounding.turns.push({
-              index: sounding.turns.length,
+          while (candidate.turns.length <= turnIdx) {
+            candidate.turns.push({
+              index: candidate.turns.length,
               toolCalls: [],
               validationResult: null,
               status: 'pending',
@@ -132,7 +132,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
             });
           }
 
-          const turn = sounding.turns[turnIdx];
+          const turn = candidate.turns[turnIdx];
 
           // Track turn timestamps
           if (logTs) {
@@ -149,7 +149,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         // Track tool calls (role='tool_call' or node_type='tool_call')
         if (log.role === 'tool_call' || log.node_type === 'tool_call') {
           const toolName = metadata.tool_name || 'unknown';
-          sounding.toolCalls.push(toolName);
+          candidate.toolCalls.push(toolName);
 
           // Add to current turn if we know which turn
           const turnNumber = metadata.turn_number;
@@ -159,10 +159,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           }
 
           // Ensure turn exists
-          if (!sounding.turns[turnIdx]) {
-            while (sounding.turns.length <= turnIdx) {
-              sounding.turns.push({
-                index: sounding.turns.length,
+          if (!candidate.turns[turnIdx]) {
+            while (candidate.turns.length <= turnIdx) {
+              candidate.turns.push({
+                index: candidate.turns.length,
                 toolCalls: [],
                 validationResult: null,
                 status: 'running',
@@ -173,7 +173,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
             }
           }
 
-          sounding.turns[turnIdx].toolCalls.push({
+          candidate.turns[turnIdx].toolCalls.push({
             name: toolName,
             duration: log.duration_ms
           });
@@ -185,16 +185,16 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           const turnNumber = metadata.turn_number;
           if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
             const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
-            if (sounding.turns[turnIdx]) {
-              sounding.turns[turnIdx].status = 'complete';
+            if (candidate.turns[turnIdx]) {
+              candidate.turns[turnIdx].status = 'complete';
               if (log.duration_ms) {
-                sounding.turns[turnIdx].duration += parseFloat(log.duration_ms);
+                candidate.turns[turnIdx].duration += parseFloat(log.duration_ms);
               }
             }
           } else {
             // No explicit turn_number - create/update turn 0 as fallback
-            if (sounding.turns.length === 0) {
-              sounding.turns.push({
+            if (candidate.turns.length === 0) {
+              candidate.turns.push({
                 index: 0,
                 toolCalls: [],
                 validationResult: null,
@@ -205,7 +205,7 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
               });
             } else {
               // Mark last turn as complete
-              const lastTurn = sounding.turns[sounding.turns.length - 1];
+              const lastTurn = candidate.turns[candidate.turns.length - 1];
               lastTurn.status = 'complete';
               if (log.duration_ms) {
                 lastTurn.duration += parseFloat(log.duration_ms);
@@ -216,35 +216,35 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
 
         // Track model
         if (log.model) {
-          sounding.model = log.model;
+          candidate.model = log.model;
         }
 
         // Accumulate cost
-        if (log.cost) sounding.cost += parseFloat(log.cost);
+        if (log.cost) candidate.cost += parseFloat(log.cost);
 
         // Track completion from sounding_attempt or phase_complete
         if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
           // Mark all turns as complete
-          sounding.status = 'complete';
-          sounding.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
+          candidate.status = 'complete';
+          candidate.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
         }
         if (log.role === 'phase_complete') {
-          sounding.status = 'complete';
+          candidate.status = 'complete';
         }
         if (log.role === 'error') {
-          sounding.status = 'error';
+          candidate.status = 'error';
         }
       }
 
       // Track tool calls globally
       if (log.role === 'tool_call' || log.node_type === 'tool_call') {
         const toolName = metadata.tool_name || 'unknown';
-        const toolSoundingIdx = (log.sounding_index !== null && log.sounding_index !== undefined)
-          ? log.sounding_index
-          : metadata.sounding_index;
+        const toolSoundingIdx = (log.candidate_index !== null && log.candidate_index !== undefined)
+          ? log.candidate_index
+          : metadata.candidate_index;
         toolCalls.push({
           name: toolName,
-          sounding: toolSoundingIdx,
+          candidate: toolSoundingIdx,
           turn: metadata.turn_number,
           duration: log.duration_ms
         });
@@ -281,10 +281,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
           timestamp: log.timestamp_iso
         };
 
-        // Associate with the current turn in sounding 0 (or the active sounding)
-        const targetSounding = soundings[0];
-        if (targetSounding && targetSounding.turns.length > 0) {
-          const lastTurn = targetSounding.turns[targetSounding.turns.length - 1];
+        // Associate with the current turn in candidate 0 (or the active candidate)
+        const targetCandidate = candidates[0];
+        if (targetCandidate && targetCandidate.turns.length > 0) {
+          const lastTurn = targetCandidate.turns[targetCandidate.turns.length - 1];
           lastTurn.validationResult = validationResult;
           // Mark as early exit if validation passed
           if (validationResult.valid) {
@@ -303,9 +303,9 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
 
       // Track quartermaster/manifest selection (role='quartermaster', node_type='quartermaster_result')
       if (log.role === 'quartermaster' || log.node_type === 'quartermaster_result') {
-        // Manifest data is in metadata_json: selected_tackle, model, manifest_context
+        // Manifest data is in metadata_json: selected_traits, model, manifest_context
         manifestSelection = {
-          selectedTools: metadata.selected_tackle || [],
+          selectedTools: metadata.selected_traits || metadata.selected_tackle || [],
           model: metadata.model || log.model || null,
           context: metadata.manifest_context || 'current',
           timestamp: log.timestamp_iso
@@ -313,15 +313,15 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       }
     }
 
-    // Calculate durations from timestamps for soundings and turns
-    const soundingsList = Object.values(soundings);
-    for (const sounding of soundingsList) {
-      // Sounding duration from first to last timestamp
-      if (sounding.firstTs && sounding.lastTs) {
-        sounding.duration = sounding.lastTs - sounding.firstTs;
+    // Calculate durations from timestamps for candidates and turns
+    const candidatesList = Object.values(candidates);
+    for (const candidate of candidatesList) {
+      // Candidate duration from first to last timestamp
+      if (candidate.firstTs && candidate.lastTs) {
+        candidate.duration = candidate.lastTs - candidate.firstTs;
       }
       // Turn durations
-      for (const turn of sounding.turns) {
+      for (const turn of candidate.turns) {
         if (turn.firstTs && turn.lastTs && !turn.duration) {
           turn.duration = turn.lastTs - turn.firstTs;
         }
@@ -329,101 +329,101 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
     }
 
     return {
-      soundings: soundingsList,
+      candidates: candidatesList,
       winnerIndex,
       toolCalls,
       wardResults,
       reforgeData,
       evaluatorResult,
       manifestSelection,
-      hasSoundings: soundingsList.length > 0
+      hasCandidates: candidatesList.length > 0
     };
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
   // Determine mode based on whether we have execution data
-  const hasExecutionData = executionData && executionData.hasSoundings;
+  const hasExecutionData = executionData && executionData.hasCandidates;
 
-  // Extract phase configuration
-  const phaseConfig = useMemo(() => ({
+  // Extract cell configuration
+  const cellConfig = useMemo(() => ({
     // Inputs schema
-    inputsSchema: phase?.inputs_schema || {},
+    inputsSchema: cell?.inputs_schema || {},
 
     // Context configuration
-    context: phase?.context || null,
+    context: cell?.context || null,
 
     // Pre-wards
-    preWards: phase?.wards?.pre || [],
+    preWards: cell?.wards?.pre || [],
 
     // Post-wards
-    postWards: phase?.wards?.post || [],
+    postWards: cell?.wards?.post || [],
 
-    // Soundings configuration
-    soundings: phase?.soundings || null,
-    factor: phase?.soundings?.factor || 1,
-    mutate: phase?.soundings?.mutate || false,
-    models: phase?.soundings?.models || null,
-    evaluator: phase?.soundings?.evaluator_instructions || null,
-    preValidator: phase?.soundings?.validator || null,
-    mode: phase?.soundings?.mode || 'evaluate',
+    // Candidates configuration
+    candidates: cell?.candidates || null,
+    factor: cell?.candidates?.factor || 1,
+    mutate: cell?.candidates?.mutate || false,
+    models: cell?.candidates?.models || null,
+    evaluator: cell?.candidates?.evaluator_instructions || null,
+    preValidator: cell?.candidates?.validator || null,
+    mode: cell?.candidates?.mode || 'evaluate',
 
     // Reforge configuration
-    reforge: phase?.soundings?.reforge || null,
+    reforge: cell?.candidates?.reforge || null,
 
     // Rules
-    maxTurns: phase?.rules?.max_turns || 1,
-    maxAttempts: phase?.rules?.max_attempts || 1,
-    loopUntil: phase?.rules?.loop_until || null,
+    maxTurns: cell?.rules?.max_turns || 1,
+    maxAttempts: cell?.rules?.max_attempts || 1,
+    loopUntil: cell?.rules?.loop_until || null,
 
-    // Tackle (tools)
-    tackle: phase?.tackle || [],
+    // Traits (tools)
+    traits: cell?.traits || [],
 
     // Output configuration
-    outputSchema: phase?.output_schema || null,
-    outputExtraction: phase?.output_extraction || null,
-    callouts: phase?.callouts || null,
+    outputSchema: cell?.output_schema || null,
+    outputExtraction: cell?.output_extraction || null,
+    callouts: cell?.callouts || null,
 
     // Handoffs
-    handoffs: phase?.handoffs || [],
+    handoffs: cell?.handoffs || [],
 
     // LLM config
-    model: phase?.model || null,
-    instructions: phase?.instructions || null,
+    model: cell?.model || null,
+    instructions: cell?.instructions || null,
 
     // Deterministic
-    tool: phase?.tool || null
-  }), [phase]);
+    tool: cell?.tool || null
+  }), [cell]);
 
-  const isLLMPhase = !phaseConfig.tool && phaseConfig.instructions;
-  const isDeterministic = !!phaseConfig.tool;
+  const isLLMCell = !cellConfig.tool && cellConfig.instructions;
+  const isDeterministic = !!cellConfig.tool;
 
   return (
-    <div className="phase-anatomy-panel">
+    <div className="cell-anatomy-panel">
       {/* Header */}
-      <div className="phase-anatomy-header">
-        <div className="phase-anatomy-header-left">
-          <Icon icon="mdi:cpu" width="18" className="phase-anatomy-icon" />
-          <span className="phase-anatomy-title">Phase Anatomy</span>
-          <span className="phase-anatomy-name">{phase?.name || 'Unknown'}</span>
-          {isLLMPhase && (
-            <span className="phase-anatomy-type phase-anatomy-type-llm">
+      <div className="cell-anatomy-header">
+        <div className="cell-anatomy-header-left">
+          <Icon icon="mdi:cpu" width="18" className="cell-anatomy-icon" />
+          <span className="cell-anatomy-title">Cell Anatomy</span>
+          <span className="cell-anatomy-name">{cell?.name || 'Unknown'}</span>
+          {isLLMCell && (
+            <span className="cell-anatomy-type cell-anatomy-type-llm">
               <Icon icon="mdi:robot" width="12" />
               LLM
             </span>
           )}
           {isDeterministic && (
-            <span className="phase-anatomy-type phase-anatomy-type-deterministic">
+            <span className="cell-anatomy-type cell-anatomy-type-deterministic">
               <Icon icon="mdi:cog" width="12" />
               Deterministic
             </span>
           )}
         </div>
-        <div className="phase-anatomy-header-right">
-          <span className={`phase-anatomy-mode ${hasExecutionData ? 'execution' : 'spec'}`}>
+        <div className="cell-anatomy-header-right">
+          <span className={`cell-anatomy-mode ${hasExecutionData ? 'execution' : 'spec'}`}>
             <Icon icon={hasExecutionData ? "mdi:play-circle" : "mdi:file-document-outline"} width="14" />
             {hasExecutionData ? 'Execution' : 'Spec'}
           </span>
           {onClose && (
-            <button className="phase-anatomy-close" onClick={onClose}>
+            <button className="cell-anatomy-close" onClick={onClose}>
               <Icon icon="mdi:close" width="16" />
             </button>
           )}
@@ -431,29 +431,29 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       </div>
 
       {/* Body - Layered Structure */}
-      <div className="phase-anatomy-body">
+      <div className="cell-anatomy-body">
         {/* Input Layer */}
         <InputLayer
-          inputsSchema={phaseConfig.inputsSchema}
-          instructions={phaseConfig.instructions}
-          tool={phaseConfig.tool}
+          inputsSchema={cellConfig.inputsSchema}
+          instructions={cellConfig.instructions}
+          tool={cellConfig.tool}
         />
 
         {/* Context Layer */}
-        {phaseConfig.context && (
+        {cellConfig.context && (
           <>
             <LayerDivider type="minor" />
-            <ContextLayer context={phaseConfig.context} />
+            <ContextLayer context={cellConfig.context} />
           </>
         )}
 
         {/* Pre-Wards Layer */}
-        {phaseConfig.preWards.length > 0 && (
+        {cellConfig.preWards.length > 0 && (
           <>
             <LayerDivider type="minor" />
             <WardsLayer
               type="pre"
-              wards={phaseConfig.preWards}
+              wards={cellConfig.preWards}
               results={executionData?.wardResults?.pre}
             />
           </>
@@ -461,19 +461,19 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
 
         <LayerDivider type="major" label="Execution Chamber" />
 
-        {/* Soundings Layer - The Main Event */}
-        <SoundingsLayer
-          config={phaseConfig}
+        {/* Candidates Layer - The Main Event */}
+        <CandidatesLayer
+          config={cellConfig}
           execution={executionData}
-          isLLMPhase={isLLMPhase}
+          isLLMCell={isLLMCell}
         />
 
-        {/* Convergence Section (inside Soundings visual) */}
-        {(phaseConfig.factor > 1 || phaseConfig.preValidator || phaseConfig.evaluator) && (
+        {/* Convergence Section (inside Candidates visual) */}
+        {(cellConfig.factor > 1 || cellConfig.preValidator || cellConfig.evaluator) && (
           <ConvergenceSection
-            config={phaseConfig}
+            config={cellConfig}
             winnerIndex={executionData?.winnerIndex}
-            mode={phaseConfig.mode}
+            mode={cellConfig.mode}
             evaluatorResult={executionData?.evaluatorResult}
           />
         )}
@@ -481,10 +481,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         <LayerDivider type="major" />
 
         {/* Reforge Layer */}
-        {phaseConfig.reforge && (
+        {cellConfig.reforge && (
           <>
             <ReforgeLayer
-              config={phaseConfig.reforge}
+              config={cellConfig.reforge}
               execution={executionData?.reforgeData}
             />
             <LayerDivider type="major" />
@@ -492,11 +492,11 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
         )}
 
         {/* Post-Wards Layer */}
-        {phaseConfig.postWards.length > 0 && (
+        {cellConfig.postWards.length > 0 && (
           <>
             <WardsLayer
               type="post"
-              wards={phaseConfig.postWards}
+              wards={cellConfig.postWards}
               results={executionData?.wardResults?.post}
             />
             <LayerDivider type="minor" />
@@ -505,10 +505,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
 
         {/* Output Layer */}
         <OutputLayer
-          outputSchema={phaseConfig.outputSchema}
-          outputExtraction={phaseConfig.outputExtraction}
-          callouts={phaseConfig.callouts}
-          handoffs={phaseConfig.handoffs}
+          outputSchema={cellConfig.outputSchema}
+          outputExtraction={cellConfig.outputExtraction}
+          callouts={cellConfig.callouts}
+          handoffs={cellConfig.handoffs}
           result={cellState?.result}
         />
       </div>
@@ -517,10 +517,10 @@ const PhaseAnatomyPanel = ({ phase, phaseLogs = [], cellState = {}, onClose }) =
       <SummaryBar
         cellState={cellState}
         executionData={executionData}
-        config={phaseConfig}
+        config={cellConfig}
       />
     </div>
   );
 };
 
-export default PhaseAnatomyPanel;
+export default CellAnatomyPanel;

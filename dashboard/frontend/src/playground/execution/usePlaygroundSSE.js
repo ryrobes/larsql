@@ -37,14 +37,14 @@ export function usePlaygroundSSE() {
         break;
 
       case 'phase_start':
-        console.log('[Playground SSE] Phase start:', data.phase_name);
-        handlePhaseStart(data.phase_name);
+        console.log('[Playground SSE] Phase start:', data.cell_name);
+        handlePhaseStart(data.cell_name);
         break;
 
       case 'phase_complete':
-        console.log('[Playground SSE] Phase complete:', data.phase_name, 'result:', data.result);
+        console.log('[Playground SSE] Phase complete:', data.cell_name, 'result:', data.result);
         console.log('[Playground SSE] Images in result:', data.result?.images);
-        handlePhaseComplete(data.phase_name, data.result || {});
+        handlePhaseComplete(data.cell_name, data.result || {});
         break;
 
       case 'cascade_complete':
@@ -57,9 +57,9 @@ export function usePlaygroundSSE() {
 
       case 'cost_update':
         // Cost data arrives asynchronously after phase completion
-        if (data.phase_name && data.cost !== undefined) {
-          console.log('[Playground SSE] Cost update:', data.phase_name, 'cost:', data.cost);
-          handleCostUpdate(data.phase_name, data.cost);
+        if (data.cell_name && data.cost !== undefined) {
+          console.log('[Playground SSE] Cost update:', data.cell_name, 'cost:', data.cost);
+          handleCostUpdate(data.cell_name, data.cost);
         }
         break;
 

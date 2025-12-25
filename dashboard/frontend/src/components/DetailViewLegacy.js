@@ -6,7 +6,7 @@ import LiveDebugLog from './LiveDebugLog';
 import InteractiveMermaid from './InteractiveMermaid';
 import MetricsCards from './MetricsCards';
 import ParametersCard from './ParametersCard';
-import PhaseBar from './PhaseBar';
+import PhaseBar from './CellBar';
 import CascadeBar from './CascadeBar';
 import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByPhase } from '../utils/debugUtils';
 import './DetailViewLegacy.css';
@@ -73,7 +73,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
     // Group entries by phase to calculate phase summaries
     const phaseMap = {};
     entries.forEach(entry => {
-      const phaseName = entry.phase_name || 'Initialization';
+      const phaseName = entry.cell_name || 'Initialization';
       if (!phaseMap[phaseName]) {
         phaseMap[phaseName] = {
           name: phaseName,
@@ -100,8 +100,8 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
       if (entry.node_type && entry.node_type.includes('ward')) {
         phaseMap[phaseName].wardCount++;
       }
-      if (entry.sounding_index !== null && entry.sounding_index !== undefined) {
-        const idx = entry.sounding_index;
+      if (entry.candidate_index !== null && entry.candidate_index !== undefined) {
+        const idx = entry.candidate_index;
         if (!phaseMap[phaseName].soundingAttempts.has(idx)) {
           phaseMap[phaseName].soundingAttempts.set(idx, {
             index: idx,
@@ -245,8 +245,8 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
 
   // Memoize max cost calculation for PhaseBar
   const maxCost = useMemo(() => {
-    if (!instance || !instance.phases || instance.phases.length === 0) return 0;
-    return Math.max(...instance.phases.map(p => p.avg_cost));
+    if (!instance || !instance.cells || instance.cells.length === 0) return 0;
+    return Math.max(...instance.cells.map(p => p.avg_cost));
   }, [instance]);
 
   if (!sessionId) return null;
@@ -336,7 +336,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
               )}
 
               {/* Phase Timeline */}
-              {instance && instance.phases && instance.phases.length > 0 && (
+              {instance && instance.cells && instance.cells.length > 0 && (
                 <div className="phase-timeline-section">
                   <h3 className="section-title">
                     <Icon icon="mdi:timeline" width="20" />
@@ -344,22 +344,22 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
                   </h3>
 
                   {/* Cascade Bar - cost distribution overview */}
-                  {instance.phases.length > 1 && (
+                  {instance.cells.length > 1 && (
                     <CascadeBar
-                      phases={instance.phases}
+                      phases={instance.cells}
                       totalCost={instance.total_cost}
                       isRunning={isRunning}
                     />
                   )}
 
                   <div className="phase-timeline">
-                    {instance.phases.map((phase, idx) => (
+                    {instance.cells.map((phase, idx) => (
                       <div
                         key={phase.name}
                         className={`phase-timeline-item ${activePhase === phase.name ? 'active' : ''}`}
                         onClick={() => handlePhaseClick(phase.name)}
                       >
-                        <PhaseBar phase={phase} maxCost={maxCost} phaseIndex={idx} />
+                        <PhaseBar phase={phase} maxCost={maxCost} cellIndex={idx} />
                       </div>
                     ))}
                   </div>

@@ -1,19 +1,18 @@
-# Simple YAML Cascade Test
-# Demonstrates basic YAML support for Windlass cascades
-
 cascade_id: simple_yaml_test
 description: A simple cascade defined in YAML to test the YAML loader
-
 inputs_schema:
   topic: The topic to explain
+cells:
+- name: explain
+  instructions: 'You are a helpful assistant. Please explain the following topic
 
-phases:
-  - name: explain
-    instructions: |
-      You are a helpful assistant. Please explain the following topic
-      in a clear and concise manner:
+    in a clear and concise manner:
 
-      **Topic:** {{ input.topic }}
 
-      Keep your explanation under 100 words.
-    tackle: []
+    **Topic:** {{ input.topic }}
+
+
+    Keep your explanation under 100 words.
+
+    '
+  traits: []

@@ -45,7 +45,7 @@ const ROLE_CONFIG = {
 /**
  * SessionMessagesLog - Virtual table displaying all session messages
  *
- * Shows all log messages when no phase is selected in the Studio timeline.
+ * Shows all log messages when no cell is selected in the Studio timeline.
  * Features:
  * - Virtualized table (ag-grid) for performance with large message counts
  * - Filter panel on the right side
@@ -54,7 +54,7 @@ const ROLE_CONFIG = {
  * - Row selection with detail panel
  * - Visual distinction for child session messages (sub-cascades)
  */
-const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null }) => {
+const SessionMessagesLog = ({ logs = [], onSelectCell, currentSessionId = null }) => {
   const gridRef = useRef(null);
 
   // Selected row state
@@ -63,24 +63,24 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
   // Filter state
   const [filters, setFilters] = useState({
     roles: new Set(), // Empty = show all
-    phases: new Set(),
+    cells: new Set(),
     searchText: '',
     showToolCalls: true,
     showErrors: true,
   });
 
-  // Get unique phases and roles for filter options
+  // Get unique cells and roles for filter options
   const filterOptions = useMemo(() => {
-    const phases = new Set();
+    const cells = new Set();
     const roles = new Set();
 
     for (const log of logs) {
-      if (log.phase_name) phases.add(log.phase_name);
+      if (log.cell_name) cells.add(log.cell_name);
       if (log.role) roles.add(log.role);
     }
 
     return {
-      phases: Array.from(phases).sort(),
+      cells: Array.from(cells).sort(),
       roles: Array.from(roles).sort(),
     };
   }, [logs]);
@@ -94,9 +94,9 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
       result = result.filter(log => filters.roles.has(log.role));
     }
 
-    // Filter by phases
-    if (filters.phases.size > 0) {
-      result = result.filter(log => filters.phases.has(log.phase_name));
+    // Filter by cells
+    if (filters.cells.size > 0) {
+      result = result.filter(log => filters.cells.has(log.cell_name));
     }
 
     // Filter by search text
@@ -108,7 +108,7 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
           : JSON.stringify(log.content_json || '');
         return (
           content.toLowerCase().includes(searchLower) ||
-          (log.phase_name || '').toLowerCase().includes(searchLower) ||
+          (log.cell_name || '').toLowerCase().includes(searchLower) ||
           (log.role || '').toLowerCase().includes(searchLower) ||
           (log.model || '').toLowerCase().includes(searchLower)
         );
@@ -136,20 +136,20 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
     );
   }, []);
 
-  const PhaseCellRenderer = useCallback(({ value, data }) => {
+  const CellNameCellRenderer = useCallback(({ value, data }) => {
     if (!value) return <span className="sml-null">—</span>;
     return (
       <button
-        className="sml-phase-link"
+        className="sml-cell-link"
         onClick={(e) => {
           e.stopPropagation();
-          onSelectPhase?.(value);
+          onSelectCell?.(value);
         }}
       >
         {value}
       </button>
     );
-  }, [onSelectPhase]);
+  }, [onSelectCell]);
 
   const TimeCellRenderer = useCallback(({ value }) => {
     if (!value) return <span className="sml-null">—</span>;
@@ -224,10 +224,10 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
       filter: true,
     },
     {
-      field: 'phase_name',
-      headerName: 'Phase',
+      field: 'cell_name',
+      headerName: 'Cell',
       width: 120,
-      cellRenderer: PhaseCellRenderer,
+      cellRenderer: CellNameCellRenderer,
       sortable: true,
       filter: true,
     },
@@ -275,7 +275,7 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
       cellRenderer: MetricCellRenderer,
       sortable: true,
     },
-  ], [TimeCellRenderer, RoleCellRenderer, PhaseCellRenderer, ContentCellRenderer, ModelCellRenderer, MetricCellRenderer]);
+  ], [TimeCellRenderer, RoleCellRenderer, CellNameCellRenderer, ContentCellRenderer, ModelCellRenderer, MetricCellRenderer]);
 
   const defaultColDef = useMemo(() => ({
     resizable: true,
@@ -295,22 +295,22 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
     });
   }, []);
 
-  const togglePhaseFilter = useCallback((phase) => {
+  const toggleCellFilter = useCallback((cell) => {
     setFilters(prev => {
-      const newPhases = new Set(prev.phases);
-      if (newPhases.has(phase)) {
-        newPhases.delete(phase);
+      const newCells = new Set(prev.cells);
+      if (newCells.has(cell)) {
+        newCells.delete(cell);
       } else {
-        newPhases.add(phase);
+        newCells.add(cell);
       }
-      return { ...prev, phases: newPhases };
+      return { ...prev, cells: newCells };
     });
   }, []);
 
   const clearFilters = useCallback(() => {
     setFilters({
       roles: new Set(),
-      phases: new Set(),
+      cells: new Set(),
       searchText: '',
       showToolCalls: true,
       showErrors: true,
@@ -376,7 +376,7 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
     };
   }, [filteredLogs, logs]);
 
-  const hasActiveFilters = filters.roles.size > 0 || filters.phases.size > 0 || filters.searchText;
+  const hasActiveFilters = filters.roles.size > 0 || filters.cells.size > 0 || filters.searchText;
 
   // Empty state
   if (logs.length === 0) {
@@ -478,10 +478,10 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
                   <span className="sml-detail-role" style={{ color: ROLE_CONFIG[selectedMessage.role]?.color }}>
                     {ROLE_CONFIG[selectedMessage.role]?.label || selectedMessage.role}
                   </span>
-                  {selectedMessage.phase_name && (
+                  {selectedMessage.cell_name && (
                     <>
                       <span className="sml-detail-sep">·</span>
-                      <span className="sml-detail-phase">{selectedMessage.phase_name}</span>
+                      <span className="sml-detail-cell">{selectedMessage.cell_name}</span>
                     </>
                   )}
                   {selectedMessage.model && (
@@ -617,21 +617,21 @@ const SessionMessagesLog = ({ logs = [], onSelectPhase, currentSessionId = null 
           </div>
         </div>
 
-        {/* Phase filters */}
-        {filterOptions.phases.length > 0 && (
+        {/* Cell filters */}
+        {filterOptions.cells.length > 0 && (
           <div className="sml-filter-section">
-            <div className="sml-filter-label">Phase</div>
+            <div className="sml-filter-label">Cell</div>
             <div className="sml-filter-chips sml-filter-chips-vertical">
-              {filterOptions.phases.map(phase => {
-                const isActive = filters.phases.has(phase);
+              {filterOptions.cells.map(cell => {
+                const isActive = filters.cells.has(cell);
                 return (
                   <button
-                    key={phase}
-                    className={`sml-filter-chip sml-filter-chip-phase ${isActive ? 'active' : ''}`}
-                    onClick={() => togglePhaseFilter(phase)}
+                    key={cell}
+                    className={`sml-filter-chip sml-filter-chip-cell ${isActive ? 'active' : ''}`}
+                    onClick={() => toggleCellFilter(cell)}
                   >
                     <Icon icon={isActive ? 'mdi:checkbox-marked' : 'mdi:checkbox-blank-outline'} width="14" />
-                    {phase}
+                    {cell}
                   </button>
                 );
               })}

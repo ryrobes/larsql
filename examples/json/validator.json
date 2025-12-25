@@ -4,12 +4,14 @@
   "inputs_schema": {
     "text": "The string to validate."
   },
-  "phases": [
+  "cells": [
     {
       "name": "check",
       "instructions": "Check if '{{ input.text }}' is all uppercase. Return 'YES' or 'NO'.",
-      "tackle": [],
-      "rules": {"max_turns": 1}
+      "traits": [],
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

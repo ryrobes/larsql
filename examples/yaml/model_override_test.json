@@ -4,12 +4,12 @@
   "inputs_schema": {
     "task": "Description of the task to perform"
   },
-  "phases": [
+  "cells": [
     {
       "name": "fast_analysis",
       "model": "x-ai/grok-4.1-fast:free",
       "instructions": "Quickly analyze the task: {{ input.task }}. Provide a brief overview.",
-      "tackle": [],
+      "traits": [],
       "rules": {
         "max_turns": 1
       }
@@ -18,7 +18,7 @@
       "name": "detailed_processing",
       "model": "anthropic/claude-3.5-sonnet",
       "instructions": "Provide a detailed analysis of the task: {{ input.task }}. Use thorough reasoning.",
-      "tackle": [],
+      "traits": [],
       "rules": {
         "max_turns": 1
       }
@@ -26,7 +26,7 @@
     {
       "name": "default_model_phase",
       "instructions": "Summarize the results using the default model. Task: {{ input.task }}",
-      "tackle": [],
+      "traits": [],
       "rules": {
         "max_turns": 1
       }

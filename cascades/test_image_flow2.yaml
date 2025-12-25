@@ -2,11 +2,10 @@ cascade_id: test_image_flow2
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
-phases:
+cells:
 - name: llm_phase
-  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
-    of rich details, but staying true to the original intent. Please return ONLY the
-    enriched prompt.
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots of rich details, but staying true to the
+    original intent. Please return ONLY the enriched prompt.
 
 
     Image Prompt:
@@ -18,9 +17,9 @@ phases:
   rules:
     max_turns: 2
 - name: llm_phase_1
-  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
-    of rich details, but staying true to the original intent - BUT feel free to change
-    the style of location if it suits the vibe. Please return ONLY the enriched prompt.
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots of rich details, but staying true to the
+    original intent - BUT feel free to change the style of location if it suits the vibe. Please return ONLY the enriched
+    prompt.
 
 
     Image Prompt:
@@ -39,7 +38,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: flux_1_schnell
@@ -50,7 +49,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: gpt_5_image_mini
@@ -61,7 +60,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: riverflow_v2_fast_preview
@@ -72,7 +71,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: riverflow_v2_max_preview
@@ -83,7 +82,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: sdxl
@@ -94,7 +93,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: gemini_3_pro_image_preview
@@ -105,7 +104,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase_1
+    - cell: llm_phase_1
       include:
       - output
 - name: gpt_5_image
@@ -116,7 +115,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase_1
+    - cell: llm_phase_1
       include:
       - output
 - name: riverflow_v2_standard_preview
@@ -127,7 +126,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase_1
+    - cell: llm_phase_1
       include:
       - output
 - name: stable_diffusion_xl
@@ -138,7 +137,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase_1
+    - cell: llm_phase_1
       include:
       - output
 _playground:
@@ -154,8 +153,8 @@ _playground:
       x: 80
       y: 320
     data:
-      text: 'Beautiful Irish woman standing by the ocean. Edgy illustration style,
-        American anime. A Busty and striking vixen, yet dangerous. '
+      text: 'Beautiful Irish woman standing by the ocean. Edgy illustration style, American anime. A Busty and striking vixen,
+        yet dangerous. '
       name: prompt
       width: 352
       height: 272
@@ -168,10 +167,9 @@ _playground:
       name: llm_phase
       width: 400
       height: 320
-      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image\
-        \ prompt, be vivid with lots of rich details, but staying true to the original\
-        \ intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{\
-        \ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 2\n"
+      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image prompt, be vivid with lots of rich\
+        \ details, but staying true to the original intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n \
+        \ {{ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 2\n"
       discoveredInputs:
       - prompt
   - id: phase_3
@@ -183,11 +181,10 @@ _playground:
       name: llm_phase_1
       width: 400
       height: 416
-      yaml: "name: llm_phase_1\n\ninstructions: |\n  Please rewrite and enhance this\
-        \ image prompt, be vivid with lots of rich details, but staying true to the\
-        \ original intent - BUT feel free to change the style of location if it suits\
-        \ the vibe. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n \
-        \ {{ input.prompt }}\nmodel: x-ai/grok-4::high\nrules:\n  max_turns: 1"
+      yaml: "name: llm_phase_1\n\ninstructions: |\n  Please rewrite and enhance this image prompt, be vivid with lots of rich\
+        \ details, but staying true to the original intent - BUT feel free to change the style of location if it suits the\
+        \ vibe. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{ input.prompt }}\nmodel: x-ai/grok-4::high\n\
+        rules:\n  max_turns: 1"
       discoveredInputs:
       - prompt
   - id: image_4

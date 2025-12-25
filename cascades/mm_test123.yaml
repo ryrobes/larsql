@@ -2,11 +2,10 @@ cascade_id: mm_test123
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
-phases:
+cells:
 - name: llm_phase
-  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
-    of rich details, but staying true to the original intent. Please return ONLY the
-    enriched prompt.
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots of rich details, but staying true to the
+    original intent. Please return ONLY the enriched prompt.
 
 
     Image Prompt:
@@ -43,7 +42,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: riverflow_v2_max_preview_1
@@ -54,7 +53,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 - name: flux_2_max
@@ -65,7 +64,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
 _playground:
@@ -81,9 +80,8 @@ _playground:
       x: -0.0
       y: 224
     data:
-      text: Beautiful buxom Irish woman standing by the ocean. Risque illustration
-        style, exaggerated pin-up. A profoundly Busty and striking vixen, yet dangerous.
-        Milk maid attire.
+      text: Beautiful buxom Irish woman standing by the ocean. Risque illustration style, exaggerated pin-up. A profoundly
+        Busty and striking vixen, yet dangerous. Milk maid attire.
       name: prompt
   - id: image_2
     type: image
@@ -124,10 +122,9 @@ _playground:
       name: llm_phase
       width: 432
       height: 288
-      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image\
-        \ prompt, be vivid with lots of rich details, but staying true to the original\
-        \ intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n  {{\
-        \ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 1\n  \n"
+      yaml: "name: llm_phase\ninstructions: |\n  Please rewrite and enhance this image prompt, be vivid with lots of rich\
+        \ details, but staying true to the original intent. Please return ONLY the enriched prompt.\n\n  Image Prompt:\n \
+        \ {{ input.prompt }}\nmodel: x-ai/grok-4.1-fast\nrules:\n  max_turns: 1\n  \n"
       discoveredInputs:
       - prompt
   - id: image_6

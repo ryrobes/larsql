@@ -70,7 +70,7 @@ function ExecutionNotebook() {
   const [containerWidth, setContainerWidth] = useState(800);
 
   // Get phases early so we can use them in layout calculation
-  const phases = cascade.phases || [];
+  const phases = cascade.cells || [];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -105,7 +105,7 @@ function ExecutionNotebook() {
       }
 
       // Add height for soundings (vertical stack - each sounding adds height)
-      const soundingsFactor = phase.soundings?.factor || 0;
+      const soundingsFactor = phase.candidates?.factor || 0;
       if (soundingsFactor > 1) {
         height += (soundingsFactor * SOUNDING_BLOCK_HEIGHT) + SOUNDING_DEPTH_PADDING;
       }
@@ -356,7 +356,7 @@ function ExecutionNotebook() {
 function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHandoffs, isExpanded, onToggleExpand }) {
   const [selectedSounding, setSelectedSounding] = useState(null);
   const status = result?.status || 'pending';
-  const soundingsConfig = phase.soundings;
+  const soundingsConfig = phase.candidates;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasOutput = result?.output !== undefined;
@@ -940,7 +940,7 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
  * Includes ghost soundings lanes, handoff indicators, etc.
  */
 function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
-  const soundingsConfig = phase.soundings;
+  const soundingsConfig = phase.candidates;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasReforge = soundingsConfig?.reforge?.steps > 0;
@@ -996,10 +996,10 @@ function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
         </div>
 
         {/* Tackle preview */}
-        {phase.tackle && phase.tackle.length > 0 && (
+        {phase.traits && phase.traits.length > 0 && (
           <div className="ghost-tackle">
             <Icon icon="mdi:wrench" width="10" />
-            <span>{phase.tackle.length} tool{phase.tackle.length !== 1 ? 's' : ''}</span>
+            <span>{phase.traits.length} tool{phase.traits.length !== 1 ? 's' : ''}</span>
           </div>
         )}
       </div>

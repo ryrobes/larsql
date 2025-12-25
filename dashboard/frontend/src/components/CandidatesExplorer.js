@@ -5,7 +5,7 @@ import VideoSpinner from './VideoSpinner';
 import ParetoChart from './ParetoChart';
 import ModelFilterBanner from './ModelFilterBanner';
 import PromptPhylogeny from './PromptPhylogeny';
-import './SoundingsExplorer.css';
+import './CandidatesExplorer.css';
 
 /**
  * MutationBadge - Shows which mutation strategy was used for a sounding/refinement
@@ -157,7 +157,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
   useEffect(() => {
     // Check if any phase has a winner - if not, keep polling
     const hasAnyWinner = data?.phases?.some(phase =>
-      phase.soundings?.some(s => s.is_winner)
+      phase.candidates?.some(s => s.is_winner)
     );
 
     // Poll while no winner is determined yet (cascade still running)
@@ -276,7 +276,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
     );
   }
 
-  if (!data || !data.phases || data.phases.length === 0) {
+  if (!data || !data.cells || data.cells.length === 0) {
     return (
       <div className="soundings-explorer-modal">
         <div className="explorer-content">
@@ -292,8 +292,8 @@ function SoundingsExplorer({ sessionId, onClose }) {
     );
   }
 
-  const totalCost = data.phases.reduce((sum, p) =>
-    sum + p.soundings.reduce((s, a) => s + (a.cost || 0), 0), 0
+  const totalCost = data.cells.reduce((sum, p) =>
+    sum + p.candidates.reduce((s, a) => s + (a.cost || 0), 0), 0
   );
 
   return (
@@ -327,17 +327,17 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
         {/* Phase Timeline */}
         <div className="phase-timeline">
-          {data.phases.map((phase, phaseIdx) => {
-            if (!phase.soundings || phase.soundings.length <= 1) {
+          {data.cells.map((phase, phaseIdx) => {
+            if (!phase.candidates || phase.candidates.length <= 1) {
               return null; // Skip phases without soundings
             }
 
-            const maxCost = Math.max(...phase.soundings.map(s => s.cost || 0), 0.001);
+            const maxCost = Math.max(...phase.candidates.map(s => s.cost || 0), 0.001);
 
             // Check if this phase has Pareto data
             const phaseHasPareto = paretoData &&
                                    paretoData.has_pareto &&
-                                   paretoData.phase_name === phase.name;
+                                   paretoData.cell_name === phase.name;
 
             return (
               <div key={phaseIdx} className="phase-section">
@@ -351,7 +351,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                       </span>
                     )}
                     <span className="phase-meta">
-                      {phase.soundings.length} soundings
+                      {phase.candidates.length} soundings
                     </span>
                   </div>
                 </div>
@@ -359,7 +359,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                 {/* Model Filter Banner - show if models were filtered for this phase */}
                 {modelFilters && modelFilters.length > 0 && (
                   (() => {
-                    const phaseFilter = modelFilters.find(f => f.phase_name === phase.name);
+                    const phaseFilter = modelFilters.find(f => f.cell_name === phase.name);
                     return phaseFilter ? <ModelFilterBanner filterData={phaseFilter} /> : null;
                   })()
                 )}
@@ -388,7 +388,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
                 {/* Sounding Attempts - Horizontal Layout */}
                 <div className="soundings-grid">
-                  {phase.soundings.map((sounding, soundingIdx) => {
+                  {phase.candidates.map((sounding, soundingIdx) => {
                     const isWinner = sounding.is_winner;
                     const hasFailed = sounding.failed || false;
                     const costPercent = (sounding.cost / maxCost) * 100;
@@ -791,7 +791,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
               {data.winner_path.map((w, idx) => (
                 <React.Fragment key={idx}>
                   <span className="path-node">
-                    {w.phase_name}: S{w.sounding_index}
+                    {w.cell_name}: S{w.candidate_index}
                     {w.reforge_trail && w.reforge_trail.length > 0 && (
                       <span className="reforge-trail">
                         {w.reforge_trail.map((refIdx, rIdx) => (

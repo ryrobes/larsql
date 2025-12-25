@@ -149,9 +149,9 @@ function BlockEditor() {
       // Handle CONFIG block drops (soundings, rules, etc.) - must drop on a specific phase
       if (over.id.startsWith('phase-')) {
         const phaseName = over.id.replace('phase-', '');
-        const phases = store.cascade.phases;
-        const phaseIndex = phases.findIndex(p => p.name === phaseName);
-        if (phaseIndex >= 0) {
+        const phases = store.cascade.cells;
+        const cellIndex = phases.findIndex(p => p.name === phaseName);
+        if (cellIndex >= 0) {
           // Map block types to drawer names
           const drawerMap = {
             soundings: 'soundings',
@@ -163,7 +163,7 @@ function BlockEditor() {
           };
           const drawerName = drawerMap[blockType];
           if (drawerName) {
-            toggleDrawer(phaseIndex, drawerName);
+            toggleDrawer(cellIndex, drawerName);
           }
         }
       }
@@ -178,11 +178,11 @@ function BlockEditor() {
 
       if (modelId && over.id.startsWith('phase-')) {
         const phaseName = over.id.replace('phase-', '');
-        const phases = store.cascade.phases;
-        const phaseIndex = phases.findIndex(p => p.name === phaseName);
-        console.log('[DnD] Updating phase:', { phaseName, phaseIndex });
-        if (phaseIndex >= 0) {
-          store.updatePhase(phaseIndex, { model: modelId });
+        const phases = store.cascade.cells;
+        const cellIndex = phases.findIndex(p => p.name === phaseName);
+        console.log('[DnD] Updating phase:', { phaseName, cellIndex });
+        if (cellIndex >= 0) {
+          store.updatePhase(cellIndex, { model: modelId });
         }
       }
       return;
@@ -195,21 +195,21 @@ function BlockEditor() {
       console.log('[DnD] Tool drop:', { toolName, overId: over.id });
 
       // Find the target phase - can drop on phase or tackle drop zone
-      let phaseIndex = -1;
+      let cellIndex = -1;
       if (over.id.startsWith('phase-')) {
         const phaseName = over.id.replace('phase-', '');
-        phaseIndex = store.cascade.phases.findIndex(p => p.name === phaseName);
+        cellIndex = store.cascade.cells.findIndex(p => p.name === phaseName);
       } else if (over.id.startsWith('tackle-zone-')) {
-        phaseIndex = parseInt(over.id.replace('tackle-zone-', ''), 10);
+        cellIndex = parseInt(over.id.replace('tackle-zone-', ''), 10);
       }
 
-      if (toolName && phaseIndex >= 0) {
-        const phase = store.cascade.phases[phaseIndex];
-        const currentTackle = phase.tackle || [];
+      if (toolName && cellIndex >= 0) {
+        const phase = store.cascade.cells[cellIndex];
+        const currentTackle = phase.traits || [];
 
         // Special handling for "manifest" - replaces all other tools
         if (toolName === 'manifest') {
-          store.updatePhase(phaseIndex, { tackle: ['manifest'] });
+          store.updatePhase(cellIndex, { tackle: ['manifest'] });
         }
         // Special handling for "memory" - prompt for bank name
         else if (toolName === 'memory') {
@@ -226,25 +226,25 @@ function BlockEditor() {
             const sanitizedName = bankName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
             if (!currentTackle.includes(sanitizedName)) {
               if (currentTackle.includes('manifest')) {
-                store.updatePhase(phaseIndex, { tackle: [sanitizedName] });
+                store.updatePhase(cellIndex, { tackle: [sanitizedName] });
               } else {
-                store.updatePhase(phaseIndex, { tackle: [...currentTackle, sanitizedName] });
+                store.updatePhase(cellIndex, { tackle: [...currentTackle, sanitizedName] });
               }
             }
           }
         } else {
           // If manifest is already there, replace it with the new tool
           if (currentTackle.includes('manifest')) {
-            store.updatePhase(phaseIndex, { tackle: [toolName] });
+            store.updatePhase(cellIndex, { tackle: [toolName] });
           } else if (!currentTackle.includes(toolName)) {
             // Add tool if not already present
-            store.updatePhase(phaseIndex, { tackle: [...currentTackle, toolName] });
+            store.updatePhase(cellIndex, { tackle: [...currentTackle, toolName] });
           }
         }
 
         // Open the execution drawer to show the tools
-        if (!store.expandedDrawers[phaseIndex]?.includes('execution')) {
-          store.toggleDrawer(phaseIndex, 'execution');
+        if (!store.expandedDrawers[cellIndex]?.includes('execution')) {
+          store.toggleDrawer(cellIndex, 'execution');
         }
       }
       return;
@@ -252,7 +252,7 @@ function BlockEditor() {
 
     // Handle phase reordering (sortable items)
     if (active.id !== over.id && active.id.startsWith('phase-') && over.id.startsWith('phase-')) {
-      const phases = useWorkshopStore.getState().cascade.phases;
+      const phases = useWorkshopStore.getState().cascade.cells;
       const oldIndex = phases.findIndex((p) => `phase-${p.name}` === active.id);
       const newIndex = phases.findIndex((p) => `phase-${p.name}` === over.id);
 

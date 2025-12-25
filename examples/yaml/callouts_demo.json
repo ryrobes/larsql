@@ -5,12 +5,14 @@
     "year": "The year to analyze",
     "company": "Company name"
   },
-  "phases": [
+  "cells": [
     {
       "name": "research",
       "instructions": "You are analyzing quarterly sales data for {{input.company}} in {{input.year}}. Generate 3 key findings about the company's performance. Each finding should be detailed and data-driven. Make up realistic numbers for demonstration.",
-      "tackle": [],
-      "handoffs": ["detailed_analysis"],
+      "traits": [],
+      "handoffs": [
+        "detailed_analysis"
+      ],
       "rules": {
         "max_turns": 1
       },
@@ -22,8 +24,10 @@
     {
       "name": "detailed_analysis",
       "instructions": "Provide a detailed quarterly breakdown. For each quarter (Q1-Q4), analyze the sales performance. Make this detailed with specific metrics.",
-      "tackle": [],
-      "handoffs": ["recommendations"],
+      "traits": [],
+      "handoffs": [
+        "recommendations"
+      ],
       "rules": {
         "max_turns": 1
       },
@@ -32,8 +36,10 @@
     {
       "name": "recommendations",
       "instructions": "Based on the analysis, provide 3-5 strategic recommendations for {{input.company}}. Be specific and actionable.",
-      "tackle": [],
-      "handoffs": ["summary"],
+      "traits": [],
+      "handoffs": [
+        "summary"
+      ],
       "rules": {
         "max_turns": 1
       },
@@ -44,9 +50,11 @@
     {
       "name": "summary",
       "instructions": "Create a brief executive summary of the entire analysis (2-3 sentences).",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["all"]
+        "from": [
+          "all"
+        ]
       },
       "rules": {
         "max_turns": 1

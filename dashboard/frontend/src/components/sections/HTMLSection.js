@@ -14,7 +14,7 @@ import './HTMLSection.css';
  *
  * Features:
  * - Iframe isolation (prevents CSS/layout conflicts)
- * - Base Windlass theme CSS (colors, fonts) inherited
+ * - Base RVBBIT theme CSS (colors, fonts) inherited
  * - Auto-resizing based on content height
  * - Template variable replacement ({{ checkpoint_id }}, {{ session_id }})
  * - HTMX initialization and lifecycle management
@@ -183,7 +183,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
     // Security warning in development
     if (process.env.NODE_ENV === 'development') {
       console.warn(
-        '[Windlass HTMX] Rendering unsanitized HTML in iframe. ' +
+        '[RVBBIT HTMX] Rendering unsanitized HTML in iframe. ' +
         'This is a security risk and should only be used in trusted development environments.'
       );
     }
@@ -206,7 +206,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
       const processedHTML = processTemplateVariables(spec.content, {
         checkpoint_id: checkpointId,
         session_id: sessionId,
-        phase_name: spec.phase_name || '',
+        cell_name: spec.cell_name || '',
         cascade_id: spec.cascade_id || ''
       });
 
@@ -272,7 +272,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         // HTMX is now loaded via script tag in iframe, no manual init needed
         // Just wait a moment for it to auto-initialize
         setTimeout(() => {
-          console.log('[Windlass HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
+          console.log('[RVBBIT HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
         }, 100);
 
         // Auto-resize iframe to full content height (no scrollbars!)
@@ -307,7 +307,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
                 //console.log('[HTMX iframe] Resized to', newHeight, 'px (attempt', resizeCount, ')');
               }
             } catch (err) {
-              console.warn('[Windlass HTMX] Could not resize iframe:', err);
+              console.warn('[RVBBIT HTMX] Could not resize iframe:', err);
             }
           }, 50); // Debounce by 50ms
         };
@@ -336,12 +336,12 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         iframeDocument.addEventListener('htmx:configRequest', (e) => {
           e.detail.headers['X-Checkpoint-Id'] = checkpointId;
           e.detail.headers['X-Session-Id'] = sessionId;
-          console.log('[Windlass HTMX iframe] Request:', e.detail.path);
+          console.log('[RVBBIT HTMX iframe] Request:', e.detail.path);
         });
 
         // Handle errors
         iframeDocument.addEventListener('htmx:responseError', (e) => {
-          console.error('[Windlass HTMX iframe] Request error:', e.detail);
+          console.error('[RVBBIT HTMX iframe] Request error:', e.detail);
           const status = e.detail.xhr?.status || 'unknown';
           const statusText = e.detail.xhr?.statusText || 'error';
           setError(`HTMX request failed: ${status} ${statusText}`);
@@ -363,10 +363,10 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         }
       };
     } catch (err) {
-      console.error('[Windlass HTMX] iframe setup error:', err);
+      console.error('[RVBBIT HTMX] iframe setup error:', err);
       setError(`Failed to render HTML: ${err.message}`);
     }
-  }, [spec.content, checkpointId, sessionId, spec.phase_name, spec.cascade_id]);
+  }, [spec.content, checkpointId, sessionId, spec.cell_name, spec.cascade_id]);
 
   if (error) {
     return (
@@ -458,7 +458,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
 function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
   // Inline the lite theme CSS
   const baseCSS = `
-/* Windlass Lite Theme - Minimal base styles for HTMX iframes */
+/* RVBBIT Lite Theme - Minimal base styles for HTMX iframes */
 :root {
   --bg-darkest: #0a0a0a;
   --bg-dark: #121212;
@@ -824,7 +824,7 @@ ${bodyHTML}
 
 /**
  * Replace template variables in HTML string
- * Supports: {{ checkpoint_id }}, {{ session_id }}, {{ phase_name }}, {{ cascade_id }}
+ * Supports: {{ checkpoint_id }}, {{ session_id }}, {{ cell_name }}, {{ cascade_id }}
  */
 function processTemplateVariables(html, context) {
   return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key) => {
@@ -833,7 +833,7 @@ function processTemplateVariables(html, context) {
       return value;
     }
     // Keep unmatched placeholders and log warning
-    console.warn(`[Windlass HTMX] Unknown template variable: ${key}`);
+    console.warn(`[RVBBIT HTMX] Unknown template variable: ${key}`);
     return match;
   });
 }

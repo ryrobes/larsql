@@ -118,7 +118,7 @@ function CheckpointItem({ checkpoint, onSelect }) {
         )}
       </div>
       <div className="item-details">
-        <span className="item-phase">{checkpoint.phase_name}</span>
+        <span className="item-phase">{checkpoint.cell_name}</span>
         <span className="item-cascade">{checkpoint.cascade_id}</span>
       </div>
       {checkpoint.num_soundings && (

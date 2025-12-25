@@ -37,12 +37,12 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     edges = []
 
     # Maps for tracking
-    phase_to_node: Dict[str, str] = {}  # phase_name -> node_id
+    phase_to_node: Dict[str, str] = {}  # cell_name -> node_id
     input_to_node: Dict[str, str] = {}  # input_name -> node_id
-    phase_dependencies: Dict[str, Set[str]] = defaultdict(set)  # phase -> set of phases it depends on
-    phase_input_deps: Dict[str, Set[str]] = defaultdict(set)  # phase -> set of inputs it uses
+    cell_dependencies: Dict[str, Set[str]] = defaultdict(set)  # cell -> set of cells it depends on
+    cell_input_deps: Dict[str, Set[str]] = defaultdict(set)  # cell -> set of inputs it uses
 
-    phases = cascade_dict.get('phases', [])
+    cells = cascade_dict.get('cells', [])
     inputs_schema = cascade_dict.get('inputs_schema', {})
 
     # =========================================================================
@@ -54,8 +54,8 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     # Matches: {{ input.foo }}, {{ input.bar | default("x") }}, {{ input.baz|default("y") }}
     INPUT_PATTERN = re.compile(r'\{\{\s*input\.(\w+)(?:\s*\|[^}]*)?\s*\}\}')
 
-    for phase in phases:
-        instructions = phase.get('instructions', '')
+    for cell in cells:
+        instructions = cell.get('instructions', '')
         if isinstance(instructions, str):
             # Find {{ input.X }} and {{ input.X | default(...) }} references
             matches = INPUT_PATTERN.findall(instructions)
@@ -87,12 +87,12 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     # PASS 3: Create phase nodes and collect dependencies
     # =========================================================================
     for i, phase in enumerate(phases):
-        phase_name = phase.get('name', f'phase_{i}')
+        cell_name = phase.get('name', f'phase_{i}')
         node_id = f"node_{i}"
-        phase_to_node[phase_name] = node_id
+        phase_to_node[cell_name] = node_id
 
         # Determine node type
-        node_type, node_data = _classify_phase(phase, phase_name)
+        node_type, node_data = _classify_phase(phase, cell_name)
 
         nodes.append({
             'id': node_id,
@@ -106,21 +106,21 @@ def introspect_cascade(cascade_dict: dict) -> dict:
         context_from = context.get('from', [])
         for source in context_from:
             if isinstance(source, str):
-                phase_dependencies[phase_name].add(source)
+                phase_dependencies[cell_name].add(source)
             elif isinstance(source, dict):
                 source_phase = source.get('phase')
                 if source_phase:
-                    phase_dependencies[phase_name].add(source_phase)
+                    phase_dependencies[cell_name].add(source_phase)
 
         # Collect dependencies from {{ outputs.X }} in instructions
         instructions = phase.get('instructions', '')
         if isinstance(instructions, str):
             output_refs = re.findall(r'\{\{\s*outputs\.(\w+)(?:\s*\|[^}]*)?\s*\}\}', instructions)
-            phase_dependencies[phase_name].update(output_refs)
+            phase_dependencies[cell_name].update(output_refs)
 
             # Collect input dependencies (using same pattern that handles | default(...))
             input_refs = INPUT_PATTERN.findall(instructions)
-            phase_input_deps[phase_name].update(input_refs)
+            phase_input_deps[cell_name].update(input_refs)
 
     # =========================================================================
     # PASS 4: Create edges
@@ -128,10 +128,10 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     edge_set = set()  # Track (source, target) to avoid duplicates
 
     # Input -> Phase edges
-    for phase_name, input_deps in phase_input_deps.items():
-        if phase_name not in phase_to_node:
+    for cell_name, input_deps in phase_input_deps.items():
+        if cell_name not in phase_to_node:
             continue
-        target_id = phase_to_node[phase_name]
+        target_id = phase_to_node[cell_name]
 
         for input_name in input_deps:
             if input_name in input_to_node:
@@ -148,10 +148,10 @@ def introspect_cascade(cascade_dict: dict) -> dict:
                     })
 
     # Phase -> Phase edges
-    for phase_name, deps in phase_dependencies.items():
-        if phase_name not in phase_to_node:
+    for cell_name, deps in phase_dependencies.items():
+        if cell_name not in phase_to_node:
             continue
-        target_id = phase_to_node[phase_name]
+        target_id = phase_to_node[cell_name]
         target_node = next((n for n in nodes if n['id'] == target_id), None)
 
         for dep_name in deps:
@@ -167,7 +167,7 @@ def introspect_cascade(cascade_dict: dict) -> dict:
                     # Determine handle types based on node types and context
                     source_handle, target_handle = _infer_handles(
                         source_node, target_node,
-                        phase_to_node, phases, dep_name, phase_name
+                        phase_to_node, phases, dep_name, cell_name
                     )
 
                     edges.append({
@@ -180,10 +180,10 @@ def introspect_cascade(cascade_dict: dict) -> dict:
 
     # Handoff edges (dashed/animated to distinguish from data flow)
     for phase in phases:
-        phase_name = phase.get('name')
-        if phase_name not in phase_to_node:
+        cell_name = phase.get('name')
+        if cell_name not in phase_to_node:
             continue
-        source_id = phase_to_node[phase_name]
+        source_id = phase_to_node[cell_name]
 
         for handoff in phase.get('handoffs', []):
             if handoff in phase_to_node:
@@ -216,7 +216,7 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     }
 
 
-def _classify_phase(phase: dict, phase_name: str) -> Tuple[str, dict]:
+def _classify_phase(phase: dict, cell_name: str) -> Tuple[str, dict]:
     """
     Determine the node type and data for a phase.
 
@@ -233,7 +233,7 @@ def _classify_phase(phase: dict, phase_name: str) -> Tuple[str, dict]:
     is_image_model = False
     if model:
         try:
-            from windlass.model_registry import ModelRegistry
+            from rvbbit.model_registry import ModelRegistry
             is_image_model = ModelRegistry.is_image_output_model(model)
         except ImportError:
             # Fallback: check common image model patterns
@@ -244,7 +244,7 @@ def _classify_phase(phase: dict, phase_name: str) -> Tuple[str, dict]:
     if is_image_model:
         # Image generation node
         return 'image', {
-            'name': phase_name,
+            'name': cell_name,
             'paletteConfig': {
                 'openrouter': {'model': model},
             },
@@ -258,7 +258,7 @@ def _classify_phase(phase: dict, phase_name: str) -> Tuple[str, dict]:
         # - Tool-only (deterministic) phases like `tool: linux_shell`
         # - Composite phases with tackle + instructions
         return 'phase', {
-            'name': phase_name,
+            'name': cell_name,
             'yaml': yaml.dump(phase, default_flow_style=False, sort_keys=False),
             'status': 'idle',
             'output': '',

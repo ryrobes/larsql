@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Windlass UI is a React/Flask analytics dashboard for the Windlass agent framework. It provides real-time visualization of cascade executions, including soundings (Tree of Thought), reforge iterations, and cost tracking.
+RVBBIT UI is a React/Flask analytics dashboard for the RVBBIT agent framework. It provides real-time visualization of cascade executions, including candidates (Tree of Thought), reforge iterations, and cost tracking.
 
 **Tech Stack:**
 - **Backend**: Flask + DuckDB (Python 3.x)
@@ -49,14 +49,14 @@ python app.py                     # Start Flask server
 ### Environment Variables
 
 ```bash
-# Point to Windlass data (optional - defaults to repo root)
-export WINDLASS_ROOT=/path/to/windlass
-export WINDLASS_DATA_DIR=$WINDLASS_ROOT/data      # Parquet logs
-export WINDLASS_GRAPH_DIR=$WINDLASS_ROOT/graphs   # Mermaid graphs
-export WINDLASS_IMAGE_DIR=$WINDLASS_ROOT/images   # Generated images
+# Point to RVBBIT data (optional - defaults to repo root)
+export RVBBIT_ROOT=/path/to/rvbbit
+export RVBBIT_DATA_DIR=$RVBBIT_ROOT/data      # Parquet logs
+export RVBBIT_GRAPH_DIR=$RVBBIT_ROOT/graphs   # Mermaid graphs
+export RVBBIT_IMAGE_DIR=$RVBBIT_ROOT/images   # Generated images
 
 # SQL debugging
-export WINDLASS_SQL_VERBOSE=true   # Log all SQL queries
+export RVBBIT_SQL_VERBOSE=true   # Log all SQL queries
 ```
 
 ## Architecture
@@ -64,7 +64,7 @@ export WINDLASS_SQL_VERBOSE=true   # Log all SQL queries
 ### Data Flow
 
 ```
-Windlass Cascade Execution
+RVBBIT Cascade Execution
     ↓
 SSE Events → LiveStore (in-memory DuckDB)  ← Real-time UI updates
     ↓
@@ -77,7 +77,7 @@ Parquet Files → DuckDB Cache → Flask API → React Frontend
 |------|---------|
 | `app.py` | Flask server, API endpoints, SSE streaming, DuckDB queries |
 | `live_store.py` | In-memory DuckDB for real-time session tracking during execution |
-| `message_flow_api.py` | API for message flow visualization (soundings, reforge) |
+| `message_flow_api.py` | API for message flow visualization (candidates, reforge) |
 | `execution_tree.py` | Build hierarchical execution trees for visualization |
 
 **Key API Endpoints:**
@@ -120,10 +120,10 @@ CascadesView (grid) → InstancesView (list) → DetailView (session)
 | Purple | `#a78bfa` | Accents, gradients |
 | Blue | `#60a5fa` | Stats, headers |
 | Green | `#34d399` | Success, cost display |
-| Yellow | `#fbbf24` | Running state, soundings |
+| Yellow | `#fbbf24` | Running state, candidates |
 | Red | `#f87171` | Errors |
 
-**Phase Block Status Colors:**
+**Cell Block Status Colors:**
 - Green border: Completed
 - Yellow border + pulse: Running
 - Red border: Error
@@ -174,7 +174,7 @@ Navigation uses URL hash for bookmarkable views:
 
 ```bash
 # Enable verbose SQL logging
-export WINDLASS_SQL_VERBOSE=true
+export RVBBIT_SQL_VERBOSE=true
 python app.py
 ```
 

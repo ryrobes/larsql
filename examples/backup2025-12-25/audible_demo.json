@@ -1,10 +1,10 @@
 {
   "cascade_id": "audible_demo",
-  "description": "Demonstrates the audible system for real-time cascade steering. Run this cascade and click the '🏈 Audible' button in the UI to inject feedback mid-phase.",
+  "description": "Demonstrates the audible system for real-time cascade steering. Run this cascade and click the '\ud83c\udfc8 Audible' button in the UI to inject feedback mid-phase.",
   "inputs_schema": {
     "topic": "The topic to write about (e.g., 'climate change', 'artificial intelligence')"
   },
-  "phases": [
+  "cells": [
     {
       "name": "generate_essay",
       "instructions": "Write a comprehensive essay about {{ input.topic }}.\n\nStructure your essay with:\n1. An engaging introduction\n2. Three main body paragraphs\n3. A thoughtful conclusion\n\nTake your time and be thorough. After each paragraph, pause and reflect on what you've written.\n\nIMPORTANT: If you receive feedback during writing (marked with [AUDIBLE]), incorporate it immediately in your next response.",
@@ -24,7 +24,9 @@
       "name": "summarize",
       "instructions": "Summarize the essay from the previous phase in 2-3 sentences.\n\nPrevious output:\n{{ outputs.generate_essay }}",
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
       "rules": {
         "max_turns": 1

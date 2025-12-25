@@ -10,15 +10,15 @@ const InputLayer = ({ inputsSchema, instructions, tool }) => {
   const hasInstructions = instructions && instructions.length > 0;
 
   return (
-    <div className="phase-anatomy-layer phase-anatomy-layer-input">
-      <div className="phase-anatomy-layer-header">
-        <div className="phase-anatomy-layer-icon layer-icon-input">
+    <div className="cell-anatomy-layer cell-anatomy-layer-input">
+      <div className="cell-anatomy-layer-header">
+        <div className="cell-anatomy-layer-icon layer-icon-input">
           <Icon icon="mdi:import" width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">Input</span>
+        <span className="cell-anatomy-layer-title">Input</span>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         {/* Tool invocation */}
         {tool && (
           <div className="layer-input-tool">

@@ -26,10 +26,10 @@ import ReactFlow, {
 } from 'reactflow';
 import dagre from 'dagre';
 import { Icon } from '@iconify/react';
-import PhaseInnerDiagram from './PhaseInnerDiagram';
+import PhaseInnerDiagram from './CellInnerDiagram';
 import 'reactflow/dist/style.css';
 import './CascadeFlowModal.css';
-import './PhaseInnerDiagram.css';
+import './CellInnerDiagram.css';
 
 // Layout configuration
 const NODE_WIDTH = 320;
@@ -485,11 +485,11 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
   const nodes = [];
   const edges = [];
 
-  const phases = cascade.phases || [];
+  const phases = cascade.cells || [];
 
   // Create nodes for each phase
   phases.forEach((phase, index) => {
-    const soundings = phase.soundings || {};
+    const soundings = phase.candidates || {};
     const reforge = soundings.reforge || {};
     const wards = phase.wards || {};
     const wardCount =
@@ -523,8 +523,8 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
         wardCount,
         hasHandoffs: phase.handoffs?.length > 0,
         handoffCount: phase.handoffs?.length || 0,
-        tackle: phase.tackle,
-        tackleCount: Array.isArray(phase.tackle) ? phase.tackle.length : (phase.tackle ? 1 : 0),
+        tackle: phase.traits,
+        tackleCount: Array.isArray(phase.traits) ? phase.traits.length : (phase.traits ? 1 : 0),
         model: phase.model,
         // Rules
         maxTurns: phase.max_turns || 1,
@@ -579,7 +579,7 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
     if (!from || !Array.isArray(from)) return { label: '← auto', title: 'Default context', dim: true };
 
     // Check if this edge's source is in the context.from
-    // Handle both simple format: ["previous", "phase_name", "all"]
+    // Handle both simple format: ["previous", "cell_name", "all"]
     // And complex format: [{"phase": "name", "include": ["output"]}]
     let isFromAll = false;
     let isFromPrevious = false;
@@ -721,7 +721,7 @@ function CascadeFlowModal({ cascade, executionData, sessionId, onClose }) {
   const getInitialExpandedState = useCallback((cascade) => {
     const expanded = {};
     (cascade?.phases || []).forEach(phase => {
-      const soundings = phase.soundings || {};
+      const soundings = phase.candidates || {};
       const wards = phase.wards || {};
       const hasComplexity = (soundings.factor > 1) ||
         ((wards.pre?.length || 0) + (wards.post?.length || 0) + (wards.turn?.length || 0) > 0);

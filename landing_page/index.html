@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a0b14" />
+  <title>RVBBIT — Programs with Receipts</title>
+  <meta name="description" content="Build reliable LLM workflows without spaghetti graphs. Cells, Candidates, Wards, Interrupts, and Receipts—all in one Studio." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;600&display=swap');
+
+    :root{
+      --bg:#0a0b14;
+      --panel:#14152a;
+      --text:#e8f0ff;
+      --muted:#8b94b8;
+      --cyan:#00e5ff;
+      --mag:#ff006e;
+      --ok:#00ff9d;
+      --mono: "Google Sans Code", ui-monospace, monospace;
+      --sans: "Quicksand", -apple-system, sans-serif;
+    }
+
+    *{box-sizing:border-box; margin:0; padding:0}
+    html{scroll-behavior:smooth}
+    body{
+      font-family:var(--sans);
+      color:var(--text);
+      background:var(--bg);
+      line-height:1.6;
+    }
+
+    /* Layout */
+    .container{
+      max-width:1200px;
+      margin:0 auto;
+      padding:0 clamp(20px, 4vw, 40px);
+    }
+    .wide{max-width:1400px}
+
+    /* Nav */
+    nav{
+      position:sticky;
+      top:0;
+      z-index:100;
+      backdrop-filter:blur(12px);
+      background:rgba(10,11,20,.85);
+      border-bottom:1px solid rgba(0,229,255,.15);
+    }
+    .nav{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:16px 0;
+      gap:20px;
+    }
+    .logo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      font-size:18px;
+      font-weight:700;
+      color:var(--text);
+      text-decoration:none;
+    }
+    .logo-mark{
+      width:32px;
+      height:32px;
+      border-radius:8px;
+      background:linear-gradient(135deg, rgba(0,229,255,.2), rgba(255,0,110,.15));
+      border:1px solid rgba(0,229,255,.3);
+      display:grid;
+      place-items:center;
+    }
+    .nav-links{
+      display:flex;
+      gap:24px;
+      align-items:center;
+    }
+    .nav-links a{
+      color:rgba(232,240,255,.8);
+      text-decoration:none;
+      font-size:14px;
+      font-weight:500;
+      transition:color .2s;
+    }
+    .nav-links a:hover{color:var(--cyan)}
+    .nav-cta{
+      padding:10px 18px;
+      border-radius:8px;
+      background:linear-gradient(135deg, rgba(0,229,255,.25), rgba(255,0,110,.2));
+      border:1px solid rgba(0,229,255,.3);
+      color:var(--text) !important;
+      font-weight:600;
+    }
+
+    /* Hero */
+    .hero{
+      padding:clamp(80px, 15vh, 140px) 0 clamp(60px, 10vh, 100px);
+      text-align:center;
+    }
+    .hero h1{
+      font-size:clamp(40px, 8vw, 80px);
+      font-weight:700;
+      line-height:1.05;
+      letter-spacing:-.03em;
+      margin:0 0 clamp(20px, 3vw, 32px);
+    }
+    .gradient{
+      background:linear-gradient(120deg, var(--cyan), var(--mag), var(--cyan));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      background-size:200% auto;
+      animation:shimmer 6s ease-in-out infinite;
+    }
+    @keyframes shimmer{
+      0%, 100%{background-position:0% center}
+      50%{background-position:100% center}
+    }
+    .hero p{
+      font-size:clamp(18px, 2.5vw, 24px);
+      color:rgba(232,240,255,.75);
+      max-width:50ch;
+      margin:0 auto clamp(32px, 5vw, 48px);
+    }
+    .hero-actions{
+      display:flex;
+      gap:16px;
+      justify-content:center;
+      flex-wrap:wrap;
+    }
+
+    /* Buttons */
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:14px 24px;
+      border-radius:10px;
+      font-size:15px;
+      font-weight:600;
+      text-decoration:none;
+      border:1px solid rgba(0,229,255,.2);
+      background:rgba(20,21,42,.6);
+      color:var(--text);
+      transition:all .2s;
+    }
+    .btn:hover{
+      border-color:rgba(0,229,255,.4);
+      background:rgba(0,229,255,.08);
+    }
+    .btn-primary{
+      background:linear-gradient(135deg, rgba(0,229,255,.3), rgba(255,0,110,.25));
+      border-color:rgba(0,229,255,.4);
+    }
+    .btn-primary:hover{
+      background:linear-gradient(135deg, rgba(0,229,255,.4), rgba(255,0,110,.35));
+    }
+
+    /* Problem section */
+    .problem{
+      padding:clamp(60px, 10vh, 100px) 0;
+      background:linear-gradient(180deg, transparent, rgba(255,0,110,.03));
+    }
+    .problem h2{
+      font-size:clamp(28px, 4vw, 48px);
+      font-weight:700;
+      text-align:center;
+      margin:0 0 clamp(40px, 6vw, 60px);
+      line-height:1.2;
+    }
+    .comparison{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+      gap:20px;
+    }
+    .compare-box{
+      padding:32px;
+      border-radius:12px;
+      border:1px solid rgba(0,229,255,.15);
+      background:rgba(20,21,42,.4);
+    }
+    .compare-box.bad{
+      border-color:rgba(255,0,110,.2);
+      background:rgba(255,0,110,.05);
+    }
+    .compare-box.good{
+      border-color:rgba(0,229,255,.25);
+      background:rgba(0,229,255,.05);
+    }
+    .compare-label{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.1em;
+      font-weight:700;
+      margin:0 0 16px;
+      opacity:.6;
+    }
+    .compare-box h3{
+      font-size:22px;
+      margin:0 0 16px;
+      font-weight:700;
+    }
+    .compare-box ul{
+      list-style:none;
+      margin:0;
+      padding:0;
+    }
+    .compare-box li{
+      padding:8px 0;
+      padding-left:24px;
+      position:relative;
+      font-size:14px;
+      color:rgba(232,240,255,.75);
+    }
+    .compare-box li::before{
+      content:"×";
+      position:absolute;
+      left:0;
+      color:var(--mag);
+      font-weight:700;
+    }
+    .compare-box.good li::before{
+      content:"✓";
+      color:var(--ok);
+    }
+
+    /* Features */
+    .features{
+      padding:clamp(80px, 12vh, 120px) 0;
+    }
+    .features h2{
+      font-size:clamp(32px, 5vw, 56px);
+      font-weight:700;
+      text-align:center;
+      margin:0 0 clamp(16px, 2vw, 24px);
+    }
+    .features-intro{
+      text-align:center;
+      font-size:clamp(16px, 2vw, 20px);
+      color:rgba(232,240,255,.7);
+      max-width:70ch;
+      margin:0 auto clamp(50px, 7vw, 80px);
+    }
+    .feature-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+      gap:clamp(20px, 3vw, 28px);
+    }
+    .feature{
+      padding:28px;
+      border-radius:12px;
+      border:1px solid rgba(0,229,255,.15);
+      background:rgba(20,21,42,.4);
+      transition:border-color .2s;
+    }
+    .feature:hover{border-color:rgba(0,229,255,.3)}
+    .feature-icon{
+      font-size:32px;
+      margin:0 0 16px;
+      display:block;
+    }
+    .feature h3{
+      font-size:18px;
+      font-weight:700;
+      margin:0 0 12px;
+    }
+    .feature p{
+      font-size:14px;
+      color:rgba(232,240,255,.7);
+      line-height:1.7;
+      margin:0;
+    }
+    .feature-tag{
+      display:inline-block;
+      margin-top:12px;
+      font-family:var(--mono);
+      font-size:11px;
+      padding:6px 10px;
+      border-radius:6px;
+      background:rgba(0,229,255,.08);
+      border:1px solid rgba(0,229,255,.2);
+      color:var(--cyan);
+    }
+
+    /* Code demo */
+    .demo{
+      padding:clamp(60px, 10vh, 100px) 0;
+      background:linear-gradient(180deg, transparent, rgba(0,229,255,.02));
+    }
+    .demo h2{
+      font-size:clamp(28px, 4vw, 48px);
+      font-weight:700;
+      text-align:center;
+      margin:0 0 clamp(40px, 6vw, 60px);
+    }
+    .code-container{
+      border-radius:12px;
+      border:1px solid rgba(0,229,255,.2);
+      background:rgba(20,21,42,.6);
+      overflow:hidden;
+      max-width:900px;
+      margin:0 auto;
+    }
+    .code-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:12px 16px;
+      border-bottom:1px solid rgba(0,229,255,.15);
+      background:rgba(0,0,0,.2);
+    }
+    .code-tabs{
+      display:flex;
+      gap:8px;
+    }
+    .code-tab{
+      padding:6px 12px;
+      border-radius:6px;
+      font-size:12px;
+      font-weight:600;
+      background:rgba(0,0,0,.3);
+      border:1px solid rgba(0,229,255,.15);
+      color:rgba(232,240,255,.7);
+      cursor:pointer;
+      transition:all .2s;
+    }
+    .code-tab:hover{border-color:rgba(0,229,255,.3)}
+    .code-tab.active{
+      background:rgba(0,229,255,.15);
+      border-color:rgba(0,229,255,.3);
+      color:var(--text);
+    }
+    pre{
+      margin:0;
+      padding:24px;
+      font-family:var(--mono);
+      font-size:13px;
+      line-height:1.7;
+      overflow-x:auto;
+      color:rgba(232,240,255,.9);
+    }
+    .kw{color:#00e5ff; font-weight:600}
+    .str{color:#ff7bee}
+    .cm{color:rgba(139,148,184,.7); font-style:italic}
+    .fn{color:var(--cyan)}
+
+    /* Use cases */
+    .use-cases{
+      padding:clamp(80px, 12vh, 120px) 0;
+    }
+    .use-cases h2{
+      font-size:clamp(32px, 5vw, 56px);
+      font-weight:700;
+      text-align:center;
+      margin:0 0 clamp(50px, 7vw, 80px);
+    }
+    .use-case-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+      gap:24px;
+    }
+    .use-case{
+      padding:32px;
+      border-radius:12px;
+      border:1px solid rgba(0,229,255,.15);
+      background:rgba(20,21,42,.4);
+    }
+    .use-case h3{
+      font-size:20px;
+      font-weight:700;
+      margin:0 0 8px;
+      color:var(--cyan);
+    }
+    .use-case .subtitle{
+      font-size:13px;
+      color:rgba(232,240,255,.6);
+      margin:0 0 16px;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+    }
+    .use-case p{
+      font-size:15px;
+      color:rgba(232,240,255,.75);
+      line-height:1.7;
+      margin:0 0 16px;
+    }
+    .use-case strong{
+      display:block;
+      margin:12px 0 8px;
+      font-size:14px;
+      color:var(--text);
+    }
+
+    /* CTA */
+    .cta-section{
+      padding:clamp(100px, 15vh, 160px) 0;
+      text-align:center;
+    }
+    .cta-section h2{
+      font-size:clamp(36px, 6vw, 64px);
+      font-weight:700;
+      margin:0 0 clamp(20px, 3vw, 32px);
+    }
+    .cta-section p{
+      font-size:clamp(16px, 2.2vw, 20px);
+      color:rgba(232,240,255,.7);
+      max-width:60ch;
+      margin:0 auto clamp(40px, 6vw, 56px);
+    }
+
+    /* Footer */
+    footer{
+      padding:40px 0;
+      border-top:1px solid rgba(0,229,255,.12);
+      background:rgba(0,0,0,.2);
+    }
+    .footer{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:20px;
+      flex-wrap:wrap;
+      font-size:14px;
+      color:rgba(232,240,255,.6);
+    }
+    .footer a{
+      color:rgba(232,240,255,.7);
+      text-decoration:none;
+      transition:color .2s;
+    }
+    .footer a:hover{color:var(--cyan)}
+    .footer-links{
+      display:flex;
+      gap:20px;
+      flex-wrap:wrap;
+    }
+
+    @media (max-width: 768px){
+      .nav-links{gap:16px}
+      .nav-links a{font-size:13px}
+      .comparison{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+
+<body>
+  <nav>
+    <div class="container">
+      <div class="nav">
+        <a href="#" class="logo">
+          <div class="logo-mark">
+            <img src="rvbbit-logo.png" alt="RVBBIT" style="width:100%; height:100%; object-fit:contain" onerror="this.style.display='none'; this.parentElement.textContent='R';" />
+          </div>
+          RVBBIT
+        </a>
+        <div class="nav-links">
+          <a href="#problem">Why</a>
+          <a href="#features">Features</a>
+          <a href="#demo">Demo</a>
+          <a href="#use-cases">Use Cases</a>
+          <a href="#get-started" class="nav-cta">Get Started</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container">
+        <h1>
+          Build <span class="gradient">Programs with Receipts</span>
+        </h1>
+        <p>
+          Reliable LLM workflows without spaghetti graphs. Cells, Candidates, Wards, Interrupts, and queryable Receipts—all in one Studio.
+        </p>
+        <div class="hero-actions">
+          <a href="#get-started" class="btn btn-primary">→ Open Studio</a>
+          <a href="#demo" class="btn">See Demo</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Problem -->
+    <section class="problem" id="problem">
+      <div class="container">
+        <h2>Most LLM orchestration turns into <span class="gradient">retry spaghetti</span></h2>
+
+        <div class="comparison">
+          <div class="compare-box bad">
+            <div class="compare-label">Traditional Approach</div>
+            <h3>Agent Vibes & Trace Screenshots</h3>
+            <ul>
+              <li>Every retry becomes a graph edge</li>
+              <li>Observability = screenshots of traces</li>
+              <li>No cost accounting per decision</li>
+              <li>Human-in-loop is a hack</li>
+              <li>Debugging is prayer-driven</li>
+              <li>"It usually works" ≠ operational</li>
+            </ul>
+          </div>
+
+          <div class="compare-box good">
+            <div class="compare-label">RVBBIT Approach</div>
+            <h3>Programs with Receipts</h3>
+            <ul>
+              <li>Encapsulated complexity inside Cells</li>
+              <li>Queryable Receipts (cost, latency, lineage)</li>
+              <li>Budget guardrails at every level</li>
+              <li>Interrupts as first-class control flow</li>
+              <li>Candidates + Wards = reliability by design</li>
+              <li>Call from SQL like any function</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+      <div class="container">
+        <h2>Encapsulated Complexity, <span class="gradient">Inspectable Results</span></h2>
+        <p class="features-intro">
+          RVBBIT treats workflows like programs: declarative, reusable, with explicit contracts and queryable accounting.
+        </p>
+
+        <div class="feature-grid">
+          <div class="feature">
+            <span class="feature-icon">🔬</span>
+            <h3>Cells</h3>
+            <p>
+              The building blocks. Each Cell can run LLM calls, SQL, Python, or invoke Traits—mixing polyglot execution in a single step.
+            </p>
+            <span class="feature-tag">LLM • SQL • Python • JS</span>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">🎯</span>
+            <h3>Candidates</h3>
+            <p>
+              Run a Cell multiple times in parallel (clones or variants), then evaluate or aggregate. Best-of-N without retry loops.
+            </p>
+            <span class="feature-tag">Parallel • Evaluate • Aggregate</span>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">🛡️</span>
+            <h3>Wards</h3>
+            <p>
+              Declarative contracts: validate outputs, retry with repair, reroute on failure, or hard-fail on violations. Stop bad state early.
+            </p>
+            <span class="feature-tag">Validate • Retry • Repair • Reroute</span>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">⏸️</span>
+            <h3>Interrupts</h3>
+            <p>
+              First-class human control flow. Pause for decisions, send "audibles" to steer long runs, resume with full context.
+            </p>
+            <span class="feature-tag">HITL • Audibles • Resume</span>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">📊</span>
+            <h3>Receipts</h3>
+            <p>
+              Queryable rollups at every level—Cell, Candidate, run, Cascade. Cost, latency, model mix, cache hits, retries. SQL-friendly by design.
+            </p>
+            <span class="feature-tag">Cost • Time • Lineage • Queryable</span>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">💾</span>
+            <h3>SQL Interop</h3>
+            <p>
+              Call Cascades as SQL UDFs, map over table rows, query Receipts. LLM workflows become first-class database citizens.
+            </p>
+            <span class="feature-tag">UDF • Mapping • Enrichment</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo -->
+    <section class="demo" id="demo">
+      <div class="container">
+        <h2>See It in <span class="gradient">Action</span></h2>
+
+        <div class="code-container">
+          <div class="code-header">
+            <div class="code-tabs">
+              <div class="code-tab active" data-tab="yaml">Cascade YAML</div>
+              <div class="code-tab" data-tab="sql">SQL UDF</div>
+              <div class="code-tab" data-tab="python">Python API</div>
+            </div>
+          </div>
+
+          <pre id="yaml-code"><span class="cm"># A Cascade with Candidates + Wards</span>
+cascade_id: fraud_assessment
+inputs_schema:
+  transaction_id: "Transaction ID"
+  amount: "Transaction amount"
+
+cells:
+  - name: assess_risk
+    instructions: |
+      Analyze transaction for fraud risk.
+      Return JSON: {risk_score, risk_level, reasoning}
+
+    <span class="cm"># Run 3 parallel candidates, pick best</span>
+    candidates:
+      factor: 3
+      mode: evaluate
+      evaluator_instructions: Pick the most conservative assessment
+
+    <span class="cm"># Validate output contract</span>
+    wards:
+      post:
+        - validator:
+            json_schema: risk_assessment_schema.json
+          mode: retry
+          max_retries: 2
+
+    handoffs: [make_decision]</pre>
+
+          <pre id="sql-code" style="display:none"><span class="cm">-- Call Cascades from SQL as UDFs</span>
+<span class="kw">SELECT</span>
+  transaction_id,
+  amount,
+  <span class="fn">rvbbit_cascade_udf</span>(
+    <span class="str">'traits/fraud_assessment.yaml'</span>,
+    <span class="fn">json_object</span>(<span class="str">'transaction_id'</span>, transaction_id, <span class="str">'amount'</span>, amount)
+  ) <span class="kw">AS</span> fraud_check
+<span class="kw">FROM</span> pending_transactions
+<span class="kw">WHERE</span> amount > <span class="num">1000</span>;
+
+<span class="cm">-- Query Receipts for cost analysis</span>
+<span class="kw">SELECT</span>
+  cell_name,
+  <span class="fn">AVG</span>(cost_usd) <span class="kw">AS</span> avg_cost,
+  <span class="fn">AVG</span>(duration_ms) <span class="kw">AS</span> avg_latency,
+  cache_hit_rate
+<span class="kw">FROM</span> rvbbit_receipts
+<span class="kw">WHERE</span> cascade_id = <span class="str">'fraud_assessment'</span>
+<span class="kw">GROUP BY</span> cell_name;</pre>
+
+          <pre id="python-code" style="display:none"><span class="cm"># Map Cascade over array inputs</span>
+<span class="kw">import</span> rvbbit
+
+transactions = [
+    {<span class="str">"transaction_id"</span>: 1, <span class="str">"amount"</span>: 150},
+    {<span class="str">"transaction_id"</span>: 2, <span class="str">"amount"</span>: 99999},
+]
+
+results = rvbbit.<span class="fn">map_cascade</span>(
+    cascade=<span class="str">"traits/fraud_assessment.yaml"</span>,
+    inputs=transactions,
+    concurrency=8,
+    cache=<span class="str">"aggressive"</span>,
+    receipts=<span class="kw">True</span>,
+)
+
+<span class="cm"># Each result includes outputs + receipts</span>
+<span class="kw">for</span> r <span class="kw">in</span> results:
+    <span class="kw">print</span>(r.output, r.receipt.cost_usd, r.receipt.duration_ms)</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section class="use-cases" id="use-cases">
+      <div class="container">
+        <h2>Built for <span class="gradient">Real Work</span></h2>
+
+        <div class="use-case-grid">
+          <div class="use-case">
+            <h3>Engineers</h3>
+            <div class="subtitle">Building Agentic Workflows</div>
+            <p>
+              Stop fighting retries and brittle outputs. Build reliable workflows with contracts, Candidates, and automatic repair.
+            </p>
+            <strong>Lead with:</strong> Contracts • Candidates • Receipts
+          </div>
+
+          <div class="use-case">
+            <h3>Data Teams</h3>
+            <div class="subtitle">Analysts • DE • Analytics Engineering</div>
+            <p>
+              Use SQL as an interface to LLM skills. Enrich pipelines, classify data, deduplicate—with caching and cost control.
+            </p>
+            <strong>Lead with:</strong> SQL UDF • Caching • Receipts
+          </div>
+
+          <div class="use-case">
+            <h3>Platform Teams</h3>
+            <div class="subtitle">Ops • ML Infra</div>
+            <p>
+              Operationalize LLM runs like any workload. Budget guardrails, auditability, repeatability, context accounting.
+            </p>
+            <strong>Lead with:</strong> Receipts • Budgets • Replay/Branch
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-section" id="get-started">
+      <div class="container">
+        <h2>
+          Start Building <span class="gradient">Cascades</span>
+        </h2>
+        <p>
+          A Studio + runtime for programs that orchestrate LLMs, tools, and data—without devolving into spaghetti.
+        </p>
+        <div class="hero-actions">
+          <a href="https://github.com/yourusername/rvbbit" class="btn btn-primary" target="_blank">
+            ★ View on GitHub
+          </a>
+          <a href="#" class="btn">📖 Read the Docs</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer">
+        <div>© <span id="year"></span> RVBBIT • Programs with Receipts</div>
+        <div class="footer-links">
+          <a href="#problem">Why RVBBIT</a>
+          <a href="#features">Features</a>
+          <a href="#demo">Demo</a>
+          <a href="https://github.com/yourusername/rvbbit" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Tab switching
+    const tabs = document.querySelectorAll('.code-tab');
+    const codes = {
+      yaml: document.getElementById('yaml-code'),
+      sql: document.getElementById('sql-code'),
+      python: document.getElementById('python-code')
+    };
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        Object.values(codes).forEach(c => c.style.display = 'none');
+        codes[tab.dataset.tab].style.display = 'block';
+      });
+    });
+
+    // Set year
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

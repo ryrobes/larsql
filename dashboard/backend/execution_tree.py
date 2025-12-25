@@ -41,10 +41,10 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
     except:
         meta = {}
     return {
-        'sounding_index': meta.get('sounding_index'),
+        'candidate_index': meta.get('candidate_index'),
         'is_winner': meta.get('is_winner'),
         'reforge_step': meta.get('reforge_step'),
-        'phase_name': meta.get('phase_name'),
+        'cell_name': meta.get('cell_name'),
         'cascade_id': meta.get('cascade_id'),
         'factor': meta.get('factor'),
         'has_soundings': meta.get('has_soundings'),
@@ -81,7 +81,7 @@ class ExecutionNode:
     role: str = ""  # Message role (system, user, assistant, tool)
 
     # Sounding metadata
-    sounding_index: Optional[int] = None
+    candidate_index: Optional[int] = None
     is_winner: Optional[bool] = None
 
     # Reforge metadata
@@ -106,7 +106,7 @@ class ExecutionNode:
             'parent_id': self.parent_id,
             'content': self.content,
             'role': self.role,
-            'sounding_index': self.sounding_index,
+            'candidate_index': self.candidate_index,
             'is_winner': self.is_winner,
             'reforge_step': self.reforge_step,
             'timestamp': self.timestamp,
@@ -175,7 +175,7 @@ class ExecutionTreeBuilder:
                 parent_id=parent_id,
                 content=content or "",
                 role=role or "",
-                sounding_index=meta.get('sounding_index'),
+                candidate_index=meta.get('candidate_index'),
                 is_winner=meta.get('is_winner'),
                 reforge_step=meta.get('reforge_step'),
                 timestamp=timestamp,
@@ -341,12 +341,12 @@ class ExecutionTreeBuilder:
         soundings = []
         sounding_attempts = [n for n in nodes_map.values()
                            if n.node_type == 'sounding_attempt'
-                           and n.metadata.get('phase_name') == phase_node.name]
+                           and n.metadata.get('cell_name') == phase_node.name]
 
         if sounding_attempts:
             for attempt in sounding_attempts:
                 soundings.append({
-                    'index': attempt.sounding_index,
+                    'index': attempt.candidate_index,
                     'is_winner': attempt.is_winner,
                     'content': attempt.content,
                     'preview': sanitize_label(attempt.content, 25) if attempt.content else ''
@@ -357,7 +357,7 @@ class ExecutionTreeBuilder:
         evaluator_content = ""
         evaluator_entries = [n for n in nodes_map.values()
                            if n.node_type in ('evaluator', 'evaluation')
-                           and n.metadata.get('phase_name') == phase_node.name]
+                           and n.metadata.get('cell_name') == phase_node.name]
         if evaluator_entries:
             evaluator_content = evaluator_entries[0].content or ""
 
@@ -365,7 +365,7 @@ class ExecutionTreeBuilder:
         quartermaster_entry = None
         qm_entries = [n for n in nodes_map.values()
                      if n.node_type == 'quartermaster_result'
-                     and n.metadata.get('phase_name') == phase_node.name]
+                     and n.metadata.get('cell_name') == phase_node.name]
         if qm_entries:
             quartermaster_entry = {
                 'content': qm_entries[0].content or "",
@@ -549,19 +549,19 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
     if 'error' in tree:
         return {'nodes': [], 'edges': [], 'error': tree['error']}
 
-    phases = tree.get('phases', [])
-    if not phases:
-        return {'nodes': [], 'edges': [], 'error': 'No phases found'}
+    cells = tree.get('cells', [])
+    if not cells:
+        return {'nodes': [], 'edges': [], 'error': 'No cells found'}
 
     # Layout constants
-    x_spacing = 400  # Horizontal spacing between phases
+    x_spacing = 400  # Horizontal spacing between cells
     y_spacing = 60   # Vertical spacing between messages
     msg_height = 40  # Height of each message node
 
-    phase_ids = []
-    prev_phase_last_node = None
+    cell_ids = []
+    prev_cell_last_node = None
 
-    for phase_idx, phase in enumerate(phases):
+    for phase_idx, phase in enumerate(cells):
         phase_id = f"phase_{phase_idx}"
         phase_ids.append(phase_id)
         x_offset = phase_idx * x_spacing
@@ -581,7 +581,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
                     'label': f"🔱 {phase['name']}",
-                    'phase_name': phase['name'],
+                    'cell_name': phase['name'],
                     'sounding_count': len(soundings),
                     'winner_index': phase.get('winner_index'),
                     'type': 'soundings'
@@ -702,7 +702,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
                     'label': f"🛡️ {phase['name']}",
-                    'phase_name': phase['name'],
+                    'cell_name': phase['name'],
                     'type': 'wards'
                 },
                 'style': {'backgroundColor': '#e3fafc', 'border': '2px solid #15aabf'}
@@ -797,14 +797,14 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
             # Calculate total height needed
             total_sub_height = 0
             for sc in sub_cascades:
-                sc_phases = sc.get('phases', [])
-                for sp in sc_phases:
+                sc_cells = sc.get('cells', [])
+                for sp in sc_cells:
                     sp_msgs = sp.get('messages', [])
                     total_sub_height += max(100, len(sp_msgs) * y_spacing + 60)
 
-            # Add space for phase messages too
-            phase_msgs_height = len(messages) * y_spacing if messages else 0
-            group_height = max(200, phase_msgs_height + total_sub_height + 120)
+            # Add space for cell messages too
+            cell_msgs_height = len(messages) * y_spacing if messages else 0
+            group_height = max(200, cell_msgs_height + total_sub_height + 120)
 
             group_id = f"{phase_id}_group"
             nodes.append({
@@ -813,7 +813,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
                     'label': phase['name'],
-                    'phase_name': phase['name'],
+                    'cell_name': phase['name'],
                     'message_count': len(messages),
                     'sub_cascade_count': len(sub_cascades),
                     'type': 'sub_cascade'
@@ -875,11 +875,11 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
             # Render each sub-cascade as a nested container
             for sc_idx, sub_cascade in enumerate(sub_cascades):
                 sc_id = f"{phase_id}_subcascade_{sc_idx}"
-                sc_phases = sub_cascade.get('phases', [])
+                sc_cells = sub_cascade.get('cells', [])
 
                 # Calculate sub-cascade height
                 sc_height = 60  # Header
-                for sp in sc_phases:
+                for sp in sc_cells:
                     sp_msgs = sp.get('messages', [])
                     sc_height += max(80, len(sp_msgs) * y_spacing + 50)
 
@@ -1028,7 +1028,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
                     'label': phase['name'],
-                    'phase_name': phase['name'],
+                    'cell_name': phase['name'],
                     'message_count': len(messages),
                     'has_quartermaster': quartermaster is not None,
                     'type': 'simple'

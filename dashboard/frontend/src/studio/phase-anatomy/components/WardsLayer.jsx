@@ -39,15 +39,15 @@ const WardsLayer = ({ type, wards = [], results = [] }) => {
   };
 
   return (
-    <div className={`phase-anatomy-layer phase-anatomy-layer-wards phase-anatomy-layer-wards-${type}`}>
-      <div className="phase-anatomy-layer-header">
-        <div className={`phase-anatomy-layer-icon layer-icon-wards-${type}`}>
+    <div className={`cell-anatomy-layer cell-anatomy-layer-wards cell-anatomy-layer-wards-${type}`}>
+      <div className="cell-anatomy-layer-header">
+        <div className={`cell-anatomy-layer-icon layer-icon-wards-${type}`}>
           <Icon icon={isPre ? "mdi:shield-check" : "mdi:shield-check-outline"} width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">{title}</span>
+        <span className="cell-anatomy-layer-title">{title}</span>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         <div className="layer-wards-list">
           {wards.map((ward, idx) => {
             const wardConfig = typeof ward === 'string' ? { validator: ward, mode: 'blocking' } : ward;

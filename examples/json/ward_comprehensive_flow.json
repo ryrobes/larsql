@@ -5,54 +5,76 @@
     "article_topic": "Topic for the article",
     "target_length": "Target word count"
   },
-  "phases": [{
-    "name": "plan",
-    "instructions": "Create an article outline for: {{ input.article_topic }}\n\nTarget length: {{ input.target_length }} words\n\nProvide a structured outline with main points.",
-    "wards": {
-      "pre": [{
-        "validator": "simple_validator",
-        "mode": "blocking"
-      }],
-      "post": [{
-        "validator": "length_check",
-        "mode": "advisory"
-      }]
+  "cells": [
+    {
+      "name": "plan",
+      "instructions": "Create an article outline for: {{ input.article_topic }}\n\nTarget length: {{ input.target_length }} words\n\nProvide a structured outline with main points.",
+      "wards": {
+        "pre": [
+          {
+            "validator": "simple_validator",
+            "mode": "blocking"
+          }
+        ],
+        "post": [
+          {
+            "validator": "length_check",
+            "mode": "advisory"
+          }
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "write"
+      ]
     },
-    "rules": {
-      "max_turns": 1
+    {
+      "name": "write",
+      "instructions": "Based on your outline, write the full article about {{ input.article_topic }}.\n\nMake it engaging and well-structured. Include the word 'important' naturally in the content.",
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "wards": {
+        "post": [
+          {
+            "validator": "content_safety",
+            "mode": "blocking"
+          },
+          {
+            "validator": "keyword_validator",
+            "mode": "retry",
+            "max_attempts": 3
+          },
+          {
+            "validator": "grammar_check",
+            "mode": "advisory"
+          }
+        ]
+      },
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "retry_instructions": "Ward Validation:\n\n{{ validation_error }}\n\nPlease revise. Attempt {{ attempt }}/{{ max_attempts }}"
+      },
+      "handoffs": [
+        "finalize"
+      ]
     },
-    "handoffs": ["write"]
-  }, {
-    "name": "write",
-    "instructions": "Based on your outline, write the full article about {{ input.article_topic }}.\n\nMake it engaging and well-structured. Include the word 'important' naturally in the content.",
-    "context": {
-      "from": ["previous"]
-    },
-    "wards": {
-      "post": [{
-        "validator": "content_safety",
-        "mode": "blocking"
-      }, {
-        "validator": "keyword_validator",
-        "mode": "retry",
-        "max_attempts": 3
-      }, {
-        "validator": "grammar_check",
-        "mode": "advisory"
-      }]
-    },
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "retry_instructions": "Ward Validation:\n\n{{ validation_error }}\n\nPlease revise. Attempt {{ attempt }}/{{ max_attempts }}"
-    },
-    "handoffs": ["finalize"]
-  }, {
-    "name": "finalize",
-    "instructions": "Article passed all critical wards!\n\nSafety: PASSED (blocking)\nKeyword: PASSED (retry)\nGrammar: Checked (advisory)\n\nProvide a brief summary of the final article.",
-    "context": {
-      "from": ["all"]
-    },
-    "tackle": ["set_state"]
-  }]
+    {
+      "name": "finalize",
+      "instructions": "Article passed all critical wards!\n\nSafety: PASSED (blocking)\nKeyword: PASSED (retry)\nGrammar: Checked (advisory)\n\nProvide a brief summary of the final article.",
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "traits": [
+        "set_state"
+      ]
+    }
+  ]
 }

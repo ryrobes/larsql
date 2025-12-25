@@ -1,16 +1,17 @@
 cascade_id: data_analysis
-phases:
-  - handoffs:
-      - summarize
-    instructions: You are a data ingest assistant. Receive the input data and confirm its structure.
-    name: ingest
-    tackle: []
-  - context:
-      from:
-        - previous
-    handoffs: []
-    instructions: Summarize the ingested data concisely.
-    name: summarize
-    rules:
-      max_turns: 1
-    tackle: []
+cells:
+- handoffs:
+  - summarize
+  instructions: You are a data ingest assistant. Receive the input data and confirm
+    its structure.
+  name: ingest
+  traits: []
+- context:
+    from:
+    - previous
+  handoffs: []
+  instructions: Summarize the ingested data concisely.
+  name: summarize
+  rules:
+    max_turns: 1
+  traits: []

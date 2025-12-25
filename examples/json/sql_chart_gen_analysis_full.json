@@ -5,18 +5,18 @@
     "focus_area": "(Optional) Area of interest to focus the analysis on, e.g. 'geographic trends', 'time patterns', 'outliers'"
   },
   "memory": "sql_rag_search",
-  "phases": [
+  "cells": [
     {
       "name": "discover_question",
       "instructions": "Your goal is to explore the available data and come up with an INTERESTING analytical question to investigate.\n\n{% if input.focus_area %}Focus area hint: {{ input.focus_area }}{% endif %}\n\n**Step 1: Discover what data is available**\nUse `list_sql_connections` to see available data sources.\nUse `sql_search` with broad terms to discover tables (e.g., 'sales', 'users', 'events', or just browse what's there).\n\n**Step 2: Sample the data (DO NOT read everything!)**\nOnce you find interesting tables, use `sql_query` to get SMALL SAMPLES:\n- `SELECT * FROM connection.table LIMIT 5` to see structure\n- `SELECT COUNT(*) FROM connection.table` for size\n- `SELECT DISTINCT column FROM connection.table LIMIT 20` to see categorical values\n- `SELECT column, COUNT(*) FROM connection.table GROUP BY column LIMIT 10` for distributions\n\n**Step 3: Formulate an interesting question**\nBased on what you discovered, come up with a question that:\n- Is answerable with the data available\n- Would produce an interesting visualization\n- Reveals patterns, trends, comparisons, or anomalies\n- Is specific enough to be actionable\n\nGood questions often involve:\n- Comparisons (\"Which X has the highest Y?\")\n- Trends over time (\"How has X changed over time?\")\n- Distributions (\"What is the distribution of X across Y?\")\n- Correlations (\"Is there a relationship between X and Y?\")\n- Outliers (\"What are the unusual cases of X?\")\n\n**IMPORTANT**: Use `set_state` to save your chosen question:\n```\nset_state(key=\"question\", value=\"Your specific analytical question here\")\n```\n\nEnd your response by clearly stating the question you've chosen to investigate.",
-      "tackle": [
+      "traits": [
         "sql_search",
         "list_sql_connections",
         "sql_rag_search",
         "sql_query",
         "set_state"
       ],
-      "soundings": {
+      "candidates": {
         "factor": 7,
         "evaluator_instructions": "Evaluate question discovery attempts based on:\n\n1. **Question Quality** (40%): Is the question interesting, specific, and likely to produce insightful analysis?\n2. **Data Fit** (30%): Is the question well-suited to the available data? Can it actually be answered?\n3. **Visualization Potential** (20%): Would answering this question produce a compelling chart?\n4. **Exploration Quality** (10%): Did they efficiently sample the data without over-reading?\n\nSelect the attempt that:\n- Formulated the MOST interesting and insightful question\n- Demonstrated efficient data exploration (sampling, not bulk reading)\n- Chose a question that's specific enough to be actionable\n- Successfully saved the question to state\n\nPrefer questions about trends, comparisons, distributions, or anomalies over simple counts or lists.",
         "models": [
@@ -47,12 +47,12 @@
           "previous"
         ]
       },
-      "tackle": [
+      "traits": [
         "sql_search",
         "list_sql_connections",
         "sql_rag_search"
       ],
-      "soundings": {
+      "candidates": {
         "factor": 7,
         "evaluator_instructions": "Evaluate schema discovery attempts based on:\n\n1. **Relevance** (40%): Did they find tables that directly answer the user's question?\n2. **Thoroughness** (30%): Did they examine multiple relevant tables and understand the schema structure?\n3. **Data Understanding** (20%): Do they demonstrate understanding of column types, value distributions, and data quality?\n4. **Actionability** (10%): Did they provide clear next steps for query writing, including specific column names and table references?\n\nSelect the attempt that:\n- Found the MOST relevant table(s) for the question\n- Demonstrated deepest understanding of the data structure\n- Provided most useful information for the next phase (query writing)\n- Avoided irrelevant tables while being thorough\n\nPrefer attempts that balance breadth (checking multiple options) with depth (understanding what's useful).",
         "models": [
@@ -80,11 +80,11 @@
           "previous"
         ]
       },
-      "tackle": [
+      "traits": [
         "sql_query",
         "sql_rag_search"
       ],
-      "soundings": {
+      "candidates": {
         "factor": 7,
         "evaluator_instructions": "Evaluate SQL query attempts based on:\n\n1. **Correctness** (40%): Does the query execute without errors and return results?\n2. **Accuracy** (30%): Do the results actually answer the user's question?\n3. **Efficiency** (15%): Is the query optimized (proper filters, aggregations, no unnecessary data)?\n4. **Completeness** (15%): Does it return all relevant data needed to answer the question?\n\nSelect the attempt that:\n- Executed successfully (queries with errors are automatic losers)\n- Returns the MOST relevant data for the user's question\n- Uses proper SQL syntax for the connection type\n- Applies appropriate filters, aggregations, or joins\n- Returns a reasonable amount of data (not too little, not too much)\n\nCRITICAL: Syntax errors or failed queries should be heavily penalized. A working query that's slightly less optimal is better than a perfect-looking query that fails.\n\nPrefer queries that demonstrate understanding of the schema and make smart decisions about what columns/rows to include.",
         "models": [
@@ -112,8 +112,8 @@
           "previous"
         ]
       },
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 7,
         "evaluator_instructions": "Evaluate data analysis attempts based on:\n\n1. **Accuracy** (35%): Does the analysis correctly interpret the query results?\n2. **Insight Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n3. **Specificity** (20%): Does it reference actual numbers, percentages, or concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear, well-structured, and directly addresses the user's question?\n\nSelect the attempt that:\n- Provides the MOST insightful interpretation of the data\n- Directly and clearly answers the user's original question\n- Supports claims with specific numbers/evidence from the results\n- Identifies interesting patterns beyond just the obvious\n- Avoids vague or generic statements\n- Demonstrates quantitative thinking (percentages, comparisons, trends)\n\nPrefer analyses that go beyond surface-level observations and provide actionable insights. An analysis that says \"Sales increased by 47% in Q3, primarily driven by the Northeast region (23% growth)\" is better than \"Sales went up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n- Are too vague or generic\n- Miss obvious patterns in the results\n- Don't directly answer the user's question.\n\n IMPORTANT: Include the SQL query and a small sample of the data in your response - enough context so a chart could be constructed from the data.",
         "models": [
@@ -141,12 +141,12 @@
           "previous"
         ]
       },
-      "tackle": [
+      "traits": [
         "sql_query",
         "create_vega_lite",
         "create_plotly"
       ],
-      "soundings": {
+      "candidates": {
         "factor": 7,
         "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable. Must have a successfully generated chart images to be valid.",
         "models": [
@@ -185,7 +185,7 @@
           "all"
         ]
       },
-      "tackle": [
+      "traits": [
         "say"
       ],
       "rules": {

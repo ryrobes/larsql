@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { derivePhaseState } from '../utils/derivePhaseState';
+import { deriveCellState } from '../utils/deriveCellState';
 
 /**
  * useTimelinePolling - Poll session execution logs for Timeline builder
  *
  * Reuses the generic /api/playground/session-stream endpoint to fetch
- * all execution data. Derives phase states from accumulated logs.
+ * all execution data. Derives cell states from accumulated logs.
  *
  * Replaces fragmented SSE with simple polling:
  * - Single source of truth (DB)
  * - No missed events
- * - Complete execution data (soundings, reforge, wards, tools)
+ * - Complete execution data (candidates, reforge, wards, tools)
  * - Self-healing (refresh works mid-execution)
  *
  * Polls every 750ms while running, stops 10s after completion.
@@ -25,7 +25,7 @@ const COST_BACKFILL_LOOKBACK_MS = 30000; // Look back 30s for cost updates
  *
  * @param {string} sessionId - Session to poll
  * @param {boolean} isRunning - Whether execution is active
- * @returns {Object} { phaseLogs, phaseStates, isPolling, error }
+ * @returns {Object} { logs, cellStates, isPolling, error }
  */
 export function useTimelinePolling(sessionId, isRunning) {
   const [logs, setLogs] = useState([]);
@@ -237,15 +237,15 @@ export function useTimelinePolling(sessionId, isRunning) {
     }
   }, [sessionComplete, poll]);
 
-  // Derive phase states from logs (memoized to prevent infinite loops)
-  const phaseStates = React.useMemo(() => {
+  // Derive cell states from logs (memoized to prevent infinite loops)
+  const cellStates = React.useMemo(() => {
     const states = {};
     if (logs.length > 0) {
-      // Get unique phase names
-      const phaseNames = [...new Set(logs.map(r => r.phase_name).filter(Boolean))];
+      // Get unique cell names
+      const cellNames = [...new Set(logs.map(r => r.cell_name).filter(Boolean))];
 
-      for (const phaseName of phaseNames) {
-        states[phaseName] = derivePhaseState(logs, phaseName);
+      for (const cellName of cellNames) {
+        states[cellName] = deriveCellState(logs, cellName);
       }
     }
     return states;
@@ -253,7 +253,7 @@ export function useTimelinePolling(sessionId, isRunning) {
 
   return {
     logs,              // Raw log rows (for debugging)
-    phaseStates,       // Derived state by phase name (memoized!)
+    cellStates,        // Derived state by cell name (memoized!)
     isPolling,         // Currently polling
     sessionComplete,   // Session finished (from logs or session_state)
     sessionStatus,     // Authoritative status: 'running', 'completed', 'error', 'cancelled', 'orphaned'

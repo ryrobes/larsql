@@ -1,19 +1,23 @@
 {
   "cascade_id": "side_effect_parent",
-  "phases": [
+  "cells": [
     {
       "name": "main_task",
       "instructions": "I am doing important work. Count to 3. A background task is spawned to validate data.",
-      "tackle": [],
+      "traits": [],
       "async_cascades": [
         {
           "ref": "windlass/examples/validator.json",
           "trigger": "on_start",
-          "input_map": {"text": "SIDE EFFECT VALIDATION"},
+          "input_map": {
+            "text": "SIDE EFFECT VALIDATION"
+          },
           "context_in": false
         }
       ],
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

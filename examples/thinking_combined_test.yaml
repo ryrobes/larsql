@@ -1,35 +1,32 @@
-# Thinking Combined Configuration Test
-# Tests different thinking configurations
-# Note: OpenRouter only allows effort OR max_tokens, not both
-
 cascade_id: thinking_combined_test
 description: Tests different thinking mode configurations
-
 inputs_schema:
   riddle: A riddle to solve
+cells:
+- name: solve_with_budget
+  model: anthropic/claude-sonnet-4::6000
+  instructions: 'Solve this riddle with careful reasoning:
 
-phases:
-  - name: solve_with_budget
-    # Just token budget (max_tokens)
-    model: "anthropic/claude-sonnet-4::6000"
-    instructions: |
-      Solve this riddle with careful reasoning:
 
-      {{ input.riddle }}
+    {{ input.riddle }}
 
-      Take your time to think through all possibilities.
-    tackle: []
 
-  - name: solve_with_effort
-    # Just effort level
-    model: "anthropic/claude-sonnet-4::high"
-    instructions: |
-      Provide an alternative interpretation of the riddle:
+    Take your time to think through all possibilities.
 
-      {{ input.riddle }}
+    '
+  traits: []
+- name: solve_with_effort
+  model: anthropic/claude-sonnet-4::high
+  instructions: 'Provide an alternative interpretation of the riddle:
 
-      Think deeply about other possible answers.
-    tackle: []
-    context:
-      from:
-        - solve_with_budget
+
+    {{ input.riddle }}
+
+
+    Think deeply about other possible answers.
+
+    '
+  traits: []
+  context:
+    from:
+    - solve_with_budget

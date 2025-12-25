@@ -16,24 +16,17 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path before other windlass imports
+# Add rvbbit to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
-
-# Add windlass to path for imports
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 # SQL Query imports
 try:
-    from windlass.config import get_config
-    from windlass.sql_tools.config import load_sql_connections, load_discovery_metadata
+    from rvbbit.config import get_config
+    from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
     print(f"Warning: Could not import windlass SQL modules: {e}")
     load_sql_connections = None
@@ -42,11 +35,11 @@ except ImportError as e:
 
 # Notebook imports
 try:
-    from windlass import run_cascade
-    from windlass.eddies.data_tools import sql_data, python_data, js_data, clojure_data, windlass_data
-    from windlass.sql_tools.session_db import get_session_db, cleanup_session_db
-    from windlass.agent import Agent
-    from windlass.unified_logs import log_unified
+    from rvbbit import run_cascade
+    from rvbbit.traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
+    from rvbbit.sql_tools.session_db import get_session_db, cleanup_session_db
+    from rvbbit.agent import Agent
+    from rvbbit.unified_logs import log_unified
 except ImportError as e:
     print(f"Warning: Could not import windlass notebook modules: {e}")
     run_cascade = None
@@ -54,7 +47,7 @@ except ImportError as e:
     python_data = None
     js_data = None
     clojure_data = None
-    windlass_data = None
+    rvbbit_data = None
     Agent = None
     log_unified = None
 
@@ -62,12 +55,12 @@ studio_bp = Blueprint('studio', __name__, url_prefix='/api/studio')
 
 # Configuration
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
-DATA_DIR = os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data")))
+RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
+DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
-TACKLE_DIR = os.path.join(WINDLASS_ROOT, "tackle")
-CASCADES_DIR = os.path.join(WINDLASS_ROOT, "cascades")
-EXAMPLES_DIR = os.path.join(WINDLASS_ROOT, "examples")
+TACKLE_DIR = os.path.join(RVBBIT_ROOT, "tackle")
+CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
+EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "examples")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -163,7 +156,7 @@ def list_connections():
 
         # Get samples directory for table counts
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else WINDLASS_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
 
         result = []
         for name, config in connections.items():
@@ -245,7 +238,7 @@ def get_schema(connection):
 
         # Get samples directory
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else WINDLASS_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
         conn_samples_dir = os.path.join(samples_dir, connection)
 
         if not os.path.exists(conn_samples_dir):
@@ -605,7 +598,7 @@ def execute_sql_query():
     try:
         # Import run_sql tool
         try:
-            from windlass.sql_tools.tools import run_sql
+            from rvbbit.sql_tools.tools import run_sql
         except ImportError:
             return jsonify({"error": "SQL tools not available"}), 500
 
@@ -666,7 +659,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
-Available: `data.phase_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+Available: `data.cell_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
 
 Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -680,7 +673,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (array of objects, object, or scalar).
-Available: `data.phase_name` for prior phase outputs (arrays of objects), `state`, `input`.
+Available: `data.cell_name` for prior phase outputs (arrays of objects), `state`, `input`.
 
 Return ONLY the corrected JavaScript code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -707,7 +700,7 @@ def attempt_auto_fix(
     error_message: str,
     auto_fix_config: dict,
     session_id: str,
-    phase_name: str,
+    cell_name: str,
     prior_outputs: dict = None,
     inputs: dict = None
 ) -> dict:
@@ -772,7 +765,7 @@ def attempt_auto_fix(
                 result = sql_data(
                     query=fixed_code,
                     materialize=True,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'python_data':
@@ -781,7 +774,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'js_data':
@@ -790,7 +783,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'clojure_data':
@@ -799,7 +792,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
 
@@ -817,7 +810,7 @@ def attempt_auto_fix(
                     node_type="auto_fix_success",
                     role="system",
                     cascade_id="notebook",
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     content=f"Auto-fix succeeded on attempt {attempt + 1}",
                     metadata={
                         'attempt': attempt + 1,
@@ -842,7 +835,7 @@ def attempt_auto_fix(
                     node_type="auto_fix_failed",
                     role="system",
                     cascade_id="notebook",
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     content=f"Auto-fix attempt {attempt + 1} failed: {last_error}",
                     metadata={
                         'attempt': attempt + 1,
@@ -855,14 +848,14 @@ def attempt_auto_fix(
 
 
 def is_data_cascade(cascade_dict):
-    """Check if a cascade is a data cascade (all deterministic phases)."""
-    phases = cascade_dict.get('phases', [])
-    if not phases:
+    """Check if a cascade is a data cascade (all deterministic cells)."""
+    cells = cascade_dict.get('cells', [])
+    if not cells:
         return False
 
-    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'windlass_data', 'set_state'}
-    for phase in phases:
-        tool = phase.get('tool')
+    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'rvbbit_data', 'set_state'}
+    for cell in cells:
+        tool = cell.get('tool')
         if not tool:
             return False
         if tool not in data_tools:
@@ -912,7 +905,7 @@ def scan_directory_for_notebooks(directory, base_path=""):
                     'path': rel_path,
                     'full_path': item_path,
                     'inputs_schema': cascade.get('inputs_schema', {}),
-                    'phase_count': len(cascade.get('phases', []))
+                    'cell_count': len(cascade.get('cells', []))
                 })
         elif os.path.isdir(item_path):
             sub_base = os.path.join(base_path, item) if base_path else item
@@ -972,7 +965,7 @@ def load_notebook():
         if not path:
             return jsonify({'error': 'Path is required'}), 400
 
-        full_path = os.path.join(WINDLASS_ROOT, path)
+        full_path = os.path.join(RVBBIT_ROOT, path)
 
         if not os.path.exists(full_path):
             return jsonify({'error': f'Notebook not found: {path}'}), 404
@@ -1025,7 +1018,7 @@ def save_notebook():
         if not notebook and not raw_yaml:
             return jsonify({'error': 'Notebook content or raw_yaml is required'}), 400
 
-        full_path = os.path.join(WINDLASS_ROOT, path)
+        full_path = os.path.join(RVBBIT_ROOT, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         with open(full_path, 'w') as f:
@@ -1079,12 +1072,12 @@ def run_notebook():
 
             phases = {}
             for entry in result.get('lineage', []):
-                phase_name = entry.get('phase')
+                cell_name = entry.get('phase')
                 output = entry.get('output')
                 duration = entry.get('duration_ms')
 
                 if isinstance(output, dict):
-                    phases[phase_name] = {
+                    phases[cell_name] = {
                         'result': sanitize_for_json(output),
                         'duration_ms': duration,
                         'error': output.get('error') if output.get('_route') == 'error' else None
@@ -1132,7 +1125,7 @@ def run_cell():
         # Generate woodland session ID if not provided
         if not data.get('session_id'):
             try:
-                from windlass.session_naming import auto_generate_session_id
+                from rvbbit.session_naming import auto_generate_session_id
                 session_id = auto_generate_session_id()
             except ImportError:
                 session_id = f"cell_{uuid.uuid4().hex[:8]}"  # Fallback
@@ -1148,7 +1141,7 @@ def run_cell():
 
         tool = cell.get('tool')
         cell_inputs = cell.get('inputs', {})
-        phase_name = cell.get('name', 'cell')
+        cell_name = cell.get('name', 'cell')
 
         # Render Jinja2 templates in cell inputs
         from jinja2 import Template
@@ -1189,7 +1182,7 @@ def run_cell():
                 rendered_cell = {**cell, 'instructions': rendered_instructions}
 
                 mini_cascade = {
-                    'cascade_id': f'notebook_{phase_name}',
+                    'cascade_id': f'notebook_{cell_name}',
                     'description': 'Notebook LLM phase',
                     'phases': [rendered_cell]
                 }
@@ -1218,7 +1211,7 @@ def run_cell():
                     connection=rendered_inputs.get('connection'),
                     limit=rendered_inputs.get('limit', 10000),
                     materialize=True,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'python_data':
@@ -1227,7 +1220,7 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'js_data':
@@ -1236,7 +1229,7 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'clojure_data':
@@ -1245,16 +1238,16 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
-            elif tool == 'windlass_data':
-                result = windlass_data(
+            elif tool == 'rvbbit_data':
+                result = rvbbit_data(
                     phase_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             else:
@@ -1268,7 +1261,7 @@ def run_cell():
             result = None
 
         # If execution failed and auto-fix is enabled, try to fix
-        if execution_error and auto_fix_config.get('enabled', False) and tool != 'windlass_data':
+        if execution_error and auto_fix_config.get('enabled', False) and tool != 'rvbbit_data':
             try:
                 result = attempt_auto_fix(
                     tool=tool,
@@ -1276,7 +1269,7 @@ def run_cell():
                     error_message=str(execution_error),
                     auto_fix_config=auto_fix_config,
                     session_id=session_id,
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     prior_outputs=prior_outputs,
                     inputs=inputs
                 )
@@ -1341,15 +1334,15 @@ def get_session_state(session_id):
         session_id: Session ID to fetch state for
 
     Returns:
-        List of state entries with key, value, phase_name, timestamp
+        List of state entries with key, value, cell_name, timestamp
     """
     try:
-        from windlass.db_adapter import get_db
+        from rvbbit.db_adapter import get_db
 
         db = get_db()
 
         query = f"""
-            SELECT key, value, value_type, phase_name, created_at
+            SELECT key, value, value_type, cell_name, created_at
             FROM cascade_state
             WHERE session_id = '{session_id}'
             ORDER BY created_at DESC
@@ -1364,7 +1357,7 @@ def get_session_state(session_id):
                 'key': row['key'],
                 'value_raw': row['value'],
                 'value_type': row['value_type'],
-                'phase_name': row['phase_name'],
+                'cell_name': row['cell_name'],
                 'created_at': str(row['created_at']) if row['created_at'] else None
             }
 
@@ -1402,8 +1395,8 @@ def get_session_state(session_id):
         }), 500
 
 
-@studio_bp.route('/phase-messages/<session_id>/<phase_name>', methods=['GET'])
-def get_phase_messages(session_id, phase_name):
+@studio_bp.route('/phase-messages/<session_id>/<cell_name>', methods=['GET'])
+def get_phase_messages(session_id, cell_name):
     """
     Get all messages/tool calls for a specific phase in a session.
 
@@ -1412,13 +1405,13 @@ def get_phase_messages(session_id, phase_name):
 
     Args:
         session_id: Session ID
-        phase_name: Phase name
+        cell_name: Phase name
 
     Returns:
         List of messages with role, content, tool_calls, timestamps
     """
     try:
-        from windlass.db_adapter import get_db
+        from rvbbit.db_adapter import get_db
 
         db = get_db()
 
@@ -1440,7 +1433,7 @@ def get_phase_messages(session_id, phase_name):
                 has_images
             FROM unified_logs
             WHERE session_id = '{session_id}'
-              AND phase_name = '{phase_name}'
+              AND cell_name = '{cell_name}'
               AND role IN ('user', 'assistant', 'tool', 'system')
             ORDER BY timestamp_iso
         """
@@ -1490,7 +1483,7 @@ def get_phase_messages(session_id, phase_name):
 
         return jsonify({
             'session_id': session_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'messages': messages,
             'total': len(messages)
         })
@@ -1518,7 +1511,7 @@ def get_session_cascade(session_id):
         Cascade definition and inputs from when the session ran
     """
     try:
-        from windlass.db_adapter import get_db
+        from rvbbit.db_adapter import get_db
 
         db = get_db()
 
@@ -1566,10 +1559,10 @@ def get_session_cascade(session_id):
 
         # Fallback: Reconstruct from logs (old sessions before migration)
         query_fallback = f"""
-            SELECT DISTINCT cascade_id, phase_name
+            SELECT DISTINCT cascade_id, cell_name
             FROM unified_logs
             WHERE session_id = '{session_id}'
-            AND phase_name IS NOT NULL
+            AND cell_name IS NOT NULL
             ORDER BY timestamp ASC
         """
 
@@ -1579,11 +1572,11 @@ def get_session_cascade(session_id):
             return jsonify({'error': f'No data found for session {session_id}'}), 404
 
         cascade_id = rows_fallback[0]['cascade_id'] if rows_fallback else 'unknown'
-        phase_names = [row['phase_name'] for row in rows_fallback if row.get('phase_name')]
+        cell_names = [row['cell_name'] for row in rows_fallback if row.get('cell_name')]
 
         # Build a minimal cascade structure
         phases = []
-        for name in phase_names:
+        for name in cell_names:
             phases.append({
                 'name': name,
                 'tool': 'unknown',  # We don't know the tool type from logs
@@ -1737,7 +1730,7 @@ def _fetch_ollama_models_from_db():
     """
     try:
         # Use ClickHouse connection from windlass (not DuckDB)
-        from windlass.db_adapter import get_db
+        from rvbbit.db_adapter import get_db
 
         db = get_db()
         if not db:
@@ -1819,7 +1812,7 @@ def get_tools():
         }
     """
     try:
-        from windlass.db_adapter import get_db
+        from rvbbit.db_adapter import get_db
         db = get_db()
 
         # Fetch all tools from database

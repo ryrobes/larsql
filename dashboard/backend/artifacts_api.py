@@ -29,16 +29,16 @@ def sanitize_for_json(obj):
         return [sanitize_for_json(item) for item in obj]
     return obj
 
-# Add parent directory to path to import windlass
+# Add parent directory to path to import rvbbit
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 try:
-    from windlass.config import get_config
-    from windlass.db_adapter import get_db
+    from rvbbit.config import get_config
+    from rvbbit.db_adapter import get_db
 except ImportError as e:
     print(f"Warning: Could not import windlass modules: {e}")
     get_config = None
@@ -92,7 +92,7 @@ def list_artifacts_endpoint():
                     id,
                     session_id,
                     cascade_id,
-                    phase_name,
+                    cell_name,
                     title,
                     artifact_type,
                     description,
@@ -117,7 +117,7 @@ def list_artifacts_endpoint():
                     id,
                     session_id,
                     cascade_id,
-                    phase_name,
+                    cell_name,
                     title,
                     artifact_type,
                     description,
@@ -140,7 +140,7 @@ def list_artifacts_endpoint():
                 "id": row['id'],
                 "session_id": row['session_id'],
                 "cascade_id": row['cascade_id'],
-                "phase_name": row['phase_name'],
+                "cell_name": row['cell_name'],
                 "title": row['title'],
                 "artifact_type": row['artifact_type'],
                 "description": row['description'],
@@ -214,7 +214,7 @@ def get_artifact_endpoint(artifact_id):
             "id": row['id'],
             "session_id": row['session_id'],
             "cascade_id": row['cascade_id'],
-            "phase_name": row['phase_name'],
+            "cell_name": row['cell_name'],
             "title": row['title'],
             "artifact_type": row['artifact_type'],
             "description": row['description'],
@@ -256,7 +256,7 @@ def list_artifacts_by_session(session_id):
             query = f"""
                 SELECT
                     id, title, artifact_type, description, tags,
-                    phase_name, created_at, length(html_content) as html_size
+                    cell_name, created_at, length(html_content) as html_size
                 FROM artifacts
                 WHERE session_id = '{session_id}'
                 ORDER BY created_at ASC
@@ -269,7 +269,7 @@ def list_artifacts_by_session(session_id):
             query = f"""
                 SELECT
                     id, title, artifact_type, description, tags,
-                    phase_name, created_at, length(html_content) as html_size
+                    cell_name, created_at, length(html_content) as html_size
                 FROM file('{artifacts_file}', Parquet)
                 WHERE session_id = '{session_id}'
                 ORDER BY created_at ASC
@@ -285,7 +285,7 @@ def list_artifacts_by_session(session_id):
                 "artifact_type": row['artifact_type'],
                 "description": row['description'],
                 "tags": json.loads(row['tags']) if row['tags'] else [],
-                "phase_name": row['phase_name'],
+                "cell_name": row['cell_name'],
                 "created_at": row['created_at'],
                 "html_size": row.get('html_size', 0)
             })
@@ -328,7 +328,7 @@ def list_artifacts_by_cascade(cascade_id):
             query = f"""
                 SELECT
                     id, session_id, title, artifact_type, description, tags,
-                    phase_name, created_at, length(html_content) as html_size
+                    cell_name, created_at, length(html_content) as html_size
                 FROM artifacts
                 WHERE cascade_id = '{cascade_id}'
                 ORDER BY created_at DESC
@@ -342,7 +342,7 @@ def list_artifacts_by_cascade(cascade_id):
             query = f"""
                 SELECT
                     id, session_id, title, artifact_type, description, tags,
-                    phase_name, created_at, length(html_content) as html_size
+                    cell_name, created_at, length(html_content) as html_size
                 FROM file('{artifacts_file}', Parquet)
                 WHERE cascade_id = '{cascade_id}'
                 ORDER BY created_at DESC
@@ -360,7 +360,7 @@ def list_artifacts_by_cascade(cascade_id):
                 "artifact_type": row['artifact_type'],
                 "description": row['description'],
                 "tags": json.loads(row['tags']) if row['tags'] else [],
-                "phase_name": row['phase_name'],
+                "cell_name": row['cell_name'],
                 "created_at": row['created_at'],
                 "html_size": row.get('html_size', 0)
             })
@@ -388,7 +388,7 @@ def create_artifact_endpoint():
     {
         "session_id": "session_123",
         "cascade_id": "my_cascade",
-        "phase_name": "decision_phase",
+        "cell_name": "decision_phase",
         "title": "Market Analysis Decision",
         "artifact_type": "decision",
         "description": "User decision on market strategy",
@@ -423,7 +423,7 @@ def create_artifact_endpoint():
         # Optional fields with defaults
         session_id = body.get('session_id', 'unknown')
         cascade_id = body.get('cascade_id', 'unknown')
-        phase_name = body.get('phase_name', 'unknown')
+        cell_name = body.get('cell_name', 'unknown')
         artifact_type = body.get('artifact_type', 'decision')
         description = body.get('description', '')
         tags = body.get('tags', [])
@@ -436,7 +436,7 @@ def create_artifact_endpoint():
             "id": artifact_id,
             "session_id": session_id,
             "cascade_id": cascade_id,
-            "phase_name": phase_name,
+            "cell_name": cell_name,
             "title": title,
             "artifact_type": artifact_type,
             "description": description,
@@ -534,7 +534,7 @@ def export_artifacts_html():
             if cfg.use_clickhouse_server:
                 query = f"""
                     SELECT id, title, description, artifact_type, cascade_id,
-                           phase_name, html_content, created_at
+                           cell_name, html_content, created_at
                     FROM artifacts
                     WHERE id = '{artifact_id}'
                     LIMIT 1
@@ -545,7 +545,7 @@ def export_artifacts_html():
                     continue
                 query = f"""
                     SELECT id, title, description, artifact_type, cascade_id,
-                           phase_name, html_content, created_at
+                           cell_name, html_content, created_at
                     FROM file('{artifacts_file}', Parquet)
                     WHERE id = '{artifact_id}'
                     LIMIT 1
@@ -636,7 +636,7 @@ def _generate_index_html(artifacts):
             title = art.get('title', artifact_id)
             description = (art.get('description', '') or '')[:150]
             artifact_type = art.get('artifact_type', 'custom')
-            phase_name = art.get('phase_name', '')
+            cell_name = art.get('cell_name', '')
             created_at = str(art.get('created_at', ''))[:10]
 
             type_colors = {
@@ -661,7 +661,7 @@ def _generate_index_html(artifacts):
                     <h3 class="artifact-title">{title}</h3>
                     <p class="artifact-description">{description}</p>
                     <div class="artifact-meta">
-                        <span class="phase-name">{phase_name}</span>
+                        <span class="phase-name">{cell_name}</span>
                     </div>
                 </a>
             '''
@@ -678,7 +678,7 @@ def _generate_index_html(artifacts):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Windlass Artifacts Export</title>
+    <title>RVBBIT Artifacts Export</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -842,7 +842,7 @@ def _generate_index_html(artifacts):
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,19H5V5H19V19M17,17H7V7H17V17Z"/>
                 </svg>
-                Windlass Artifacts
+                RVBBIT Artifacts
             </h1>
             <p class="export-meta">
                 Exported {len(artifacts)} artifacts • {timestamp}
@@ -852,9 +852,9 @@ def _generate_index_html(artifacts):
         {cards_html}
 
         <footer>
-            <p>Generated by <a href="https://github.com/windlass" target="_blank">Windlass</a></p>
+            <p>Generated by <a href="https://github.com/windlass" target="_blank">RVBBIT</a></p>
             <p style="margin-top: 0.5rem; font-size: 0.8rem;">
-                Note: Interactive SQL queries require a running Windlass backend
+                Note: Interactive SQL queries require a running RVBBIT backend
             </p>
         </footer>
     </div>
@@ -1131,7 +1131,7 @@ def export_artifacts_pdf():
 
         # Import screenshot service for PDF rendering
         try:
-            from windlass.screenshot_service import get_screenshot_service
+            from rvbbit.screenshot_service import get_screenshot_service
         except ImportError:
             return jsonify({"error": "Screenshot service not available"}), 500
 
@@ -1211,7 +1211,7 @@ def execute_sql_query():
     try:
         # Import run_sql tool
         try:
-            from windlass.sql_tools.tools import run_sql
+            from rvbbit.sql_tools.tools import run_sql
         except ImportError:
             return jsonify({"error": "SQL tools not available"}), 500
 

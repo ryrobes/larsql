@@ -153,9 +153,9 @@ const ResultRenderer = ({ result, error, images }) => {
       : JSON.stringify(error, null, 2);
 
     return (
-      <div className="phase-detail-error">
-        <span className="phase-detail-error-label">Error:</span>
-        <pre className="phase-detail-error-message">{errorText}</pre>
+      <div className="cell-detail-error">
+        <span className="cell-detail-error-label">Error:</span>
+        <pre className="cell-detail-error-message">{errorText}</pre>
       </div>
     );
   }
@@ -163,7 +163,7 @@ const ResultRenderer = ({ result, error, images }) => {
   // Images from metadata_json (check FIRST before other types)
   if (images && images.length > 0) {
     return (
-      <div className="phase-detail-images">
+      <div className="cell-detail-images">
         {images.map((imagePath, idx) => {
           // imagePath is like: "/api/images/shy-pika-4e58df/riverflow_v2_max_preview/image_0.png"
           const imageUrl = imagePath.startsWith('http')
@@ -171,7 +171,7 @@ const ResultRenderer = ({ result, error, images }) => {
             : `http://localhost:5001${imagePath}`;
 
           return (
-            <div key={idx} className="phase-detail-image">
+            <div key={idx} className="cell-detail-image">
               <img
                 src={imageUrl}
                 alt={`Output image ${idx + 1}`}
@@ -205,7 +205,7 @@ const ResultRenderer = ({ result, error, images }) => {
   // DataFrame result (SQL/Python tables) - CHECK FIRST before string check
   if (result?.rows && result?.columns) {
     return (
-      <div className="phase-detail-grid">
+      <div className="cell-detail-grid">
         <AgGridReact
           rowData={gridRowData}
           columnDefs={gridColumnDefs}
@@ -228,7 +228,7 @@ const ResultRenderer = ({ result, error, images }) => {
 
     if (isAnsiContent) {
       return (
-        <div className="phase-detail-ansi">
+        <div className="cell-detail-ansi">
           <AnsiRenderer>{result}</AnsiRenderer>
         </div>
       );
@@ -239,7 +239,7 @@ const ResultRenderer = ({ result, error, images }) => {
 
     if (isMarkdownContent) {
       return (
-        <div className="phase-detail-markdown">
+        <div className="cell-detail-markdown">
           <RichMarkdown>{result}</RichMarkdown>
         </div>
       );
@@ -247,7 +247,7 @@ const ResultRenderer = ({ result, error, images }) => {
 
     // Fallback: Plain text - show in editor
     return (
-      <div className="phase-detail-text">
+      <div className="cell-detail-text">
         <Editor
           height="100%"
           language="markdown"
@@ -272,14 +272,14 @@ const ResultRenderer = ({ result, error, images }) => {
   // Image result (matplotlib, PIL)
   if (result?.type === 'image' && (result?.api_url || result?.base64)) {
     return (
-      <div className="phase-detail-image">
+      <div className="cell-detail-image">
         <img
           src={result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`}
           alt={result.content || "Phase output"}
           style={{ maxWidth: '100%', height: 'auto' }}
         />
         {result.width && result.height && (
-          <div className="phase-detail-image-info">
+          <div className="cell-detail-image-info">
             {result.width} × {result.height}
           </div>
         )}
@@ -290,7 +290,7 @@ const ResultRenderer = ({ result, error, images }) => {
   // Plotly chart result
   if (result?.type === 'plotly' && result?.data) {
     return (
-      <div className="phase-detail-plotly">
+      <div className="cell-detail-plotly">
         <Plot
           data={JSON.parse(JSON.stringify(result.data))}
           layout={{
@@ -320,14 +320,14 @@ const ResultRenderer = ({ result, error, images }) => {
 
     if (isMarkdownContent) {
       return (
-        <div className="phase-detail-markdown">
+        <div className="cell-detail-markdown">
           <RichMarkdown>{outputString}</RichMarkdown>
         </div>
       );
     }
 
     return (
-      <div className="phase-detail-text">
+      <div className="cell-detail-text">
         <Editor
           height="100%"
           language="markdown"
@@ -352,7 +352,7 @@ const ResultRenderer = ({ result, error, images }) => {
   // Generic JSON result (fallback)
   if (result?.result !== undefined) {
     return (
-      <div className="phase-detail-json">
+      <div className="cell-detail-json">
         <Editor
           height="100%"
           language="json"

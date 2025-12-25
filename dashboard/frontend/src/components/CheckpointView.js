@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import DynamicUI from './DynamicUI';
-import SoundingComparison from './SoundingComparison';
+import SoundingComparison from './CandidateComparison';
 import './CheckpointView.css';
 
 /**
@@ -191,7 +191,7 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
         <div className="checkpoint-breadcrumb">
           <span className="cascade-name">{checkpoint?.cascade_id}</span>
           <span className="separator">→</span>
-          <span className="phase-name">{checkpoint?.phase_name}</span>
+          <span className="phase-name">{checkpoint?.cell_name}</span>
         </div>
         <div className="checkpoint-type-badge">
           {isSoundingEval ? (

@@ -1,66 +1,48 @@
 cascade_id: htmx_wizard_demo
-description: |
-  Demonstrates a multi-step wizard using HTMX for progressive disclosure.
+description: 'Demonstrates a multi-step wizard using HTMX for progressive disclosure.
+
   Shows how LLMs can create complex, stateful UIs for data collection.
 
+  '
 inputs_schema:
-  workflow_type: "What kind of workflow to configure"
+  workflow_type: What kind of workflow to configure
+cells:
+- name: wizard_flow
+  traits:
+  - request_decision
+  - route_to
+  handoffs:
+  - process_config
+  rules:
+    max_turns: 10
+  instructions: "Create a 3-step configuration wizard for: {{ input.workflow_type\
+    \ }}\n\nUse request_decision with HTMX to build:\n\nStep 1: Basic Settings (name,\
+    \ description)\nStep 2: Advanced Options (2-3 configuration choices)\nStep 3:\
+    \ Review & Confirm (show all selections)\n\nIMPORTANT: Use HTMX to make it interactive:\n\
+    - Each step loads the next via hx-post\n- Use hidden inputs to carry forward previous\
+    \ values\n- Final step submits to /api/checkpoints/{{ checkpoint_id }}/respond\n\
+    \nPattern for multi-step:\n<div id=\"wizard-container\">\n  <div id=\"step-indicator\"\
+    >Step 1 of 3</div>\n  <div id=\"wizard-content\">\n    <h3>Step 1: Basic Settings</h3>\n\
+    \    <input name=\"config[name]\" placeholder=\"Name\" required>\n    <!-- Next\
+    \ button posts to same form, swaps wizard-content -->\n    <button hx-post=\"\
+    #\" hx-target=\"#wizard-content\"\n            onclick=\"showStep2(this.form)\"\
+    >Next →</button>\n  </div>\n</div>\n<script>\n  function showStep2(form) {\n \
+    \   var name = form.elements['config[name]'].value;\n    document.getElementById('wizard-content').innerHTML\
+    \ = \\`\n      <h3>Step 2: Options</h3>\n      <p>Name: \\${name}</p>\n      <input\
+    \ type=\"hidden\" name=\"config[name]\" value=\"\\${name}\">\n      <select name=\"\
+    config[mode]\">...</select>\n      <button onclick=\"showStep3(this.form)\">Next\
+    \ →</button>\n    \\`;\n    return false;\n  }\n</script>\n\nBuild a complete\
+    \ wizard, final step submits to checkpoint endpoint.\nWhen submitted, route to\
+    \ process_config.\n"
+- name: process_config
+  instructions: 'Configuration received:
 
-phases:
-  - name: wizard_flow
-    tackle: ["request_decision", "route_to"]
-    handoffs:
-      - process_config
-    rules:
-      max_turns: 10
-    instructions: |
-      Create a 3-step configuration wizard for: {{ input.workflow_type }}
+    {{ outputs.wizard_flow }}
 
-      Use request_decision with HTMX to build:
 
-      Step 1: Basic Settings (name, description)
-      Step 2: Advanced Options (2-3 configuration choices)
-      Step 3: Review & Confirm (show all selections)
+    Validate and summarize the configuration.
 
-      IMPORTANT: Use HTMX to make it interactive:
-      - Each step loads the next via hx-post
-      - Use hidden inputs to carry forward previous values
-      - Final step submits to /api/checkpoints/{{ checkpoint_id }}/respond
-
-      Pattern for multi-step:
-      <div id="wizard-container">
-        <div id="step-indicator">Step 1 of 3</div>
-        <div id="wizard-content">
-          <h3>Step 1: Basic Settings</h3>
-          <input name="config[name]" placeholder="Name" required>
-          <!-- Next button posts to same form, swaps wizard-content -->
-          <button hx-post="#" hx-target="#wizard-content"
-                  onclick="showStep2(this.form)">Next →</button>
-        </div>
-      </div>
-      <script>
-        function showStep2(form) {
-          var name = form.elements['config[name]'].value;
-          document.getElementById('wizard-content').innerHTML = \`
-            <h3>Step 2: Options</h3>
-            <p>Name: \${name}</p>
-            <input type="hidden" name="config[name]" value="\${name}">
-            <select name="config[mode]">...</select>
-            <button onclick="showStep3(this.form)">Next →</button>
-          \`;
-          return false;
-        }
-      </script>
-
-      Build a complete wizard, final step submits to checkpoint endpoint.
-      When submitted, route to process_config.
-
-  - name: process_config
-    instructions: |
-      Configuration received:
-      {{ outputs.wizard_flow }}
-
-      Validate and summarize the configuration.
-
-    context:
-      from: [wizard_flow]
+    '
+  context:
+    from:
+    - wizard_flow

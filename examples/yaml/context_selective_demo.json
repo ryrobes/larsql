@@ -4,33 +4,51 @@
   "inputs_schema": {
     "topic": "A topic to analyze"
   },
-  "phases": [
+  "cells": [
     {
       "name": "generate_ideas",
       "instructions": "Generate 3 creative ideas about: {{ input.topic }}\n\nList them as numbered items (1, 2, 3). Then route to add_context.",
-      "handoffs": ["add_context"]
+      "handoffs": [
+        "add_context"
+      ]
     },
     {
       "name": "add_context",
       "instructions": "You are phase B. Add some additional context about why these ideas matter.\n\nIMPORTANT: You should see the ideas from the previous phase in your context. Then route to selective_analysis.",
-      "handoffs": ["selective_analysis"]
+      "handoffs": [
+        "selective_analysis"
+      ]
     },
     {
       "name": "selective_analysis",
       "instructions": "Analyze ONLY the original ideas. You should NOT see the additional context from phase B.\n\nPick the best idea and explain why it's the best.\n\nIMPORTANT: If you can see content about 'why these ideas matter' from phase B, something is wrong - you should only see the original ideas from generate_ideas.\n\nThen route to final_summary.",
       "context": {
-        "from": ["generate_ideas"],
+        "from": [
+          "generate_ideas"
+        ],
         "include_input": true
       },
-      "handoffs": ["final_summary"]
+      "handoffs": [
+        "final_summary"
+      ]
     },
     {
       "name": "final_summary",
       "instructions": "Create a final summary that combines:\n1. The original ideas\n2. The analysis of the best idea\n\nYou should NOT see the 'add_context' phase output - only generate_ideas and selective_analysis.",
       "context": {
         "from": [
-          {"phase": "generate_ideas", "include": ["output"]},
-          {"phase": "selective_analysis", "include": ["output"]}
+          {
+            "phase": "generate_ideas",
+            "include": [
+              "output"
+            ]
+          },
+          {
+            "phase": "selective_analysis",
+            "include": [
+              "output"
+            ]
+          }
         ],
         "include_input": false
       },

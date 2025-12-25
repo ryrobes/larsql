@@ -2,7 +2,7 @@ cascade_id: game21
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
-phases:
+cells:
 - instructions: '{{ input.prompt }}
 
     '
@@ -10,9 +10,9 @@ phases:
   name: llm_phase
   rules:
     max_turns: 1
-  soundings:
-    evaluator_instructions: 'Evaluate these 3 responses. Pick the best based on: -
-      Completeness (covers all aspects?) - Clarity (well-structured?)
+  candidates:
+    evaluator_instructions: 'Evaluate these 3 responses. Pick the best based on: - Completeness (covers all aspects?) - Clarity
+      (well-structured?)
 
       Output: ``` WINNER: [0, 1, or 2] REASONING: [1-2 sentences] ```'
     factor: 3
@@ -25,14 +25,13 @@ phases:
     mutation_mode: approach
     reforge:
       factor_per_step: 2
-      honing_prompt: 'REFINE this winning response. Make it: - More specific (concrete
-        technologies, patterns) - More robust (error handling, edge cases) Keep all
-        good parts. ADD depth without unnecessary restructuring.'
+      honing_prompt: 'REFINE this winning response. Make it: - More specific (concrete technologies, patterns) - More robust
+        (error handling, edge cases) Keep all good parts. ADD depth without unnecessary restructuring.'
       mutate: false
       steps: 2
 - context:
     from:
-    - phase: llm_phase
+    - cell: llm_phase
       include:
       - output
   instructions: "Summarize this into markdown please:\n  \n{{ input.prompt }}\n"
@@ -48,7 +47,7 @@ phases:
     height: 1024
   context:
     from:
-    - phase: llm_phase_1
+    - cell: llm_phase_1
       include:
       - output
 _playground:

@@ -1,107 +1,64 @@
-cascade_id: "bash_log_analysis"
-description: "Parse and analyze log data with bash - demonstrates practical text processing"
+cascade_id: bash_log_analysis
+description: Parse and analyze log data with bash - demonstrates practical text processing
+cells:
+- name: generate_logs
+  tool: bash_data
+  inputs:
+    script: "# Generate mock log lines\ncat <<'EOF'\n2024-01-15 10:23:45 INFO User\
+      \ alice logged in from 192.168.1.10\n2024-01-15 10:25:12 ERROR Failed login\
+      \ attempt for user bob from 192.168.1.20\n2024-01-15 10:27:33 INFO User charlie\
+      \ logged in from 192.168.1.15\n2024-01-15 10:30:05 WARN Rate limit exceeded\
+      \ for user alice from 192.168.1.10\n2024-01-15 10:32:18 ERROR Failed login attempt\
+      \ for user bob from 192.168.1.20\n2024-01-15 10:35:42 INFO User alice logged\
+      \ out from 192.168.1.10\n2024-01-15 10:38:19 INFO User diana logged in from\
+      \ 192.168.1.25\n2024-01-15 10:40:55 ERROR Database connection timeout for user\
+      \ charlie\n2024-01-15 10:43:11 INFO User charlie logged out from 192.168.1.15\n\
+      2024-01-15 10:45:27 ERROR Failed login attempt for user bob from 192.168.1.20\n\
+      EOF\n\n# Parse logs into CSV: timestamp, level, user, message, ip\ncat <<'EOF'\
+      \ | awk '\n{\n  timestamp = $1 \" \" $2\n  level = $3\n\n  # Extract user (word\
+      \ after \"user \")\n  for (i = 4; i <= NF; i++) {\n    if ($i == \"user\" &&\
+      \ i < NF) {\n      user = $(i+1)\n      break\n    }\n  }\n\n  # Extract IP\
+      \ if present\n  ip = \"\"\n  for (i = 4; i <= NF; i++) {\n    if ($i ~ /^[0-9]+\\\
+      .[0-9]+\\.[0-9]+\\.[0-9]+$/) {\n      ip = $i\n      break\n    }\n  }\n\n \
+      \ # Get full message (everything after level)\n  message = \"\"\n  for (i =\
+      \ 4; i <= NF; i++) {\n    message = message $i \" \"\n  }\n\n  print timestamp\
+      \ \",\" level \",\" user \",\" message \",\" ip\n}\n'\n2024-01-15 10:23:45 INFO\
+      \ User alice logged in from 192.168.1.10\n2024-01-15 10:25:12 ERROR Failed login\
+      \ attempt for user bob from 192.168.1.20\n2024-01-15 10:27:33 INFO User charlie\
+      \ logged in from 192.168.1.15\n2024-01-15 10:30:05 WARN Rate limit exceeded\
+      \ for user alice from 192.168.1.10\n2024-01-15 10:32:18 ERROR Failed login attempt\
+      \ for user bob from 192.168.1.20\n2024-01-15 10:35:42 INFO User alice logged\
+      \ out from 192.168.1.10\n2024-01-15 10:38:19 INFO User diana logged in from\
+      \ 192.168.1.25\n2024-01-15 10:40:55 ERROR Database connection timeout for user\
+      \ charlie\n2024-01-15 10:43:11 INFO User charlie logged out from 192.168.1.15\n\
+      2024-01-15 10:45:27 ERROR Failed login attempt for user bob from 192.168.1.20\n\
+      EOF\n"
+    output_format: csv
+  handoffs:
+  - filter_issues
+- name: filter_issues
+  tool: bash_data
+  inputs:
+    script: '# Keep header, then filter for ERROR and WARN lines
 
-phases:
-  # Phase 1: Generate mock log data
-  - name: generate_logs
-    tool: bash_data
-    inputs:
-      script: |
-        # Generate mock log lines
-        cat <<'EOF'
-        2024-01-15 10:23:45 INFO User alice logged in from 192.168.1.10
-        2024-01-15 10:25:12 ERROR Failed login attempt for user bob from 192.168.1.20
-        2024-01-15 10:27:33 INFO User charlie logged in from 192.168.1.15
-        2024-01-15 10:30:05 WARN Rate limit exceeded for user alice from 192.168.1.10
-        2024-01-15 10:32:18 ERROR Failed login attempt for user bob from 192.168.1.20
-        2024-01-15 10:35:42 INFO User alice logged out from 192.168.1.10
-        2024-01-15 10:38:19 INFO User diana logged in from 192.168.1.25
-        2024-01-15 10:40:55 ERROR Database connection timeout for user charlie
-        2024-01-15 10:43:11 INFO User charlie logged out from 192.168.1.15
-        2024-01-15 10:45:27 ERROR Failed login attempt for user bob from 192.168.1.20
-        EOF
+      head -n 1
 
-        # Parse logs into CSV: timestamp, level, user, message, ip
-        cat <<'EOF' | awk '
-        {
-          timestamp = $1 " " $2
-          level = $3
+      tail -n +2 | grep -E "ERROR|WARN"
 
-          # Extract user (word after "user ")
-          for (i = 4; i <= NF; i++) {
-            if ($i == "user" && i < NF) {
-              user = $(i+1)
-              break
-            }
-          }
-
-          # Extract IP if present
-          ip = ""
-          for (i = 4; i <= NF; i++) {
-            if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
-              ip = $i
-              break
-            }
-          }
-
-          # Get full message (everything after level)
-          message = ""
-          for (i = 4; i <= NF; i++) {
-            message = message $i " "
-          }
-
-          print timestamp "," level "," user "," message "," ip
-        }
-        '
-        2024-01-15 10:23:45 INFO User alice logged in from 192.168.1.10
-        2024-01-15 10:25:12 ERROR Failed login attempt for user bob from 192.168.1.20
-        2024-01-15 10:27:33 INFO User charlie logged in from 192.168.1.15
-        2024-01-15 10:30:05 WARN Rate limit exceeded for user alice from 192.168.1.10
-        2024-01-15 10:32:18 ERROR Failed login attempt for user bob from 192.168.1.20
-        2024-01-15 10:35:42 INFO User alice logged out from 192.168.1.10
-        2024-01-15 10:38:19 INFO User diana logged in from 192.168.1.25
-        2024-01-15 10:40:55 ERROR Database connection timeout for user charlie
-        2024-01-15 10:43:11 INFO User charlie logged out from 192.168.1.15
-        2024-01-15 10:45:27 ERROR Failed login attempt for user bob from 192.168.1.20
-        EOF
-      output_format: csv
-    handoffs: [filter_issues]
-
-  # Phase 2: Filter for errors and warnings only
-  - name: filter_issues
-    tool: bash_data
-    inputs:
-      script: |
-        # Keep header, then filter for ERROR and WARN lines
-        head -n 1
-        tail -n +2 | grep -E "ERROR|WARN"
-      output_format: csv
-    handoffs: [analyze_issues]
-
-  # Phase 3: Analyze issues with SQL
-  - name: analyze_issues
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          column1 as level,
-          column2 as user,
-          COUNT(*) as issue_count
-        FROM _filter_issues
-        WHERE column1 IS NOT NULL AND column2 IS NOT NULL
-        GROUP BY level, user
-        ORDER BY issue_count DESC, level, user
-    handoffs: [problem_users]
-
-  # Phase 4: Identify problematic users
-  - name: problem_users
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          user,
-          SUM(issue_count) as total_issues
-        FROM _analyze_issues
-        GROUP BY user
-        HAVING total_issues > 1
-        ORDER BY total_issues DESC
+      '
+    output_format: csv
+  handoffs:
+  - analyze_issues
+- name: analyze_issues
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  column1 as level,\n  column2 as user,\n  COUNT(*) as issue_count\n\
+      FROM _filter_issues\nWHERE column1 IS NOT NULL AND column2 IS NOT NULL\nGROUP\
+      \ BY level, user\nORDER BY issue_count DESC, level, user\n"
+  handoffs:
+  - problem_users
+- name: problem_users
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  user,\n  SUM(issue_count) as total_issues\nFROM _analyze_issues\n\
+      GROUP BY user\nHAVING total_issues > 1\nORDER BY total_issues DESC\n"

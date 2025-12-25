@@ -1,29 +1,31 @@
 cascade_id: loop_until_auto_inject_demo
-description: Demonstrates automatic loop_until validation prompt injection (both auto-generated and custom)
+description: Demonstrates automatic loop_until validation prompt injection (both auto-generated
+  and custom)
 inputs_schema:
   task: The task to complete
-phases:
-  - handoffs:
-      - custom_validation_goal
-    instructions: |-
-      Complete this task: {{ input.task }}
+cells:
+- handoffs:
+  - custom_validation_goal
+  instructions: 'Complete this task: {{ input.task }}
 
-      Provide a thoughtful response.
-    name: auto_validation_goal
-    rules:
-      loop_until: grammar_check
-      max_attempts: 3
-      max_turns: 1
-    tackle:
-      - route_to
-  - context:
-      from:
-        - previous
-    instructions: Now provide a summary of what you did in the previous phase.
-    name: custom_validation_goal
-    rules:
-      loop_until: satisfied
-      loop_until_prompt: Make sure your response explicitly confirms you are satisfied with the work completed.
-        Use phrases like 'I am satisfied' or 'This meets the requirements'.
-      max_attempts: 3
-      max_turns: 1
+
+    Provide a thoughtful response.'
+  name: auto_validation_goal
+  rules:
+    loop_until: grammar_check
+    max_attempts: 3
+    max_turns: 1
+  traits:
+  - route_to
+- context:
+    from:
+    - previous
+  instructions: Now provide a summary of what you did in the previous phase.
+  name: custom_validation_goal
+  rules:
+    loop_until: satisfied
+    loop_until_prompt: Make sure your response explicitly confirms you are satisfied
+      with the work completed. Use phrases like 'I am satisfied' or 'This meets the
+      requirements'.
+    max_attempts: 3
+    max_turns: 1

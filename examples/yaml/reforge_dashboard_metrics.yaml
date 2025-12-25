@@ -1,60 +1,83 @@
 cascade_id: dashboard_metrics_ideation
-
 description: Brainstorm dashboard metrics with iterative refinement via reforge
-
 inputs_schema:
   audience: Target audience for the dashboard
   dashboard_type: Type of dashboard (e.g., sales, marketing, operations)
+cells:
+- handoffs:
+  - finalize
+  instructions: 'Brainstorm key metrics for a {{ input.dashboard_type }} dashboard
+    targeting {{ input.audience }}. Be creative and varied in your approach. Consider:
 
-phases:
-  - handoffs:
-      - finalize
-    instructions: "Brainstorm key metrics for a {{ input.dashboard_type }} dashboard targeting {{ input.audience\
-      \ }}. Be creative and varied in your approach. Consider:\n- Primary KPIs\n- Supporting metrics\n\
-      - User engagement indicators\n- Actionable insights"
-    name: ideate_metrics
-    rules:
-      max_turns: 1
-    soundings:
-      evaluator_instructions: |-
-        Evaluate the metric proposals based on:
-        1. Relevance to {{ input.dashboard_type }}
-        2. Originality and creativity
-        3. Feasibility of implementation
-        4. Value to {{ input.audience }}
+    - Primary KPIs
 
-        Select the BEST proposal with highest overall score.
-      factor: 4
-      reforge:
-        evaluator_override: |-
-          Evaluate refined metrics on:
-          1. Clarity and specificity
-          2. Visualization effectiveness
-          3. Actionability for {{ input.audience }}
-          4. Technical feasibility
+    - Supporting metrics
 
-          Pick the most polished and production-ready version.
-        factor_per_step: 2
-        honing_prompt: |-
-          Refine the selected metrics:
-          - Add specific visualization recommendations (charts, graphs, heatmaps)
-          - Include data validation thresholds and alert conditions
-          - Tighten descriptions for dashboard flow and user experience
-          - Ensure metrics are actionable and time-bound
-        mutate: yes
-        steps: 3
-        threshold:
-          mode: blocking
-          validator: simple_validator
-    tackle: []
-  - context:
-      from:
-        - previous
-    instructions: "The metrics have been refined through {{ phase_count | default(3) }} reforge steps!\
-      \ Provide a brief summary highlighting:\n- Top 3 metrics selected\n- Key visualization recommendations\n\
-      - Why this dashboard will be effective\n\nStore final metrics using set_state."
-    name: finalize
-    rules:
-      max_turns: 1
-    tackle:
-      - set_state
+    - User engagement indicators
+
+    - Actionable insights'
+  name: ideate_metrics
+  rules:
+    max_turns: 1
+  candidates:
+    evaluator_instructions: 'Evaluate the metric proposals based on:
+
+      1. Relevance to {{ input.dashboard_type }}
+
+      2. Originality and creativity
+
+      3. Feasibility of implementation
+
+      4. Value to {{ input.audience }}
+
+
+      Select the BEST proposal with highest overall score.'
+    factor: 4
+    reforge:
+      evaluator_override: 'Evaluate refined metrics on:
+
+        1. Clarity and specificity
+
+        2. Visualization effectiveness
+
+        3. Actionability for {{ input.audience }}
+
+        4. Technical feasibility
+
+
+        Pick the most polished and production-ready version.'
+      factor_per_step: 2
+      honing_prompt: 'Refine the selected metrics:
+
+        - Add specific visualization recommendations (charts, graphs, heatmaps)
+
+        - Include data validation thresholds and alert conditions
+
+        - Tighten descriptions for dashboard flow and user experience
+
+        - Ensure metrics are actionable and time-bound'
+      mutate: true
+      steps: 3
+      threshold:
+        mode: blocking
+        validator: simple_validator
+  traits: []
+- context:
+    from:
+    - previous
+  instructions: 'The metrics have been refined through {{ phase_count | default(3)
+    }} reforge steps! Provide a brief summary highlighting:
+
+    - Top 3 metrics selected
+
+    - Key visualization recommendations
+
+    - Why this dashboard will be effective
+
+
+    Store final metrics using set_state.'
+  name: finalize
+  rules:
+    max_turns: 1
+  traits:
+  - set_state

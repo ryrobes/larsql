@@ -178,7 +178,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
                   <span className="state-type-badge">{latest.value_type}</span>
                 </div>
                 <div className="state-meta">
-                  <span className="state-phase">{latest.phase_name}</span>
+                  <span className="state-phase">{latest.cell_name}</span>
                   <span className="state-time">{formatTimestamp(latest.created_at)}</span>
                 </div>
               </div>
@@ -219,7 +219,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
                       {entries.map((entry, idx) => (
                         <div key={idx} className="state-history-item">
                           <span className="state-history-time">{formatTimestamp(entry.created_at)}</span>
-                          <span className="state-history-phase">{entry.phase_name}</span>
+                          <span className="state-history-phase">{entry.cell_name}</span>
                           {entry.value_type === 'string' && (
                             <span className="state-history-value">"{entry.value_parsed}"</span>
                           )}

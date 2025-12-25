@@ -5,11 +5,14 @@
   "inputs_schema": {
     "action": "What to do: 'setup', 'insert', 'query', or 'full_demo'"
   },
-  "phases": [
+  "cells": [
     {
       "name": "execute_action",
       "instructions": "You have access to a research database. Based on the action requested, perform the appropriate operations.\n\nAvailable actions:\n- 'setup': Create a sample products table with columns: id (VARCHAR PRIMARY KEY), name (VARCHAR), price (DECIMAL), category (VARCHAR)\n- 'insert': Insert some sample products (electronics, books, etc.)\n- 'query': Query and summarize the products in the database\n- 'full_demo': Do all of the above in sequence\n\nAction requested: {{ input.action }}\n\nUse the research_execute tool for CREATE/INSERT/UPDATE/DELETE statements.\nUse the research_query tool for SELECT statements.\n\nIMPORTANT: When creating tables, always use CREATE TABLE IF NOT EXISTS to be idempotent.",
-      "tackle": ["research_query", "research_execute"],
+      "traits": [
+        "research_query",
+        "research_execute"
+      ],
       "rules": {
         "max_turns": 5
       }
@@ -18,7 +21,9 @@
       "name": "summarize",
       "instructions": "Provide a brief summary of what was done with the research database. If data was queried, include interesting findings.",
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       }
     }
   ]

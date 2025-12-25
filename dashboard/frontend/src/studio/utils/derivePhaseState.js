@@ -14,7 +14,7 @@
  * - Images (from metadata)
  */
 export function derivePhaseState(logs, phaseName) {
-  const phaseLogs = logs.filter(r => r.phase_name === phaseName);
+  const phaseLogs = logs.filter(r => r.cell_name === phaseName);
 
   if (phaseLogs.length === 0) {
     return { status: 'pending', result: null, error: null, duration: null, images: null, cost: null, model: null, tokens_in: null, tokens_out: null };

@@ -47,7 +47,7 @@ export const isConversational = (entry) => {
   }
 
   // Filter out "Initialization" phase entries (duplicates logged before phase assignment)
-  if (entry.phase_name === 'Initialization' || entry.phase_name === null) {
+  if (entry.cell_name === 'Initialization' || entry.cell_name === null) {
     // Allow structural messages, but not conversation messages from Initialization
     const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'system'];
     if (conversationalTypes.includes(entry.node_type)) {
@@ -93,8 +93,8 @@ export const groupEntriesByPhase = (entries) => {
   let currentGroup = null;
 
   entries.forEach((entry, idx) => {
-    const phaseName = entry.phase_name || 'Initialization';
-    const soundingIndex = entry.sounding_index;
+    const phaseName = entry.cell_name || 'Initialization';
+    const soundingIndex = entry.candidate_index;
 
     // Start new phase group when EITHER phase name OR sounding index changes
     if (phaseName !== currentPhase || soundingIndex !== currentSoundingIndex) {

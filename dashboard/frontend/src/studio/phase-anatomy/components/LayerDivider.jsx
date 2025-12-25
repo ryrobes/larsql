@@ -6,9 +6,9 @@ import './layers.css';
  */
 const LayerDivider = ({ type = 'minor', label }) => {
   return (
-    <div className={`phase-anatomy-divider phase-anatomy-divider-${type}`}>
+    <div className={`cell-anatomy-divider cell-anatomy-divider-${type}`}>
       {label && (
-        <span className="phase-anatomy-divider-label">{label}</span>
+        <span className="cell-anatomy-divider-label">{label}</span>
       )}
     </div>
   );

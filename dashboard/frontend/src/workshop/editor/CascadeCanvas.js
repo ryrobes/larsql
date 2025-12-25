@@ -2,7 +2,7 @@ import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
-import PhasesRail from './PhasesRail';
+import PhasesRail from './CellsRail';
 import './CascadeCanvas.css';
 
 /**
@@ -200,7 +200,7 @@ function CascadeCanvas() {
         <div className="phases-header">
           <Icon icon="mdi:view-sequential" width="20" />
           <span>Phases</span>
-          <span className="phases-count">{cascade.phases?.length || 0} phases</span>
+          <span className="phases-count">{cascade.cells?.length || 0} phases</span>
         </div>
         <PhasesRail />
       </div>

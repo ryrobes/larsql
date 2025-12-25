@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Header.css';
 
 /**
- * Unified header component for all views in the Windlass dashboard.
+ * Unified header component for all views in the RVBBIT dashboard.
  *
  * Features:
  * - Brand logo (left)
@@ -214,7 +214,7 @@ function Header({
       <div className="header-left">
         <img
           src="/windlass-transparent-square.png"
-          alt="Windlass"
+          alt="RVBBIT"
           className="brand-logo"
           onClick={() => window.location.hash = ''}
           style={{ cursor: 'pointer' }}

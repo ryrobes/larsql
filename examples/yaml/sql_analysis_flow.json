@@ -4,28 +4,41 @@
   "inputs_schema": {
     "question": "Natural language question about the data"
   },
-  "phases": [
+  "cells": [
     {
       "name": "discover_schema",
       "instructions": "The user asked: {{ input.question }}\n\nFirst, use sql_search to find relevant tables that might contain data to answer this question.\n\nSearch for tables using natural language - the tool will return schema information including:\n- Column names and types\n- Value distributions for categorical columns\n- Sample rows\n- Row counts\n\nAnalyze the results and identify which table(s) would be most useful.",
-      "tackle": ["sql_search", "list_sql_connections"],
-      "handoffs": ["write_query"]
+      "traits": [
+        "sql_search",
+        "list_sql_connections"
+      ],
+      "handoffs": [
+        "write_query"
+      ]
     },
     {
       "name": "write_query",
       "instructions": "Based on the schema information from the previous phase, write a SQL query to answer: {{ input.question }}\n\nUse the sql_query tool to execute your query.\n\nIMPORTANT Query Syntax:\n- CSV folders: SELECT * FROM connection_name.table_name\n- PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table\n- Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = 'California'\n\nThe schema info from the previous phase shows you:\n- Exact column names\n- Data types\n- Sample values (use these to understand the data format)\n- Value distributions (shows you what values exist in categorical columns)\n\nWrite a clear, efficient query based on this information.",
-      "tackle": ["sql_query"],
+      "traits": [
+        "sql_query"
+      ],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "handoffs": ["analyze_results"]
+      "handoffs": [
+        "analyze_results"
+      ]
     },
     {
       "name": "analyze_results",
       "instructions": "Analyze the query results from the previous phase and provide a clear answer to: {{ input.question }}\n\nSummarize:\n- Key findings from the data\n- Any interesting patterns or insights\n- Direct answer to the user's question\n\nBe specific and reference actual numbers from the results.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["all"]
+        "from": [
+          "all"
+        ]
       }
     }
   ]

@@ -4,18 +4,20 @@
   "inputs_schema": {
     "topics": "Array of topics to research in parallel"
   },
-  "phases": [
+  "cells": [
     {
       "name": "research_topics",
       "instructions": "You are researching the topic: **{{ input.topics[sounding_index] }}**\n\nProvide a brief but informative summary (2-3 paragraphs) covering:\n1. What it is and why it matters\n2. Key benefits or applications\n3. Current trends or future outlook\n\nBe concise but insightful.",
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 3,
         "mode": "aggregate",
         "mutate": false,
         "aggregator_instructions": "You have received research summaries on multiple topics. Create a unified research report that:\n1. Organizes the topics thematically\n2. Identifies connections between topics\n3. Provides an executive summary at the top\n4. Preserves the key insights from each topic\n\nFormat as a well-structured markdown document."
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

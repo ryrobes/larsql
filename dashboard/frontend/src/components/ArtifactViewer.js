@@ -116,7 +116,7 @@ function ArtifactViewer({ artifactId, onBack }) {
             </span>
             <span className="meta-text">
               <Icon icon="mdi:hexagon-outline" width="14" />
-              {artifact.phase_name}
+              {artifact.cell_name}
             </span>
             <span className="meta-text">
               <Icon icon="mdi:clock-outline" width="14" />

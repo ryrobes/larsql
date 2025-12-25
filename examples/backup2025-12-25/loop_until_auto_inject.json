@@ -4,12 +4,16 @@
   "inputs_schema": {
     "task": "The task to complete"
   },
-  "phases": [
+  "cells": [
     {
       "name": "auto_validation_goal",
       "instructions": "Complete this task: {{ input.task }}\n\nProvide a thoughtful response.",
-      "handoffs": ["custom_validation_goal"],
-      "tackle": ["route_to"],
+      "handoffs": [
+        "custom_validation_goal"
+      ],
+      "traits": [
+        "route_to"
+      ],
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,
@@ -19,7 +23,11 @@
     {
       "name": "custom_validation_goal",
       "instructions": "Now provide a summary of what you did in the previous phase.",
-      "context": {"from": ["previous"]},
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,

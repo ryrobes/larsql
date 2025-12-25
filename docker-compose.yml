@@ -1,17 +1,17 @@
-# Windlass Docker Compose - Tiered Deployment
+# RVBBIT Docker Compose - Tiered Deployment
 #
 # USAGE:
-#   Default (Windlass + ClickHouse):
+#   Default (RVBBIT + ClickHouse):
 #     docker compose up
 #
 #   Full stack (+ Elasticsearch/Kibana):
 #     docker compose --profile full up
 #
 #   Standalone (BYOI - you provide ClickHouse):
-#     WINDLASS_CLICKHOUSE_HOST=your-clickhouse.example.com docker compose up windlass
+#     RVBBIT_CLICKHOUSE_HOST=your-clickhouse.example.com docker compose up rvbbit
 #
 #   Scale workers:
-#     docker compose up --scale windlass=3
+#     docker compose up --scale rvbbit=3
 #
 # ENVIRONMENT:
 #   Copy .env.example to .env and configure your API keys
@@ -19,13 +19,13 @@
 
 services:
   # ===========================================================================
-  # WINDLASS SERVER
+  # RVBBIT SERVER
   # ===========================================================================
-  windlass:
+  rvbbit:
     build:
       context: .
       dockerfile: Dockerfile
-    image: windlass:latest
+    image: rvbbit:latest
     ports:
       - "5001:5001"
     environment:
@@ -33,10 +33,10 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in .env}
 
       # ClickHouse connection
-      - WINDLASS_USE_CLICKHOUSE_SERVER=true
-      - WINDLASS_CLICKHOUSE_HOST=${WINDLASS_CLICKHOUSE_HOST:-clickhouse}
-      - WINDLASS_CLICKHOUSE_PORT=${WINDLASS_CLICKHOUSE_PORT:-9000}
-      - WINDLASS_CLICKHOUSE_DATABASE=${WINDLASS_CLICKHOUSE_DATABASE:-windlass}
+      - RVBBIT_USE_CLICKHOUSE_SERVER=true
+      - RVBBIT_CLICKHOUSE_HOST=${RVBBIT_CLICKHOUSE_HOST:-clickhouse}
+      - RVBBIT_CLICKHOUSE_PORT=${RVBBIT_CLICKHOUSE_PORT:-9000}
+      - RVBBIT_CLICKHOUSE_DATABASE=${RVBBIT_CLICKHOUSE_DATABASE:-rvbbit}
 
       # Optional integrations
       - HF_TOKEN=${HF_TOKEN:-}
@@ -44,15 +44,15 @@ services:
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
 
       # Model configuration
-      - WINDLASS_DEFAULT_MODEL=${WINDLASS_DEFAULT_MODEL:-google/gemini-2.5-flash-lite}
-      - WINDLASS_PROVIDER_BASE_URL=${WINDLASS_PROVIDER_BASE_URL:-https://openrouter.ai/api/v1}
+      - RVBBIT_DEFAULT_MODEL=${RVBBIT_DEFAULT_MODEL:-google/gemini-2.5-flash-lite}
+      - RVBBIT_PROVIDER_BASE_URL=${RVBBIT_PROVIDER_BASE_URL:-https://openrouter.ai/api/v1}
     volumes:
-      - windlass-data:/data
+      - rvbbit-data:/data
       # Development: mount local cascades
       # - ./cascades:/app/cascades
-      # - ./tackle:/app/tackle
+      # - ./traits:/app/traits
     networks:
-      - windlass
+      - rvbbit
     restart: unless-stopped
     deploy:
       resources:
@@ -71,12 +71,12 @@ services:
   # ===========================================================================
   clickhouse:
     image: clickhouse/clickhouse-server:24.3-alpine
-    container_name: windlass-clickhouse
+    container_name: rvbbit-clickhouse
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native protocol
     environment:
-      - CLICKHOUSE_DB=windlass
+      - CLICKHOUSE_DB=rvbbit
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
@@ -84,7 +84,7 @@ services:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
     networks:
-      - windlass
+      - rvbbit
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 10s
@@ -108,7 +108,7 @@ services:
   # ===========================================================================
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: windlass-elasticsearch
+    container_name: rvbbit-elasticsearch
     profiles:
       - full
     environment:
@@ -122,7 +122,7 @@ services:
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     networks:
-      - windlass
+      - rvbbit
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -135,7 +135,7 @@ services:
   # ===========================================================================
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.3
-    container_name: windlass-kibana
+    container_name: rvbbit-kibana
     profiles:
       - full
     environment:
@@ -144,18 +144,18 @@ services:
     ports:
       - "5601:5601"
     networks:
-      - windlass
+      - rvbbit
     depends_on:
       elasticsearch:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  windlass-data:
+  rvbbit-data:
   clickhouse-data:
   clickhouse-logs:
   elasticsearch-data:
 
 networks:
-  windlass:
+  rvbbit:
     driver: bridge

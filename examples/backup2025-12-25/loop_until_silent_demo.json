@@ -4,12 +4,16 @@
   "inputs_schema": {
     "topic": "The topic to write about"
   },
-  "phases": [
+  "cells": [
     {
       "name": "objective_validation",
       "instructions": "Write a short technical paragraph about {{ input.topic }}. Focus on accuracy and clarity.",
-      "handoffs": ["subjective_validation"],
-      "tackle": ["route_to"],
+      "handoffs": [
+        "subjective_validation"
+      ],
+      "traits": [
+        "route_to"
+      ],
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,
@@ -19,7 +23,11 @@
     {
       "name": "subjective_validation",
       "instructions": "Now write a creative, engaging summary of what you just explained. Make it interesting and readable for a general audience.",
-      "context": {"from": ["previous"]},
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
       "rules": {
         "max_turns": 1,
         "max_attempts": 3,

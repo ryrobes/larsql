@@ -1,133 +1,98 @@
-cascade_id: "bash_kitchen_sink"
-description: "Showcase all bash_data features: persistence, data flow, mixed substrates"
+cascade_id: bash_kitchen_sink
+description: 'Showcase all bash_data features: persistence, data flow, mixed substrates'
+cells:
+- name: init_environment
+  tool: bash_data
+  inputs:
+    script: "# Export config (persists across phases)\nexport PROJECT=\"analytics_pipeline\"\
+      \nexport ENV=\"production\"\n\n# Setup workspace\nmkdir -p data output logs\n\
+      cd data\n\n# Define helper functions (persist)\nfunction log() {\n  echo \"\
+      [$(date '+%H:%M:%S')] $1\" >&2\n}\n\nfunction timestamp() {\n  date '+%Y-%m-%d\
+      \ %H:%M:%S'\n}\n\nlog \"Environment initialized: $PROJECT ($ENV)\"\n\n# Output\
+      \ confirmation\necho \"component,status\"\necho \"environment,ready\"\n"
+    output_format: csv
+  handoffs:
+  - generate_data
+- name: generate_data
+  tool: bash_data
+  inputs:
+    script: 'log "Generating sample data for $PROJECT..."
 
-phases:
-  # Phase 1: Setup persistent environment (bash)
-  - name: init_environment
-    tool: bash_data
-    inputs:
-      script: |
-        # Export config (persists across phases)
-        export PROJECT="analytics_pipeline"
-        export ENV="production"
 
-        # Setup workspace
-        mkdir -p data output logs
-        cd data
+      # Generate CSV data
 
-        # Define helper functions (persist)
-        function log() {
-          echo "[$(date '+%H:%M:%S')] $1" >&2
-        }
+      echo "id,user,action,timestamp"
 
-        function timestamp() {
-          date '+%Y-%m-%d %H:%M:%S'
-        }
+      echo "1,alice,login,$(timestamp)"
 
-        log "Environment initialized: $PROJECT ($ENV)"
+      sleep 0.01
 
-        # Output confirmation
-        echo "component,status"
-        echo "environment,ready"
-      output_format: csv
-    handoffs: [generate_data]
+      echo "2,bob,view_dashboard,$(timestamp)"
 
-  # Phase 2: Generate mock data with bash
-  - name: generate_data
-    tool: bash_data
-    inputs:
-      script: |
-        log "Generating sample data for $PROJECT..."
+      sleep 0.01
 
-        # Generate CSV data
-        echo "id,user,action,timestamp"
-        echo "1,alice,login,$(timestamp)"
-        sleep 0.01
-        echo "2,bob,view_dashboard,$(timestamp)"
-        sleep 0.01
-        echo "3,alice,run_query,$(timestamp)"
-        sleep 0.01
-        echo "4,charlie,login,$(timestamp)"
-        sleep 0.01
-        echo "5,bob,logout,$(timestamp)"
+      echo "3,alice,run_query,$(timestamp)"
 
-        log "Generated 5 events"
-      output_format: csv
-    handoffs: [transform_bash]
+      sleep 0.01
 
-  # Phase 3: Transform with bash (using stdin)
-  - name: transform_bash
-    tool: bash_data
-    inputs:
-      script: |
-        log "Transforming data from $PROJECT..."
+      echo "4,charlie,login,$(timestamp)"
 
-        # Read CSV from stdin, add derived fields
-        head -n 1  # Keep header
-        echo "user,action,hour,env"  # New header
+      sleep 0.01
 
-        tail -n +2 | awk -F',' -v env="$ENV" '{
-          # Extract hour from timestamp
-          split($4, parts, " ")
-          split(parts[2], time_parts, ":")
-          hour = time_parts[1]
+      echo "5,bob,logout,$(timestamp)"
 
-          # Output: user, action, hour, env
-          print $2 "," $3 "," hour "," env
-        }'
 
-        log "Transform complete"
-      output_format: csv
-    handoffs: [analyze_sql]
+      log "Generated 5 events"
 
-  # Phase 4: Analyze with SQL
-  - name: analyze_sql
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          user,
-          COUNT(*) as action_count,
-          COUNT(DISTINCT action) as unique_actions
-        FROM _transform_bash
-        GROUP BY user
-        ORDER BY action_count DESC
-    handoffs: [enrich_python]
+      '
+    output_format: csv
+  handoffs:
+  - transform_bash
+- name: transform_bash
+  tool: bash_data
+  inputs:
+    script: "log \"Transforming data from $PROJECT...\"\n\n# Read CSV from stdin,\
+      \ add derived fields\nhead -n 1  # Keep header\necho \"user,action,hour,env\"\
+      \  # New header\n\ntail -n +2 | awk -F',' -v env=\"$ENV\" '{\n  # Extract hour\
+      \ from timestamp\n  split($4, parts, \" \")\n  split(parts[2], time_parts, \"\
+      :\")\n  hour = time_parts[1]\n\n  # Output: user, action, hour, env\n  print\
+      \ $2 \",\" $3 \",\" hour \",\" env\n}'\n\nlog \"Transform complete\"\n"
+    output_format: csv
+  handoffs:
+  - analyze_sql
+- name: analyze_sql
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  user,\n  COUNT(*) as action_count,\n  COUNT(DISTINCT action)\
+      \ as unique_actions\nFROM _transform_bash\nGROUP BY user\nORDER BY action_count\
+      \ DESC\n"
+  handoffs:
+  - enrich_python
+- name: enrich_python
+  tool: python_data
+  inputs:
+    code: 'df = data.analyze_sql.copy()
 
-  # Phase 5: Enrich with Python
-  - name: enrich_python
-    tool: python_data
-    inputs:
-      code: |
-        df = data.analyze_sql.copy()
-        df['tier'] = df['action_count'].apply(lambda x: 'power_user' if x >= 2 else 'casual')
-        df['score'] = df['action_count'] * 10 + df['unique_actions'] * 5
-        result = df
-    handoffs: [final_report_bash]
+      df[''tier''] = df[''action_count''].apply(lambda x: ''power_user'' if x >= 2
+      else ''casual'')
 
-  # Phase 6: Generate final report with bash (using persistent functions)
-  - name: final_report_bash
-    tool: bash_data
-    inputs:
-      script: |
-        log "Generating final report for $PROJECT..."
-        log "Environment: $ENV"
-        log "Working directory: $(pwd)"
+      df[''score''] = df[''action_count''] * 10 + df[''unique_actions''] * 5
 
-        # Query the enriched data via DuckDB
-        echo "=== Top Users Report ===" >&2
-        duckdb $SESSION_DB "
-          SELECT user, tier, score
-          FROM _enrich_python
-          ORDER BY score DESC
-        " -box >&2
+      result = df
 
-        # Output summary as CSV
-        echo "metric,value"
-        echo "total_users,$(duckdb $SESSION_DB 'SELECT COUNT(*) FROM _enrich_python' -csv | tail -1)"
-        echo "power_users,$(duckdb $SESSION_DB \"SELECT COUNT(*) FROM _enrich_python WHERE tier='power_user'\" -csv | tail -1)"
-        echo "project,$PROJECT"
-        echo "environment,$ENV"
-
-        log "Report complete!"
-      output_format: csv
+      '
+  handoffs:
+  - final_report_bash
+- name: final_report_bash
+  tool: bash_data
+  inputs:
+    script: "log \"Generating final report for $PROJECT...\"\nlog \"Environment: $ENV\"\
+      \nlog \"Working directory: $(pwd)\"\n\n# Query the enriched data via DuckDB\n\
+      echo \"=== Top Users Report ===\" >&2\nduckdb $SESSION_DB \"\n  SELECT user,\
+      \ tier, score\n  FROM _enrich_python\n  ORDER BY score DESC\n\" -box >&2\n\n\
+      # Output summary as CSV\necho \"metric,value\"\necho \"total_users,$(duckdb\
+      \ $SESSION_DB 'SELECT COUNT(*) FROM _enrich_python' -csv | tail -1)\"\necho\
+      \ \"power_users,$(duckdb $SESSION_DB \\\"SELECT COUNT(*) FROM _enrich_python\
+      \ WHERE tier='power_user'\\\" -csv | tail -1)\"\necho \"project,$PROJECT\"\n\
+      echo \"environment,$ENV\"\n\nlog \"Report complete!\"\n"
+    output_format: csv

@@ -1,26 +1,29 @@
 type_id: manifest_auto
 display_name: Auto Tools (Manifest)
 icon: mdi:auto-fix
-color: "#fbbf24"
+color: '#fbbf24'
 name_prefix: quartermaster
-description: "LLM with Quartermaster - automatically selects tools based on task context"
-category: "llm"
+description: LLM with Quartermaster - automatically selects tools based on task context
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "orchestration"
-  - "powerful"
-
+- intermediate
+- ai-ml
+- orchestration
+- powerful
 template:
-  instructions: |
-    Task: {{ input.task | default("Complete the requested task") }}
+  instructions: 'Task: {{ input.task | default("Complete the requested task") }}
+
 
     You have access to a dynamic tool manifest. The Quartermaster will select
+
     appropriate tools for you based on the task context.
 
+
     Use tools when they would be helpful. Work step-by-step.
+
+    '
   model: anthropic/claude-sonnet-4
-  tackle: manifest
+  traits: manifest
   manifest_context: current
   rules:
     max_turns: 5

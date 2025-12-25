@@ -2,9 +2,9 @@ cascade_id: validator_tool
 description: Validates if a string is uppercase.
 inputs_schema:
   text: The string to validate.
-phases:
-  - instructions: Check if '{{ input.text }}' is all uppercase. Return 'YES' or 'NO'.
-    name: check
-    rules:
-      max_turns: 1
-    tackle: []
+cells:
+- instructions: Check if '{{ input.text }}' is all uppercase. Return 'YES' or 'NO'.
+  name: check
+  rules:
+    max_turns: 1
+  traits: []

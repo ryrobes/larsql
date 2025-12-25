@@ -14,21 +14,29 @@
       "target_size": 2000
     }
   },
-  "phases": [
+  "cells": [
     {
       "name": "deep_research",
       "instructions": "Conduct deep research on {{ input.topic }}. Use as many searches as needed - the token budget will automatically compress old RAG results into summaries when context gets too large.",
-      "tackle": ["sql_search"],
+      "traits": [
+        "sql_search"
+      ],
       "rules": {
         "max_turns": 8
       },
-      "handoffs": ["synthesize"]
+      "handoffs": [
+        "synthesize"
+      ]
     },
     {
       "name": "synthesize",
       "instructions": "Synthesize all research findings into a comprehensive report. Note that old tool results have been compressed into concise summaries to fit within token budget.",
-      "tackle": [],
-      "context": {"from": ["previous"]}
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      }
     }
   ]
 }

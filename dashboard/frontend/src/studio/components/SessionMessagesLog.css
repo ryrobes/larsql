@@ -118,7 +118,7 @@
 }
 
 /* Phase link */
-.sml-phase-link {
+.sml-cell-link {
   background: none;
   border: none;
   color: #a78bfa;
@@ -130,7 +130,7 @@
   transition: all 0.15s ease;
 }
 
-.sml-phase-link:hover {
+.sml-cell-link:hover {
   background-color: rgba(167, 139, 250, 0.15);
   color: #c4b5fd;
 }

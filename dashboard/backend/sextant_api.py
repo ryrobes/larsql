@@ -4,10 +4,10 @@ Sextant API - Prompt optimization and analysis endpoints
 Endpoints:
 - GET /api/sextant/cascades - List cascades with optimization potential
 - GET /api/sextant/analyze/<cascade_id> - Analyze a cascade's soundings
-- GET /api/sextant/winner-loser-analysis/<cascade_id>/<phase_name> - Winners vs losers with LLM synopsis
+- GET /api/sextant/winner-loser-analysis/<cascade_id>/<cell_name> - Winners vs losers with LLM synopsis
 - GET /api/sextant/suggestions/<cascade_id> - Get/generate improvement suggestions
 - POST /api/sextant/apply - Apply a suggestion to a cascade file
-- GET /api/sextant/patterns/<cascade_id>/<phase_name> - Token-level pattern analysis
+- GET /api/sextant/patterns/<cascade_id>/<cell_name> - Token-level pattern analysis
 - GET /api/sextant/evolution/<session_id> - Prompt evolution/phylogeny visualization data
 - GET /api/sextant/species/<session_id> - Species hash and related training sessions
 """
@@ -21,8 +21,8 @@ from flask import Blueprint, jsonify, request
 # Add windlass to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from windlass.db_adapter import get_db
-from windlass.config import get_config
+from rvbbit.db_adapter import get_db
+from rvbbit.config import get_config
 
 sextant_bp = Blueprint('sextant', __name__, url_prefix='/api/sextant')
 
@@ -42,14 +42,14 @@ def list_cascades_with_soundings():
             SELECT
                 cascade_id,
                 COUNT(DISTINCT session_id) as session_count,
-                COUNT(DISTINCT phase_name) as phase_count,
+                COUNT(DISTINCT cell_name) as phase_count,
                 SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
-                COUNT(DISTINCT sounding_index) as sounding_diversity,
+                COUNT(DISTINCT candidate_index) as sounding_diversity,
                 MIN(timestamp) as first_run,
                 MAX(timestamp) as last_run,
                 SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
             FROM unified_logs
-            WHERE sounding_index IS NOT NULL
+            WHERE candidate_index IS NOT NULL
               AND cascade_id IS NOT NULL
               AND cascade_id != ''
             GROUP BY cascade_id
@@ -80,8 +80,8 @@ def list_cascades_with_soundings():
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/species/<cascade_id>/<phase_name>', methods=['GET'])
-def list_species(cascade_id, phase_name):
+@sextant_bp.route('/species/<cascade_id>/<cell_name>', methods=['GET'])
+def list_species(cascade_id, cell_name):
     """
     List distinct species (phase template DNA hashes) for a cascade/phase.
 
@@ -106,7 +106,7 @@ def list_species(cascade_id, phase_name):
                 MAX(timestamp) as last_seen
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
-              AND phase_name = '{phase_name}'
+              AND cell_name = '{cell_name}'
               AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
               AND species_hash IS NOT NULL
             GROUP BY species_hash
@@ -120,12 +120,12 @@ def list_species(cascade_id, phase_name):
             """Get sample input data for a species to help identify it."""
             sample_query = f"""
                 SELECT
-                    phase_json,
+                    cell_json,
                     metadata_json,
                     content_json
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND species_hash = '{species_hash}'
                   AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
                 LIMIT 1
@@ -138,10 +138,10 @@ def list_species(cascade_id, phase_name):
             input_preview = None
             instructions_preview = None
 
-            # Try to extract instructions from phase_json (the phase config)
-            if row.get('phase_json'):
+            # Try to extract instructions from cell_json (the phase config)
+            if row.get('cell_json'):
                 try:
-                    phase_data = json.loads(row['phase_json']) if isinstance(row['phase_json'], str) else row['phase_json']
+                    phase_data = json.loads(row['cell_json']) if isinstance(row['cell_json'], str) else row['cell_json']
                     if isinstance(phase_data, dict):
                         instr = phase_data.get('instructions', '')
                         if instr:
@@ -216,7 +216,7 @@ def list_species(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'species': species,
             'species_count': len(species),
             'warning': warning,
@@ -246,15 +246,15 @@ def analyze_cascade(cascade_id):
         # Get phases with soundings for this cascade
         phases_query = f"""
             SELECT
-                phase_name,
+                cell_name,
                 COUNT(DISTINCT session_id) as session_count,
                 SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
-              AND sounding_index IS NOT NULL
-              AND phase_name IS NOT NULL
+              AND candidate_index IS NOT NULL
+              AND cell_name IS NOT NULL
               AND node_type = 'sounding_attempt'
-            GROUP BY phase_name
+            GROUP BY cell_name
             ORDER BY session_count DESC
         """
 
@@ -262,7 +262,7 @@ def analyze_cascade(cascade_id):
 
         phases = []
         for phase in phases_result:
-            phase_name = phase['phase_name']
+            cell_name = phase['cell_name']
 
             # Get MODEL breakdown (the meaningful dimension!)
             model_query = f"""
@@ -274,7 +274,7 @@ def analyze_cascade(cascade_id):
                     AVG(CASE WHEN duration_ms > 0 THEN duration_ms ELSE NULL END) as avg_duration
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                   AND model IS NOT NULL
                 GROUP BY model
@@ -291,7 +291,7 @@ def analyze_cascade(cascade_id):
                     COUNT(*) as attempts
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                 GROUP BY mutation_type
                 ORDER BY wins DESC
@@ -317,7 +317,7 @@ def analyze_cascade(cascade_id):
                 SELECT content_json
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND is_winner = true
                   AND node_type = 'sounding_attempt'
                 LIMIT 5
@@ -332,7 +332,7 @@ def analyze_cascade(cascade_id):
             has_mutations = any(m['mutation_type'] != 'baseline' for m in mutation_result)
 
             phases.append({
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'session_count': phase['session_count'],
                 'total_competitions': total_wins,
                 'unique_models': unique_models,
@@ -376,8 +376,8 @@ def analyze_cascade(cascade_id):
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/winner-loser-analysis/<cascade_id>/<phase_name>', methods=['GET'])
-def winner_loser_analysis(cascade_id, phase_name):
+@sextant_bp.route('/winner-loser-analysis/<cascade_id>/<cell_name>', methods=['GET'])
+def winner_loser_analysis(cascade_id, cell_name):
     """
     Compare winning vs losing PROMPTS and generate LLM synopsis.
 
@@ -429,7 +429,7 @@ def winner_loser_analysis(cascade_id, phase_name):
             SELECT
                 a.trace_id,
                 a.session_id,
-                a.sounding_index,
+                a.candidate_index,
                 a.model,
                 a.full_request_json,
                 a.cost,
@@ -439,18 +439,18 @@ def winner_loser_analysis(cascade_id, phase_name):
                 a.timestamp
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id, mutation_type, species_hash
+                SELECT candidate_index, is_winner, session_id, mutation_type, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                   AND is_winner = true
                   {species_clause}
-            ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
+            ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
-              AND a.phase_name = '{phase_name}'
+              AND a.cell_name = '{cell_name}'
               AND a.node_type = 'agent'
-              AND a.sounding_index IS NOT NULL
+              AND a.candidate_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
             ORDER BY a.timestamp DESC
             LIMIT {limit}
@@ -460,7 +460,7 @@ def winner_loser_analysis(cascade_id, phase_name):
         if not winners_result:
             return jsonify({
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'winners': [],
                 'losers': [],
                 'synopsis': None,
@@ -475,7 +475,7 @@ def winner_loser_analysis(cascade_id, phase_name):
             SELECT
                 a.trace_id,
                 a.session_id,
-                a.sounding_index,
+                a.candidate_index,
                 a.model,
                 a.full_request_json,
                 a.cost,
@@ -485,18 +485,18 @@ def winner_loser_analysis(cascade_id, phase_name):
                 a.timestamp
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id, mutation_type, species_hash
+                SELECT candidate_index, is_winner, session_id, mutation_type, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                   AND (is_winner = false OR is_winner IS NULL)
                   {species_clause}
-            ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
+            ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
-              AND a.phase_name = '{phase_name}'
+              AND a.cell_name = '{cell_name}'
               AND a.node_type = 'agent'
-              AND a.sounding_index IS NOT NULL
+              AND a.candidate_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
               AND a.session_id IN ({session_list})
             ORDER BY a.timestamp DESC
@@ -511,7 +511,7 @@ def winner_loser_analysis(cascade_id, phase_name):
             winners.append({
                 'trace_id': row['trace_id'],
                 'session_id': row['session_id'],
-                'sounding_index': row['sounding_index'],
+                'candidate_index': row['candidate_index'],
                 'model': row['model'],
                 'model_short': row['model'].split('/')[-1] if row['model'] else 'unknown',
                 'prompt_preview': prompt[:500] + '...' if len(prompt) > 500 else prompt,
@@ -529,7 +529,7 @@ def winner_loser_analysis(cascade_id, phase_name):
             losers.append({
                 'trace_id': row['trace_id'],
                 'session_id': row['session_id'],
-                'sounding_index': row['sounding_index'],
+                'candidate_index': row['candidate_index'],
                 'model': row['model'],
                 'model_short': row['model'].split('/')[-1] if row['model'] else 'unknown',
                 'prompt_preview': prompt[:500] + '...' if len(prompt) > 500 else prompt,
@@ -543,7 +543,7 @@ def winner_loser_analysis(cascade_id, phase_name):
         # Generate LLM synopsis analyzing PROMPTS (unless skip_llm=true)
         synopsis = None
         if not skip_llm and winners and losers:
-            synopsis = generate_prompt_synopsis(winners, losers, cascade_id, phase_name)
+            synopsis = generate_prompt_synopsis(winners, losers, cascade_id, cell_name)
 
         # Compute cost analysis
         winner_costs = [w['cost'] for w in winners if w['cost'] > 0]
@@ -581,7 +581,7 @@ def winner_loser_analysis(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'winners': winners,
             'losers': losers,
             'synopsis': synopsis,
@@ -629,7 +629,7 @@ def extract_content_text(content_json) -> str:
         return str(content)
 
 
-def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, phase_name: str) -> dict:
+def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, cell_name: str) -> dict:
     """
     Use LLM to analyze what makes WINNING PROMPTS succeed.
 
@@ -638,9 +638,9 @@ def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, phase
 
     Returns structured synopsis with patterns and actionable suggestions.
     """
-    from windlass.agent import Agent
-    from windlass.config import get_config
-    from windlass.unified_logs import log_unified
+    from rvbbit.agent import Agent
+    from rvbbit.config import get_config
+    from rvbbit.unified_logs import log_unified
     import uuid
 
     config = get_config()
@@ -661,7 +661,7 @@ def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, phase
 
     analysis_prompt = f"""You are analyzing INPUT PROMPTS to understand what makes them produce winning outputs.
 
-CONTEXT: These are the prompts sent to LLMs in the "{phase_name}" phase of cascade "{cascade_id}".
+CONTEXT: These are the prompts sent to LLMs in the "{cell_name}" phase of cascade "{cascade_id}".
 An evaluator judged the outputs - WINNING PROMPTS produced better outputs than LOSING PROMPTS.
 Your job is to identify what in the PROMPT WORDING caused better outputs.
 
@@ -696,7 +696,7 @@ Respond ONLY with the JSON object, no other text."""
         analysis_model = config.default_model  # Use configured default
 
         # Generate tracking IDs for logging
-        session_id = f'sextant_analysis_{cascade_id}_{phase_name}'
+        session_id = f'sextant_analysis_{cascade_id}_{cell_name}'
         trace_id = f'sextant_{uuid.uuid4().hex[:12]}'
 
         # Create agent with proper interface - must pass base_url and api_key for OpenRouter
@@ -718,7 +718,7 @@ Respond ONLY with the JSON object, no other text."""
             node_type="sextant_analysis",
             role="assistant",
             depth=0,
-            phase_name="winner_loser_analysis",
+            cell_name="winner_loser_analysis",
             cascade_id="sextant",
             model=response.get('model', analysis_model),
             provider=response.get('provider'),
@@ -726,7 +726,7 @@ Respond ONLY with the JSON object, no other text."""
             content=response.get('content', ''),
             metadata={
                 'analyzed_cascade': cascade_id,
-                'analyzed_phase': phase_name,
+                'analyzed_phase': cell_name,
                 'winner_count': len(winners),
                 'loser_count': len(losers),
             },
@@ -793,9 +793,9 @@ def get_suggestions(cascade_id):
 
     Uses the SoundingAnalyzer to generate actual prompt improvements.
     """
-    from windlass.analyzer import SoundingAnalyzer, analyze_and_suggest
+    from rvbbit.analyzer import SoundingAnalyzer, analyze_and_suggest
 
-    phase_name = request.args.get('phase')
+    cell_name = request.args.get('phase')
     min_runs = request.args.get('min_runs', 5, type=int)
     generate = request.args.get('generate', 'false').lower() == 'true'
 
@@ -819,7 +819,7 @@ def get_suggestions(cascade_id):
             cascade_file = find_cascade_file(cascade_id, config)
 
             if cascade_file:
-                full_analysis = analyze_and_suggest(cascade_file, phase_name=phase_name, min_runs=min_runs)
+                full_analysis = analyze_and_suggest(cascade_file, cell_name=cell_name, min_runs=min_runs)
                 analysis = full_analysis
 
         # Format suggestions for UI
@@ -866,20 +866,20 @@ def apply_suggestion():
 
     Body: {
         cascade_id: string,
-        phase_name: string,
+        cell_name: string,
         new_instruction: string,
         auto_commit: boolean (optional)
     }
     """
-    from windlass.analyzer import PromptSuggestionManager
+    from rvbbit.analyzer import PromptSuggestionManager
 
     data = request.json
     cascade_id = data.get('cascade_id')
-    phase_name = data.get('phase_name')
+    cell_name = data.get('cell_name')
     new_instruction = data.get('new_instruction')
     auto_commit = data.get('auto_commit', False)
 
-    if not all([cascade_id, phase_name, new_instruction]):
+    if not all([cascade_id, cell_name, new_instruction]):
         return jsonify({'error': 'Missing required fields'}), 400
 
     try:
@@ -892,7 +892,7 @@ def apply_suggestion():
         manager = PromptSuggestionManager()
         success = manager.apply_suggestion(
             cascade_file=cascade_file,
-            phase_name=phase_name,
+            cell_name=cell_name,
             new_instruction=new_instruction,
             auto_commit=auto_commit
         )
@@ -901,7 +901,7 @@ def apply_suggestion():
             return jsonify({
                 'success': True,
                 'cascade_file': cascade_file,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'auto_committed': auto_commit,
             })
         else:
@@ -913,8 +913,8 @@ def apply_suggestion():
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/winning-samples/<cascade_id>/<phase_name>', methods=['GET'])
-def get_winning_samples(cascade_id, phase_name):
+@sextant_bp.route('/winning-samples/<cascade_id>/<cell_name>', methods=['GET'])
+def get_winning_samples(cascade_id, cell_name):
     """
     Get sample winning outputs for a specific phase.
 
@@ -932,7 +932,7 @@ def get_winning_samples(cascade_id, phase_name):
         query = f"""
             SELECT
                 session_id,
-                sounding_index,
+                candidate_index,
                 content_json,
                 cost,
                 duration_ms,
@@ -941,7 +941,7 @@ def get_winning_samples(cascade_id, phase_name):
                 timestamp
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
-              AND phase_name = '{phase_name}'
+              AND cell_name = '{cell_name}'
               AND is_winner = true
               AND node_type = 'sounding_attempt'
               {species_clause}
@@ -962,7 +962,7 @@ def get_winning_samples(cascade_id, phase_name):
 
             samples.append({
                 'session_id': row['session_id'],
-                'sounding_index': row['sounding_index'],
+                'candidate_index': row['candidate_index'],
                 'content': content if isinstance(content, str) else json.dumps(content, indent=2)[:2000],
                 'cost': float(row['cost']) if row['cost'] else 0,
                 'duration_ms': float(row['duration_ms']) if row['duration_ms'] else 0,
@@ -972,7 +972,7 @@ def get_winning_samples(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'samples': samples,
         })
 
@@ -980,8 +980,8 @@ def get_winning_samples(cascade_id, phase_name):
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/embedding-hotspots/<cascade_id>/<phase_name>', methods=['GET'])
-def embedding_hotspots(cascade_id, phase_name):
+@sextant_bp.route('/embedding-hotspots/<cascade_id>/<cell_name>', methods=['GET'])
+def embedding_hotspots(cascade_id, cell_name):
     """
     Compute PROMPT embedding hotspots - where winning vs losing PROMPTS cluster.
 
@@ -1001,8 +1001,8 @@ def embedding_hotspots(cascade_id, phase_name):
     try:
         import numpy as np
         import json as json_mod
-        from windlass.agent import Agent
-        from windlass.config import get_config
+        from rvbbit.agent import Agent
+        from rvbbit.config import get_config
 
         config = get_config()
 
@@ -1033,7 +1033,7 @@ def embedding_hotspots(cascade_id, phase_name):
             SELECT
                 a.trace_id,
                 a.session_id,
-                a.sounding_index,
+                a.candidate_index,
                 a.full_request_json,
                 a.model,
                 a.cost,
@@ -1041,17 +1041,17 @@ def embedding_hotspots(cascade_id, phase_name):
                 s.is_winner AS is_winner
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id
+                SELECT candidate_index, is_winner, session_id
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                   {species_clause_sub}
-            ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
+            ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
-              AND a.phase_name = '{phase_name}'
+              AND a.cell_name = '{cell_name}'
               AND a.node_type = 'agent'
-              AND a.sounding_index IS NOT NULL
+              AND a.candidate_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
               AND length(a.full_request_json) > 10
               {species_clause_main}
@@ -1063,7 +1063,7 @@ def embedding_hotspots(cascade_id, phase_name):
         if len(results) < min_samples:
             return jsonify({
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'error': f'Not enough prompts found (found {len(results)}, need {min_samples})',
                 'hotspots': [],
                 'visualization': None
@@ -1076,7 +1076,7 @@ def embedding_hotspots(cascade_id, phase_name):
             if prompt_text and row.get('is_winner') is not None:
                 prompts_data.append({
                     'trace_id': row['trace_id'],
-                    'sounding_index': row['sounding_index'],
+                    'candidate_index': row['candidate_index'],
                     'is_winner': bool(row.get('is_winner')),
                     'prompt': prompt_text[:1000],  # Limit for embedding
                     'model': row.get('model', '').split('/')[-1] if row.get('model') else 'unknown',
@@ -1086,7 +1086,7 @@ def embedding_hotspots(cascade_id, phase_name):
         if len(prompts_data) < min_samples:
             return jsonify({
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'error': f'Not enough valid prompts (found {len(prompts_data)})',
                 'hotspots': [],
                 'visualization': None
@@ -1100,7 +1100,7 @@ def embedding_hotspots(cascade_id, phase_name):
             model=config.default_embed_model,
             session_id=f'sextant_hotspots_{cascade_id}',
             cascade_id='sextant',
-            phase_name='embedding_hotspots',
+            cell_name='embedding_hotspots',
         )
 
         embeddings = np.array(embed_result['embeddings'])
@@ -1110,7 +1110,7 @@ def embedding_hotspots(cascade_id, phase_name):
         for i, p in enumerate(prompts_data):
             points.append({
                 'trace_id': p['trace_id'],
-                'sounding_index': p['sounding_index'],
+                'candidate_index': p['candidate_index'],
                 'is_winner': p['is_winner'],
                 'prompt': p['prompt'][:500],
                 'model': p['model'],
@@ -1121,7 +1121,7 @@ def embedding_hotspots(cascade_id, phase_name):
         if len(points) < min_samples:
             return jsonify({
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'error': f'Not enough valid embeddings (found {len(points)})',
                 'hotspots': [],
                 'visualization': None
@@ -1199,7 +1199,7 @@ def embedding_hotspots(cascade_id, phase_name):
                 'is_winner': p['is_winner'],
                 'cluster': int(label),
                 'model': p['model'],
-                'sounding_index': p.get('sounding_index'),
+                'candidate_index': p.get('candidate_index'),
                 'prompt_preview': p['prompt'][:100],
                 'cost': p['cost'],
             })
@@ -1234,7 +1234,7 @@ def embedding_hotspots(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'hotspots': hotspots,
             'visualization': {
                 'type': '2d_pca',
@@ -1263,8 +1263,8 @@ def embedding_hotspots(cascade_id, phase_name):
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/text-heatmap/<cascade_id>/<phase_name>', methods=['GET'])
-def text_heatmap(cascade_id, phase_name):
+@sextant_bp.route('/text-heatmap/<cascade_id>/<cell_name>', methods=['GET'])
+def text_heatmap(cascade_id, cell_name):
     """
     FLIR-style heat vision for text - show which parts of responses correlate with winning.
 
@@ -1285,8 +1285,8 @@ def text_heatmap(cascade_id, phase_name):
 
     try:
         import numpy as np
-        from windlass.agent import Agent
-        from windlass.config import get_config
+        from rvbbit.agent import Agent
+        from rvbbit.config import get_config
 
         config = get_config()
 
@@ -1300,7 +1300,7 @@ def text_heatmap(cascade_id, phase_name):
                 model
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
-              AND phase_name = '{phase_name}'
+              AND cell_name = '{cell_name}'
               AND node_type = 'sounding_attempt'
               AND length(content_embedding) > 0
             ORDER BY timestamp DESC
@@ -1312,7 +1312,7 @@ def text_heatmap(cascade_id, phase_name):
             return jsonify({
                 'error': f'Not enough samples (found {len(results)}, need at least 4)',
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
             })
 
         # Separate winners and losers
@@ -1368,7 +1368,7 @@ def text_heatmap(cascade_id, phase_name):
             model=config.default_embed_model,
             session_id=f'sextant_heatmap_{cascade_id}',
             cascade_id='sextant',
-            phase_name='text_heatmap',
+            cell_name='text_heatmap',
         )
 
         chunk_embeddings = np.array(embed_result['embeddings'])
@@ -1408,7 +1408,7 @@ def text_heatmap(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'trace_id': target['trace_id'],
             'is_winner': target_is_winner,
             'model': target_model,
@@ -1636,8 +1636,8 @@ def chunk_text_smart(text: str, target_size: int = 150) -> list:
     return chunks
 
 
-@sextant_bp.route('/prompt-heatmap/<cascade_id>/<phase_name>', methods=['GET'])
-def prompt_heatmap(cascade_id, phase_name):
+@sextant_bp.route('/prompt-heatmap/<cascade_id>/<cell_name>', methods=['GET'])
+def prompt_heatmap(cascade_id, cell_name):
     """
     FLIR-style heat vision for INPUT PROMPTS - show which parts of prompts correlate with winning.
 
@@ -1650,18 +1650,18 @@ def prompt_heatmap(cascade_id, phase_name):
     4. For a sample prompt, chunk and show heat per chunk
 
     Query params:
-    - sounding_index: Specific sounding to analyze (optional, defaults to winner)
+    - candidate_index: Specific sounding to analyze (optional, defaults to winner)
     - chunk_size: Approximate chars per chunk (default 150)
     """
     db = get_db()
-    target_sounding_idx = request.args.get('sounding_index', type=int)
+    target_sounding_idx = request.args.get('candidate_index', type=int)
     chunk_size = request.args.get('chunk_size', 150, type=int)
 
     try:
         import numpy as np
         import json as json_mod
-        from windlass.agent import Agent
-        from windlass.config import get_config
+        from rvbbit.agent import Agent
+        from rvbbit.config import get_config
 
         config = get_config()
 
@@ -1670,23 +1670,23 @@ def prompt_heatmap(cascade_id, phase_name):
         query = f"""
             SELECT
                 a.trace_id,
-                a.sounding_index,
+                a.candidate_index,
                 a.full_request_json,
                 a.model,
                 a.request_embedding,
                 s.is_winner AS is_winner
             FROM unified_logs a
             LEFT JOIN (
-                SELECT sounding_index, is_winner, session_id
+                SELECT candidate_index, is_winner, session_id
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
-            ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
+            ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
-              AND a.phase_name = '{phase_name}'
+              AND a.cell_name = '{cell_name}'
               AND a.node_type = 'agent'
-              AND a.sounding_index IS NOT NULL
+              AND a.candidate_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
               AND length(a.full_request_json) > 10
             ORDER BY a.timestamp DESC
@@ -1698,7 +1698,7 @@ def prompt_heatmap(cascade_id, phase_name):
             return jsonify({
                 'error': f'Not enough sounding prompts (found {len(results)}, need at least 3)',
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
             })
 
         # Extract prompt text from full_request_json
@@ -1746,7 +1746,7 @@ def prompt_heatmap(cascade_id, phase_name):
             model=config.default_embed_model,
             session_id=f'sextant_prompt_heatmap_{cascade_id}',
             cascade_id='sextant',
-            phase_name='prompt_heatmap',
+            cell_name='prompt_heatmap',
         )
 
         prompt_embeddings = np.array(embed_result['embeddings'])
@@ -1768,7 +1768,7 @@ def prompt_heatmap(cascade_id, phase_name):
 
         # Step 4: Get target prompt to analyze
         if target_sounding_idx is not None:
-            target = next((r for r in results if r['sounding_index'] == target_sounding_idx), None)
+            target = next((r for r in results if r['candidate_index'] == target_sounding_idx), None)
             if not target:
                 return jsonify({'error': f'Sounding index {target_sounding_idx} not found'})
         else:
@@ -1778,7 +1778,7 @@ def prompt_heatmap(cascade_id, phase_name):
         target_prompt = target['prompt_text']
         target_is_winner = target.get('is_winner', False)
         target_model = target.get('model', '').split('/')[-1] if target.get('model') else 'unknown'
-        target_sounding_index = target.get('sounding_index')
+        target_candidate_index = target.get('candidate_index')
 
         # Step 5: Chunk the prompt text
         chunks = chunk_text_smart(target_prompt, chunk_size)
@@ -1786,7 +1786,7 @@ def prompt_heatmap(cascade_id, phase_name):
         if not chunks:
             return jsonify({
                 'error': 'No prompt content to analyze',
-                'sounding_index': target_sounding_index,
+                'candidate_index': target_candidate_index,
             })
 
         # Step 6: Embed each chunk
@@ -1797,7 +1797,7 @@ def prompt_heatmap(cascade_id, phase_name):
             model=config.default_embed_model,
             session_id=f'sextant_prompt_chunks_{cascade_id}',
             cascade_id='sextant',
-            phase_name='prompt_heatmap_chunks',
+            cell_name='prompt_heatmap_chunks',
         )
 
         chunk_embeddings = np.array(chunk_embed_result['embeddings'])
@@ -1837,8 +1837,8 @@ def prompt_heatmap(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
-            'sounding_index': target_sounding_index,
+            'cell_name': cell_name,
+            'candidate_index': target_candidate_index,
             'is_winner': target_is_winner,
             'model': target_model,
             'full_prompt': target_prompt,
@@ -1857,7 +1857,7 @@ def prompt_heatmap(cascade_id, phase_name):
             },
             'available_prompts': [
                 {
-                    'sounding_index': r['sounding_index'],
+                    'candidate_index': r['candidate_index'],
                     'is_winner': r.get('is_winner', False),
                     'model': r.get('model', '').split('/')[-1] if r.get('model') else 'unknown',
                     'preview': r['prompt_text'][:80],
@@ -1874,8 +1874,8 @@ def prompt_heatmap(cascade_id, phase_name):
         return jsonify({'error': str(e)}), 500
 
 
-@sextant_bp.route('/prompt-patterns/<cascade_id>/<phase_name>', methods=['GET'])
-def prompt_patterns(cascade_id, phase_name):
+@sextant_bp.route('/prompt-patterns/<cascade_id>/<cell_name>', methods=['GET'])
+def prompt_patterns(cascade_id, cell_name):
     """
     Cross-prompt pattern analysis - the CORE of prompt optimization.
 
@@ -1909,8 +1909,8 @@ def prompt_patterns(cascade_id, phase_name):
     try:
         import numpy as np
         import json as json_mod
-        from windlass.agent import Agent
-        from windlass.config import get_config
+        from rvbbit.agent import Agent
+        from rvbbit.config import get_config
 
         config = get_config()
 
@@ -1922,7 +1922,7 @@ def prompt_patterns(cascade_id, phase_name):
         query = f"""
             SELECT
                 a.trace_id,
-                a.sounding_index,
+                a.candidate_index,
                 a.session_id,
                 a.full_request_json,
                 a.model,
@@ -1931,17 +1931,17 @@ def prompt_patterns(cascade_id, phase_name):
                 s.species_hash AS species_hash
             FROM unified_logs a
             INNER JOIN (
-                SELECT sounding_index, is_winner, session_id, species_hash
+                SELECT candidate_index, is_winner, session_id, species_hash
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                  AND phase_name = '{phase_name}'
+                  AND cell_name = '{cell_name}'
                   AND node_type = 'sounding_attempt'
                   {species_clause}
-            ) s ON a.sounding_index = s.sounding_index AND a.session_id = s.session_id
+            ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
-              AND a.phase_name = '{phase_name}'
+              AND a.cell_name = '{cell_name}'
               AND a.node_type = 'agent'
-              AND a.sounding_index IS NOT NULL
+              AND a.candidate_index IS NOT NULL
               AND a.full_request_json IS NOT NULL
               AND length(a.full_request_json) > 10
             ORDER BY a.timestamp DESC
@@ -1953,7 +1953,7 @@ def prompt_patterns(cascade_id, phase_name):
             return jsonify({
                 'error': f'Not enough prompts (found {len(results)}, need at least 3)',
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
             })
 
         # Extract prompt text from full_request_json
@@ -2004,7 +2004,7 @@ def prompt_patterns(cascade_id, phase_name):
             prompt['chunks'] = chunks
             for i, chunk in enumerate(chunks):
                 all_chunks.append({
-                    'prompt_idx': prompt['sounding_index'],
+                    'prompt_idx': prompt['candidate_index'],
                     'chunk_idx': i,
                     'text': chunk['text'],
                     'start': chunk['start'],
@@ -2023,7 +2023,7 @@ def prompt_patterns(cascade_id, phase_name):
             model=config.default_embed_model,
             session_id=f'sextant_patterns_{cascade_id}',
             cascade_id='sextant',
-            phase_name='prompt_patterns',
+            cell_name='prompt_patterns',
         )
 
         embeddings = np.array(embed_result['embeddings'])
@@ -2079,9 +2079,9 @@ def prompt_patterns(cascade_id, phase_name):
 
         # Step 6: Build response with prompts and their chunks
         def format_prompt_with_chunks(prompt, all_chunks):
-            prompt_chunks = [c for c in all_chunks if c['prompt_idx'] == prompt['sounding_index']]
+            prompt_chunks = [c for c in all_chunks if c['prompt_idx'] == prompt['candidate_index']]
             return {
-                'sounding_index': prompt['sounding_index'],
+                'candidate_index': prompt['candidate_index'],
                 'session_id': prompt['session_id'],
                 'model': prompt.get('model', '').split('/')[-1] if prompt.get('model') else 'unknown',
                 'full_prompt': prompt['prompt_text'],
@@ -2222,7 +2222,7 @@ def prompt_patterns(cascade_id, phase_name):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phase_name': phase_name,
+            'cell_name': cell_name,
             'winning_prompts': winning_prompts,
             'losing_prompts': losing_prompts,
             'global_hot_patterns': hot_patterns,
@@ -2261,7 +2261,7 @@ def embedding_search():
         role: string (optional filter: 'assistant', 'user')
     }
     """
-    from windlass.agent import Agent
+    from rvbbit.agent import Agent
 
     data = request.json
     query_text = data.get('query', '')
@@ -2296,7 +2296,7 @@ def embedding_search():
                 trace_id,
                 session_id,
                 cascade_id,
-                phase_name,
+                cell_name,
                 role,
                 content_json,
                 cosineDistance(content_embedding, {vector_str}) as distance
@@ -2322,7 +2322,7 @@ def embedding_search():
                 'trace_id': row['trace_id'],
                 'session_id': row['session_id'],
                 'cascade_id': row['cascade_id'],
-                'phase_name': row['phase_name'],
+                'cell_name': row['cell_name'],
                 'role': row['role'],
                 'content_preview': str(content)[:500] if content else '',
                 'similarity': 1 - float(row['distance']),  # Convert distance to similarity
@@ -2416,7 +2416,7 @@ def get_prompt_evolution(session_id):
     Query params:
     - as_of: timestamp | 'current' (default: session timestamp - show tree as it was at that time)
     - include_future: bool (default: false - whether to show runs after this session)
-    - phase_name: string (optional - filter to specific phase)
+    - cell_name: string (optional - filter to specific phase)
 
     Returns:
     {
@@ -2424,7 +2424,7 @@ def get_prompt_evolution(session_id):
         "edges": [list of React Flow edges],
         "metadata": {
             "cascade_id": str,
-            "phase_name": str,
+            "cell_name": str,
             "species_hash": str,
             "session_count": int,
             "as_of_timestamp": str,
@@ -2438,23 +2438,23 @@ def get_prompt_evolution(session_id):
         # Parse query params
         as_of = request.args.get('as_of', 'session')  # 'session', 'latest', or ISO timestamp
         include_future = request.args.get('include_future', 'false').lower() == 'true'
-        phase_filter = request.args.get('phase_name')
+        phase_filter = request.args.get('cell_name')
 
-        # 1. Get metadata for the current session (cascade_id, phase_name, species_hash, timestamp)
+        # 1. Get metadata for the current session (cascade_id, cell_name, species_hash, timestamp)
         # IMPORTANT: Use MAX(timestamp) to get the latest timestamp from this session
         # This ensures we include all sounding_attempt rows which are logged AFTER agent responses
         session_query = f"""
             SELECT
                 cascade_id,
-                phase_name,
+                cell_name,
                 species_hash,
                 MAX(timestamp) as timestamp
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND species_hash IS NOT NULL
               AND species_hash != ''
-              AND phase_name IS NOT NULL
-            GROUP BY cascade_id, phase_name, species_hash
+              AND cell_name IS NOT NULL
+            GROUP BY cascade_id, cell_name, species_hash
             LIMIT 1
         """
 
@@ -2464,7 +2464,7 @@ def get_prompt_evolution(session_id):
 
         session_info = session_info[0]
         cascade_id = session_info['cascade_id']
-        phase_name = session_info['phase_name'] if not phase_filter else phase_filter
+        cell_name = session_info['cell_name'] if not phase_filter else phase_filter
         species_hash = session_info['species_hash']
         session_timestamp = session_info['timestamp']
 
@@ -2492,7 +2492,7 @@ def get_prompt_evolution(session_id):
         evolution_query = f"""
             SELECT
                 session_id,
-                sounding_index,
+                candidate_index,
                 mutation_applied,
                 mutation_type,
                 mutation_template,
@@ -2502,12 +2502,12 @@ def get_prompt_evolution(session_id):
                 {future_filter}
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
-              AND phase_name = '{phase_name}'
+              AND cell_name = '{cell_name}'
               AND species_hash = '{species_hash}'
-              AND sounding_index IS NOT NULL
+              AND candidate_index IS NOT NULL
               AND node_type = 'sounding_attempt'
               {time_filter}
-            ORDER BY timestamp ASC, sounding_index ASC
+            ORDER BY timestamp ASC, candidate_index ASC
         """
 
         results = db.query(evolution_query, output_format='dict')
@@ -2518,7 +2518,7 @@ def get_prompt_evolution(session_id):
                 'edges': [],
                 'metadata': {
                     'cascade_id': cascade_id,
-                    'phase_name': phase_name,
+                    'cell_name': cell_name,
                     'species_hash': species_hash,
                     'session_count': 0,
                     'as_of_timestamp': str(session_timestamp),
@@ -2542,7 +2542,7 @@ def get_prompt_evolution(session_id):
             prompt_text = row['mutation_applied'] if row['mutation_applied'] else '[Baseline - Original Phase Instructions]'
 
             generations[sess_id]['soundings'].append({
-                'sounding_index': row['sounding_index'],
+                'candidate_index': row['candidate_index'],
                 'prompt': prompt_text,
                 'type': row['mutation_type'],
                 'template': row['mutation_template'],
@@ -2586,7 +2586,7 @@ def get_prompt_evolution(session_id):
                 # Increased from 180 to 250 to accommodate taller nodes
                 y = sound_idx * 250
 
-                node_id = f"{generation['session_id']}_{sounding['sounding_index']}"
+                node_id = f"{generation['session_id']}_{sounding['candidate_index']}"
 
                 # Build parent winners list for DNA inheritance bar
                 parent_winners = []
@@ -2594,7 +2594,7 @@ def get_prompt_evolution(session_id):
                     parent_winners.append({
                         'generation': parent_gen_idx + 1,
                         'session_id': parent_session_id,
-                        'sounding_index': parent_sounding['sounding_index'],
+                        'candidate_index': parent_sounding['candidate_index'],
                         'prompt_snippet': (parent_sounding['prompt'] or '')[:30]
                     })
 
@@ -2604,7 +2604,7 @@ def get_prompt_evolution(session_id):
                     'position': {'x': x, 'y': y},
                     'data': {
                         'generation': gen_idx + 1,
-                        'sounding_index': sounding['sounding_index'],
+                        'candidate_index': sounding['candidate_index'],
                         'prompt': sounding['prompt'],
                         'mutation_type': sounding['type'],
                         'mutation_template': sounding['template'],
@@ -2622,7 +2622,7 @@ def get_prompt_evolution(session_id):
                 # GENETIC LINEAGE EDGES: Connect to ALL previous winners (gene pool)
                 if gen_idx > 0:
                     for parent_gen_idx, parent_session_id, parent_sounding in gene_pool:
-                        source_id = f"{parent_session_id}_{parent_sounding['sounding_index']}"
+                        source_id = f"{parent_session_id}_{parent_sounding['candidate_index']}"
 
                         # Check if this is an immediate parent (last generation)
                         is_immediate_parent = parent_gen_idx == gen_idx - 1
@@ -2680,7 +2680,7 @@ def get_prompt_evolution(session_id):
 
         # 7. Mark the "active training set" (last 5 winners by timestamp)
         # This shows which winners would be used for training the NEXT generation
-        winner_limit = int(os.environ.get("WINDLASS_WINNER_HISTORY_LIMIT", "5"))
+        winner_limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
 
         # Collect all winner nodes with their timestamps
         winner_nodes = []
@@ -2705,7 +2705,7 @@ def get_prompt_evolution(session_id):
             'edges': edges,
             'metadata': {
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'species_hash': species_hash,
                 'session_count': len(gen_list),
                 'as_of_timestamp': str(session_timestamp),
@@ -2740,12 +2740,12 @@ def get_species_info(session_id):
         species_query = f"""
             SELECT DISTINCT
                 cascade_id,
-                phase_name,
+                cell_name,
                 species_hash
             FROM unified_logs
             WHERE session_id = '{session_id}'
             AND species_hash IS NOT NULL
-            AND phase_name IS NOT NULL
+            AND cell_name IS NOT NULL
         """
 
         species_rows = db.query(species_query, output_format='dict')
@@ -2761,7 +2761,7 @@ def get_species_info(session_id):
 
         for row in species_rows:
             cascade_id = row['cascade_id']
-            phase_name = row['phase_name']
+            cell_name = row['cell_name']
             species_hash = row['species_hash']
 
             # Find all related sessions with this species hash
@@ -2770,14 +2770,14 @@ def get_species_info(session_id):
                     session_id,
                     MIN(timestamp) as first_seen,
                     MAX(timestamp) as last_seen,
-                    COUNT(DISTINCT sounding_index) as sounding_count,
+                    COUNT(DISTINCT candidate_index) as sounding_count,
                     SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
                     SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
-                AND phase_name = '{phase_name}'
+                AND cell_name = '{cell_name}'
                 AND species_hash = '{species_hash}'
-                AND sounding_index IS NOT NULL
+                AND candidate_index IS NOT NULL
                 GROUP BY session_id
                 ORDER BY MIN(timestamp) ASC
             """
@@ -2811,7 +2811,7 @@ def get_species_info(session_id):
 
             phases_info.append({
                 'cascade_id': cascade_id,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'species_hash': species_hash,
                 'evolution_depth': len(related_sessions),
                 'current_generation': current_session_index + 1 if current_session_index >= 0 else None,

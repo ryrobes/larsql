@@ -1,16 +1,16 @@
-# Windlass
+# RVBBIT
 
 **Stop writing imperative glue code. Start orchestrating agents declaratively.**
 
-Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
+RVBBIT is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, RVBBIT gives you the primitives to **focus on prompts, not plumbing**.
 
-**🆕 NEW: Query Windlass with SQL! (2025-12-24)** Connect DBeaver, psql, Tableau, or any SQL client to Windlass and run LLMs directly in SQL queries! Execute `windlass_udf('Extract brand', product_name)` or run complete cascades per row with `windlass_cascade_udf()`. Includes PostgreSQL wire protocol server + HTTP API. [See SQL Integration →](#sql-integration-new)
+**🆕 NEW: Query RVBBIT with SQL! (2025-12-24)** Connect DBeaver, psql, Tableau, or any SQL client to RVBBIT and run LLMs directly in SQL queries! Execute `rvbbit_udf('Extract brand', product_name)` or run complete cascades per row with `rvbbit_cascade_udf()`. Includes PostgreSQL wire protocol server + HTTP API. [See SQL Integration →](#sql-integration-new)
 
-**NEW: Data Cascades (Polyglot Notebooks)!** Execute SQL, Python, JavaScript, Clojure, and LLM phases in a single pipeline with seamless data flow. "Jupyter for Cascades" with auto-fix debugging, multi-modal outputs, and session-scoped temp tables. [See Data Cascades →](#data-cascades-polyglot-notebooks)
+**NEW: Data Cascades (Polyglot Notebooks)!** Execute SQL, Python, JavaScript, Clojure, and LLM cells in a single pipeline with seamless data flow. "Jupyter for Cascades" with auto-fix debugging, multi-modal outputs, and session-scoped temp tables. [See Data Cascades →](#data-cascades-polyglot-notebooks)
 
-**NEW: Web Dashboard!** Full-featured web IDE with SQL notebook mode, visual playground canvas (stacked deck UI for soundings), and session explorer. Build cascades visually or write polyglot data pipelines. [See Dashboard →](#web-dashboard)
+**NEW: Web Dashboard!** Full-featured web IDE with SQL notebook mode, visual playground canvas (stacked deck UI for candidates), and session explorer. Build cascades visually or write polyglot data pipelines. [See Dashboard →](#web-dashboard)
 
-**NEW: Deterministic Execution!** Skip the LLM for predictable operations. Execute tools directly (10-100x faster, $0 cost) while keeping LLM phases for complex tasks. Hybrid workflows give you the best of both worlds. [See Deterministic Phases →](#deterministic-execution)
+**NEW: Deterministic Execution!** Skip the LLM for predictable operations. Execute tools directly (10-100x faster, $0 cost) while keeping LLM cells for complex tasks. Hybrid workflows give you the best of both worlds. [See Deterministic Cells →](#deterministic-execution)
 
 **NEW: Automatic prompt optimization!** Rewrite mutations now learn from previous winners automatically. Each run builds on the last 5 winning prompts (same config). View the full genetic lineage in the Web UI's Evolution Tree (🧬). Zero configuration required. [See Passive Prompt Optimization →](#passive-prompt-optimization-winner-learning)
 
@@ -63,11 +63,11 @@ for attempt in range(max_retries):
 
 **The insight:** Instead of fighting errors serially, **run multiple attempts in parallel and filter errors out naturally.**
 
-Windlass turns retry loops into **4 lines of declarative JSON**:
+RVBBIT turns retry loops into **4 lines of declarative JSON**:
 
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "evaluator_instructions": "Pick the best"
   }
@@ -80,7 +80,7 @@ Windlass turns retry loops into **4 lines of declarative JSON**:
 3. ✅ Evaluator picks **THE BEST** of the successes (not just "whatever worked")
 4. ✅ Zero error handling code needed
 
-### The Math: Why Soundings Are Faster & Cheaper
+### The Math: Why Candidates Are Faster & Cheaper
 
 **Serial Retries (Traditional):**
 ```
@@ -93,7 +93,7 @@ LLM calls: 3 sequential
 Result: Whatever attempt 3 produces
 ```
 
-**Soundings (Windlass):**
+**Candidates (RVBBIT):**
 ```
 Attempt 1 ┐
 Attempt 2 ├→ All parallel (2s) → Evaluate (1s) → Winner
@@ -111,11 +111,11 @@ Result: Best of all successful attempts
 ```json
 {
   "cascade_id": "dashboard_autopilot",
-  "phases": [{
+  "cells": [{
     "name": "generate_dashboard",
     "instructions": "Create a sales dashboard from the database",
-    "tackle": ["smart_sql_run", "create_chart"],
-    "soundings": {
+    "traits": ["smart_sql_run", "create_chart"],
+    "candidates": {
       "factor": 3,
       "evaluator_instructions": "Pick the most insightful dashboard",
       "reforge": {
@@ -135,25 +135,25 @@ Result: Best of all successful attempts
 ```
 
 **What this does:**
-1. **Soundings**: Generate 3 dashboard variations in parallel, pick the best
+1. **Candidates**: Generate 3 dashboard variations in parallel, pick the best
 2. **Wards**: Block on data errors, retry on accessibility issues
 3. **Reforge**: Iteratively refine the winner with vision feedback + mutations
 4. **Observability**: Full execution trace in DuckDB, Mermaid graphs, real-time SSE events
 
 **No Python loops. No global state. No debugging spaghetti.**
 
-## Why Windlass?
+## Why RVBBIT?
 
 ### Built for Iterative Artifact Generation
 
-Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), Windlass is designed for **monolithic context agents** that iterate on complex tasks:
+Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), RVBBIT is designed for **monolithic context agents** that iterate on complex tasks:
 
 - **Data dashboards**: Query → Validate → Visualize → Refine
 - **Report generation**: Research → Draft → Critique → Polish
 - **Code generation**: Explore → Implement → Test → Optimize
 - **Design systems**: Generate → Render → Critique → Iterate
 
-### Soundings: The Killer Feature That Emerged By Accident
+### Candidates: The Killer Feature That Emerged By Accident
 
 **The problem everyone solves wrong:** LLMs fail randomly (JSON errors, context confusion, tool calling mistakes). Traditional solution: serial retries with error feedback.
 
@@ -170,14 +170,14 @@ while attempt <= 3:
 # Slow (sequential), complex (error handling), brittle (one hiccup blocks all)
 ```
 
-**Windlass solution: Parallel exploration + natural error filtering:**
+**RVBBIT solution: Parallel exploration + natural error filtering:**
 ```json
-{"soundings": {"factor": 3, "evaluator_instructions": "Pick the best"}}
+{"candidates": {"factor": 3, "evaluator_instructions": "Pick the best"}}
 ```
 
 **The counterintuitive economics:**
 
-| Metric | Serial Retries | Soundings |
+| Metric | Serial Retries | Candidates |
 |--------|---------------|-----------|
 | **Wall time** | 6 seconds (sequential) | 3 seconds (parallel) |
 | **Success probability** | 97.3% (compound) | 97.3% (independent trials) |
@@ -193,7 +193,7 @@ while attempt <= 3:
 
 **LLM failures with 70% success rate:**
 - Serial: Attempt 1 fails → Attempt 2 fails → Attempt 3 succeeds (get result from attempt 3)
-- Soundings: 2-3 attempts succeed → Evaluator picks THE BEST one
+- Candidates: 2-3 attempts succeed → Evaluator picks THE BEST one
 
 **This is genetic algorithms for LLM outputs.**
 
@@ -203,7 +203,7 @@ Add `mutate: true` to explore **different formulations** of the same task:
 
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 5,
     "mutate": true,
     "mutation_mode": "rewrite"
@@ -228,7 +228,7 @@ Each mutation is a **different approach** to the same problem. Evaluator picks w
 # Run 10: "📚 Learning from 5 previous winning rewrites"
 ```
 
-**Passive optimization in action:** Prompts improve automatically across runs. View the full genetic lineage in the Web UI's Evolution Tree (🧬) - see how each sounding was trained by ALL previous winners, with active training set highlighted in gold.
+**Passive optimization in action:** Prompts improve automatically across runs. View the full genetic lineage in the Web UI's Evolution Tree (🧬) - see how each candidate was trained by ALL previous winners, with active training set highlighted in gold.
 
 **Prompt engineering becomes data science, not dark art.**
 
@@ -236,9 +236,9 @@ Each mutation is a **different approach** to the same problem. Evaluator picks w
 
 Every cascade execution produces:
 - **DuckDB logs**: Query-able Parquet files with full history
-- **Mermaid graphs**: Visual flowcharts with soundings/reforge visualization
+- **Mermaid graphs**: Visual flowcharts with candidates/reforge visualization
 - **Real-time events**: SSE streaming for live UIs
-- **Cost tracking**: Token usage per phase/sounding/reforge
+- **Cost tracking**: Token usage per cell/candidate/reforge
 - **Trace hierarchy**: Parent-child relationships for nested cascades
 
 **You never lose visibility into what happened.**
@@ -266,11 +266,11 @@ Three modes of validation for different use cases:
 }
 ```
 
-Wards ensure bad outputs never propagate to downstream phases.
+Wards ensure bad outputs never propagate to downstream cells.
 
 ### Loop Until - Automatic Validation Goal Injection
 
-When using `loop_until` for validation-based retries, Windlass **automatically tells the agent upfront** what validation criteria it needs to satisfy:
+When using `loop_until` for validation-based retries, RVBBIT **automatically tells the agent upfront** what validation criteria it needs to satisfy:
 
 **Before (manual redundancy):**
 ```json
@@ -348,7 +348,7 @@ For **subjective quality checks** where you need an impartial third party, use `
 **Example Cascade:**
 ```json
 {
-  "phases": [
+  "cells": [
     {
       "name": "write_code",
       "instructions": "Generate Python code to solve the problem.",
@@ -390,23 +390,23 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Optional: Configure directories and model**
 ```bash
-export WINDLASS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
-export WINDLASS_LOG_DIR="./logs"
-export WINDLASS_GRAPH_DIR="./graphs"
-export WINDLASS_STATE_DIR="./states"
-export WINDLASS_IMAGE_DIR="./images"
+export RVBBIT_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
+export RVBBIT_LOG_DIR="./logs"
+export RVBBIT_GRAPH_DIR="./graphs"
+export RVBBIT_STATE_DIR="./states"
+export RVBBIT_IMAGE_DIR="./images"
 ```
 
 ---
 
 ## SQL Integration (NEW! 2025-12-24)
 
-**Query Windlass with LLMs from ANY SQL client!**
+**Query RVBBIT with LLMs from ANY SQL client!**
 
 ### **Start Server**:
 ```bash
 # PostgreSQL wire protocol (DBeaver, psql, Tableau)
-windlass server --port 5432
+rvbbit server --port 5432
 
 # Or HTTP API (already running with dashboard)
 cd dashboard/backend && python app.py  # Port 5001
@@ -418,35 +418,35 @@ Type: PostgreSQL
 Host: localhost
 Port: 5432
 Database: default
-Username: windlass
+Username: rvbbit
 ```
 
 ### **Run LLMs in SQL**:
 ```sql
 -- Simple extraction
-SELECT windlass_udf('Extract brand', product_name) FROM products;
+SELECT rvbbit_udf('Extract brand', product_name) FROM products;
 
 -- Multi-column enrichment
 SELECT
   product_name,
-  windlass_udf('Brand', product_name) as brand,
-  windlass_udf('Category', product_name) as category,
-  windlass_udf('Color', product_name) as color
+  rvbbit_udf('Brand', product_name) as brand,
+  rvbbit_udf('Category', product_name) as category,
+  rvbbit_udf('Color', product_name) as color
 FROM products;
 
--- Complete cascade per row (with soundings!)
-SELECT windlass_cascade_udf('tackle/fraud.yaml', json_object('id', id)) FROM txns;
+-- Complete cascade per row (with candidates!)
+SELECT rvbbit_cascade_udf('traits/fraud.yaml', json_object('id', id)) FROM txns;
 
 -- Aggregate by LLM-extracted fields
 SELECT
-  windlass_udf('Category', product_name) as category,
+  rvbbit_udf('Category', product_name) as category,
   COUNT(*) as count,
   AVG(price) as avg_price
 FROM products
 GROUP BY category;
 ```
 
-**Features**: LLM UDFs | Cascades per row | Soundings per row | 90-99% cache hit rates | ATTACH support
+**Features**: LLM UDFs | Cascades per row | Candidates per row | 90-99% cache hit rates | ATTACH support
 
 **Guides**: [CONNECT_NOW.md](CONNECT_NOW.md) | [SQL_CLIENT_GUIDE.md](SQL_CLIENT_GUIDE.md)
 
@@ -465,19 +465,19 @@ Create `my_first_cascade.json`:
     "question": "The data analysis question to answer",
     "database": "Path to the database or CSV file"
   },
-  "phases": [
+  "cells": [
     {
       "name": "explore",
       "instructions": "Explore the database to understand structure. Question: {{ input.question }}",
-      "tackle": ["smart_sql_run"],
+      "traits": ["smart_sql_run"],
       "rules": {"max_turns": 2},
       "handoffs": ["answer"]
     },
     {
       "name": "answer",
       "instructions": "Answer the question with data and create visualizations.",
-      "tackle": ["smart_sql_run", "create_chart"],
-      "soundings": {
+      "traits": ["smart_sql_run", "create_chart"],
+      "candidates": {
         "factor": 3,
         "evaluator_instructions": "Pick the clearest, most accurate answer"
       }
@@ -488,12 +488,12 @@ Create `my_first_cascade.json`:
 
 Run it:
 ```bash
-windlass my_first_cascade.json --input '{"question": "What are the top sales regions?", "database": "sales.csv"}'
+rvbbit my_first_cascade.json --input '{"question": "What are the top sales regions?", "database": "sales.csv"}'
 ```
 
 **What happens:**
 1. Agent explores the database (up to 2 turns)
-2. Routes to "answer" phase automatically
+2. Routes to "answer" cell automatically
 3. Generates 3 different answers with charts
 4. Evaluator picks the best one
 5. Full execution logged to DuckDB, graph generated
@@ -504,8 +504,8 @@ windlass my_first_cascade.json --input '{"question": "What are the top sales reg
 {
   "name": "create_dashboard",
   "instructions": "Create a sales dashboard",
-  "tackle": ["create_chart"],
-  "soundings": {
+  "traits": ["create_chart"],
+  "candidates": {
     "factor": 3,
     "reforge": {
       "steps": 2,
@@ -548,30 +548,30 @@ windlass my_first_cascade.json --input '{"question": "What are the top sales reg
 
 ## Core Concepts
 
-### Cascades & Phases
+### Cascades & Cells
 
-A **Cascade** is a workflow defined in JSON. Each **Phase** is a step with:
+A **Cascade** is a workflow defined in JSON. Each **Cell** is a step with:
 - Instructions (system prompt with Jinja2 templating)
-- Tools (tackle) available to the agent
+- Tools (traits) available to the agent
 - Execution rules (max turns, loop conditions)
-- Routing (handoffs to next phases)
-- Advanced features (soundings, wards, sub-cascades)
+- Routing (handoffs to next cells)
+- Advanced features (candidates, wards, sub-cascades)
 
-**Phases execute sequentially** with full context accumulation (Snowball architecture) - agents in Phase 3 can reference decisions from Phase 1.
+**Cells execute sequentially** with full context accumulation (Snowball architecture) - agents in Cell 3 can reference decisions from Cell 1.
 
-### Soundings (Tree of Thought)
+### Candidates (Tree of Thought)
 
-Run the same phase/cascade **multiple times in parallel** and pick the best result.
+Run the same cell/cascade **multiple times in parallel** and pick the best result.
 
 **Two Levels:**
 
-#### Phase-Level Soundings
+#### Cell-Level Candidates
 Try multiple approaches to a **single step**:
 
 ```json
 {
   "name": "solve_problem",
-  "soundings": {
+  "candidates": {
     "factor": 5,
     "evaluator_instructions": "Pick the most elegant solution"
   }
@@ -580,17 +580,17 @@ Try multiple approaches to a **single step**:
 
 **Use when:** Uncertain about one specific step (e.g., "which algorithm?")
 
-#### Cascade-Level Soundings
+#### Cascade-Level Candidates
 Run the **entire workflow** N times, each execution explores different paths:
 
 ```json
 {
   "cascade_id": "product_strategy",
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "evaluator_instructions": "Pick the most feasible strategy"
   },
-  "phases": [
+  "cells": [
     {"name": "research"},
     {"name": "analyze"},
     {"name": "recommend"}
@@ -600,14 +600,14 @@ Run the **entire workflow** N times, each execution explores different paths:
 
 **Use when:** Multiple valid approaches to complete problem (e.g., "which strategy works best?")
 
-**Why soundings work:** Early decisions constrain later options. By exploring complete solution paths (not just individual steps), you find qualitatively different solutions.
+**Why candidates work:** Early decisions constrain later options. By exploring complete solution paths (not just individual steps), you find qualitatively different solutions.
 
 ### Reforge (Iterative Refinement)
 
-After soundings pick a winner, **progressively polish it** through depth-first refinement:
+After candidates pick a winner, **progressively polish it** through depth-first refinement:
 
 ```
-🔱 Soundings (Breadth): 3 different approaches
+🔱 Candidates (Breadth): 3 different approaches
   ↓
 ⚖️  Evaluate → Winner
   ↓
@@ -623,7 +623,7 @@ After soundings pick a winner, **progressively polish it** through depth-first r
 **Configuration:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 4,
     "evaluator_instructions": "Pick creative approach",
     "reforge": {
@@ -636,14 +636,14 @@ After soundings pick a winner, **progressively polish it** through depth-first r
 }
 ```
 
-### Multi-Model Soundings
+### Multi-Model Candidates
 
-Run soundings across different LLM providers to find the best cost/quality tradeoff.
+Run candidates across different LLM providers to find the best cost/quality tradeoff.
 
 **Simple Round-Robin:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 6,
     "evaluator_instructions": "Pick the best response",
     "models": [
@@ -658,7 +658,7 @@ Run soundings across different LLM providers to find the best cost/quality trade
 **Per-Model Factors (control distribution):**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 7,
     "models": {
       "anthropic/claude-sonnet-4.5": {"factor": 2},
@@ -672,7 +672,7 @@ Run soundings across different LLM providers to find the best cost/quality trade
 **Cost-Aware Evaluation:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "models": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash-lite"],
     "cost_aware_evaluation": {
@@ -687,7 +687,7 @@ Run soundings across different LLM providers to find the best cost/quality trade
 **Pareto Frontier Analysis:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 6,
     "models": {
       "anthropic/claude-sonnet-4.5": {"factor": 2},
@@ -707,19 +707,19 @@ Run soundings across different LLM providers to find the best cost/quality trade
 - `balanced`: Maximize quality/cost ratio
 
 **What Pareto frontier does:**
-1. All soundings execute across models
+1. All candidates execute across models
 2. Quality scores obtained from evaluator
 3. Non-dominated solutions computed (Pareto frontier)
 4. Winner selected based on policy
 5. Frontier data logged for visualization
 
-### Pre-Evaluation Validator for Soundings
+### Pre-Evaluation Validator for Candidates
 
-Filter soundings **before** they reach the evaluator. Saves evaluator LLM calls on broken outputs.
+Filter candidates **before** they reach the evaluator. Saves evaluator LLM calls on broken outputs.
 
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 5,
     "evaluator_instructions": "Pick the best working solution",
     "validator": "code_execution_validator"
@@ -728,9 +728,9 @@ Filter soundings **before** they reach the evaluator. Saves evaluator LLM calls 
 ```
 
 **How it works:**
-1. All soundings execute normally
-2. Validator runs on each sounding result
-3. Only valid soundings go to evaluator
+1. All candidates execute normally
+2. Validator runs on each candidate result
+3. Only valid candidates go to evaluator
 4. Broken outputs filtered automatically
 
 **Use cases:**
@@ -741,7 +741,7 @@ Filter soundings **before** they reach the evaluator. Saves evaluator LLM calls 
 **Combined with multi-model:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 6,
     "models": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-flash-lite"],
     "validator": "code_execution_validator",
@@ -754,12 +754,12 @@ Pre-filter across multiple models, then compute Pareto frontier on valid results
 
 ### Aggregate Mode (Fan-Out Pattern)
 
-Instead of picking one winner, **combine all sounding outputs** into a single result. Perfect for map-reduce patterns and parallel research.
+Instead of picking one winner, **combine all candidate outputs** into a single result. Perfect for map-reduce patterns and parallel research.
 
 **Simple Concatenation:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "mode": "aggregate",
     "mutate": false
@@ -772,7 +772,7 @@ All outputs are concatenated with headers like `## Output 1`, `## Output 2`, etc
 **LLM Aggregation (Synthesis):**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "mode": "aggregate",
     "aggregator_instructions": "Synthesize these outputs into a unified report. Remove duplicates, organize by theme, and provide an executive summary.",
@@ -791,7 +791,7 @@ Use `sounding_index` in Jinja2 templates to process different items from an arra
 {
   "name": "research_topics",
   "instructions": "Research the topic: {{ input.topics[sounding_index] }}",
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "mode": "aggregate",
     "mutate": false,
@@ -801,23 +801,23 @@ Use `sounding_index` in Jinja2 templates to process different items from an arra
 ```
 
 With input `{"topics": ["AI", "Quantum", "Biotech"]}`:
-- Sounding 0 researches "AI"
-- Sounding 1 researches "Quantum"
-- Sounding 2 researches "Biotech"
+- Candidate 0 researches "AI"
+- Candidate 1 researches "Quantum"
+- Candidate 2 researches "Biotech"
 - Aggregator combines all three into one report
 
 **Available Template Variables:**
-- `{{ sounding_index }}` - Current sounding index (0, 1, 2, ...)
-- `{{ sounding_factor }}` - Total number of soundings
-- `{{ is_sounding }}` - True when running as a sounding
+- `{{ sounding_index }}` - Current candidate index (0, 1, 2, ...)
+- `{{ sounding_factor }}` - Total number of candidates
+- `{{ is_sounding }}` - True when running as a candidate
 
 **Multi-Modal Aggregation:**
 
-Images from all soundings are collected and passed to the aggregator for vision-capable models:
+Images from all candidates are collected and passed to the aggregator for vision-capable models:
 
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "mode": "aggregate",
     "aggregator_instructions": "Compare these chart images and create a summary of what each shows.",
@@ -827,18 +827,18 @@ Images from all soundings are collected and passed to the aggregator for vision-
 ```
 
 **Use cases:**
-- **Parallel research**: Each sounding researches a different topic, aggregator synthesizes
+- **Parallel research**: Each candidate researches a different topic, aggregator synthesizes
 - **Multi-perspective analysis**: Same question from different angles, combined into comprehensive view
 - **Batch processing**: Process items from a list in parallel
 - **Chart comparison**: Generate multiple visualizations, aggregator compares them
 
 ### Mutation Modes (Prompt Variation Strategies)
 
-Soundings support three mutation modes for generating prompt variations:
+Candidates support three mutation modes for generating prompt variations:
 
 ```json
 {
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "evaluator_instructions": "Pick the best",
     "mutate": true,
@@ -884,7 +884,7 @@ For **approach** mode:
 **Custom Mutations:**
 ```json
 {
-  "soundings": {
+  "candidates": {
     "mutation_mode": "augment",
     "mutations": [
       "You are an expert in this domain...",
@@ -909,24 +909,24 @@ For **approach** mode:
 
 **The `rewrite` mutation mode learns from previous winners automatically.**
 
-When you use `mutation_mode: "rewrite"`, each rewrite is inspired by the last 5 winning rewrites from previous runs with the **same species hash** (identical phase configuration). This creates a self-optimizing evolutionary flywheel:
+When you use `mutation_mode: "rewrite"`, each rewrite is inspired by the last 5 winning rewrites from previous runs with the **same species hash** (identical cell configuration). This creates a self-optimizing evolutionary flywheel:
 
 ```bash
 # Run 1: Random exploratory rewrites
-python -m windlass.cli run my_cascade.json --session run_001
+python -m rvbbit.cli run my_cascade.json --session run_001
 # Console: "🔬 No previous winners - exploratory rewrite"
 
 # Run 2: Learns from Run 1 winner
-python -m windlass.cli run my_cascade.json --session run_002
+python -m rvbbit.cli run my_cascade.json --session run_002
 # Console: "📚 Learning from 1 previous winning rewrite"
 
 # Run 10: Builds on accumulated winners
-python -m windlass.cli run my_cascade.json --session run_010
+python -m rvbbit.cli run my_cascade.json --session run_010
 # Console: "📚 Learning from 5 previous winning rewrites"
 ```
 
 **How it works:**
-1. **Species Hash Isolation**: Only learns from runs with identical phase config (apples-to-apples)
+1. **Species Hash Isolation**: Only learns from runs with identical cell config (apples-to-apples)
 2. **Recency Bias**: Uses last 5 winners (most recent = most relevant)
 3. **Zero Configuration**: Enabled by default for `"rewrite"` mode
 4. **Opt-Out**: Use `"rewrite_free"` to disable learning for A/B testing
@@ -934,8 +934,8 @@ python -m windlass.cli run my_cascade.json --session run_010
 **Configuration:**
 ```bash
 # Change winner limit (default: 5)
-export WINDLASS_WINNER_HISTORY_LIMIT=3  # More aggressive exploration
-export WINDLASS_WINNER_HISTORY_LIMIT=10 # Mature optimization (50+ generations)
+export RVBBIT_WINNER_HISTORY_LIMIT=3  # More aggressive exploration
+export RVBBIT_WINNER_HISTORY_LIMIT=10 # Mature optimization (50+ generations)
 ```
 
 **Why this works:**
@@ -946,9 +946,9 @@ export WINDLASS_WINNER_HISTORY_LIMIT=10 # Mature optimization (50+ generations)
 
 **Prompt Phylogeny Visualization:**
 
-Open the Web UI and click the Evolution button (🧬) in the Soundings Explorer to see:
+Open the Web UI and click the Evolution button (🧬) in the Candidates Explorer to see:
 - **Genetic lineage tree**: How prompts evolved across runs
-- **Gene pool breeding**: Each sounding trained by ALL previous winners, not just last gen
+- **Gene pool breeding**: Each candidate trained by ALL previous winners, not just last gen
 - **Active training set**: Last 5 winners highlighted with 🎓 golden glow
 - **DNA inheritance bars**: Visual representation of parent count growth
 - **Winners-only filter**: Focus on successful evolutionary path
@@ -963,12 +963,12 @@ Open the Web UI and click the Evolution button (🧬) in the Soundings Explorer 
 **Query training data:**
 ```bash
 # See all winners for a species
-windlass sql "SELECT mutation_applied, timestamp FROM unified_logs
+rvbbit sql "SELECT mutation_applied, timestamp FROM unified_logs
   WHERE species_hash = 'abc123' AND is_winner = true
   ORDER BY timestamp DESC LIMIT 5"
 
 # Track evolution over time
-windlass sql "SELECT session_id, COUNT(*) as soundings,
+rvbbit sql "SELECT session_id, COUNT(*) as candidates,
   SUM(is_winner) as winners
   FROM unified_logs
   WHERE species_hash = 'abc123'
@@ -996,24 +996,24 @@ Protective barriers that validate inputs/outputs with three execution modes:
 
 **Execution Flow:**
 ```
-Phase Start
+Cell Start
     ↓
 🛡️  PRE-WARDS (validate inputs)
     ↓ [blocking → abort if fail]
     ↓
-Phase Execution
+Cell Execution
     ↓
 🛡️  POST-WARDS (validate outputs)
     ↓ [blocking → abort if fail]
-    ↓ [retry → re-run phase with feedback]
+    ↓ [retry → re-run cell with feedback]
     ↓ [advisory → warn but continue]
     ↓
-Next Phase
+Next Cell
 ```
 
 **Validator Protocol:** All validators return `{"valid": true/false, "reason": "..."}`
 
-**Built-in validators** (in `tackle/` directory):
+**Built-in validators** (in `traits/` directory):
 - `simple_validator`: Non-empty, minimum length
 - `grammar_check`: Grammar and spelling
 - `keyword_validator`: Required keywords present
@@ -1055,8 +1055,8 @@ return json.dumps({
 ```json
 {
   "name": "create_chart",
-  "tackle": ["create_chart"],
-  "soundings": {
+  "traits": ["create_chart"],
+  "candidates": {
     "factor": 3,
     "reforge": {
       "steps": 2,
@@ -1070,79 +1070,79 @@ Result: Production-quality charts refined through visual feedback loops.
 
 ### Context System (Selective by Default)
 
-**Windlass uses a two-level context model:** selective between phases, snowball within phases.
+**RVBBIT uses a two-level context model:** selective between cells, snowball within cells.
 
 #### The Two-Level Mental Model
 
 ```
 Cascade
-├── Phase A (clean slate - no context config)
+├── Cell A (clean slate - no context config)
 │   ├── Turn 0 ─────────────────┐
-│   ├── Turn 1 (sees turn 0) ───┤ ← Automatic snowball WITHIN phase
+│   ├── Turn 1 (sees turn 0) ───┤ ← Automatic snowball WITHIN cell
 │   └── Turn 2 (sees 0-1) ──────┘
 │
-├── Phase B (context: {from: ["previous"]})  ← EXPLICIT declaration BETWEEN phases
-│   ├── Turn 0 (sees Phase A output) ─┐
+├── Cell B (context: {from: ["previous"]})  ← EXPLICIT declaration BETWEEN cells
+│   ├── Turn 0 (sees Cell A output) ─┐
 │   └── Turn 1 (sees turn 0) ─────────┘ ← Automatic snowball continues
 │
-└── Phase C (context: {from: ["all"]})
+└── Cell C (context: {from: ["all"]})
     └── ... sees everything from A and B
 ```
 
-**The key insight: Phases are encapsulation boundaries.**
+**The key insight: Cells are encapsulation boundaries.**
 
 | Boundary | Context Behavior | Configuration |
 |----------|------------------|---------------|
-| **Between phases** | Selective by default | `context: {from: [...]}` - explicit declaration |
-| **Within a phase** | Automatic snowball | None needed - always accumulates |
+| **Between cells** | Selective by default | `context: {from: [...]}` - explicit declaration |
+| **Within a cell** | Automatic snowball | None needed - always accumulates |
 
 **Why this design?**
 
-1. **Phases encapsulate complexity**: All the messy iteration, tool calls, and refinement happen INSIDE a phase. Only the output matters to other phases.
+1. **Cells encapsulate complexity**: All the messy iteration, tool calls, and refinement happen INSIDE a cell. Only the output matters to other cells.
 
 2. **Iterations need context**: When you set `max_turns: 5`, turn 3 MUST see turns 1-2 to refine. This happens automatically.
 
-3. **Phases need control**: You don't want Phase D accidentally drowning in 50K tokens from verbose debugging in Phase B. Explicit context declarations prevent this.
+3. **Cells need control**: You don't want Cell D accidentally drowning in 50K tokens from verbose debugging in Cell B. Explicit context declarations prevent this.
 
-**What accumulates within a phase:**
+**What accumulates within a cell:**
 - All turn outputs (user inputs, assistant responses)
 - All tool calls and results
 - All image injections
 - All retry messages (when `loop_until` fails)
 - All validation feedback
 
-**What crosses phase boundaries (only when declared):**
-- Final phase output (`include: ["output"]`)
+**What crosses cell boundaries (only when declared):**
+- Final cell output (`include: ["output"]`)
 - Full message history (`include: ["messages"]`)
 - Generated images (`include: ["images"]`)
 - State variables (`include: ["state"]`)
 
 **The Philosophy:**
 ```
-Phase A → Phase B → Phase C → Phase D
+Cell A → Cell B → Cell C → Cell D
                               ↓
-                            Phase D sees ONLY what it declares
+                            Cell D sees ONLY what it declares
                             (explicit is better than implicit)
 ```
 
-**Why selective-by-default for inter-phase?**
-- **Predictable**: You know exactly what each phase sees
+**Why selective-by-default for inter-cell?**
+- **Predictable**: You know exactly what each cell sees
 - **Efficient**: No accidental token bloat from accumulated context
 - **Debuggable**: Context issues are obvious in the cascade definition
 - **Explicit**: The cascade JSON tells the full story
 
 #### Basic Usage
 
-**Phase with no context config = clean slate:**
+**Cell with no context config = clean slate:**
 ```json
 {
   "name": "fresh_analysis",
   "instructions": "Analyze this data independently"
 }
 ```
-This phase sees NOTHING from prior phases.
+This cell sees NOTHING from prior cells.
 
-**Phase that needs previous phase:**
+**Cell that needs previous cell:**
 ```json
 {
   "name": "build_on_previous",
@@ -1153,7 +1153,7 @@ This phase sees NOTHING from prior phases.
 }
 ```
 
-**Phase that needs all prior context (explicit snowball):**
+**Cell that needs all prior context (explicit snowball):**
 ```json
 {
   "name": "final_summary",
@@ -1168,9 +1168,9 @@ This phase sees NOTHING from prior phases.
 
 | Keyword | Resolves To | Example Use Case |
 |---------|-------------|------------------|
-| `"all"` | All completed phases | Final summaries, explicit snowball |
-| `"first"` | First executed phase | Original problem statement |
-| `"previous"` / `"prev"` | Most recently completed phase | Linear continuation |
+| `"all"` | All completed cells | Final summaries, explicit snowball |
+| `"first"` | First executed cell | Original problem statement |
+| `"previous"` / `"prev"` | Most recently completed cell | Linear continuation |
 
 ```json
 {
@@ -1182,7 +1182,7 @@ This phase sees NOTHING from prior phases.
 
 #### Exclude Filter
 
-Use `exclude` with `"all"` to skip specific phases:
+Use `exclude` with `"all"` to skip specific cells:
 
 ```json
 {
@@ -1200,25 +1200,25 @@ Use `exclude` with `"all"` to skip specific phases:
 {
   "context": {
     "from": [
-      {"phase": "research", "include": ["output"]},
-      {"phase": "data_collection", "include": ["messages"]},
-      {"phase": "visualization", "include": ["images"]}
+      {"cell": "research", "include": ["output"]},
+      {"cell": "data_collection", "include": ["messages"]},
+      {"cell": "visualization", "include": ["images"]}
     ]
   }
 }
 ```
 
 **Artifact types:**
-- `output` - Final assistant response from that phase
+- `output` - Final assistant response from that cell
 - `messages` - Full conversation history (all turns, tool calls)
-- `images` - Any images generated during that phase
-- `state` - State variables set during that phase
+- `images` - Any images generated during that cell
+- `state` - State variables set during that cell
 
 **Message filtering:**
 ```json
 {
   "from": [
-    {"phase": "research", "include": ["messages"], "messages_filter": "assistant_only"}
+    {"cell": "research", "include": ["messages"], "messages_filter": "assistant_only"}
   ]
 }
 ```
@@ -1229,7 +1229,7 @@ Filters: `all` (default), `assistant_only`, `last_turn`
 ```json
 {
   "from": [
-    {"phase": "chart_gen", "include": ["images"], "images_filter": "last", "images_count": 1}
+    {"cell": "chart_gen", "include": ["images"], "images_filter": "last", "images_count": 1}
   ]
 }
 ```
@@ -1240,7 +1240,7 @@ Filters: `all` (default), `last`, `last_n`
 
 ```json
 {
-  "phases": [
+  "cells": [
     {
       "name": "opening",
       "instructions": "Write an engaging opening paragraph..."
@@ -1264,13 +1264,13 @@ Filters: `all` (default), `last`, `last_n`
 }
 ```
 
-Each phase explicitly declares its context needs. No guessing.
+Each cell explicitly declares its context needs. No guessing.
 
 #### Practical Example: Code Review Pipeline
 
 ```json
 {
-  "phases": [
+  "cells": [
     {"name": "analyze_code", "instructions": "Analyze the codebase structure..."},
     {
       "name": "find_issues",
@@ -1294,18 +1294,18 @@ Each phase explicitly declares its context needs. No guessing.
 }
 ```
 
-The executive summary phase only sees the issues list - not the raw code analysis or detailed fix suggestions. Clean, focused context.
+The executive summary cell only sees the issues list - not the raw code analysis or detailed fix suggestions. Clean, focused context.
 
-#### Comparison with Phase Name and Keywords
+#### Comparison with Cell Name and Keywords
 
 | Pattern | Use Case | Configuration |
 |---------|----------|---------------|
 | **Clean slate** | Independent analysis | No context config |
 | **Previous only** | Linear workflows | `context: {from: ["previous"]}` |
-| **All phases** | Summaries, final reviews | `context: {from: ["all"]}` |
-| **All minus some** | Skip verbose phases | `context: {from: ["all"], exclude: [...]}` |
+| **All cells** | Summaries, final reviews | `context: {from: ["all"]}` |
+| **All minus some** | Skip verbose cells | `context: {from: ["all"], exclude: [...]}` |
 | **First + previous** | Original ask + latest work | `context: {from: ["first", "previous"]}` |
-| **Specific phases** | Cherry-picked context | `context: {from: ["phase_a", "phase_c"]}` |
+| **Specific cells** | Cherry-picked context | `context: {from: ["phase_a", "phase_c"]}` |
 
 #### Migration from Legacy Snowball
 
@@ -1340,13 +1340,13 @@ Instead of manually listing tools, let the **Quartermaster agent** auto-select r
 {
   "name": "adaptive_task",
   "instructions": "Complete this task: {{ input.task }}",
-  "tackle": "manifest",
+  "traits": "manifest",
   "manifest_context": "full"
 }
 ```
 
 **How it works:**
-1. Quartermaster examines phase instructions and context
+1. Quartermaster examines cell instructions and context
 2. Views full manifest (all Python functions + cascade tools)
 3. Selects only relevant tools for this specific task
 4. Main agent receives focused toolset
@@ -1354,16 +1354,16 @@ Instead of manually listing tools, let the **Quartermaster agent** auto-select r
 **Why this matters:**
 - **Scales to unlimited tools**: Library of 100+ tools? No problem.
 - **No prompt bloat**: Only inject relevant tools
-- **Context-aware**: Same phase can get different tools based on input
+- **Context-aware**: Same cell can get different tools based on input
 - **Two-stage architecture**: Quartermaster = planner, Main agent = executor
 
 **Context modes:**
-- `"current"`: Phase instructions + input only (fast, cheap)
-- `"full"`: Entire conversation history (better for multi-phase)
+- `"current"`: Cell instructions + input only (fast, cheap)
+- `"full"`: Entire conversation history (better for multi-cell)
 
 **Discovery:**
 - Scans Python function registry
-- Scans directories: `examples/`, `cascades/`, `tackle/`
+- Scans directories: `examples/`, `cascades/`, `traits/`
 - Cascades with `inputs_schema` automatically become tools
 
 **Example:** Task "Analyze readability" → Quartermaster selects `text_analyzer`
@@ -1372,18 +1372,18 @@ This is how you build agent systems with massive tool libraries.
 
 ### State Management & Context
 
-**Snowball Architecture:** Full conversation history accumulates across phases.
+**Snowball Architecture:** Full conversation history accumulates across cells.
 
 **Set persistent state:**
 ```json
 {
   "name": "setup",
   "instructions": "Set progress to 25%",
-  "tackle": ["set_state"]
+  "traits": ["set_state"]
 }
 ```
 
-**Access state in later phases:**
+**Access state in later cells:**
 ```json
 {
   "name": "continue",
@@ -1406,7 +1406,7 @@ Child cascade receives `{{ input.progress }}` and can modify parent's state.
 
 ### Dynamic Routing
 
-When a phase has multiple `handoffs`, a `route_to` tool is auto-injected:
+When a cell has multiple `handoffs`, a `route_to` tool is auto-injected:
 
 ```json
 {
@@ -1442,7 +1442,7 @@ Launch background processes that don't block main workflow:
 
 Async cascades are fully traced with parent linkage.
 
-## Built-in Tools (Tackle)
+## Built-in Tools (Traits)
 
 ### Core Tools
 
@@ -1513,7 +1513,7 @@ take_screenshot(url="https://example.com")
 
 ## Human-in-the-Loop (HITL)
 
-**Block cascade execution and wait for human input** with auto-generated UIs. Windlass provides three tools for different HITL scenarios:
+**Block cascade execution and wait for human input** with auto-generated UIs. RVBBIT provides three tools for different HITL scenarios:
 
 ### `ask_human(question)`
 Simple blocking question with auto-generated UI.
@@ -1579,7 +1579,7 @@ ask_human_custom(
 ```
 
 **Features:**
-- **Auto-detection**: Automatically includes phase images and data from context
+- **Auto-detection**: Automatically includes cell images and data from context
 - **Rich layouts**: Card grids, two-column, tabs
 - **Multi-modal**: Display charts, tables, images
 - **Structured options**: Present choices as rich cards with metadata
@@ -1592,7 +1592,7 @@ ask_human_custom(
 - `options` - Rich option cards
 - `ui_hint` - Force UI type ("confirmation", "choice", "rating", "text")
 - `layout_hint` - Suggest layout ("simple", "two-column", "card-grid")
-- `auto_detect` - Auto-include phase images/data (default: true)
+- `auto_detect` - Auto-include cell images/data (default: true)
 
 ### `request_decision(question, options, ...)`
 **The most powerful HITL tool** - structured decision points with full HTMX support.
@@ -1703,7 +1703,7 @@ cd dashboard && ./start.sh
 - Real-time execution monitoring
 - Inline checkpoint UIs (decisions appear in conversation flow)
 - Live MJPEG streams for browser sessions
-- Parallel sounding decisions displayed side-by-side
+- Parallel candidate decisions displayed side-by-side
 - Screenshot capture of all HTMX content
 
 **Workflow:**
@@ -1814,17 +1814,17 @@ create_artifact(
 **Pattern: Iterative Approval → Publication**
 ```json
 {
-  "phases": [
+  "cells": [
     {
       "name": "iterate_dashboard",
       "instructions": "Create a sales dashboard. Use request_decision to iterate until approved.",
-      "tackle": ["sql_query", "request_decision"],
+      "traits": ["sql_query", "request_decision"],
       "rules": {"max_turns": 10}
     },
     {
       "name": "publish",
       "instructions": "Dashboard approved. Use create_artifact to publish final version.",
-      "tackle": ["create_artifact"],
+      "traits": ["create_artifact"],
       "context": {"from": ["previous"]}
     }
   ]
@@ -1884,7 +1884,7 @@ Declare a research database at the cascade level:
 {
   "cascade_id": "market_research",
   "research_db": "market_research",
-  "phases": [...]
+  "cells": [...]
 }
 ```
 
@@ -1941,18 +1941,18 @@ research_query("SELECT provider, AVG(cost) as avg_cost FROM programs GROUP BY pr
 {
   "cascade_id": "competitor_analysis",
   "research_db": "market_research",
-  "phases": [
+  "cells": [
     {
       "name": "scrape_competitors",
       "instructions": "Scrape competitor websites and store program data",
       "browser": {"url": "{{ input.competitor_url }}"},
-      "tackle": ["control_browser", "extract_page_content", "research_execute"],
+      "traits": ["control_browser", "extract_page_content", "research_execute"],
       "rules": {"max_turns": 20}
     },
     {
       "name": "analyze",
       "instructions": "Query the research database and create analysis",
-      "tackle": ["research_query", "create_chart", "create_artifact"],
+      "traits": ["research_query", "create_chart", "create_artifact"],
       "context": {"from": ["previous"]}
     }
   ]
@@ -1960,11 +1960,11 @@ research_query("SELECT provider, AVG(cost) as avg_cost FROM programs GROUP BY pr
 ```
 
 **Workflow:**
-1. **Scrape phase**: Browser automation extracts data → stores in DuckDB via `research_execute()`
-2. **Analyze phase**: Queries database via `research_query()` → creates charts
+1. **Scrape cell**: Browser automation extracts data → stores in DuckDB via `research_execute()`
+2. **Analyze cell**: Queries database via `research_query()` → creates charts
 3. Data persists in `research_dbs/market_research.duckdb`
 4. Run again → data accumulates across executions
-5. Query from CLI: `windlass sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb`
+5. Query from CLI: `rvbbit sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb`
 
 ### Database Lifecycle
 
@@ -1993,8 +1993,8 @@ research_query("SELECT provider, AVG(cost) as avg_cost FROM programs GROUP BY pr
 # Via SQL CLI
 duckdb research_dbs/market_research.duckdb "SELECT COUNT(*) FROM programs"
 
-# Via Windlass SQL wrapper
-windlass sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb
+# Via RVBBIT SQL wrapper
+rvbbit sql "SELECT * FROM programs" --db research_dbs/market_research.duckdb
 ```
 
 ### Research Cockpit
@@ -2012,7 +2012,7 @@ cd dashboard && ./start.sh
 - **Live execution** - See agent thinking in real-time
 - **Inline checkpoints** - `request_decision()` UIs render in conversation
 - **MJPEG browser streams** - Watch browser automation live
-- **Parallel soundings** - See multiple attempts side-by-side
+- **Parallel candidates** - See multiple attempts side-by-side
 - **Data exploration** - Query research databases interactively
 - **Artifact preview** - View generated dashboards inline
 
@@ -2027,8 +2027,8 @@ cd dashboard && ./start.sh
 
 **Environment flag:**
 ```bash
-export WINDLASS_USE_CHECKPOINTS=true  # Enables UI checkpoints
-export WINDLASS_RESEARCH_MODE=true    # Tags checkpoints as research-specific
+export RVBBIT_USE_CHECKPOINTS=true  # Enables UI checkpoints
+export RVBBIT_RESEARCH_MODE=true    # Tags checkpoints as research-specific
 ```
 
 ### HITL + Browser + Research Pattern
@@ -2039,17 +2039,17 @@ export WINDLASS_RESEARCH_MODE=true    # Tags checkpoints as research-specific
 {
   "cascade_id": "market_intelligence",
   "research_db": "market_data",
-  "phases": [
+  "cells": [
     {
       "name": "scrape",
       "instructions": "Browse competitor sites, extract program data, store in research DB",
       "browser": {"url": "{{ input.url }}"},
-      "tackle": ["control_browser", "extract_page_content", "research_execute"]
+      "traits": ["control_browser", "extract_page_content", "research_execute"]
     },
     {
       "name": "visualize",
       "instructions": "Query research DB, create dashboard, get approval before publishing",
-      "tackle": ["research_query", "request_decision", "create_artifact"],
+      "traits": ["research_query", "request_decision", "create_artifact"],
       "context": {"from": ["previous"]}
     }
   ]
@@ -2072,11 +2072,11 @@ export WINDLASS_RESEARCH_MODE=true    # Tags checkpoints as research-specific
 
 ## Browser Automation
 
-**Windlass includes first-class visual browser automation** - give your agents eyes and hands to interact with the web. No external services required.
+**RVBBIT includes first-class visual browser automation** - give your agents eyes and hands to interact with the web. No external services required.
 
 ### Zero-Config Browser Sessions
 
-Add a `browser` config to any phase and the framework handles everything:
+Add a `browser` config to any cell and the framework handles everything:
 
 ```json
 {
@@ -2088,7 +2088,7 @@ Add a `browser` config to any phase and the framework handles everything:
     "stability_wait": 2.0,
     "show_overlay": true
   },
-  "tackle": ["control_browser", "extract_page_content", "get_browser_status"]
+  "traits": ["control_browser", "extract_page_content", "get_browser_status"]
 }
 ```
 
@@ -2099,7 +2099,7 @@ Add a `browser` config to any phase and the framework handles everything:
 4. ✅ Video recording started
 5. ✅ Agent interacts using visual coordinates
 6. ✅ Every action captured (before/after screenshots)
-7. ✅ Session cleaned up when phase ends
+7. ✅ Session cleaned up when cell ends
 8. ✅ Video saved with command overlay
 
 **No server management, no manual lifecycle - it just works.**
@@ -2266,7 +2266,7 @@ video = artifacts["video"]              # Video file path
   "inputs_schema": {
     "topic": "Research topic to investigate"
   },
-  "phases": [
+  "cells": [
     {
       "name": "search",
       "instructions": "Search Google for '{{ input.topic }}' and collect the top 5 results",
@@ -2275,7 +2275,7 @@ video = artifacts["video"]              # Video file path
         "stability_detection": true,
         "stability_wait": 1.5
       },
-      "tackle": ["control_browser", "extract_page_content"],
+      "traits": ["control_browser", "extract_page_content"],
       "rules": {"max_turns": 8},
       "handoffs": ["analyze"]
     },
@@ -2283,8 +2283,8 @@ video = artifacts["video"]              # Video file path
       "name": "analyze",
       "instructions": "Analyze the search results and create a summary",
       "context": {"from": ["previous"]},
-      "tackle": ["create_chart"],
-      "soundings": {
+      "traits": ["create_chart"],
+      "candidates": {
         "factor": 3,
         "evaluator_instructions": "Pick the most comprehensive analysis"
       }
@@ -2297,8 +2297,8 @@ video = artifacts["video"]              # Video file path
 1. Spawns headless browser on dedicated port
 2. Agent navigates Google, performs search
 3. Agent extracts results (sees screenshots at each step)
-4. Browser auto-closes when search phase completes
-5. Analyze phase creates visualizations from collected data
+4. Browser auto-closes when search cell completes
+5. Analyze cell creates visualizations from collected data
 6. Full video + screenshots saved for audit
 
 ### Live Session Monitoring
@@ -2338,7 +2338,7 @@ cd dashboard && ./start.sh
 
 **"Jupyter for Cascades"** - Execute multiple programming languages in a single pipeline with seamless data flow.
 
-Data Cascades transform Windlass from a pure LLM orchestration framework into a **full-stack AI-native data IDE**. Each "cell" is a Windlass phase that can execute SQL, Python, JavaScript, Clojure, or even nested LLM phases.
+Data Cascades transform RVBBIT from a pure LLM orchestration framework into a **full-stack AI-native data IDE**. Each "cell" is a RVBBIT cell that can execute SQL, Python, JavaScript, Clojure, or even nested LLM cells.
 
 ### The Five Cell Types
 
@@ -2346,13 +2346,13 @@ Data Cascades transform Windlass from a pure LLM orchestration framework into a 
 **2. Python (`python_data`)**: pandas, numpy, matplotlib, plotly - access prior outputs via `data.phase_name`
 **3. JavaScript (`js_data`)**: Node.js execution with access to prior outputs
 **4. Clojure (`clojure_data`)**: Via Babashka (10ms startup vs 2-3s for JVM)
-**5. Windlass (`windlass_data`)**: Full LLM phases with structured output (meta!)
+**5. RVBBIT (`rvbbit_data`)**: Full LLM cells with structured output (meta!)
 
 ### Example: Polyglot Pipeline
 
 ```yaml
 cascade_id: "polyglot_etl"
-phases:
+cells:
   # SQL: Extract data
   - name: "extract"
     tool: "sql_data"
@@ -2372,7 +2372,7 @@ phases:
 
   # LLM: Classify products
   - name: "classify"
-    tool: "windlass_data"
+    tool: "rvbbit_data"
     inputs:
       phase_config:
         instructions: "Classify product: {{ input.product_name }}"
@@ -2398,7 +2398,7 @@ phases:
 
 ### Key Features
 
-**Seamless Data Flow**: Each phase output becomes a queryable temp table and a namespaced variable for downstream phases.
+**Seamless Data Flow**: Each cell output becomes a queryable temp table and a namespaced variable for downstream cells.
 
 **Multi-Modal Outputs**:
 - DataFrames (AG-Grid tables)
@@ -2413,7 +2413,7 @@ phases:
 3. Shows side-by-side diff (Monaco DiffEditor)
 4. User applies or dismisses
 
-**Session-Scoped DuckDB**: Temp tables persist across phases within a session, enabling complex multi-step SQL pipelines.
+**Session-Scoped DuckDB**: Temp tables persist across cells within a session, enabling complex multi-step SQL pipelines.
 
 ### Performance
 
@@ -2421,7 +2421,7 @@ phases:
 - SQL query: ~50ms (vs ~3s for LLM-mediated)
 - Python transform: ~100ms (vs ~8s for LLM to write code)
 - Total speedup: **20-50x faster** for data pipelines
-- Cost: **$0 for non-LLM phases** (only pay for LLM classification/generation)
+- Cost: **$0 for non-LLM cells** (only pay for LLM classification/generation)
 
 **See**: `docs/claude/data-cascades-reference.md`
 
@@ -2429,14 +2429,14 @@ phases:
 
 **Skip the LLM for predictable operations.** Execute tools directly without LLM mediation.
 
-Traditional Windlass phases use an **LLM-in-the-loop**: LLM receives instructions → chooses tools → executes → decides next action.
+Traditional RVBBIT cells use an **LLM-in-the-loop**: LLM receives instructions → chooses tools → executes → decides next action.
 
-Deterministic phases **bypass the LLM entirely**: Config specifies exact tool and inputs → tool executes → results flow to next phase.
+Deterministic cells **bypass the LLM entirely**: Config specifies exact tool and inputs → tool executes → results flow to next cell.
 
 ### Example: Hybrid Workflow
 
 ```yaml
-phases:
+cells:
   # Deterministic: Fast SQL extraction (50ms, $0)
   - name: "extract"
     tool: "sql_data"
@@ -2454,7 +2454,7 @@ phases:
     instructions: |
       Classify each record in the dataset.
       Data: {{ outputs.preprocess }}
-    tackle: ["set_state"]
+    traits: ["set_state"]
     output_schema:
       type: array
       items:
@@ -2469,12 +2469,12 @@ phases:
       query: "INSERT INTO classified SELECT * FROM classify"
 ```
 
-**Performance**: ~5.2s total (vs ~15s if all phases were LLM-mediated)
+**Performance**: ~5.2s total (vs ~15s if all cells were LLM-mediated)
 **Cost**: $0.02 (vs $0.15 for LLM-mediated ETL)
 
 ### Tool Resolution
 
-Deterministic phases support four tool types:
+Deterministic cells support four tool types:
 
 1. **Registered tools**: `tool: "sql_data"`
 2. **Python imports**: `tool: "python:module.path.function"`
@@ -2504,14 +2504,14 @@ Deterministic phases support four tool types:
 
 **Dynamic Routing**: Tools return `{"_route": "next_phase"}` to control flow.
 
-**When to use deterministic phases:**
+**When to use deterministic cells:**
 - ✅ Data extraction/transformation/loading (ETL)
 - ✅ API calls with known schemas
 - ✅ Business logic with clear rules
 - ✅ Performance-critical operations
 - ✅ Operations that must be predictable/auditable
 
-**When to use LLM phases:**
+**When to use LLM cells:**
 - ✅ Natural language understanding
 - ✅ Content generation
 - ✅ Complex decision-making
@@ -2522,7 +2522,7 @@ Deterministic phases support four tool types:
 
 ## Web Dashboard
 
-**Full-featured web IDE** for building and executing Windlass cascades.
+**Full-featured web IDE** for building and executing RVBBIT cascades.
 
 The Dashboard provides three main interfaces:
 
@@ -2538,7 +2538,7 @@ The Dashboard provides three main interfaces:
 - Export to CSV, JSON, Parquet
 
 **Notebook Mode** (`?mode=notebook`): Data Cascades
-- Create/edit/delete cells (SQL, Python, JS, Clojure, Windlass)
+- Create/edit/delete cells (SQL, Python, JS, Clojure, RVBBIT)
 - Run individual cells or entire notebook
 - Multi-modal output rendering (tables, images, charts, JSON)
 - Auto-fix failed cells with diff viewer
@@ -2549,14 +2549,14 @@ The Dashboard provides three main interfaces:
 
 **Visual cascade builder** with drag-and-drop nodes:
 
-**Two-Sided Phase Cards**:
+**Two-Sided Cell Cards**:
 - **Front**: Execution output (images, text, status)
 - **Back**: YAML configuration editor (Monaco)
 - 3D flip animation
 
-**Stacked Deck UI (Soundings)**:
-- Cards display as stacked deck when soundings configured
-- Fan-out animation reveals all sounding attempts
+**Stacked Deck UI (Candidates)**:
+- Cards display as stacked deck when candidates configured
+- Fan-out animation reveals all candidate attempts
 - CCG-inspired rarity frames (common, uncommon, rare, legendary)
 - Model element badges (color-coded by provider)
 - Winner badge on evaluator-chosen card
@@ -2564,16 +2564,16 @@ The Dashboard provides three main interfaces:
 **Features**:
 - Load any cascade and auto-generate visual representation
 - Execute with real-time updates (SSE)
-- Save to `tackle/` (reusable tools) or `cascades/` (workflows)
+- Save to `traits/` (reusable tools) or `cascades/` (workflows)
 - Auto-layout with Dagre algorithm
 
 ### 3. Session Explorer (`/sessions`)
 
 **Browse and analyze** all execution sessions:
 - List sessions with filtering (date, cascade_id, status)
-- View session details (phases, costs, outputs)
+- View session details (cells, costs, outputs)
 - Visualize execution graphs (Mermaid)
-- Cost analytics (by session, phase, model)
+- Cost analytics (by session, cell, model)
 - Download session data (JSON, YAML)
 
 ### Starting the Dashboard
@@ -2677,8 +2677,8 @@ All Jinja2 templates have access to:
 
 ### Auto-Discovery
 
-Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. They're automatically:
-- Registered in the tackle registry
+Drop `.tool.json` files in `traits/`, `cascades/`, or `examples/` directories. They're automatically:
+- Registered in the traits registry
 - Included in the Manifest for Quartermaster selection
 - Available for use in any cascade
 
@@ -2688,7 +2688,7 @@ Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. T
 {
   "name": "explore_codebase",
   "instructions": "Search for patterns in the codebase.",
-  "tackle": ["search_files", "list_directory"]
+  "traits": ["search_files", "list_directory"]
 }
 ```
 
@@ -2701,7 +2701,7 @@ Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. T
 
 ## Harbor (HuggingFace Spaces Integration)
 
-**Harbor** integrates HuggingFace Spaces (Gradio endpoints) as first-class tools in Windlass. Rather than introducing a special phase type, Spaces are exposed as **dynamic tools** that flow naturally through the existing cascade system.
+**Harbor** integrates HuggingFace Spaces (Gradio endpoints) as first-class tools in RVBBIT. Rather than introducing a special cell type, Spaces are exposed as **dynamic tools** that flow naturally through the existing cascade system.
 
 ### Setup
 
@@ -2710,7 +2710,7 @@ Drop `.tool.json` files in `tackle/`, `cascades/`, or `examples/` directories. T
 export HF_TOKEN="hf_..."
 
 # Optional: disable auto-discovery
-export WINDLASS_HARBOR_AUTO_DISCOVER="false"
+export RVBBIT_HARBOR_AUTO_DISCOVER="false"
 ```
 
 ### Gradio Tool Definition
@@ -2743,24 +2743,24 @@ Create a `.tool.json` file with type `gradio`:
 
 ```bash
 # Dashboard view - all spaces with cost estimates
-windlass harbor status
+rvbbit harbor status
 
 # List user's Gradio Spaces with status
-windlass harbor list
-windlass harbor list --all  # Include sleeping spaces
+rvbbit harbor list
+rvbbit harbor list --all  # Include sleeping spaces
 
 # Introspect a Space's API (show endpoints and parameters)
-windlass harbor introspect user/space-name
+rvbbit harbor introspect user/space-name
 
 # Generate .tool.json from a Space
-windlass harbor export user/space-name -o tackle/my_tool.tool.json
+rvbbit harbor export user/space-name -o traits/my_tool.tool.json
 
 # Show auto-discovered tools for Quartermaster
-windlass harbor manifest
+rvbbit harbor manifest
 
 # Space lifecycle management
-windlass harbor wake user/space-name   # Wake sleeping space
-windlass harbor pause user/space-name  # Pause running space (stops billing)
+rvbbit harbor wake user/space-name   # Wake sleeping space
+rvbbit harbor pause user/space-name  # Pause running space (stops billing)
 ```
 
 ### Example: Using HF Spaces in Cascades
@@ -2768,11 +2768,11 @@ windlass harbor pause user/space-name  # Pause running space (stops billing)
 ```json
 {
   "cascade_id": "image_analysis",
-  "phases": [
+  "cells": [
     {
       "name": "analyze",
       "instructions": "Use the blip2_caption tool to caption the image, then use object_detector to find objects.",
-      "tackle": ["blip2_caption", "object_detector"]
+      "traits": ["blip2_caption", "object_detector"]
     },
     {
       "name": "summarize",
@@ -2785,7 +2785,7 @@ windlass harbor pause user/space-name  # Pause running space (stops billing)
 
 ### Auto-Discovery
 
-When `HF_TOKEN` is set, Windlass automatically discovers your running Gradio Spaces and makes them available as tools via the Manifest system. Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
+When `HF_TOKEN` is set, RVBBIT automatically discovers your running Gradio Spaces and makes them available as tools via the Manifest system. Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
 
 ### Cost Monitoring
 
@@ -2814,21 +2814,21 @@ All events → Parquet files in `./data/` for high-performance querying.
 
 ```bash
 # Simple count
-windlass sql "SELECT COUNT(*) FROM all_data"
+rvbbit sql "SELECT COUNT(*) FROM all_data"
 
 # Filter and project columns
-windlass sql "SELECT session_id, phase_name, cost FROM all_data WHERE cost > 0 LIMIT 10"
+rvbbit sql "SELECT session_id, phase_name, cost FROM all_data WHERE cost > 0 LIMIT 10"
 
 # Aggregate queries
-windlass sql "SELECT session_id, COUNT(*) as msg_count FROM all_data GROUP BY session_id"
+rvbbit sql "SELECT session_id, COUNT(*) as msg_count FROM all_data GROUP BY session_id"
 
 # Joins across data sources
-windlass sql "SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id"
+rvbbit sql "SELECT * FROM all_data a JOIN all_evals e ON a.session_id = e.session_id"
 
 # Different output formats
-windlass sql "SELECT * FROM all_data LIMIT 5" --format json
-windlass sql "SELECT * FROM all_data LIMIT 5" --format csv
-windlass sql "SELECT * FROM all_data LIMIT 5" --format table  # default
+rvbbit sql "SELECT * FROM all_data LIMIT 5" --format json
+rvbbit sql "SELECT * FROM all_data LIMIT 5" --format csv
+rvbbit sql "SELECT * FROM all_data LIMIT 5" --format table  # default
 ```
 
 **Magic Table Names:**
@@ -2857,20 +2857,20 @@ result = con.execute("""
 **Schema includes:**
 - `session_id`, `timestamp`, `phase_name`, `role`, `content_json`
 - `trace_id`, `parent_id`, `depth` (nested cascades)
-- `sounding_index`, `is_winner` (soundings)
+- `sounding_index`, `is_winner` (candidates)
 - `reforge_step` (refinement iterations)
 - `cost` (token usage in USD)
 
 **Query examples:**
 ```bash
-# Compare sounding attempts
-windlass sql "SELECT sounding_index, content_json, is_winner FROM all_data WHERE phase_name = 'generate' AND sounding_index IS NOT NULL"
+# Compare candidate attempts
+rvbbit sql "SELECT sounding_index, content_json, is_winner FROM all_data WHERE phase_name = 'generate' AND sounding_index IS NOT NULL"
 
 # Track reforge progression
-windlass sql "SELECT reforge_step, content_json FROM all_data WHERE is_winner = true ORDER BY reforge_step"
+rvbbit sql "SELECT reforge_step, content_json FROM all_data WHERE is_winner = true ORDER BY reforge_step"
 
 # Cost analysis
-windlass sql "SELECT phase_name, SUM(cost) as total_cost FROM all_data WHERE cost > 0 GROUP BY phase_name ORDER BY total_cost DESC"
+rvbbit sql "SELECT phase_name, SUM(cost) as total_cost FROM all_data WHERE cost > 0 GROUP BY phase_name ORDER BY total_cost DESC"
 ```
 
 ### Mermaid Graphs
@@ -2878,7 +2878,7 @@ windlass sql "SELECT phase_name, SUM(cost) as total_cost FROM all_data WHERE cos
 Real-time flowcharts in `./graphs/` with enhanced visualization:
 
 **Features:**
-- **Soundings grouping**: Parallel attempts in blue containers with 🔱 icon
+- **Candidates grouping**: Parallel attempts in blue containers with 🔱 icon
 - **Winner highlighting**: Green borders with ✓ checkmarks
 - **Loser dimming**: Gray dashed borders
 - **Reforge steps**: Orange progressive refinement with 🔨 icon
@@ -2904,7 +2904,7 @@ python scripts/review_mermaid_failures.py
 Built-in event bus for live monitoring:
 
 ```python
-from windlass.events import get_event_bus
+from rvbbit.events import get_event_bus
 
 bus = get_event_bus()
 queue = bus.subscribe()
@@ -2922,7 +2922,7 @@ while True:
 
 **SSE Integration (Flask/FastAPI):**
 ```python
-from windlass.events import get_event_bus
+from rvbbit.events import get_event_bus
 from flask import Response, stream_with_context
 
 @app.route('/api/events/stream')
@@ -2950,7 +2950,7 @@ eventSource.onmessage = (e) => {
 
 ### Execution Tree API (React Flow)
 
-For complex visualizations (soundings, reforges, parallel execution):
+For complex visualizations (candidates, reforges, parallel execution):
 
 ```python
 from extras.debug_ui.backend.execution_tree import ExecutionTreeBuilder, build_react_flow_nodes
@@ -2962,7 +2962,7 @@ tree = builder.build_tree(session_id)
 graph = build_react_flow_nodes(tree)
 
 # Returns nodes/edges with proper grouping:
-# - Soundings in nested containers
+# - Candidates in nested containers
 # - Winner paths highlighted
 # - Reforge steps with horizontal flow
 ```
@@ -2971,7 +2971,7 @@ See `extras/debug_ui/VISUALIZATION_GUIDE.md` for complete React Flow patterns.
 
 ### Web UI (Sextant Dashboard)
 
-Windlass includes a production-ready web dashboard for exploring execution history, analyzing soundings, and visualizing prompt evolution:
+RVBBIT includes a production-ready web dashboard for exploring execution history, analyzing candidates, and visualizing prompt evolution:
 
 ```bash
 cd dashboard && ./start.sh
@@ -2982,17 +2982,17 @@ cd dashboard && ./start.sh
 
 **1. Instance Grid View**
 - Browse all cascade executions with filtering and search
-- DNA badges (🧬) on each card show species evolution status per phase
+- DNA badges (🧬) on each card show species evolution status per cell
 - Click badges to open evolution tree (see Prompt Phylogeny below)
 
 **2. Message Flow View**
 - Detailed execution timeline for any session
-- Interactive phase navigation with context visualization
-- Soundings explorer shows parallel attempts with winner selection
+- Interactive cell navigation with context visualization
+- Candidates explorer shows parallel attempts with winner selection
 
 **3. Prompt Phylogeny (Evolution Tree)**
 - **Genetic lineage visualization**: See how prompts evolved across runs
-- **Gene pool breeding**: Each sounding trained by ALL previous winners, not just last gen
+- **Gene pool breeding**: Each candidate trained by ALL previous winners, not just last gen
 - **Active training set**: Last 5 winners highlighted with 🎓 golden glow
 - **DNA inheritance bars**: Visual representation of parent count growth
 - **Winners-only toggle**: Filter to focus on successful evolutionary path
@@ -3007,10 +3007,10 @@ cd dashboard && ./start.sh
 
 **Access Evolution Tree:**
 - Click DNA badges on instance cards (🧬 Gen X/Y)
-- Or open Soundings Explorer and click "Evolution" button
+- Or open Candidates Explorer and click "Evolution" button
 
 **4. Species Hash Tracking**
-- Per-phase species badges show training generation (Gen X/Y)
+- Per-cell species badges show training generation (Gen X/Y)
 - Orange badges = New species (Gen 1/1, config just changed)
 - Purple badges = Trained species (Gen 2+, learning from winners)
 - Clickable badges open full evolution visualization
@@ -3020,10 +3020,10 @@ cd dashboard && ./start.sh
 Asynchronous workers track token usage via OpenRouter APIs:
 
 ```sql
-SELECT trace_id, phase, SUM(cost_usd) as total_cost
+SELECT trace_id, cell, SUM(cost_usd) as total_cost
 FROM './logs/*.parquet'
 WHERE cost_usd IS NOT NULL
-GROUP BY trace_id, phase
+GROUP BY trace_id, cell
 ORDER BY total_cost DESC
 ```
 
@@ -3033,10 +3033,10 @@ ORDER BY total_cost DESC
 
 **Your prompts improve automatically, just by using the system.**
 
-Soundings aren't just for getting better answers NOW - they're a **continuous optimization engine**:
+Candidates aren't just for getting better answers NOW - they're a **continuous optimization engine**:
 
 ```
-Every Run with Soundings:
+Every Run with Candidates:
   ├─ Try 5 approaches (A/B test)
   ├─ Pick best (evaluator)
   ├─ Log all attempts (DuckDB)
@@ -3056,18 +3056,18 @@ You Click "Apply":
 **Example:**
 
 ```bash
-# Week 1: Use cascade normally with soundings
-windlass examples/dashboard_gen.json --input '{...}'
+# Week 1: Use cascade normally with candidates
+rvbbit examples/dashboard_gen.json --input '{...}'
 # (run it 20 times for real work)
 
-# Week 2: System has learned from 100 sounding attempts
-windlass analyze examples/dashboard_gen.json
+# Week 2: System has learned from 100 candidate attempts
+rvbbit analyze examples/dashboard_gen.json
 
 # ======================================================================
 # PROMPT IMPROVEMENT SUGGESTIONS
 # ======================================================================
 #
-# Phase: generate_dashboard
+# Cell: generate_dashboard
 #
 # Current:
 # "Create a dashboard from the data"
@@ -3079,7 +3079,7 @@ windlass analyze examples/dashboard_gen.json
 # Impact:
 # • Cost: -32% ($0.22 → $0.15)
 # • Quality: +25% (70% → 95% validation pass rate)
-# • Confidence: High (sounding #2 wins 82% of runs)
+# • Confidence: High (candidate #2 wins 82% of runs)
 #
 # Rationale:
 # - Winners follow sequential approach (explore first)
@@ -3087,10 +3087,10 @@ windlass analyze examples/dashboard_gen.json
 # - Winners mention accessibility
 # - Winners pass validation 95% vs 70%
 #
-# To apply: windlass analyze examples/dashboard_gen.json --apply
+# To apply: rvbbit analyze examples/dashboard_gen.json --apply
 
 # Week 3+: Keep using improved prompt
-# Soundings continue, new patterns emerge, cycle repeats
+# Candidates continue, new patterns emerge, cycle repeats
 ```
 
 **Cost/Quality Trade-offs:**
@@ -3107,7 +3107,7 @@ Suggestion B: +20% cost, +50% quality  ← Expensive, much better
 **You choose:** Save money or maximize quality. Data-driven decisions, not guessing.
 
 **Why this works:**
-- Soundings = automatic A/B testing (every run)
+- Candidates = automatic A/B testing (every run)
 - DuckDB logs = training corpus (automatic collection)
 - Winner analysis = pattern extraction (data science, not dark art)
 - Git commits = evolution tracking (version-controlled prompts)
@@ -3125,15 +3125,15 @@ See `OPTIMIZATION.md` for complete details.
 - Iteratively refined based on feedback
 
 **Solution:**
-1. **Generate (Soundings)**: Create N variations, pick best
+1. **Generate (Candidates)**: Create N variations, pick best
 2. **Validate (Wards)**: Block on critical errors, retry fixable issues
 3. **Render**: Convert to visual artifact (image, PDF)
 4. **Feedback (Vision)**: Analyze artifact visually
 5. **Refine (Reforge)**: Polish based on feedback with mutations
 6. **Repeat**: Until quality threshold met
 
-**Windlass primitives map directly:**
-- Soundings → exploration
+**RVBBIT primitives map directly:**
+- Candidates → exploration
 - Wards → validation
 - Image protocol → rendering
 - Multi-modal → feedback
@@ -3143,11 +3143,11 @@ See `OPTIMIZATION.md` for complete details.
 ```json
 {
   "cascade_id": "dashboard_autopilot",
-  "phases": [{
+  "cells": [{
     "name": "create_dashboard",
     "instructions": "Generate sales dashboard from {{ input.database }}",
-    "tackle": ["smart_sql_run", "create_chart"],
-    "soundings": {
+    "traits": ["smart_sql_run", "create_chart"],
+    "candidates": {
       "factor": 4,
       "evaluator_instructions": "Pick most insightful dashboard",
       "reforge": {
@@ -3182,7 +3182,7 @@ See `OPTIMIZATION.md` for complete details.
 For complex conditional logic, generate cascades programmatically:
 
 ```python
-from windlass import run_cascade
+from rvbbit import run_cascade
 
 def build_cascade(complexity_level):
     sounding_factor = 3 if complexity_level < 5 else 7
@@ -3190,9 +3190,9 @@ def build_cascade(complexity_level):
 
     return {
         "cascade_id": "adaptive_workflow",
-        "phases": [{
+        "cells": [{
             "name": "generate",
-            "soundings": {
+            "candidates": {
                 "factor": sounding_factor,
                 "reforge": {"steps": reforge_steps}
             }
@@ -3215,20 +3215,20 @@ result = run_cascade(cascade_config, user_input.data)
 Register entire cascades as callable tools:
 
 ```python
-from windlass import register_cascade_as_tool
+from rvbbit import register_cascade_as_tool
 
 # Register cascade as tool
 register_cascade_as_tool("specialized_task.json")
 
 # Now other cascades can use it:
-# "tackle": ["specialized_task"]
+# "traits": ["specialized_task"]
 ```
 
 Build tool libraries from cascades for unlimited composability.
 
-## When to Use Windlass
+## When to Use RVBBIT
 
-### ✅ Windlass Excels At:
+### ✅ RVBBIT Excels At:
 
 - **Long-running iterative workflows** (hours, not seconds)
 - **Artifact generation with refinement** (dashboards, reports, code)
@@ -3236,10 +3236,10 @@ Build tool libraries from cascades for unlimited composability.
 - **Human-in-the-loop workflows** (approval gates, iterative refinement with feedback)
 - **Interactive research and data exploration** (Research Cockpit with live orchestration)
 - **Web automation with visual feedback** (browser control with coordinate-based interaction)
-- **Complex multi-phase workflows** (scrape → store → analyze → visualize → approve)
+- **Complex multi-cell workflows** (scrape → store → analyze → visualize → approve)
 - **Production systems requiring observability** (audit logs, compliance, full traces)
 - **Validation and error filtering** (LLM outputs are unpredictable)
-- **Exploring solution spaces** (soundings for multiple approaches)
+- **Exploring solution spaces** (candidates for multiple approaches)
 - **Persistent data collection** (research databases for multi-run accumulation)
 
 ### ❌ Consider Alternatives For:
@@ -3253,7 +3253,7 @@ Build tool libraries from cascades for unlimited composability.
 ### 🎯 Perfect For:
 
 **Researchers:**
-- Exploring prompt strategies with soundings
+- Exploring prompt strategies with candidates
 - Interactive data exploration with Research Cockpit
 - Web scraping with visual automation
 - Building research databases that persist across runs
@@ -3277,7 +3277,7 @@ Build tool libraries from cascades for unlimited composability.
 
 ## Advanced Features: Production-Grade Context Management
 
-Windlass includes three production-grade patterns from "the big boys" that prevent context explosion and improve efficiency:
+RVBBIT includes three production-grade patterns from "the big boys" that prevent context explosion and improve efficiency:
 
 ### 1. Token Budget Enforcement 🎯
 
@@ -3315,9 +3315,9 @@ Windlass includes three production-grade patterns from "the big boys" that preve
     "max_total": 12000,
     "strategy": "summarize"
   },
-  "phases": [{
+  "cells": [{
     "name": "research",
-    "tackle": ["sql_search"],
+    "traits": ["sql_search"],
     "handoffs": ["analyze"]
   }, {
     "name": "analyze",
@@ -3387,7 +3387,7 @@ Total: 10K tokens, 1 RAG query
 
 ```json
 {
-  "phases": [{
+  "cells": [{
     "name": "think",
     "instructions": "Use <scratchpad> for reasoning:\n<scratchpad>\n[messy thinking]\n</scratchpad>",
     "output_extraction": {
@@ -3409,7 +3409,7 @@ Total: 10K tokens, 1 RAG query
 - ✅ Cleaner outputs (thinking separated from deliverable)
 - ✅ Better reasoning quality (explicit scratchpad)
 - ✅ Easier validation (extract confidence scores, etc.)
-- ✅ Modular workflows (pass extracted data between phases)
+- ✅ Modular workflows (pass extracted data between cells)
 
 **Three formats:**
 - `text`: Plain text extraction
@@ -3457,7 +3457,7 @@ Total: 10K tokens, 1 RAG query
       "sql_search": {"ttl": 3600, "key": "query"}
     }
   },
-  "phases": [{
+  "cells": [{
     "name": "research",
     "output_extraction": {
       "pattern": "<ideas>(.*?)</ideas>",
@@ -3484,33 +3484,33 @@ Total: 10K tokens, 1 RAG query
 
 ### Provider Setup
 
-Windlass uses LiteLLM for flexible provider support.
+RVBBIT uses LiteLLM for flexible provider support.
 
 **OpenRouter (default):**
 ```bash
 export OPENROUTER_API_KEY="your-key"
-export WINDLASS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
+export RVBBIT_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
 ```
 
 **OpenAI directly:**
 ```bash
-export WINDLASS_PROVIDER_BASE_URL="https://api.openai.com/v1"
-export WINDLASS_PROVIDER_API_KEY="sk-..."
-export WINDLASS_DEFAULT_MODEL="gpt-4"
+export RVBBIT_PROVIDER_BASE_URL="https://api.openai.com/v1"
+export RVBBIT_PROVIDER_API_KEY="sk-..."
+export RVBBIT_DEFAULT_MODEL="gpt-4"
 ```
 
 **Azure OpenAI:**
 ```bash
-export WINDLASS_PROVIDER_BASE_URL="https://your-resource.openai.azure.com"
-export WINDLASS_PROVIDER_API_KEY="your-azure-key"
-export WINDLASS_DEFAULT_MODEL="azure/your-deployment"
+export RVBBIT_PROVIDER_BASE_URL="https://your-resource.openai.azure.com"
+export RVBBIT_PROVIDER_API_KEY="your-azure-key"
+export RVBBIT_DEFAULT_MODEL="azure/your-deployment"
 ```
 
 ### Runtime Overrides
 
 **Programmatic configuration:**
 ```python
-from windlass import set_provider, run_cascade
+from rvbbit import set_provider, run_cascade
 
 set_provider(
     base_url="https://api.openai.com/v1",
@@ -3532,10 +3532,10 @@ result = run_cascade(
 
 ## Python API
 
-While Windlass is designed for declarative workflows, full Python API available:
+While RVBBIT is designed for declarative workflows, full Python API available:
 
 ```python
-from windlass import run_cascade, register_tackle
+from rvbbit import run_cascade, register_tackle
 
 # Register custom tools
 def my_tool(param: str) -> str:
@@ -3551,7 +3551,7 @@ result = run_cascade(
     session_id="custom_session"
 )
 
-print(result["lineage"])  # Phase outputs
+print(result["lineage"])  # Cell outputs
 print(result["state"])    # Final state
 print(result["history"])  # Full message history
 ```
@@ -3561,7 +3561,7 @@ print(result["history"])  # Full message history
 The `examples/` directory contains reference implementations:
 
 **Basics:**
-- `simple_flow.json`: Two-phase workflow
+- `simple_flow.json`: Two-cell workflow
 - `loop_flow.json`: Iterative refinement
 - `memory_flow.json`: Context persistence
 - `tool_flow.json`: Using built-in tools
@@ -3571,11 +3571,11 @@ The `examples/` directory contains reference implementations:
 - `browser_search_demo.json`: Web search and data extraction
 
 **Advanced:**
-- `soundings_flow.json`: Phase-level Tree of Thought
-- `soundings_rewrite_flow.json`: Soundings with LLM prompt rewriting (mutation_mode: rewrite)
-- `soundings_augment_flow.json`: Soundings with prepended patterns (mutation_mode: augment)
-- `soundings_approach_flow.json`: Soundings with thinking strategies (mutation_mode: approach)
-- `soundings_with_validator.json`: Pre-evaluation validation for soundings
+- `soundings_flow.json`: Cell-level Tree of Thought
+- `soundings_rewrite_flow.json`: Candidates with LLM prompt rewriting (mutation_mode: rewrite)
+- `soundings_augment_flow.json`: Candidates with prepended patterns (mutation_mode: augment)
+- `soundings_approach_flow.json`: Candidates with thinking strategies (mutation_mode: approach)
+- `soundings_with_validator.json`: Pre-evaluation validation for candidates
 - `cascade_soundings_test.json`: Cascade-level ToT
 - `reforge_dashboard_metrics.json`: Iterative refinement with mutations
 - `reforge_image_chart.json`: Visual feedback loops
@@ -3602,7 +3602,7 @@ The `examples/` directory contains reference implementations:
 - `reforge_feedback_chart.json`: Manual image injection with feedback
 
 **Context Injection:**
-- `context_selective_demo.json`: Selective context - phases choose what they see
+- `context_selective_demo.json`: Selective context - cells choose what they see
 - `context_inject_demo.json`: Inject mode - snowball + cherry-picked old context
 - `context_messages_demo.json`: Message replay - full conversation history injection
 - `context_sugar_demo.json`: Sugar keywords (`"first"`, `"previous"`) for cleaner configs
@@ -3616,19 +3616,19 @@ The `examples/` directory contains reference implementations:
 ### Running Tests
 
 ```bash
-cd windlass
+cd rvbbit
 python -m pytest tests/
 ```
 
 ### Project Structure
 
 ```
-windlass/
-├── windlass/                # Core framework
+rvbbit/
+├── rvbbit/                # Core framework
 │   ├── runner.py           # Execution engine
 │   ├── agent.py            # LLM wrapper (LiteLLM)
 │   ├── cascade.py          # Pydantic models for DSL
-│   ├── tackle.py           # Tool registry
+│   ├── traits.py           # Tool registry
 │   ├── echo.py             # State/history container
 │   ├── logs.py             # DuckDB logging
 │   ├── visualizer.py       # Mermaid graphs
@@ -3636,7 +3636,7 @@ windlass/
 │   ├── events.py           # Event bus (SSE)
 │   └── eddies/             # Built-in tools
 ├── examples/               # Reference cascades
-├── tackle/                 # Validators and cascade tools
+├── traits/                 # Validators and cascade tools
 ├── tests/                  # Test suite
 └── extras/debug_ui/        # Development UI
     ├── backend/
@@ -3648,12 +3648,12 @@ windlass/
 ## Terminology (Nautical Theme)
 
 - **Cascades**: The overall workflow/journey
-- **Phases**: Stages within a cascade
-- **Tackle**: Tools and functions available to agents
+- **Cells**: Stages within a cascade
+- **Traits**: Tools and functions available to agents
 - **Eddies**: Smart tools with internal resilience
 - **Echoes**: State and history accumulated during session
 - **Wakes**: Execution trails visualized in graphs
-- **Soundings**: Depth measurements - parallel exploration to find best route
+- **Candidates**: Depth measurements - parallel exploration to find best route
 - **Reforge**: Iterative refinement - polishing the winner
 - **Wards**: Protective barriers for validation
 - **Manifest**: Tool library, charted by the Quartermaster
@@ -3671,7 +3671,7 @@ MIT
 
 ## The Three Self-* Properties
 
-Windlass isn't just a framework - it's a **self-evolving system**:
+RVBBIT isn't just a framework - it's a **self-evolving system**:
 
 ### 1. **Self-Orchestrating** (Manifest/Quartermaster)
 Workflows pick their own tools based on context.
@@ -3679,7 +3679,7 @@ Workflows pick their own tools based on context.
 ```json
 {
   "name": "adaptive_task",
-  "tackle": "manifest"  // Quartermaster auto-selects relevant tools
+  "traits": "manifest"  // Quartermaster auto-selects relevant tools
 }
 ```
 
@@ -3690,13 +3690,13 @@ Tests write themselves from real executions.
 
 ```bash
 # Run cascade, verify it works
-windlass examples/flow.json --session test_001
+rvbbit examples/flow.json --session test_001
 
 # Freeze as test (one command)
-windlass test freeze test_001 --name flow_works
+rvbbit test freeze test_001 --name flow_works
 
 # Forever regression-proof (instant, no LLM calls)
-windlass test validate flow_works
+rvbbit test validate flow_works
 ```
 
 **No manual mocking.** Click a button (or run one command), test created. Validates framework behavior without expensive LLM calls.
@@ -3705,14 +3705,14 @@ windlass test validate flow_works
 Prompts improve automatically from usage data.
 
 ```bash
-# Use system normally with soundings (A/B tests every run)
+# Use system normally with candidates (A/B tests every run)
 # After 10-20 runs...
 
-windlass analyze examples/flow.json
+rvbbit analyze examples/flow.json
 
 # Output:
 # 💡 Prompt could be 32% cheaper, 25% better
-# Based on: Sounding #2 wins 82% of runs
+# Based on: Candidate #2 wins 82% of runs
 #
 # Apply? [Yes]
 
@@ -3720,18 +3720,18 @@ windlass analyze examples/flow.json
 # Evolution continues
 ```
 
-**No manual tuning.** Soundings generate training data automatically. System learns winner patterns. Suggests improvements with impact estimates.
+**No manual tuning.** Candidates generate training data automatically. System learns winner patterns. Suggests improvements with impact estimates.
 
 ---
 
-## What Makes Windlass Different?
+## What Makes RVBBIT Different?
 
-**Not just another agent framework.** Windlass provides:
+**Not just another agent framework.** RVBBIT provides:
 
 1. **Infrastructure as Code for AI** - Agent behaviors as version-controlled configs
 2. **Observable by Default** - Full traces, queryable logs, visual graphs, real-time events
 3. **Production-Grade Primitives** - Wards for validation, cost tracking, error filtering
-4. **Parallel Universe Execution** - Cascade-level soundings explore complete solution spaces
+4. **Parallel Universe Execution** - Cascade-level candidates explore complete solution spaces
 5. **Vision-First Multi-Modal** - Images as first-class citizens, automatic persistence
 6. **Visual Browser Automation** - Coordinate-based web control with screenshot feedback
 7. **Generative HITL** - LLM-generated UIs with HTMX for rich human interaction
@@ -3741,8 +3741,8 @@ windlass analyze examples/flow.json
 11. **Self-Evolving** - Workflows orchestrate themselves, tests write themselves, prompts optimize themselves
 12. **No Magic** - Prompts are prompts, tools are functions, no framework magic
 
-**Built from production experience, not academic research.** Windlass emerged from building a data analytics autopilot that required orchestrating complex, iterative workflows with vision feedback, validation, and error filtering.
+**Built from production experience, not academic research.** RVBBIT emerged from building a data analytics autopilot that required orchestrating complex, iterative workflows with vision feedback, validation, and error filtering.
 
-**The insight:** Soundings aren't just for better answers NOW - they're a continuous optimization engine that makes your prompts better over time, automatically, just from usage.
+**The insight:** Candidates aren't just for better answers NOW - they're a continuous optimization engine that makes your prompts better over time, automatically, just from usage.
 
 **Stop fighting imperative Python loops. Start declaring what you want. Let the system evolve itself.**

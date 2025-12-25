@@ -105,7 +105,7 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
             hash: h,
             role: hashRoles[h] || 'default',
             msgRole: msg.role,
-            phase: msg.phase_name
+            phase: msg.cell_name
           });
         }
       });
@@ -122,7 +122,7 @@ function ContextMatrixView({ data, onMessageSelect, onHashSelect, onClose }) {
       const msgIndex = sourceMsg?._index !== undefined ? sourceMsg._index : data.all_messages.indexOf(sourceMsg);
       hashInfo[h] = {
         role: sourceMsg?.role || 'unknown',
-        phase: sourceMsg?.phase_name || 'unknown',
+        phase: sourceMsg?.cell_name || 'unknown',
         index: msgIndex,
         estimated_tokens: tokens,
         preview: typeof sourceMsg?.content === 'string'

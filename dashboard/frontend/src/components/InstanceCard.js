@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
-import PhaseBar from './PhaseBar';
+import PhaseBar from './CellBar';
 import CascadeBar from './CascadeBar';
 import MermaidPreview from './MermaidPreview';
 import MediaGalleryFooter from './MediaGalleryFooter';
@@ -389,8 +389,8 @@ function MessageDetailPanel({ selectedMessage, onCloseMessage }) {
         <div className="message-detail-title">
           <Icon icon="mdi:message-text" width="18" />
           <span>Message M{selectedMessage.index}</span>
-          {selectedMessage.phase_name && (
-            <span className="message-detail-phase">{selectedMessage.phase_name}</span>
+          {selectedMessage.cell_name && (
+            <span className="message-detail-phase">{selectedMessage.cell_name}</span>
           )}
         </div>
         <div className="message-detail-badges">
@@ -398,8 +398,8 @@ function MessageDetailPanel({ selectedMessage, onCloseMessage }) {
           {selectedMessage.node_type && selectedMessage.node_type !== selectedMessage.role && (
             <span className="detail-type-badge">{selectedMessage.node_type}</span>
           )}
-          {selectedMessage.sounding_index !== null && (
-            <span className="detail-sounding-badge">S{selectedMessage.sounding_index}</span>
+          {selectedMessage.candidate_index !== null && (
+            <span className="detail-sounding-badge">S{selectedMessage.candidate_index}</span>
           )}
           {selectedMessage.reforge_step !== null && (
             <span className="detail-reforge-badge">R{selectedMessage.reforge_step}</span>
@@ -738,7 +738,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       entries.forEach(entry => {
         // Normalize phase name - trim whitespace, handle empty strings
-        let phaseName = entry.phase_name;
+        let phaseName = entry.cell_name;
         if (!phaseName || (typeof phaseName === 'string' && phaseName.trim() === '')) {
           phaseName = 'Initialization';
         } else {
@@ -780,8 +780,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         if (entry.node_type && entry.node_type.includes('ward')) {
           phaseMap[phaseName].wardCount++;
         }
-        if (entry.sounding_index !== null && entry.sounding_index !== undefined) {
-          const idx = entry.sounding_index;
+        if (entry.candidate_index !== null && entry.candidate_index !== undefined) {
+          const idx = entry.candidate_index;
           if (!phaseMap[phaseName].soundingAttempts.has(idx)) {
             phaseMap[phaseName].soundingAttempts.set(idx, {
               index: idx,
@@ -1002,14 +1002,14 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
       // First pass: find winning sounding indices per phase
       // is_winner is only set to true on specific entries, so we need to find which indices won
-      const winningSoundingsByPhase = new Map(); // phase_name -> Set of winning sounding indices
+      const winningSoundingsByPhase = new Map(); // cell_name -> Set of winning sounding indices
       entries.forEach(e => {
-        if (e.is_winner === true && e.sounding_index !== null && e.sounding_index !== undefined) {
-          const phase = e.phase_name || 'unknown';
+        if (e.is_winner === true && e.candidate_index !== null && e.candidate_index !== undefined) {
+          const phase = e.cell_name || 'unknown';
           if (!winningSoundingsByPhase.has(phase)) {
             winningSoundingsByPhase.set(phase, new Set());
           }
-          winningSoundingsByPhase.get(phase).add(e.sounding_index);
+          winningSoundingsByPhase.get(phase).add(e.candidate_index);
         }
       });
 
@@ -1039,11 +1039,11 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         // Track used vs exploration costs for soundings
         const entryCost = safeNum(e.cost);
         if (entryCost > 0) {
-          const hasSounding = e.sounding_index !== null && e.sounding_index !== undefined;
+          const hasSounding = e.candidate_index !== null && e.candidate_index !== undefined;
           if (hasSounding) {
-            const phase = e.phase_name || 'unknown';
+            const phase = e.cell_name || 'unknown';
             const winningIndices = winningSoundingsByPhase.get(phase);
-            const isFromWinningSounding = winningIndices && winningIndices.has(e.sounding_index);
+            const isFromWinningSounding = winningIndices && winningIndices.has(e.candidate_index);
             if (isFromWinningSounding) {
               usedCost += entryCost;
             } else {
@@ -1315,7 +1315,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
 
   if (!instance) return null;
 
-  const hasRunning = instance.phases?.some(p => p.status === 'running');
+  const hasRunning = instance.cells?.some(p => p.status === 'running');
 
   // Determine visual state
   let stateClass = '';
@@ -1503,10 +1503,10 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         {/* Right side: Phase bars + Output */}
         <div className="instance-card-phases">
           {/* Cascade Bar - Sticky at top, outside scroll */}
-          {instance.phases && instance.phases.length > 1 && (
+          {instance.cells && instance.cells.length > 1 && (
             <div className="cascade-bar-sticky">
               <CascadeBar
-                phases={instance.phases}
+                phases={instance.cells}
                 totalCost={instance.total_cost}
                 isRunning={isSessionRunning || hasRunning}
               />
@@ -1526,7 +1526,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             {/* Phase bars */}
             {(() => {
               // Filter to only phases with content to prevent layout jumping
-              const phasesWithContent = (instance.phases || []).filter(p => p.message_count > 0);
+              const phasesWithContent = (instance.cells || []).filter(p => p.message_count > 0);
               const costs = phasesWithContent.map(p => p.avg_cost || 0);
               const maxCost = Math.max(...costs, 0.01);
               const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
@@ -1543,7 +1543,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
                     phase={phase}
                     maxCost={normalizedMax}
                     status={phase.status}
-                    phaseIndex={idx}
+                    cellIndex={idx}
                     runningSoundingsSet={runningSoundingsForPhase}
                     onPhaseClick={onPhaseClick}
                     onSoundingClick={onSoundingClick}
@@ -1581,7 +1581,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             sessionId={instance.session_id}
             isRunning={isSessionRunning || isFinalizing}
             sessionUpdate={sessionUpdates?.[instance.session_id]}
-            phases={instance.phases}
+            phases={instance.cells}
           />
         </div>
       </div>

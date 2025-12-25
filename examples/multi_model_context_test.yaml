@@ -1,48 +1,61 @@
 cascade_id: multi_model_context_test
-
-description: Test multi-model soundings with automatic context-based filtering. This cascade uses models
-  with different context limits to demonstrate automatic filtering of models with insufficient context
-  windows.
-
+description: Test multi-model soundings with automatic context-based filtering. This
+  cascade uses models with different context limits to demonstrate automatic filtering
+  of models with insufficient context windows.
 inputs_schema:
   task: A task description that will generate a substantial prompt
+cells:
+- instructions: 'You are a helpful AI assistant analyzing a task.
 
-phases:
-  - instructions: |-
-      You are a helpful AI assistant analyzing a task.
 
-      Task: {{ input.task }}
+    Task: {{ input.task }}
 
-      Please provide a detailed analysis covering:
 
-      1. **Problem Understanding**: Explain what the task is asking for in your own words
-      2. **Key Challenges**: Identify 3-5 potential challenges or edge cases
-      3. **Approach**: Outline a step-by-step approach to solve this
-      4. **Considerations**: Note any important considerations (performance, security, scalability, etc.)
-      5. **Example**: Provide a concrete example demonstrating the solution
+    Please provide a detailed analysis covering:
 
-      Be thorough and comprehensive in your analysis.
-    model: x-ai/grok-4.1-fast
-    name: analyze_with_multi_model
-    soundings:
-      evaluator_instructions: |-
-        Compare the analyses and select the one that is most comprehensive, insightful, and well-structured.
 
-        Consider:
-        - Depth of understanding
-        - Quality of the step-by-step approach
-        - Identification of edge cases
-        - Clarity of explanation
-        - Practical value of the example
+    1. **Problem Understanding**: Explain what the task is asking for in your own
+    words
 
-        Return the index (0-based) of the best analysis.
-      factor: 6
-      model_strategy: round_robin
-      models:
-        - x-ai/grok-4.1-fast
-        - google/gemini-2.5-flash-lite
-        - anthropic/claude-sonnet-4.5
-        - openai/gpt-4o
-        - meta-llama/llama-3.1-8b-instruct
-        - qwen/qwen3-8b
-    tackle: []
+    2. **Key Challenges**: Identify 3-5 potential challenges or edge cases
+
+    3. **Approach**: Outline a step-by-step approach to solve this
+
+    4. **Considerations**: Note any important considerations (performance, security,
+    scalability, etc.)
+
+    5. **Example**: Provide a concrete example demonstrating the solution
+
+
+    Be thorough and comprehensive in your analysis.'
+  model: x-ai/grok-4.1-fast
+  name: analyze_with_multi_model
+  candidates:
+    evaluator_instructions: 'Compare the analyses and select the one that is most
+      comprehensive, insightful, and well-structured.
+
+
+      Consider:
+
+      - Depth of understanding
+
+      - Quality of the step-by-step approach
+
+      - Identification of edge cases
+
+      - Clarity of explanation
+
+      - Practical value of the example
+
+
+      Return the index (0-based) of the best analysis.'
+    factor: 6
+    model_strategy: round_robin
+    models:
+    - x-ai/grok-4.1-fast
+    - google/gemini-2.5-flash-lite
+    - anthropic/claude-sonnet-4.5
+    - openai/gpt-4o
+    - meta-llama/llama-3.1-8b-instruct
+    - qwen/qwen3-8b
+  traits: []

@@ -1,0 +1,19 @@
+{
+  "cascade_id": "test_flow",
+  "cells": [
+    {
+      "name": "greeting",
+      "instructions": "Say hello to the user and ask for their name if not provided.",
+      "traits": [],
+      "rules": {"max_turns": 1},
+      "handoffs": ["echo_name"]
+    },
+    {
+      "name": "echo_name",
+      "instructions": "Repeat the user's name backwards.",
+      "traits": ["reverse_string"],
+      "rules": {"max_turns": 1},
+      "handoffs": []
+    }
+  ]
+}

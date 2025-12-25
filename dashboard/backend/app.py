@@ -1,5 +1,5 @@
 """
-Windlass UI Backend - Flask server for cascade exploration and analytics
+RVBBIT UI Backend - Flask server for cascade exploration and analytics
 
 Data source: ClickHouse unified_logs table (real-time + historical)
 
@@ -22,11 +22,11 @@ from queue import Empty
 
 # Note: live_store.py is now a stub - all data comes from ClickHouse directly
 
-# Add windlass to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from windlass.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
-from windlass.config import get_clickhouse_url
-from windlass.loaders import load_config_file
+# Add rvbbit package to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'rvbbit')))
+from rvbbit.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
+from rvbbit.config import get_clickhouse_url
+from rvbbit.loaders import load_config_file
 from urllib.parse import urlparse
 
 # Set query source for all queries from the UI backend
@@ -184,28 +184,28 @@ def timestamp_to_float(ts):
 
 
 # Configuration - reads from environment or uses defaults
-# WINDLASS_ROOT-based configuration (single source of truth)
+# RVBBIT_ROOT-based configuration (single source of truth)
 # Calculate default root relative to this file's location (dashboard/backend/app.py -> repo root)
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
+RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
 
 # All paths are absolute to avoid issues with working directory changes
-LOG_DIR = os.path.abspath(os.getenv("WINDLASS_LOG_DIR", os.path.join(WINDLASS_ROOT, "logs")))
-DATA_DIR = os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data")))
-GRAPH_DIR = os.path.abspath(os.getenv("WINDLASS_GRAPH_DIR", os.path.join(WINDLASS_ROOT, "graphs")))
-STATE_DIR = os.path.abspath(os.getenv("WINDLASS_STATE_DIR", os.path.join(WINDLASS_ROOT, "states")))
-IMAGE_DIR = os.path.abspath(os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images")))
-AUDIO_DIR = os.path.abspath(os.getenv("WINDLASS_AUDIO_DIR", os.path.join(WINDLASS_ROOT, "audio")))
-EXAMPLES_DIR = os.path.abspath(os.getenv("WINDLASS_EXAMPLES_DIR", os.path.join(WINDLASS_ROOT, "examples")))
-TACKLE_DIR = os.path.abspath(os.getenv("WINDLASS_TACKLE_DIR", os.path.join(WINDLASS_ROOT, "tackle")))
-CASCADES_DIR = os.path.abspath(os.getenv("WINDLASS_CASCADES_DIR", os.path.join(WINDLASS_ROOT, "cascades")))
+LOG_DIR = os.path.abspath(os.getenv("RVBBIT_LOG_DIR", os.path.join(RVBBIT_ROOT, "logs")))
+DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
+GRAPH_DIR = os.path.abspath(os.getenv("RVBBIT_GRAPH_DIR", os.path.join(RVBBIT_ROOT, "graphs")))
+STATE_DIR = os.path.abspath(os.getenv("RVBBIT_STATE_DIR", os.path.join(RVBBIT_ROOT, "states")))
+IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_ROOT, "images")))
+AUDIO_DIR = os.path.abspath(os.getenv("RVBBIT_AUDIO_DIR", os.path.join(RVBBIT_ROOT, "audio")))
+EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "examples")))
+TACKLE_DIR = os.path.abspath(os.getenv("RVBBIT_TACKLE_DIR", os.path.join(RVBBIT_ROOT, "tackle")))
+CASCADES_DIR = os.path.abspath(os.getenv("RVBBIT_CASCADES_DIR", os.path.join(RVBBIT_ROOT, "cascades")))
 # Also search inside the windlass package for examples (supports YAML cascade files)
-PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(WINDLASS_ROOT, "windlass", "examples"))
+PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(RVBBIT_ROOT, "windlass", "examples"))
 # Playground scratchpad for auto-generated cascades from the image playground
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 # Orphan cascade detection threshold (seconds since last activity)
-ORPHAN_THRESHOLD_SECONDS = int(os.getenv('WINDLASS_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
+ORPHAN_THRESHOLD_SECONDS = int(os.getenv('RVBBIT_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
 
 
 def detect_and_mark_orphaned_cascades():
@@ -271,7 +271,7 @@ def detect_and_mark_orphaned_cascades():
                 'node_type': 'cascade_killed',
                 'role': 'system',
                 'depth': 0,
-                'sounding_index': None,
+                'candidate_index': None,
                 'is_winner': None,
                 'reforge_step': None,
                 'attempt_number': None,
@@ -282,8 +282,8 @@ def detect_and_mark_orphaned_cascades():
                 'cascade_id': cascade_id,
                 'cascade_file': None,
                 'cascade_json': None,
-                'phase_name': None,
-                'phase_json': None,
+                'cell_name': None,
+                'cell_json': None,
                 'model': None,
                 'request_id': None,
                 'provider': None,
@@ -334,7 +334,7 @@ class ClickHouseConnection:
         self._db = get_db()
         self._query_count = 0
         self._total_time = 0.0
-        self._verbose = os.getenv('WINDLASS_SQL_VERBOSE', 'false').lower() == 'true'
+        self._verbose = os.getenv('RVBBIT_SQL_VERBOSE', 'false').lower() == 'true'
 
     def execute(self, query, params=None):
         """Execute query with logging. Returns a result wrapper."""
@@ -490,7 +490,7 @@ def get_cascade_definitions():
                                     "has_soundings": "soundings" in p,
                                     "soundings_factor": soundings.get("factor") if soundings else None,
                                     "reforge_steps": soundings.get("reforge", {}).get("steps") if soundings.get("reforge") else None,
-                                    "soundings": soundings if soundings else None,
+                                    "candidates": soundings if soundings else None,
                                     # Wards
                                     "has_wards": bool(wards),
                                     "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
@@ -516,7 +516,7 @@ def get_cascade_definitions():
                                     "async_cascades": p.get("async_cascades"),
                                     # Model & tools
                                     "model": p.get("model"),
-                                    "tackle": p.get("tackle"),
+                                    "traits": p.get("tackle"),
                                     "handoffs": p.get("handoffs"),
                                     "context": p.get("context"),
                                     # Metrics (enriched later)
@@ -599,21 +599,21 @@ def get_cascade_definitions():
                 phase_query = """
                 SELECT
                     cascade_id,
-                    phase_name,
+                    cell_name,
                     AVG(cost) as avg_cost
                 FROM unified_logs
                 WHERE cascade_id IS NOT NULL AND cascade_id != ''
-                  AND phase_name IS NOT NULL
+                  AND cell_name IS NOT NULL
                   AND cost IS NOT NULL AND cost > 0
-                GROUP BY cascade_id, phase_name
+                GROUP BY cascade_id, cell_name
                 """
                 phase_results = conn.execute(phase_query).fetchall()
 
                 # Group by cascade_id
-                for cascade_id, phase_name, avg_cost in phase_results:
+                for cascade_id, cell_name, avg_cost in phase_results:
                     if cascade_id not in phase_metrics_by_cascade:
                         phase_metrics_by_cascade[cascade_id] = {}
-                    phase_metrics_by_cascade[cascade_id][phase_name] = float(avg_cost) if avg_cost else 0.0
+                    phase_metrics_by_cascade[cascade_id][cell_name] = float(avg_cost) if avg_cost else 0.0
             except Exception as e:
                 print(f"[ERROR] Batch phase metrics query failed: {e}")
 
@@ -878,7 +878,7 @@ def get_cascade_instances(cascade_id):
         if session_ids:
             try:
                 errors_query = """
-                SELECT session_id, phase_name, content_json, node_type
+                SELECT session_id, cell_name, content_json, node_type
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND node_type IN ('cascade_failed', 'cascade_error', 'cascade_killed')
@@ -909,21 +909,21 @@ def get_cascade_instances(cascade_id):
                 phase_costs_query = """
                 SELECT
                     session_id,
-                    phase_name,
+                    cell_name,
                     SUM(cost) as total_cost
                 FROM unified_logs
                 WHERE session_id IN ({})
-                  AND phase_name IS NOT NULL
+                  AND cell_name IS NOT NULL
                   AND cost IS NOT NULL
                   AND cost > 0
                   AND role = 'assistant'
-                GROUP BY session_id, phase_name
+                GROUP BY session_id, cell_name
                 """.format(','.join('?' * len(session_ids)))
                 phase_cost_results = conn.execute(phase_costs_query, session_ids).fetchall()
-                for sid, phase_name, total_cost in phase_cost_results:
+                for sid, cell_name, total_cost in phase_cost_results:
                     if sid not in phase_costs_by_session:
                         phase_costs_by_session[sid] = {}
-                    phase_costs_by_session[sid][phase_name] = float(total_cost) if total_cost else 0.0
+                    phase_costs_by_session[sid][cell_name] = float(total_cost) if total_cost else 0.0
             except Exception as e:
                 print(f"[ERROR] Batch phase costs query: {e}")
 
@@ -1101,31 +1101,31 @@ def get_cascade_instances(cascade_id):
                     turn_query = """
                     SELECT
                         session_id,
-                        phase_name,
-                        sounding_index,
+                        cell_name,
+                        candidate_index,
                         turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
                     WHERE session_id IN ({})
-                      AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                      AND cell_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
                       AND role = 'assistant'
-                    GROUP BY session_id, phase_name, sounding_index, turn_number
-                    ORDER BY session_id, phase_name, sounding_index, turn_number
+                    GROUP BY session_id, cell_name, candidate_index, turn_number
+                    ORDER BY session_id, cell_name, candidate_index, turn_number
                     """.format(','.join('?' * len(session_ids)))
                 else:
                     turn_query = """
                     SELECT
                         session_id,
-                        phase_name,
-                        sounding_index,
+                        cell_name,
+                        candidate_index,
                         0 as turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
                     WHERE session_id IN ({})
-                      AND phase_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
+                      AND cell_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
                       AND role = 'assistant'
-                    GROUP BY session_id, phase_name, sounding_index
-                    ORDER BY session_id, phase_name, sounding_index
+                    GROUP BY session_id, cell_name, candidate_index
+                    ORDER BY session_id, cell_name, candidate_index
                     """.format(','.join('?' * len(session_ids)))
                 turn_results = conn.execute(turn_query, session_ids).fetchall()
 
@@ -1149,12 +1149,12 @@ def get_cascade_instances(cascade_id):
                 tool_query = """
                 SELECT
                     session_id,
-                    phase_name,
+                    cell_name,
                     tool_calls_json,
                     metadata_json
                 FROM unified_logs
                 WHERE session_id IN ({})
-                  AND phase_name IS NOT NULL
+                  AND cell_name IS NOT NULL
                   AND (tool_calls_json IS NOT NULL OR node_type = 'tool_result')
                 """.format(','.join('?' * len(session_ids)))
                 tool_results = conn.execute(tool_query, session_ids).fetchall()
@@ -1195,16 +1195,16 @@ def get_cascade_instances(cascade_id):
                 soundings_query = f"""
                 SELECT
                     session_id,
-                    phase_name,
-                    sounding_index,
+                    cell_name,
+                    candidate_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
                     SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost,
                     {model_select}
                 FROM unified_logs
                 WHERE session_id IN ({','.join('?' * len(session_ids))})
-                  AND sounding_index IS NOT NULL
-                GROUP BY session_id, phase_name, sounding_index
-                ORDER BY session_id, phase_name, sounding_index
+                  AND candidate_index IS NOT NULL
+                GROUP BY session_id, cell_name, candidate_index
+                ORDER BY session_id, cell_name, candidate_index
                 """
                 sounding_results = conn.execute(soundings_query, session_ids).fetchall()
 
@@ -1247,13 +1247,13 @@ def get_cascade_instances(cascade_id):
                 msg_query = """
                 SELECT
                     session_id,
-                    phase_name,
+                    cell_name,
                     COUNT(*) as msg_count
                 FROM unified_logs
                 WHERE session_id IN ({})
-                  AND phase_name IS NOT NULL
+                  AND cell_name IS NOT NULL
                   AND node_type IN ('agent', 'tool_result', 'user', 'system')
-                GROUP BY session_id, phase_name
+                GROUP BY session_id, cell_name
                 """.format(','.join('?' * len(session_ids)))
                 msg_results = conn.execute(msg_query, session_ids).fetchall()
                 for sid, m_phase, m_count in msg_results:
@@ -1273,19 +1273,19 @@ def get_cascade_instances(cascade_id):
                 phases_query = """
                 SELECT
                     session_id,
-                    phase_name,
+                    cell_name,
                     argMax(node_type, timestamp) as last_node_type,
                     argMax(role, timestamp) as last_role,
                     argMax(content_json, timestamp) as last_content,
                     argMax(model, timestamp) as last_model,
-                    MAX(sounding_index) as max_sounding_index,
+                    MAX(candidate_index) as max_candidate_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as has_winner,
                     MIN(timestamp) as phase_start,
                     MAX(timestamp) as phase_end
                 FROM unified_logs
                 WHERE session_id IN ({})
-                  AND phase_name IS NOT NULL
-                GROUP BY session_id, phase_name
+                  AND cell_name IS NOT NULL
+                GROUP BY session_id, cell_name
                 ORDER BY session_id, phase_start
                 """.format(','.join('?' * len(session_ids)))
                 phase_results = conn.execute(phases_query, session_ids).fetchall()
@@ -1299,7 +1299,7 @@ def get_cascade_instances(cascade_id):
                         'last_role': p_role,
                         'last_content': p_content,
                         'last_model': p_model,
-                        'max_sounding_index': max_sounding,
+                        'max_candidate_index': max_sounding,
                         'has_winner': has_winner
                     }
             except Exception as e:
@@ -1376,15 +1376,15 @@ def get_cascade_instances(cascade_id):
                 turn_key = (p_name, None)
                 turns = turn_costs_map.get(turn_key, [])
 
-                # Find phase config to get max_turns
-                phase_config = None
+                # Find cell config to get max_turns
+                cell_config = None
                 if cascade_config:
-                    for p in cascade_config.get('phases', []):
-                        if p.get('name') == p_name:
-                            phase_config = p
+                    for c in cascade_config.get('cells', []):
+                        if c.get('name') == p_name:
+                            cell_config = c
                             break
 
-                max_turns_config = phase_config.get('rules', {}).get('max_turns', 1) if phase_config else 1
+                max_turns_config = cell_config.get('rules', {}).get('max_turns', 1) if cell_config else 1
 
                 # Determine status from the last node_type/role
                 p_node_type = p_data.get('last_node_type')
@@ -1667,12 +1667,12 @@ def get_session_execution_flow(session_id):
         # Get all records for this session with richer content
         query = """
             SELECT
-                phase_name,
+                cell_name,
                 node_type,
                 role,
-                sounding_index,
+                candidate_index,
                 is_winner,
-                winning_sounding_index,
+                winning_candidate_index,
                 reforge_step,
                 attempt_number,
                 turn_number,
@@ -1688,8 +1688,8 @@ def get_session_execution_flow(session_id):
                 timestamp
             FROM unified_logs
             WHERE session_id = ?
-              AND phase_name IS NOT NULL
-              AND phase_name != ''
+              AND cell_name IS NOT NULL
+              AND cell_name != ''
             ORDER BY timestamp ASC
         """
         rows = conn.execute(query, [session_id]).fetchall()
@@ -1711,21 +1711,21 @@ def get_session_execution_flow(session_id):
         overall_status = 'completed'
 
         for row in rows:
-            (phase_name, node_type, role, sounding_index, is_winner,
-             winning_sounding_index, reforge_step, attempt_number, turn_number,
+            (cell_name, node_type, role, candidate_index, is_winner,
+             winning_candidate_index, reforge_step, attempt_number, turn_number,
              cost, duration_ms, _, model_requested, model_used,
              tokens_in, tokens_out, content_preview, image_paths, timestamp) = row
 
             # Track executed path (order of phases seen)
-            if phase_name not in executed_path:
-                executed_path.append(phase_name)
+            if cell_name not in executed_path:
+                executed_path.append(cell_name)
                 if prev_phase:
-                    executed_handoffs[prev_phase] = phase_name
-                prev_phase = phase_name
+                    executed_handoffs[prev_phase] = cell_name
+                prev_phase = cell_name
 
             # Initialize phase data if not seen
-            if phase_name not in phases:
-                phases[phase_name] = {
+            if cell_name not in phases:
+                phases[cell_name] = {
                     'status': 'completed',
                     'cost': 0.0,
                     'duration': 0.0,
@@ -1748,7 +1748,7 @@ def get_session_execution_flow(session_id):
                     }
                 }
 
-            phase_data = phases[phase_name]
+            phase_data = phases[cell_name]
 
             # Track model used
             if model_used and not phase_data['model']:
@@ -1790,14 +1790,14 @@ def get_session_execution_flow(session_id):
                     pass
 
             # Track sounding winner
-            if winning_sounding_index is not None:
-                phase_data['soundingWinner'] = winning_sounding_index
-                phase_data['details']['soundings']['winnerIndex'] = winning_sounding_index
+            if winning_candidate_index is not None:
+                phase_data['soundingWinner'] = winning_candidate_index
+                phase_data['details']['soundings']['winnerIndex'] = winning_candidate_index
 
             # Track sounding attempts with richer data
-            if sounding_index is not None and role == 'assistant':
+            if candidate_index is not None and role == 'assistant':
                 attempts = phase_data['details']['soundings']['attempts']
-                while len(attempts) <= sounding_index:
+                while len(attempts) <= candidate_index:
                     attempts.append({
                         'status': 'pending',
                         'preview': '',
@@ -1806,7 +1806,7 @@ def get_session_execution_flow(session_id):
                         'tokensIn': 0,
                         'tokensOut': 0
                     })
-                attempt = attempts[sounding_index]
+                attempt = attempts[candidate_index]
                 attempt['status'] = 'completed'
 
                 # Model for this attempt
@@ -1844,7 +1844,7 @@ def get_session_execution_flow(session_id):
 
             # Track final output (last assistant message that's not a sounding or is the winner)
             if role == 'assistant' and content_preview:
-                is_final_output = (sounding_index is None) or is_winner
+                is_final_output = (candidate_index is None) or is_winner
                 if is_final_output:
                     preview = content_preview.strip('"').replace('\\n', '\n')[:400]
                     # Try to parse JSON content
@@ -1864,8 +1864,8 @@ def get_session_execution_flow(session_id):
                 while len(reforge_steps) < reforge_step:
                     reforge_steps.append({'winnerIndex': None, 'attempts': []})
                 step_data = reforge_steps[reforge_step - 1]
-                if is_winner and winning_sounding_index is not None:
-                    step_data['winnerIndex'] = winning_sounding_index
+                if is_winner and winning_candidate_index is not None:
+                    step_data['winnerIndex'] = winning_candidate_index
 
             # Check for error status
             if node_type and 'error' in node_type.lower():
@@ -1969,7 +1969,7 @@ def get_model_filters(session_id):
 
         query = """
             SELECT
-                phase_name,
+                cell_name,
                 metadata_json,
                 timestamp
             FROM unified_logs
@@ -1981,7 +1981,7 @@ def get_model_filters(session_id):
 
         filters = []
         for row in result:
-            phase_name, metadata_json, timestamp = row
+            cell_name, metadata_json, timestamp = row
 
             # Parse metadata
             metadata = {}
@@ -1992,7 +1992,7 @@ def get_model_filters(session_id):
                     pass
 
             filters.append({
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'timestamp': str(timestamp),
                 'original_models': metadata.get('original_models', []),
                 'filtered_models': metadata.get('filtered_models', []),
@@ -2084,8 +2084,8 @@ def get_soundings_tree(session_id):
         conn = get_db_connection()
         query = """
         SELECT
-            phase_name,
-            sounding_index,
+            cell_name,
+            candidate_index,
             reforge_step,
             is_winner,
             content_json,
@@ -2103,15 +2103,15 @@ def get_soundings_tree(session_id):
             full_request_json
         FROM unified_logs
         WHERE session_id = ?
-          AND sounding_index IS NOT NULL
+          AND candidate_index IS NOT NULL
           AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
-        ORDER BY timestamp, reforge_step, sounding_index, turn_number
+        ORDER BY timestamp, reforge_step, candidate_index, turn_number
         """
         df = conn.execute(query, [session_id]).fetchdf()
         conn.close()
 
         if df.empty:
-            return jsonify({"phases": [], "winner_path": []})
+            return jsonify({"cells": [], "winner_path": []})
 
         # Debug: log available columns and sample data
         print(f"[API] soundings-tree columns: {list(df.columns)}")
@@ -2122,7 +2122,7 @@ def get_soundings_tree(session_id):
             # Show sample row with mutation
             sample = df[df['mutation_type'].notna()].head(1)
             if not sample.empty:
-                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['sounding_index']}, phase={sample.iloc[0]['phase_name']}, mutation={sample.iloc[0]['mutation_type']}")
+                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['candidate_index']}, phase={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
         if 'full_request_json' in df.columns:
             has_full_request = df['full_request_json'].notna().sum()
             print(f"[API] full_request_json non-null count: {has_full_request}/{len(df)}")
@@ -2133,19 +2133,19 @@ def get_soundings_tree(session_id):
         winner_path = []
 
         for _, row in df.iterrows():
-            phase_name = row['phase_name']
-            sounding_idx = int(row['sounding_index'])
+            cell_name = row['cell_name']
+            sounding_idx = int(row['candidate_index'])
             reforge_step = row['reforge_step']
 
-            if phase_name not in phases_dict:
-                phases_dict[phase_name] = {
-                    'name': phase_name,
+            if cell_name not in phases_dict:
+                phases_dict[cell_name] = {
+                    'name': cell_name,
                     'soundings': {},
                     'reforge_steps': {},
                     'eval_reasoning': None
                 }
                 # Track execution order by first appearance (preserves timestamp order from query)
-                phase_order.append(phase_name)
+                phase_order.append(cell_name)
 
             # Separate initial soundings from reforge refinements
             is_reforge = pd.notna(reforge_step)
@@ -2155,8 +2155,8 @@ def get_soundings_tree(session_id):
                 step_num = int(reforge_step)
 
                 # Initialize reforge step if needed
-                if step_num not in phases_dict[phase_name]['reforge_steps']:
-                    phases_dict[phase_name]['reforge_steps'][step_num] = {
+                if step_num not in phases_dict[cell_name]['reforge_steps']:
+                    phases_dict[cell_name]['reforge_steps'][step_num] = {
                         'step': step_num,
                         'refinements': {},
                         'eval_reasoning': None,
@@ -2164,14 +2164,14 @@ def get_soundings_tree(session_id):
                     }
 
                 # Initialize refinement if needed
-                if sounding_idx not in phases_dict[phase_name]['reforge_steps'][step_num]['refinements']:
+                if sounding_idx not in phases_dict[cell_name]['reforge_steps'][step_num]['refinements']:
                     is_winner_val = row['is_winner']
                     if pd.isna(is_winner_val):
                         is_winner = False
                     else:
                         is_winner = bool(is_winner_val)
 
-                    phases_dict[phase_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
+                    phases_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
                         'index': sounding_idx,
                         'cost': 0,
                         'turns': [],
@@ -2190,7 +2190,7 @@ def get_soundings_tree(session_id):
                         'prompt': None
                     }
 
-                refinement = phases_dict[phase_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
+                refinement = phases_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
 
                 # Update is_winner if definitive
                 is_winner_val = row['is_winner']
@@ -2288,14 +2288,14 @@ def get_soundings_tree(session_id):
                             refinement['failed'] = True
                         # Extract honing prompt from metadata
                         if isinstance(metadata, dict) and metadata.get('honing_prompt'):
-                            phases_dict[phase_name]['reforge_steps'][step_num]['honing_prompt'] = metadata.get('honing_prompt')
+                            phases_dict[cell_name]['reforge_steps'][step_num]['honing_prompt'] = metadata.get('honing_prompt')
                 except:
                     pass
 
                 continue  # Skip to next row (reforge handled)
 
             # INITIAL SOUNDING (reforge_step IS NULL)
-            if sounding_idx not in phases_dict[phase_name]['soundings']:
+            if sounding_idx not in phases_dict[cell_name]['soundings']:
                 # Handle NA values for is_winner (agent rows may not have this set)
                 is_winner_val = row['is_winner']
                 if pd.isna(is_winner_val):
@@ -2303,7 +2303,7 @@ def get_soundings_tree(session_id):
                 else:
                     is_winner = bool(is_winner_val)
 
-                phases_dict[phase_name]['soundings'][sounding_idx] = {
+                phases_dict[cell_name]['soundings'][sounding_idx] = {
                     'index': sounding_idx,
                     'cost': 0,
                     'turns': [],
@@ -2322,7 +2322,7 @@ def get_soundings_tree(session_id):
                     'prompt': None
                 }
 
-            sounding = phases_dict[phase_name]['soundings'][sounding_idx]
+            sounding = phases_dict[cell_name]['soundings'][sounding_idx]
 
             # Update is_winner if we have a definitive value (sounding_attempt rows have this)
             is_winner_val = row['is_winner']
@@ -2355,7 +2355,7 @@ def get_soundings_tree(session_id):
             mutation_type_val = row.get('mutation_type')
             if pd.notna(mutation_type_val) and not sounding['mutation_type']:
                 sounding['mutation_type'] = mutation_type_val
-                print(f"[API] Found mutation_type={mutation_type_val} for phase={phase_name}, sounding={sounding_idx}")
+                print(f"[API] Found mutation_type={mutation_type_val} for phase={cell_name}, sounding={sounding_idx}")
             if pd.notna(row.get('mutation_applied')) and not sounding['mutation_applied']:
                 sounding['mutation_applied'] = row['mutation_applied']
             if pd.notna(row.get('mutation_template')) and not sounding['mutation_template']:
@@ -2365,7 +2365,7 @@ def get_soundings_tree(session_id):
             # Note: System message contains tool descriptions, USER message contains actual instructions
             full_req = row.get('full_request_json')
             if pd.notna(full_req) and not sounding['prompt']:
-                print(f"[API] Found full_request_json for phase={phase_name}, sounding={sounding_idx}")
+                print(f"[API] Found full_request_json for phase={cell_name}, sounding={sounding_idx}")
                 try:
                     full_request = json.loads(full_req)
                     messages = full_request.get('messages', [])
@@ -2447,24 +2447,24 @@ def get_soundings_tree(session_id):
 
             # Track winner path (only from rows where is_winner is explicitly True)
             is_winner_val = row['is_winner']
-            if pd.notna(is_winner_val) and bool(is_winner_val) and phase_name not in [w['phase_name'] for w in winner_path]:
+            if pd.notna(is_winner_val) and bool(is_winner_val) and cell_name not in [w['cell_name'] for w in winner_path]:
                 winner_path.append({
-                    'phase_name': phase_name,
-                    'sounding_index': sounding_idx
+                    'cell_name': cell_name,
+                    'candidate_index': sounding_idx
                 })
 
         # Query for eval reasoning (evaluator agent messages, including reforge)
         eval_conn = get_db_connection()
         eval_query = """
         SELECT
-            phase_name,
+            cell_name,
             reforge_step,
             content_json,
             role
         FROM unified_logs
         WHERE session_id = ?
           AND (node_type = 'evaluator' OR role = 'assistant')
-          AND phase_name IS NOT NULL
+          AND cell_name IS NOT NULL
         ORDER BY timestamp
         """
         eval_df = eval_conn.execute(eval_query, [session_id]).fetchdf()
@@ -2472,10 +2472,10 @@ def get_soundings_tree(session_id):
 
         # Extract evaluator reasoning - look for assistant messages with eval-like content
         for _, row in eval_df.iterrows():
-            phase_name = row['phase_name']
+            cell_name = row['cell_name']
             reforge_step = row['reforge_step']
 
-            if phase_name in phases_dict:
+            if cell_name in phases_dict:
                 try:
                     if pd.notna(row['content_json']):
                         content = json.loads(row['content_json'])
@@ -2529,22 +2529,22 @@ def get_soundings_tree(session_id):
                             if pd.notna(reforge_step):
                                 # Reforge step evaluation
                                 step_num = int(reforge_step)
-                                if step_num in phases_dict[phase_name]['reforge_steps']:
-                                    if not phases_dict[phase_name]['reforge_steps'][step_num]['eval_reasoning']:
-                                        phases_dict[phase_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
+                                if step_num in phases_dict[cell_name]['reforge_steps']:
+                                    if not phases_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning']:
+                                        phases_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
                             else:
                                 # Initial soundings evaluation
-                                if not phases_dict[phase_name]['eval_reasoning']:
+                                if not phases_dict[cell_name]['eval_reasoning']:
                                     # Store full eval reasoning (no truncation)
-                                    phases_dict[phase_name]['eval_reasoning'] = content_text
+                                    phases_dict[cell_name]['eval_reasoning'] = content_text
                 except:
                     pass
 
         # Convert dicts to lists and calculate durations
         # Use phase_order to maintain execution order (not alphabetical!)
         phases = []
-        for phase_name in phase_order:
-            phase = phases_dict[phase_name]
+        for cell_name in phase_order:
+            phase = phases_dict[cell_name]
             soundings_list = list(phase['soundings'].values())
 
             # Calculate duration for each sounding
@@ -2563,8 +2563,8 @@ def get_soundings_tree(session_id):
             import re
 
             # METHOD 1: Check for phase-level sounding images (filename pattern)
-            # Pattern: images/{session_id}/{phase_name}/sounding_{s}_image_{index}.{ext}
-            phase_dir = os.path.join(IMAGE_DIR, session_id, phase_name)
+            # Pattern: images/{session_id}/{cell_name}/sounding_{s}_image_{index}.{ext}
+            phase_dir = os.path.join(IMAGE_DIR, session_id, cell_name)
             if os.path.exists(phase_dir):
                 for img_file in sorted(os.listdir(phase_dir)):
                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
@@ -2578,7 +2578,7 @@ def get_soundings_tree(session_id):
                                     if 'images' not in sounding:
                                         sounding['images'] = []
                                     # Avoid duplicates
-                                    img_url = f'/api/images/{session_id}/{phase_name}/{img_file}'
+                                    img_url = f'/api/images/{session_id}/{cell_name}/{img_file}'
                                     if not any(img['url'] == img_url for img in sounding['images']):
                                         sounding['images'].append({
                                             'filename': img_file,
@@ -2591,7 +2591,7 @@ def get_soundings_tree(session_id):
                             pass
 
             # METHOD 2: Check cascade-level sounding images (directory pattern)
-            # Pattern: images/{session_id}_sounding_{index}/{phase_name}/
+            # Pattern: images/{session_id}_sounding_{index}/{cell_name}/
             parent_dir = os.path.dirname(os.path.join(IMAGE_DIR, session_id))
             if os.path.exists(parent_dir):
                 for entry in os.listdir(parent_dir):
@@ -2599,7 +2599,7 @@ def get_soundings_tree(session_id):
                         sounding_match = re.search(r'_sounding_(\d+)$', entry)
                         if sounding_match:
                             sounding_idx = int(sounding_match.group(1))
-                            sounding_img_dir = os.path.join(parent_dir, entry, phase_name)
+                            sounding_img_dir = os.path.join(parent_dir, entry, cell_name)
                             if os.path.exists(sounding_img_dir):
                                 # Find corresponding sounding in our list
                                 for sounding in soundings_list:
@@ -2609,7 +2609,7 @@ def get_soundings_tree(session_id):
                                         for img_file in sorted(os.listdir(sounding_img_dir)):
                                             if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                                                 # Avoid duplicates
-                                                img_url = f'/api/images/{entry}/{phase_name}/{img_file}'
+                                                img_url = f'/api/images/{entry}/{cell_name}/{img_file}'
                                                 if not any(img['url'] == img_url for img in sounding['images']):
                                                     sounding['images'].append({
                                                         'filename': img_file,
@@ -2636,7 +2636,7 @@ def get_soundings_tree(session_id):
                 step['refinements'] = sorted(refinements_list, key=lambda r: r['index'])
 
                 # Check reforge-specific images
-                # Pattern: {session_id}_reforge{step}_{attempt}/{phase_name}/
+                # Pattern: {session_id}_reforge{step}_{attempt}/{cell_name}/
                 if os.path.exists(parent_dir):
                     for entry in os.listdir(parent_dir):
                         if entry.startswith(f"{session_id}_reforge{step_num}_"):
@@ -2645,7 +2645,7 @@ def get_soundings_tree(session_id):
                                 step_check = int(reforge_match.group(1))
                                 attempt_idx = int(reforge_match.group(2))
                                 if step_check == step_num:
-                                    reforge_img_dir = os.path.join(parent_dir, entry, phase_name)
+                                    reforge_img_dir = os.path.join(parent_dir, entry, cell_name)
                                     if os.path.exists(reforge_img_dir):
                                         # Find corresponding refinement
                                         for refinement in step['refinements']:
@@ -2656,7 +2656,7 @@ def get_soundings_tree(session_id):
                                                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                                                         refinement['images'].append({
                                                             'filename': img_file,
-                                                            'url': f'/api/images/{entry}/{phase_name}/{img_file}'
+                                                            'url': f'/api/images/{entry}/{cell_name}/{img_file}'
                                                         })
 
                 reforge_steps_list.append(step)
@@ -2667,10 +2667,10 @@ def get_soundings_tree(session_id):
 
         # Build reforge trails for winner_path
         for winner_entry in winner_path:
-            phase_name = winner_entry['phase_name']
+            cell_name = winner_entry['cell_name']
             # Find the phase in our phases list
             for phase in phases:
-                if phase['name'] == phase_name:
+                if phase['name'] == cell_name:
                     # Check if this phase has reforge steps
                     if phase['reforge_steps']:
                         reforge_trail = []
@@ -2721,7 +2721,7 @@ def get_mermaid_graph(session_id):
 
     Priority: FILE FIRST (real-time) > DATABASE (fallback)
 
-    The .mmd file is written synchronously on every update by WindlassRunner._update_graph().
+    The .mmd file is written synchronously on every update by RVBBITRunner._update_graph().
     With ClickHouse, DB writes are also immediate, but file is preferred for live updates.
 
     Query params:
@@ -2874,7 +2874,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
     2. POST /api/mermaid/static with JSON body: {"cascade_path": "..."}
 
     Args:
-        cascade_path: Path to cascade file (relative to WINDLASS_ROOT or absolute)
+        cascade_path: Path to cascade file (relative to RVBBIT_ROOT or absolute)
 
     Returns:
         {
@@ -2893,9 +2893,9 @@ def get_static_mermaid_from_cascade(cascade_path=None):
     """
     try:
         # Import here to avoid circular dependency
-        from windlass.visualizer import generate_mermaid_string_from_config
-        from windlass.cascade import load_cascade_config
-        from windlass.config import get_config
+        from rvbbit.visualizer import generate_mermaid_string_from_config
+        from rvbbit.cascade import load_cascade_config
+        from rvbbit.config import get_config
 
         # Handle POST request with JSON body
         if request.method == 'POST':
@@ -2907,14 +2907,14 @@ def get_static_mermaid_from_cascade(cascade_path=None):
         if not cascade_path:
             return jsonify({'error': 'cascade_path is required'}), 400
 
-        # Resolve path (support relative to WINDLASS_ROOT)
+        # Resolve path (support relative to RVBBIT_ROOT)
         config = get_config()
         windlass_root = Path(config.root_dir)
 
         # Try as absolute path first
         resolved_path = Path(cascade_path)
         if not resolved_path.is_absolute():
-            # Try relative to WINDLASS_ROOT
+            # Try relative to RVBBIT_ROOT
             resolved_path = windlass_root / cascade_path
 
         # Also check common directories
@@ -2990,7 +2990,7 @@ def get_pareto_frontier(session_id):
     including frontier points, dominated points, and winner selection.
 
     The data is read from graphs/pareto_{session_id}.json which is written
-    by WindlassRunner when pareto_frontier is enabled in soundings config.
+    by RVBBITRunner when pareto_frontier is enabled in soundings config.
     """
     try:
         # Look for Pareto data file
@@ -3023,9 +3023,9 @@ def event_stream():
     """
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.events import get_event_bus
+        from rvbbit.events import get_event_bus
 
         def generate():
             #print("[SSE] Client connected")
@@ -3191,9 +3191,9 @@ def run_cascade():
             return jsonify({'error': 'cascade_path or cascade_yaml required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass import run_cascade as execute_cascade
+        from rvbbit import run_cascade as execute_cascade
         import uuid
         import tempfile
 
@@ -3207,7 +3207,7 @@ def run_cascade():
             # Create temp file in SAME DIRECTORY as original (for sub-cascade resolution)
             # DO NOT modify the original file - user must explicitly save!
             print(f"[run-cascade] Studio mode: Creating temp file in original directory")
-            full_original_path = os.path.join(WINDLASS_ROOT, cascade_path)
+            full_original_path = os.path.join(RVBBIT_ROOT, cascade_path)
             original_dir = os.path.dirname(full_original_path)
 
             # Create temp file with .tmp_ prefix in same directory
@@ -3233,15 +3233,15 @@ def run_cascade():
         elif cascade_path and not cascade_yaml:
             # FILE MODE: Just use the existing file
             print(f"[run-cascade] File mode: Using existing file {cascade_path}")
-            cascade_path = os.path.join(WINDLASS_ROOT, cascade_path)
+            cascade_path = os.path.join(RVBBIT_ROOT, cascade_path)
 
         import threading
-        from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        from rvbbit.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
 
         def run_in_background():
             try:
                 # Enable checkpoint system for HITL tools
-                os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
+                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
                 # Combine event publishing + auto-save hooks
                 hooks = CompositeHooks(
@@ -3270,13 +3270,13 @@ def run_cascade():
 
                 # Update session state to ERROR
                 try:
-                    from windlass.session_state import (
+                    from rvbbit.session_state import (
                         get_session_state_manager,
                         SessionStatus,
                         SessionState
                     )
-                    from windlass.events import get_event_bus, Event
-                    from windlass.unified_logs import log_unified
+                    from rvbbit.events import get_event_bus, Event
+                    from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()
@@ -3297,7 +3297,7 @@ def run_cascade():
                         session_id=session_id,
                         status=SessionStatus.ERROR,
                         error_message=str(e),
-                        error_phase="initialization"
+                        error_cell="initialization"
                     )
 
                     # Publish cascade_error event for UI
@@ -3327,7 +3327,7 @@ def run_cascade():
                         cascade_id=cascade_id,
                         cascade_config=None,
                         content=f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{error_tb}",
-                        phase_name="initialization",
+                        cell_name="initialization",
                         model=None,
                         tokens_in=0,
                         tokens_out=0,
@@ -3373,71 +3373,71 @@ def playground_run_from():
     pre-populates Echo state, and only executes from the target phase.
 
     Request body:
-        phase_name: The phase to start execution from (or node_id for backwards compat)
+        cell_name: The phase to start execution from (or node_id for backwards compat)
         cached_session_id: Session ID with cached images for upstream phases
         cascade_yaml: Full cascade YAML
         inputs: Input values
     """
     try:
         data = request.json
-        # Accept phase_name or node_id for backwards compatibility
-        phase_name = data.get('phase_name') or data.get('node_id')
+        # Accept cell_name or node_id for backwards compatibility
+        cell_name = data.get('cell_name') or data.get('node_id')
         cached_session_id = data.get('cached_session_id')
         cascade_yaml = data.get('cascade_yaml')
         inputs = data.get('inputs', {})
 
-        print(f"[Playground RunFrom] phase_name={phase_name}, cached_session={cached_session_id}")
+        print(f"[Playground RunFrom] cell_name={cell_name}, cached_session={cached_session_id}")
 
-        if not phase_name or not cascade_yaml:
-            return jsonify({'error': 'phase_name and cascade_yaml required'}), 400
+        if not cell_name or not cascade_yaml:
+            return jsonify({'error': 'cell_name and cascade_yaml required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass import run_cascade as execute_cascade
-        from windlass.echo import Echo, _session_manager
-        from windlass.loaders import load_config_string
-        from windlass.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        from rvbbit import run_cascade as execute_cascade
+        from rvbbit.echo import Echo, _session_manager
+        from rvbbit.loaders import load_config_string
+        from rvbbit.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
         import uuid
         import shutil
         import threading
         import yaml as yaml_module
 
-        # Parse cascade to understand phase dependencies
+        # Parse cascade to understand cell dependencies
         cascade_data = yaml_module.safe_load(cascade_yaml)
-        phases = cascade_data.get('phases', [])
-        phase_names = [p['name'] for p in phases]
+        cells = cascade_data.get('cells', [])
+        cell_names = [c['name'] for c in cells]
 
-        print(f"[Playground RunFrom] Cascade phases: {phase_names}")
+        print(f"[Playground RunFrom] Cascade cells: {cell_names}")
 
-        # Find target phase index
-        if phase_name not in phase_names:
-            return jsonify({'error': f'Phase {phase_name} not found in cascade phases'}), 400
+        # Find target cell index
+        if cell_name not in cell_names:
+            return jsonify({'error': f'Cell {cell_name} not found in cascade cells'}), 400
 
-        target_idx = phase_names.index(phase_name)
-        upstream_phases = phase_names[:target_idx]
-        target_and_downstream = phase_names[target_idx:]
+        target_idx = cell_names.index(cell_name)
+        upstream_cells = cell_names[:target_idx]
+        target_and_downstream = cell_names[target_idx:]
 
-        print(f"[Playground RunFrom] Upstream: {upstream_phases}, Target+downstream: {target_and_downstream}")
+        print(f"[Playground RunFrom] Upstream: {upstream_cells}, Target+downstream: {target_and_downstream}")
 
         # Create new session ID
         new_session_id = f"workshop_{uuid.uuid4().hex[:12]}"
 
-        # Copy images from cached session to new session for upstream phases
-        if cached_session_id and upstream_phases:
+        # Copy images from cached session to new session for upstream cells
+        if cached_session_id and upstream_cells:
             src_dir = os.path.join(IMAGE_DIR, cached_session_id)
             dst_dir = os.path.join(IMAGE_DIR, new_session_id)
 
             if os.path.exists(src_dir):
                 os.makedirs(dst_dir, exist_ok=True)
 
-                for phase_name in upstream_phases:
-                    phase_src = os.path.join(src_dir, phase_name)
-                    phase_dst = os.path.join(dst_dir, phase_name)
+                for cell_name in upstream_phases:
+                    phase_src = os.path.join(src_dir, cell_name)
+                    phase_dst = os.path.join(dst_dir, cell_name)
 
                     if os.path.exists(phase_src):
                         shutil.copytree(phase_src, phase_dst)
-                        print(f"[Playground RunFrom] Copied images: {phase_name}")
+                        print(f"[Playground RunFrom] Copied images: {cell_name}")
             else:
                 print(f"[Playground RunFrom] Warning: cached session dir not found: {src_dir}")
 
@@ -3445,24 +3445,24 @@ def playground_run_from():
         echo = Echo(session_id=new_session_id, initial_state={'input': inputs})
 
         # Add output_* entries for each upstream phase with image references
-        for phase_name in upstream_phases:
-            phase_img_dir = os.path.join(IMAGE_DIR, new_session_id, phase_name)
+        for cell_name in upstream_phases:
+            phase_img_dir = os.path.join(IMAGE_DIR, new_session_id, cell_name)
             images = []
 
             if os.path.exists(phase_img_dir):
                 for img_file in sorted(os.listdir(phase_img_dir)):
                     if img_file.endswith(('.png', '.jpg', '.jpeg', '.webp')):
                         # Use API URL format that runner expects
-                        img_url = f"/api/images/{new_session_id}/{phase_name}/{img_file}"
+                        img_url = f"/api/images/{new_session_id}/{cell_name}/{img_file}"
                         images.append(img_url)
 
             # Set output state that downstream phases can reference
-            echo.state[f'output_{phase_name}'] = {
+            echo.state[f'output_{cell_name}'] = {
                 'images': images,
                 'status': 'completed',
                 '_cached_from': cached_session_id
             }
-            print(f"[Playground RunFrom] State output_{phase_name}: {len(images)} images")
+            print(f"[Playground RunFrom] State output_{cell_name}: {len(images)} images")
 
         # Register Echo in session manager (key pattern from branching.py)
         _session_manager.sessions[new_session_id] = echo
@@ -3485,7 +3485,7 @@ def playground_run_from():
         # Run in background
         def run_in_background():
             try:
-                os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
+                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
                 hooks = CompositeHooks(
                     EventPublishingHooks(),
@@ -3508,12 +3508,12 @@ def playground_run_from():
 
                 # Update session state to ERROR and publish event
                 try:
-                    from windlass.session_state import (
+                    from rvbbit.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from windlass.events import get_event_bus, Event
-                    from windlass.unified_logs import log_unified
+                    from rvbbit.events import get_event_bus, Event
+                    from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()
@@ -3533,7 +3533,7 @@ def playground_run_from():
                         session_id=new_session_id,
                         status=SessionStatus.ERROR,
                         error_message=str(e),
-                        error_phase="initialization"
+                        error_cell="initialization"
                     )
 
                     # Publish cascade_error event for UI
@@ -3564,7 +3564,7 @@ def playground_run_from():
                         cascade_id=cascade_id_for_error,
                         cascade_config=None,
                         content=f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{error_tb}",
-                        phase_name="initialization",
+                        cell_name="initialization",
                         model=None,
                         tokens_in=0,
                         tokens_out=0,
@@ -3731,23 +3731,23 @@ def browse_cascade_files():
                     # Extract basic info
                     cascade_id = config.get('cascade_id', name)
                     description = config.get('description', '')
-                    phases = config.get('phases', [])
+                    cells = config.get('cells', [])
                     inputs = config.get('inputs_schema', {})
 
                     # Check for _playground metadata (already visualized)
                     has_playground = '_playground' in config
 
                     # Quick introspection for node count (without full layout)
-                    phase_count = len(phases)
+                    cell_count = len(cells)
                     input_count = len(inputs)
 
                     # Detect if it's an image-focused cascade
                     is_image_cascade = False
-                    for phase in phases:
-                        model = phase.get('model', '')
+                    for cell in cells:
+                        model = cell.get('model', '')
                         if model:
                             try:
-                                from windlass.model_registry import ModelRegistry
+                                from rvbbit.model_registry import ModelRegistry
                                 if ModelRegistry.is_image_output_model(model):
                                     is_image_cascade = True
                                     break
@@ -3763,7 +3763,7 @@ def browse_cascade_files():
                         'description': description[:100] if description else '',
                         'modified_at': modified_at,
                         'mtime': mtime,  # Keep numeric mtime for comparison
-                        'phase_count': phase_count,
+                        'cell_count': cell_count,
                         'input_count': input_count,
                         'has_playground': has_playground,
                         'is_image_cascade': is_image_cascade,
@@ -4031,13 +4031,13 @@ def playground_session_stream(session_id):
                 session_id,
                 parent_session_id,
                 trace_id,
-                phase_name,
+                cell_name,
                 role,
                 node_type,
-                sounding_index,
+                candidate_index,
                 is_winner,
                 reforge_step,
-                winning_sounding_index,
+                winning_candidate_index,
                 model,
                 cost,
                 duration_ms,
@@ -4144,7 +4144,7 @@ def playground_session_stream(session_id):
                     child_sessions[child_session_id] = {
                         'session_id': child_session_id,
                         'parent_session_id': session_id,
-                        'parent_phase': row.get('phase_name'),  # Phase that spawned the child
+                        'parent_phase': row.get('cell_name'),  # Phase that spawned the child
                         'first_seen': row.get('timestamp_iso')
                     }
 
@@ -4212,9 +4212,9 @@ def introspect_cascade_endpoint():
             allowed_dirs = [EXAMPLES_DIR, TACKLE_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
             filepath_abs = os.path.abspath(filepath)
 
-            # Also allow relative paths from WINDLASS_ROOT
+            # Also allow relative paths from RVBBIT_ROOT
             if not filepath_abs.startswith('/'):
-                filepath_abs = os.path.abspath(os.path.join(WINDLASS_ROOT, filepath))
+                filepath_abs = os.path.abspath(os.path.join(RVBBIT_ROOT, filepath))
 
             is_allowed = any(filepath_abs.startswith(os.path.abspath(d)) for d in allowed_dirs)
             if not is_allowed:
@@ -4251,9 +4251,9 @@ def cancel_cascade():
             return jsonify({'error': 'session_id required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.session_state import request_session_cancellation, get_session
+        from rvbbit.session_state import request_session_cancellation, get_session
 
         # Request cancellation
         request_session_cancellation(session_id, reason)
@@ -4336,9 +4336,9 @@ def get_blocked_sessions():
 
         # Import checkpoint manager
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.checkpoints import get_checkpoint_manager
+        from rvbbit.checkpoints import get_checkpoint_manager
 
         cm = get_checkpoint_manager()
         pending = cm.get_pending_checkpoints()
@@ -4356,7 +4356,7 @@ def get_blocked_sessions():
                 session_map[sid] = {
                     'session_id': sid,
                     'cascade_id': cp.cascade_id,
-                    'current_phase': cp.phase_name,
+                    'current_phase': cp.cell_name,
                     'blocked_type': cp.checkpoint_type.value if hasattr(cp.checkpoint_type, 'value') else str(cp.checkpoint_type),
                     'blocked_on': cp.id,
                     'created_at': cp.created_at.isoformat() if cp.created_at else None,
@@ -4391,9 +4391,9 @@ def freeze_test():
             return jsonify({'error': 'session_id and snapshot_name required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.testing import freeze_snapshot
+        from rvbbit.testing import freeze_snapshot
 
         result = freeze_snapshot(session_id, snapshot_name, description)
 
@@ -4418,9 +4418,9 @@ def hotornot_stats():
     """Get Hot or Not evaluation statistics."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import get_evaluation_stats
+        from rvbbit.hotornot import get_evaluation_stats
 
         stats = get_evaluation_stats()
         return jsonify(stats)
@@ -4436,9 +4436,9 @@ def hotornot_queue():
     """Get unevaluated soundings for the Hot or Not UI."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import get_unevaluated_soundings
+        from rvbbit.hotornot import get_unevaluated_soundings
 
         limit = request.args.get('limit', 50, type=int)
         show_all = request.args.get('show_all', 'false').lower() == 'true'
@@ -4462,10 +4462,10 @@ def hotornot_queue():
 
                 items.append({
                     'session_id': row['session_id'],
-                    'phase_name': row['phase_name'],
+                    'cell_name': row['cell_name'],
                     'cascade_id': row.get('cascade_id'),
                     'cascade_file': row.get('cascade_file'),
-                    'sounding_index': int(row.get('sounding_index', 0)),
+                    'candidate_index': int(row.get('candidate_index', 0)),
                     # Don't reveal winner status - blind evaluation to avoid bias
                     'is_winner': None,
                     'content_preview': str(content)[:200] if content else '',
@@ -4475,11 +4475,11 @@ def hotornot_queue():
                 if len(items) >= limit:
                     break
         else:
-            # Group by session_id + phase_name for unique items (original behavior)
+            # Group by session_id + cell_name for unique items (original behavior)
             seen = set()
 
             for _, row in df.iterrows():
-                key = (row['session_id'], row['phase_name'])
+                key = (row['session_id'], row['cell_name'])
                 if key not in seen:
                     seen.add(key)
 
@@ -4493,10 +4493,10 @@ def hotornot_queue():
 
                     items.append({
                         'session_id': row['session_id'],
-                        'phase_name': row['phase_name'],
+                        'cell_name': row['cell_name'],
                         'cascade_id': row.get('cascade_id'),
                         'cascade_file': row.get('cascade_file'),
-                        'sounding_index': int(row.get('sounding_index', 0)),
+                        'candidate_index': int(row.get('candidate_index', 0)),
                         'is_winner': bool(row.get('is_winner')) if row.get('is_winner') is not None and not pd.isna(row.get('is_winner')) else False,
                         'content_preview': str(content)[:200] if content else '',
                         'timestamp': row.get('timestamp')
@@ -4510,16 +4510,16 @@ def hotornot_queue():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/hotornot/sounding-group/<session_id>/<phase_name>', methods=['GET'])
-def hotornot_sounding_group(session_id, phase_name):
+@app.route('/api/hotornot/sounding-group/<session_id>/<cell_name>', methods=['GET'])
+def hotornot_sounding_group(session_id, cell_name):
     """Get all soundings for a specific session+phase for comparison."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import get_sounding_group
+        from rvbbit.hotornot import get_sounding_group
 
-        result = get_sounding_group(session_id, phase_name)
+        result = get_sounding_group(session_id, cell_name)
 
         if not result:
             return jsonify({'error': 'Sounding group not found'}), 404
@@ -4537,9 +4537,9 @@ def hotornot_rate():
     """Submit a binary evaluation (good/bad)."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import log_binary_eval, flush_evaluations
+        from rvbbit.hotornot import log_binary_eval, flush_evaluations
 
         data = request.json
         session_id = data.get('session_id')
@@ -4551,13 +4551,13 @@ def hotornot_rate():
         eval_id = log_binary_eval(
             session_id=session_id,
             is_good=is_good,
-            phase_name=data.get('phase_name'),
+            cell_name=data.get('cell_name'),
             cascade_id=data.get('cascade_id'),
             cascade_file=data.get('cascade_file'),
             prompt_text=data.get('prompt_text'),
             output_text=data.get('output_text'),
             mutation_applied=data.get('mutation_applied'),
-            sounding_index=data.get('sounding_index'),
+            candidate_index=data.get('candidate_index'),
             notes=data.get('notes', ''),
             evaluator=data.get('evaluator', 'human')
         )
@@ -4582,23 +4582,23 @@ def hotornot_prefer():
     """Submit a preference evaluation (A/B comparison)."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import log_preference_eval, flush_evaluations
+        from rvbbit.hotornot import log_preference_eval, flush_evaluations
 
         data = request.json
         session_id = data.get('session_id')
-        phase_name = data.get('phase_name')
+        cell_name = data.get('cell_name')
         preferred_index = data.get('preferred_index')
         system_winner_index = data.get('system_winner_index')
         sounding_outputs = data.get('sounding_outputs', [])
 
-        if not all([session_id, phase_name, preferred_index is not None, system_winner_index is not None]):
-            return jsonify({'error': 'session_id, phase_name, preferred_index, and system_winner_index required'}), 400
+        if not all([session_id, cell_name, preferred_index is not None, system_winner_index is not None]):
+            return jsonify({'error': 'session_id, cell_name, preferred_index, and system_winner_index required'}), 400
 
         eval_id = log_preference_eval(
             session_id=session_id,
-            phase_name=phase_name,
+            cell_name=cell_name,
             preferred_index=preferred_index,
             system_winner_index=system_winner_index,
             sounding_outputs=sounding_outputs,
@@ -4633,9 +4633,9 @@ def hotornot_flag():
     """Flag a session for review."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import log_flag_eval, flush_evaluations
+        from rvbbit.hotornot import log_flag_eval, flush_evaluations
 
         data = request.json
         session_id = data.get('session_id')
@@ -4647,7 +4647,7 @@ def hotornot_flag():
         eval_id = log_flag_eval(
             session_id=session_id,
             flag_reason=flag_reason,
-            phase_name=data.get('phase_name'),
+            cell_name=data.get('cell_name'),
             cascade_id=data.get('cascade_id'),
             output_text=data.get('output_text'),
             notes=data.get('notes', ''),
@@ -4672,9 +4672,9 @@ def hotornot_evaluations():
     """Get all evaluations with optional filtering."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../windlass'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from windlass.hotornot import query_evaluations
+        from rvbbit.hotornot import query_evaluations
 
         where = request.args.get('where')
         limit = request.args.get('limit', 100, type=int)
@@ -4711,8 +4711,8 @@ _REFORGE_CACHE_TTL = 300  # 5 minutes
 def get_session_images(session_id):
     """
     Get list of all images for a session.
-    Images are stored in IMAGE_DIR/{session_id}/{phase_name}/image_{N}.{ext}
-    Also scans for sounding images in IMAGE_DIR/{session_id}_sounding_{N}/{phase_name}/sounding_{N}_image_{M}.{ext}
+    Images are stored in IMAGE_DIR/{session_id}/{cell_name}/image_{N}.{ext}
+    Also scans for sounding images in IMAGE_DIR/{session_id}_sounding_{N}/{cell_name}/sounding_{N}_image_{M}.{ext}
     """
     import re
     try:
@@ -4747,19 +4747,19 @@ def get_session_images(session_id):
 
                     # Extract phase name from path (e.g., "generate/image_0.png" -> "generate")
                     path_parts = rel_path.split(os.sep)
-                    phase_name = path_parts[0] if len(path_parts) > 1 else None
+                    cell_name = path_parts[0] if len(path_parts) > 1 else None
 
                     # Get file modification time for sorting
                     mtime = os.path.getmtime(full_path)
 
                     # Extract sounding index from filename if present
-                    sounding_index = extract_sounding_info(session_id, filename)
+                    candidate_index = extract_sounding_info(session_id, filename)
 
                     images.append({
                         'filename': filename,
                         'path': rel_path,
-                        'phase_name': phase_name,
-                        'sounding_index': sounding_index,
+                        'cell_name': cell_name,
+                        'candidate_index': candidate_index,
                         'url': f'/api/images/{session_id}/{rel_path}',
                         'mtime': mtime
                     })
@@ -4786,18 +4786,18 @@ def get_session_images(session_id):
 
                             # Extract phase name
                             path_parts = rel_path.split(os.sep)
-                            phase_name = path_parts[0] if len(path_parts) > 1 else None
+                            cell_name = path_parts[0] if len(path_parts) > 1 else None
 
                             mtime = os.path.getmtime(full_path)
 
                             # Extract sounding index from the directory name
-                            sounding_index = extract_sounding_info(entry, filename)
+                            candidate_index = extract_sounding_info(entry, filename)
 
                             images.append({
                                 'filename': filename,
                                 'path': rel_path,
-                                'phase_name': phase_name,
-                                'sounding_index': sounding_index,
+                                'cell_name': cell_name,
+                                'candidate_index': candidate_index,
                                 'url': f'/api/images/{entry}/{rel_path}',
                                 'mtime': mtime
                             })
@@ -4919,10 +4919,10 @@ def get_session_images(session_id):
                 # Sort windows by start time
                 reforge_windows.sort(key=lambda w: w['start'])
 
-                # Match images without sounding_index to reforge windows
+                # Match images without candidate_index to reforge windows
                 for img in images:
-                    # Skip images that already have sounding_index (they're sounding images)
-                    if img.get('sounding_index') is not None:
+                    # Skip images that already have candidate_index (they're sounding images)
+                    if img.get('candidate_index') is not None:
                         continue
 
                     img_time = img['mtime']
@@ -4943,23 +4943,23 @@ def get_session_images(session_id):
             try:
                 conn = get_db_connection()
                 sounding_winner_df = conn.execute(
-                    "SELECT DISTINCT phase_name, sounding_index FROM unified_logs WHERE session_id = ? AND role = 'sounding_attempt' AND is_winner = true",
+                    "SELECT DISTINCT cell_name, candidate_index FROM unified_logs WHERE session_id = ? AND role = 'sounding_attempt' AND is_winner = true",
                     [session_id]
                 ).fetchdf()
                 conn.close()
                 if not sounding_winner_df.empty:
-                    # Build a set of (phase_name, sounding_index) pairs that are winners
+                    # Build a set of (cell_name, candidate_index) pairs that are winners
                     sounding_winners = set()
                     for _, row in sounding_winner_df.iterrows():
-                        phase = row.get('phase_name')
-                        idx = row.get('sounding_index')
+                        phase = row.get('cell_name')
+                        idx = row.get('candidate_index')
                         if phase and idx is not None:
                             sounding_winners.add((phase, int(idx)))
 
                     # Mark winning sounding images
                     for img in images:
-                        if img.get('sounding_index') is not None:
-                            key = (img.get('phase_name'), img.get('sounding_index'))
+                        if img.get('candidate_index') is not None:
+                            key = (img.get('cell_name'), img.get('candidate_index'))
                             if key in sounding_winners:
                                 img['sounding_is_winner'] = True
             except Exception as e:
@@ -4967,8 +4967,8 @@ def get_session_images(session_id):
 
         # Sort by phase, then sounding index, then reforge step, then modification time
         images.sort(key=lambda x: (
-            x['phase_name'] or '',
-            x['sounding_index'] if x['sounding_index'] is not None else -1,
+            x['cell_name'] or '',
+            x['candidate_index'] if x['candidate_index'] is not None else -1,
             x.get('reforge_step', -1),
             x['mtime']
         ))
@@ -4977,7 +4977,7 @@ def get_session_images(session_id):
         sounding_winner_idx = None
         for img in images:
             if img.get('sounding_is_winner'):
-                sounding_winner_idx = img.get('sounding_index')
+                sounding_winner_idx = img.get('candidate_index')
                 break
 
         return jsonify({
@@ -5040,7 +5040,7 @@ def serve_session_image(session_id, subpath):
 def get_session_audio(session_id):
     """
     Get list of all audio files for a session.
-    Audio files are stored in AUDIO_DIR/{session_id}/{phase_name}/audio_{N}.{ext}
+    Audio files are stored in AUDIO_DIR/{session_id}/{cell_name}/audio_{N}.{ext}
     """
     try:
         session_audio_dir = os.path.join(AUDIO_DIR, session_id)
@@ -5064,7 +5064,7 @@ def get_session_audio(session_id):
 
                 # Extract phase name from path (e.g., "speak/audio_0.mp3" -> "speak")
                 path_parts = rel_path.split(os.sep)
-                phase_name = path_parts[0] if len(path_parts) > 1 else None
+                cell_name = path_parts[0] if len(path_parts) > 1 else None
 
                 # Get file modification time for sorting
                 mtime = os.path.getmtime(full_path)
@@ -5072,7 +5072,7 @@ def get_session_audio(session_id):
                 audio_files.append({
                     'filename': filename,
                     'path': rel_path,
-                    'phase_name': phase_name,
+                    'cell_name': cell_name,
                     'url': f'/api/audio/{session_id}/{rel_path}',
                     'mtime': mtime
                 })
@@ -5170,7 +5170,7 @@ def transcribe_voice():
 
         # Import voice module
         try:
-            from windlass.voice import transcribe_from_base64
+            from rvbbit.voice import transcribe_from_base64
         except ImportError as e:
             return jsonify({'error': f'Voice module not available: {e}'}), 500
 
@@ -5184,7 +5184,7 @@ def transcribe_voice():
 
         # Emit SSE event for real-time updates
         try:
-            from windlass.events import get_event_bus, Event
+            from rvbbit.events import get_event_bus, Event
             bus = get_event_bus()
             bus.publish(Event(
                 type="transcription_complete",
@@ -5255,7 +5255,7 @@ def transcribe_voice_file():
 
         # Import voice module
         try:
-            from windlass.voice import transcribe_from_base64
+            from rvbbit.voice import transcribe_from_base64
         except ImportError as e:
             return jsonify({'error': f'Voice module not available: {e}'}), 500
 
@@ -5295,7 +5295,7 @@ def voice_status():
     }
     """
     try:
-        from windlass.voice import is_available, get_stt_config
+        from rvbbit.voice import is_available, get_stt_config
 
         config = get_stt_config()
 
@@ -5347,7 +5347,7 @@ def debug_schema():
             session_id,
             cascade_id,
             COUNT(*) as msg_count,
-            COUNT(DISTINCT phase_name) as phase_count,
+            COUNT(DISTINCT cell_name) as phase_count,
             SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
         FROM unified_logs
         WHERE cascade_id IS NOT NULL
@@ -5393,7 +5393,7 @@ def get_session_human_inputs(session_id):
         query = """
         SELECT
             timestamp,
-            phase_name,
+            cell_name,
             node_type,
             content_json as content,
             metadata_json as metadata
@@ -5403,7 +5403,7 @@ def get_session_human_inputs(session_id):
             (node_type = 'tool_call' AND position(metadata_json, 'ask_human') > 0)
             OR (node_type = 'tool_result' AND position(metadata_json, 'ask_human') > 0)
           )
-        ORDER BY phase_name, timestamp
+        ORDER BY cell_name, timestamp
         """
 
         result = conn.execute(query, [session_id]).fetchall()
@@ -5413,7 +5413,7 @@ def get_session_human_inputs(session_id):
         human_inputs_by_phase = {}
 
         for row in result:
-            timestamp, phase_name, node_type, content, metadata_str = row
+            timestamp, cell_name, node_type, content, metadata_str = row
 
             # Parse metadata
             metadata = {}
@@ -5428,10 +5428,10 @@ def get_session_human_inputs(session_id):
             if tool_name != 'ask_human':
                 continue
 
-            phase_key = phase_name or '_unknown_'
+            phase_key = cell_name or '_unknown_'
             if phase_key not in human_inputs_by_phase:
                 human_inputs_by_phase[phase_key] = {
-                    'phase_name': phase_key,
+                    'cell_name': phase_key,
                     'interactions': []
                 }
 
@@ -5490,14 +5490,14 @@ def get_session_human_inputs(session_id):
 @app.route('/api/available-tools', methods=['GET'])
 def get_available_tools():
     """
-    Get list of available tools (tackle) from Windlass.
+    Get list of available tools (tackle) from RVBBIT.
     Returns both registered Python tools and cascade tools.
     Fully introspects all available tools like manifest/Quartermaster does.
     """
     try:
-        # Import windlass to trigger all tool registrations
-        import windlass
-        from windlass.tackle import get_registry
+        # Import rvbbit to trigger all tool registrations
+        import rvbbit
+        from rvbbit.tackle import get_registry
 
         tools = []
         registry = get_registry()
@@ -5538,7 +5538,7 @@ def get_available_tools():
             })
 
         # Add cascade tools from tackle directory
-        tackle_dir = os.path.join(WINDLASS_ROOT, 'tackle')
+        tackle_dir = os.path.join(RVBBIT_ROOT, 'tackle')
         if os.path.exists(tackle_dir):
             for ext in CASCADE_EXTENSIONS:
                 for path in glob.glob(os.path.join(tackle_dir, f'**/*.{ext}'), recursive=True):
@@ -5636,7 +5636,7 @@ def get_available_models():
     Get list of available models from ClickHouse.
     Replaces OpenRouter API + file cache with database query.
     """
-    from windlass.db_adapter import get_db
+    from rvbbit.db_adapter import get_db
 
     # Get query params
     include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
@@ -5683,7 +5683,7 @@ def get_available_models():
             })
 
         # Get default model from environment
-        default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+        default_model = os.environ.get('RVBBIT_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
 
         return jsonify({'models': models, 'default_model': default_model})
 
@@ -5697,7 +5697,7 @@ def get_available_models():
             {'id': 'openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'provider': 'openai', 'tier': 'fast', 'popular': True, 'is_active': True},
             {'id': 'google/gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'provider': 'google', 'tier': 'fast', 'popular': True, 'is_active': True},
         ]
-        default_model = os.environ.get('WINDLASS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+        default_model = os.environ.get('RVBBIT_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
         return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'fallback': True})
 
 
@@ -5707,7 +5707,7 @@ def get_image_generation_models():
     Get list of models that can generate images from ClickHouse.
     Replaces ModelRegistry with database query.
     """
-    from windlass.db_adapter import get_db
+    from rvbbit.db_adapter import get_db
 
     try:
         db = get_db()
@@ -5811,8 +5811,8 @@ def log_connection_stats():
 
 
 if __name__ == '__main__':
-    print("🌊 Windlass UI Backend Starting...")
-    print(f"   Windlass Root: {WINDLASS_ROOT}")
+    print("🌊 RVBBIT UI Backend Starting...")
+    print(f"   RVBBIT Root: {RVBBIT_ROOT}")
     print(f"   Data Dir: {DATA_DIR}")
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
@@ -5872,6 +5872,18 @@ if __name__ == '__main__':
 
     print("🔍 Debug endpoint: http://localhost:5001/api/debug/schema")
     print()
+
+    # Auto-sync tool manifest on backend startup
+    try:
+        print("🔧 Syncing tool manifest to database...")
+        from rvbbit.tools_mgmt import sync_tools_to_db
+        sync_tools_to_db()
+        print("✅ Tool manifest synced")
+        print()
+    except Exception as e:
+        print(f"⚠️  Tool manifest sync failed: {e}")
+        print("   Run 'rvbbit tools sync' manually if needed")
+        print()
 
 
 # ==============================================================================
@@ -6010,7 +6022,7 @@ def branch_research_session_api():
             return jsonify({'error': 'parent_research_session_id and branch_checkpoint_index required'}), 400
 
         # Import branching logic
-        from windlass.eddies.branching import launch_branch_cascade
+        from rvbbit.traits.branching import launch_branch_cascade
 
         # Get parent session to find cascade path
         conn = get_db_connection()
@@ -6192,7 +6204,7 @@ def save_research_session_api():
         # Get checkpoints
         checkpoints_query = """
             SELECT
-                id, phase_name, checkpoint_type,
+                id, cell_name, checkpoint_type,
                 phase_output, ui_spec,
                 response, responded_at,
                 created_at, status
@@ -6205,7 +6217,7 @@ def save_research_session_api():
         checkpoints = []
         try:
             checkpoint_result = conn.execute(checkpoints_query, [session_id]).fetchall()
-            checkpoint_columns = ['id', 'phase_name', 'checkpoint_type', 'phase_output',
+            checkpoint_columns = ['id', 'cell_name', 'checkpoint_type', 'phase_output',
                                    'ui_spec', 'response', 'responded_at', 'created_at', 'status']
 
             for row in checkpoint_result:
@@ -6250,7 +6262,7 @@ def save_research_session_api():
             duration_seconds = (last_dt - first_dt).total_seconds()
 
         # Phases and tools
-        phases_visited = list(dict.fromkeys([e.get('phase_name') for e in entries if e.get('phase_name')]))
+        phases_visited = list(dict.fromkeys([e.get('cell_name') for e in entries if e.get('cell_name')]))
 
         tools_used = []
         for e in entries:
@@ -6286,9 +6298,9 @@ def save_research_session_api():
             description = f"Research session with {len(checkpoints)} interactions and {len(tools_used)} tool calls"
 
         # Get mermaid graph
-        from ...windlass.config import get_config as get_windlass_config
-        wl_cfg = get_windlass_config()
-        graph_path = os.path.join(wl_cfg.graph_dir, f"{session_id}.mmd")
+        from rvbbit.config import get_config
+        cfg = get_config()
+        graph_path = os.path.join(cfg.graph_dir, f"{session_id}.mmd")
         mermaid_graph = ""
         if os.path.exists(graph_path):
             with open(graph_path, 'r') as f:
@@ -6387,7 +6399,7 @@ def save_research_session_api():
 # ==============================================================================
 
 if __name__ == '__main__':
-    print(f"🌊 Windlass Dashboard Backend")
+    print(f"🌊 RVBBIT Dashboard Backend")
     print(f"Backend: http://localhost:5001")
     print(f"Frontend: http://localhost:5550")
     print()

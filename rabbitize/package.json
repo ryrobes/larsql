@@ -1,7 +1,7 @@
 {
   "name": "windlass-rabbitize",
   "version": "0.2.0",
-  "description": "Embedded browser automation server for Windlass - forked from Rabbitize",
+  "description": "Embedded browser automation server for RVBBIT - forked from Rabbitize",
   "main": "src/index.js",
   "bin": {
     "windlass-rabbitize": "src/index.js"

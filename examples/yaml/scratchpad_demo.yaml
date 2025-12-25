@@ -1,47 +1,56 @@
 cascade_id: scratchpad_demo
-
 description: 'Demonstrates scratchpad pattern: messy thinking → clean output'
-
 inputs_schema:
   problem: Complex problem to solve
+cells:
+- handoffs:
+  - solve
+  instructions: 'Think deeply about this problem: {{ input.problem }}
 
-phases:
-  - handoffs:
-      - solve
-    instructions: |-
-      Think deeply about this problem: {{ input.problem }}
 
-      Use <scratchpad> tags for your rough reasoning:
-      <scratchpad>
-      [Your messy thinking, exploration, dead ends, etc.]
-      </scratchpad>
+    Use <scratchpad> tags for your rough reasoning:
 
-      After the scratchpad, provide a brief summary of your approach.
-    name: think
-    output_extraction:
-      format: text
-      pattern: <scratchpad>(.*?)</scratchpad>
-      required: yes
-      store_as: reasoning
-    tackle: []
-  - context:
-      from:
-        - previous
-    handoffs:
-      - verify
-    instructions: |-
-      Based on this reasoning:
+    <scratchpad>
 
-      {{ state.reasoning }}
+    [Your messy thinking, exploration, dead ends, etc.]
 
-      Generate a clean, polished solution to the problem. No scratchpad needed - just the final answer.
-    name: solve
-    tackle: []
-  - context:
-      from:
-        - all
-    instructions: "Verify the solution is correct and complete. What do you see from the previous phases?\
-      \ Confirm you have:\n1. Access to the reasoning (scratchpad content via state)\n2. Access to the\
-      \ clean solution\n\nProvide your verification."
-    name: verify
-    tackle: []
+    </scratchpad>
+
+
+    After the scratchpad, provide a brief summary of your approach.'
+  name: think
+  output_extraction:
+    format: text
+    pattern: <scratchpad>(.*?)</scratchpad>
+    required: true
+    store_as: reasoning
+  traits: []
+- context:
+    from:
+    - previous
+  handoffs:
+  - verify
+  instructions: 'Based on this reasoning:
+
+
+    {{ state.reasoning }}
+
+
+    Generate a clean, polished solution to the problem. No scratchpad needed - just
+    the final answer.'
+  name: solve
+  traits: []
+- context:
+    from:
+    - all
+  instructions: 'Verify the solution is correct and complete. What do you see from
+    the previous phases? Confirm you have:
+
+    1. Access to the reasoning (scratchpad content via state)
+
+    2. Access to the clean solution
+
+
+    Provide your verification.'
+  name: verify
+  traits: []

@@ -1,31 +1,37 @@
 type_id: sql_search
 display_name: SQL Search (RAG)
 icon: mdi:magnify-scan
-color: "#8b5cf6"
+color: '#8b5cf6'
 name_prefix: search
-description: "Semantic search over SQL databases - discover tables and schema with RAG"
-category: "llm"
+description: Semantic search over SQL databases - discover tables and schema with RAG
+category: llm
 tags:
-  - "intermediate"
-  - "data-processing"
-  - "ai-ml"
-
+- intermediate
+- data-processing
+- ai-ml
 template:
-  instructions: |
-    Find relevant data to answer: {{ input.question }}
+  instructions: 'Find relevant data to answer: {{ input.question }}
+
 
     Use sql_search or sql_rag_search to semantically discover tables.
+
     Use list_sql_connections to see available data sources.
 
+
     Steps:
+
     1. Search for relevant tables
+
     2. Sample data from promising tables
+
     3. Report findings with example queries
+
+    '
   model: google/gemini-2.5-flash
-  tackle:
-    - sql_search
-    - sql_rag_search
-    - list_sql_connections
-    - sql_query
+  traits:
+  - sql_search
+  - sql_rag_search
+  - list_sql_connections
+  - sql_query
   rules:
     max_turns: 5

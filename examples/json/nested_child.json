@@ -1,10 +1,10 @@
 {
   "cascade_id": "sub_cascade_greeter",
-  "phases": [
+  "cells": [
     {
       "name": "sub_greet",
       "instructions": "You are a sub-process. Just say 'Hello from the sub-cascade!' and mention the weather.",
-      "tackle": [],
+      "traits": [],
       "handoffs": []
     }
   ]

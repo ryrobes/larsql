@@ -2,30 +2,49 @@
   "cascade_id": "hitl_choice_demo",
   "description": "Demonstrates human-in-the-loop with multiple inputs. Gathers topic and audience from human, then writes a tailored article. Each ask_human response is stored in state.{phase_name}.",
   "inputs_schema": {},
-  "phases": [
+  "cells": [
     {
       "name": "get_topic",
       "instructions": "Ask the human what topic they would like an article about. Use ask_human with a friendly, open-ended question.",
-      "tackle": ["ask_human"],
-      "rules": {"max_turns": 2},
-      "handoffs": ["get_audience"]
+      "traits": [
+        "ask_human"
+      ],
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "get_audience"
+      ]
     },
     {
       "name": "get_audience",
       "instructions": "Ask the human who the target audience is for this article (e.g., beginners, experts, general public). Use ask_human.",
-      "tackle": ["ask_human"],
-      "rules": {"max_turns": 2},
-      "handoffs": ["write_article"]
+      "traits": [
+        "ask_human"
+      ],
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "write_article"
+      ]
     },
     {
       "name": "write_article",
       "instructions": "Write an article about '{{ state.get_topic }}' tailored for the audience: '{{ state.get_audience }}'.\n\nAdjust the tone, complexity, and examples based on the target audience.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["get_topic", "get_audience"],
-        "include": ["state"]
+        "from": [
+          "get_topic",
+          "get_audience"
+        ],
+        "include": [
+          "state"
+        ]
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

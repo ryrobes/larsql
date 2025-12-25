@@ -1,30 +1,40 @@
 {
   "cascade_id": "parent_cascade",
-  "phases": [
+  "cells": [
     {
       "name": "parent_start",
       "instructions": "Introduce yourself as the Parent Cascade.",
-      "tackle": [],
-      "handoffs": ["call_child"]
+      "traits": [],
+      "handoffs": [
+        "call_child"
+      ]
     },
     {
       "name": "call_child",
       "instructions": "Now we are delegating to a sub-routine.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
       "sub_cascades": [
-        {"ref": "nested_child.json"}
+        {
+          "ref": "nested_child.json"
+        }
       ],
-      "handoffs": ["parent_finish"]
+      "handoffs": [
+        "parent_finish"
+      ]
     },
     {
       "name": "parent_finish",
       "instructions": "Thank the sub-routine and sign off.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["all"]
+        "from": [
+          "all"
+        ]
       },
       "handoffs": []
     }

@@ -16,15 +16,15 @@ import threading
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-# Add parent directory to path to import windlass
+# Add parent directory to path to import rvbbit
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 try:
-    from windlass.checkpoints import get_checkpoint_manager, CheckpointStatus
+    from rvbbit.checkpoints import get_checkpoint_manager, CheckpointStatus
 except ImportError as e:
     print(f"Warning: Could not import windlass checkpoint modules: {e}")
     get_checkpoint_manager = None
@@ -111,8 +111,8 @@ def get_audible_status(session_id: str) -> dict:
 
 # Get IMAGE_DIR from environment or default
 _DEFAULT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
-IMAGE_DIR = os.path.abspath(os.getenv("WINDLASS_IMAGE_DIR", os.path.join(WINDLASS_ROOT, "images")))
+RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
+IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_ROOT, "images")))
 
 
 def resolve_image_paths_to_urls(ui_spec, session_id):
@@ -316,7 +316,7 @@ def list_checkpoints():
                 "id": cp.id,
                 "session_id": cp.session_id,
                 "cascade_id": cp.cascade_id,
-                "phase_name": cp.phase_name,
+                "cell_name": cp.cell_name,
                 "checkpoint_type": cp.checkpoint_type.value,
                 "status": cp.status.value,
                 "created_at": cp.created_at.isoformat() if cp.created_at else None,
@@ -361,7 +361,7 @@ def get_checkpoint(checkpoint_id):
                 "id": cp.id,
                 "session_id": cp.session_id,
                 "cascade_id": cp.cascade_id,
-                "phase_name": cp.phase_name,
+                "cell_name": cp.cell_name,
                 "checkpoint_type": cp.checkpoint_type.value,
                 "status": cp.status.value,
                 "created_at": cp.created_at.isoformat() if cp.created_at else None,
@@ -443,7 +443,7 @@ def respond_to_checkpoint_endpoint(checkpoint_id):
 
         # Flush logger buffer to ensure data is visible
         try:
-            from windlass.unified_logs import get_unified_logger
+            from rvbbit.unified_logs import get_unified_logger
             logger = get_unified_logger()
             logger.flush()
             print(f"[CHECKPOINT] Flushed unified logger after checkpoint response")
@@ -534,7 +534,7 @@ def signal_audible(session_id):
 
         # Publish SSE event to notify the runner
         try:
-            from windlass.events import get_event_bus, Event
+            from rvbbit.events import get_event_bus, Event
             bus = get_event_bus()
             bus.publish(Event(
                 type="audible_signal",
@@ -643,7 +643,7 @@ def save_annotated_screenshot(checkpoint_id):
         header, encoded = image_data.split(',', 1)
         image_bytes = base64.b64decode(encoded)
 
-        # Get checkpoint to find session_id and phase_name
+        # Get checkpoint to find session_id and cell_name
         cp = None
         if get_checkpoint_manager:
             cm = get_checkpoint_manager()
@@ -652,11 +652,11 @@ def save_annotated_screenshot(checkpoint_id):
         if not cp:
             return jsonify({"error": f"Checkpoint {checkpoint_id} not found"}), 404
 
-        # Build save path: images/{session_id}/{phase_name}/annotated_{checkpoint_id[:8]}_{timestamp}.png
+        # Build save path: images/{session_id}/{cell_name}/annotated_{checkpoint_id[:8]}_{timestamp}.png
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"annotated_{checkpoint_id[:8]}_{timestamp}.png"
 
-        save_dir = os.path.join(IMAGE_DIR, cp.session_id, cp.phase_name)
+        save_dir = os.path.join(IMAGE_DIR, cp.session_id, cp.cell_name)
         os.makedirs(save_dir, exist_ok=True)
 
         save_path = os.path.join(save_dir, filename)
@@ -668,7 +668,7 @@ def save_annotated_screenshot(checkpoint_id):
         print(f"[Checkpoint API] Saved annotated screenshot: {save_path}")
 
         # Build API URL
-        api_url = f"/api/images/{cp.session_id}/{cp.phase_name}/{filename}"
+        api_url = f"/api/images/{cp.session_id}/{cp.cell_name}/{filename}"
 
         # Store reference for inclusion in checkpoint response
         _annotated_screenshots[checkpoint_id] = {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
-import './TacklePills.css';
+import './TraitPills.css';
 
 /**
  * TacklePills - Droppable zone displaying tools as removable pills
@@ -12,12 +12,12 @@ import './TacklePills.css';
  * - Special styling for "manifest" (Quartermaster)
  * - Visual feedback when hovering with a tool
  */
-function TacklePills({ value = [], onChange, phaseIndex }) {
+function TacklePills({ value = [], onChange, cellIndex }) {
   const { setNodeRef, isOver, active } = useDroppable({
-    id: `tackle-zone-${phaseIndex}`,
+    id: `tackle-zone-${cellIndex}`,
     data: {
       type: 'tackle-zone',
-      phaseIndex,
+      cellIndex,
     },
   });
 

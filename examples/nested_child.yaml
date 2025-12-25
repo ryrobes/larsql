@@ -1,6 +1,7 @@
 cascade_id: sub_cascade_greeter
-phases:
-  - handoffs: []
-    instructions: You are a sub-process. Just say 'Hello from the sub-cascade!' and mention the weather.
-    name: sub_greet
-    tackle: []
+cells:
+- handoffs: []
+  instructions: You are a sub-process. Just say 'Hello from the sub-cascade!' and
+    mention the weather.
+  name: sub_greet
+  traits: []

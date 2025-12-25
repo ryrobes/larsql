@@ -5,11 +5,11 @@
     "problem": "The coding problem to solve",
     "language": "Programming language (default: Python)"
   },
-  "phases": [
+  "cells": [
     {
       "name": "solve_problem",
       "instructions": "Write {{ input.language | default('Python') }} code to solve this problem:\n\n{{ input.problem }}\n\nProvide clean, readable code with comments.",
-      "tackle": [],
+      "traits": [],
       "rules": {
         "max_turns": 3,
         "turn_prompt": "Review your code critically:\n\n1. **Correctness**: Does it solve the problem correctly?\n2. **Edge Cases**: Does it handle edge cases (empty input, nulls, boundaries)?\n3. **Readability**: Is the code clear and well-commented?\n4. **Efficiency**: Can it be optimized?\n\nIf you find issues, revise your solution. Turn {{ turn }}/{{ max_turns }}."

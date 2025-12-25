@@ -1,13 +1,17 @@
 cascade_id: test_impartial_rejection
-description: 'Test case: Agent produces minimal output, impartial validator should reject it'
+description: 'Test case: Agent produces minimal output, impartial validator should
+  reject it'
 inputs_schema:
   task: The detailed task to complete
-phases:
-  - instructions: "{{ input.task }}\n\nProvide just a very brief, minimal response (1-2 sentences max).\
-      \ Don't provide details or thoroughness."
-    name: do_work
-    rules:
-      loop_until: satisfied
-      loop_until_silent: yes
-      max_attempts: 3
-      max_turns: 1
+cells:
+- instructions: '{{ input.task }}
+
+
+    Provide just a very brief, minimal response (1-2 sentences max). Don''t provide
+    details or thoroughness.'
+  name: do_work
+  rules:
+    loop_until: satisfied
+    loop_until_silent: true
+    max_attempts: 3
+    max_turns: 1

@@ -1,0 +1,597 @@
+"""
+PostgreSQL wire protocol message encoding/decoding.
+
+Implements the minimal subset of PostgreSQL protocol needed for:
+- Client connections (Startup, AuthenticationOk)
+- Simple query execution (Query, RowDescription, DataRow, CommandComplete)
+- Clean disconnection (Terminate)
+
+Reference: https://www.postgresql.org/docs/current/protocol-message-formats.html
+
+For v1, we implement Simple Query Protocol (not Extended Query with prepared statements).
+This is sufficient for 95% of SQL tools (DBeaver, psql, DataGrip, Tableau).
+"""
+
+import struct
+from typing import Tuple, Optional, List, Any
+
+
+class MessageType:
+    """PostgreSQL message type codes (single-byte identifiers)."""
+    # Client → Server
+    QUERY = ord('Q')
+    TERMINATE = ord('X')
+    PARSE = ord('P')  # Extended query (v2)
+    BIND = ord('B')   # Extended query (v2)
+    EXECUTE = ord('E')  # Extended query (v2)
+    SYNC = ord('S')   # Extended query (v2)
+
+    # Server → Client
+    AUTHENTICATION = ord('R')
+    PARAMETER_STATUS = ord('S')
+    BACKEND_KEY_DATA = ord('K')
+    READY_FOR_QUERY = ord('Z')
+    ROW_DESCRIPTION = ord('T')
+    DATA_ROW = ord('D')
+    COMMAND_COMPLETE = ord('C')
+    ERROR_RESPONSE = ord('E')
+    NOTICE_RESPONSE = ord('N')
+
+
+class PostgresMessage:
+    """Base class for PostgreSQL wire protocol messages."""
+
+    @staticmethod
+    def read_message(sock) -> Tuple[Optional[int], bytes]:
+        """
+        Read one message from socket.
+
+        PostgreSQL message format:
+        [1 byte: type] [4 bytes: length (includes itself)] [N bytes: payload]
+
+        Returns:
+            (message_type, payload) or (None, b'') on error/disconnect
+        """
+        try:
+            # Read message type (1 byte)
+            type_byte = sock.recv(1)
+            if not type_byte or len(type_byte) == 0:
+                return None, b''  # Connection closed
+
+            msg_type = type_byte[0]
+
+            # Read length (4 bytes, network byte order = big-endian)
+            length_bytes = sock.recv(4)
+            if len(length_bytes) < 4:
+                return None, b''
+
+            length = struct.unpack('!I', length_bytes)[0]
+
+            # Length includes the 4 bytes of the length field itself
+            # So payload length = length - 4
+            payload_length = length - 4
+
+            # Read payload
+            payload = b''
+            while len(payload) < payload_length:
+                chunk = sock.recv(payload_length - len(payload))
+                if not chunk:
+                    return None, b''  # Connection closed mid-message
+                payload += chunk
+
+            return msg_type, payload
+
+        except Exception as e:
+            print(f"[Protocol] Error reading message: {e}")
+            return None, b''
+
+    @staticmethod
+    def read_startup_message(sock) -> Optional[dict]:
+        """
+        Read startup message (special case - no type byte).
+
+        Startup message format:
+        [4 bytes: length] [4 bytes: protocol version] [key=value pairs, null-terminated]
+
+        Protocol version: 196608 (0x00030000) for PostgreSQL 3.0
+        SSL request: 80877103 (0x04d2162f)
+
+        Returns:
+            {'protocol': version, 'params': {'user': '...', 'database': '...'}}
+            OR {'ssl_request': True} if client is requesting SSL
+        """
+        try:
+            # Read length (first 4 bytes)
+            length_bytes = sock.recv(4)
+            if len(length_bytes) < 4:
+                return None
+
+            length = struct.unpack('!I', length_bytes)[0]
+            payload_length = length - 4
+
+            # Read entire payload
+            payload = b''
+            while len(payload) < payload_length:
+                chunk = sock.recv(payload_length - len(payload))
+                if not chunk:
+                    return None
+                payload += chunk
+
+            # Parse protocol version (first 4 bytes of payload)
+            protocol = struct.unpack('!I', payload[:4])[0]
+
+            # Check for SSL request (special protocol number)
+            SSL_REQUEST_CODE = 80877103  # 0x04d2162f
+            if protocol == SSL_REQUEST_CODE:
+                return {'ssl_request': True}
+
+            # Parse key-value pairs (rest of payload)
+            # Format: key\0value\0key\0value\0\0 (double null terminates)
+            params = {}
+            data = payload[4:]
+
+            while data and data != b'\x00':
+                # Read key
+                null_idx = data.find(b'\x00')
+                if null_idx == -1 or null_idx == 0:
+                    break
+
+                key = data[:null_idx].decode('utf-8')
+                data = data[null_idx + 1:]
+
+                # Read value
+                null_idx = data.find(b'\x00')
+                if null_idx == -1:
+                    break
+
+                value = data[:null_idx].decode('utf-8')
+                data = data[null_idx + 1:]
+
+                params[key] = value
+
+            return {
+                'protocol': protocol,
+                'params': params
+            }
+
+        except Exception as e:
+            print(f"[Protocol] Error reading startup: {e}")
+            return None
+
+    @staticmethod
+    def build_message(msg_type: int, payload: bytes) -> bytes:
+        """
+        Build a PostgreSQL message.
+
+        Args:
+            msg_type: Message type code (single byte)
+            payload: Message payload
+
+        Returns:
+            Complete message: [type][length][payload]
+        """
+        length = len(payload) + 4  # Length includes the 4-byte length field
+        return bytes([msg_type]) + struct.pack('!I', length) + payload
+
+
+# ============================================================================
+# Server → Client Messages
+# ============================================================================
+
+class AuthenticationOk:
+    """AuthenticationOk message - sent after successful authentication."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """
+        Build AuthenticationOk message.
+
+        Payload: [4 bytes: 0] (0 = AuthenticationOk, no password needed)
+        """
+        payload = struct.pack('!I', 0)  # Auth type 0 = success
+        return PostgresMessage.build_message(MessageType.AUTHENTICATION, payload)
+
+
+class ParameterStatus:
+    """ParameterStatus message - server configuration parameters."""
+
+    @staticmethod
+    def encode(name: str, value: str) -> bytes:
+        """
+        Build ParameterStatus message.
+
+        Args:
+            name: Parameter name (e.g., 'client_encoding')
+            value: Parameter value (e.g., 'UTF8')
+        """
+        payload = name.encode('utf-8') + b'\x00' + value.encode('utf-8') + b'\x00'
+        return PostgresMessage.build_message(ord('S'), payload)
+
+
+class ReadyForQuery:
+    """ReadyForQuery message - server is ready for next command."""
+
+    @staticmethod
+    def encode(status: str = 'I') -> bytes:
+        """
+        Build ReadyForQuery message.
+
+        Args:
+            status: Transaction status
+                - 'I' = idle (not in transaction)
+                - 'T' = in transaction block
+                - 'E' = failed transaction
+        """
+        payload = status.encode('utf-8')
+        return PostgresMessage.build_message(MessageType.READY_FOR_QUERY, payload)
+
+
+class RowDescription:
+    """RowDescription message - column metadata for query results."""
+
+    # PostgreSQL type OIDs
+    # Reference: https://www.postgresql.org/docs/current/datatype.html
+    TYPES = {
+        'BIGINT': 20,
+        'INTEGER': 23,
+        'SMALLINT': 21,
+        'VARCHAR': 1043,
+        'TEXT': 25,
+        'CHAR': 18,
+        'DOUBLE': 701,
+        'FLOAT': 700,
+        'REAL': 700,
+        'BOOLEAN': 16,
+        'TIMESTAMP': 1114,
+        'DATE': 1082,
+        'TIME': 1083,
+        'JSON': 114,
+        'JSONB': 3802,
+        'UUID': 2950,
+        'BYTEA': 17
+    }
+
+    @staticmethod
+    def encode(columns: List[Tuple[str, str]]) -> bytes:
+        """
+        Build RowDescription message.
+
+        Args:
+            columns: List of (column_name, duckdb_type_string)
+
+        Each column has:
+        - name (null-terminated string)
+        - table_oid (4 bytes, 0 = unknown)
+        - column_attr_number (2 bytes, 0)
+        - type_oid (4 bytes)
+        - type_size (2 bytes, -1 = variable)
+        - type_modifier (4 bytes, -1)
+        - format_code (2 bytes, 0 = text, 1 = binary)
+        """
+        payload = struct.pack('!H', len(columns))  # Column count (2 bytes)
+
+        for col_name, duckdb_type in columns:
+            # Column name (null-terminated UTF-8 string)
+            payload += col_name.encode('utf-8') + b'\x00'
+
+            # Table OID (4 bytes) - 0 = not from a table
+            payload += struct.pack('!I', 0)
+
+            # Column attribute number (2 bytes) - 0
+            payload += struct.pack('!H', 0)
+
+            # Type OID (4 bytes)
+            type_oid = RowDescription._get_pg_type_oid(duckdb_type)
+            payload += struct.pack('!I', type_oid)
+
+            # Type size (2 bytes) - -1 for variable-length types
+            payload += struct.pack('!h', -1)  # Signed -1
+
+            # Type modifier (4 bytes) - -1 = no modifier
+            payload += struct.pack('!i', -1)  # Signed -1
+
+            # Format code (2 bytes) - 0 = text format
+            payload += struct.pack('!H', 0)
+
+        return PostgresMessage.build_message(MessageType.ROW_DESCRIPTION, payload)
+
+    @staticmethod
+    def _get_pg_type_oid(duckdb_type: str) -> int:
+        """
+        Map DuckDB type to PostgreSQL type OID.
+
+        Args:
+            duckdb_type: DuckDB type string (e.g., 'BIGINT', 'VARCHAR', 'DOUBLE')
+
+        Returns:
+            PostgreSQL type OID
+        """
+        duckdb_type_upper = duckdb_type.upper()
+
+        # Integer types
+        if 'BIGINT' in duckdb_type_upper or 'INT64' in duckdb_type_upper:
+            return RowDescription.TYPES['BIGINT']
+        elif 'INTEGER' in duckdb_type_upper or 'INT32' in duckdb_type_upper or 'INT' in duckdb_type_upper:
+            return RowDescription.TYPES['INTEGER']
+        elif 'SMALLINT' in duckdb_type_upper or 'INT16' in duckdb_type_upper:
+            return RowDescription.TYPES['SMALLINT']
+
+        # Floating point
+        elif 'DOUBLE' in duckdb_type_upper or 'FLOAT8' in duckdb_type_upper:
+            return RowDescription.TYPES['DOUBLE']
+        elif 'FLOAT' in duckdb_type_upper or 'REAL' in duckdb_type_upper or 'FLOAT4' in duckdb_type_upper:
+            return RowDescription.TYPES['FLOAT']
+
+        # Boolean
+        elif 'BOOL' in duckdb_type_upper:
+            return RowDescription.TYPES['BOOLEAN']
+
+        # Temporal
+        elif 'TIMESTAMP' in duckdb_type_upper:
+            return RowDescription.TYPES['TIMESTAMP']
+        elif 'DATE' in duckdb_type_upper:
+            return RowDescription.TYPES['DATE']
+        elif 'TIME' in duckdb_type_upper:
+            return RowDescription.TYPES['TIME']
+
+        # JSON
+        elif 'JSON' in duckdb_type_upper:
+            return RowDescription.TYPES['JSON']
+
+        # UUID
+        elif 'UUID' in duckdb_type_upper:
+            return RowDescription.TYPES['UUID']
+
+        # Blob/Binary
+        elif 'BLOB' in duckdb_type_upper or 'BYTEA' in duckdb_type_upper:
+            return RowDescription.TYPES['BYTEA']
+
+        # Default to VARCHAR for everything else (including STRUCT, LIST, etc.)
+        else:
+            return RowDescription.TYPES['VARCHAR']
+
+
+class DataRow:
+    """DataRow message - one row of query results."""
+
+    @staticmethod
+    def encode(values: List[Any]) -> bytes:
+        """
+        Build DataRow message.
+
+        Args:
+            values: List of column values (will be converted to strings for text format)
+
+        Format:
+        [2 bytes: column count] [per column: [4 bytes: value length] [N bytes: value]]
+        """
+        payload = struct.pack('!H', len(values))  # Column count
+
+        for value in values:
+            # Check for various NULL representations
+            is_null = (
+                value is None or
+                (isinstance(value, float) and str(value) == 'nan') or
+                str(value) == '<NA>' or  # pandas NA
+                str(value) == 'None' or
+                str(value) == 'nan'
+            )
+
+            if is_null:
+                # NULL value: length = -1
+                payload += struct.pack('!i', -1)
+            else:
+                # Convert to string (text format)
+                # Handle different Python types
+                if isinstance(value, bool):
+                    value_str = 't' if value else 'f'  # PostgreSQL boolean format
+                elif isinstance(value, (int, float)):
+                    value_str = str(value)
+                elif isinstance(value, bytes):
+                    value_str = value.decode('utf-8', errors='replace')
+                else:
+                    value_str = str(value)
+
+                value_bytes = value_str.encode('utf-8')
+                payload += struct.pack('!I', len(value_bytes))
+                payload += value_bytes
+
+        return PostgresMessage.build_message(MessageType.DATA_ROW, payload)
+
+
+class CommandComplete:
+    """CommandComplete message - query execution finished."""
+
+    @staticmethod
+    def encode(command_tag: str) -> bytes:
+        """
+        Build CommandComplete message.
+
+        Args:
+            command_tag: Command completion tag
+                - "SELECT n" for SELECT returning n rows
+                - "INSERT 0 n" for INSERT of n rows
+                - "UPDATE n" for UPDATE of n rows
+                - etc.
+        """
+        payload = command_tag.encode('utf-8') + b'\x00'
+        return PostgresMessage.build_message(ord('C'), payload)
+
+
+class ErrorResponse:
+    """ErrorResponse message - error occurred during query execution."""
+
+    @staticmethod
+    def encode(severity: str, message: str, detail: str = None, sqlstate: str = '42000') -> bytes:
+        """
+        Build ErrorResponse message.
+
+        Args:
+            severity: 'ERROR', 'FATAL', 'PANIC', 'WARNING', 'NOTICE', 'DEBUG', 'INFO', 'LOG'
+            message: Human-readable error message
+            detail: Optional additional detail
+            sqlstate: SQL state code (5-char string, default '42000' = generic error)
+
+        Error message fields:
+        - S: Severity
+        - C: SQL state code
+        - M: Message
+        - D: Detail (optional)
+        - Terminated by null byte
+        """
+        payload = b''
+
+        # Severity (required)
+        payload += b'S' + severity.encode('utf-8') + b'\x00'
+
+        # SQL state code (required, 5 characters)
+        payload += b'C' + sqlstate.encode('utf-8') + b'\x00'
+
+        # Message (required)
+        payload += b'M' + message.encode('utf-8') + b'\x00'
+
+        # Detail (optional)
+        if detail:
+            payload += b'D' + detail.encode('utf-8') + b'\x00'
+
+        # Terminator (null byte)
+        payload += b'\x00'
+
+        return PostgresMessage.build_message(ord('E'), payload)
+
+
+class NoticeResponse:
+    """NoticeResponse message - non-error notification."""
+
+    @staticmethod
+    def encode(severity: str, message: str) -> bytes:
+        """Build NoticeResponse message (same format as ErrorResponse)."""
+        payload = b''
+        payload += b'S' + severity.encode('utf-8') + b'\x00'
+        payload += b'M' + message.encode('utf-8') + b'\x00'
+        payload += b'\x00'
+        return PostgresMessage.build_message(ord('N'), payload)
+
+
+class BackendKeyData:
+    """BackendKeyData message - used for query cancellation."""
+
+    @staticmethod
+    def encode(process_id: int, secret_key: int) -> bytes:
+        """
+        Build BackendKeyData message.
+
+        Args:
+            process_id: Backend process ID (can be fake for v1)
+            secret_key: Secret key for cancellation (can be fake for v1)
+        """
+        payload = struct.pack('!II', process_id, secret_key)
+        return PostgresMessage.build_message(MessageType.BACKEND_KEY_DATA, payload)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def send_startup_response(sock):
+    """
+    Send standard startup response sequence.
+
+    Sequence:
+    1. AuthenticationOk
+    2. ParameterStatus messages (server config)
+    3. BackendKeyData (for cancellation)
+    4. ReadyForQuery
+
+    This tells the client we're ready to receive queries.
+    """
+    # 1. Authentication successful (no password required for v1)
+    sock.sendall(AuthenticationOk.encode())
+
+    # 2. Parameter status messages (tell client about server config)
+    sock.sendall(ParameterStatus.encode('client_encoding', 'UTF8'))
+    sock.sendall(ParameterStatus.encode('server_encoding', 'UTF8'))
+    sock.sendall(ParameterStatus.encode('server_version', '14.0 (RVBBIT/DuckDB)'))
+    sock.sendall(ParameterStatus.encode('DateStyle', 'ISO, MDY'))
+    sock.sendall(ParameterStatus.encode('TimeZone', 'UTC'))
+    sock.sendall(ParameterStatus.encode('integer_datetimes', 'on'))
+
+    # 3. Backend key data (fake values for v1 - not implementing cancel yet)
+    import os
+    process_id = os.getpid()
+    secret_key = 12345678  # Fake secret for v1
+    sock.sendall(BackendKeyData.encode(process_id, secret_key))
+
+    # 4. Ready for queries!
+    sock.sendall(ReadyForQuery.encode('I'))
+
+
+def send_query_results(sock, result_df, transaction_status='I'):
+    """
+    Send query results to client.
+
+    Sequence:
+    1. RowDescription (column metadata)
+    2. DataRow (one per result row)
+    3. CommandComplete
+    4. ReadyForQuery
+
+    Args:
+        sock: Client socket
+        result_df: pandas DataFrame with query results
+        transaction_status: 'I' = idle, 'T' = in transaction, 'E' = error (default: 'I')
+    """
+    import pandas as pd
+
+    # 1. Send RowDescription (column metadata)
+    columns = []
+    for col_name, dtype in zip(result_df.columns, result_df.dtypes):
+        # Map pandas dtype to DuckDB type name
+        dtype_str = str(dtype).upper()
+
+        if 'INT64' in dtype_str:
+            duckdb_type = 'BIGINT'
+        elif 'INT32' in dtype_str or 'INT' in dtype_str:
+            duckdb_type = 'INTEGER'
+        elif 'FLOAT64' in dtype_str or 'FLOAT' in dtype_str:
+            duckdb_type = 'DOUBLE'
+        elif 'BOOL' in dtype_str:
+            duckdb_type = 'BOOLEAN'
+        elif 'DATETIME' in dtype_str:
+            duckdb_type = 'TIMESTAMP'
+        elif 'OBJECT' in dtype_str:
+            duckdb_type = 'VARCHAR'
+        else:
+            duckdb_type = 'VARCHAR'
+
+        columns.append((col_name, duckdb_type))
+
+    sock.sendall(RowDescription.encode(columns))
+
+    # 2. Send DataRow for each row
+    for idx, row in result_df.iterrows():
+        values = [row[col] for col in result_df.columns]
+        sock.sendall(DataRow.encode(values))
+
+    # 3. Send CommandComplete
+    row_count = len(result_df)
+    command_tag = f"SELECT {row_count}"
+    sock.sendall(CommandComplete.encode(command_tag))
+
+    # 4. Send ReadyForQuery
+    sock.sendall(ReadyForQuery.encode(transaction_status))
+
+
+def send_error(sock, message: str, detail: str = None, severity: str = 'ERROR', transaction_status='E'):
+    """
+    Send error response to client.
+
+    Args:
+        sock: Client socket
+        message: Error message
+        detail: Optional error detail
+        severity: Error severity (default: ERROR)
+        transaction_status: Transaction status after error (default: 'E' = error)
+    """
+    sock.sendall(ErrorResponse.encode(severity, message, detail))
+    sock.sendall(ReadyForQuery.encode(transaction_status))

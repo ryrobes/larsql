@@ -5,11 +5,13 @@
     "research_topic": "What to research (e.g., 'competitor pricing for SaaS analytics tools')",
     "websites": "List of websites to check (comma-separated URLs)"
   },
-  "phases": [
+  "cells": [
     {
       "name": "plan_research",
       "instructions": "You need to research: {{ input.research_topic }}\n\nWebsites to check: {{ input.websites }}\n\nPlan your research strategy. For each website, define what specific information you want to find.",
-      "handoffs": ["execute_research"],
+      "handoffs": [
+        "execute_research"
+      ],
       "rules": {
         "max_turns": 1
       }
@@ -17,8 +19,13 @@
     {
       "name": "execute_research",
       "instructions": "Research: {{ input.research_topic }}\n\nYou have access to web_navigator tool which can browse websites for you.\n\nFor each website in {{ input.websites }}, use web_navigator to find relevant information.\n\nCall web_navigator once per site with specific goals.\n\nWhen you have data from all sites, route to synthesize.",
-      "tackle": ["web_navigator", "route_to"],
-      "handoffs": ["synthesize"],
+      "traits": [
+        "web_navigator",
+        "route_to"
+      ],
+      "handoffs": [
+        "synthesize"
+      ],
       "rules": {
         "max_turns": 10,
         "loop_until": "satisfied",

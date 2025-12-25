@@ -3,7 +3,7 @@ import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Icon } from '@iconify/react';
-import './SoundingComparison.css';
+import './CandidateComparison.css';
 
 /**
  * SoundingComparison - UI for comparing sounding attempts and selecting a winner

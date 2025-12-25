@@ -3,7 +3,7 @@ description: 'Comprehensive test: deterministic data, LLM soundings, validation,
   points, artifacts'
 inputs_schema:
   analysis_type: Type of analysis (sales/customer/product)
-phases:
+cells:
 - handoffs:
   - enrich_data
   inputs:
@@ -66,7 +66,7 @@ phases:
     - recommendations
     - confidence
     type: object
-  soundings:
+  candidates:
     evaluator_instructions: 'Pick the most data-driven and actionable analysis.
 
 
@@ -88,7 +88,7 @@ phases:
       '
     factor: 3
     mode: evaluate
-  tackle:
+  traits:
   - set_state
 - handoffs:
   - request_approval
@@ -115,7 +115,7 @@ phases:
       validation succeeded
     max_attempts: 3
     max_turns: 1
-  tackle:
+  traits:
   - set_state
 - decision_points:
     enabled: true
@@ -136,7 +136,7 @@ phases:
     ,\n      \"description\": \"Complete without artifact\",\n      \"style\": \"\
     secondary\"\n    }\n  ]\n}\n</decision>\n"
   name: request_approval
-  tackle:
+  traits:
   - route_to
 - handoffs:
   - finalize
@@ -164,13 +164,26 @@ phases:
 
     '
   name: create_dashboard
-  tackle:
+  traits:
   - create_artifact
   - set_state
-- instructions: "Cascade complete! Summarize what was accomplished.\n\n{% if outputs.create_dashboard\
-    \ %}\n\u2713 Published artifact\n{% else %}\n\u2139\uFE0F  Skipped artifact publishing\n\
-    {% endif %}\n\nAnalysis results: {{ outputs.validate_analysis.validation_status\
-    \ }}\n"
+- instructions: 'Cascade complete! Summarize what was accomplished.
+
+
+    {% if outputs.create_dashboard %}
+
+    ✓ Published artifact
+
+    {% else %}
+
+    ℹ️  Skipped artifact publishing
+
+    {% endif %}
+
+
+    Analysis results: {{ outputs.validate_analysis.validation_status }}
+
+    '
   name: finalize
-  tackle:
+  traits:
   - set_state

@@ -4,28 +4,40 @@
   "inputs_schema": {
     "topic": "Topic to write about"
   },
-  "phases": [{
-    "name": "draft",
-    "instructions": "Write a quick draft about: {{ input.topic }}\n\nJust get your ideas down, don't worry about perfection.",
-    "wards": {
-      "post": [{
-        "validator": "grammar_check",
-        "mode": "advisory"
-      }, {
-        "validator": "length_check",
-        "mode": "advisory"
-      }]
+  "cells": [
+    {
+      "name": "draft",
+      "instructions": "Write a quick draft about: {{ input.topic }}\n\nJust get your ideas down, don't worry about perfection.",
+      "wards": {
+        "post": [
+          {
+            "validator": "grammar_check",
+            "mode": "advisory"
+          },
+          {
+            "validator": "length_check",
+            "mode": "advisory"
+          }
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "review"
+      ]
     },
-    "rules": {
-      "max_turns": 1
-    },
-    "handoffs": ["review"]
-  }, {
-    "name": "review",
-    "instructions": "Draft complete (wards were advisory, so we continued even with issues).\n\nReview what you wrote and note any improvements that could be made based on the ward feedback.",
-    "context": {
-      "from": ["previous"]
-    },
-    "tackle": ["set_state"]
-  }]
+    {
+      "name": "review",
+      "instructions": "Draft complete (wards were advisory, so we continued even with issues).\n\nReview what you wrote and note any improvements that could be made based on the ward feedback.",
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "traits": [
+        "set_state"
+      ]
+    }
+  ]
 }

@@ -12,15 +12,15 @@ const ContextLayer = ({ context }) => {
   const include = context.include || ['output'];
 
   return (
-    <div className="phase-anatomy-layer phase-anatomy-layer-context">
-      <div className="phase-anatomy-layer-header">
-        <div className="phase-anatomy-layer-icon layer-icon-context">
+    <div className="cell-anatomy-layer cell-anatomy-layer-context">
+      <div className="cell-anatomy-layer-header">
+        <div className="cell-anatomy-layer-icon layer-icon-context">
           <Icon icon="mdi:link-variant" width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">Context Injection</span>
+        <span className="cell-anatomy-layer-title">Context Injection</span>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         {/* From phases */}
         <div className="layer-context-sources">
           <span className="layer-context-label">from:</span>

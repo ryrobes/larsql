@@ -1,24 +1,19 @@
-# Parent cascade that spawns a sub-cascade
-# Use this to test sub-cascade tracking in Studio
-
 cascade_id: parent_with_subcascade_test
 description: Test sub-cascade tracking and navigation
+cells:
+- name: setup
+  tool: python_data
+  inputs:
+    code: 'result = {"message": "Parent cascade starting"}
 
-phases:
-  - name: setup
-    tool: python_data
-    inputs:
-      code: |
-        result = {"message": "Parent cascade starting"}
+      '
+- name: spawn_child
+  tool: windlass_data
+  inputs:
+    code: examples/test_subcascade_child.yaml
+- name: finish
+  tool: python_data
+  inputs:
+    code: 'result = {"message": "Parent cascade completed"}
 
-  - name: spawn_child
-    tool: windlass_data
-    inputs:
-      # This will spawn a child cascade
-      code: examples/test_subcascade_child.yaml
-
-  - name: finish
-    tool: python_data
-    inputs:
-      code: |
-        result = {"message": "Parent cascade completed"}
+      '

@@ -1,65 +1,37 @@
-# Test: windlass_cascade_udf() - Full Cascades in SQL!
-# This demonstrates running complete multi-phase cascades as SQL UDFs
-
 cascade_id: test_cascade_udf
 description: Test cascade UDF with soundings + validation
-
-phases:
-  # Create test transaction data
-  - name: load_transactions
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT * FROM (VALUES
-          (1, 'Acme Corp', 150000.00),
-          (2, 'Small Business LLC', 5000.00),
-          (3, 'Test Company', 500000.00),
-          (4, 'Legitimate Industries', 25000.00)
-        ) AS t(customer_id, customer_name, transaction_amount)
-      materialize: "true"
-
-  # Run CASCADE UDF per row (with soundings + validation!)
-  - name: fraud_check_per_row
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          customer_id,
-          customer_name,
-          transaction_amount,
-
-          -- Run COMPLETE cascade per row (includes 3 soundings + validation!)
-          windlass_cascade_udf(
-            'tackle/fraud_assessment_with_soundings.yaml',
-            json_object(
-              'customer_id', customer_id,
-              'customer_name', customer_name,
-              'transaction_amount', transaction_amount
-            )
-          ) as fraud_analysis_json
-
-        FROM _load_transactions
-      materialize: "true"
-    context:
-      from: ["load_transactions"]
-
-  # Extract fields and analyze
-  - name: extract_and_aggregate
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          customer_name,
-          transaction_amount,
-
-          -- Extract fields from cascade JSON output
-          CAST(json_extract_string(fraud_analysis_json, '$.outputs.assess_risk.risk_score') AS DOUBLE) as risk_score,
-          json_extract_string(fraud_analysis_json, '$.outputs.assess_risk.risk_level') as risk_level,
-          json_extract_string(fraud_analysis_json, '$.outputs.assess_risk.recommended_action') as action,
-          json_extract_string(fraud_analysis_json, '$.outputs.assess_risk.reasoning') as reasoning,
-          json_extract_string(fraud_analysis_json, '$.session_id') as cascade_session_id
-
-        FROM _fraud_check_per_row
-        ORDER BY risk_score DESC
-    context:
-      from: ["fraud_check_per_row"]
+cells:
+- name: load_transactions
+  tool: sql_data
+  inputs:
+    query: "SELECT * FROM (VALUES\n  (1, 'Acme Corp', 150000.00),\n  (2, 'Small Business\
+      \ LLC', 5000.00),\n  (3, 'Test Company', 500000.00),\n  (4, 'Legitimate Industries',\
+      \ 25000.00)\n) AS t(customer_id, customer_name, transaction_amount)\n"
+    materialize: 'true'
+- name: fraud_check_per_row
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  customer_id,\n  customer_name,\n  transaction_amount,\n\n  --\
+      \ Run COMPLETE cascade per row (includes 3 soundings + validation!)\n  rvbbit_run(\n\
+      \    'traits/fraud_assessment_with_soundings.yaml',\n    json_object(\n    \
+      \  'customer_id', customer_id,\n      'customer_name', customer_name,\n    \
+      \  'transaction_amount', transaction_amount\n    )\n  ) as fraud_analysis_json\n\
+      \nFROM _load_transactions\n"
+    materialize: 'true'
+  context:
+    from:
+    - load_transactions
+- name: extract_and_aggregate
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  customer_name,\n  transaction_amount,\n\n  -- Extract fields\
+      \ from cascade JSON output\n  CAST(json_extract_string(fraud_analysis_json,\
+      \ '$.outputs.assess_risk.risk_score') AS DOUBLE) as risk_score,\n  json_extract_string(fraud_analysis_json,\
+      \ '$.outputs.assess_risk.risk_level') as risk_level,\n  json_extract_string(fraud_analysis_json,\
+      \ '$.outputs.assess_risk.recommended_action') as action,\n  json_extract_string(fraud_analysis_json,\
+      \ '$.outputs.assess_risk.reasoning') as reasoning,\n  json_extract_string(fraud_analysis_json,\
+      \ '$.session_id') as cascade_session_id\n\nFROM _fraud_check_per_row\nORDER\
+      \ BY risk_score DESC\n"
+  context:
+    from:
+    - fraud_check_per_row

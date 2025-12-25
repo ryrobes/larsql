@@ -4,14 +4,16 @@
   "inputs_schema": {
     "topic": "The topic to write about"
   },
-  "phases": [{
-    "name": "write_content",
-    "instructions": "Write a short paragraph (at least 50 characters) about: {{ input.topic }}\n\nMake it clear and well-written.",
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "loop_until": "simple_validator",
-      "retry_instructions": "The validator said: {{ validation_error }}. Please revise your response to address this issue. Attempt {{ attempt }}/{{ max_attempts }}."
+  "cells": [
+    {
+      "name": "write_content",
+      "instructions": "Write a short paragraph (at least 50 characters) about: {{ input.topic }}\n\nMake it clear and well-written.",
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "simple_validator",
+        "retry_instructions": "The validator said: {{ validation_error }}. Please revise your response to address this issue. Attempt {{ attempt }}/{{ max_attempts }}."
+      }
     }
-  }]
+  ]
 }

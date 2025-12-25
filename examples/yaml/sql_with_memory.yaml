@@ -3,20 +3,24 @@ description: SQL query generation that learns from past queries
 inputs_schema:
   question: Natural language question about data
 memory: sql_patterns_memory
-phases:
-  - instructions: "Search the memory for similar past SQL queries that might help answer this question:\
-      \ {{ input.question }}\n\nUse the sql_patterns_memory tool to find relevant examples."
-    name: search_memory
-    tackle:
-      - sql_patterns_memory
-  - context:
-      from:
-        - previous
-    instructions: |-
-      Based on the question: {{ input.question }}
+cells:
+- instructions: 'Search the memory for similar past SQL queries that might help answer
+    this question: {{ input.question }}
 
-      And any relevant examples from memory, generate an appropriate SQL query.
 
-      If you found similar queries in memory, explain how they informed your approach.
-    name: generate_query
-    tackle: []
+    Use the sql_patterns_memory tool to find relevant examples.'
+  name: search_memory
+  traits:
+  - sql_patterns_memory
+- context:
+    from:
+    - previous
+  instructions: 'Based on the question: {{ input.question }}
+
+
+    And any relevant examples from memory, generate an appropriate SQL query.
+
+
+    If you found similar queries in memory, explain how they informed your approach.'
+  name: generate_query
+  traits: []

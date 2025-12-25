@@ -5,11 +5,11 @@
     "topic": "The topic to write about",
     "requirements": "Specific requirements or constraints"
   },
-  "phases": [
+  "cells": [
     {
       "name": "write_content",
       "instructions": "Write a short blog post (2-3 paragraphs) about: {{ input.topic }}\n\nRequirements:\n{{ input.requirements }}",
-      "tackle": [],
+      "traits": [],
       "rules": {
         "max_turns": 3,
         "turn_prompt": "Review your blog post. Check:\n- Does it address the topic: {{ input.topic }}?\n- Does it meet the requirements: {{ input.requirements }}?\n- Is it engaging and well-written?\n- Any grammar issues?\n\nThis is turn {{ turn }} of {{ max_turns }}. Refine your post if needed."

@@ -2,20 +2,20 @@ cascade_id: multi_model_simple
 description: Phase 1 Multi-Model Soundings - Simple round-robin across multiple models
 inputs_schema:
   task: The task to complete with multiple models
-phases:
-  - instructions: 'Complete this task: {{ input.task }}'
-    name: generate
-    soundings:
-      evaluator_instructions: Pick the best response based on quality, clarity, and completeness. Don't
-        consider which model produced it, only the output quality.
-      factor: 6
-      model_strategy: round_robin
-      models:
-        - anthropic/claude-sonnet-4.5
-        - x-ai/grok-4.1-fast
-        - anthropic/claude-sonnet-4.5
-        - amazon/nova-2-lite-v1:free
-        - moonshotai/kimi-linear-48b-a3b-instruct
-        - google/gemini-2.5-flash-lite
-        - qwen/qwen-plus-2025-07-28
-    tackle: []
+cells:
+- instructions: 'Complete this task: {{ input.task }}'
+  name: generate
+  candidates:
+    evaluator_instructions: Pick the best response based on quality, clarity, and
+      completeness. Don't consider which model produced it, only the output quality.
+    factor: 6
+    model_strategy: round_robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - anthropic/claude-sonnet-4.5
+    - amazon/nova-2-lite-v1:free
+    - moonshotai/kimi-linear-48b-a3b-instruct
+    - google/gemini-2.5-flash-lite
+    - qwen/qwen-plus-2025-07-28
+  traits: []

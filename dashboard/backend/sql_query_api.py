@@ -15,16 +15,16 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path for imports
+# Add rvbbit to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 try:
-    from windlass.config import get_config
-    from windlass.sql_tools.config import load_sql_connections, load_discovery_metadata
+    from rvbbit.config import get_config
+    from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
     print(f"Warning: Could not import windlass modules: {e}")
     load_sql_connections = None
@@ -35,8 +35,8 @@ sql_query_bp = Blueprint('sql_query', __name__, url_prefix='/api/sql')
 
 # History storage
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
-DATA_DIR = os.path.abspath(os.getenv("WINDLASS_DATA_DIR", os.path.join(WINDLASS_ROOT, "data")))
+RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
+DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
 
 
@@ -126,7 +126,7 @@ def list_connections():
 
         # Get samples directory for table counts
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else WINDLASS_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
 
         result = []
         for name, config in connections.items():
@@ -209,7 +209,7 @@ def get_schema(connection):
 
         # Get samples directory
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else WINDLASS_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
         conn_samples_dir = os.path.join(samples_dir, connection)
 
         if not os.path.exists(conn_samples_dir):

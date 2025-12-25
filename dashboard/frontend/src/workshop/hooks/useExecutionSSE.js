@@ -46,31 +46,31 @@ export function useExecutionSSE() {
 
         case 'phase_start':
           handlePhaseStart(
-            data.phase_name,
-            data.sounding_index
+            data.cell_name,
+            data.candidate_index
           );
           break;
 
         case 'phase_complete':
-          console.log('[SSE] Phase complete:', data.phase_name, 'result:', data.result);
+          console.log('[SSE] Phase complete:', data.cell_name, 'result:', data.result);
           handlePhaseComplete(
-            data.phase_name,
+            data.cell_name,
             data.result || {},
-            data.sounding_index
+            data.candidate_index
           );
           break;
 
         case 'sounding_start':
           handleSoundingStart(
-            data.phase_name,
-            data.sounding_index
+            data.cell_name,
+            data.candidate_index
           );
           break;
 
         case 'sounding_complete':
           handleSoundingComplete(
-            data.phase_name,
-            data.sounding_index,
+            data.cell_name,
+            data.candidate_index,
             data.output,
             data.is_winner
           );
@@ -81,25 +81,25 @@ export function useExecutionSSE() {
           if (data.is_aggregated && data.aggregated_indices) {
             // Aggregate mode - multiple winners
             data.aggregated_indices.forEach(idx => {
-              handleSoundingComplete(data.phase_name, idx, null, true);
+              handleSoundingComplete(data.cell_name, idx, null, true);
             });
           } else if (data.winner_index >= 0) {
             // Single winner
-            handleSoundingComplete(data.phase_name, data.winner_index, data.output, true);
+            handleSoundingComplete(data.cell_name, data.winner_index, data.output, true);
           }
           break;
 
         case 'turn_start':
           handleTurnStart(
-            data.phase_name,
+            data.cell_name,
             data.turn_number ?? data.turn_index ?? 0,
-            data.sounding_index
+            data.candidate_index
           );
           break;
 
         case 'tool_call':
           handleToolCall(
-            data.phase_name,
+            data.cell_name,
             data.tool_name,
             data.args
           );
@@ -107,7 +107,7 @@ export function useExecutionSSE() {
 
         case 'tool_result':
           handleToolResult(
-            data.phase_name,
+            data.cell_name,
             data.tool_name,
             data.result_preview || data.result
           );
@@ -116,8 +116,8 @@ export function useExecutionSSE() {
         case 'cost_update':
           handleCostUpdate(
             data.cost || 0,
-            data.phase_name,
-            data.sounding_index
+            data.cell_name,
+            data.candidate_index
           );
           break;
 

@@ -771,7 +771,7 @@ function App() {
               id: event.data.checkpoint_id,
               session_id: event.session_id,
               cascade_id: event.data.cascade_id,
-              phase_name: event.data.phase_name,
+              cell_name: event.data.cell_name,
               checkpoint_type: event.data.checkpoint_type,
               ui_spec: event.data.ui_spec,
               phase_output_preview: event.data.preview,
@@ -785,7 +785,7 @@ function App() {
               }
               return [...prev, newCheckpoint];
             });
-            showToast(`Human input required: ${event.data.phase_name}`, 'warning', 8000);
+            showToast(`Human input required: ${event.data.cell_name}`, 'warning', 8000);
             break;
 
           case 'checkpoint_responded':
@@ -831,18 +831,18 @@ function App() {
           // Sounding lifecycle events for real-time tracking
           case 'sounding_start':
             {
-              const { phase_name, sounding_index } = event.data;
+              const { cell_name, sounding_index } = event.data;
               const sessionId = event.session_id;
-              // console.log('[SSE] Sounding start:', sessionId, phase_name, sounding_index);
+              // console.log('[SSE] Sounding start:', sessionId, cell_name, sounding_index);
               setRunningSoundings(prev => {
                 const sessionSoundings = prev[sessionId] || {};
-                const phaseSoundings = new Set(sessionSoundings[phase_name] || []);
+                const phaseSoundings = new Set(sessionSoundings[cell_name] || []);
                 phaseSoundings.add(sounding_index);
                 return {
                   ...prev,
                   [sessionId]: {
                     ...sessionSoundings,
-                    [phase_name]: phaseSoundings
+                    [cell_name]: phaseSoundings
                   }
                 };
               });
@@ -856,18 +856,18 @@ function App() {
 
           case 'sounding_complete':
             {
-              const { phase_name, sounding_index } = event.data;
+              const { cell_name, sounding_index } = event.data;
               const sessionId = event.session_id;
-              // console.log('[SSE] Sounding complete:', sessionId, phase_name, sounding_index);
+              // console.log('[SSE] Sounding complete:', sessionId, cell_name, sounding_index);
               setRunningSoundings(prev => {
                 const sessionSoundings = prev[sessionId] || {};
-                const phaseSoundings = new Set(sessionSoundings[phase_name] || []);
+                const phaseSoundings = new Set(sessionSoundings[cell_name] || []);
                 phaseSoundings.delete(sounding_index);
                 return {
                   ...prev,
                   [sessionId]: {
                     ...sessionSoundings,
-                    [phase_name]: phaseSoundings
+                    [cell_name]: phaseSoundings
                   }
                 };
               });

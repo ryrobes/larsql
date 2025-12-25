@@ -6,7 +6,7 @@ import './layers.css';
  * ReforgeLayer - Shows iterative refinement loop
  *
  * The reforge process:
- * - Winner enters from soundings
+ * - Winner enters from candidates
  * - For each step: run factor_per_step attempts with honing_prompt
  * - Evaluate and pick winner
  * - Optional threshold check for early stopping
@@ -52,12 +52,12 @@ const ReforgeLayer = ({ config, execution }) => {
   if (!config) return null;
 
   return (
-    <div className="phase-anatomy-layer phase-anatomy-layer-reforge">
-      <div className="phase-anatomy-layer-header">
-        <div className="phase-anatomy-layer-icon layer-icon-reforge">
+    <div className="cell-anatomy-layer cell-anatomy-layer-reforge">
+      <div className="cell-anatomy-layer-header">
+        <div className="cell-anatomy-layer-icon layer-icon-reforge">
           <Icon icon="mdi:anvil" width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">
+        <span className="cell-anatomy-layer-title">
           Reforge ({completedSteps}/{steps} steps)
         </span>
 
@@ -82,7 +82,7 @@ const ReforgeLayer = ({ config, execution }) => {
         </div>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         {/* Honing prompt */}
         {honing_prompt && (
           <div className="layer-reforge-honing">

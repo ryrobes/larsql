@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
-import SoundingLane from './SoundingLane';
+import CandidateLane from './CandidateLane';
 import './layers.css';
 
 /**
@@ -37,24 +37,24 @@ const formatValidatorDisplay = (validator) => {
 };
 
 /**
- * SoundingsLayer - The main execution chamber with parallel lanes
+ * CandidatesLayer - The main execution chamber with parallel lanes
  *
  * Shows:
- * - Parallel sounding lanes (factor N)
+ * - Parallel candidate lanes (factor N)
  * - Each lane has mutation, model, turns stack
  * - Tools called per turn
  * - Loop-until validation per turn
  */
-const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
+const CandidatesLayer = ({ config, execution, isLLMCell }) => {
   const factor = config.factor || 1;
   const maxTurns = config.maxTurns || 1;
-  const tackle = config.tackle || [];
+  const traits = config.traits || [];
   const loopUntil = config.loopUntil;
   const mutate = config.mutate;
   const models = config.models;
 
   // Check if manifest/quartermaster was used for tool selection
-  const isManifestMode = tackle === 'manifest' || (Array.isArray(tackle) && tackle.includes('manifest'));
+  const isManifestMode = traits === 'manifest' || (Array.isArray(traits) && traits.includes('manifest'));
   const manifestSelection = execution?.manifestSelection;
 
   // Check if there's a winner (evaluation complete)
@@ -62,20 +62,20 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
 
   // Generate lane data - spec or execution
   const lanes = React.useMemo(() => {
-    if (execution?.soundings && execution.soundings.length > 0) {
+    if (execution?.candidates && execution.candidates.length > 0) {
       // Execution mode - use actual data
-      return execution.soundings.map((s, idx) => ({
+      return execution.candidates.map((c, idx) => ({
         index: idx,
-        mutation: s.mutation || (mutate ? ['rewrite', 'augment', 'approach', 'original'][idx % 4] : null),
-        model: s.model,
-        turns: s.turns || [],
-        toolCalls: s.toolCalls || [],
-        cost: s.cost || 0,
-        duration: s.duration || 0,
-        status: s.status || 'pending',
+        mutation: c.mutation || (mutate ? ['rewrite', 'augment', 'approach', 'original'][idx % 4] : null),
+        model: c.model,
+        turns: c.turns || [],
+        toolCalls: c.toolCalls || [],
+        cost: c.cost || 0,
+        duration: c.duration || 0,
+        status: c.status || 'pending',
         isWinner: execution.winnerIndex === idx,
         isLoser: hasWinner && execution.winnerIndex !== idx,
-        output: s.output || null  // Include output preview for winner
+        output: c.output || null  // Include output preview for winner
       }));
     }
 
@@ -99,34 +99,34 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
     }));
   }, [factor, maxTurns, mutate, models, execution, hasWinner]);
 
-  const hasSoundings = factor > 1;
+  const hasCandidates = factor > 1;
 
   return (
-    <div className="phase-anatomy-layer phase-anatomy-layer-soundings">
-      <div className="phase-anatomy-layer-header">
-        <div className="phase-anatomy-layer-icon layer-icon-soundings">
+    <div className="cell-anatomy-layer cell-anatomy-layer-candidates">
+      <div className="cell-anatomy-layer-header">
+        <div className="cell-anatomy-layer-icon layer-icon-candidates">
           <Icon icon="mdi:animation-play" width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">
-          {hasSoundings ? `Soundings (factor: ${factor})` : 'Execution'}
+        <span className="cell-anatomy-layer-title">
+          {hasCandidates ? `Candidates (factor: ${factor})` : 'Execution'}
         </span>
 
         {/* Config badges */}
-        <div className="layer-soundings-badges">
+        <div className="layer-candidates-badges">
           {mutate && (
-            <span className="layer-soundings-badge badge-mutate">
+            <span className="layer-candidates-badge badge-mutate">
               <Icon icon="mdi:shuffle-variant" width="10" />
               Mutate
             </span>
           )}
           {models && (
-            <span className="layer-soundings-badge badge-multimodel">
+            <span className="layer-candidates-badge badge-multimodel">
               <Icon icon="mdi:robot" width="10" />
               Multi-Model
             </span>
           )}
           {loopUntil && (
-            <span className="layer-soundings-badge badge-loop">
+            <span className="layer-candidates-badge badge-loop">
               <Icon icon="mdi:sync" width="10" />
               Loop-Until
             </span>
@@ -134,7 +134,7 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
         </div>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         {/* Loop-Until validation condition */}
         {loopUntil && (() => {
           const validatorInfo = formatValidatorDisplay(loopUntil);
@@ -142,58 +142,58 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
           const truncatedPreview = previewText.length > 150 ? previewText.substring(0, 150) + '...' : previewText;
 
           return (
-            <div className="layer-soundings-loop-until">
+            <div className="layer-candidates-loop-until">
               <Icon icon="mdi:sync" width="12" />
-              <span className="layer-soundings-loop-until-label">Loop Until:</span>
+              <span className="layer-candidates-loop-until-label">Loop Until:</span>
               {validatorInfo?.type !== 'cascade' && (
-                <span className={`layer-soundings-loop-until-type type-${validatorInfo?.type}`}>
+                <span className={`layer-candidates-loop-until-type type-${validatorInfo?.type}`}>
                   {validatorInfo?.name}
                 </span>
               )}
-              <span className="layer-soundings-loop-until-preview">
+              <span className="layer-candidates-loop-until-preview">
                 {truncatedPreview}
               </span>
             </div>
           );
         })()}
 
-        {/* Tackle (tools available) - show quartermaster selection if manifest mode */}
+        {/* Traits (tools available) - show quartermaster selection if manifest mode */}
         {isManifestMode && manifestSelection && manifestSelection.selectedTools.length > 0 ? (
-          <div className="layer-soundings-manifest">
-            <div className="layer-soundings-manifest-header">
+          <div className="layer-candidates-manifest">
+            <div className="layer-candidates-manifest-header">
               <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
-              <span className="layer-soundings-manifest-label">Quartermaster Selected:</span>
+              <span className="layer-candidates-manifest-label">Quartermaster Selected:</span>
               {manifestSelection.model && (
-                <span className="layer-soundings-manifest-model" title={manifestSelection.model}>
+                <span className="layer-candidates-manifest-model" title={manifestSelection.model}>
                   via {manifestSelection.model.split('/').pop()}
                 </span>
               )}
             </div>
-            <div className="layer-soundings-tackle-list">
+            <div className="layer-candidates-traits-list">
               {manifestSelection.selectedTools.map((tool, idx) => (
-                <span key={idx} className="layer-soundings-tackle-item manifest-selected">
+                <span key={idx} className="layer-candidates-traits-item manifest-selected">
                   {tool}
                 </span>
               ))}
             </div>
           </div>
         ) : isManifestMode ? (
-          <div className="layer-soundings-manifest">
-            <div className="layer-soundings-manifest-header">
+          <div className="layer-candidates-manifest">
+            <div className="layer-candidates-manifest-header">
               <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
-              <span className="layer-soundings-manifest-label">Manifest Mode</span>
-              <span className="layer-soundings-manifest-pending">(Quartermaster will select tools)</span>
+              <span className="layer-candidates-manifest-label">Manifest Mode</span>
+              <span className="layer-candidates-manifest-pending">(Quartermaster will select tools)</span>
             </div>
           </div>
-        ) : tackle.length > 0 && (
-          <div className="layer-soundings-tackle">
-            <span className="layer-soundings-tackle-label">
+        ) : traits.length > 0 && (
+          <div className="layer-candidates-traits">
+            <span className="layer-candidates-traits-label">
               <Icon icon="mdi:tools" width="12" />
-              Tackle:
+              Traits:
             </span>
-            <div className="layer-soundings-tackle-list">
-              {(Array.isArray(tackle) ? tackle : [tackle]).map((tool, idx) => (
-                <span key={idx} className="layer-soundings-tackle-item">
+            <div className="layer-candidates-traits-list">
+              {(Array.isArray(traits) ? traits : [traits]).map((tool, idx) => (
+                <span key={idx} className="layer-candidates-traits-item">
                   {tool}
                 </span>
               ))}
@@ -202,9 +202,9 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
         )}
 
         {/* Lanes container */}
-        <div className="layer-soundings-lanes">
+        <div className="layer-candidates-lanes">
           {lanes.map((lane) => (
-            <SoundingLane
+            <CandidateLane
               key={lane.index}
               lane={lane}
               maxTurns={maxTurns}
@@ -218,4 +218,4 @@ const SoundingsLayer = ({ config, execution, isLLMPhase }) => {
   );
 };
 
-export default SoundingsLayer;
+export default CandidatesLayer;

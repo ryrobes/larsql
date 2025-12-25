@@ -1,12 +1,12 @@
 cascade_id: side_effect_parent
-phases:
-  - async_cascades:
-      - input_map:
-          text: SIDE EFFECT VALIDATION
-        ref: windlass/examples/validator.json
-        trigger: on_start
-    instructions: I am doing important work. Count to 3.
-    name: main_task
-    rules:
-      max_turns: 1
-    tackle: []
+cells:
+- async_cascades:
+  - input_map:
+      text: SIDE EFFECT VALIDATION
+    ref: windlass/examples/validator.json
+    trigger: on_start
+  instructions: I am doing important work. Count to 3.
+  name: main_task
+  rules:
+    max_turns: 1
+  traits: []

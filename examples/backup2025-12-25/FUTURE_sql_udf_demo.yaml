@@ -1,6 +1,6 @@
 # FUTURE: SQL UDF for LLM-Powered Data Enrichment
 #
-# This demonstrates windlass_udf() - a SQL function that spawns mini LLM phases.
+# This demonstrates rvbbit() - a SQL function that spawns mini LLM phases.
 # THIS DOES NOT WORK YET - it's a research proposal!
 #
 # Concept: Bring LLMs into SQL queries for row-by-row data enrichment.
@@ -37,28 +37,28 @@ phases:
           category,
           price,
 
-          -- NEW: windlass_udf() spawns mini LLM phase per row
-          windlass_udf(
+          -- NEW: rvbbit() spawns mini LLM phase per row
+          rvbbit(
             'Extract the brand name from this product title. Return just the brand, nothing else.',
             name
           ) as brand,
 
-          windlass_udf(
+          rvbbit(
             'Extract the color from this product title. If no color mentioned, return NULL.',
             name
           ) as color,
 
-          windlass_udf(
+          rvbbit(
             'Extract the model/version number if present. Return NULL if not found.',
             name
           ) as model,
 
-          windlass_udf(
+          rvbbit(
             'Classify this product as: flagship, mid-range, budget, or luxury. Return just one word.',
             name || ' - $' || price
           ) as price_tier,
 
-          windlass_udf(
+          rvbbit(
             'Generate a 3-5 word marketing tagline for this product.',
             name
           ) as tagline
@@ -107,7 +107,7 @@ phases:
           products,
 
           -- UDF can take aggregated data too!
-          windlass_udf(
+          rvbbit(
             'Analyze this brand''s product lineup. Identify: 1) Price positioning strategy, 2) Target market, 3) Product gaps. Return as JSON with keys: strategy, target_market, gaps.',
             'Brand: ' || brand || '. Products: ' || products
           ) as analysis
@@ -135,7 +135,7 @@ phases:
     tackle: []
 
 ---
-# How windlass_udf() would work under the hood:
+# How rvbbit() would work under the hood:
 
 # 1. SQL Parser Integration
 #    - DuckDB's UDF registration system
@@ -161,10 +161,10 @@ phases:
 
 # Example implementation sketch:
 
-def register_windlass_udf(connection):
-    """Register windlass_udf as DuckDB user-defined function."""
+def register_rvbbit(connection):
+    """Register rvbbit as DuckDB user-defined function."""
 
-    def windlass_udf(instructions: str, input_value: str, config: dict = None) -> str:
+    def rvbbit(instructions: str, input_value: str, config: dict = None) -> str:
         # Check cache
         cache_key = hash((instructions, input_value, config.get('model')))
         if cached := get_cache(cache_key):
@@ -187,8 +187,8 @@ def register_windlass_udf(connection):
 
     # Register as DuckDB UDF
     connection.create_function(
-        "windlass_udf",
-        windlass_udf,
+        "rvbbit",
+        rvbbit,
         parameters=['VARCHAR', 'VARCHAR'],
         return_type='VARCHAR',
         type='native'
@@ -197,7 +197,7 @@ def register_windlass_udf(connection):
 # Why this is powerful:
 
 # 1. SQL Composability
-#    - WHERE windlass_udf(...) LIKE '%enterprise%'
+#    - WHERE rvbbit(...) LIKE '%enterprise%'
 #    - JOIN ON udf_output = other_table.key
 #    - GROUP BY, ORDER BY enriched columns
 
@@ -223,7 +223,7 @@ def register_windlass_udf(connection):
 # A. Data Cleaning
 SELECT
   email,
-  windlass_udf(
+  rvbbit(
     'Fix this email address if malformed. Return cleaned email or NULL if invalid.',
     email
   ) as cleaned_email
@@ -232,11 +232,11 @@ FROM messy_user_data
 # B. Entity Extraction
 SELECT
   support_ticket_text,
-  windlass_udf(
+  rvbbit(
     'Extract customer name from this support ticket. Return just the name.',
     support_ticket_text
   ) as customer_name,
-  windlass_udf(
+  rvbbit(
     'Extract product name mentioned. Return NULL if none.',
     support_ticket_text
   ) as product_mentioned
@@ -246,11 +246,11 @@ FROM support_tickets
 SELECT
   review_text,
   review_date,
-  windlass_udf(
+  rvbbit(
     'Rate sentiment: positive, negative, or neutral. Return just one word.',
     review_text
   ) as sentiment,
-  CAST(windlass_udf(
+  CAST(rvbbit(
     'Rate this review 1-5 stars based on sentiment. Return just the number.',
     review_text
   ) AS INTEGER) as sentiment_score
@@ -259,11 +259,11 @@ FROM product_reviews
 # D. Data Enrichment
 SELECT
   company_name,
-  windlass_udf(
+  rvbbit(
     'Identify the industry for this company. Return just the industry name.',
     company_name
   ) as industry,
-  windlass_udf(
+  rvbbit(
     'Estimate company size: startup, small, medium, large, enterprise. Return one word.',
     company_name
   ) as estimated_size
@@ -272,7 +272,7 @@ FROM companies
 # E. Complex JSON Extraction
 SELECT
   product_description,
-  windlass_udf(
+  rvbbit(
     'Extract features as JSON array. Return: {"features": ["feature1", "feature2", ...]}',
     product_description
   )::JSON as features_json

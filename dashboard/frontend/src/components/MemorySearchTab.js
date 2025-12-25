@@ -198,7 +198,7 @@ function MemorySearchTab() {
                     <div className="message-context">
                       Session: <code>{result.session_id}</code>
                       {result.cascade_id && ` | Cascade: ${result.cascade_id}`}
-                      {result.phase_name && ` | Phase: ${result.phase_name}`}
+                      {result.cell_name && ` | Phase: ${result.cell_name}`}
                     </div>
                   )}
                 </div>

@@ -530,7 +530,7 @@ async function main() {
           queueManager.enqueue('execute', { command: typedCommand });
         }
 
-        // Build artifact paths for Windlass integration
+        // Build artifact paths for RVBBIT integration
         const artifactBasePath = path.join('rabbitize-runs', actualClientId, actualTestId, actualSessionId);
 
         res.json({

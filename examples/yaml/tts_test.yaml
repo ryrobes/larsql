@@ -2,11 +2,11 @@ cascade_id: tts_test
 description: Test cascade for ElevenLabs TTS integration
 inputs_schema:
   message: The message to speak aloud
-phases:
-  - instructions: 'You have access to a text-to-speech tool. Use the ''say'' tool to speak the following
-      message aloud: {{ input.message }}'
-    name: speak
-    rules:
-      max_turns: 2
-    tackle:
-      - say
+cells:
+- instructions: 'You have access to a text-to-speech tool. Use the ''say'' tool to
+    speak the following message aloud: {{ input.message }}'
+  name: speak
+  rules:
+    max_turns: 2
+  traits:
+  - say

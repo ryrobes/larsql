@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { autoGenerateSessionId } from '../../utils/sessionNaming';
-import { derivePhaseState } from '../utils/derivePhaseState';
+import { deriveCellState } from '../utils/deriveCellState';
 
 const API_BASE_URL = 'http://localhost:5001/api/studio';
 
@@ -10,11 +10,11 @@ const API_BASE_URL = 'http://localhost:5001/api/studio';
  * Simple hash function for cell caching.
  * Creates a fingerprint of the cell's inputs to detect changes.
  */
-function hashCellInputs(phase, cascadeInputs, priorOutputHashes) {
+function hashCellInputs(cell, cascadeInputs, priorOutputHashes) {
   // Combine relevant inputs into a string
   const inputStr = JSON.stringify({
-    tool: phase.tool,
-    inputs: phase.inputs,
+    tool: cell.tool,
+    inputs: cell.inputs,
     cascadeInputs,
     // Include hashes of prior outputs to invalidate if upstream changed
     priorOutputHashes
@@ -33,7 +33,7 @@ function hashCellInputs(phase, cascadeInputs, priorOutputHashes) {
  * Studio Cascade Store - State management for cascade builder
  *
  * Manages cascade editing, execution, and state for the Studio view.
- * Supports both LLM-powered and deterministic phases (sql_data, python_data,
+ * Supports both LLM-powered and deterministic cells (sql_data, python_data,
  * js_data, clojure_data, windlass_data) that can be edited, run, and saved.
  *
  * Polyglot support: Data flows between languages via JSON serialization.
@@ -48,7 +48,7 @@ const useStudioCascadeStore = create(
       // ============================================
       // MODE STATE
       // ============================================
-      mode: 'query',  // 'query' | 'notebook'
+      mode: 'timeline',  // 'query' | 'timeline' | 'notebook'
 
       // ============================================
       // CASCADE STATE
@@ -63,7 +63,7 @@ const useStudioCascadeStore = create(
       //   cascade_id: string,
       //   description: string,
       //   inputs_schema: { param_name: description },
-      //   phases: [
+      //   cells: [
       //     { name, tool, inputs: { query/code, connection? }, handoffs? }
       //   ]
       // }
@@ -76,7 +76,7 @@ const useStudioCascadeStore = create(
       // ============================================
       // CELL EXECUTION STATE
       // ============================================
-      cellStates: {},  // { [phaseName]: { status, result, error, duration } }
+      cellStates: {},  // { [cellName]: { status, result, error, duration } }
       // status: 'pending' | 'running' | 'success' | 'error' | 'stale'
 
       isRunningAll: false,  // Full cascade execution in progress
@@ -89,15 +89,15 @@ const useStudioCascadeStore = create(
       // ============================================
       // SUB-CASCADE TRACKING
       // ============================================
-      childSessions: {},  // { [child_session_id]: { session_id, parent_phase, first_seen } }
+      childSessions: {},  // { [child_session_id]: { session_id, parent_cell, first_seen } }
       parentSessionId: null,  // If this is a child session, ID of parent
-      parentPhase: null,  // If this is a child session, phase in parent that spawned it
+      parentCell: null,  // If this is a child session, cell in parent that spawned it
 
       // ============================================
       // UI STATE
       // ============================================
-      selectedPhaseIndex: null,  // Currently selected phase in timeline view
-      desiredOutputTab: null,  // Desired output tab when selecting phase (e.g., 'images' from Media section)
+      selectedCellIndex: null,  // Currently selected cell in timeline view
+      desiredOutputTab: null,  // Desired output tab when selecting cell (e.g., 'images' from Media section)
       viewMode: 'live',  // 'live' | 'replay' - viewing live execution vs past run
       replaySessionId: null,  // Session ID when in replay mode
 
@@ -114,13 +114,13 @@ const useStudioCascadeStore = create(
         model: 'x-ai/grok-4.1-fast',
         prompt: null,  // Use default prompt
       },
-      // Per-cell auto-fix overrides: { [phaseName]: { enabled, model, prompt } }
+      // Per-cell auto-fix overrides: { [cellName]: { enabled, model, prompt } }
       cellAutoFixOverrides: {},
 
       // ============================================
       // UNDO/REDO HISTORY
       // ============================================
-      undoStack: [],  // Stack of previous cascade states (phases snapshots)
+      undoStack: [],  // Stack of previous cascade states (cells snapshots)
       redoStack: [],  // Stack of undone states
       maxHistorySize: 50,  // Maximum history entries
 
@@ -137,24 +137,24 @@ const useStudioCascadeStore = create(
       defaultModel: null,  // Default model from backend config
 
       // ============================================
-      // PHASE TYPES (Declarative)
+      // CELL TYPES (Declarative)
       // ============================================
-      phaseTypes: [],  // Loaded from phase_types/ YAML files
-      phaseTypesLoading: false,
+      cellTypes: [],  // Loaded from phase_types/ YAML files
+      cellTypesLoading: false,
 
       // ============================================
       // UNDO/REDO HELPERS
       // ============================================
       _saveToUndoStack: () => {
         const state = get();
-        if (!state.cascade?.phases) return;
+        if (!state.cascade?.cells) return;
 
-        // Create a deep copy of phases for the undo stack
-        const phasesSnapshot = JSON.parse(JSON.stringify(state.cascade.phases));
+        // Create a deep copy of cells for the undo stack
+        const cellsSnapshot = JSON.parse(JSON.stringify(state.cascade.cells));
 
         set(s => {
           // Push current state to undo stack
-          s.undoStack.push(phasesSnapshot);
+          s.undoStack.push(cellsSnapshot);
 
           // Trim if exceeds max size
           if (s.undoStack.length > s.maxHistorySize) {
@@ -172,12 +172,12 @@ const useStudioCascadeStore = create(
 
         set(s => {
           // Save current state to redo stack
-          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.phases));
+          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.cells));
           s.redoStack.push(currentSnapshot);
 
           // Pop previous state from undo stack
           const previousState = s.undoStack.pop();
-          s.cascade.phases = previousState;
+          s.cascade.cells = previousState;
           s.cascadeDirty = true;
         });
 
@@ -190,12 +190,12 @@ const useStudioCascadeStore = create(
 
         set(s => {
           // Save current state to undo stack
-          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.phases));
+          const currentSnapshot = JSON.parse(JSON.stringify(s.cascade.cells));
           s.undoStack.push(currentSnapshot);
 
           // Pop next state from redo stack
           const nextState = s.redoStack.pop();
-          s.cascade.phases = nextState;
+          s.cascade.cells = nextState;
           s.cascadeDirty = true;
         });
 
@@ -221,9 +221,9 @@ const useStudioCascadeStore = create(
         });
       },
 
-      setSelectedPhaseIndex: (index) => {
+      setSelectedCellIndex: (index) => {
         set(state => {
-          state.selectedPhaseIndex = index;
+          state.selectedCellIndex = index;
         });
       },
 
@@ -257,10 +257,10 @@ const useStudioCascadeStore = create(
             }
 
             console.log('[setReplayMode] Setting cascade in state:');
-            console.log('[setReplayMode]   - Phases:', data.cascade.phases?.length);
-            if (data.cascade.phases && data.cascade.phases[0]) {
-              console.log('[setReplayMode]   - First phase tool:', data.cascade.phases[0].tool);
-              console.log('[setReplayMode]   - First phase inputs:', Object.keys(data.cascade.phases[0].inputs || {}));
+            console.log('[setReplayMode]   - Cells:', data.cascade.cells?.length);
+            if (data.cascade.cells && data.cascade.cells[0]) {
+              console.log('[setReplayMode]   - First cell tool:', data.cascade.cells[0].tool);
+              console.log('[setReplayMode]   - First cell inputs:', Object.keys(data.cascade.cells[0].inputs || {}));
             }
 
             set(state => {
@@ -295,9 +295,9 @@ const useStudioCascadeStore = create(
             // Verify it was set correctly
             const newState = get();
             console.log('[setReplayMode] State after set:');
-            console.log('[setReplayMode]   - cascade.phases:', newState.cascade?.phases?.length);
-            if (newState.cascade?.phases?.[0]) {
-              console.log('[setReplayMode]   - First phase tool:', newState.cascade.phases[0].tool);
+            console.log('[setReplayMode]   - cascade.cells:', newState.cascade?.cells?.length);
+            if (newState.cascade?.cells?.[0]) {
+              console.log('[setReplayMode]   - First cell tool:', newState.cascade.cells[0].tool);
             }
             return;
           }
@@ -335,18 +335,18 @@ const useStudioCascadeStore = create(
           console.log('[fetchReplayData] Got', data.rows?.length || 0, 'rows');
           console.log('[fetchReplayData] Child sessions:', data.child_sessions?.length || 0);
 
-          // Derive phase states using shared logic (only for parent session)
+          // Derive cell states using shared logic (only for parent session)
           const logs = data.rows || [];
           const parentLogs = logs.filter(r => r.session_id === sessionId);
-          const phaseNames = [...new Set(parentLogs.map(r => r.phase_name).filter(Boolean))];
-          const phaseStates = {};
+          const cellNames = [...new Set(parentLogs.map(r => r.cell_name).filter(Boolean))];
+          const cellStates = {};
 
-          for (const phaseName of phaseNames) {
-            phaseStates[phaseName] = derivePhaseState(parentLogs, phaseName);
+          for (const cellName of cellNames) {
+            cellStates[cellName] = deriveCellState(parentLogs, cellName);
           }
 
           // Update cellStates immediately
-          get().updateCellStatesFromPolling(phaseStates);
+          get().updateCellStatesFromPolling(cellStates);
 
           // Update child sessions
           if (data.child_sessions && data.child_sessions.length > 0) {
@@ -369,9 +369,9 @@ const useStudioCascadeStore = create(
             console.log('[fetchReplayData] ✓ This is a child session, parent:', parentRow.parent_session_id);
           }
 
-          console.log('[fetchReplayData] ✓ Cell states updated:', Object.keys(phaseStates));
+          console.log('[fetchReplayData] ✓ Cell states updated:', Object.keys(cellStates));
 
-          return { success: true, phaseCount: phaseNames.length };
+          return { success: true, cellCount: cellNames.length };
 
         } catch (err) {
           console.error('[fetchReplayData] Error:', err);
@@ -493,9 +493,9 @@ const useStudioCascadeStore = create(
           s.sessionId = autoGenerateSessionId();
           s.cellStates = {};
           // Reset all cells to pending
-          if (s.cascade?.phases) {
-            s.cascade.phases.forEach(phase => {
-              s.cellStates[phase.name] = { status: 'pending' };
+          if (s.cascade?.cells) {
+            s.cascade.cells.forEach(cell => {
+              s.cellStates[cell.name] = { status: 'pending' };
             });
           }
         });
@@ -514,7 +514,7 @@ const useStudioCascadeStore = create(
             cascade_id: uniqueId,
             description: 'New cascade',
             inputs_schema: {},
-            phases: []
+            cells: []
           };
           state.cascadePath = null;
           state.cascadeDirty = false;
@@ -629,8 +629,8 @@ const useStudioCascadeStore = create(
         set(state => {
           if (!state.cascade) return;
 
-          const phases = state.cascade.phases;
-          const cellCount = phases.length + 1;
+          const cells = state.cascade.cells;
+          const cellCount = cells.length + 1;
 
           // Default code templates by language
           const defaultTemplates = {
@@ -642,14 +642,14 @@ const useStudioCascadeStore = create(
 
 Use Jinja2 templates to reference data:
 - Inputs: {{ input.param_name }}
-- Prior phases: {{ outputs.phase_name }}
+- Prior phases: {{ outputs.cell_name }}
 - State: {{ state.var_name }}
 
 Provide your analysis below:
 `,
             windlass_data: `# LLM Phase Cell (Data Tool)
 # Access prior cells with: {{outputs.cell_name}}
-# Full Windlass power: soundings, reforge, wards, model selection
+# Full RVBBIT power: soundings, reforge, wards, model selection
 
 instructions: |
   Analyze the data and return structured results.
@@ -682,27 +682,27 @@ output_schema:
           };
           const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
-          // Get phase type definition (declarative from YAML)
-          const phaseTypeDef = state.phaseTypes.find(pt => pt.type_id === type);
+          // Get cell type definition (declarative from YAML)
+          const cellTypeDef = state.cellTypes.find(pt => pt.type_id === type);
 
-          if (!phaseTypeDef) {
-            console.error(`Phase type not found: ${type}`);
+          if (!cellTypeDef) {
+            console.error(`Cell type not found: ${type}`);
             return;
           }
 
           // Generate unique name using prefix from type definition
-          const baseName = phaseTypeDef.name_prefix || type.replace(/_data$/, '');
-          let phaseName = `${baseName}_${cellCount}`;
+          const baseName = cellTypeDef.name_prefix || type.replace(/_data$/, '');
+          let cellName = `${baseName}_${cellCount}`;
           let counter = cellCount;
-          while (phases.some(p => p.name === phaseName)) {
+          while (cells.some(p => p.name === cellName)) {
             counter++;
-            phaseName = `${baseName}_${counter}`;
+            cellName = `${baseName}_${counter}`;
           }
 
           // Clone template and set name
-          const template = JSON.parse(JSON.stringify(phaseTypeDef.template));
+          const template = JSON.parse(JSON.stringify(cellTypeDef.template));
           const newCell = {
-            name: phaseName,
+            name: cellName,
             ...template
           };
 
@@ -710,7 +710,7 @@ output_schema:
           const applyTemplateVars = (obj) => {
             if (typeof obj === 'string') {
               return obj
-                .replace(/\{\{PHASE_NAME\}\}/g, phaseName)
+                .replace(/\{\{PHASE_NAME\}\}/g, cellName)
                 .replace(/\{\{CASCADE_ID\}\}/g, state.cascade?.cascade_id || 'untitled');
             }
             if (Array.isArray(obj)) {
@@ -734,31 +734,31 @@ output_schema:
           // Add handoff to previous cell if exists
           if (afterIndex === null) {
             // Add at end
-            if (autoChain && phases.length > 0) {
-              phases[phases.length - 1].handoffs = [newCell.name];
+            if (autoChain && cells.length > 0) {
+              cells[cells.length - 1].handoffs = [newCell.name];
             }
-            phases.push(newCell);
+            cells.push(newCell);
           } else {
             // Insert after specific index
             if (autoChain) {
               // Auto-chain mode: create linear flow
-              if (afterIndex >= 0 && phases[afterIndex]) {
-                phases[afterIndex].handoffs = [newCell.name];
+              if (afterIndex >= 0 && cells[afterIndex]) {
+                cells[afterIndex].handoffs = [newCell.name];
               }
               // Update new cell to point to next cell if exists
-              if (afterIndex + 1 < phases.length) {
-                newCell.handoffs = [phases[afterIndex + 1].name];
+              if (afterIndex + 1 < cells.length) {
+                newCell.handoffs = [cells[afterIndex + 1].name];
               }
             } else {
               // Manual mode: only set parent handoff, no forward chain
-              if (afterIndex >= 0 && phases[afterIndex]) {
-                const existing = phases[afterIndex].handoffs || [];
-                phases[afterIndex].handoffs = existing.includes(newCell.name)
+              if (afterIndex >= 0 && cells[afterIndex]) {
+                const existing = cells[afterIndex].handoffs || [];
+                cells[afterIndex].handoffs = existing.includes(newCell.name)
                   ? existing
                   : [...existing, newCell.name];
               }
             }
-            phases.splice(afterIndex + 1, 0, newCell);
+            cells.splice(afterIndex + 1, 0, newCell);
           }
 
           state.cascadeDirty = true;
@@ -771,17 +771,17 @@ output_schema:
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.cascade || !state.cascade.phases[index]) return;
+          if (!state.cascade || !state.cascade.cells[index]) return;
 
-          const cell = state.cascade.phases[index];
+          const cell = state.cascade.cells[index];
           const oldName = cell.name;
 
           // Handle name change - update references
           if (updates.name && updates.name !== oldName) {
-            // Update handoffs in other phases that reference this cell
-            state.cascade.phases.forEach(phase => {
-              if (phase.handoffs) {
-                phase.handoffs = phase.handoffs.map(h =>
+            // Update handoffs in other cells that reference this cell
+            state.cascade.cells.forEach(cell => {
+              if (cell.handoffs) {
+                cell.handoffs = cell.handoffs.map(h =>
                   h === oldName ? updates.name : h
                 );
               }
@@ -809,16 +809,16 @@ output_schema:
         get()._saveToUndoStack();
 
         set(state => {
-          if (!state.cascade || state.cascade.phases.length <= 1) return;
+          if (!state.cascade || state.cascade.cells.length <= 1) return;
 
-          const phases = state.cascade.phases;
-          const removedName = phases[index].name;
+          const cells = state.cascade.cells;
+          const removedName = cells[index].name;
 
           // Update previous cell's handoffs to skip the removed cell
-          if (index > 0 && phases[index - 1].handoffs) {
-            const nextPhase = phases[index + 1];
-            phases[index - 1].handoffs = nextPhase
-              ? [nextPhase.name]
+          if (index > 0 && cells[index - 1].handoffs) {
+            const nextCell = cells[index + 1];
+            cells[index - 1].handoffs = nextCell
+              ? [nextCell.name]
               : [];
           }
 
@@ -826,7 +826,7 @@ output_schema:
           delete state.cellStates[removedName];
 
           // Remove the cell
-          phases.splice(index, 1);
+          cells.splice(index, 1);
           state.cascadeDirty = true;
         });
       },
@@ -838,19 +838,19 @@ output_schema:
         set(state => {
           if (!state.cascade) return;
 
-          const phases = state.cascade.phases;
-          if (fromIndex < 0 || fromIndex >= phases.length) return;
-          if (toIndex < 0 || toIndex >= phases.length) return;
+          const cells = state.cascade.cells;
+          if (fromIndex < 0 || fromIndex >= cells.length) return;
+          if (toIndex < 0 || toIndex >= cells.length) return;
 
-          const [removed] = phases.splice(fromIndex, 1);
-          phases.splice(toIndex, 0, removed);
+          const [removed] = cells.splice(fromIndex, 1);
+          cells.splice(toIndex, 0, removed);
 
           // Rebuild handoffs
-          phases.forEach((phase, idx) => {
-            if (idx < phases.length - 1) {
-              phase.handoffs = [phases[idx + 1].name];
+          cells.forEach((cell, idx) => {
+            if (idx < cells.length - 1) {
+              cell.handoffs = [cells[idx + 1].name];
             } else {
-              delete phase.handoffs;
+              delete cell.handoffs;
             }
           });
 
@@ -876,10 +876,10 @@ output_schema:
       // ============================================
       // CELL STATE ACTIONS
       // ============================================
-      setCellState: (phaseName, cellState) => {
+      setCellState: (cellName, cellState) => {
         set(state => {
-          state.cellStates[phaseName] = {
-            ...state.cellStates[phaseName],
+          state.cellStates[cellName] = {
+            ...state.cellStates[cellName],
             ...cellState
           };
         });
@@ -890,10 +890,10 @@ output_schema:
           if (!state.cascade) return;
 
           // Mark all cells after fromIndex as stale
-          for (let i = fromIndex + 1; i < state.cascade.phases.length; i++) {
-            const phaseName = state.cascade.phases[i].name;
-            if (state.cellStates[phaseName]?.status === 'success') {
-              state.cellStates[phaseName].status = 'stale';
+          for (let i = fromIndex + 1; i < state.cascade.cells.length; i++) {
+            const cellName = state.cascade.cells[i].name;
+            if (state.cellStates[cellName]?.status === 'success') {
+              state.cellStates[cellName].status = 'stale';
             }
           }
         });
@@ -914,25 +914,25 @@ output_schema:
         });
       },
 
-      setCellAutoFix: (phaseName, config) => {
+      setCellAutoFix: (cellName, config) => {
         set(state => {
-          state.cellAutoFixOverrides[phaseName] = {
-            ...(state.cellAutoFixOverrides[phaseName] || {}),
+          state.cellAutoFixOverrides[cellName] = {
+            ...(state.cellAutoFixOverrides[cellName] || {}),
             ...config
           };
         });
       },
 
-      clearCellAutoFix: (phaseName) => {
+      clearCellAutoFix: (cellName) => {
         set(state => {
-          delete state.cellAutoFixOverrides[phaseName];
+          delete state.cellAutoFixOverrides[cellName];
         });
       },
 
       // Get effective auto-fix config for a cell (merges global + per-cell overrides)
-      getEffectiveAutoFixConfig: (phaseName) => {
+      getEffectiveAutoFixConfig: (cellName) => {
         const state = get();
-        const override = state.cellAutoFixOverrides[phaseName];
+        const override = state.cellAutoFixOverrides[cellName];
         if (override) {
           return { ...state.autoFixConfig, ...override };
         }
@@ -942,14 +942,14 @@ output_schema:
       // ============================================
       // EXECUTION ACTIONS
       // ============================================
-      runCell: async (phaseName, forceRun = false) => {
+      runCell: async (cellName, forceRun = false) => {
         const state = get();
         if (!state.cascade) return;
 
-        const phaseIndex = state.cascade.phases.findIndex(p => p.name === phaseName);
-        if (phaseIndex === -1) return;
+        const cellIndex = state.cascade.cells.findIndex(c => c.name === cellName);
+        if (cellIndex === -1) return;
 
-        const phase = state.cascade.phases[phaseIndex];
+        const cell = state.cascade.cells[cellIndex];
 
         // Ensure we have a session ID
         let sessionId = state.sessionId;
@@ -959,17 +959,17 @@ output_schema:
 
         // Collect prior output hashes for cache invalidation
         const priorOutputHashes = {};
-        for (let i = 0; i < phaseIndex; i++) {
-          const priorPhase = state.cascade.phases[i];
-          const priorState = state.cellStates[priorPhase.name];
+        for (let i = 0; i < cellIndex; i++) {
+          const priorCell = state.cascade.cells[i];
+          const priorState = state.cellStates[priorCell.name];
           if (priorState?.inputHash) {
-            priorOutputHashes[priorPhase.name] = priorState.inputHash;
+            priorOutputHashes[priorCell.name] = priorState.inputHash;
           }
         }
 
         // Compute hash of current inputs
-        const currentHash = hashCellInputs(phase, state.cascadeInputs, priorOutputHashes);
-        const existingState = state.cellStates[phaseName];
+        const currentHash = hashCellInputs(cell, state.cascadeInputs, priorOutputHashes);
+        const existingState = state.cellStates[cellName];
 
         // Check cache: if hash matches and we have a successful result, skip execution
         if (!forceRun &&
@@ -978,40 +978,40 @@ output_schema:
             existingState?.result) {
           // Cache hit - mark as cached and return
           set(s => {
-            s.cellStates[phaseName] = {
+            s.cellStates[cellName] = {
               ...existingState,
               cached: true
             };
           });
-          console.log(`[Cache] Hit for ${phaseName} (hash: ${currentHash})`);
+          console.log(`[Cache] Hit for ${cellName} (hash: ${currentHash})`);
           return;
         }
 
         set(s => {
-          s.cellStates[phaseName] = { status: 'running', result: null, error: null, cached: false };
+          s.cellStates[cellName] = { status: 'running', result: null, error: null, cached: false };
         });
 
         const startTime = performance.now();
 
         try {
-          // Collect outputs from prior phases for python_data
+          // Collect outputs from prior cells
           const priorOutputs = {};
-          for (let i = 0; i < phaseIndex; i++) {
-            const priorPhase = state.cascade.phases[i];
-            const priorState = state.cellStates[priorPhase.name];
+          for (let i = 0; i < cellIndex; i++) {
+            const priorCell = state.cascade.cells[i];
+            const priorState = state.cellStates[priorCell.name];
             if (priorState?.result) {
-              priorOutputs[priorPhase.name] = priorState.result;
+              priorOutputs[priorCell.name] = priorState.result;
             }
           }
 
           // Get effective auto-fix config for this cell
-          const autoFixConfig = get().getEffectiveAutoFixConfig(phaseName);
+          const autoFixConfig = get().getEffectiveAutoFixConfig(cellName);
 
           const res = await fetch(`${API_BASE_URL}/run-cell`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              cell: phase,
+              cell: cell,
               inputs: state.cascadeInputs,
               prior_outputs: priorOutputs,
               session_id: sessionId,
@@ -1024,7 +1024,7 @@ output_schema:
 
           if (data.error || data._route === 'error') {
             set(s => {
-              s.cellStates[phaseName] = {
+              s.cellStates[cellName] = {
                 status: 'error',
                 error: data.error,
                 autoFixError: data.auto_fix_error,
@@ -1035,7 +1035,7 @@ output_schema:
             });
           } else {
             set(s => {
-              s.cellStates[phaseName] = {
+              s.cellStates[cellName] = {
                 status: 'success',
                 result: data,
                 duration,
@@ -1050,12 +1050,12 @@ output_schema:
             });
 
             // Mark downstream cells as stale
-            get().markDownstreamStale(phaseIndex);
+            get().markDownstreamStale(cellIndex);
           }
         } catch (err) {
           const duration = Math.round(performance.now() - startTime);
           set(s => {
-            s.cellStates[phaseName] = {
+            s.cellStates[cellName] = {
               status: 'error',
               error: err.message,
               duration,
@@ -1080,8 +1080,8 @@ output_schema:
           s.viewMode = 'live'; // Force live mode when running new cascade
           s.replaySessionId = null; // Clear any replay session
           // Reset all cell states to pending
-          s.cascade.phases.forEach(phase => {
-            s.cellStates[phase.name] = { status: 'pending' };
+          s.cascade.cells.forEach(cell => {
+            s.cellStates[cell.name] = { status: 'pending' };
           });
         });
 
@@ -1125,9 +1125,9 @@ output_schema:
       },
 
       // Update cell states from polling data (replaces SSE handlers)
-      updateCellStatesFromPolling: (phaseStates) => {
+      updateCellStatesFromPolling: (cellStates) => {
         set(s => {
-          for (const [phaseName, state] of Object.entries(phaseStates)) {
+          for (const [cellName, state] of Object.entries(cellStates)) {
             // Parse result if it's a JSON string (double-encoded from DB)
             let result = state.result;
             if (typeof result === 'string') {
@@ -1138,58 +1138,58 @@ output_schema:
               }
             }
 
-            s.cellStates[phaseName] = {
+            s.cellStates[cellName] = {
               ...state,
               result: result,
             };
 
             // Log only when we have meaningful metrics
             if (state.duration || state.cost || state.tokens_in) {
-              console.log('[updateCellStatesFromPolling]', phaseName, '- Duration:', state.duration, 'Cost:', state.cost, 'Tokens:', state.tokens_in, '/', state.tokens_out);
+              console.log('[updateCellStatesFromPolling]', cellName, '- Duration:', state.duration, 'Cost:', state.cost, 'Tokens:', state.tokens_in, '/', state.tokens_out);
             }
           }
 
           // SMART COMPLETION DETECTION: Use the data we just received to determine if execution is done
           // This is data-driven, not flag-driven!
-          if (s.cascade?.phases && s.cascadeSessionId) {
-            const phases = s.cascade.phases;
+          if (s.cascade?.cells && s.cascadeSessionId) {
+            const cells = s.cascade.cells;
 
-            // Check what phases are actually doing based on the cellStates we just updated
-            const phaseStatuses = phases.map(p => ({
-              name: p.name,
-              status: s.cellStates[p.name]?.status || 'pending'
+            // Check what cells are actually doing based on the cellStates we just updated
+            const cellStatuses = cells.map(c => ({
+              name: c.name,
+              status: s.cellStates[c.name]?.status || 'pending'
             }));
 
-            const hasAnyRunning = phases.some(p => {
-              const status = s.cellStates[p.name]?.status;
+            const hasAnyRunning = cells.some(c => {
+              const status = s.cellStates[c.name]?.status;
               return status === 'running';
             });
 
-            const allComplete = phases.every(p => {
-              const status = s.cellStates[p.name]?.status;
+            const allComplete = cells.every(c => {
+              const status = s.cellStates[c.name]?.status;
               return status === 'success' || status === 'error';
             });
 
             console.log('[updateCellStatesFromPolling] Data-driven execution check:', {
-              totalPhases: phases.length,
+              totalCells: cells.length,
               hasAnyRunning,
               allComplete,
-              phaseStatuses,
+              cellStatuses,
               currentIsRunningAll: s.isRunningAll
             });
 
             // Update isRunningAll based on the DATA
             // ONLY set to false if we have actual completion data (not just pending)
             if (hasAnyRunning) {
-              // Phases are actively running
+              // Cells are actively running
               if (!s.isRunningAll) {
-                console.log('[updateCellStatesFromPolling] Phases are running, setting isRunningAll = true');
+                console.log('[updateCellStatesFromPolling] Cells are running, setting isRunningAll = true');
                 s.isRunningAll = true;
               }
             } else if (allComplete) {
-              // All phases have terminal states (success or error)
+              // All cells have terminal states (success or error)
               if (s.isRunningAll) {
-                console.log('[updateCellStatesFromPolling] ✓ All phases complete! Setting isRunningAll = false');
+                console.log('[updateCellStatesFromPolling] ✓ All cells complete! Setting isRunningAll = false');
                 s.isRunningAll = false;
               }
             }
@@ -1209,18 +1209,18 @@ output_schema:
           s.isRunningAll = true;
           s.sessionId = autoGenerateSessionId();
           // Reset all cell states to pending
-          s.cascade.phases.forEach(phase => {
-            s.cellStates[phase.name] = { status: 'pending' };
+          s.cascade.cells.forEach(cell => {
+            s.cellStates[cell.name] = { status: 'pending' };
           });
         });
 
         try {
           // Run cells sequentially using runCell to maintain session
-          for (const phase of get().cascade.phases) {
-            await get().runCell(phase.name);
+          for (const cell of get().cascade.cells) {
+            await get().runCell(cell.name);
 
             // Stop if cell failed
-            if (get().cellStates[phase.name]?.status === 'error') {
+            if (get().cellStates[cell.name]?.status === 'error') {
               break;
             }
           }
@@ -1231,11 +1231,11 @@ output_schema:
         }
       },
 
-      runFromCell: async (phaseName) => {
+      runFromCell: async (cellName) => {
         const state = get();
         if (!state.cascade) return;
 
-        const startIndex = state.cascade.phases.findIndex(p => p.name === phaseName);
+        const startIndex = state.cascade.cells.findIndex(c => c.name === cellName);
         if (startIndex === -1) return;
 
         // Ensure session ID exists
@@ -1244,12 +1244,12 @@ output_schema:
         }
 
         // Run cells sequentially from startIndex
-        for (let i = startIndex; i < state.cascade.phases.length; i++) {
-          const phase = state.cascade.phases[i];
-          await get().runCell(phase.name);
+        for (let i = startIndex; i < state.cascade.cells.length; i++) {
+          const cell = state.cascade.cells[i];
+          await get().runCell(cell.name);
 
           // Stop if cell failed
-          if (get().cellStates[phase.name]?.status === 'error') {
+          if (get().cellStates[cell.name]?.status === 'error') {
             break;
           }
         }
@@ -1314,25 +1314,25 @@ output_schema:
         }
       },
 
-      // Fetch phase types from backend
-      fetchPhaseTypes: async () => {
-        set(state => { state.phaseTypesLoading = true; });
+      // Fetch cell types from backend
+      fetchCellTypes: async () => {
+        set(state => { state.cellTypesLoading = true; });
 
         try {
           const res = await fetch(`${API_BASE_URL}/phase-types`);
           const data = await res.json();
 
           set(state => {
-            state.phaseTypes = data || [];
-            state.phaseTypesLoading = false;
+            state.cellTypes = data || [];
+            state.cellTypesLoading = false;
           });
 
-          console.log('[fetchPhaseTypes] Loaded types:', data.length);
+          console.log('[fetchCellTypes] Loaded types:', data.length);
         } catch (err) {
-          console.error('[fetchPhaseTypes] Failed:', err);
+          console.error('[fetchCellTypes] Failed:', err);
           set(state => {
-            state.phaseTypes = [];
-            state.phaseTypesLoading = false;
+            state.cellTypes = [];
+            state.cellTypesLoading = false;
           });
         }
       },
@@ -1353,14 +1353,14 @@ output_schema:
           const parsed = yaml.load(yamlString);
 
           // Validate required fields
-          if (!parsed.cascade_id || !Array.isArray(parsed.phases)) {
-            throw new Error('Invalid cascade: missing cascade_id or phases array');
+          if (!parsed.cascade_id || !Array.isArray(parsed.cells)) {
+            throw new Error('Invalid cascade: missing cascade_id or cells array');
           }
 
-          // Validate phases have required fields
-          for (const phase of parsed.phases) {
-            if (!phase.name) {
-              throw new Error(`Phase missing required field: name`);
+          // Validate cells have required fields
+          for (const cell of parsed.cells) {
+            if (!cell.name) {
+              throw new Error(`Cell missing required field: name`);
             }
           }
 
@@ -1370,7 +1370,7 @@ output_schema:
               cascade_id: parsed.cascade_id,
               description: parsed.description || '',
               inputs_schema: parsed.inputs_schema || {},
-              phases: parsed.phases
+              phases: parsed.cells
             };
 
             // Store raw YAML text (preserves comments and formatting)
@@ -1381,14 +1381,14 @@ output_schema:
 
             // Invalidate cell states (cascade structure changed)
             // Keep existing results but mark as stale
-            Object.keys(state.cellStates).forEach(phaseName => {
-              if (!parsed.phases.find(p => p.name === phaseName)) {
-                // Phase was removed
-                delete state.cellStates[phaseName];
+            Object.keys(state.cellStates).forEach(cellName => {
+              if (!parsed.cells.find(c => c.name === cellName)) {
+                // Cell was removed
+                delete state.cellStates[cellName];
               } else {
-                // Phase still exists but may have changed - mark stale
-                if (state.cellStates[phaseName]) {
-                  state.cellStates[phaseName].status = 'stale';
+                // Cell still exists but may have changed - mark stale
+                if (state.cellStates[cellName]) {
+                  state.cellStates[cellName].status = 'stale';
                 }
               }
             });
@@ -1406,12 +1406,27 @@ output_schema:
     })),
     {
       name: 'studio-cascade-storage',
+      version: 2, // Increment this to force migration on next load
       partialize: (state) => ({
         // Persist mode preference and running state (for page refresh resilience)
         mode: state.mode,
         cascadeSessionId: state.cascadeSessionId,
         isRunningAll: state.isRunningAll,
       }),
+      migrate: (persistedState, version) => {
+        console.log('[Migration] Migrating from version', version, 'to version 2');
+
+        // If upgrading from version 0 or 1, force timeline mode
+        if (version < 2) {
+          console.log('[Migration] Forcing mode to timeline (from version', version, ')');
+          return {
+            ...persistedState,
+            mode: 'timeline',
+          };
+        }
+
+        return persistedState;
+      },
       onRehydrateStorage: () => (state) => {
         // Migration: Copy old data if new key is empty
         const oldData = localStorage.getItem('notebook-storage');
@@ -1420,6 +1435,44 @@ output_schema:
         if (oldData && !newData) {
           console.log('[Migration] Copying notebook-storage → studio-cascade-storage');
           localStorage.setItem('studio-cascade-storage', oldData);
+        }
+
+        // CRITICAL MIGRATION: Fix old persisted state after rename
+        if (state) {
+          console.log('[Migration] Checking for old property names in persisted state...');
+
+          // Force mode to 'timeline' if it was 'query' (old SQL mode)
+          if (state.mode === 'query' || state.mode === 'notebook') {
+            console.log('[Migration] Updating mode: query/notebook → timeline');
+            state.mode = 'timeline';
+          }
+
+          // Migrate old property names to new ones
+          if (state.selectedPhaseIndex !== undefined) {
+            console.log('[Migration] Renaming: selectedPhaseIndex → selectedCellIndex');
+            state.selectedCellIndex = state.selectedPhaseIndex;
+            delete state.selectedPhaseIndex;
+          }
+
+          if (state.phaseTypes !== undefined) {
+            console.log('[Migration] Renaming: phaseTypes → cellTypes');
+            state.cellTypes = state.phaseTypes;
+            delete state.phaseTypes;
+          }
+
+          if (state.phaseTypesLoading !== undefined) {
+            console.log('[Migration] Renaming: phaseTypesLoading → cellTypesLoading');
+            state.cellTypesLoading = state.phaseTypesLoading;
+            delete state.phaseTypesLoading;
+          }
+
+          if (state.parentPhase !== undefined) {
+            console.log('[Migration] Renaming: parentPhase → parentCell');
+            state.parentCell = state.parentPhase;
+            delete state.parentPhase;
+          }
+
+          console.log('[Migration] Migration complete. Final mode:', state.mode);
         }
       }
     }

@@ -4,13 +4,13 @@ import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../../stores/workshopStore';
-import TacklePills from '../components/TacklePills';
+import TacklePills from '../components/TraitPills';
 import ModelSelect from '../components/ModelSelect';
 import ContextBuilder from '../components/ContextBuilder';
 import ContextDropPicker from '../components/ContextDropPicker';
 import FlowBuilder from '../components/FlowBuilder';
 import { JinjaEditor, getAvailableVariables } from '../jinja-editor';
-import './PhaseBlock.css';
+import './CellBlock.css';
 
 /**
  * PhaseBlock - Individual phase container with collapsible drawers
@@ -56,7 +56,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     id: `phase-${phase.name}`,
     data: {
       type: 'phase',
-      phaseIndex: index,
+      cellIndex: index,
       phaseName: phase.name,
     },
   });
@@ -74,13 +74,13 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
   };
 
   // Check which configs are present
-  const hasSoundings = phase.soundings && phase.soundings.factor > 1;
-  const hasReforge = phase.soundings?.reforge?.steps > 0;
+  const hasSoundings = phase.candidates && phase.candidates.factor > 1;
+  const hasReforge = phase.candidates?.reforge?.steps > 0;
   const hasRules = phase.rules && (phase.rules.max_turns || phase.rules.loop_until);
   const hasContext = phase.context && phase.context.from?.length > 0;
   const hasWards = phase.wards && (phase.wards.pre?.length > 0 || phase.wards.post?.length > 0);
   const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
-  const hasTackle = phase.tackle && phase.tackle.length > 0;
+  const hasTackle = phase.traits && phase.traits.length > 0;
 
   // Drawer expansion state for this phase
   const isDrawerOpen = (drawer) => expandedDrawers[index]?.includes(drawer);
@@ -134,7 +134,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       return;
     }
 
-    // Extract the phase name from "outputs.phase_name"
+    // Extract the phase name from "outputs.cell_name"
     const sourcePhaseName = variablePath.replace('outputs.', '');
 
     // Check if already present
@@ -262,14 +262,14 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
           {hasSoundings && (
             <span
               className={`indicator soundings ${hasReforge ? 'with-reforge' : ''}`}
-              title={`Soundings: ${phase.soundings.factor}x${hasReforge ? ` + Reforge: ${phase.soundings.reforge.steps} steps` : ''}`}
+              title={`Soundings: ${phase.candidates.factor}x${hasReforge ? ` + Reforge: ${phase.candidates.reforge.steps} steps` : ''}`}
             >
               <Icon icon="mdi:source-branch" width="14" />
-              {phase.soundings.factor}
+              {phase.candidates.factor}
               {hasReforge && (
                 <>
                   <Icon icon="mdi:hammer-wrench" width="12" className="reforge-icon" />
-                  {phase.soundings.reforge.steps}
+                  {phase.candidates.reforge.steps}
                 </>
               )}
             </span>
@@ -408,9 +408,9 @@ function ExecutionDrawer({ phase, index }) {
           Tackle (tools)
         </label>
         <TacklePills
-          value={phase.tackle || []}
+          value={phase.traits || []}
           onChange={handleTackleChange}
-          phaseIndex={index}
+          cellIndex={index}
         />
         <span className="field-hint">
           Drag tools from the palette, or use "manifest" for Quartermaster auto-selection
@@ -443,7 +443,7 @@ function SoundingsDrawer({ phase, index }) {
   const { updatePhaseField, cascade } = useWorkshopStore();
   const [isReforgeExpanded, setIsReforgeExpanded] = React.useState(false);
 
-  const soundings = phase.soundings || {};
+  const soundings = phase.candidates || {};
   const reforge = soundings.reforge || {};
   const hasReforge = reforge.steps > 0;
 
@@ -802,7 +802,7 @@ function FlowDrawer({ phase, index }) {
   const { updatePhase, cascade } = useWorkshopStore();
 
   // Get all phase names for handoff selection
-  const allPhases = (cascade.phases || []).map(p => p.name);
+  const allPhases = (cascade.cells || []).map(p => p.name);
 
   const handleFlowChange = (updates) => {
     // Merge flow-related updates into the phase
@@ -961,7 +961,7 @@ function ContextDrawer({ phase, index }) {
   const { updatePhase, cascade } = useWorkshopStore();
 
   // Get list of other phase names (for the builder to show available sources)
-  const otherPhases = (cascade.phases || [])
+  const otherPhases = (cascade.cells || [])
     .map((p) => p.name)
     .filter((name) => name !== phase.name);
 

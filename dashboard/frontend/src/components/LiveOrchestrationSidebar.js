@@ -18,7 +18,7 @@ import './LiveOrchestrationSidebar.css';
  * - Phase history
  * - Status indicators (thinking, tool running, waiting)
  *
- * This is the "orchestration observatory" - you SEE what Windlass is doing
+ * This is the "orchestration observatory" - you SEE what RVBBIT is doing
  */
 function LiveOrchestrationSidebar({
   sessionId,

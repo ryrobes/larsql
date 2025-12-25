@@ -1,7 +1,6 @@
 {
   "cascade_id": "scheduled_etl_demo",
   "description": "Demonstrates trigger definitions for scheduled and sensor-based cascade execution. Use `windlass triggers export` to generate scheduler configs.",
-
   "triggers": [
     {
       "name": "daily_morning",
@@ -47,7 +46,10 @@
       "inputs_schema": {
         "mode": {
           "type": "string",
-          "enum": ["full", "incremental"],
+          "enum": [
+            "full",
+            "incremental"
+          ],
           "default": "incremental"
         },
         "date": {
@@ -57,8 +59,7 @@
       }
     }
   ],
-
-  "phases": [
+  "cells": [
     {
       "name": "validate_inputs",
       "tool": "python:windlass.demo_tools.validate_sql",
@@ -69,18 +70,23 @@
         "valid": "extract_data",
         "invalid": "log_error"
       },
-      "handoffs": ["extract_data", "log_error"]
+      "handoffs": [
+        "extract_data",
+        "log_error"
+      ]
     },
     {
       "name": "log_error",
       "instructions": "Log the validation error and notify the team.",
-      "tackle": []
+      "traits": []
     },
     {
       "name": "extract_data",
       "instructions": "Extract data for {{ input.mode }} run on date {{ input.date | default('today') }}.\n\nSimulate data extraction and return a sample dataset.",
-      "tackle": [],
-      "handoffs": ["transform_data"]
+      "traits": [],
+      "handoffs": [
+        "transform_data"
+      ]
     },
     {
       "name": "transform_data",
@@ -94,22 +100,28 @@
         "empty": "log_empty",
         "error": "handle_transform_error"
       },
-      "handoffs": ["load_data", "log_empty", "handle_transform_error"]
+      "handoffs": [
+        "load_data",
+        "log_empty",
+        "handle_transform_error"
+      ]
     },
     {
       "name": "log_empty",
       "instructions": "No data to process. Log this and exit gracefully.",
-      "tackle": []
+      "traits": []
     },
     {
       "name": "handle_transform_error",
       "instructions": "Transform failed: {{ state.last_deterministic_error.error }}\n\nDiagnose and suggest remediation.",
-      "tackle": ["linux_shell"]
+      "traits": [
+        "linux_shell"
+      ]
     },
     {
       "name": "load_data",
       "instructions": "Load the transformed data:\n\n{{ state.output_transform_data | tojson }}\n\nSimulate loading to warehouse and confirm success.",
-      "tackle": []
+      "traits": []
     }
   ]
 }

@@ -7,7 +7,7 @@ import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
 import RichMarkdown from '../../../components/RichMarkdown';
 import PhaseExplosionView from '../PhaseExplosionView';
-import './PhaseCard.css';
+import './CellCard.css';
 
 // Default dimensions (grid-aligned to 16px)
 const DEFAULT_WIDTH = 320;
@@ -31,8 +31,8 @@ const INPUT_PATTERN_STR = '\\{\\{\\s*input\\.(\\w+)(?:\\s*\\|[^}]*)?\\s*\\}\\}';
 function deriveRarity(parsedYaml, status) {
   if (status === 'error') return 'broken';
   if (!parsedYaml?.soundings) return 'common';
-  if (parsedYaml.soundings.mode === 'aggregate') return 'legendary';
-  if (parsedYaml.soundings.reforge) return 'rare';
+  if (parsedYaml.candidates.mode === 'aggregate') return 'legendary';
+  if (parsedYaml.candidates.reforge) return 'rare';
   return 'uncommon';
 }
 
@@ -167,8 +167,8 @@ function PhaseCard({ id, data, selected }) {
   }
   // Check for multi-model
   const hasMultiModel = parsedYaml?.soundings?.models && (
-    Array.isArray(parsedYaml.soundings.models) ||
-    typeof parsedYaml.soundings.models === 'object'
+    Array.isArray(parsedYaml.candidates.models) ||
+    typeof parsedYaml.candidates.models === 'object'
   );
   if (hasMultiModel) {
     mutationTraits.push({ iconName: 'mdi:robot-outline', mode: 'multimodel', tooltip: 'Multi-model soundings' });
@@ -277,7 +277,7 @@ function PhaseCard({ id, data, selected }) {
     // Check soundings
     Object.keys(soundingsOutputs).forEach(idx => {
       const key = `S${idx}`;
-      if (!prevContentCountRef.current.soundings?.has(idx)) {
+      if (!prevContentCountRef.current.candidates?.has(idx)) {
         newlyUpdated.add(key);
         cardUpdateTimesRef.current[key] = now;
       }

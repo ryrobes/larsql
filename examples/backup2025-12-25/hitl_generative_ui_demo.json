@@ -2,56 +2,98 @@
   "cascade_id": "hitl_generative_ui_demo",
   "description": "Demonstrates the Generative UI system that automatically creates contextually-appropriate UIs based on the question being asked. Tests confirmation, choice, rating, and text input UI types.",
   "inputs_schema": {},
-  "phases": [
+  "cells": [
     {
       "name": "test_confirmation",
       "instructions": "Ask the human a yes/no confirmation question using ask_human. For example: 'Should I proceed with the analysis?' The system should automatically generate a confirmation UI with Yes/No buttons.",
-      "tackle": ["ask_human"],
-      "rules": {"max_turns": 2},
-      "handoffs": ["test_choice"]
+      "traits": [
+        "ask_human"
+      ],
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "test_choice"
+      ]
     },
     {
       "name": "test_choice",
       "instructions": "The human responded: {{ state.test_confirmation }}\n\nNow ask the human to pick between options using ask_human. For example: 'Which format would you prefer: JSON, XML, or YAML?' The system should automatically generate a choice UI with radio buttons.",
-      "tackle": ["ask_human"],
+      "traits": [
+        "ask_human"
+      ],
       "context": {
-        "from": ["test_confirmation"],
-        "include": ["state"]
+        "from": [
+          "test_confirmation"
+        ],
+        "include": [
+          "state"
+        ]
       },
-      "rules": {"max_turns": 2},
-      "handoffs": ["test_rating"]
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "test_rating"
+      ]
     },
     {
       "name": "test_rating",
       "instructions": "The human chose: {{ state.test_choice }}\n\nNow ask the human for a rating using ask_human. For example: 'How would you rate this experience on a scale of 1-5?' The system should automatically generate a rating UI with stars.",
-      "tackle": ["ask_human"],
+      "traits": [
+        "ask_human"
+      ],
       "context": {
-        "from": ["test_choice"],
-        "include": ["state"]
+        "from": [
+          "test_choice"
+        ],
+        "include": [
+          "state"
+        ]
       },
-      "rules": {"max_turns": 2},
-      "handoffs": ["test_text"]
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "test_text"
+      ]
     },
     {
       "name": "test_text",
       "instructions": "The human rated: {{ state.test_rating }}\n\nNow ask the human an open-ended question using ask_human. For example: 'What additional feedback do you have?' The system should automatically generate a text input UI.",
-      "tackle": ["ask_human"],
+      "traits": [
+        "ask_human"
+      ],
       "context": {
-        "from": ["test_rating"],
-        "include": ["state"]
+        "from": [
+          "test_rating"
+        ],
+        "include": [
+          "state"
+        ]
       },
-      "rules": {"max_turns": 2},
-      "handoffs": ["summary"]
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "summary"
+      ]
     },
     {
       "name": "summary",
       "instructions": "Summarize all the human responses collected:\n\n- Confirmation response: {{ state.test_confirmation }}\n- Choice response: {{ state.test_choice }}\n- Rating response: {{ state.test_rating }}\n- Text feedback: {{ state.test_text }}\n\nProvide a brief summary of the interaction.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["all"],
-        "include": ["state"]
+        "from": [
+          "all"
+        ],
+        "include": [
+          "state"
+        ]
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

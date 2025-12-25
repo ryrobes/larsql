@@ -46,7 +46,7 @@ export function calculateTileDimensions(cascade) {
   // Cascades without runs get varied sizes for more interesting packing
   if (!hasRuns) {
     // Add variety based on phase count or cascade_id hash
-    const phaseCount = cascade.phases?.length || 0;
+    const phaseCount = cascade.cells?.length || 0;
     const hash = cascade.cascade_id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
 
     // Generate varied sizes (200-350px)
@@ -81,7 +81,7 @@ export function calculateTileDimensions(cascade) {
     mermaidHeight = Math.min(Math.max(mermaidHeight, 250), 600);
   } else {
     // Fallback: estimate from phase count
-    const numPhases = cascade.phases?.length || 2;
+    const numPhases = cascade.cells?.length || 2;
     mermaidWidth = 400 + (numPhases * 100);
     mermaidHeight = 300 + (numPhases * 50);
 
@@ -257,9 +257,9 @@ function CascadeTile({ cascade, onClick, isRunning }) {
     : 0;
 
   // Count special features
-  const soundingsCount = cascade.phases?.filter(p => p.has_soundings).length || 0;
-  const reforgesCount = cascade.phases?.filter(p => p.reforge_steps).length || 0;
-  const wardsCount = cascade.phases?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
+  const soundingsCount = cascade.cells?.filter(p => p.has_soundings).length || 0;
+  const reforgesCount = cascade.cells?.filter(p => p.reforge_steps).length || 0;
+  const wardsCount = cascade.cells?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
 
   return (
     <div
@@ -297,7 +297,7 @@ function CascadeTile({ cascade, onClick, isRunning }) {
         {/* Phase count */}
         <div className="metric-item">
           <Icon icon="mdi:sitemap" width={16} height={16} />
-          <span>{cascade.phases?.length || 0}</span>
+          <span>{cascade.cells?.length || 0}</span>
         </div>
 
         {/* Soundings */}

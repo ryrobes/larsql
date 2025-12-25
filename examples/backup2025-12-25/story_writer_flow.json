@@ -6,60 +6,84 @@
     "protagonist": "Main character name",
     "setting": "Where the story takes place"
   },
-  "phases": [{
-    "name": "opening_paragraph",
-    "instructions": "Write an engaging opening paragraph for a {{ input.genre }} story.\n\nProtagonist: {{ input.protagonist }}\nSetting: {{ input.setting }}\n\nThe opening should:\n- Hook the reader immediately\n- Establish the setting and mood\n- Introduce the protagonist\n- Be vivid and descriptive",
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "loop_until": "grammar_check",
-      "retry_instructions": "Editor's Notes:\n\n{{ validation_error }}\n\nRevise the opening to improve grammar and readability. Attempt {{ attempt }}/{{ max_attempts }}"
+  "cells": [
+    {
+      "name": "opening_paragraph",
+      "instructions": "Write an engaging opening paragraph for a {{ input.genre }} story.\n\nProtagonist: {{ input.protagonist }}\nSetting: {{ input.setting }}\n\nThe opening should:\n- Hook the reader immediately\n- Establish the setting and mood\n- Introduce the protagonist\n- Be vivid and descriptive",
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "grammar_check",
+        "retry_instructions": "Editor's Notes:\n\n{{ validation_error }}\n\nRevise the opening to improve grammar and readability. Attempt {{ attempt }}/{{ max_attempts }}"
+      },
+      "handoffs": [
+        "rising_action"
+      ]
     },
-    "handoffs": ["rising_action"]
-  }, {
-    "name": "rising_action",
-    "instructions": "Great opening! Now write the rising action (2-3 paragraphs) that:\n- Builds tension\n- Introduces a conflict or challenge\n- Develops the protagonist's character\n- MUST mention something 'important' that the protagonist discovers or realizes",
-    "context": {
-      "from": ["all"]
+    {
+      "name": "rising_action",
+      "instructions": "Great opening! Now write the rising action (2-3 paragraphs) that:\n- Builds tension\n- Introduces a conflict or challenge\n- Develops the protagonist's character\n- MUST mention something 'important' that the protagonist discovers or realizes",
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "keyword_validator",
+        "retry_instructions": "Story Development Issue:\n\n{{ validation_error }}\n\nThe rising action needs to emphasize what's 'important' to the protagonist. What discovery or realization drives the story forward?\n\nAttempt {{ attempt }}/{{ max_attempts }}"
+      },
+      "handoffs": [
+        "climax"
+      ]
     },
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "loop_until": "keyword_validator",
-      "retry_instructions": "Story Development Issue:\n\n{{ validation_error }}\n\nThe rising action needs to emphasize what's 'important' to the protagonist. What discovery or realization drives the story forward?\n\nAttempt {{ attempt }}/{{ max_attempts }}"
+    {
+      "name": "climax",
+      "instructions": "Excellent build-up! Now write the climax (1-2 paragraphs) where:\n- The main conflict reaches its peak\n- The protagonist must make a crucial decision\n- Tension is at its highest\n- Keep it concise but impactful",
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 2,
+        "loop_until": "simple_validator"
+      },
+      "handoffs": [
+        "resolution"
+      ]
     },
-    "handoffs": ["climax"]
-  }, {
-    "name": "climax",
-    "instructions": "Excellent build-up! Now write the climax (1-2 paragraphs) where:\n- The main conflict reaches its peak\n- The protagonist must make a crucial decision\n- Tension is at its highest\n- Keep it concise but impactful",
-    "context": {
-      "from": ["all"]
+    {
+      "name": "resolution",
+      "instructions": "Perfect climax! Now write a satisfying resolution (1 paragraph) that:\n- Resolves the main conflict\n- Shows how the protagonist has changed\n- Provides closure\n- Leaves the reader satisfied",
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 2,
+        "loop_until": "grammar_check",
+        "retry_instructions": "Final polish needed:\n\n{{ validation_error }}\n\nClean up the resolution for publication quality."
+      },
+      "handoffs": [
+        "reflect"
+      ]
     },
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 2,
-      "loop_until": "simple_validator"
-    },
-    "handoffs": ["resolution"]
-  }, {
-    "name": "resolution",
-    "instructions": "Perfect climax! Now write a satisfying resolution (1 paragraph) that:\n- Resolves the main conflict\n- Shows how the protagonist has changed\n- Provides closure\n- Leaves the reader satisfied",
-    "context": {
-      "from": ["all"]
-    },
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 2,
-      "loop_until": "grammar_check",
-      "retry_instructions": "Final polish needed:\n\n{{ validation_error }}\n\nClean up the resolution for publication quality."
-    },
-    "handoffs": ["reflect"]
-  }, {
-    "name": "reflect",
-    "instructions": "Story complete!\n\nProvide a brief writer's commentary:\n- What theme emerged in the story?\n- How many validation retries were needed?\n- What did you learn from the editor's feedback?",
-    "context": {
-      "from": ["all"]
-    },
-    "tackle": ["set_state"]
-  }]
+    {
+      "name": "reflect",
+      "instructions": "Story complete!\n\nProvide a brief writer's commentary:\n- What theme emerged in the story?\n- How many validation retries were needed?\n- What did you learn from the editor's feedback?",
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "traits": [
+        "set_state"
+      ]
+    }
+  ]
 }

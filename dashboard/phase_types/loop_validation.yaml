@@ -1,27 +1,30 @@
 type_id: loop_validation
 display_name: Loop Until Valid
 icon: mdi:refresh-circle
-color: "#f87171"
+color: '#f87171'
 name_prefix: retry
-description: "LLM phase with automatic retry until validation passes (loop_until)"
-category: "llm"
+description: LLM phase with automatic retry until validation passes (loop_until)
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "validation"
-  - "iterative"
-
+- intermediate
+- ai-ml
+- validation
+- iterative
 template:
-  instructions: |
-    Generate content that meets these criteria:
+  instructions: 'Generate content that meets these criteria:
+
     {{ input.criteria | default("High quality, well-structured output") }}
 
-    Your response will be automatically validated and you'll be asked to
-    revise if it doesn't meet the requirements.
+
+    Your response will be automatically validated and you''ll be asked to
+
+    revise if it doesn''t meet the requirements.
+
+    '
   model: google/gemini-2.5-flash
-  tackle: []
+  traits: []
   rules:
     max_turns: 1
     max_attempts: 3
     loop_until: grammar_check
-    loop_until_prompt: "Ensure your response is grammatically correct and well-formatted."
+    loop_until_prompt: Ensure your response is grammatically correct and well-formatted.

@@ -1,54 +1,60 @@
 cascade_id: rabbitize_research_assistant
-
-description: 'Advanced demo: Use web_navigator as a tool to research multiple websites and synthesize
-  findings'
-
+description: 'Advanced demo: Use web_navigator as a tool to research multiple websites
+  and synthesize findings'
 inputs_schema:
   research_topic: What to research (e.g., 'competitor pricing for SaaS analytics tools')
   websites: List of websites to check (comma-separated URLs)
+cells:
+- handoffs:
+  - execute_research
+  instructions: 'You need to research: {{ input.research_topic }}
 
-phases:
-  - handoffs:
-      - execute_research
-    instructions: |-
-      You need to research: {{ input.research_topic }}
 
-      Websites to check: {{ input.websites }}
+    Websites to check: {{ input.websites }}
 
-      Plan your research strategy. For each website, define what specific information you want to find.
-    name: plan_research
-    rules:
-      max_turns: 1
-  - handoffs:
-      - synthesize
-    instructions: |-
-      Research: {{ input.research_topic }}
 
-      You have access to web_navigator tool which can browse websites for you.
+    Plan your research strategy. For each website, define what specific information
+    you want to find.'
+  name: plan_research
+  rules:
+    max_turns: 1
+- handoffs:
+  - synthesize
+  instructions: 'Research: {{ input.research_topic }}
 
-      For each website in {{ input.websites }}, use web_navigator to find relevant information.
 
-      Call web_navigator once per site with specific goals.
+    You have access to web_navigator tool which can browse websites for you.
 
-      When you have data from all sites, route to synthesize.
-    name: execute_research
-    rules:
-      loop_until: satisfied
-      loop_until_prompt: 'Continue until you''ve gathered information from all websites about: {{ input.research_topic
-        }}'
-      max_turns: 10
-    tackle:
-      - web_navigator
-      - route_to
-  - instructions: |-
-      Synthesize your research findings about {{ input.research_topic }}.
 
-      Create a structured report with:
-      1. Key findings from each website
-      2. Comparisons and patterns
-      3. Recommendations
+    For each website in {{ input.websites }}, use web_navigator to find relevant information.
 
-      Be concise but comprehensive.
-    name: synthesize
-    rules:
-      max_turns: 1
+
+    Call web_navigator once per site with specific goals.
+
+
+    When you have data from all sites, route to synthesize.'
+  name: execute_research
+  rules:
+    loop_until: satisfied
+    loop_until_prompt: 'Continue until you''ve gathered information from all websites
+      about: {{ input.research_topic }}'
+    max_turns: 10
+  traits:
+  - web_navigator
+  - route_to
+- instructions: 'Synthesize your research findings about {{ input.research_topic }}.
+
+
+    Create a structured report with:
+
+    1. Key findings from each website
+
+    2. Comparisons and patterns
+
+    3. Recommendations
+
+
+    Be concise but comprehensive.'
+  name: synthesize
+  rules:
+    max_turns: 1

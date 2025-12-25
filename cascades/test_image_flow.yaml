@@ -2,7 +2,7 @@ cascade_id: test_image_flow
 description: We Drawin'
 inputs_schema:
   prompt: Prompt text for prompt
-phases:
+cells:
 - name: phase_1
   instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
     of rich details, but staying true to the original intent. Please return ONLY the

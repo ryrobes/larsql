@@ -8,7 +8,7 @@ Run this to verify the SQL server is working before connecting from DBeaver!
 import sys
 sys.path.insert(0, 'windlass')
 
-from windlass.client import WindlassClient
+from rvbbit.client import RVBBITClient
 import json
 
 
@@ -20,7 +20,7 @@ def test_sql_api():
     print("=" * 70)
 
     # Create client
-    client = WindlassClient('http://localhost:5001')
+    client = RVBBITClient('http://localhost:5001')
 
     # Test 1: Health check
     print("\n📡 Test 1: Health Check")
@@ -168,7 +168,7 @@ def test_sql_api():
     print("=" * 70)
     print("\n✨ Windlass SQL API is fully operational!")
     print("\n📚 Next steps:")
-    print("   1. Connect from Python: from windlass.client import WindlassClient")
+    print("   1. Connect from Python: from rvbbit.client import RVBBITClient")
     print("   2. Try in Jupyter notebook")
     print("   3. Connect from DBeaver (see SQL_CLIENT_GUIDE.md)")
     print("   4. Build LLM-powered dashboards!")

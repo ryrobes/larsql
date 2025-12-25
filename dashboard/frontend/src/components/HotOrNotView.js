@@ -94,7 +94,7 @@ function HotOrNotView({ onBack }) {
   useEffect(() => {
     if (queue.length > 0 && currentIndex < queue.length) {
       const current = queue[currentIndex];
-      fetchSoundingGroup(current.session_id, current.phase_name);
+      fetchSoundingGroup(current.session_id, current.cell_name);
       setRating(null);
       setShowComparison(false);
       setSelectedSounding(null);
@@ -147,7 +147,7 @@ function HotOrNotView({ onBack }) {
         case '5':
           if (showComparison && soundingGroup) {
             const idx = parseInt(e.key) - 1;
-            if (idx < soundingGroup.soundings.length) {
+            if (idx < soundingGroup.candidates.length) {
               handlePrefer(idx);
             }
           }
@@ -176,12 +176,12 @@ function HotOrNotView({ onBack }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: current.session_id,
-          phase_name: current.phase_name,
+          cell_name: current.cell_name,
           is_good: isGood,
           cascade_id: current.cascade_id,
           cascade_file: current.cascade_file,
           output_text: current.content_preview,
-          sounding_index: current.sounding_index
+          sounding_index: current.candidate_index
         })
       });
 
@@ -216,10 +216,10 @@ function HotOrNotView({ onBack }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: current.session_id,
-          phase_name: current.phase_name,
+          cell_name: current.cell_name,
           preferred_index: preferredIndex,
           system_winner_index: soundingGroup.system_winner_index,
-          sounding_outputs: soundingGroup.soundings,
+          sounding_outputs: soundingGroup.candidates,
           cascade_id: current.cascade_id,
           cascade_file: current.cascade_file
         })
@@ -252,7 +252,7 @@ function HotOrNotView({ onBack }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: current.session_id,
-          phase_name: current.phase_name,
+          cell_name: current.cell_name,
           flag_reason: reason,
           cascade_id: current.cascade_id,
           output_text: current.content_preview
@@ -336,7 +336,7 @@ function HotOrNotView({ onBack }) {
         <div className="header-left">
           <img
             src="/windlass-transparent-square.png"
-            alt="Windlass"
+            alt="RVBBIT"
             className="brand-logo"
             onClick={onBack}
             title="Back to cascades"
@@ -373,7 +373,7 @@ function HotOrNotView({ onBack }) {
       {currentItem && (
         <div className="context-bar">
           <span className="cascade-id">{currentItem.cascade_id}</span>
-          <span className="phase-name">{currentItem.phase_name}</span>
+          <span className="phase-name">{currentItem.cell_name}</span>
           <div className="queue-indicator">
             <span className="position">{currentIndex + 1} / {queue.length}</span>
           </div>
@@ -393,7 +393,7 @@ function HotOrNotView({ onBack }) {
                 <div className="cards-container">
                   {(() => {
                     // Get the sounding for THIS queue item (by sounding_index), not the winner
-                    const queueSoundingIndex = currentItem.sounding_index;
+                    const queueSoundingIndex = currentItem.candidate_index;
                     const currentSounding = soundingGroup?.soundings?.find(s => s.index === queueSoundingIndex)
                       || soundingGroup?.soundings?.find(s => s.is_winner)
                       || soundingGroup?.soundings?.[0];
@@ -439,10 +439,10 @@ function HotOrNotView({ onBack }) {
                                 <Icon icon="mdi:trident" width={12} />
                                 {/* In blind mode (showAllSoundings), don't reveal winner status to avoid bias */}
                                 {showAllSoundings
-                                  ? `Sounding ${(currentSounding?.index ?? 0) + 1}/${soundingGroup.soundings.length}`
+                                  ? `Sounding ${(currentSounding?.index ?? 0) + 1}/${soundingGroup.candidates.length}`
                                   : currentSounding?.is_winner
-                                    ? `Winner ${currentSounding.index + 1}/${soundingGroup.soundings.length}`
-                                    : `Sounding ${(currentSounding?.index ?? 0) + 1}/${soundingGroup.soundings.length}`
+                                    ? `Winner ${currentSounding.index + 1}/${soundingGroup.candidates.length}`
+                                    : `Sounding ${(currentSounding?.index ?? 0) + 1}/${soundingGroup.candidates.length}`
                                 }
                               </span>
                             )}
@@ -583,7 +583,7 @@ function HotOrNotView({ onBack }) {
 
           {/* Secondary controls */}
           <div className="secondary-controls">
-            {soundingGroup && soundingGroup.soundings.length > 1 && (
+            {soundingGroup && soundingGroup.candidates.length > 1 && (
               <button
                 className={`secondary-btn ${showComparison ? 'active' : ''}`}
                 onClick={() => setShowComparison(!showComparison)}

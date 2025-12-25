@@ -1,16 +1,20 @@
 {
   "cascade_id": "signal_producer_delayed",
   "description": "Helper cascade that fires a signal after a brief delay. Used by signal_roundtrip_demo.json",
-  "phases": [
+  "cells": [
     {
       "name": "prepare",
       "instructions": "Say 'Preparing to fire signal in a moment...' This brief pause ensures the consumer has time to register its wait.",
-      "handoffs": ["fire"]
+      "handoffs": [
+        "fire"
+      ]
     },
     {
       "name": "fire",
       "instructions": "Use fire_signal to fire a signal named 'roundtrip_demo' with this payload: {\"source\": \"async_producer\", \"message\": \"Hello from the async producer!\", \"timestamp\": \"now\"}",
-      "tackle": ["fire_signal"]
+      "traits": [
+        "fire_signal"
+      ]
     }
   ]
 }

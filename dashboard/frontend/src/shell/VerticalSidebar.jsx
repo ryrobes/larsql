@@ -73,7 +73,7 @@ const VerticalSidebar = ({
     <div className="vertical-sidebar">
       {/* Logo/Brand */}
       <div className="vsidebar-brand">
-        <img src="/rvbbit-logo-no-bkgrnd.png" alt="Windlass" className="vsidebar-brand-logo" />
+        <img src="/rvbbit-logo-no-bkgrnd.png" alt="RVBBIT" className="vsidebar-brand-logo" />
       </div>
 
       {/* Top Navigation */}

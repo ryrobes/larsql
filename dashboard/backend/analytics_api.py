@@ -15,7 +15,7 @@ from flask import Blueprint, jsonify, request
 # Add windlass to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from windlass.db_adapter import get_db
+from rvbbit.db_adapter import get_db
 
 analytics_bp = Blueprint('analytics', __name__)
 

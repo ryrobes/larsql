@@ -1,0 +1,62 @@
+{
+  "snapshot_name": "context_inheritance_works",
+  "description": "Tests parent-child context inheritance with context_in and context_out",
+  "captured_at": "2025-12-02T06:36:29.515805",
+  "session_id": "debug_ui_650e015c",
+  "cascade_file": "examples/context_demo_parent.json",
+  "input": {},
+  "execution": {
+    "cells": [
+      {
+        "name": "setup",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": {
+              "content": "Received empty input data: {}."
+            },
+            "tool_results": [
+              {
+                "tool": "unknown",
+                "result": "State updated: secret_code = BLUE_OCEAN"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "call_child",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": {
+              "content": "Received empty input data: {}."
+            },
+            "tool_results": []
+          }
+        ]
+      },
+      {
+        "name": "verify",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": {
+              "content": "Received empty input data: {}."
+            },
+            "tool_results": []
+          }
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "final_state": {},
+    "completion_status": "success",
+    "cells_executed": [
+      "setup",
+      "call_child",
+      "verify"
+    ]
+  }
+}

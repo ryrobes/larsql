@@ -1,22 +1,24 @@
 type_id: custom_human_ui
 display_name: Custom UI Form
 icon: mdi:form-select
-color: "#2dd4bf"
+color: '#2dd4bf'
 name_prefix: form
-description: "Rich human input with custom UI fields - structured data collection"
-category: "hitl"
+description: Rich human input with custom UI fields - structured data collection
+category: hitl
 tags:
-  - "intermediate"
-  - "hitl"
-  - "standalone"
-
+- intermediate
+- hitl
+- standalone
 template:
-  instructions: |
-    Gather structured input from the human using a custom form.
+  instructions: 'Gather structured input from the human using a custom form.
+
 
     Use ask_human_custom with field definitions.
+
     Response will be stored in state.{{PHASE_NAME}}.
-  tackle:
-    - ask_human_custom
+
+    '
+  traits:
+  - ask_human_custom
   rules:
     max_turns: 2

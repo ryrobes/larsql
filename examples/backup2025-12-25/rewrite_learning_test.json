@@ -4,13 +4,13 @@
   "inputs_schema": {
     "topic": "A topic to write about"
   },
-  "phases": [
+  "cells": [
     {
       "name": "creative_writing",
       "instructions": "Write a creative short paragraph about: {{ input.topic }}",
       "model": "x-ai/grok-4.1-fast",
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 4,
         "mutate": true,
         "mutation_mode": "rewrite",

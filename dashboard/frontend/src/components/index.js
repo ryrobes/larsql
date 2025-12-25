@@ -1,5 +1,5 @@
 /**
- * Component exports for the Windlass dashboard
+ * Component exports for the RVBBIT dashboard
  *
  * Usage:
  *   import { Button, Card, Badge } from '../components';

@@ -5,11 +5,13 @@
   "inputs_schema": {
     "query": "A question or statement to process"
   },
-  "phases": [
+  "cells": [
     {
       "name": "process",
       "instructions": "You are a helpful assistant. The user says: {{ input.query }}\n\nRespond naturally and helpfully. If this seems related to previous conversations, you can search your memory.",
-      "tackle": ["demo_memory"],
+      "traits": [
+        "demo_memory"
+      ],
       "rules": {
         "max_turns": 3
       }

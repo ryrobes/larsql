@@ -3,9 +3,9 @@ import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useTimelinePolling from '../hooks/useTimelinePolling';
-import PhaseCard from './PhaseCard';
-import PhaseDetailPanel from './PhaseDetailPanel';
-import { PhaseAnatomyPanel } from '../phase-anatomy';
+import CellCard from './CellCard';
+import CellDetailPanel from './CellDetailPanel';
+import { CellAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
 import { Tooltip } from '../../components/RichTooltip';
 import { Button } from '../../components';
@@ -17,8 +17,8 @@ import './CascadeTimeline.css';
  *
  * @param {boolean} linearMode - If true, arrange in single row instead of DAG layers
  */
-const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
-  if (!phases || phases.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {} };
+const buildFBPLayout = (cells, inputsSchema, linearMode = false) => {
+  if (!cells || cells.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {} };
 
   // Input parameter color palette (warm/pastel to avoid clash with context colors)
   const inputColors = [
@@ -60,11 +60,11 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   const inDegree = {};
   const outDegree = {};
 
-  phases.forEach((phase, idx) => {
+  cells.forEach((cell, idx) => {
     graph[idx] = {
-      phase,
-      name: phase.name,
-      handoffs: phase.handoffs || [],
+      cell,
+      name: cell.name,
+      handoffs: cell.handoffs || [],
       targets: [],
       sources: [],
       implicitDeps: [],
@@ -75,33 +75,33 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   });
 
   // Extract dependencies from {{ outputs.X }} AND {{ input.X }} AND context.from
-  phases.forEach((phase, idx) => {
-    const phaseYaml = JSON.stringify(phase);
+  cells.forEach((cell, idx) => {
+    const cellYaml = JSON.stringify(cell);
     const outputDeps = new Set();
     const inputRefs = new Set();
 
-    // {{ outputs.phase_name }} references
+    // {{ outputs.cell_name }} references
     const outputsPattern = /\{\{\s*outputs\.(\w+)/g;
     let match;
-    while ((match = outputsPattern.exec(phaseYaml)) !== null) {
-      const depIdx = phases.findIndex(p => p.name === match[1]);
+    while ((match = outputsPattern.exec(cellYaml)) !== null) {
+      const depIdx = cells.findIndex(c => c.name === match[1]);
       if (depIdx !== -1 && depIdx !== idx) outputDeps.add(depIdx);
     }
 
     // {{ input.param_name }} references
     const inputPattern = /\{\{\s*input\.(\w+)/g;
-    while ((match = inputPattern.exec(phaseYaml)) !== null) {
+    while ((match = inputPattern.exec(cellYaml)) !== null) {
       inputRefs.add(match[1]);
     }
 
-    // context.from dependencies (explicit phase context imports)
-    if (phase.context && phase.context.from) {
-      const contextFrom = Array.isArray(phase.context.from)
-        ? phase.context.from
-        : [phase.context.from];
+    // context.from dependencies (explicit cell context imports)
+    if (cell.context && cell.context.from) {
+      const contextFrom = Array.isArray(cell.context.from)
+        ? cell.context.from
+        : [cell.context.from];
 
-      contextFrom.forEach(phaseName => {
-        const depIdx = phases.findIndex(p => p.name === phaseName);
+      contextFrom.forEach(cellName => {
+        const depIdx = cells.findIndex(c => c.name === cellName);
         if (depIdx !== -1 && depIdx !== idx) outputDeps.add(depIdx);
       });
     }
@@ -111,11 +111,11 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   });
 
   // Build edges from BOTH handoffs (explicit) AND implicit deps
-  phases.forEach((phase, idx) => {
+  cells.forEach((cell, idx) => {
     // Explicit handoffs
-    const handoffs = phase.handoffs || [];
+    const handoffs = cell.handoffs || [];
     handoffs.forEach(targetName => {
-      const targetIdx = phases.findIndex(p => p.name === targetName);
+      const targetIdx = cells.findIndex(c => c.name === targetName);
       if (targetIdx !== -1) {
         if (!graph[idx].targets.includes(targetIdx)) {
           graph[idx].targets.push(targetIdx);
@@ -128,9 +128,9 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
       }
     });
 
-    // Implicit dependencies (reverse direction: this phase depends ON others)
+    // Implicit dependencies (reverse direction: this cell depends ON others)
     graph[idx].implicitDeps.forEach(depIdx => {
-      // depIdx → idx (dependency feeds into this phase)
+      // depIdx → idx (dependency feeds into this cell)
       if (!graph[depIdx].targets.includes(idx)) {
         graph[depIdx].targets.push(idx);
         outDegree[depIdx]++;
@@ -153,7 +153,7 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   // Topological layering (columns)
   const layers = [];
   const nodeLayer = {};
-  const remaining = new Set(phases.map((_, i) => i));
+  const remaining = new Set(cells.map((_, i) => i));
 
   while (remaining.size > 0) {
     const layer = [];
@@ -172,20 +172,20 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     layers.push(layer);
   }
 
-  console.log('[FBP] Layers:', layers.map((l, i) => `L${i}:[${l.map(idx => phases[idx].name).join(',')}]`));
+  console.log('[FBP] Layers:', layers.map((l, i) => `L${i}:[${l.map(idx => cells[idx].name).join(',')}]`));
 
   // Position nodes
   const nodes = [];
 
   if (linearMode) {
     // Linear mode: single horizontal row (array order)
-    phases.forEach((phase, idx) => {
+    cells.forEach((cell, idx) => {
       const x = PADDING_LEFT + (idx * (CARD_WIDTH + HORIZONTAL_GAP));
       const y = PADDING_TOP;
 
       nodes.push({
-        phaseIdx: idx,
-        phase: phases[idx],
+        cellIdx: idx,
+        cell: cells[idx],
         x,
         y,
         layer: 0,
@@ -199,18 +199,18 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
     layers.forEach((layer, layerIdx) => {
       const x = PADDING_LEFT + (layerIdx * (CARD_WIDTH + HORIZONTAL_GAP));
 
-      layer.forEach((phaseIdx, posInLayer) => {
+      layer.forEach((cellIdx, posInLayer) => {
         const y = PADDING_TOP + (posInLayer * (CARD_HEIGHT + VERTICAL_GAP));
 
         nodes.push({
-          phaseIdx,
-          phase: phases[phaseIdx],
+          cellIdx,
+          cell: cells[cellIdx],
           x,
           y,
           layer: layerIdx,
-          isBranch: outDegree[phaseIdx] > 1,
-          isMerge: inDegree[phaseIdx] > 1,
-          inputDeps: graph[phaseIdx].inputDeps,
+          isBranch: outDegree[cellIdx] > 1,
+          isMerge: inDegree[cellIdx] > 1,
+          inputDeps: graph[cellIdx].inputDeps,
         });
       });
     });
@@ -219,28 +219,28 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
   // Build edges with context-aware coloring
   const edges = [];
   nodes.forEach(node => {
-    graph[node.phaseIdx].targets.forEach(targetIdx => {
-      const targetNode = nodes.find(n => n.phaseIdx === targetIdx);
+    graph[node.cellIdx].targets.forEach(targetIdx => {
+      const targetNode = nodes.find(n => n.cellIdx === targetIdx);
       if (!targetNode) return;
 
-      const sourcePhase = phases[node.phaseIdx];
-      const targetPhase = phases[targetIdx];
+      const sourceCell = cells[node.cellIdx];
+      const targetCell = cells[targetIdx];
 
       // Determine edge context type
       let contextType = 'execution'; // Default: just execution order
 
       // Check for selective context array
-      const hasSelectiveContext = targetPhase.context?.from;
+      const hasSelectiveContext = targetCell.context?.from;
       if (hasSelectiveContext) {
-        const contextFrom = targetPhase.context.from || [];
-        if (contextFrom.includes(sourcePhase.name) || contextFrom.includes('all')) {
+        const contextFrom = targetCell.context.from || [];
+        if (contextFrom.includes(sourceCell.name) || contextFrom.includes('all')) {
           contextType = 'selective';
         }
       }
 
       // Check for direct output reference {{ outputs.source_name }}
-      const targetYaml = JSON.stringify(targetPhase);
-      const outputsPattern = new RegExp(`\\{\\{\\s*outputs\\.${sourcePhase.name}`, 'g');
+      const targetYaml = JSON.stringify(targetCell);
+      const outputsPattern = new RegExp(`\\{\\{\\s*outputs\\.${sourceCell.name}`, 'g');
       if (outputsPattern.test(targetYaml)) {
         contextType = 'data'; // Direct data flow
       }
@@ -257,7 +257,7 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
 
   // Calculate canvas dimensions
   const width = linearMode
-    ? phases.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT
+    ? cells.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT
     : layers.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT;
 
   const maxNodesInLayer = linearMode ? 1 : Math.max(...layers.map(l => l.length), 1);
@@ -269,7 +269,7 @@ const buildFBPLayout = (phases, inputsSchema, linearMode = false) => {
 };
 
 /**
- * DropZone - Visual drop target between phases
+ * DropZone - Visual drop target between cells
  */
 const DropZone = ({ position }) => {
   const { isOver, setNodeRef } = useDroppable({
@@ -290,7 +290,7 @@ const DropZone = ({ position }) => {
 };
 
 /**
- * CanvasDropZone - Background drop target for creating independent phases
+ * CanvasDropZone - Background drop target for creating independent cells
  */
 const CanvasDropZone = () => {
   const { isOver, setNodeRef } = useDroppable({
@@ -311,10 +311,12 @@ const CanvasDropZone = () => {
  *
  * Layout:
  * - Top bar: Cascade controls + metadata
- * - Middle strip: Horizontal scrolling phase cards (left→right) with drop zones
- * - Bottom panel: Selected phase details (config, code, outputs)
+ * - Middle strip: Horizontal scrolling cell cards (left→right) with drop zones
+ * - Bottom panel: Selected cell details (config, code, outputs)
  */
 const CascadeTimeline = ({ onOpenBrowser }) => {
+  console.log('[CascadeTimeline] Component mounting/rendering');
+
   const {
     cascade,
     cascadePath,
@@ -333,12 +335,18 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     restartSession,
     updateCascade,
     saveCascade,
-    selectedPhaseIndex,
-    setSelectedPhaseIndex,
+    selectedCellIndex,
+    setSelectedCellIndex,
     setLiveMode,
     updateCellStatesFromPolling,
     defaultModel,
   } = useStudioCascadeStore();
+
+  console.log('[CascadeTimeline] Store data:', {
+    hasCascade: !!cascade,
+    cascadeId: cascade?.cascade_id,
+    cellsInCascade: cascade?.cells?.length || 0
+  });
 
   // Poll for execution updates - either live or replay session
   const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
@@ -349,14 +357,14 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  const { logs, phaseStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll);
+  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll);
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
   //   sessionToPoll,
   //   isRunningAll,
   //   shouldPoll,
-  //   phaseCount: Object.keys(phaseStates || {}).length
+  //   cellCount: Object.keys(polledCellStates || {}).length
   // });
 
   // Handle session terminal states (error, completed, cancelled, orphaned)
@@ -385,31 +393,31 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       //   sessionToPoll,
       //   shouldPoll,
       //   logsCount: logs.length,
-      //   phaseStatesKeys: Object.keys(phaseStates || {}),
+      //   cellStatesKeys: Object.keys(polledCellStates || {}),
       //   totalCost
       // });
     }
-  }, [viewMode, sessionToPoll, shouldPoll, logs.length, phaseStates, totalCost]);
+  }, [viewMode, sessionToPoll, shouldPoll, logs.length, polledCellStates, totalCost]);
 
   // Update cellStates when polling returns new data
-  const prevPhaseStatesHashRef = useRef('');
+  const prevCellStatesHashRef = useRef('');
   useEffect(() => {
-    if (!phaseStates || Object.keys(phaseStates).length === 0) {
-      //console.log('[CascadeTimeline] No phaseStates to update');
+    if (!polledCellStates || Object.keys(polledCellStates).length === 0) {
+      //console.log('[CascadeTimeline] No polledCellStates to update');
       return;
     }
 
     // Only update if data actually changed (cheap hash check)
-    const currentHash = JSON.stringify(phaseStates);
-    if (currentHash === prevPhaseStatesHashRef.current) {
-      //console.log('[CascadeTimeline] phaseStates unchanged, skipping update');
+    const currentHash = JSON.stringify(polledCellStates);
+    if (currentHash === prevCellStatesHashRef.current) {
+      //console.log('[CascadeTimeline] polledCellStates unchanged, skipping update');
       return;
     }
 
-    //console.log('[CascadeTimeline] Updating cellStates from polling:', Object.keys(phaseStates));
-    prevPhaseStatesHashRef.current = currentHash;
-    updateCellStatesFromPolling(phaseStates);
-  }, [phaseStates, updateCellStatesFromPolling]);
+    //console.log('[CascadeTimeline] Updating cellStates from polling:', Object.keys(polledCellStates));
+    prevCellStatesHashRef.current = currentHash;
+    updateCellStatesFromPolling(polledCellStates);
+  }, [polledCellStates, updateCellStatesFromPolling]);
 
   // Update childSessions when polling returns new data
   const prevChildSessionsHashRef = useRef('');
@@ -550,11 +558,33 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   }, [layoutMode, cascade?.cascade_id]); // Re-measure when layout or cascade changes
 
   // Build FBP layout (must be before early returns)
-  const phases = cascade?.phases || [];
+  const cells = cascade?.cells || [];
   const inputsSchema = cascade?.inputs_schema || {};
+
+  // DEBUG: Log cascade data
+  React.useEffect(() => {
+    console.log('[CascadeTimeline] Cascade data:', {
+      hasCascade: !!cascade,
+      cascadeId: cascade?.cascade_id,
+      cellsLength: cells.length,
+      cellNames: cells.map(c => c.name),
+      inputsSchema: Object.keys(inputsSchema)
+    });
+  }, [cascade, cells, inputsSchema]);
+
   const layout = useMemo(
-    () => buildFBPLayout(phases, inputsSchema, layoutMode === 'linear'),
-    [phases, inputsSchema, layoutMode]
+    () => {
+      const result = buildFBPLayout(cells, inputsSchema, layoutMode === 'linear');
+      console.log('[CascadeTimeline] FBP Layout built:', {
+        cellsInput: cells.length,
+        nodesOutput: result.nodes.length,
+        edgesOutput: result.edges.length,
+        width: result.width,
+        height: result.height
+      });
+      return result;
+    },
+    [cells, inputsSchema, layoutMode]
   );
 
   const handleDescriptionChange = (e) => {
@@ -608,8 +638,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     }
   }, [cascade, newCascade]);
 
-  const handleSelectPhase = (index) => {
-    setSelectedPhaseIndex(index);
+  const handleSelectCell = (index) => {
+    setSelectedCellIndex(index);
   };
 
   // Count messages by role, filtering out system messages (phase_*)
@@ -630,8 +660,8 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     }
   }
 
-  const selectedPhase = selectedPhaseIndex !== null ? phases[selectedPhaseIndex] : null;
-  const cellCount = phases.length;
+  const selectedCell = selectedCellIndex !== null ? cells[selectedCellIndex] : null;
+  const cellCount = cells.length;
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
 
   if (!cascade) {
@@ -645,6 +675,12 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
   return (
     <div className="cascade-timeline">
+        {/* DEBUG BANNER - TEMPORARY */}
+        {/* <div style={{ background: '#ff0066', color: '#fff', padding: '8px', fontSize: '11px', fontFamily: 'monospace' }}>
+          DEBUG: cells={cells.length} | cascade.cells={cascade?.cells?.length} | nodes={layout.nodes.length} |
+          cascadeId={cascade?.cascade_id} | cellNames={cells.map(c => c.name).join(', ')}
+        </div> */}
+
         {/* Top Control Bar */}
         <div className="cascade-control-bar">
         <div className="cascade-control-left">
@@ -746,7 +782,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           </Tooltip>
 
           {/* Anatomy Panel Toggle */}
-          <Tooltip label="Phase Anatomy" description="Internal structure visualization">
+          <Tooltip label="Cell Anatomy" description="Internal structure visualization">
             <Button
               variant="secondary"
               active={showAnatomyPanel}
@@ -760,7 +796,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           <div className="cascade-control-divider" />
 
           <span className="cascade-stats">
-            {completedCount}/{cellCount} phases
+            {completedCount}/{cellCount} cells
           </span>
 
           {/* Open Cascade Button */}
@@ -867,7 +903,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
 
             return (
               <path
-                key={`input-${node.phaseIdx}-${inputName}`}
+                key={`input-${node.cellIdx}-${inputName}`}
                 d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
                 stroke={inputColor}
                 strokeWidth="2.5"
@@ -889,26 +925,26 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         ref={timelineRef}
         onMouseDown={handleGrabStart}
         style={{
-          minHeight: phases.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px'),
-          maxHeight: phases.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px'),
-          flex: phases.length === 0 ? 1 : undefined, // Expand to fill when empty
+          minHeight: cells.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px'),
+          maxHeight: cells.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px'),
+          flex: cells.length === 0 ? 1 : undefined, // Expand to fill when empty
           cursor: isGrabbing ? 'grabbing' : 'grab',
         }}
       >
         <div
           className="cascade-fbp-canvas"
           style={{
-            width: phases.length === 0 ? '100%' : `${layout.width}px`,
-            height: phases.length === 0 ? '100%' : `${layout.height}px`,
+            width: cells.length === 0 ? '100%' : `${layout.width}px`,
+            height: cells.length === 0 ? '100%' : `${layout.height}px`,
             position: 'relative',
             minHeight: '100%',
             overflow: 'visible', // Allow SVG edges to extend beyond
           }}
         >
-          {/* Background drop zone - always available for creating independent phases */}
+          {/* Background drop zone - always available for creating independent cells */}
           <CanvasDropZone />
 
-          {/* SVG layer for phase-to-phase edges (scrolls with content) */}
+          {/* SVG layer for cell-to-cell edges (scrolls with content) */}
           <svg
             className="cascade-edges"
             style={{
@@ -922,7 +958,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
               overflow: 'visible',
             }}
           >
-            {/* Phase-to-phase edges - color coded by context type */}
+            {/* Cell-to-cell edges - color coded by context type */}
             {layout.edges.map((edge, idx) => {
               const { source, target, contextType, isBranch, isMerge } = edge;
 
@@ -964,77 +1000,77 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             })}
           </svg>
 
-          {/* Positioned phase cards */}
+          {/* Positioned cell cards */}
           {layout.nodes.map(node => (
             <div
-              key={`node-${node.phaseIdx}`}
+              key={`node-${node.cellIdx}`}
               className="fbp-node"
               style={{
                 position: 'absolute',
                 left: `${node.x}px`,
                 top: `${node.y}px`,
                 width: '240px',
-                zIndex: selectedPhaseIndex === node.phaseIdx ? 100 : 50, // Raised above input edges
+                zIndex: selectedCellIndex === node.cellIdx ? 100 : 50, // Raised above input edges
               }}
             >
-              <PhaseCard
-                phase={node.phase}
-                index={node.phaseIdx}
-                cellState={cellStates[node.phase.name]}
-                phaseLogs={logs.filter(log => log.phase_name === node.phase.name)}
-                isSelected={selectedPhaseIndex === node.phaseIdx}
-                onSelect={() => handleSelectPhase(node.phaseIdx)}
+              <CellCard
+                cell={node.cell}
+                index={node.cellIdx}
+                cellState={cellStates[node.cell.name]}
+                cellLogs={logs.filter(log => log.cell_name === node.cell.name)}
+                isSelected={selectedCellIndex === node.cellIdx}
+                onSelect={() => handleSelectCell(node.cellIdx)}
                 defaultModel={defaultModel}
               />
             </div>
           ))}
 
           {/* Empty state hint */}
-          {phases.length === 0 && (
+          {cells.length === 0 && (
             <div className="cascade-empty-hint">
               <Icon icon="mdi:hand-back-left" width="32" />
-              <span>Drag phase types from the sidebar to start</span>
+              <span>Drag cell types from the sidebar to start</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Bottom Detail Panel - hide completely when no phases */}
-      {phases.length > 0 && (
-        selectedPhase ? (
-          <PhaseDetailPanel
-            phase={selectedPhase}
-            index={selectedPhaseIndex}
-            cellState={cellStates[selectedPhase.name]}
-            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
+      {/* Bottom Detail Panel - hide completely when no cells */}
+      {cells.length > 0 && (
+        selectedCell ? (
+          <CellDetailPanel
+            cell={selectedCell}
+            index={selectedCellIndex}
+            cellState={cellStates[selectedCell.name]}
+            cellLogs={logs.filter(log => log.cell_name === selectedCell.name)}
             allSessionLogs={logs}
             currentSessionId={sessionToPoll}
-            onClose={() => setSelectedPhaseIndex(null)}
+            onClose={() => setSelectedCellIndex(null)}
           />
         ) : logs.length > 0 ? (
           <SessionMessagesLog
             logs={logs}
             currentSessionId={sessionToPoll}
-            onSelectPhase={(phaseName) => {
-              const idx = phases.findIndex(p => p.name === phaseName);
-              if (idx !== -1) setSelectedPhaseIndex(idx);
+            onSelectCell={(cellName) => {
+              const idx = cells.findIndex(c => c.name === cellName);
+              if (idx !== -1) setSelectedCellIndex(idx);
             }}
           />
         ) : (
           <div className="cascade-empty-detail">
             <Icon icon="mdi:cursor-pointer" width="32" />
-            <p>Select a phase above to view details</p>
+            <p>Select a cell above to view details</p>
           </div>
         )
       )}
 
-      {/* Right Side Panel - Phase Anatomy */}
-      {showAnatomyPanel && selectedPhase && (
+      {/* Right Side Panel - Cell Anatomy */}
+      {showAnatomyPanel && selectedCell && (
         <div className="cascade-anatomy-panel-container">
-          <PhaseAnatomyPanel
-            phase={selectedPhase}
-            phaseLogs={logs.filter(log => log.phase_name === selectedPhase.name)}
-            cellState={cellStates[selectedPhase.name]}
+          <CellAnatomyPanel
+            cell={selectedCell}
+            cellLogs={logs.filter(log => log.cell_name === selectedCell.name)}
+            cellState={cellStates[selectedCell.name]}
             onClose={() => setShowAnatomyPanel(false)}
           />
         </div>

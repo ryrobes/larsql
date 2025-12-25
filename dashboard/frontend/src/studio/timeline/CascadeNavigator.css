@@ -124,12 +124,12 @@
   background-color: rgba(255, 255, 255, 0.03);
 }
 
-.nav-phases-section .nav-section-header {
+.nav-cells-section .nav-section-header {
   padding-bottom: 6px;
   cursor: default;
 }
 
-.nav-phases-section .nav-section-header:hover {
+.nav-cells-section .nav-section-header:hover {
   background-color: transparent;
 }
 
@@ -179,21 +179,21 @@
    PHASES LIST
    ============================================ */
 
-.nav-phases-list {
+.nav-cells-list {
   padding: 0 8px 8px 8px;
 }
 
-.nav-phase-node {
+.nav-cell-node {
   border-radius: 6px;
   margin-bottom: 2px;
   transition: background-color 0.15s ease;
 }
 
-.nav-phase-node.active {
+.nav-cell-node.active {
   background-color: rgba(45, 212, 191, 0.1);
 }
 
-.nav-phase-row {
+.nav-cell-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -203,15 +203,15 @@
   transition: background-color 0.15s ease;
 }
 
-.nav-phase-row:hover {
+.nav-cell-row:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-.nav-phase-node.active .nav-phase-row {
+.nav-cell-node.active .nav-cell-row {
   background-color: rgba(45, 212, 191, 0.15);
 }
 
-.phase-status-icon {
+.cell-status-icon {
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -221,7 +221,7 @@
   flex-shrink: 0;
 }
 
-.nav-phase-name {
+.nav-cell-name {
   flex: 1;
   color: #e2e8f0;
   white-space: nowrap;
@@ -229,7 +229,7 @@
   text-overflow: ellipsis;
 }
 
-.nav-phase-stats {
+.nav-cell-stats {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -237,7 +237,7 @@
   flex-shrink: 0;
 }
 
-.nav-phase-rows {
+.nav-cell-rows {
   font-size: 10px;
   color: #64748b;
   background: rgba(100, 116, 139, 0.2);
@@ -246,7 +246,7 @@
   white-space: nowrap;
 }
 
-.nav-phase-duration {
+.nav-cell-duration {
   font-size: 10px;
   color: #00e5ff;
   background: rgba(45, 212, 191, 0.15);
@@ -256,7 +256,7 @@
   white-space: nowrap;
 }
 
-.nav-phase-cached {
+.nav-cell-cached {
   font-size: 9px;
   color: #a78bfa;
   background: rgba(167, 139, 250, 0.15);
@@ -271,7 +271,7 @@
    PHASE COLUMNS (Expandable)
    ============================================ */
 
-.nav-phase-columns {
+.nav-cell-columns {
   padding: 4px 8px 8px 36px;
   border-left: 2px solid #1a1628;
   margin-left: 19px;
@@ -432,7 +432,7 @@
 }
 
 /* Phase Types Section - Draggable Palette */
-.nav-phase-types-content {
+.nav-cell-types-content {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
@@ -441,7 +441,7 @@
   align-items: flex-start;
 }
 
-.nav-phase-types-hint {
+.nav-cell-types-hint {
   font-size: 9px;
   color: #475569;
   font-style: italic;
@@ -450,7 +450,7 @@
   width: 100%;
 }
 
-.nav-phase-type-pill {
+.nav-cell-type-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -463,17 +463,17 @@
   user-select: none;
 }
 
-.nav-phase-type-pill:hover {
+.nav-cell-type-pill:hover {
   background-color: rgba(255, 255, 255, 0.03);
   border-color: rgba(100, 116, 139, 0.2);
 }
 
-.nav-phase-type-pill.dragging {
+.nav-cell-type-pill.dragging {
   opacity: 0.4;
   cursor: grabbing;
 }
 
-.nav-phase-type-pill span {
+.nav-cell-type-pill span {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -481,17 +481,17 @@
 }
 
 /* Phase Type Subsections */
-.nav-phase-subsection {
+.nav-cell-subsection {
   border-top: 1px solid rgba(26, 22, 40, 0.5);
   margin-top: 8px;
 }
 
-.nav-phase-subsection:first-child {
+.nav-cell-subsection:first-child {
   border-top: none;
   margin-top: 0;
 }
 
-.nav-phase-subsection-header {
+.nav-cell-subsection-header {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -500,7 +500,7 @@
   transition: background-color 0.15s ease;
 }
 
-.nav-phase-subsection-header:hover {
+.nav-cell-subsection-header:hover {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
@@ -739,7 +739,7 @@
    RABBITIZE ARTIFACTS (nested in Phases)
    ============================================ */
 
-.nav-phase-artifacts {
+.nav-cell-artifacts {
   display: flex;
   flex-direction: column;
   gap: 4px;

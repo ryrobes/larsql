@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon } from '@iconify/react';
-import './TackleChips.css';
+import './TraitChips.css';
 
 /**
  * TackleChips - Visual chips component for selecting tools

@@ -59,23 +59,23 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
   const durationDisplay = formatDuration(duration);
 
   return (
-    <div className={`sounding-lane ${isWinner ? 'sounding-lane-winner' : ''} ${isLoser ? 'sounding-lane-loser' : ''} sounding-lane-${status}`}>
+    <div className={`candidate-lane ${isWinner ? 'candidate-lane-winner' : ''} ${isLoser ? 'candidate-lane-loser' : ''} candidate-lane-${status}`}>
       {/* Lane header */}
-      <div className="sounding-lane-header">
-        <span className="sounding-lane-index">
-          {isWinner && <Icon icon="mdi:crown" width="12" className="sounding-lane-crown" />}
-          {isLoser && <Icon icon="mdi:close-circle" width="10" className="sounding-lane-loser-icon" />}
+      <div className="candidate-lane-header">
+        <span className="candidate-lane-index">
+          {isWinner && <Icon icon="mdi:crown" width="12" className="candidate-lane-crown" />}
+          {isLoser && <Icon icon="mdi:close-circle" width="10" className="candidate-lane-loser-icon" />}
           S{index}
         </span>
       </div>
 
       {/* Mutation row */}
       {mutation && (
-        <div className="sounding-lane-row sounding-lane-mutation">
-          <span className="sounding-lane-row-label">
+        <div className="candidate-lane-row candidate-lane-mutation">
+          <span className="candidate-lane-row-label">
             <Icon icon="mdi:shuffle-variant" width="10" />
           </span>
-          <span className={`sounding-lane-mutation-badge mutation-${mutation}`}>
+          <span className={`candidate-lane-mutation-badge mutation-${mutation}`}>
             {mutation}
           </span>
         </div>
@@ -83,12 +83,12 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
 
       {/* Model row */}
       {model && (
-        <div className="sounding-lane-row sounding-lane-model">
-          <span className="sounding-lane-row-label">
+        <div className="candidate-lane-row candidate-lane-model">
+          <span className="candidate-lane-row-label">
             <ModelIcon modelId={model} size={10} />
           </span>
           <span
-            className="sounding-lane-model-name"
+            className="candidate-lane-model-name"
             title={model}
             style={{ color: getProviderColor(getProvider(model)) }}
           >
@@ -98,41 +98,41 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
       )}
 
       {/* Turns stack divider */}
-      <div className="sounding-lane-divider" />
+      <div className="candidate-lane-divider" />
 
       {/* Turns stack */}
-      <div className="sounding-lane-turns">
+      <div className="candidate-lane-turns">
         {turnSlots.map((slot) => (
           <div
             key={slot.index}
-            className={`sounding-lane-turn ${slot.isUsed ? 'used' : 'unused'} ${slot.isEarlyExit ? 'early-exit' : ''} ${slot.validationFailed ? 'validation-failed' : ''}`}
+            className={`candidate-lane-turn ${slot.isUsed ? 'used' : 'unused'} ${slot.isEarlyExit ? 'early-exit' : ''} ${slot.validationFailed ? 'validation-failed' : ''}`}
           >
-            <span className="sounding-lane-turn-index">T{slot.index}</span>
+            <span className="candidate-lane-turn-index">T{slot.index}</span>
 
             {/* Tool call badges */}
             {slot.toolCalls.length > 0 && (
-              <div className="sounding-lane-turn-tools">
+              <div className="candidate-lane-turn-tools">
                 {slot.toolCalls.slice(0, 3).map((tc, idx) => (
-                  <span key={idx} className="sounding-lane-tool-badge" title={tc.name || tc}>
+                  <span key={idx} className="candidate-lane-tool-badge" title={tc.name || tc}>
                     <Icon icon="mdi:hammer-wrench" width="8" />
                   </span>
                 ))}
                 {slot.toolCalls.length > 3 && (
-                  <span className="sounding-lane-tool-more">+{slot.toolCalls.length - 3}</span>
+                  <span className="candidate-lane-tool-more">+{slot.toolCalls.length - 3}</span>
                 )}
               </div>
             )}
 
             {/* Turn duration */}
             {slot.duration && (
-              <span className="sounding-lane-turn-duration" title={`Turn ${slot.index} duration`}>
+              <span className="candidate-lane-turn-duration" title={`Turn ${slot.index} duration`}>
                 {formatDuration(slot.duration)}
               </span>
             )}
 
             {/* Validation marker */}
             {loopUntil && slot.isUsed && (
-              <span className={`sounding-lane-turn-validation ${slot.isEarlyExit ? 'passed' : ''} ${slot.validationFailed ? 'failed' : ''}`}>
+              <span className={`candidate-lane-turn-validation ${slot.isEarlyExit ? 'passed' : ''} ${slot.validationFailed ? 'failed' : ''}`}>
                 {slot.isEarlyExit ? (
                   <Icon icon="mdi:lightning-bolt" width="10" title="Early exit - validation passed" />
                 ) : slot.validationFailed ? (
@@ -145,9 +145,9 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
 
             {/* Inline failure reason for loop_until failures */}
             {slot.validationFailed && slot.validationReason && (
-              <div className="sounding-lane-turn-validation-failure">
+              <div className="candidate-lane-turn-validation-failure">
                 <Icon icon="mdi:alert-circle" width="10" />
-                <span className="sounding-lane-turn-validation-reason">
+                <span className="candidate-lane-turn-validation-reason">
                   {slot.validationReason.length > 50
                     ? slot.validationReason.substring(0, 50) + '...'
                     : slot.validationReason}
@@ -160,40 +160,40 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
 
       {/* Unused turns indicator */}
       {turns.length < maxTurns && maxTurns > 1 && (
-        <div className="sounding-lane-unused">
-          <span className="sounding-lane-unused-label">
+        <div className="candidate-lane-unused">
+          <span className="candidate-lane-unused-label">
             (max {maxTurns})
           </span>
         </div>
       )}
 
       {/* Lane footer divider */}
-      <div className="sounding-lane-divider" />
+      <div className="candidate-lane-divider" />
 
       {/* Footer stats */}
-      <div className="sounding-lane-footer">
+      <div className="candidate-lane-footer">
         {hasExecution ? (
           <>
             {cost > 0 && (
-              <span className="sounding-lane-stat sounding-lane-cost">
+              <span className="candidate-lane-stat candidate-lane-cost">
                 ${cost < 0.01 ? '<.01' : cost.toFixed(3)}
               </span>
             )}
             {durationDisplay && (
-              <span className="sounding-lane-stat sounding-lane-duration">
+              <span className="candidate-lane-stat candidate-lane-duration">
                 <Icon icon="mdi:clock-outline" width="10" />
                 {durationDisplay}
               </span>
             )}
-            <span className="sounding-lane-stat sounding-lane-turns-count">
+            <span className="candidate-lane-stat candidate-lane-turns-count">
               {turns.filter(t => t.status !== 'pending').length} turns
             </span>
-            <span className="sounding-lane-stat sounding-lane-tools-count">
+            <span className="candidate-lane-stat candidate-lane-tools-count">
               {totalToolCalls} tools
             </span>
           </>
         ) : (
-          <span className="sounding-lane-stat sounding-lane-tools-count">
+          <span className="candidate-lane-stat candidate-lane-tools-count">
             {maxTurns} max turns
           </span>
         )}

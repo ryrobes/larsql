@@ -1,133 +1,79 @@
 cascade_id: llm_sentiment_analysis
-description: "Multi-language pipeline: SQL → LLM (sentiment) → Python (visualization). Shows LLM analyzing customer reviews with chart output."
+description: 'Multi-language pipeline: SQL → LLM (sentiment) → Python (visualization).
+  Shows LLM analyzing customer reviews with chart output.'
 inputs_schema: {}
-
-phases:
-  - name: customer_reviews
-    tool: sql_data
-    inputs:
-      query: |
-        -- Customer product reviews
-        SELECT * FROM (
-          VALUES
-            ('R001', 'Wireless Headphones', 5, 'Absolutely love these! Best headphones I have ever owned. Crystal clear sound.'),
-            ('R002', 'Wireless Headphones', 2, 'Battery life is disappointing. Dies after 3 hours. Not worth the price.'),
-            ('R003', 'Smart Watch', 4, 'Great features but the app could be better. Overall happy with purchase.'),
-            ('R004', 'Smart Watch', 1, 'Stopped working after 2 weeks. Customer service was unhelpful. Waste of money.'),
-            ('R005', 'Laptop Stand', 5, 'Perfect for my home office setup. Sturdy and looks great.'),
-            ('R006', 'Laptop Stand', 4, 'Good quality, easy assembly. Slightly wobbly but does the job.'),
-            ('R007', 'USB Hub', 3, 'Works as expected, nothing special. Gets warm during heavy use.'),
-            ('R008', 'USB Hub', 5, 'Finally a hub that actually works! All ports function perfectly.'),
-            ('R009', 'Wireless Mouse', 2, 'Scroll wheel broke after a month. Cheap quality materials.'),
-            ('R010', 'Wireless Mouse', 5, 'So comfortable and precise. Best mouse for productivity.')
-        ) AS t(review_id, product, stars, review_text)
-    handoffs: [llm_sentiment]
-
-  - name: llm_sentiment
-    tool: windlass_data
-    inputs:
-      code: |
-        instructions: |
-          Analyze the sentiment and key themes in these customer reviews.
-
-          Reviews:
-          {{outputs.customer_reviews}}
-
-          For each review, extract:
-          1. sentiment_score: Float from -1.0 (very negative) to 1.0 (very positive)
-          2. key_themes: Array of 1-3 main themes mentioned (e.g., "battery life", "build quality")
-          3. purchase_intent: Would this review encourage or discourage purchase? ("encourage", "neutral", "discourage")
-          4. summary: One sentence summary of the review
-
-        model: google/gemini-2.5-flash
-
-        output_schema:
-          type: array
-          items:
-            type: object
-            properties:
-              review_id: { type: string }
-              product: { type: string }
-              stars: { type: integer }
-              sentiment_score: { type: number }
-              key_themes:
-                type: array
-                items: { type: string }
-              purchase_intent: { type: string }
-              summary: { type: string }
-            required: [review_id, product, sentiment_score, key_themes, purchase_intent]
-    handoffs: [python_visualize]
-
-  - name: python_visualize
-    tool: python_data
-    inputs:
-      code: |
-        import matplotlib.pyplot as plt
-        import numpy as np
-
-        # Get sentiment data
-        df = data.llm_sentiment
-
-        # Create figure with subplots
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        fig.patch.set_facecolor('#0a0a0a')
-
-        # Plot 1: Sentiment by Product
-        ax1 = axes[0]
-        ax1.set_facecolor('#0a0a0a')
-
-        products = df.groupby('product')['sentiment_score'].mean().sort_values()
-        colors = ['#f87171' if v < 0 else '#34d399' for v in products.values]
-
-        bars = ax1.barh(products.index, products.values, color=colors)
-        ax1.axvline(x=0, color='#475569', linestyle='-', linewidth=0.5)
-        ax1.set_xlabel('Average Sentiment Score', color='#94a3b8')
-        ax1.set_title('Sentiment by Product', color='#f0f4f8', fontweight='bold')
-        ax1.tick_params(colors='#94a3b8')
-        ax1.set_xlim(-1, 1)
-
-        for spine in ax1.spines.values():
-            spine.set_color('#1e293b')
-
-        # Plot 2: Stars vs Sentiment Correlation
-        ax2 = axes[1]
-        ax2.set_facecolor('#0a0a0a')
-
-        scatter_colors = ['#f87171' if s < 0 else '#fbbf24' if s < 0.5 else '#34d399'
-                          for s in df['sentiment_score']]
-        ax2.scatter(df['stars'], df['sentiment_score'], c=scatter_colors, s=100, alpha=0.7)
-
-        # Add trend line
-        z = np.polyfit(df['stars'], df['sentiment_score'], 1)
-        p = np.poly1d(z)
-        ax2.plot([1, 5], [p(1), p(5)], color='#60a5fa', linestyle='--', alpha=0.5)
-
-        ax2.set_xlabel('Star Rating', color='#94a3b8')
-        ax2.set_ylabel('Sentiment Score', color='#f0f4f8')
-        ax2.set_title('Stars vs LLM Sentiment', color='#f0f4f8', fontweight='bold')
-        ax2.tick_params(colors='#94a3b8')
-        ax2.set_xlim(0.5, 5.5)
-        ax2.set_ylim(-1.1, 1.1)
-
-        for spine in ax2.spines.values():
-            spine.set_color('#1e293b')
-
-        plt.tight_layout()
-        result = fig
-    handoffs: [final_summary]
-
-  - name: final_summary
-    tool: sql_data
-    inputs:
-      query: |
-        -- Final summary with sentiment analysis results
-        SELECT
-          product,
-          COUNT(*) as review_count,
-          ROUND(AVG(stars), 1) as avg_stars,
-          ROUND(AVG(sentiment_score), 2) as avg_sentiment,
-          SUM(CASE WHEN purchase_intent = 'encourage' THEN 1 ELSE 0 END) as would_encourage,
-          SUM(CASE WHEN purchase_intent = 'discourage' THEN 1 ELSE 0 END) as would_discourage
-        FROM _llm_sentiment
-        GROUP BY product
-        ORDER BY avg_sentiment DESC
+cells:
+- name: customer_reviews
+  tool: sql_data
+  inputs:
+    query: "-- Customer product reviews\nSELECT * FROM (\n  VALUES\n    ('R001', 'Wireless\
+      \ Headphones', 5, 'Absolutely love these! Best headphones I have ever owned.\
+      \ Crystal clear sound.'),\n    ('R002', 'Wireless Headphones', 2, 'Battery life\
+      \ is disappointing. Dies after 3 hours. Not worth the price.'),\n    ('R003',\
+      \ 'Smart Watch', 4, 'Great features but the app could be better. Overall happy\
+      \ with purchase.'),\n    ('R004', 'Smart Watch', 1, 'Stopped working after 2\
+      \ weeks. Customer service was unhelpful. Waste of money.'),\n    ('R005', 'Laptop\
+      \ Stand', 5, 'Perfect for my home office setup. Sturdy and looks great.'),\n\
+      \    ('R006', 'Laptop Stand', 4, 'Good quality, easy assembly. Slightly wobbly\
+      \ but does the job.'),\n    ('R007', 'USB Hub', 3, 'Works as expected, nothing\
+      \ special. Gets warm during heavy use.'),\n    ('R008', 'USB Hub', 5, 'Finally\
+      \ a hub that actually works! All ports function perfectly.'),\n    ('R009',\
+      \ 'Wireless Mouse', 2, 'Scroll wheel broke after a month. Cheap quality materials.'),\n\
+      \    ('R010', 'Wireless Mouse', 5, 'So comfortable and precise. Best mouse for\
+      \ productivity.')\n) AS t(review_id, product, stars, review_text)\n"
+  handoffs:
+  - llm_sentiment
+- name: llm_sentiment
+  tool: windlass_data
+  inputs:
+    code: "instructions: |\n  Analyze the sentiment and key themes in these customer\
+      \ reviews.\n\n  Reviews:\n  {{outputs.customer_reviews}}\n\n  For each review,\
+      \ extract:\n  1. sentiment_score: Float from -1.0 (very negative) to 1.0 (very\
+      \ positive)\n  2. key_themes: Array of 1-3 main themes mentioned (e.g., \"battery\
+      \ life\", \"build quality\")\n  3. purchase_intent: Would this review encourage\
+      \ or discourage purchase? (\"encourage\", \"neutral\", \"discourage\")\n  4.\
+      \ summary: One sentence summary of the review\n\nmodel: google/gemini-2.5-flash\n\
+      \noutput_schema:\n  type: array\n  items:\n    type: object\n    properties:\n\
+      \      review_id: { type: string }\n      product: { type: string }\n      stars:\
+      \ { type: integer }\n      sentiment_score: { type: number }\n      key_themes:\n\
+      \        type: array\n        items: { type: string }\n      purchase_intent:\
+      \ { type: string }\n      summary: { type: string }\n    required: [review_id,\
+      \ product, sentiment_score, key_themes, purchase_intent]\n"
+  handoffs:
+  - python_visualize
+- name: python_visualize
+  tool: python_data
+  inputs:
+    code: "import matplotlib.pyplot as plt\nimport numpy as np\n\n# Get sentiment\
+      \ data\ndf = data.llm_sentiment\n\n# Create figure with subplots\nfig, axes\
+      \ = plt.subplots(1, 2, figsize=(14, 5))\nfig.patch.set_facecolor('#0a0a0a')\n\
+      \n# Plot 1: Sentiment by Product\nax1 = axes[0]\nax1.set_facecolor('#0a0a0a')\n\
+      \nproducts = df.groupby('product')['sentiment_score'].mean().sort_values()\n\
+      colors = ['#f87171' if v < 0 else '#34d399' for v in products.values]\n\nbars\
+      \ = ax1.barh(products.index, products.values, color=colors)\nax1.axvline(x=0,\
+      \ color='#475569', linestyle='-', linewidth=0.5)\nax1.set_xlabel('Average Sentiment\
+      \ Score', color='#94a3b8')\nax1.set_title('Sentiment by Product', color='#f0f4f8',\
+      \ fontweight='bold')\nax1.tick_params(colors='#94a3b8')\nax1.set_xlim(-1, 1)\n\
+      \nfor spine in ax1.spines.values():\n    spine.set_color('#1e293b')\n\n# Plot\
+      \ 2: Stars vs Sentiment Correlation\nax2 = axes[1]\nax2.set_facecolor('#0a0a0a')\n\
+      \nscatter_colors = ['#f87171' if s < 0 else '#fbbf24' if s < 0.5 else '#34d399'\n\
+      \                  for s in df['sentiment_score']]\nax2.scatter(df['stars'],\
+      \ df['sentiment_score'], c=scatter_colors, s=100, alpha=0.7)\n\n# Add trend\
+      \ line\nz = np.polyfit(df['stars'], df['sentiment_score'], 1)\np = np.poly1d(z)\n\
+      ax2.plot([1, 5], [p(1), p(5)], color='#60a5fa', linestyle='--', alpha=0.5)\n\
+      \nax2.set_xlabel('Star Rating', color='#94a3b8')\nax2.set_ylabel('Sentiment\
+      \ Score', color='#f0f4f8')\nax2.set_title('Stars vs LLM Sentiment', color='#f0f4f8',\
+      \ fontweight='bold')\nax2.tick_params(colors='#94a3b8')\nax2.set_xlim(0.5, 5.5)\n\
+      ax2.set_ylim(-1.1, 1.1)\n\nfor spine in ax2.spines.values():\n    spine.set_color('#1e293b')\n\
+      \nplt.tight_layout()\nresult = fig\n"
+  handoffs:
+  - final_summary
+- name: final_summary
+  tool: sql_data
+  inputs:
+    query: "-- Final summary with sentiment analysis results\nSELECT\n  product,\n\
+      \  COUNT(*) as review_count,\n  ROUND(AVG(stars), 1) as avg_stars,\n  ROUND(AVG(sentiment_score),\
+      \ 2) as avg_sentiment,\n  SUM(CASE WHEN purchase_intent = 'encourage' THEN 1\
+      \ ELSE 0 END) as would_encourage,\n  SUM(CASE WHEN purchase_intent = 'discourage'\
+      \ THEN 1 ELSE 0 END) as would_discourage\nFROM _llm_sentiment\nGROUP BY product\n\
+      ORDER BY avg_sentiment DESC\n"

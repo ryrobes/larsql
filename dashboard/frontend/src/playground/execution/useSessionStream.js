@@ -114,7 +114,7 @@ export function derivePhaseState(logs, phaseName) {
   }
 
   // Filter logs for this phase
-  const phaseLogs = logs.filter(r => r.phase_name === phaseName);
+  const phaseLogs = logs.filter(r => r.cell_name === phaseName);
 
   if (phaseLogs.length === 0) {
     return emptyState;
@@ -147,7 +147,7 @@ export function derivePhaseState(logs, phaseName) {
 
   for (const row of phaseLogs) {
     const role = row.role;
-    const sidx = row.sounding_index;
+    const sidx = row.candidate_index;
     const rstep = row.reforge_step;
     const rawContent = row.content_json;
     const content = parseContent(rawContent);
@@ -592,7 +592,7 @@ export function useSessionStream(sessionId) {
   // Derive phase states from logs
   const phaseStates = useMemo(() => {
     const states = {};
-    const phaseNames = new Set(logs.map(r => r.phase_name).filter(Boolean));
+    const phaseNames = new Set(logs.map(r => r.cell_name).filter(Boolean));
 
     for (const phaseName of phaseNames) {
       states[phaseName] = derivePhaseState(logs, phaseName);

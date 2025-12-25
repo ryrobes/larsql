@@ -1,109 +1,63 @@
 cascade_id: polyglot_showcase
-description: "Demonstrates all 4 notebook languages working together: SQL, Python, JavaScript, and Clojure passing data through a transformation pipeline."
+description: 'Demonstrates all 4 notebook languages working together: SQL, Python,
+  JavaScript, and Clojure passing data through a transformation pipeline.'
 inputs_schema: {}
-
-phases:
-  - name: raw_data
-    tool: sql_data
-    inputs:
-      query: |
-        -- Generate sample sales data
-        SELECT * FROM (
-          VALUES
-            ('2024-01-15', 'Electronics', 'Laptop', 1200, 3),
-            ('2024-01-16', 'Electronics', 'Phone', 800, 5),
-            ('2024-01-17', 'Clothing', 'Jacket', 150, 10),
-            ('2024-01-18', 'Electronics', 'Tablet', 500, 4),
-            ('2024-01-19', 'Clothing', 'Shoes', 120, 8),
-            ('2024-01-20', 'Home', 'Lamp', 75, 15),
-            ('2024-01-21', 'Home', 'Chair', 250, 6),
-            ('2024-01-22', 'Electronics', 'Headphones', 200, 12)
-        ) AS t(date, category, product, price, quantity)
-    handoffs: [python_enrichment]
-
-  - name: python_enrichment
-    tool: python_data
-    inputs:
-      code: |
-        # Add calculated columns using pandas
-        import pandas as pd
-
-        df = data.raw_data
-
-        # Calculate revenue and add profit margin
-        df['revenue'] = df['price'] * df['quantity']
-        df['profit_margin'] = df['category'].map({
-            'Electronics': 0.15,
-            'Clothing': 0.40,
-            'Home': 0.25
-        })
-        df['profit'] = df['revenue'] * df['profit_margin']
-        df['date'] = pd.to_datetime(df['date'])
-        df['day_of_week'] = df['date'].dt.day_name()
-
-        result = df
-    handoffs: [js_transform]
-
-  - name: js_transform
-    tool: js_data
-    inputs:
-      code: |
-        // Add sales performance classification using JavaScript
-        const enrichedData = data.python_enrichment;
-
-        result = enrichedData.map(row => ({
-          ...row,
-          // Classify by revenue
-          performance: row.revenue >= 3000 ? 'High'
-                     : row.revenue >= 1000 ? 'Medium'
-                     : 'Low',
-          // Calculate price tier
-          priceTier: row.price >= 500 ? 'Premium'
-                   : row.price >= 150 ? 'Standard'
-                   : 'Budget',
-          // Format currency
-          revenueFormatted: `$${row.revenue.toLocaleString()}`,
-          profitFormatted: `$${row.profit.toFixed(2)}`
-        }));
-    handoffs: [clojure_analysis]
-
-  - name: clojure_analysis
-    tool: clojure_data
-    inputs:
-      code: |
-        ;; Aggregate and analyze using Clojure's functional style
-        ;; Note: phase names are keywords in kebab-case (js_transform -> :js-transform)
-        (let [sales (:js-transform data)
-
-              ;; Group by category and calculate totals
-              by-category (group-by :category sales)
-
-              category-summary
-              (for [[cat items] by-category]
-                {:category cat
-                 :total_revenue (reduce + (map :revenue items))
-                 :total_profit (reduce + (map :profit items))
-                 :item_count (count items)
-                 :avg_price (/ (reduce + (map :price items)) (count items))
-                 :products (mapv :product items)})]
-
-          ;; Return sorted by revenue descending
-          (vec (sort-by :total_revenue > category-summary)))
-    handoffs: [final_report]
-
-  - name: final_report
-    tool: sql_data
-    inputs:
-      query: |
-        -- Query the Clojure analysis results
-        -- Each prior cell output is available as a temp table
-
-        SELECT
-          category,
-          total_revenue,
-          total_profit,
-          item_count,
-          ROUND(avg_price, 2) as avg_price,
-          array_to_string(products, ', ') as products
-        FROM _clojure_analysis
-        ORDER BY total_revenue DESC
+cells:
+- name: raw_data
+  tool: sql_data
+  inputs:
+    query: "-- Generate sample sales data\nSELECT * FROM (\n  VALUES\n    ('2024-01-15',\
+      \ 'Electronics', 'Laptop', 1200, 3),\n    ('2024-01-16', 'Electronics', 'Phone',\
+      \ 800, 5),\n    ('2024-01-17', 'Clothing', 'Jacket', 150, 10),\n    ('2024-01-18',\
+      \ 'Electronics', 'Tablet', 500, 4),\n    ('2024-01-19', 'Clothing', 'Shoes',\
+      \ 120, 8),\n    ('2024-01-20', 'Home', 'Lamp', 75, 15),\n    ('2024-01-21',\
+      \ 'Home', 'Chair', 250, 6),\n    ('2024-01-22', 'Electronics', 'Headphones',\
+      \ 200, 12)\n) AS t(date, category, product, price, quantity)\n"
+  handoffs:
+  - python_enrichment
+- name: python_enrichment
+  tool: python_data
+  inputs:
+    code: "# Add calculated columns using pandas\nimport pandas as pd\n\ndf = data.raw_data\n\
+      \n# Calculate revenue and add profit margin\ndf['revenue'] = df['price'] * df['quantity']\n\
+      df['profit_margin'] = df['category'].map({\n    'Electronics': 0.15,\n    'Clothing':\
+      \ 0.40,\n    'Home': 0.25\n})\ndf['profit'] = df['revenue'] * df['profit_margin']\n\
+      df['date'] = pd.to_datetime(df['date'])\ndf['day_of_week'] = df['date'].dt.day_name()\n\
+      \nresult = df\n"
+  handoffs:
+  - js_transform
+- name: js_transform
+  tool: js_data
+  inputs:
+    code: "// Add sales performance classification using JavaScript\nconst enrichedData\
+      \ = data.python_enrichment;\n\nresult = enrichedData.map(row => ({\n  ...row,\n\
+      \  // Classify by revenue\n  performance: row.revenue >= 3000 ? 'High'\n   \
+      \          : row.revenue >= 1000 ? 'Medium'\n             : 'Low',\n  // Calculate\
+      \ price tier\n  priceTier: row.price >= 500 ? 'Premium'\n           : row.price\
+      \ >= 150 ? 'Standard'\n           : 'Budget',\n  // Format currency\n  revenueFormatted:\
+      \ `$${row.revenue.toLocaleString()}`,\n  profitFormatted: `$${row.profit.toFixed(2)}`\n\
+      }));\n"
+  handoffs:
+  - clojure_analysis
+- name: clojure_analysis
+  tool: clojure_data
+  inputs:
+    code: ";; Aggregate and analyze using Clojure's functional style\n;; Note: phase\
+      \ names are keywords in kebab-case (js_transform -> :js-transform)\n(let [sales\
+      \ (:js-transform data)\n\n      ;; Group by category and calculate totals\n\
+      \      by-category (group-by :category sales)\n\n      category-summary\n  \
+      \    (for [[cat items] by-category]\n        {:category cat\n         :total_revenue\
+      \ (reduce + (map :revenue items))\n         :total_profit (reduce + (map :profit\
+      \ items))\n         :item_count (count items)\n         :avg_price (/ (reduce\
+      \ + (map :price items)) (count items))\n         :products (mapv :product items)})]\n\
+      \n  ;; Return sorted by revenue descending\n  (vec (sort-by :total_revenue >\
+      \ category-summary)))\n"
+  handoffs:
+  - final_report
+- name: final_report
+  tool: sql_data
+  inputs:
+    query: "-- Query the Clojure analysis results\n-- Each prior cell output is available\
+      \ as a temp table\n\nSELECT\n  category,\n  total_revenue,\n  total_profit,\n\
+      \  item_count,\n  ROUND(avg_price, 2) as avg_price,\n  array_to_string(products,\
+      \ ', ') as products\nFROM _clojure_analysis\nORDER BY total_revenue DESC\n"

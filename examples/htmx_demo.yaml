@@ -1,39 +1,54 @@
 cascade_id: htmx_checkpoint_demo
-description: |
-  Demonstration of HTMX-based checkpoint rendering.
+description: 'Demonstration of HTMX-based checkpoint rendering.
+
   Shows how LLMs can generate interactive HTML forms with HTMX attributes
+
   for richer human-in-the-loop experiences.
 
+  '
 inputs_schema:
-  task: "What to create a report about"
+  task: What to create a report about
+cells:
+- name: generate_and_request_approval
+  traits:
+  - request_decision
+  - route_to
+  handoffs:
+  - final_output
+  instructions: 'Create a brief 3-point report about: {{ input.task }}
 
-phases:
-  - name: generate_and_request_approval
-    tackle: ["request_decision", "route_to"]
-    handoffs:
-      - final_output
-    instructions: |
-      Create a brief 3-point report about: {{ input.task }}
 
-      Then request approval from the user using request_decision with custom HTMX HTML
-      (use the html parameter to create an interactive approval form).
+    Then request approval from the user using request_decision with custom HTMX HTML
 
-      When you receive the decision, route to final_output.
+    (use the html parameter to create an interactive approval form).
 
-  - name: final_output
-    instructions: |
-      ## Report
-      (Extract from previous phase output)
 
-      ## User Decision
-      {{ outputs.generate_and_request_approval.selected }}
+    When you receive the decision, route to final_output.
 
-      {% if outputs.generate_and_request_approval.comments %}
-      ## User Comments
-      {{ outputs.generate_and_request_approval.comments }}
-      {% endif %}
+    '
+- name: final_output
+  instructions: '## Report
 
-      Provide a final summary acknowledging the user's decision.
+    (Extract from previous phase output)
 
-    context:
-      from: [generate_and_request_approval]
+
+    ## User Decision
+
+    {{ outputs.generate_and_request_approval.selected }}
+
+
+    {% if outputs.generate_and_request_approval.comments %}
+
+    ## User Comments
+
+    {{ outputs.generate_and_request_approval.comments }}
+
+    {% endif %}
+
+
+    Provide a final summary acknowledging the user''s decision.
+
+    '
+  context:
+    from:
+    - generate_and_request_approval

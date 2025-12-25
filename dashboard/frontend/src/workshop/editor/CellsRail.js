@@ -6,8 +6,8 @@ import {
 } from '@dnd-kit/sortable';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
-import PhaseBlock from './blocks/PhaseBlock';
-import './PhasesRail.css';
+import PhaseBlock from './blocks/CellBlock';
+import './CellsRail.css';
 
 /**
  * PhasesRail - Sortable vertical list of phases in the editor
@@ -29,7 +29,7 @@ function PhasesRail() {
     addPhase,
   } = useWorkshopStore();
 
-  const phases = cascade.phases || [];
+  const phases = cascade.cells || [];
 
   // Droppable zone for new phases from palette
   const { setNodeRef: setDropZoneRef, isOver } = useDroppable({

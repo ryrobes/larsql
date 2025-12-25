@@ -33,7 +33,7 @@ function DraggablePaletteBlock({ block }) {
 }
 
 /**
- * DraggableToolBlock - Draggable tool from Windlass
+ * DraggableToolBlock - Draggable tool from RVBBIT
  */
 function DraggableToolBlock({ tool }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({

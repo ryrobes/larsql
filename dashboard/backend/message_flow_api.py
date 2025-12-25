@@ -10,7 +10,7 @@ import os
 
 # Add windlass to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from windlass.db_adapter import get_db
+from rvbbit.db_adapter import get_db
 
 message_flow_bp = Blueprint('message_flow', __name__)
 
@@ -131,10 +131,10 @@ def get_message_flow(session_id):
             toUnixTimestamp64Micro(timestamp) / 1000000.0 as timestamp,
             role,
             node_type,
-            sounding_index,
+            candidate_index,
             reforge_step,
             turn_number,
-            phase_name,
+            cell_name,
             content_json,
             full_request_json,
             tokens_in,
@@ -154,8 +154,8 @@ def get_message_flow(session_id):
         rows = db.query(query)
         # Convert to tuples for backward compatibility with existing code
         result = [
-            (r['timestamp'], r['role'], r['node_type'], r['sounding_index'],
-             r['reforge_step'], r['turn_number'], r['phase_name'], r['content_json'],
+            (r['timestamp'], r['role'], r['node_type'], r['candidate_index'],
+             r['reforge_step'], r['turn_number'], r['cell_name'], r['content_json'],
              r['full_request_json'], r['tokens_in'], r['tokens_out'], r['cost'],
              r['model'], r['is_winner'], r['metadata_json'], r.get('content_hash'),
              r.get('context_hashes', []), r.get('estimated_tokens', 0))
@@ -167,20 +167,20 @@ def get_message_flow(session_id):
 
         # Build structured response
         messages = []
-        soundings_by_phase = {}  # phase_name -> {sounding_index -> {messages: [], is_winner: bool}}
+        soundings_by_phase = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
         reforge_steps = {}  # reforge_step -> {messages: []} (flat, for backward compat)
-        reforge_by_phase = {}  # phase_name -> {reforge_step -> {messages: [], is_winner: bool}}
+        reforge_by_phase = {}  # cell_name -> {reforge_step -> {messages: [], is_winner: bool}}
 
         # Track evaluators by phase for later attachment to soundings blocks
-        evaluators_by_phase = {}  # phase_name -> evaluator message
+        evaluators_by_phase = {}  # cell_name -> evaluator message
 
         # Track the most recent phase that had soundings - reforges inherit this
         # (Reforge is always the refinement step after soundings complete)
         last_sounding_phase = None
 
         for row in result:
-            (timestamp, role, node_type, sounding_index, reforge_step, turn_number,
-             phase_name, content_json, full_request_json, tokens_in, tokens_out,
+            (timestamp, role, node_type, candidate_index, reforge_step, turn_number,
+             cell_name, content_json, full_request_json, tokens_in, tokens_out,
              cost, model, is_winner, metadata_json, content_hash, context_hashes,
              estimated_tokens) = row
 
@@ -227,10 +227,10 @@ def get_message_flow(session_id):
                 'timestamp': timestamp,
                 'role': role,
                 'node_type': node_type,
-                'sounding_index': int(sounding_index) if sounding_index is not None else None,
+                'candidate_index': int(candidate_index) if candidate_index is not None else None,
                 'reforge_step': int(reforge_step) if reforge_step is not None else None,
                 'turn_number': int(turn_number) if turn_number is not None else None,
-                'phase_name': phase_name,
+                'cell_name': cell_name,
                 'content': content,
                 'full_request': full_request,
                 'tokens_in': int(tokens_in) if tokens_in else 0,
@@ -249,11 +249,11 @@ def get_message_flow(session_id):
             # Track evaluator messages by phase (for phase-level soundings)
             # Also track reforge_evaluator using inherited phase
             if node_type in ('evaluator', 'reforge_evaluator'):
-                evaluator_phase = phase_name or last_sounding_phase
+                evaluator_phase = cell_name or last_sounding_phase
                 if evaluator_phase:
-                    # Update message's phase_name so it groups correctly in frontend
-                    if not phase_name and evaluator_phase:
-                        msg['phase_name'] = evaluator_phase
+                    # Update message's cell_name so it groups correctly in frontend
+                    if not cell_name and evaluator_phase:
+                        msg['cell_name'] = evaluator_phase
 
                     # Build comprehensive evaluator data including input observability
                     evaluator_data = {
@@ -287,14 +287,14 @@ def get_message_flow(session_id):
                     evaluators_by_phase[evaluator_phase] = evaluator_data
 
             # Categorize message for parallel branch visualization
-            # Use int() to normalize sounding_index (may be returned as float for nullable int)
-            if sounding_index is not None:
-                sounding_key = int(sounding_index)
-                phase_key = phase_name or '_unknown_'
+            # Use int() to normalize candidate_index (may be returned as float for nullable int)
+            if candidate_index is not None:
+                sounding_key = int(candidate_index)
+                phase_key = cell_name or '_unknown_'
 
                 # Track the phase for soundings - reforges will inherit this
-                if phase_name:
-                    last_sounding_phase = phase_name
+                if cell_name:
+                    last_sounding_phase = cell_name
 
                 if phase_key not in soundings_by_phase:
                     soundings_by_phase[phase_key] = {}
@@ -302,7 +302,7 @@ def get_message_flow(session_id):
                 if sounding_key not in soundings_by_phase[phase_key]:
                     soundings_by_phase[phase_key][sounding_key] = {
                         'index': sounding_key,
-                        'phase_name': phase_key,
+                        'cell_name': phase_key,
                         'messages': [],
                         'is_winner': False,
                         'first_timestamp': timestamp  # Track when this sounding started
@@ -313,14 +313,14 @@ def get_message_flow(session_id):
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
-                # Reforges inherit phase from their parent sounding when phase_name is NULL
+                # Reforges inherit phase from their parent sounding when cell_name is NULL
                 # (Reforge is always the final refinement step after soundings complete)
-                inherited_phase = phase_name or last_sounding_phase
+                inherited_phase = cell_name or last_sounding_phase
                 phase_key = inherited_phase or '_unknown_'
 
-                # Update message's phase_name so it groups correctly in frontend
-                if not phase_name and inherited_phase:
-                    msg['phase_name'] = inherited_phase
+                # Update message's cell_name so it groups correctly in frontend
+                if not cell_name and inherited_phase:
+                    msg['cell_name'] = inherited_phase
 
                 # Flat structure for backward compat
                 if reforge_key not in reforge_steps:
@@ -336,7 +336,7 @@ def get_message_flow(session_id):
                 if reforge_key not in reforge_by_phase[phase_key]:
                     reforge_by_phase[phase_key][reforge_key] = {
                         'step': reforge_key,
-                        'phase_name': phase_key,
+                        'cell_name': phase_key,
                         'messages': [],
                         'is_winner': False,
                         'first_timestamp': timestamp
@@ -362,7 +362,7 @@ def get_message_flow(session_id):
             evaluator = evaluators_by_phase.get(phase_key)
 
             soundings_blocks.append({
-                'phase_name': phase_key,
+                'cell_name': phase_key,
                 'soundings': sorted_soundings,
                 'first_timestamp': first_ts,
                 'winner_index': next((s['index'] for s in sorted_soundings if s['is_winner']), None),
@@ -386,7 +386,7 @@ def get_message_flow(session_id):
             first_ts = min(timestamps) if timestamps else 0
 
             reforge_blocks.append({
-                'phase_name': phase_key,
+                'cell_name': phase_key,
                 'reforge_steps': sorted_reforges,
                 'first_timestamp': first_ts,
                 'winner_step': next((r['step'] for r in sorted_reforges if r['is_winner']), None)
@@ -396,11 +396,11 @@ def get_message_flow(session_id):
         reforge_blocks.sort(key=lambda x: x['first_timestamp'])
 
         # Identify winner sounding phases and indexes
-        winner_sounding_keys = set()  # (phase_name, sounding_index) tuples
+        winner_sounding_keys = set()  # (cell_name, candidate_index) tuples
         for block in soundings_blocks:
             for s in block['soundings']:
                 if s['is_winner']:
-                    winner_sounding_keys.add((s['phase_name'], s['index']))
+                    winner_sounding_keys.add((s['cell_name'], s['index']))
 
         winner_reforge_steps = set(r['step'] for r in reforge_list if any(m['is_winner'] for m in r['messages']))
 
@@ -410,18 +410,18 @@ def get_message_flow(session_id):
         # (non-winners are shown in the soundings blocks section)
         main_flow = []
         for msg in messages:
-            # Normalize phase_name to match how we store it in soundings_by_phase
-            msg_phase_key = msg['phase_name'] or '_unknown_'
+            # Normalize cell_name to match how we store it in soundings_by_phase
+            msg_phase_key = msg['cell_name'] or '_unknown_'
 
             # Include message if:
             # 1. Not in any sounding/reforge (pre/post branching messages)
             # 2. OR it's in a winner sounding (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
             # Note: Non-winner soundings are shown separately in soundings_by_phase blocks
-            if msg['sounding_index'] is None and msg['reforge_step'] is None:
+            if msg['candidate_index'] is None and msg['reforge_step'] is None:
                 # Pre/post branching messages - always in main flow
                 main_flow.append(msg)
-            elif msg['sounding_index'] is not None and (msg_phase_key, msg['sounding_index']) in winner_sounding_keys:
+            elif msg['candidate_index'] is not None and (msg_phase_key, msg['candidate_index']) in winner_sounding_keys:
                 # All messages from winner sounding branch
                 main_flow.append(msg)
             elif msg['reforge_step'] is not None and msg['reforge_step'] in winner_reforge_steps:
@@ -447,8 +447,8 @@ def get_message_flow(session_id):
                     'tokens_in': msg.get('tokens_in', 0),
                     'role': msg.get('role'),
                     'node_type': msg.get('node_type'),
-                    'phase_name': msg.get('phase_name'),
-                    'sounding_index': msg.get('sounding_index'),
+                    'cell_name': msg.get('cell_name'),
+                    'candidate_index': msg.get('candidate_index'),
                     'reforge_step': msg.get('reforge_step'),
                     'turn_number': msg.get('turn_number')
                 }
@@ -472,8 +472,8 @@ def get_message_flow(session_id):
                     'timestamp': msg['timestamp'],
                     'role': msg['role'],
                     'node_type': msg['node_type'],
-                    'phase_name': msg.get('phase_name'),
-                    'sounding_index': msg.get('sounding_index'),
+                    'cell_name': msg.get('cell_name'),
+                    'candidate_index': msg.get('candidate_index'),
                     'turn_number': msg.get('turn_number')
                 })
 

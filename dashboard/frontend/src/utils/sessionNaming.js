@@ -1,5 +1,5 @@
 /**
- * Session ID naming system for RVBBIT/Windlass.
+ * Session ID naming system for RVBBIT/RVBBIT.
  *
  * Generates memorable session IDs using woodland creature themes.
  * Format: <adjective>-<creature>-<hash6>

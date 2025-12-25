@@ -19,12 +19,12 @@ from flask import Blueprint, jsonify, request
 # Add windlass to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from windlass.db_adapter import get_db
-from windlass.config import get_config
-from windlass.rag.context import RagContext
-from windlass.rag.store import search_chunks, list_sources
-from windlass.sql_tools.tools import sql_search
-from windlass.memory import get_memory_system
+from rvbbit.db_adapter import get_db
+from rvbbit.config import get_config
+from rvbbit.rag.context import RagContext
+from rvbbit.rag.store import search_chunks, list_sources
+from rvbbit.sql_tools.tools import sql_search
+from rvbbit.memory import get_memory_system
 import math
 
 search_bp = Blueprint('search', __name__, url_prefix='/api/search')
@@ -133,7 +133,7 @@ def rag_search_endpoint():
             stats={},
             session_id="ui_search",
             cascade_id="search_ui",
-            phase_name="rag_search",
+            cell_name="rag_search",
             trace_id=None,
             parent_id=None
         )
@@ -142,14 +142,14 @@ def rag_search_endpoint():
         print(f"[RAG Search Debug] Index: {rag_id}, Model: {embed_model}, Expected dims: {embedding_dim}")
 
         # Test: Embed the query to see what dimension we actually get
-        from windlass.rag.indexer import embed_texts
+        from rvbbit.rag.indexer import embed_texts
         embed_result = embed_texts(
             texts=[query],
             model=embed_model,
             session_id="ui_search_test",
             trace_id=None,
             parent_id=None,
-            phase_name="rag_search",
+            cell_name="rag_search",
             cascade_id="search_ui"
         )
         actual_query_dim = embed_result["dim"]
@@ -261,7 +261,7 @@ def list_rag_sources():
                 stats={},
                 session_id="ui_search",
                 cascade_id="search_ui",
-                phase_name="list_sources",
+                cell_name="list_sources",
                 trace_id=None,
                 parent_id=None
             )
@@ -379,7 +379,7 @@ def memory_search():
                 "timestamp": str,
                 "session_id": str,
                 "cascade_id": str,
-                "phase_name": str,
+                "cell_name": str,
                 "score": float
             }],
             "memory_name": str,
@@ -433,7 +433,7 @@ def memory_search():
             raise
 
         # Search using RAG store directly
-        from windlass.rag.store import search_chunks
+        from rvbbit.rag.store import search_chunks
         search_results = search_chunks(rag_ctx, query, k=limit)
 
         # Convert search results to memory format with metadata
@@ -450,7 +450,7 @@ def memory_search():
                     "timestamp": msg_metadata.get('timestamp', ''),
                     "session_id": msg_metadata.get('session_id', ''),
                     "cascade_id": msg_metadata.get('cascade_id', ''),
-                    "phase_name": msg_metadata.get('phase_name', '')
+                    "cell_name": msg_metadata.get('cell_name', '')
                 })
             except Exception as e:
                 # If metadata parsing fails, include what we have
@@ -462,7 +462,7 @@ def memory_search():
                     "timestamp": '',
                     "session_id": '',
                     "cascade_id": '',
-                    "phase_name": ''
+                    "cell_name": ''
                 })
 
         # Sanitize results
@@ -518,9 +518,9 @@ def sql_elastic_search():
 
         # Check if Elasticsearch is available
         try:
-            from windlass.elastic import get_elastic_client, hybrid_search_sql_schemas
-            from windlass.rag.indexer import embed_texts
-            from windlass.config import get_config
+            from rvbbit.elastic import get_elastic_client, hybrid_search_sql_schemas
+            from rvbbit.rag.indexer import embed_texts
+            from rvbbit.config import get_config
 
             es = get_elastic_client()
             if not es.ping():
@@ -543,7 +543,7 @@ def sql_elastic_search():
             session_id="ui_search",
             trace_id=None,
             parent_id=None,
-            phase_name="sql_elastic_search",
+            cell_name="sql_elastic_search",
             cascade_id="search_ui"
         )
         query_embedding = embed_result['embeddings'][0]

@@ -1,11 +1,15 @@
 {
   "cascade_id": "signal_e2e_wait",
-  "phases": [
+  "cells": [
     {
       "name": "wait_for_signal",
       "instructions": "Use await_signal to wait for signal named 'e2e_test' with timeout '30s'.",
-      "tackle": ["await_signal"],
-      "handoffs": ["report"]
+      "traits": [
+        "await_signal"
+      ],
+      "handoffs": [
+        "report"
+      ]
     },
     {
       "name": "report",

@@ -1,130 +1,65 @@
 cascade_id: htmx_sql_live_demo
-description: |
-  Demonstrates live SQL data fetching in HTMX for dynamic charts and dashboards.
+description: 'Demonstrates live SQL data fetching in HTMX for dynamic charts and dashboards.
+
   Shows how to query external databases without embedding data in HTML.
 
+  '
 inputs_schema:
-  connection: "SQL connection name (e.g., csv_files)"
-  question: "What analysis or visualization to create"
-
-phases:
-  - name: discover_and_create
-    model: anthropic/claude-sonnet-4.5
-    tackle: ["sql_search", "list_sql_connections", "create_artifact"]
-    instructions: |
-      The user wants to analyze data from connection: {{ input.connection }}
-      Question: {{ input.question }}
-
-      Your task:
-      1. Use list_sql_connections() to see available connections
-      2. Use sql_search() to find relevant tables for the question
-      3. TEST your SQL query with run_sql() to verify column names and data structure
-      4. Create an interactive artifact with live SQL data fetching using the verified column names
-
-      CRITICAL STEP - Always test queries BEFORE writing HTML:
-
-      STEP 1 - Test first:
-        run_sql("SELECT state, COUNT(*) as count FROM bigfoot_sightings GROUP BY state LIMIT 5", "{{ input.connection }}")
-        # Check the output - you'll see exact column names: {columns: ['state', 'count'], rows: [...]}
-
-      STEP 2 - Use those EXACT column names in your HTML:
-
-      IMPORTANT PATTERN - Fetch data client-side:
-
-      Instead of embedding data in HTML, use fetch() to query live:
-
-      fetch('http://localhost:5001/api/sql/query', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          connection: '{{ input.connection }}',
-          sql: 'SELECT col1, col2 FROM table WHERE ...',
-          limit: 1000
-        })
-      }).then(r => r.json()).then(result => {
-        // result.columns = ['state', 'count']  // From your test!
-        // result.rows = [['WA', 632], ['CA', 445], ...]
-
-        // BEST PRACTICE: Find column indices by name (don't hardcode [0] and [1]):
-        const stateIdx = result.columns.indexOf('state');  // = 0
-        const countIdx = result.columns.indexOf('count');  // = 1
-
-        // For Plotly - use the indices:
-        const trace = {
-          x: result.rows.map(r => r[stateIdx]),  // state column
-          y: result.rows.map(r => r[countIdx]),  // count column
-          type: 'bar',
-          marker: {color: '#a78bfa'}
-        };
-        Plotly.newPlot('chart', [trace], {
-          paper_bgcolor: '#1a1a1a',
-          plot_bgcolor: '#0a0a0a',
-          font: {color: '#e5e7eb'}
-        });
-
-        // For Vega-Lite (needs objects):
-        const data = result.rows.map(row =>
-          Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
-        );
-        vegaEmbed('#chart', {
-          data: {values: data},
-          mark: 'bar',
-          encoding: {
-            x: {field: 'state', type: 'nominal'},
-            y: {field: 'count', type: 'quantitative'}
-          },
-          background: '#1a1a1a'
-        });
-      });
-
-      Example with filters (just rebuild SQL and re-fetch):
-
-      <select id="filter" onchange="loadData()">
-        <option value="">All</option>
-        <option value="CA">California</option>
-      </select>
-      <div id="chart"></div>
-      <script>
-        async function loadData() {
-          const filter = document.getElementById('filter').value;
-          const whereClause = filter ? `WHERE state = '${filter}'` : '';
-
-          const response = await fetch('http://localhost:5001/api/sql/query', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              connection: '{{ input.connection }}',
-              sql: `SELECT category, COUNT(*) as count FROM table ${whereClause} GROUP BY category`
-            })
-          });
-
-          const result = await response.json();
-
-          // BEST PRACTICE: Find column indices by name
-          const categoryIdx = result.columns.indexOf('category');
-          const countIdx = result.columns.indexOf('count');
-
-          // Re-render chart with new data
-          Plotly.react('chart', [{
-            x: result.rows.map(r => r[categoryIdx]),
-            y: result.rows.map(r => r[countIdx]),
-            type: 'bar'
-          }], layout);
-        }
-        loadData(); // Initial load
-      </script>
-
-      Create an artifact with:
-      - Live SQL data fetching (no embedded data)
-      - Interactive filters that rebuild queries
-      - Clean dark theme styling
-      - Multiple charts if appropriate
-
-      REMINDER: Always test your SQL query with run_sql() first to verify:
-      - The exact column names that will be returned
-      - The data structure and types
-      - That your query syntax is correct
-
-      Then use those verified column names with .indexOf() in your JavaScript code.
-
-      Use create_artifact() to publish the dashboard.
+  connection: SQL connection name (e.g., csv_files)
+  question: What analysis or visualization to create
+cells:
+- name: discover_and_create
+  model: anthropic/claude-sonnet-4.5
+  traits:
+  - sql_search
+  - list_sql_connections
+  - create_artifact
+  instructions: "The user wants to analyze data from connection: {{ input.connection\
+    \ }}\nQuestion: {{ input.question }}\n\nYour task:\n1. Use list_sql_connections()\
+    \ to see available connections\n2. Use sql_search() to find relevant tables for\
+    \ the question\n3. TEST your SQL query with run_sql() to verify column names and\
+    \ data structure\n4. Create an interactive artifact with live SQL data fetching\
+    \ using the verified column names\n\nCRITICAL STEP - Always test queries BEFORE\
+    \ writing HTML:\n\nSTEP 1 - Test first:\n  run_sql(\"SELECT state, COUNT(*) as\
+    \ count FROM bigfoot_sightings GROUP BY state LIMIT 5\", \"{{ input.connection\
+    \ }}\")\n  # Check the output - you'll see exact column names: {columns: ['state',\
+    \ 'count'], rows: [...]}\n\nSTEP 2 - Use those EXACT column names in your HTML:\n\
+    \nIMPORTANT PATTERN - Fetch data client-side:\n\nInstead of embedding data in\
+    \ HTML, use fetch() to query live:\n\nfetch('http://localhost:5001/api/sql/query',\
+    \ {\n  method: 'POST',\n  headers: {'Content-Type': 'application/json'},\n  body:\
+    \ JSON.stringify({\n    connection: '{{ input.connection }}',\n    sql: 'SELECT\
+    \ col1, col2 FROM table WHERE ...',\n    limit: 1000\n  })\n}).then(r => r.json()).then(result\
+    \ => {\n  // result.columns = ['state', 'count']  // From your test!\n  // result.rows\
+    \ = [['WA', 632], ['CA', 445], ...]\n\n  // BEST PRACTICE: Find column indices\
+    \ by name (don't hardcode [0] and [1]):\n  const stateIdx = result.columns.indexOf('state');\
+    \  // = 0\n  const countIdx = result.columns.indexOf('count');  // = 1\n\n  //\
+    \ For Plotly - use the indices:\n  const trace = {\n    x: result.rows.map(r =>\
+    \ r[stateIdx]),  // state column\n    y: result.rows.map(r => r[countIdx]),  //\
+    \ count column\n    type: 'bar',\n    marker: {color: '#a78bfa'}\n  };\n  Plotly.newPlot('chart',\
+    \ [trace], {\n    paper_bgcolor: '#1a1a1a',\n    plot_bgcolor: '#0a0a0a',\n  \
+    \  font: {color: '#e5e7eb'}\n  });\n\n  // For Vega-Lite (needs objects):\n  const\
+    \ data = result.rows.map(row =>\n    Object.fromEntries(result.columns.map((col,\
+    \ i) => [col, row[i]]))\n  );\n  vegaEmbed('#chart', {\n    data: {values: data},\n\
+    \    mark: 'bar',\n    encoding: {\n      x: {field: 'state', type: 'nominal'},\n\
+    \      y: {field: 'count', type: 'quantitative'}\n    },\n    background: '#1a1a1a'\n\
+    \  });\n});\n\nExample with filters (just rebuild SQL and re-fetch):\n\n<select\
+    \ id=\"filter\" onchange=\"loadData()\">\n  <option value=\"\">All</option>\n\
+    \  <option value=\"CA\">California</option>\n</select>\n<div id=\"chart\"></div>\n\
+    <script>\n  async function loadData() {\n    const filter = document.getElementById('filter').value;\n\
+    \    const whereClause = filter ? `WHERE state = '${filter}'` : '';\n\n    const\
+    \ response = await fetch('http://localhost:5001/api/sql/query', {\n      method:\
+    \ 'POST',\n      headers: {'Content-Type': 'application/json'},\n      body: JSON.stringify({\n\
+    \        connection: '{{ input.connection }}',\n        sql: `SELECT category,\
+    \ COUNT(*) as count FROM table ${whereClause} GROUP BY category`\n      })\n \
+    \   });\n\n    const result = await response.json();\n\n    // BEST PRACTICE:\
+    \ Find column indices by name\n    const categoryIdx = result.columns.indexOf('category');\n\
+    \    const countIdx = result.columns.indexOf('count');\n\n    // Re-render chart\
+    \ with new data\n    Plotly.react('chart', [{\n      x: result.rows.map(r => r[categoryIdx]),\n\
+    \      y: result.rows.map(r => r[countIdx]),\n      type: 'bar'\n    }], layout);\n\
+    \  }\n  loadData(); // Initial load\n</script>\n\nCreate an artifact with:\n-\
+    \ Live SQL data fetching (no embedded data)\n- Interactive filters that rebuild\
+    \ queries\n- Clean dark theme styling\n- Multiple charts if appropriate\n\nREMINDER:\
+    \ Always test your SQL query with run_sql() first to verify:\n- The exact column\
+    \ names that will be returned\n- The data structure and types\n- That your query\
+    \ syntax is correct\n\nThen use those verified column names with .indexOf() in\
+    \ your JavaScript code.\n\nUse create_artifact() to publish the dashboard.\n"

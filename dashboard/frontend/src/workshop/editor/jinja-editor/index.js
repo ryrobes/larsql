@@ -5,7 +5,7 @@
  *
  * import { JinjaEditor, getAvailableVariables } from './jinja-editor';
  *
- * const variables = getAvailableVariables(cascade, phaseIndex);
+ * const variables = getAvailableVariables(cascade, cellIndex);
  *
  * <JinjaEditor
  *   value={instructions}

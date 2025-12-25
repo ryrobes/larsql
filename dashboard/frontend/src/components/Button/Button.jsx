@@ -5,7 +5,7 @@ import './Button.css';
 /**
  * Button - Reusable button component
  *
- * Supports multiple variants matching Windlass design system:
+ * Supports multiple variants matching RVBBIT design system:
  * - primary: Bright cyan, high emphasis (main actions)
  * - secondary: Transparent/bordered, low emphasis (secondary actions)
  * - ghost: No border, minimal style (tertiary actions)

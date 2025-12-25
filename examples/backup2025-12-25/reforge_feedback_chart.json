@@ -6,37 +6,62 @@
     "title": "Chart title",
     "requirements": "Visual requirements (e.g., 'high contrast colors, large labels')"
   },
-  "phases": [{
-    "name": "create_initial_chart",
-    "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nRequirements: {{ input.requirements }}\n\nUse the create_chart tool. After creating it, the image will be automatically injected for you to see.\n\nOnce you see the chart image, analyze it against the requirements and describe:\n1. What you observe visually\n2. How well it meets the requirements\n3. What specific improvements are needed",
-    "tackle": ["create_vega_lite", "create_plotly"],
-    "soundings": {
-      "factor": 2,
-      "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable.",
-      "reforge": {
-        "steps": 2,
-        "honing_prompt": "You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:\n\n- Exact color codes for better contrast (hex values)\n- Precise font sizes for labels\n- Specific axis range adjustments\n- Data point annotation placement\n- Legend positioning coordinates\n\nBe EXTREMELY specific and actionable. Reference exact elements you see in the image.",
-        "factor_per_step": 2,
-        "mutate": false,
-        "evaluator_override": "Evaluate refinements on:\n1. Specificity (exact values, not vague suggestions)\n2. Visual awareness (referencing actual chart elements)\n3. Implementation feasibility\n4. Completeness of improvements\n\nPick the most production-ready, implementable analysis."
-      }
+  "cells": [
+    {
+      "name": "create_initial_chart",
+      "instructions": "Create a chart with title '{{ input.title }}' and data: {{ input.data }}\n\nRequirements: {{ input.requirements }}\n\nUse the create_chart tool. After creating it, the image will be automatically injected for you to see.\n\nOnce you see the chart image, analyze it against the requirements and describe:\n1. What you observe visually\n2. How well it meets the requirements\n3. What specific improvements are needed",
+      "traits": [
+        "create_vega_lite",
+        "create_plotly"
+      ],
+      "candidates": {
+        "factor": 2,
+        "evaluator_instructions": "Evaluate based on:\n1. Accuracy of visual observations about the chart\n2. Depth of analysis against requirements\n3. Specificity of improvement suggestions\n\nSelect the analysis that is most detailed and actionable.",
+        "reforge": {
+          "steps": 2,
+          "honing_prompt": "You previously analyzed this chart. Looking at the chart image again, provide even MORE specific improvements:\n\n- Exact color codes for better contrast (hex values)\n- Precise font sizes for labels\n- Specific axis range adjustments\n- Data point annotation placement\n- Legend positioning coordinates\n\nBe EXTREMELY specific and actionable. Reference exact elements you see in the image.",
+          "factor_per_step": 2,
+          "mutate": false,
+          "evaluator_override": "Evaluate refinements on:\n1. Specificity (exact values, not vague suggestions)\n2. Visual awareness (referencing actual chart elements)\n3. Implementation feasibility\n4. Completeness of improvements\n\nPick the most production-ready, implementable analysis."
+        }
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "summarize"
+      ]
     },
-    "rules": {"max_turns": 1},
-    "handoffs": ["summarize"]
-  }, {
-    "name": "summarize",
-    "instructions": "Summarize the complete chart refinement process:\n\n## Initial Chart Analysis\n{{ state.validated_output }}\n\n## Refinement Journey\nDescribe how the analysis evolved through reforge iterations.\n\n## Final Recommendations\nList the top 5 most critical improvements identified.\n\nNote: All chart images have been saved to the images directory for review.",
-    "tackle": [],
-    "context": {"from": ["previous"]},
-    "rules": {"max_turns": 1},
-    "handoffs": ["say_summary_summarize"]
-  },
-{
-    "name": "say_summary_summarize",
-    "instructions": "Use the `say` tool to speak to the user and give a VERY short summary of the findings.",
-    "tackle": ["say"],
-    "context": {"from": ["previous"]},
-    "rules": {"max_turns": 1}
-  }
-]
+    {
+      "name": "summarize",
+      "instructions": "Summarize the complete chart refinement process:\n\n## Initial Chart Analysis\n{{ state.validated_output }}\n\n## Refinement Journey\nDescribe how the analysis evolved through reforge iterations.\n\n## Final Recommendations\nList the top 5 most critical improvements identified.\n\nNote: All chart images have been saved to the images directory for review.",
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "say_summary_summarize"
+      ]
+    },
+    {
+      "name": "say_summary_summarize",
+      "instructions": "Use the `say` tool to speak to the user and give a VERY short summary of the findings.",
+      "traits": [
+        "say"
+      ],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
 }

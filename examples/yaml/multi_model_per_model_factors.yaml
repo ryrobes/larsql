@@ -2,18 +2,18 @@ cascade_id: multi_model_per_model_factors
 description: Phase 1 Multi-Model Soundings - Per-model factor configuration
 inputs_schema:
   task: The task to complete with multiple models
-phases:
-  - instructions: 'Complete this task: {{ input.task }}'
-    name: generate
-    soundings:
-      evaluator_instructions: Pick the best response. Consider quality and completeness. The model name
-        is shown for reference but should not bias your decision.
-      factor: 7
-      models:
-        anthropic/claude-sonnet-4.5:
-          factor: 2
-        google/gemini-2.5-flash-lite:
-          factor: 3
-        x-ai/grok-4.1-fast:
-          factor: 2
-    tackle: []
+cells:
+- instructions: 'Complete this task: {{ input.task }}'
+  name: generate
+  candidates:
+    evaluator_instructions: Pick the best response. Consider quality and completeness.
+      The model name is shown for reference but should not bias your decision.
+    factor: 7
+    models:
+      anthropic/claude-sonnet-4.5:
+        factor: 2
+      google/gemini-2.5-flash-lite:
+        factor: 3
+      x-ai/grok-4.1-fast:
+        factor: 2
+  traits: []

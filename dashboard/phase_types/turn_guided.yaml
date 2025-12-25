@@ -1,27 +1,29 @@
 type_id: turn_guided
 display_name: Turn-by-Turn
 icon: mdi:step-forward
-color: "#fb7185"
+color: '#fb7185'
 name_prefix: guided
-description: "Multi-turn phase with turn-specific prompts - guided step-by-step execution"
-category: "llm"
+description: Multi-turn phase with turn-specific prompts - guided step-by-step execution
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "iterative"
-
+- intermediate
+- ai-ml
+- iterative
 template:
-  instructions: |
-    Complete this multi-step task:
+  instructions: 'Complete this multi-step task:
+
     {{ input.task }}
 
+
     You will receive specific guidance for each turn.
+
+    '
   model: google/gemini-2.5-flash
-  tackle: []
+  traits: []
   rules:
     max_turns: 4
     turn_prompt:
-      1: "Step 1: Analyze the requirements and create a plan"
-      2: "Step 2: Execute the first part of the plan"
-      3: "Step 3: Execute the second part of the plan"
-      4: "Step 4: Review and finalize the output"
+      1: 'Step 1: Analyze the requirements and create a plan'
+      2: 'Step 2: Execute the first part of the plan'
+      3: 'Step 3: Execute the second part of the plan'
+      4: 'Step 4: Review and finalize the output'

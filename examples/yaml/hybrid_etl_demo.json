@@ -5,7 +5,7 @@
     "source_path": "Path to source data file",
     "operation": "Transform operation to apply (identity, count, sum_numeric)"
   },
-  "phases": [
+  "cells": [
     {
       "name": "check_source",
       "tool": "python:windlass.demo_tools.file_exists",
@@ -16,12 +16,17 @@
         "exists": "load_data",
         "not_found": "handle_missing_file"
       },
-      "handoffs": ["load_data", "handle_missing_file"]
+      "handoffs": [
+        "load_data",
+        "handle_missing_file"
+      ]
     },
     {
       "name": "handle_missing_file",
       "instructions": "The source file was not found:\n\nPath: {{ input.source_path }}\n\nPlease suggest alternatives or explain what might have gone wrong.",
-      "tackle": ["linux_shell"]
+      "traits": [
+        "linux_shell"
+      ]
     },
     {
       "name": "load_data",
@@ -30,12 +35,16 @@
         "command": "cat {{ state.output_check_source.path }}"
       },
       "on_error": "handle_load_error",
-      "handoffs": ["parse_data"]
+      "handoffs": [
+        "parse_data"
+      ]
     },
     {
       "name": "handle_load_error",
       "instructions": "Failed to load data from file:\n\nPath: {{ input.source_path }}\nError: {{ state.last_deterministic_error.error }}\n\nDiagnose the issue and suggest a solution.",
-      "tackle": ["linux_shell"]
+      "traits": [
+        "linux_shell"
+      ]
     },
     {
       "name": "parse_data",
@@ -47,12 +56,17 @@
         "success": "transform_data",
         "error": "handle_parse_error"
       },
-      "handoffs": ["transform_data", "handle_parse_error"]
+      "handoffs": [
+        "transform_data",
+        "handle_parse_error"
+      ]
     },
     {
       "name": "handle_parse_error",
       "instructions": "Failed to parse data as JSON:\n\nRaw content: {{ state.output_load_data.stdout[:500] }}\nParse error: {{ state.output_parse_data.error }}\n\nAnalyze the format and suggest how to fix the data or parse it differently.",
-      "tackle": ["run_code"]
+      "traits": [
+        "run_code"
+      ]
     },
     {
       "name": "transform_data",
@@ -66,22 +80,26 @@
         "empty": "handle_empty_data",
         "error": "handle_transform_error"
       },
-      "handoffs": ["summarize", "handle_empty_data", "handle_transform_error"]
+      "handoffs": [
+        "summarize",
+        "handle_empty_data",
+        "handle_transform_error"
+      ]
     },
     {
       "name": "handle_empty_data",
       "instructions": "The data source was empty. Suggest next steps.",
-      "tackle": []
+      "traits": []
     },
     {
       "name": "handle_transform_error",
       "instructions": "Transform operation failed:\n\nOperation: {{ input.operation }}\nError: {{ state.output_transform_data.error }}\n\nSuggest an alternative approach.",
-      "tackle": []
+      "traits": []
     },
     {
       "name": "summarize",
       "instructions": "Provide a summary of the ETL pipeline results:\n\n**Source**: {{ input.source_path }}\n**Operation**: {{ input.operation }}\n**Records Processed**: {{ state.output_transform_data.count }}\n**Result**: {{ state.output_transform_data.result | tojson }}\n\nExplain what the data shows and any insights.",
-      "tackle": []
+      "traits": []
     }
   ]
 }

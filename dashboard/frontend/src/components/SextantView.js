@@ -300,10 +300,10 @@ function PromptPatternCards({ cascadeId, phaseName, speciesHash }) {
       {/* Multi-card Grid of Prompts */}
       <div className="prompt-cards-grid">
         {prompts?.map((prompt, idx) => (
-          <div key={prompt.sounding_index} className={`prompt-card ${prompt.is_winner ? 'winner' : 'loser'}`}>
+          <div key={prompt.candidate_index} className={`prompt-card ${prompt.is_winner ? 'winner' : 'loser'}`}>
             <div className="prompt-card-header">
               <span className="prompt-badge">
-                {prompt.is_winner ? '🏆' : '❌'} #{prompt.sounding_index}
+                {prompt.is_winner ? '🏆' : '❌'} #{prompt.candidate_index}
               </span>
               <div className="prompt-card-meta">
                 <span className="prompt-model">{prompt.model}</span>
@@ -676,7 +676,7 @@ function PromptCard({ prompt, isWinner }) {
           )}
         </div>
         <div className="prompt-card-right">
-          <span className="prompt-sounding">#{prompt.sounding_index}</span>
+          <span className="prompt-sounding">#{prompt.candidate_index}</span>
           <button
             className="expand-content-btn"
             onClick={() => setExpanded(!expanded)}
@@ -1139,7 +1139,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
     setLoadingSamples(true);
     try {
       const res = await fetch(
-        `/api/sextant/winning-samples/${cascadeId}/${phase.phase_name}?limit=3`
+        `/api/sextant/winning-samples/${cascadeId}/${phase.cell_name}?limit=3`
       );
       const data = await res.json();
       setSamples(data.samples || []);
@@ -1161,7 +1161,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
       <div className="phase-card-header" onClick={handleExpand}>
         <div className="phase-card-left">
           <Icon icon="mdi:hexagon-outline" width="20" className="phase-icon" />
-          <h3>{phase.phase_name}</h3>
+          <h3>{phase.cell_name}</h3>
           <span className="session-count">{phase.total_competitions} competitions</span>
           {isMultiModel && (
             <span className="multi-model-badge">
@@ -1215,7 +1215,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
           <div className="analysis-section species-section">
             <SpeciesSelector
               cascadeId={cascadeId}
-              phaseName={phase.phase_name}
+              phaseName={phase.cell_name}
               selectedSpecies={selectedSpecies}
               onSelectSpecies={setSelectedSpecies}
             />
@@ -1296,7 +1296,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <WinnerLoserAnalysis
                   cascadeId={cascadeId}
-                  phaseName={phase.phase_name}
+                  phaseName={phase.cell_name}
                   speciesHash={selectedSpecies}
                   onApply={(suggestion) => {
                     console.log('Apply suggestion:', suggestion);
@@ -1314,7 +1314,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <PromptPatternCards
                   cascadeId={cascadeId}
-                  phaseName={phase.phase_name}
+                  phaseName={phase.cell_name}
                   speciesHash={selectedSpecies}
                 />
               </div>
@@ -1328,7 +1328,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <EmbeddingHotspotViz
                   cascadeId={cascadeId}
-                  phaseName={phase.phase_name}
+                  phaseName={phase.cell_name}
                   speciesHash={selectedSpecies}
                 />
               </div>
@@ -1421,7 +1421,7 @@ function SimilaritySearch({ onResults }) {
             <div key={i} className="search-result-item">
               <div className="result-header">
                 <span className="result-cascade">{r.cascade_id}</span>
-                <span className="result-phase">{r.phase_name}</span>
+                <span className="result-phase">{r.cell_name}</span>
                 <span className="result-similarity">
                   {(r.similarity * 100).toFixed(0)}% match
                 </span>
@@ -1628,16 +1628,16 @@ function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onPlaygroun
               </div>
 
               <div className="phases-list">
-                {analysis.phases?.map(phase => (
+                {analysis.cells?.map(phase => (
                   <PhaseAnalysisCard
-                    key={phase.phase_name}
+                    key={phase.cell_name}
                     phase={phase}
                     cascadeId={analysis.cascade_id}
                   />
                 ))}
               </div>
 
-              {analysis.phases?.length === 0 && (
+              {analysis.cells?.length === 0 && (
                 <div className="no-phases">
                   <Icon icon="mdi:information-outline" width="24" />
                   <span>No phases with sounding data found</span>

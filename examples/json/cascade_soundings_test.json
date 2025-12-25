@@ -4,29 +4,53 @@
   "inputs_schema": {
     "problem": "The problem to solve"
   },
-  "soundings": {
+  "candidates": {
     "factor": 3,
     "mutate": false,
     "evaluator_instructions": "You are an expert problem-solving evaluator. Compare these three complete solution approaches based on:\n1) Correctness - Does it solve the problem accurately?\n2) Completeness - Does it cover all aspects?\n3) Clarity - Is the solution well-explained?\n4) Innovation - Is the approach creative and effective?\n\nSelect the BEST complete solution."
   },
-  "phases": [{
-    "name": "analyze",
-    "instructions": "Analyze this problem: {{ input.problem }}\n\nProvide a thoughtful analysis. Consider different angles and be creative in your approach - each run should explore different perspectives.",
-    "tackle": [],
-    "rules": {"max_turns": 1},
-    "handoffs": ["solve"]
-  }, {
-    "name": "solve",
-    "instructions": "Based on your analysis, provide a complete solution to: {{ input.problem }}\n\nBe thorough and creative. Different approaches are encouraged!",
-    "tackle": [],
-    "context": {"from": ["previous"]},
-    "rules": {"max_turns": 1},
-    "handoffs": ["validate"]
-  }, {
-    "name": "validate",
-    "instructions": "Review your solution and validate it works correctly.\n\nProvide:\n1. A summary of your approach\n2. Why this solution works\n3. Any potential edge cases or limitations\n\nStore your final validated solution using set_state.",
-    "tackle": ["set_state"],
-    "context": {"from": ["all"]},
-    "rules": {"max_turns": 1}
-  }]
+  "cells": [
+    {
+      "name": "analyze",
+      "instructions": "Analyze this problem: {{ input.problem }}\n\nProvide a thoughtful analysis. Consider different angles and be creative in your approach - each run should explore different perspectives.",
+      "traits": [],
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "solve"
+      ]
+    },
+    {
+      "name": "solve",
+      "instructions": "Based on your analysis, provide a complete solution to: {{ input.problem }}\n\nBe thorough and creative. Different approaches are encouraged!",
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "validate"
+      ]
+    },
+    {
+      "name": "validate",
+      "instructions": "Review your solution and validate it works correctly.\n\nProvide:\n1. A summary of your approach\n2. Why this solution works\n3. Any potential edge cases or limitations\n\nStore your final validated solution using set_state.",
+      "traits": [
+        "set_state"
+      ],
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
 }

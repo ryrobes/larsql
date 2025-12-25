@@ -453,7 +453,7 @@ function ResearchCockpit({
 
         // Get current/last phase
         const lastEntry = entries[entries.length - 1];
-        const currentPhase = lastEntry?.phase_name;
+        const currentPhase = lastEntry?.cell_name;
         const currentModel = lastEntry?.model;
 
         // Count turns (assistant messages)
@@ -462,8 +462,8 @@ function ResearchCockpit({
         // Compute phase costs
         const phaseCosts = {};
         entries.forEach(e => {
-          if (e.phase_name && e.cost > 0) {
-            phaseCosts[e.phase_name] = (phaseCosts[e.phase_name] || 0) + e.cost;
+          if (e.cell_name && e.cost > 0) {
+            phaseCosts[e.cell_name] = (phaseCosts[e.cell_name] || 0) + e.cost;
           }
         });
 
@@ -605,11 +605,11 @@ function ResearchCockpit({
             //console.log('[ResearchCockpit] Phase started:', event.data);
             setOrchestrationState(prev => ({
               ...prev,
-              currentPhase: event.data.phase_name,
+              currentPhase: event.data.cell_name,
               currentModel: event.data.model,
               status: 'thinking',
               phaseHistory: [...prev.phaseHistory, {
-                phase: event.data.phase_name,
+                phase: event.data.cell_name,
                 startedAt: new Date(),
                 model: event.data.model
               }]
@@ -1031,7 +1031,7 @@ function ResearchCockpit({
       const htmlContent = buildArtifactHTML(bodyContent);
 
       // Compute title
-      const phaseName = checkpoint.phase_name || 'decision';
+      const phaseName = checkpoint.cell_name || 'decision';
       const summary = checkpoint.summary || checkpoint.phase_output || '';
       const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
       const title = summarySnippet ? `${phaseName}: ${summarySnippet}` : `${phaseName} - Decision`;
@@ -1042,7 +1042,7 @@ function ResearchCockpit({
         body: JSON.stringify({
           session_id: sessionId,
           cascade_id: checkpoint.cascade_id || cascadeId || 'unknown',
-          phase_name: checkpoint.phase_name || 'unknown',
+          cell_name: checkpoint.cell_name || 'unknown',
           title: title,
           artifact_type: 'decision',
           description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',
@@ -1515,7 +1515,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
 
   // Compute artifact name from checkpoint data
   const computeArtifactName = () => {
-    const phaseName = checkpoint.phase_name || 'decision';
+    const phaseName = checkpoint.cell_name || 'decision';
     const summary = checkpoint.summary || checkpoint.phase_output || '';
     // Take first 50 chars of summary, clean up
     const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
@@ -1558,7 +1558,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
         body: JSON.stringify({
           session_id: sessionId,
           cascade_id: checkpoint.cascade_id || savedSessionData?.cascade_id || 'unknown',
-          phase_name: checkpoint.phase_name || 'unknown',
+          cell_name: checkpoint.cell_name || 'unknown',
           title: title,
           artifact_type: 'decision',
           description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',

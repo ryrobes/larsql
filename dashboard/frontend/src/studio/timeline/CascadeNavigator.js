@@ -77,10 +77,10 @@ function StatusIcon({ status }) {
 
   return (
     <Tooltip label={label}>
-      <span className="phase-status-icon-wrapper">
+      <span className="cell-status-icon-wrapper">
         <Icon
           icon={icon}
-          className={`phase-status-icon ${spin ? 'spin' : ''}`}
+          className={`cell-status-icon ${spin ? 'spin' : ''}`}
           style={{ color }}
         />
       </span>
@@ -105,8 +105,8 @@ function formatRowCount(count) {
   return count.toString();
 }
 
-// Phase node with expandable columns
-function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
+// Cell node with expandable columns
+function CellNode({ cell, index, cellState, isActive, onNavigate }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const status = cellState?.status || 'pending';
@@ -136,14 +136,14 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
 
   const displayColumns = columnInfo.length > 0 ? columnInfo : dictKeys;
 
-  // Check if this is a rabbitize phase - extract artifacts
-  const isRabbitize = (phase.tool === 'linux_shell' || phase.tool === 'linux_shell_dangerous') &&
-                      phase.inputs?.command?.includes('rabbitize');
+  // Check if this is a rabbitize cell - extract artifacts
+  const isRabbitize = (cell.tool === 'linux_shell' || cell.tool === 'linux_shell_dangerous') &&
+                      cell.inputs?.command?.includes('rabbitize');
   const rabbitizeArtifacts = React.useMemo(() => {
     if (!isRabbitize) return null;
 
     const artifacts = {};
-    const command = phase.inputs?.command || '';
+    const command = cell.inputs?.command || '';
 
     // Strategy 1: Get from cellState if executed
     if (cellState?.status === 'success') {
@@ -185,7 +185,7 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
     }
 
     return Object.keys(artifacts).length > 0 ? artifacts : null;
-  }, [isRabbitize, phase.inputs?.command, cellState]);
+  }, [isRabbitize, cell.inputs?.command, cellState]);
 
   const hasColumns = displayColumns.length > 0;
   const hasArtifacts = rabbitizeArtifacts !== null;
@@ -199,7 +199,7 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
   };
 
   const handleNavigate = () => {
-    onNavigate(phase.name);
+    onNavigate(cell.name);
   };
 
   // Icons and colors for each cell type
@@ -212,11 +212,11 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
     linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches
     linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
   };
-  const { icon: toolIcon, color: toolColor } = toolStyles[phase.tool] || toolStyles.python_data;
+  const { icon: toolIcon, color: toolColor } = toolStyles[cell.tool] || toolStyles.python_data;
 
   return (
-    <div className={`nav-phase-node ${isActive ? 'active' : ''}`}>
-      <div className="nav-phase-row" onClick={handleNavigate}>
+    <div className={`nav-cell-node ${isActive ? 'active' : ''}`}>
+      <div className="nav-cell-row" onClick={handleNavigate}>
         {hasExpandableContent ? (
           <Icon
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
@@ -228,26 +228,26 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
         )}
         <StatusIcon status={status} />
         <Icon icon={toolIcon} className="nav-tool-icon" style={{ color: toolColor }} />
-        <span className="nav-phase-name">{phase.name}</span>
+        <span className="nav-cell-name">{cell.name}</span>
         {/* Stats: row count, duration, and cache indicator */}
-        <div className="nav-phase-stats">
+        <div className="nav-cell-stats">
           {cellState?.cached && (
             <Tooltip label="Result from cache">
-              <span className="nav-phase-cached">
+              <span className="nav-cell-cached">
                 cached
               </span>
             </Tooltip>
           )}
           {hasResult && rowCount > 0 && (
             <Tooltip label={`${rowCount} rows`}>
-              <span className="nav-phase-rows">
+              <span className="nav-cell-rows">
                 {formatRowCount(rowCount)} rows
               </span>
             </Tooltip>
           )}
           {duration !== undefined && duration !== null && (
             <Tooltip label={`Execution time: ${duration}ms`}>
-              <span className="nav-phase-duration">
+              <span className="nav-cell-duration">
                 {formatDuration(duration)}
               </span>
             </Tooltip>
@@ -256,7 +256,7 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
       </div>
 
       {isExpanded && hasColumns && (
-        <div className="nav-phase-columns">
+        <div className="nav-cell-columns">
           {displayColumns.map(col => (
             <div key={col.name} className="nav-column-row">
               <Icon icon="mdi:table-column" className="nav-column-icon" />
@@ -273,7 +273,7 @@ function PhaseNode({ phase, index, cellState, isActive, onNavigate }) {
       )}
 
       {isExpanded && hasArtifacts && (
-        <RabbitizeArtifactsTree phaseName={phase.name} artifacts={rabbitizeArtifacts} />
+        <RabbitizeArtifactsTree cellName={cell.name} artifacts={rabbitizeArtifacts} />
       )}
     </div>
   );
@@ -288,17 +288,17 @@ const ARTIFACT_TYPES = {
 };
 
 // Draggable artifact pill
-function ArtifactPill({ phaseName, artifactType, index, label }) {
+function ArtifactPill({ cellName, artifactType, index, label }) {
   const config = ARTIFACT_TYPES[artifactType];
 
-  // Artifacts are accessed via outputs.phase_name.artifact_type[index]
+  // Artifacts are accessed via outputs.cell_name.artifact_type[index]
   // NOTE: Jinja requires bracket notation for numeric indices
   const jinjaPath = index !== null
-    ? `outputs.${phaseName}.${artifactType}[${index}]`
-    : `outputs.${phaseName}.${artifactType}`;
+    ? `outputs.${cellName}.${artifactType}[${index}]`
+    : `outputs.${cellName}.${artifactType}`;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `artifact-${phaseName}-${artifactType}-${index}`,
+    id: `artifact-${cellName}-${artifactType}-${index}`,
     data: { type: 'variable', variablePath: jinjaPath },
   });
 
@@ -319,7 +319,7 @@ function ArtifactPill({ phaseName, artifactType, index, label }) {
 }
 
 // Artifact type group (Screenshots, DOM Snapshots, etc.)
-function ArtifactTypeGroup({ phaseName, artifactType, count }) {
+function ArtifactTypeGroup({ cellName, artifactType, count }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const config = ARTIFACT_TYPES[artifactType];
 
@@ -331,7 +331,7 @@ function ArtifactTypeGroup({ phaseName, artifactType, count }) {
     return (
       <div className="nav-artifact-single">
         <ArtifactPill
-          phaseName={phaseName}
+          cellName={cellName}
           artifactType={artifactType}
           index={null}
           label={config.label}
@@ -361,7 +361,7 @@ function ArtifactTypeGroup({ phaseName, artifactType, count }) {
           {Array.from({ length: count }).map((_, idx) => (
             <ArtifactPill
               key={idx}
-              phaseName={phaseName}
+              cellName={cellName}
               artifactType={artifactType}
               index={idx}
               label={`${idx}`}
@@ -374,13 +374,13 @@ function ArtifactTypeGroup({ phaseName, artifactType, count }) {
 }
 
 // Rabbitize artifacts tree
-function RabbitizeArtifactsTree({ phaseName, artifacts }) {
+function RabbitizeArtifactsTree({ cellName, artifacts }) {
   return (
-    <div className="nav-phase-artifacts">
+    <div className="nav-cell-artifacts">
       {Object.entries(artifacts).map(([type, count]) => (
         <ArtifactTypeGroup
           key={type}
-          phaseName={phaseName}
+          cellName={cellName}
           artifactType={type}
           count={count}
         />
@@ -390,13 +390,13 @@ function RabbitizeArtifactsTree({ phaseName, artifacts }) {
 }
 
 // Session tables section
-function SessionTablesSection({ sessionId, phases, cellStates }) {
+function SessionTablesSection({ sessionId, cells, cellStates }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Get list of materialized tables (phases with successful results)
-  const materializedTables = phases
-    ?.filter(p => cellStates[p.name]?.status === 'success')
-    .map(p => `_${p.name}`) || [];
+  // Get list of materialized tables (cells with successful results)
+  const materializedTables = cells
+    ?.filter(c => cellStates[c.name]?.status === 'success')
+    .map(c => `_${c.name}`) || [];
 
   if (materializedTables.length === 0) {
     return null;
@@ -436,29 +436,29 @@ function SessionTablesSection({ sessionId, phases, cellStates }) {
   );
 }
 
-// Media section - shows image thumbnails from phases
-function MediaSection({ phases, cellStates, onNavigateToPhase }) {
+// Media section - shows image thumbnails from cells
+function MediaSection({ cells, cellStates, onNavigateToCell }) {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Collect all images from phases with their source phase
+  // Collect all images from cells with their source cell
   const mediaItems = React.useMemo(() => {
     const items = [];
-    phases?.forEach(phase => {
-      const state = cellStates[phase.name];
+    cells?.forEach(cell => {
+      const state = cellStates[cell.name];
       const images = state?.images;
       if (images && Array.isArray(images) && images.length > 0) {
         images.forEach((imagePath, idx) => {
           items.push({
-            phaseName: phase.name,
+            cellName: cell.name,
             imagePath,
             imageIndex: idx,
-            key: `${phase.name}-${idx}`
+            key: `${cell.name}-${idx}`
           });
         });
       }
     });
     return items;
-  }, [phases, cellStates]);
+  }, [cells, cellStates]);
 
   // Don't show section if no media
   if (mediaItems.length === 0) {
@@ -488,15 +488,15 @@ function MediaSection({ phases, cellStates, onNavigateToPhase }) {
               : item.imagePath;
 
             return (
-              <Tooltip key={item.key} label={`${item.phaseName} - Image ${item.imageIndex + 1}`}>
+              <Tooltip key={item.key} label={`${item.cellName} - Image ${item.imageIndex + 1}`}>
                 <div
                   className="nav-media-item"
-                  onClick={() => onNavigateToPhase(item.phaseName, { outputTab: 'images' })}
+                  onClick={() => onNavigateToCell(item.cellName, { outputTab: 'images' })}
                 >
-                  <img src={imageUrl} alt={`${item.phaseName} output`} />
+                  <img src={imageUrl} alt={`${item.cellName} output`} />
                   <div className="nav-media-label">
                     <Icon icon="mdi:image" width="12" />
-                    <span>{item.phaseName}</span>
+                    <span>{item.cellName}</span>
                   </div>
                 </div>
               </Tooltip>
@@ -508,11 +508,11 @@ function MediaSection({ phases, cellStates, onNavigateToPhase }) {
   );
 }
 
-// Draggable phase type pill
-function PhaseTypePill({ type, icon, label, color }) {
+// Draggable cell type pill
+function CellTypePill({ type, icon, label, color }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `phase-type-${type}`,
-    data: { type: 'phase-type', phaseType: type },
+    id: `cell-type-${type}`,
+    data: { type: 'cell-type', cellType: type },
   });
 
   return (
@@ -520,7 +520,7 @@ function PhaseTypePill({ type, icon, label, color }) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`nav-phase-type-pill ${isDragging ? 'dragging' : ''}`}
+      className={`nav-cell-type-pill ${isDragging ? 'dragging' : ''}`}
       style={{ borderColor: color + 34 }}
     >
       <Icon icon={icon} width="16" style={{ color }} />
@@ -529,16 +529,16 @@ function PhaseTypePill({ type, icon, label, color }) {
   );
 }
 
-// Phase type subsection
-function PhaseTypeSubsection({ title, icon, phaseTypes, defaultExpanded = true }) {
+// Cell type subsection
+function CellTypeSubsection({ title, icon, cellTypes, defaultExpanded = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  if (phaseTypes.length === 0) return null;
+  if (cellTypes.length === 0) return null;
 
   return (
-    <div className="nav-phase-subsection">
+    <div className="nav-cell-subsection">
       <div
-        className="nav-phase-subsection-header"
+        className="nav-cell-subsection-header"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <Icon
@@ -548,13 +548,13 @@ function PhaseTypeSubsection({ title, icon, phaseTypes, defaultExpanded = true }
         />
         <Icon icon={icon} width="14" className="nav-subsection-icon" />
         <span className="nav-subsection-title">{title}</span>
-        <span className="nav-subsection-count">{phaseTypes.length}</span>
+        <span className="nav-subsection-count">{cellTypes.length}</span>
       </div>
 
       {isExpanded && (
-        <div className="nav-phase-types-content">
-          {phaseTypes.map(type => (
-            <PhaseTypePill key={type.type} {...type} />
+        <div className="nav-cell-types-content">
+          {cellTypes.map(type => (
+            <CellTypePill key={type.type} {...type} />
           ))}
         </div>
       )}
@@ -562,14 +562,14 @@ function PhaseTypeSubsection({ title, icon, phaseTypes, defaultExpanded = true }
   );
 }
 
-// Phase Types section (draggable palette with organized subsections)
-function PhaseTypesSection() {
+// Cell Types section (draggable palette with organized subsections)
+function CellTypesSection() {
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Load phase types from store (declarative from YAML files)
-  const phaseTypesFromStore = useStudioCascadeStore(state => state.phaseTypes);
+  // Load cell types from store (declarative from YAML files)
+  const cellTypesFromStore = useStudioCascadeStore(state => state.cellTypes);
 
-  const phaseTypes = phaseTypesFromStore.map(pt => ({
+  const cellTypes = cellTypesFromStore.map(pt => ({
     type: pt.type_id,
     icon: pt.icon,
     label: pt.display_name,
@@ -577,24 +577,24 @@ function PhaseTypesSection() {
     tags: pt.tags || []
   }));
 
-  // Group phase types by category (based on tags)
+  // Group cell types by category (based on tags)
   const groupedTypes = React.useMemo(() => {
-    // Helper to check if phase has any of the tags
-    const hasAnyTag = (phase, tags) => tags.some(tag => phase.tags.includes(tag));
+    // Helper to check if cell has any of the tags
+    const hasAnyTag = (cell, tags) => tags.some(tag => cell.tags.includes(tag));
 
     return {
-      quickStart: phaseTypes.filter(p => hasAnyTag(p, ['quick-start', 'popular'])),
-      aiMl: phaseTypes.filter(p => p.tags.includes('ai-ml') && !hasAnyTag(p, ['quick-start', 'popular'])),
-      dataProcessing: phaseTypes.filter(p => p.tags.includes('data-processing') && !hasAnyTag(p, ['ai-ml', 'quick-start', 'popular'])),
-      visualization: phaseTypes.filter(p => p.tags.includes('visualization')),
-      orchestration: phaseTypes.filter(p => p.tags.includes('orchestration') && !hasAnyTag(p, ['ai-ml'])),
-      integration: phaseTypes.filter(p => p.tags.includes('integration')),
-      advanced: phaseTypes.filter(p =>
-        hasAnyTag(p, ['advanced', 'novel', 'powerful']) &&
-        !hasAnyTag(p, ['quick-start', 'popular', 'visualization', 'integration'])
+      quickStart: cellTypes.filter(c => hasAnyTag(c, ['quick-start', 'popular'])),
+      aiMl: cellTypes.filter(c => c.tags.includes('ai-ml') && !hasAnyTag(c, ['quick-start', 'popular'])),
+      dataProcessing: cellTypes.filter(c => c.tags.includes('data-processing') && !hasAnyTag(c, ['ai-ml', 'quick-start', 'popular'])),
+      visualization: cellTypes.filter(c => c.tags.includes('visualization')),
+      orchestration: cellTypes.filter(c => c.tags.includes('orchestration') && !hasAnyTag(c, ['ai-ml'])),
+      integration: cellTypes.filter(c => c.tags.includes('integration')),
+      advanced: cellTypes.filter(c =>
+        hasAnyTag(c, ['advanced', 'novel', 'powerful']) &&
+        !hasAnyTag(c, ['quick-start', 'popular', 'visualization', 'integration'])
       )
     };
-  }, [phaseTypes]);
+  }, [cellTypes]);
 
   return (
     <div className="nav-section">
@@ -607,52 +607,52 @@ function PhaseTypesSection() {
           className="nav-chevron"
         />
         <Icon icon="mdi:puzzle" className="nav-section-icon" />
-        <span className="nav-section-title">Phase Types</span>
-        <span className="nav-section-count">{phaseTypes.length}</span>
+        <span className="nav-section-title">Cell Templates</span>
+        <span className="nav-section-count">{cellTypes.length}</span>
       </div>
 
       {isExpanded && (
         <div className="nav-section-content">
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Quick Start"
             icon="mdi:rocket-launch-outline"
-            phaseTypes={groupedTypes.quickStart}
+            cellTypes={groupedTypes.quickStart}
             defaultExpanded={true}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="AI & Machine Learning"
             icon="mdi:brain"
-            phaseTypes={groupedTypes.aiMl}
+            cellTypes={groupedTypes.aiMl}
             defaultExpanded={false}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Data Processing"
             icon="mdi:database-cog"
-            phaseTypes={groupedTypes.dataProcessing}
+            cellTypes={groupedTypes.dataProcessing}
             defaultExpanded={false}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Visualization"
             icon="mdi:chart-line"
-            phaseTypes={groupedTypes.visualization}
+            cellTypes={groupedTypes.visualization}
             defaultExpanded={false}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Orchestration"
             icon="mdi:git-network"
-            phaseTypes={groupedTypes.orchestration}
+            cellTypes={groupedTypes.orchestration}
             defaultExpanded={false}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Integration & Tools"
             icon="mdi:tools"
-            phaseTypes={groupedTypes.integration}
+            cellTypes={groupedTypes.integration}
             defaultExpanded={false}
           />
-          <PhaseTypeSubsection
+          <CellTypeSubsection
             title="Advanced Features"
             icon="mdi:star-circle"
-            phaseTypes={groupedTypes.advanced}
+            cellTypes={groupedTypes.advanced}
             defaultExpanded={false}
           />
         </div>
@@ -711,10 +711,10 @@ function CascadeNavigator() {
     viewMode,
     replaySessionId,
     parentSessionId,
-    parentPhase
+    parentCell
   } = useStudioCascadeStore();
 
-  const [activePhase, setActivePhase] = useState(null);
+  const [activeCell, setActiveCell] = useState(null);
   const [inputValidationError, setInputValidationError] = useState(null);
 
   // YAML editor state
@@ -753,7 +753,7 @@ function CascadeNavigator() {
         cascade_id: cascade.cascade_id,
         description: cascade.description || '',
         inputs_schema: cascade.inputs_schema || {},
-        phases: cascade.phases || []
+        phases: cascade.cells || []
       }, {
         indent: 2,
         lineWidth: -1,
@@ -810,14 +810,14 @@ function CascadeNavigator() {
   }, [updateCascadeFromYaml]);
 
   // Scroll to cell and select it in timeline
-  const scrollToCell = useCallback((phaseName, options = {}) => {
-    setActivePhase(phaseName);
+  const scrollToCell = useCallback((cellName, options = {}) => {
+    setActiveCell(cellName);
 
-    // Find phase index and select in timeline
-    const { cascade, setSelectedPhaseIndex, setDesiredOutputTab } = useStudioCascadeStore.getState();
-    const phaseIndex = cascade?.phases?.findIndex(p => p.name === phaseName);
-    if (phaseIndex !== -1) {
-      setSelectedPhaseIndex(phaseIndex);
+    // Find cell index and select in timeline
+    const { cascade, setSelectedCellIndex, setDesiredOutputTab } = useStudioCascadeStore.getState();
+    const cellIndex = cascade?.cells?.findIndex(c => c.name === cellName);
+    if (cellIndex !== -1) {
+      setSelectedCellIndex(cellIndex);
 
       // Set desired output tab if specified (for Media section navigation)
       if (options.outputTab) {
@@ -826,7 +826,7 @@ function CascadeNavigator() {
     }
 
     // Find the cell element and scroll to it
-    const cellElement = document.querySelector(`[data-phase-name="${phaseName}"]`);
+    const cellElement = document.querySelector(`[data-cell-name="${cellName}"]`);
     if (cellElement) {
       cellElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       // Add a brief highlight effect
@@ -846,7 +846,7 @@ function CascadeNavigator() {
     );
   }
 
-  const phases = cascade.phases || [];
+  const cells = cascade.cells || [];
   const hasInputs = cascade.inputs_schema && Object.keys(cascade.inputs_schema).length > 0;
 
   const handleRunAll = async () => {
@@ -907,10 +907,10 @@ function CascadeNavigator() {
           >
             {parentSessionId.slice(0, 16)}...
           </a>
-          {parentPhase && (
+          {parentCell && (
             <>
               <span className="nav-parent-sep">·</span>
-              <span className="nav-parent-phase">Phase: {parentPhase}</span>
+              <span className="nav-parent-cell">Cell: {parentCell}</span>
             </>
           )}
         </div>
@@ -942,7 +942,7 @@ function CascadeNavigator() {
                 size="sm"
                 icon={isRunningAll ? "mdi:loading" : "mdi:play"}
                 onClick={handleRunAll}
-                disabled={isRunningAll || phases.length === 0}
+                disabled={isRunningAll || cells.length === 0}
                 loading={isRunningAll}
               >
                 Run All
@@ -1048,8 +1048,8 @@ function CascadeNavigator() {
             </div>
           )}
 
-          {/* Phase Types Section (Draggable Palette) */}
-          <PhaseTypesSection />
+          {/* Cell Types Section (Draggable Palette) */}
+          <CellTypesSection />
 
           {/* Model Browser Palette */}
           <ModelBrowserPalette />
@@ -1069,21 +1069,21 @@ function CascadeNavigator() {
             isRunning={isRunningAll || false}
           />
 
-          {/* Phases Section */}
-          <div className="nav-section nav-phases-section">
+          {/* Cells Section */}
+          <div className="nav-section nav-cells-section">
             <div className="nav-section-header">
               <Icon icon="mdi:format-list-numbered" className="nav-section-icon" />
-              <span className="nav-section-title">Phases</span>
+              <span className="nav-section-title">Cells</span>
             </div>
 
-            <div className="nav-phases-list">
-              {phases.map((phase, index) => (
-                <PhaseNode
-                  key={phase.name}
-                  phase={phase}
+            <div className="nav-cells-list">
+              {cells.map((cell, index) => (
+                <CellNode
+                  key={cell.name}
+                  cell={cell}
                   index={index}
-                  cellState={cellStates[phase.name]}
-                  isActive={activePhase === phase.name}
+                  cellState={cellStates[cell.name]}
+                  isActive={activeCell === cell.name}
                   onNavigate={scrollToCell}
                 />
               ))}
@@ -1093,15 +1093,15 @@ function CascadeNavigator() {
           {/* Session Tables Section */}
           <SessionTablesSection
             sessionId={sessionId}
-            phases={phases}
+            cells={cells}
             cellStates={cellStates}
           />
 
-          {/* Media Section - shows thumbnails of images from phases */}
+          {/* Media Section - shows thumbnails of images from cells */}
           <MediaSection
-            phases={phases}
+            cells={cells}
             cellStates={cellStates}
-            onNavigateToPhase={scrollToCell}
+            onNavigateToCell={scrollToCell}
           />
 
           {/* Connections Section */}

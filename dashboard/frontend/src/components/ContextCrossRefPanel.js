@@ -26,7 +26,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
         hash,
         index: linkedMsg?.index,
         role: linkedMsg?.role || 'unknown',
-        phase: linkedMsg?.phase_name || 'unknown',
+        phase: linkedMsg?.cell_name || 'unknown',
         contextPosition: idx,
         hasMatch: !!linkedMsg
       };
@@ -41,7 +41,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
           descendantsList.push({
             index: idx,
             role: msg.role,
-            phase: msg.phase_name,
+            phase: msg.cell_name,
             contextPosition: contextPos,
             contextSize: msg.context_hashes.length,
             hash: msg.content_hash
@@ -109,8 +109,8 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
           <span className="selected-msg-badge" style={{ background: roleColors[selectedMessage.role] || '#666' }}>
             {selectedMessage.role}
           </span>
-          {selectedMessage.phase_name && (
-            <span className="selected-msg-phase">{selectedMessage.phase_name}</span>
+          {selectedMessage.cell_name && (
+            <span className="selected-msg-phase">{selectedMessage.cell_name}</span>
           )}
           {selectedMessage.turn_number !== null && (
             <span className="selected-msg-turn">Turn {selectedMessage.turn_number}</span>

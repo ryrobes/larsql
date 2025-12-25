@@ -1,26 +1,29 @@
 type_id: llm_soundings
 display_name: LLM (Soundings)
 icon: mdi:chart-scatter-plot
-color: "#ff006e"
+color: '#ff006e'
 name_prefix: sounding
-description: "LLM phase with soundings pre-configured for best-of-N attempts"
-category: "llm"
+description: LLM phase with soundings pre-configured for best-of-N attempts
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "parallel"
-  - "powerful"
-
+- intermediate
+- ai-ml
+- parallel
+- powerful
 template:
-  instructions: |
-    Generate a creative response.
+  instructions: 'Generate a creative response.
+
 
     Context:
+
     - {{ input.prompt }}
 
+
     Be creative and varied in your approach.
+
+    '
   model: anthropic/claude-sonnet-4
-  tackle: []
-  soundings:
+  traits: []
+  candidates:
     factor: 3
-    evaluator_instructions: "Pick the most creative and engaging response"
+    evaluator_instructions: Pick the most creative and engaging response

@@ -1,25 +1,29 @@
 cascade_id: context_messages_demo
 description: Tests message injection - injecting the full conversation history from a previous phase
-phases:
-  - handoffs:
-      - summarize
-    instructions: Research the topic 'sustainable energy'. Provide 3 key findings, thinking through each
-      one step by step. Then route to summarize.
-    name: research_phase
-  - handoffs:
-      - detailed_analysis
-    instructions: You are a summarizer. Summarize the findings briefly. Then route to detailed_analysis.
-    name: summarize
-  - context:
-      from:
-        - include:
-            - messages
-          messages_filter: all
-          phase: research_phase
-      include_input: no
-    handoffs: []
-    instructions: "You have access to the FULL CONVERSATION from the research phase (including the reasoning\
-      \ process). This is NOT just the output - you should see the entire conversation.\n\nAnalyze the\
-      \ reasoning quality from the research phase. Were the conclusions well-supported?\n\nIMPORTANT:\
-      \ If you can only see a summary and not the full research reasoning, something is wrong."
-    name: detailed_analysis
+cells:
+- handoffs:
+  - summarize
+  instructions: Research the topic 'sustainable energy'. Provide 3 key findings, thinking through each one step by step. Then
+    route to summarize.
+  name: research_phase
+- handoffs:
+  - detailed_analysis
+  instructions: You are a summarizer. Summarize the findings briefly. Then route to detailed_analysis.
+  name: summarize
+- context:
+    from:
+    - include:
+      - messages
+      messages_filter: all
+      cell: research_phase
+    include_input: false
+  handoffs: []
+  instructions: 'You have access to the FULL CONVERSATION from the research phase (including the reasoning process). This
+    is NOT just the output - you should see the entire conversation.
+
+
+    Analyze the reasoning quality from the research phase. Were the conclusions well-supported?
+
+
+    IMPORTANT: If you can only see a summary and not the full research reasoning, something is wrong.'
+  name: detailed_analysis

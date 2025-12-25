@@ -835,7 +835,7 @@ rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            phase_name: phaseName, // Use phase name (custom name or id) to match cascade phases
+            cell_name: phaseName, // Use phase name (custom name or id) to match cascade phases
             cached_session_id: state.lastSuccessfulSessionId,
             cascade_yaml: cascadeYaml,
             inputs,
@@ -1310,9 +1310,9 @@ rules:
             };
           } else if (n.type === 'phase') {
             // Restore phase node - reconstruct YAML from phase definition
-            // Look up the phase by name in config.phases
+            // Look up the phase by name in config.cells
             const phaseName = n.data?.name || 'llm_phase';
-            const phaseConfig = config.phases?.find(p => p.name === phaseName);
+            const phaseConfig = config.cells?.find(p => p.name === phaseName);
 
             // Reconstruct clean YAML from the phase config (not the stringified blob)
             let phaseYaml = n.data?.yaml || '';

@@ -13,15 +13,15 @@ const OutputLayer = ({ outputSchema, outputExtraction, callouts, handoffs, resul
   const hasResult = result !== null && result !== undefined;
 
   return (
-    <div className="phase-anatomy-layer phase-anatomy-layer-output">
-      <div className="phase-anatomy-layer-header">
-        <div className="phase-anatomy-layer-icon layer-icon-output">
+    <div className="cell-anatomy-layer cell-anatomy-layer-output">
+      <div className="cell-anatomy-layer-header">
+        <div className="cell-anatomy-layer-icon layer-icon-output">
           <Icon icon="mdi:export" width="14" />
         </div>
-        <span className="phase-anatomy-layer-title">Output</span>
+        <span className="cell-anatomy-layer-title">Output</span>
       </div>
 
-      <div className="phase-anatomy-layer-content">
+      <div className="cell-anatomy-layer-content">
         {/* Output schema */}
         {hasSchema && (
           <div className="layer-output-section">

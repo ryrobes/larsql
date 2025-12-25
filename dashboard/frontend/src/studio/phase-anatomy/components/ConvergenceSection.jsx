@@ -23,7 +23,7 @@ const formatValidatorName = (validator) => {
 };
 
 /**
- * ConvergenceSection - Shows where soundings converge
+ * ConvergenceSection - Shows where candidates converge
  *
  * Contains:
  * - Pre-validator (filters broken outputs)
@@ -35,7 +35,7 @@ const ConvergenceSection = ({ config, winnerIndex, mode = 'evaluate', evaluatorR
   const hasResult = evaluatorResult && evaluatorResult.content;
 
   return (
-    <div className="phase-anatomy-convergence">
+    <div className="cell-anatomy-convergence">
       {/* Funnel visualization */}
       <div className="convergence-funnel">
         <div className="convergence-funnel-line" />

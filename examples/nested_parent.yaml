@@ -1,24 +1,24 @@
 cascade_id: parent_cascade
-phases:
-  - handoffs:
-      - call_child
-    instructions: Introduce yourself as the Parent Cascade.
-    name: parent_start
-    tackle: []
-  - context:
-      from:
-        - previous
-    handoffs:
-      - parent_finish
-    instructions: Now we are delegating to a sub-routine.
-    name: call_child
-    sub_cascades:
-      - ref: nested_child.json
-    tackle: []
-  - context:
-      from:
-        - all
-    handoffs: []
-    instructions: Thank the sub-routine and sign off.
-    name: parent_finish
-    tackle: []
+cells:
+- handoffs:
+  - call_child
+  instructions: Introduce yourself as the Parent Cascade.
+  name: parent_start
+  traits: []
+- context:
+    from:
+    - previous
+  handoffs:
+  - parent_finish
+  instructions: Now we are delegating to a sub-routine.
+  name: call_child
+  sub_cascades:
+  - ref: nested_child.json
+  traits: []
+- context:
+    from:
+    - all
+  handoffs: []
+  instructions: Thank the sub-routine and sign off.
+  name: parent_finish
+  traits: []

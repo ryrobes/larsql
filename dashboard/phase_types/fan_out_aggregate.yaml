@@ -1,37 +1,46 @@
 type_id: fan_out_aggregate
 display_name: Fan-Out Map/Reduce
 icon: mdi:share-variant
-color: "#ff006e"
+color: '#ff006e'
 name_prefix: fanout
-description: "Process array items in parallel using soundings aggregate mode (map/reduce pattern)"
-category: "llm"
+description: Process array items in parallel using soundings aggregate mode (map/reduce pattern)
+category: llm
 tags:
-  - "advanced"
-  - "parallel"
-  - "orchestration"
-  - "powerful"
-  - "novel"
-
+- advanced
+- parallel
+- orchestration
+- powerful
+- novel
 template:
-  instructions: |
-    You are processing item {{ sounding_index + 1 }} of {{ sounding_factor }}.
+  instructions: 'You are processing item {{ sounding_index + 1 }} of {{ sounding_factor }}.
+
 
     Item: {{ outputs.previous_phase.items[sounding_index] }}
 
+
     Process this item and return structured results.
+
     Each sounding handles one item in parallel.
+
+    '
   model: google/gemini-2.5-flash
-  tackle: []
-  soundings:
-    factor: 3  # Can be dynamic: "{{ outputs.phase.items | length }}"
-    mode: aggregate  # Keep all results (don't pick winner)
+  traits: []
+  candidates:
+    factor: 3
+    mode: aggregate
     max_parallel: 5
-    aggregator_instructions: |
-      You have {{ soundings | length }} results from parallel processing.
+    aggregator_instructions: 'You have {{ soundings | length }} results from parallel processing.
+
 
       Results:
+
       {% for sounding in soundings %}
+
       - Item {{ loop.index }}: {{ sounding.output }}
+
       {% endfor %}
 
+
       Combine all results into a summary report or aggregated structure.
+
+      '

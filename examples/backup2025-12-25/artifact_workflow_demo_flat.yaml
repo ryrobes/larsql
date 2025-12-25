@@ -1,61 +1,67 @@
 cascade_id: artifact_workflow_demo_flat
-description: |
-  Demonstrates the complete artifact workflow:
+description: 'Demonstrates the complete artifact workflow:
+
   1. Iterate on visualizations with request_decision (HTMX blocking)
+
   2. Publish final polished version with create_artifact (persistent)
 
+
   Shows how artifacts become permanent gallery items while request_decision
+
   is ephemeral iteration tool.
 
+  '
 inputs_schema:
-  dataset_name: "What dataset to analyze"
-
+  dataset_name: What dataset to analyze
 memory: artifact_test
-
-phases:
-  - name: draft_and_iterate
-    tackle:
-      - request_decision
-      - create_artifact
-      - route_to
-      - run_code
-      - linux_shell
-      - sql_search
-      #- list_sql_connections
-      #- request_decision
-      - sql_query
-    #model: anthropic/claude-sonnet-4.5
-    handoffs:
-      - finalize
-    soundings:
-      factor: 3
-      models:
-        - x-ai/grok-4.1-fast
-        #- anthropic/claude-sonnet-4.5
-        - openai/gpt-5.2
-        #- google/gemini-3-pro-preview
-    rules:
-      max_turns: 10
-    instructions: |
-      Analyze / find dataset: {{ input.dataset_name }}
-
-      ## Workflow (Each Sounding Explores Different Visualizations):
-
-      1. **Get Data (you have many tools at your command)
-
-      2. **Create a professional and data-dense Dashboard**
+cells:
+- name: draft_and_iterate
+  traits:
+  - request_decision
+  - create_artifact
+  - route_to
+  - run_code
+  - linux_shell
+  - sql_search
+  - sql_query
+  handoffs:
+  - finalize
+  candidates:
+    factor: 3
+    models:
+    - x-ai/grok-4.1-fast
+    - openai/gpt-5.2
+  rules:
+    max_turns: 10
+  instructions: 'Analyze / find dataset: {{ input.dataset_name }}
 
 
-  - name: finalize
-    tackle: ["create_artifact"]
-    instructions: |
-      Artifact created: {{ outputs.draft_and_iterate.artifact_id }}
-      (Please create it, if not done already)
+    ## Workflow (Each Sounding Explores Different Visualizations):
 
-      Provide a summary of:
-      - What the artifact contains
-      - Key insights from the data
-      - How to access it (Artifacts gallery)
 
-    context:
-      from: [draft_and_iterate]
+    1. **Get Data (you have many tools at your command)
+
+
+    2. **Create a professional and data-dense Dashboard**
+
+    '
+- name: finalize
+  traits:
+  - create_artifact
+  instructions: 'Artifact created: {{ outputs.draft_and_iterate.artifact_id }}
+
+    (Please create it, if not done already)
+
+
+    Provide a summary of:
+
+    - What the artifact contains
+
+    - Key insights from the data
+
+    - How to access it (Artifacts gallery)
+
+    '
+  context:
+    from:
+    - draft_and_iterate

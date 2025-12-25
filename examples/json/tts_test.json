@@ -4,12 +4,16 @@
   "inputs_schema": {
     "message": "The message to speak aloud"
   },
-  "phases": [
+  "cells": [
     {
       "name": "speak",
       "instructions": "You have access to a text-to-speech tool. Use the 'say' tool to speak the following message aloud: {{ input.message }}",
-      "tackle": ["say"],
-      "rules": {"max_turns": 2}
+      "traits": [
+        "say"
+      ],
+      "rules": {
+        "max_turns": 2
+      }
     }
   ]
 }

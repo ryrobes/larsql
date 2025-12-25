@@ -226,7 +226,7 @@ function ParetoChart({ paretoData, onPointClick }) {
           </span>
           <span className="stat winner-stat">
             <Icon icon="mdi:trophy" width="14" />
-            {paretoData.phase_name || 'Unknown'} phase
+            {paretoData.cell_name || 'Unknown'} phase
           </span>
         </div>
       </div>

@@ -1,23 +1,25 @@
-cascade_id: "simple_persistence_test"
-description: "Minimal test of persistent bash sessions"
+cascade_id: simple_persistence_test
+description: Minimal test of persistent bash sessions
+cells:
+- name: setup
+  tool: bash_data
+  inputs:
+    script: 'export MY_VAR="hello_windlass"
 
-phases:
-  # Phase 1: Set environment variable
-  - name: setup
-    tool: bash_data
-    inputs:
-      script: |
-        export MY_VAR="hello_windlass"
-        echo "status,message"
-        echo "setup,complete"
-      output_format: csv
-    handoffs: [check]
+      echo "status,message"
 
-  # Phase 2: Check if variable persists
-  - name: check
-    tool: bash_data
-    inputs:
-      script: |
-        echo "variable,value"
-        echo "MY_VAR,$MY_VAR"
-      output_format: csv
+      echo "setup,complete"
+
+      '
+    output_format: csv
+  handoffs:
+  - check
+- name: check
+  tool: bash_data
+  inputs:
+    script: 'echo "variable,value"
+
+      echo "MY_VAR,$MY_VAR"
+
+      '
+    output_format: csv

@@ -1,12 +1,12 @@
-// Phase Anatomy - Visualizes the internal structure of a Windlass phase
-export { default as PhaseAnatomyPanel } from './PhaseAnatomyPanel';
+// Cell Anatomy - Visualizes the internal structure of a WRVBBITcell
+export { default as CellAnatomyPanel } from './CellAnatomyPanel';
 
 // Layer components (for customization)
 export { default as InputLayer } from './components/InputLayer';
 export { default as ContextLayer } from './components/ContextLayer';
 export { default as WardsLayer } from './components/WardsLayer';
-export { default as SoundingsLayer } from './components/SoundingsLayer';
-export { default as SoundingLane } from './components/SoundingLane';
+export { default as CandidatesLayer } from './components/CandidatesLayer';
+export { default as CandidateLane } from './components/CandidateLane';
 export { default as ConvergenceSection } from './components/ConvergenceSection';
 export { default as ReforgeLayer } from './components/ReforgeLayer';
 export { default as OutputLayer } from './components/OutputLayer';

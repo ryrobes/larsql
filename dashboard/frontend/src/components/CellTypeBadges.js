@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import PromptPhylogeny from './PromptPhylogeny';
-import './PhaseSpeciesBadges.css';
+import './CellTypeBadges.css';
 
 /**
  * PhaseSpeciesBadges - Compact per-phase species training info
@@ -36,7 +36,7 @@ export default function PhaseSpeciesBadges({ sessionId }) {
 
         const data = await res.json();
 
-        if (!data.error && data.phases && data.phases.length > 0) {
+        if (!data.error && data.cells && data.cells.length > 0) {
           setSpeciesData(data);
         }
       } catch (err) {
@@ -49,15 +49,15 @@ export default function PhaseSpeciesBadges({ sessionId }) {
     fetchSpeciesInfo();
   }, [sessionId]);
 
-  if (loading || !speciesData || !speciesData.phases) return null;
+  if (loading || !speciesData || !speciesData.cells) return null;
 
   // Check if any phase has evolution (Gen 2+)
-  const hasEvolution = speciesData.phases.some(p => p.evolution_depth > 1);
+  const hasEvolution = speciesData.cells.some(p => p.evolution_depth > 1);
 
   return (
     <>
       <div className="phase-species-badges">
-        {speciesData.phases.map((phase, idx) => {
+        {speciesData.cells.map((phase, idx) => {
           const isNewSpecies = phase.current_generation === 1;
           const hasTraining = phase.evolution_depth > 1;
 
@@ -71,10 +71,10 @@ export default function PhaseSpeciesBadges({ sessionId }) {
                   setShowEvolution(true);
                 }
               }}
-              title={`Species: ${phase.species_hash}\nPhase: ${phase.phase_name}\nEvolution: Gen ${phase.current_generation}/${phase.evolution_depth}\n${hasTraining ? `Trained on ${phase.evolution_depth - 1} previous run${phase.evolution_depth > 2 ? 's' : ''}` : 'First generation - no training'}${hasEvolution ? '\n\nClick to view evolution tree' : ''}`}
+              title={`Species: ${phase.species_hash}\nPhase: ${phase.cell_name}\nEvolution: Gen ${phase.current_generation}/${phase.evolution_depth}\n${hasTraining ? `Trained on ${phase.evolution_depth - 1} previous run${phase.evolution_depth > 2 ? 's' : ''}` : 'First generation - no training'}${hasEvolution ? '\n\nClick to view evolution tree' : ''}`}
             >
               <Icon icon="mdi:dna" width="11" className="dna-icon" />
-              <span className="phase-name">{phase.phase_name}</span>
+              <span className="phase-name">{phase.cell_name}</span>
               <span className={`gen-info ${isNewSpecies ? 'new' : ''}`}>
                 {phase.current_generation}/{phase.evolution_depth}
               </span>

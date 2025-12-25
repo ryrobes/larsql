@@ -1,23 +1,31 @@
 cascade_id: signal_roundtrip_demo
-description: Self-contained signal demo - spawns an async producer cascade that fires a signal, while
-  this cascade waits for it. Run this single cascade to test the full signal roundtrip flow.
-phases:
-  - async_cascades:
-      - ref: signal_producer_delayed.json
-        trigger: on_start
-    handoffs:
-      - wait_for_signal
-    instructions: Say 'Starting signal roundtrip demo. An async producer will fire a signal that we will
-      wait for.'
-    name: start_producer
-  - handoffs:
-      - report_result
-    instructions: Use the await_signal tool to wait for a signal named 'roundtrip_demo' with a timeout
-      of '30s'. Set description to 'Waiting for async producer signal'.
-    name: wait_for_signal
-    tackle:
-      - await_signal
-  - instructions: "Report the result from the signal wait:\n\n{{ state.output_wait_for_signal }}\n\nIf\
-      \ the signal was received (status: fired), describe the payload that was received from the producer.\n\
-      If it timed out, note that something may have gone wrong with the async producer."
-    name: report_result
+description: Self-contained signal demo - spawns an async producer cascade that fires
+  a signal, while this cascade waits for it. Run this single cascade to test the full
+  signal roundtrip flow.
+cells:
+- async_cascades:
+  - ref: signal_producer_delayed.json
+    trigger: on_start
+  handoffs:
+  - wait_for_signal
+  instructions: Say 'Starting signal roundtrip demo. An async producer will fire a
+    signal that we will wait for.'
+  name: start_producer
+- handoffs:
+  - report_result
+  instructions: Use the await_signal tool to wait for a signal named 'roundtrip_demo'
+    with a timeout of '30s'. Set description to 'Waiting for async producer signal'.
+  name: wait_for_signal
+  traits:
+  - await_signal
+- instructions: 'Report the result from the signal wait:
+
+
+    {{ state.output_wait_for_signal }}
+
+
+    If the signal was received (status: fired), describe the payload that was received
+    from the producer.
+
+    If it timed out, note that something may have gone wrong with the async producer.'
+  name: report_result

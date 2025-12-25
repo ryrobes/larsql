@@ -1,24 +1,31 @@
 cascade_id: harbor_whisper_test
-description: Test Harbor integration by transcribing a YouTube video and summarizing it
+description: Test Harbor integration by transcribing a YouTube video and summarizing
+  it
 inputs_schema:
   youtube_url: YouTube URL to transcribe
-phases:
-  - instructions: |-
-      Use the whisper_youtube tool to transcribe the video at: {{ input.youtube_url }}
+cells:
+- instructions: 'Use the whisper_youtube tool to transcribe the video at: {{ input.youtube_url
+    }}
 
-      Call the tool with:
-      - yt_url: the YouTube URL
-      - task: 'transcribe'
-    name: transcribe
-    rules:
-      max_turns: 3
-    tackle:
-      - whisper_youtube
-  - context:
-      from:
-        - transcribe
-    instructions: "Based on the transcription from the previous phase, provide a brief summary of what\
-      \ the video is about.\n\nKeep the summary to 2-3 sentences."
-    name: summarize
-    rules:
-      max_turns: 1
+
+    Call the tool with:
+
+    - yt_url: the YouTube URL
+
+    - task: ''transcribe'''
+  name: transcribe
+  rules:
+    max_turns: 3
+  traits:
+  - whisper_youtube
+- context:
+    from:
+    - transcribe
+  instructions: 'Based on the transcription from the previous phase, provide a brief
+    summary of what the video is about.
+
+
+    Keep the summary to 2-3 sentences.'
+  name: summarize
+  rules:
+    max_turns: 1

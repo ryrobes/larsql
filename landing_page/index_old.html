@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0a0b14" />
+  <title>RVBBIT — Build Cascades with Receipts</title>
+  <meta name="description" content="A visual IDE for building LLM cascades. Polyglot cells, parallel candidates, SQL interop, and execution receipts—all in one interface." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;600&display=swap');
+    :root{
+      --bg0:#0a0b14;
+      --bg1:#0d0e1a;
+      --panel:#14152a;
+      --panel2:#1a1b2e;
+      --muted:#8b94b8;
+      --text:#e8f0ff;
+      --line:rgba(0,229,255,.12);
+
+      --cyan:#00e5ff;
+      --cyan2:#00d9ff;
+      --mag:#ff006e;
+      --mag2:#ff2bd6;
+      --vio:#6366f1;
+
+      --ok:#00ff9d;
+      --warn:#ffd166;
+
+      --radius: 12px;
+      --radius2: 16px;
+      --mono: "Google Sans Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      color:var(--text);
+      background:
+        radial-gradient(1000px 600px at 15% 10%, rgba(0,229,255,.08), transparent 55%),
+        radial-gradient(1000px 600px at 85% 15%, rgba(255,0,110,.08), transparent 60%),
+        radial-gradient(1200px 800px at 50% 90%, rgba(99,102,241,.06), transparent 65%),
+        var(--bg0);
+      overflow-x:hidden;
+      position: relative;
+    }
+    body::before{
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg, rgba(0,229,255,.015) 0px, transparent 1px, transparent 2px, rgba(0,229,255,.015) 3px),
+        repeating-linear-gradient(90deg, rgba(0,229,255,.015) 0px, transparent 1px, transparent 2px, rgba(0,229,255,.015) 3px);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* subtle grid */
+    .grid {
+      pointer-events:none;
+      position:fixed; inset:0;
+      background-image:
+        linear-gradient(to right, rgba(0,229,255,.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,229,255,.04) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse at 50% 30%, rgba(0,0,0,.85), transparent 75%);
+      opacity:.4;
+      z-index: 0;
+    }
+    .noise {
+      pointer-events:none;
+      position:fixed; inset:-20%;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.3'/%3E%3C/svg%3E");
+      opacity:.08;
+      mix-blend-mode:soft-light;
+      z-index: 0;
+    }
+
+    a{color:inherit; text-decoration:none}
+    .wrap{
+      max-width:1400px;
+      margin:0 auto;
+      padding:0 clamp(20px, 5vw, 60px);
+      position: relative;
+      z-index: 2;
+    }
+    .topbar{
+      position:sticky; top:0; z-index:20;
+      backdrop-filter: blur(12px) saturate(180%);
+      background: rgba(10,11,20,.85);
+      border-bottom:1px solid rgba(0,229,255,.2);
+    }
+    .nav{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 0;
+      gap:16px;
+    }
+    .brand{display:flex; align-items:center; gap:14px; min-width:240px;}
+    .logo{
+      width:38px; height:38px; border-radius:11px;
+      background: linear-gradient(135deg, rgba(0,229,255,.15), rgba(255,0,110,.12));
+      border:1px solid rgba(0,229,255,.25);
+      display:grid; place-items:center;
+      box-shadow: 0 0 20px rgba(0,229,255,.2), 0 0 0 1px rgba(0,0,0,.4) inset;
+      overflow:hidden;
+      transition: all .3s ease;
+    }
+    .logo:hover{
+      box-shadow: 0 0 30px rgba(0,229,255,.35), 0 0 0 1px rgba(0,229,255,.3) inset;
+      border-color: rgba(0,229,255,.4);
+    }
+    .logo img{width:100%; height:100%; object-fit:contain; display:block}
+    .brand h1{
+      font-size:15px;
+      margin:0;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-weight:700;
+      background: linear-gradient(135deg, var(--cyan), var(--text));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+    .brand span{display:block; margin-top:3px; font-size:12px; color:var(--muted); letter-spacing:.01em; text-transform:none; font-weight:400}
+    .links{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end}
+    .links a{
+      font-size:13px;
+      font-weight:500;
+      color:rgba(232,240,255,.85);
+      text-decoration:none;
+      padding:9px 14px;
+      border-radius:10px;
+      border:1px solid rgba(0,229,255,.12);
+      background: rgba(20,21,42,.4);
+      transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space:nowrap;
+      position: relative;
+      overflow: hidden;
+    }
+    .links a::before{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,.1), transparent);
+      opacity: 0;
+      transition: opacity .25s ease;
+    }
+    .links a:hover{
+      background:rgba(0,229,255,.08);
+      border-color:rgba(0,229,255,.3);
+      transform:translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,229,255,.15);
+    }
+    .links a:hover::before{
+      opacity: 1;
+    }
+    .cta{
+      background: linear-gradient(135deg, rgba(0,229,255,.25), rgba(255,0,110,.2)) !important;
+      border:1px solid rgba(0,229,255,.35) !important;
+      box-shadow: 0 0 25px rgba(0,229,255,.25), 0 4px 20px rgba(0,0,0,.4);
+      color: var(--text) !important;
+      font-weight: 600;
+    }
+    .cta:hover{
+      box-shadow: 0 0 35px rgba(0,229,255,.4), 0 6px 25px rgba(0,0,0,.5) !important;
+      border-color: rgba(0,229,255,.5) !important;
+    }
+
+    /* hero */
+    .hero{
+      padding:clamp(60px, 12vh, 120px) 0 clamp(40px, 8vh, 80px);
+      text-align:center;
+    }
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:clamp(30px, 5vw, 50px);
+      max-width:1100px;
+      margin:0 auto;
+    }
+    @media (max-width: 980px){
+      .brand{min-width:unset}
+      .links{justify-content:flex-start}
+    }
+
+    .kicker{
+      display:inline-flex; align-items:center; gap:10px;
+      padding:8px 14px; border-radius:999px;
+      background:rgba(0,229,255,.08);
+      border:1px solid rgba(0,229,255,.2);
+      color:rgba(232,240,255,.9);
+      font-size:12.5px;
+      font-weight:600;
+      box-shadow: 0 0 20px rgba(0,229,255,.15), 0 0 0 1px rgba(0,0,0,.3) inset;
+    }
+    .dot{
+      width:8px; height:8px; border-radius:99px;
+      background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,0) 60%),
+                  linear-gradient(135deg, var(--cyan), var(--mag));
+      box-shadow: 0 0 20px rgba(0,229,255,.5);
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .6; }
+    }
+    .hero h2{
+      margin:clamp(16px, 3vw, 24px) auto 0;
+      font-size:clamp(36px, 6vw, 72px);
+      line-height:1.05;
+      letter-spacing:-.03em;
+      font-weight:700;
+      max-width:20ch;
+    }
+    .gradientText{
+      background: linear-gradient(120deg, var(--cyan) 0%, var(--mag) 50%, var(--cyan2) 100%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      animation: shimmer 8s ease-in-out infinite;
+      background-size: 200% auto;
+    }
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% center; }
+      50% { background-position: 100% center; }
+    }
+    .sub{
+      margin:clamp(18px, 3vw, 24px) auto 0;
+      font-size:clamp(16px, 2.2vw, 20px);
+      line-height:1.6;
+      color:rgba(232,240,255,.75);
+      max-width:65ch;
+    }
+    .pills{
+      display:flex; flex-wrap:wrap; gap:10px; margin-top:clamp(24px, 4vw, 32px);
+      justify-content:center;
+    }
+    .pill{
+      font-size:12px;
+      font-weight:500;
+      color:rgba(232,240,255,.85);
+      background:rgba(20,21,42,.6);
+      border:1px solid rgba(0,229,255,.18);
+      padding:8px 12px;
+      border-radius:999px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.3) inset;
+      transition: all .3s ease;
+    }
+    .pill:hover{
+      border-color:rgba(0,229,255,.35);
+      box-shadow: 0 0 20px rgba(0,229,255,.15), 0 0 0 1px rgba(0,0,0,.3) inset;
+      transform: translateY(-1px);
+    }
+    .actions{
+      display:flex;
+      gap:14px;
+      margin-top:clamp(32px, 5vw, 48px);
+      flex-wrap:wrap;
+      justify-content:center;
+    }
+    .btn{
+      display:inline-flex; align-items:center; gap:11px;
+      padding:13px 20px;
+      border-radius:12px;
+      text-decoration:none;
+      font-size:14px;
+      font-weight:600;
+      border:1px solid rgba(0,229,255,.2);
+      background:rgba(20,21,42,.7);
+      color:rgba(232,240,255,.95);
+      transition:all .3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::before{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,.15), transparent);
+      opacity: 0;
+      transition: opacity .3s ease;
+    }
+    .btn:hover{
+      transform:translateY(-2px);
+      border-color:rgba(0,229,255,.4);
+      background:rgba(0,229,255,.1);
+      box-shadow: 0 8px 30px rgba(0,229,255,.2);
+    }
+    .btn:hover::before{
+      opacity: 1;
+    }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(0,229,255,.3), rgba(255,0,110,.25));
+      border-color:rgba(0,229,255,.4);
+      box-shadow: 0 0 30px rgba(0,229,255,.3), 0 8px 25px rgba(0,0,0,.4);
+    }
+    .btn.primary:hover{
+      box-shadow: 0 0 40px rgba(0,229,255,.5), 0 10px 35px rgba(0,0,0,.5);
+      border-color:rgba(0,229,255,.6);
+    }
+    .btn .ic{
+      width:24px; height:24px; border-radius:8px;
+      display:grid; place-items:center;
+      background:rgba(0,0,0,.35);
+      border:1px solid rgba(0,229,255,.25);
+      font-family:var(--mono);
+      font-size:12px;
+      font-weight:700;
+      box-shadow: 0 0 10px rgba(0,229,255,.2);
+    }
+
+    /* code card */
+    .card{
+      background: rgba(20,21,42,.7);
+      border:1px solid rgba(0,229,255,.2);
+      border-radius: var(--radius2);
+      overflow:hidden;
+      position:relative;
+    }
+    .card::before{
+      content:"";
+      position:absolute; inset:0;
+      background: radial-gradient(800px 300px at 20% 0%, rgba(0,229,255,.08), transparent 60%),
+                  radial-gradient(800px 300px at 80% 0%, rgba(255,0,110,.06), transparent 65%);
+      pointer-events:none;
+    }
+    .cardInner{position:relative; padding:16px 16px 14px}
+    .codeTop{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+      margin-bottom:12px;
+    }
+    .tabs{display:flex; gap:8px; flex-wrap:wrap}
+    .tab{
+      cursor:pointer;
+      user-select:none;
+      font-size:12px;
+      font-weight:600;
+      padding:9px 14px;
+      border-radius:10px;
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(0,229,255,.15);
+      color:rgba(232,240,255,.75);
+      transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    .tab:hover{
+      transform:translateY(-1px);
+      border-color:rgba(0,229,255,.3);
+      background:rgba(0,229,255,.08);
+      box-shadow: 0 4px 15px rgba(0,229,255,.1);
+    }
+    .tab.active{
+      background: linear-gradient(135deg, rgba(0,229,255,.25), rgba(255,0,110,.18));
+      border-color:rgba(0,229,255,.4);
+      color:rgba(232,240,255,.95);
+      box-shadow: 0 0 20px rgba(0,229,255,.25), 0 4px 15px rgba(0,0,0,.3);
+    }
+    .miniStats{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end;
+      color:rgba(232,240,255,.75);
+      font-size:12px;
+      font-weight:600;
+    }
+    .miniStats .badge{
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(0,229,255,.18);
+      box-shadow: 0 0 15px rgba(0,229,255,.1);
+      transition: all .3s ease;
+    }
+    .miniStats .badge:hover{
+      border-color:rgba(0,229,255,.3);
+      box-shadow: 0 0 20px rgba(0,229,255,.2);
+    }
+    pre{
+      margin:0;
+      padding:16px 18px;
+      border-radius:14px;
+      background:rgba(0,0,0,.35);
+      border:1px solid rgba(0,229,255,.15);
+      overflow:auto;
+      font-family:var(--mono);
+      font-size:13px;
+      line-height:1.6;
+      color:rgba(232,240,255,.9);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.4) inset;
+    }
+    .kw{color: #00e5ff; font-weight:600}
+    .fn{color: var(--cyan); font-weight:500}
+    .str{color: #ff7bee}
+    .cm{color: rgba(139,148,184,.7); font-style:italic}
+    .num{color: #00f5d4}
+    .copy{
+      cursor:pointer;
+      border-radius:10px;
+      padding:9px 14px;
+      font-size:12px;
+      font-weight:600;
+      background:rgba(0,0,0,.3);
+      border:1px solid rgba(0,229,255,.2);
+      color:rgba(232,240,255,.85);
+      transition:all .25s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space:nowrap;
+    }
+    .copy:hover{
+      transform:translateY(-1px);
+      border-color:rgba(0,229,255,.35);
+      background:rgba(0,229,255,.1);
+      box-shadow: 0 4px 15px rgba(0,229,255,.15);
+    }
+    .copy.ok{
+      border-color:rgba(0,255,157,.5);
+      background:rgba(0,255,157,.12);
+      box-shadow: 0 0 20px rgba(0,255,157,.25);
+    }
+
+    /* sections */
+    section{padding:clamp(44px, 8vh, 80px) 0}
+    .sectionHead{
+      text-align:center;
+      margin-bottom:clamp(24px, 4vw, 40px);
+    }
+    .sectionHead h3{
+      margin:0;
+      font-size:clamp(24px, 3.5vw, 36px);
+      letter-spacing:-.02em;
+      font-weight:700;
+    }
+    .sectionHead p{
+      margin:clamp(12px, 2vw, 18px) auto 0;
+      color:rgba(232,240,255,.72);
+      max-width:78ch;
+      line-height:1.65;
+      font-size:clamp(14px, 1.8vw, 17px);
+    }
+    code{
+      font-family:var(--mono);
+      font-size:0.9em;
+      padding:3px 7px;
+      border-radius:6px;
+      background:rgba(0,229,255,.08);
+      border:1px solid rgba(0,229,255,.2);
+      color:var(--cyan);
+      font-weight:600;
+    }
+
+    .cards{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+      gap:clamp(14px, 2vw, 20px);
+    }
+    .c{
+      padding:clamp(20px, 3vw, 28px);
+      border-radius: var(--radius);
+      border:1px solid rgba(0,229,255,.18);
+      background:rgba(20,21,42,.5);
+      position:relative;
+      overflow:hidden;
+      transition: border-color .2s ease;
+    }
+    .c:hover{
+      border-color:rgba(0,229,255,.35);
+    }
+    .c::before{
+      content:"";
+      position:absolute; inset:0;
+      background: radial-gradient(500px 150px at 0% 0%, rgba(0,229,255,.1), transparent 65%);
+      pointer-events:none;
+    }
+    .c > *{position:relative}
+    .c h4{
+      margin:0;
+      font-size:clamp(15px, 2vw, 17px);
+      font-weight:700;
+      letter-spacing:-.01em;
+      color:var(--text);
+    }
+    .c p{
+      margin:clamp(8px, 1.5vw, 12px) 0 0;
+      color:rgba(232,240,255,.72);
+      font-size:clamp(13px, 1.6vw, 14px);
+      line-height:1.65;
+    }
+    .c .tag{
+      display:inline-flex; align-items:center; gap:8px;
+      margin-top:clamp(12px, 2vw, 16px);
+      font-family:var(--mono);
+      font-size:11px;
+      font-weight:600;
+      padding:7px 11px;
+      border-radius:999px;
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(0,229,255,.2);
+      color:rgba(232,240,255,.8);
+    }
+    .c .tag b{color:var(--cyan); font-weight:700}
+
+    /* big split */
+    .split{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
+      gap:clamp(16px, 2.5vw, 24px);
+      align-items:stretch;
+    }
+
+    .pane{
+      padding:32px;
+      border-radius: var(--radius2);
+      border:1px solid rgba(0,229,255,.2);
+      background:rgba(20,21,42,.5);
+      position:relative;
+      overflow:hidden;
+      transition: border-color .2s ease;
+    }
+    .pane:hover{
+      border-color:rgba(0,229,255,.35);
+    }
+    .pane::before{
+      content:"";
+      position:absolute; inset:0;
+      background: radial-gradient(700px 250px at 25% 0%, rgba(0,229,255,.08), transparent 65%),
+                  radial-gradient(700px 250px at 75% 0%, rgba(255,0,110,.06), transparent 65%);
+      pointer-events:none;
+    }
+    .pane > *{position:relative}
+
+    .miniUi{
+      border-radius:16px;
+      border:1px solid rgba(0,229,255,.25);
+      background: rgba(0,0,0,.3);
+      overflow:hidden;
+      box-shadow: 0 0 30px rgba(0,229,255,.15);
+    }
+    .miniUiTop{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 16px;
+      border-bottom:1px solid rgba(0,229,255,.15);
+      background: rgba(0,0,0,.2);
+      color:rgba(232,240,255,.8);
+      font-size:12px;
+      font-weight:600;
+    }
+    .lights{display:flex; gap:6px}
+    .light{width:9px; height:9px; border-radius:99px; opacity:.9}
+    .l1{background:rgba(255,80,122,.85)}
+    .l2{background:rgba(255,209,102,.85)}
+    .l3{background:rgba(57,255,176,.85)}
+    .miniUiBody{padding:12px}
+    .nodeRow{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+    .node{
+      padding:12px 16px;
+      border-radius:12px;
+      border:1px solid rgba(0,255,157,.3);
+      background: rgba(0,255,157,.08);
+      color:rgba(232,240,255,.9);
+      font-size:12px;
+      font-weight:600;
+      min-width:120px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      box-shadow: 0 0 20px rgba(0,255,157,.15);
+      transition: all .3s ease;
+    }
+    .node:hover{
+      box-shadow: 0 0 30px rgba(0,255,157,.3);
+      transform: translateY(-1px);
+    }
+    .node .s{font-family:var(--mono); font-size:10.5px; opacity:.85; font-weight:500}
+    .node.llm{
+      border-color:rgba(0,229,255,.35);
+      background:rgba(0,229,255,.1);
+      box-shadow: 0 0 20px rgba(0,229,255,.2);
+    }
+    .node.llm:hover{
+      box-shadow: 0 0 35px rgba(0,229,255,.35);
+    }
+    .node.sql{
+      border-color:rgba(99,102,241,.4);
+      background:rgba(99,102,241,.12);
+      box-shadow: 0 0 20px rgba(99,102,241,.2);
+    }
+    .node.sql:hover{
+      box-shadow: 0 0 35px rgba(99,102,241,.35);
+    }
+    .node.py{
+      border-color:rgba(255,0,110,.35);
+      background:rgba(255,0,110,.1);
+      box-shadow: 0 0 20px rgba(255,0,110,.2);
+    }
+    .node.py:hover{
+      box-shadow: 0 0 35px rgba(255,0,110,.35);
+    }
+    .miniEditor{
+      display:grid; grid-template-columns: 1fr 1fr; gap:12px;
+    }
+    @media (max-width: 520px){ .miniEditor{grid-template-columns:1fr} }
+    .ed{
+      border-radius:14px;
+      border:1px solid rgba(0,229,255,.18);
+      background: rgba(0,0,0,.3);
+      padding:14px 16px;
+      min-height:180px;
+      font-family:var(--mono);
+      font-size:12.5px;
+      line-height:1.55;
+      color:rgba(232,240,255,.88);
+      overflow:auto;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.35) inset;
+    }
+    .callout{
+      display:flex; align-items:flex-start; gap:12px;
+      padding:16px 18px;
+      border-radius:14px;
+      border:1px solid rgba(0,229,255,.2);
+      background: rgba(0,0,0,.25);
+      color:rgba(232,240,255,.85);
+      margin-top:16px;
+      font-size:13px;
+      line-height:1.6;
+      box-shadow: 0 0 20px rgba(0,229,255,.1);
+    }
+    .callout .badge{
+      flex:0 0 auto;
+      width:32px; height:32px;
+      border-radius:11px;
+      display:grid; place-items:center;
+      border:1px solid rgba(0,229,255,.3);
+      background: linear-gradient(135deg, rgba(0,229,255,.25), rgba(255,0,110,.15));
+      font-family:var(--mono);
+      font-size:13px;
+      font-weight:700;
+      box-shadow: 0 0 20px rgba(0,229,255,.2), 0 0 0 1px rgba(0,0,0,.3) inset;
+    }
+
+    /* footer */
+    footer{
+      padding:40px 0 70px;
+      color:rgba(232,240,255,.65);
+      border-top:1px solid rgba(0,229,255,.15);
+      background: linear-gradient(180deg, transparent, rgba(0,229,255,.02));
+    }
+    .foot{
+      display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:center;
+      font-size:13px;
+    }
+    .foot a{
+      color:rgba(232,240,255,.75);
+      text-decoration:none;
+      transition: color .3s ease;
+    }
+    .foot a:hover{
+      color:var(--cyan);
+      text-decoration:underline;
+    }
+
+    /* tiny helper */
+    .muted{color:rgba(232,240,255,.68)}
+    .kbd{
+      font-family:var(--mono);
+      font-size:11px;
+      font-weight:600;
+      border:1px solid rgba(0,229,255,.2);
+      background:rgba(0,0,0,.3);
+      border-radius:8px;
+      padding:6px 10px;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      box-shadow: 0 0 15px rgba(0,229,255,.1), 0 0 0 1px rgba(0,0,0,.3) inset;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="grid"></div>
+  <div class="noise"></div>
+
+  <header class="topbar">
+    <div class="wrap">
+      <div class="nav">
+        <div class="brand">
+          <div class="logo" title="RVBBIT">
+            <!-- Put rvbbit-logo.png next to this HTML file. -->
+            <img src="rvbbit-logo.png" alt="RVBBIT logo" onerror="this.style.display='none'; this.parentElement.textContent='R';" />
+          </div>
+          <div>
+            <h1>RVBBIT <span>Studio + runtime for Cascades</span></h1>
+          </div>
+        </div>
+
+        <nav class="links" aria-label="Primary">
+          <a href="#what">Concepts</a>
+          <a href="#studio">Studio</a>
+          <a href="#sql">SQL</a>
+          <a href="#demo">Demo</a>
+          <a href="#get-started" class="cta">Get Started</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" id="top">
+      <div class="heroGrid">
+        <div>
+          <div class="kicker"><span class="dot"></span> <span>Visual IDE for LLM Cascades</span></div>
+
+          <h2>
+            Build <span class="gradientText">Cascades with Receipts</span>
+          </h2>
+
+          <p class="sub">
+            A visual studio for building LLM workflows. Chain polyglot cells (LLM, SQL, Python), run parallel candidates,
+            get execution receipts, and query everything from SQL—all in a clean, flat interface.
+          </p>
+
+          <div class="actions">
+            <a class="btn primary" href="#get-started">
+              <span class="ic">▶</span> Try Studio
+            </a>
+            <a class="btn" href="#what">
+              <span class="ic">?</span> Core Concepts
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Pills -->
+      <div class="pills">
+        <span class="pill">Polyglot Cells (LLM • SQL • Python • JS)</span>
+        <span class="pill">Parallel Candidates</span>
+        <span class="pill">Execution Receipts</span>
+        <span class="pill">SQL Interop</span>
+        <span class="pill">Visual Studio</span>
+      </div>
+    </section>
+
+    <section id="demo" style="padding:clamp(40px, 8vh, 80px) 0">
+      <div style="max-width:1100px; margin:0 auto">
+        <div class="card" aria-label="Code samples">
+          <div class="cardInner">
+            <div class="codeTop">
+              <div class="tabs" role="tablist" aria-label="Code tabs">
+                <div class="tab active" role="tab" aria-selected="true" data-tab="sql">SQL</div>
+                <div class="tab" role="tab" aria-selected="false" data-tab="yaml">YAML</div>
+                <div class="tab" role="tab" aria-selected="false" data-tab="py">Python</div>
+              </div>
+              <div class="miniStats">
+                <span class="badge"><span class="muted">cascades</span> <b id="kCasc">235</b></span>
+                <span class="badge"><span class="muted">runs</span> <b id="kRuns">726</b></span>
+                <span class="badge"><span class="muted">spent</span> <b id="kCost">$196.93</b></span>
+                <button class="copy" id="copyBtn" title="Copy code">Copy</button>
+              </div>
+            </div>
+
+            <pre id="codeSql" data-copy="sql">
+<span class="cm">-- Call a Cascade from SQL (per row / per batch)</span>
+<span class="kw">SELECT</span>
+  product_name,
+  <span class="fn">rvbbit_udf</span>(<span class="str">'Extract brand name'</span>, product_name) <span class="kw">AS</span> brand,
+  <span class="fn">rvbbit_udf</span>(<span class="str">'Classify: electronics/clothing/home'</span>, product_name) <span class="kw">AS</span> category
+<span class="kw">FROM</span> products;
+
+<span class="cm">-- Route based on data (tiered + cached + candidates)</span>
+<span class="kw">SELECT</span>
+  transaction_id,
+  <span class="fn">rvbbit_cascade_udf</span>(
+    <span class="kw">CASE</span> <span class="kw">WHEN</span> amount &gt; <span class="num">100000</span>
+      <span class="kw">THEN</span> <span class="str">'traits/premium_fraud_candidates.yaml'</span>
+      <span class="kw">ELSE</span> <span class="str">'traits/standard.yaml'</span>
+    <span class="kw">END</span>,
+    <span class="fn">json_object</span>(<span class="str">'transaction_id'</span>, transaction_id)
+  ) <span class="kw">AS</span> fraud_check
+<span class="kw">FROM</span> prod.pending_transactions;</pre>
+
+            <pre id="codeYaml" style="display:none" data-copy="yaml">
+<span class="cm"># A Cascade is a sequence of cells with receipts</span>
+cascade_id: fraud_assessment_with_candidates
+inputs_schema:
+  customer_id: "Customer ID"
+  transaction_amount: "Transaction amount"
+cells:
+  - name: assess_risk
+    instructions: |
+      Return ONLY valid JSON with:
+      { risk_score, risk_level, reasoning, recommended_action, confidence }
+    candidates:
+      factor: 3
+      mode: evaluate
+      evaluator_instructions: |
+        Pick the most conservative valid assessment.
+    wards:
+      post:
+        - validator:
+            python: |
+              # validate JSON contract; retry if invalid
+          mode: retry
+          max_retries: 2
+    handoffs: [finalize]</pre>
+
+            <pre id="codePy" style="display:none" data-copy="python">
+<span class="cm"># Map a Cascade over an array of inputs (data-driven parallelism)</span>
+inputs = [{"customer_id": 1, "amount": 120}, {"customer_id": 2, "amount": 99999}]
+
+results = rvbbit.map_cascade(
+  cascade="cascades/fraud_assessment_with_candidates.yaml",
+  inputs=inputs,
+  concurrency=8,
+  cache="aggressive",
+  receipts=True,
+)
+
+<span class="cm"># Each result includes outputs + receipts + deep links</span>
+print(results[0].output, results[0].receipt)</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="what" style="padding:clamp(60px, 12vh, 100px) 0">
+      <div class="sectionHead">
+        <div>
+          <h3 style="font-size:clamp(28px, 4vw, 42px); margin:0 0 16px">Core Concepts</h3>
+          <p style="font-size:clamp(15px, 2vw, 18px); max-width:75ch; margin:0 auto">
+            RVBBIT is a visual IDE for building LLM cascades. Chain polyglot cells, run parallel candidates,
+            and get detailed execution receipts—all in a flat, query-able interface.
+          </p>
+        </div>
+      </div>
+
+      <div class="cards" style="margin-top:clamp(40px, 6vw, 60px)">
+        <div class="c">
+          <h4>Cascades</h4>
+          <p>
+            A sequence of cells with explicit inputs/outputs and deterministic control flow.
+            Chain LLM cells, code execution, and trait invocations with handoffs between cells.
+          </p>
+          <div class="tag"><b>Flow</b> cells • handoffs • context</div>
+        </div>
+
+        <div class="c">
+          <h4>Cells</h4>
+          <p>
+            The building blocks. Each cell can be an LLM call, SQL query, Python script, or direct trait invocation.
+            Mix and match freely within a cascade.
+          </p>
+          <div class="tag"><b>Polyglot</b> LLM • SQL • Python • JS</div>
+        </div>
+
+        <div class="c">
+          <h4>Candidates</h4>
+          <p>
+            Run a cell multiple times in parallel (clones or variants), then evaluate or aggregate results.
+            Great for reliability without retry loops.
+          </p>
+          <div class="tag"><b>Parallel</b> factor • evaluate • aggregate</div>
+        </div>
+
+        <div class="c">
+          <h4>Traits</h4>
+          <p>
+            Reusable tools that cells can invoke—from shell commands to custom Python functions to nested cascades.
+            Build a library of traits for your domain.
+          </p>
+          <div class="tag"><b>Reuse</b> tools • functions • cascades</div>
+        </div>
+
+        <div class="c">
+          <h4>Receipts</h4>
+          <p>
+            Detailed execution records at every level—cell, candidate, run, cascade. Cost, latency, model mix, cache hits.
+            Query-able from SQL.
+          </p>
+          <div class="tag"><b>Observability</b> cost • time • lineage</div>
+        </div>
+
+        <div class="c">
+          <h4>SQL Interop</h4>
+          <p>
+            Call cascades as SQL UDFs, map over table rows, and query execution receipts.
+            LLM workflows become first-class database citizens.
+          </p>
+          <div class="tag"><b>Integration</b> UDF • mapping • queries</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="studio" style="padding:clamp(60px, 12vh, 100px) 0">
+      <div class="sectionHead">
+        <div>
+          <h3 style="font-size:clamp(28px, 4vw, 42px); margin:0 0 16px">Visual Studio</h3>
+          <p style="font-size:clamp(15px, 2vw, 18px); max-width:75ch; margin:0 auto">
+            Build cascades in a clean, linear IDE. Author cells, run inline, inspect outputs, and debug receipts—
+            without the spaghetti of traditional flow editors.
+          </p>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="pane">
+          <div class="miniUi" role="img" aria-label="Studio preview mock">
+            <div class="miniUiTop">
+              <div class="lights"><span class="light l1"></span><span class="light l2"></span><span class="light l3"></span></div>
+              <div class="muted">RVBBIT Studio • linear view + embedded universes</div>
+              <div class="muted">Run All <span class="kbd">⌘↵</span></div>
+            </div>
+            <div class="miniUiBody">
+              <div class="nodeRow">
+                <div class="node sql">SQL <span class="s">extract_sales_data</span></div>
+                <div class="node py">PY <span class="s">enrich_data</span></div>
+                <div class="node llm">LLM <span class="s">analyze_with_candidates</span></div>
+                <div class="node llm">LLM <span class="s">validate_analysis</span></div>
+                <div class="node llm">LLM <span class="s">create_dashboard</span></div>
+              </div>
+              <div class="miniEditor">
+                <div class="ed"><span class="cm">-- SQL cell</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> sales
+<span class="kw">WHERE</span> date &gt;= <span class="str">'2025-01-01'</span>;</div>
+                <div class="ed"><span class="cm"># LLM cell (candidates x3)</span>
+Return JSON:
+{ "insights": [...], "charts": [...], "confidence": 0-1 }</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <div class="badge">⊞</div>
+            <div>
+              <b>Linear by design:</b> Cells stack vertically in execution order. Candidates and nested cascades expand inline—
+              no node soup, just clean vertical flow with expandable detail.
+            </div>
+          </div>
+        </div>
+
+        <div class="pane">
+          <h4 style="margin:0 0 14px; font-size:18px">Key Features</h4>
+          <div class="cards" style="grid-template-columns: repeat(12, 1fr); gap:14px; margin:0">
+            <div class="c" style="grid-column: span 12; padding:18px">
+              <h4 style="font-size:15px">Inline Execution</h4>
+              <p style="font-size:13px; margin:8px 0 0">
+                Run cells individually or all at once. See outputs, receipts, and errors inline without switching views.
+              </p>
+            </div>
+            <div class="c" style="grid-column: span 6; padding:18px">
+              <h4 style="font-size:15px">Candidate Tabs</h4>
+              <p style="font-size:13px; margin:8px 0 0">
+                When a cell runs multiple candidates, see all results as tabs with individual receipts.
+              </p>
+            </div>
+            <div class="c" style="grid-column: span 6; padding:18px">
+              <h4 style="font-size:15px">Receipt Browser</h4>
+              <p style="font-size:13px; margin:8px 0 0">
+                Drill into cost, latency, model usage, and cache hits at every level of execution.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sql" style="padding:clamp(60px, 12vh, 100px) 0">
+      <div class="sectionHead">
+        <div>
+          <h3 style="font-size:clamp(28px, 4vw, 42px); margin:0 0 16px">SQL Interop</h3>
+          <p style="font-size:clamp(15px, 2vw, 18px); max-width:75ch; margin:0 auto">
+            Call cascades from SQL as UDFs, map over table rows, and query execution receipts.
+            LLM workflows become database-native with caching and cost tracking built in.
+          </p>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:clamp(40px, 6vw, 60px)">
+        <div class="pane">
+          <h4 style="margin:0 0 14px; font-size:18px">Cascades as Functions</h4>
+          <p class="muted" style="margin:0 0 20px; line-height:1.7; font-size:14px">
+            Use <code>rvbbit_udf()</code> for simple LLM calls or <code>rvbbit_cascade_udf()</code> for full cascades.
+            Map over rows, aggregate results, and get detailed receipts for every invocation.
+          </p>
+
+          <div class="callout">
+            <div class="badge">SQL</div>
+            <div>
+              <b>Query receipts:</b> Every cascade execution generates queryable receipts.
+              Track costs, cache hits, and model usage directly from SQL.
+            </div>
+          </div>
+        </div>
+
+        <div class="pane">
+          <h4 style="margin:0 0 10px">Example: enrichment as a view</h4>
+          <pre><span class="kw">ATTACH</span> <span class="str">'postgres://prod...'</span> <span class="kw">AS</span> prod;
+<span class="kw">ATTACH</span> <span class="str">'s3://bucket/events.parquet'</span> <span class="kw">AS</span> s3;
+
+<span class="kw">SELECT</span>
+  c.customer_id,
+  c.company_name,
+  <span class="fn">rvbbit_udf</span>(<span class="str">'Extract industry'</span>, c.company_name) <span class="kw">AS</span> industry,
+  e.event_count
+<span class="kw">FROM</span> prod.customers c
+<span class="kw">JOIN</span> s3.events e <span class="kw">USING</span> (customer_id)
+<span class="kw">WHERE</span> c.updated_at &gt;= <span class="fn">CURRENT_DATE</span>;</pre>
+
+          <div class="callout">
+            <div class="badge">✓</div>
+            <div>
+              <b>Receipts + caching</b> turn this from “LLM sprinkled chaos” into something ops can reason about:
+              cache hit rates, model mix, retry counts, and per-row costs.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="get-started" style="padding:clamp(80px, 15vh, 140px) 0; text-align:center">
+      <h3 style="font-size:clamp(32px, 5vw, 52px); margin:0 0 clamp(20px, 3vw, 28px); font-weight:700">
+        Start Building <span class="gradientText">Cascades</span>
+      </h3>
+
+      <p style="font-size:clamp(16px, 2.2vw, 20px); color:rgba(232,240,255,.75); max-width:60ch; margin:0 auto clamp(36px, 6vw, 52px)">
+        Visual IDE for polyglot LLM workflows. Build, run, and query—all with execution receipts.
+      </p>
+
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/yourusername/rvbbit" target="_blank">
+          <span class="ic">★</span> View on GitHub
+        </a>
+        <a class="btn" href="#what">
+          <span class="ic">📖</span> Documentation
+        </a>
+      </div>
+    </section>
+
+    <footer>
+      <div class="foot">
+        <div>© <span id="yr"></span> RVBBIT • <span class="muted">Visual IDE for LLM Cascades</span></div>
+        <div style="display:flex; gap:18px; flex-wrap:wrap">
+          <a href="#top">Back to top</a>
+          <a href="#what">Core Concepts</a>
+          <a href="#studio">Studio</a>
+          <a href="#sql">SQL Interop</a>
+          <a href="https://github.com/yourusername/rvbbit" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    const $ = (q, el=document) => el.querySelector(q);
+    const $$ = (q, el=document) => Array.from(el.querySelectorAll(q));
+
+    // tabs
+    const tabs = $$(".tab");
+    const codeBlocks = {
+      sql: $("#codeSql"),
+      yaml: $("#codeYaml"),
+      py: $("#codePy"),
+    };
+    function showTab(key){
+      tabs.forEach(t => {
+        const on = t.dataset.tab === key;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      Object.entries(codeBlocks).forEach(([k, el]) => el.style.display = (k === key) ? "block" : "none");
+      $("#copyBtn").dataset.active = key;
+    }
+    tabs.forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+    // copy code
+    const copyBtn = $("#copyBtn");
+    function extractText(pre){
+      const tmp = document.createElement("div");
+      tmp.innerHTML = pre.innerHTML.replaceAll("<br>", "\n");
+      return tmp.textContent.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+    }
+    copyBtn.addEventListener("click", async () => {
+      const key = copyBtn.dataset.active || "sql";
+      const pre = codeBlocks[key];
+      const txt = extractText(pre);
+      try{
+        await navigator.clipboard.writeText(txt);
+        copyBtn.classList.add("ok");
+        copyBtn.textContent = "Copied";
+        setTimeout(() => { copyBtn.classList.remove("ok"); copyBtn.textContent = "Copy"; }, 900);
+      }catch(e){
+        copyBtn.textContent = "Copy failed";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1200);
+      }
+    });
+
+    // counters (simple animated count-up)
+    function animateNumber(el, to, duration=800){
+      const start = performance.now();
+      const from = 0;
+      const fmt = (n) => Number.isInteger(to) ? Math.round(n).toString() : n.toFixed(2);
+      function tick(now){
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const v = from + (to - from) * eased;
+        el.textContent = fmt(v);
+        if(t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    const casc = parseInt($("#kCasc").textContent, 10) || 235;
+    const runs = parseInt($("#kRuns").textContent, 10) || 726;
+    const costStr = $("#kCost").textContent.replace(/[^0-9.]/g, "");
+    const cost = parseFloat(costStr) || 196.93;
+
+    requestAnimationFrame(() => {
+      animateNumber($("#kCasc"), casc);
+      animateNumber($("#kRuns"), runs);
+      const el = $("#kCost");
+      const start = performance.now();
+      const from = 0;
+      function tick(now){
+        const t = Math.min(1, (now - start) / 900);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const v = from + (cost - from) * eased;
+        el.textContent = "$" + v.toFixed(2);
+        if(t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+
+    $("#yr").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

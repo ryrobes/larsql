@@ -4,42 +4,79 @@
   "inputs_schema": {
     "product_description": "Description of the product"
   },
-  "phases": [{
-    "name": "create_catalog_entry",
-    "instructions": "Create a structured product catalog entry for:\n\n{{ input.product_description }}\n\nReturn ONLY a JSON object (no markdown, no extra text) with this structure:\n{\n  \"product_name\": \"Name of product\",\n  \"category\": \"Product category\",\n  \"price\": 29.99,\n  \"in_stock\": true,\n  \"specifications\": {\n    \"dimensions\": \"measurements\",\n    \"weight\": \"weight info\",\n    \"material\": \"material type\"\n  },\n  \"tags\": [\"tag1\", \"tag2\"]\n}",
-    "output_schema": {
-      "type": "object",
-      "required": ["product_name", "category", "price", "in_stock", "specifications", "tags"],
-      "properties": {
-        "product_name": {"type": "string", "minLength": 3},
-        "category": {"type": "string", "minLength": 3},
-        "price": {"type": "number", "minimum": 0},
-        "in_stock": {"type": "boolean"},
-        "specifications": {
-          "type": "object",
-          "required": ["dimensions", "weight", "material"],
-          "properties": {
-            "dimensions": {"type": "string"},
-            "weight": {"type": "string"},
-            "material": {"type": "string"}
+  "cells": [
+    {
+      "name": "create_catalog_entry",
+      "instructions": "Create a structured product catalog entry for:\n\n{{ input.product_description }}\n\nReturn ONLY a JSON object (no markdown, no extra text) with this structure:\n{\n  \"product_name\": \"Name of product\",\n  \"category\": \"Product category\",\n  \"price\": 29.99,\n  \"in_stock\": true,\n  \"specifications\": {\n    \"dimensions\": \"measurements\",\n    \"weight\": \"weight info\",\n    \"material\": \"material type\"\n  },\n  \"tags\": [\"tag1\", \"tag2\"]\n}",
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "product_name",
+          "category",
+          "price",
+          "in_stock",
+          "specifications",
+          "tags"
+        ],
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "minLength": 3
+          },
+          "category": {
+            "type": "string",
+            "minLength": 3
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "in_stock": {
+            "type": "boolean"
+          },
+          "specifications": {
+            "type": "object",
+            "required": [
+              "dimensions",
+              "weight",
+              "material"
+            ],
+            "properties": {
+              "dimensions": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "string"
+              },
+              "material": {
+                "type": "string"
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
           }
-        },
-        "tags": {
-          "type": "array",
-          "items": {"type": "string"},
-          "minItems": 1
         }
-      }
+      },
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "retry_instructions": "\ud83d\udce6 Product Schema Validation Failed:\n\n{{ schema_error }}\n\nPlease return valid JSON matching the catalog schema:\n- product_name (string, 3+ chars)\n- category (string, 3+ chars)\n- price (number >= 0)\n- in_stock (boolean)\n- specifications object (dimensions, weight, material)\n- tags array (at least 1 tag)\n\nAttempt {{ attempt }}/{{ max_attempts }}"
+      },
+      "handoffs": [
+        "summary"
+      ]
     },
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "retry_instructions": "📦 Product Schema Validation Failed:\n\n{{ schema_error }}\n\nPlease return valid JSON matching the catalog schema:\n- product_name (string, 3+ chars)\n- category (string, 3+ chars)\n- price (number >= 0)\n- in_stock (boolean)\n- specifications object (dimensions, weight, material)\n- tags array (at least 1 tag)\n\nAttempt {{ attempt }}/{{ max_attempts }}"
-    },
-    "handoffs": ["summary"]
-  }, {
-    "name": "summary",
-    "instructions": "✅ Product catalog entry validated!\n\nProduct: {{ state.validated_output.product_name }}\nCategory: {{ state.validated_output.category }}\nPrice: ${{ state.validated_output.price }}\nIn Stock: {{ state.validated_output.in_stock }}\n\nProvide a brief confirmation that the catalog entry is ready.",
-    "tackle": ["set_state"]
-  }]
+    {
+      "name": "summary",
+      "instructions": "\u2705 Product catalog entry validated!\n\nProduct: {{ state.validated_output.product_name }}\nCategory: {{ state.validated_output.category }}\nPrice: ${{ state.validated_output.price }}\nIn Stock: {{ state.validated_output.in_stock }}\n\nProvide a brief confirmation that the catalog entry is ready.",
+      "traits": [
+        "set_state"
+      ]
+    }
+  ]
 }

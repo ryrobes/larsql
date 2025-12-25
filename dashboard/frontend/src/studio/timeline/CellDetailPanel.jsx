@@ -10,7 +10,7 @@ import HTMLSection from '../../components/sections/HTMLSection';
 import { detectPhaseEditors } from '../editors';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
 import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../components';
-import './PhaseDetailPanel.css';
+import './CellDetailPanel.css';
 
 /**
  * Format milliseconds to human-readable time
@@ -37,14 +37,14 @@ const formatDuration = (ms) => {
 };
 
 /**
- * PhaseDetailPanel - Bottom panel showing full phase configuration
+ * CellDetailPanel - Bottom panel showing full cell configuration
  *
  * Tabs:
  * - Code: Monaco editor for SQL/Python/JS/etc
- * - Config: Phase configuration (LLM settings, soundings, wards)
+ * - Config: Cell configuration (LLM settings, candidates, wards)
  * - Output: Results table/JSON
  */
-const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionLogs = [], currentSessionId = null, onClose }) => {
+const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose }) => {
   const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode } = useStudioCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
@@ -68,13 +68,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
 
   // Make code editor droppable
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `editor-drop-${phase.name}`,
+    id: `editor-drop-${cell.name}`,
     data: { type: 'monaco-editor' },
   });
 
   // Make YAML editor droppable
   const { setNodeRef: setYamlDropRef, isOver: isYamlOver } = useDroppable({
-    id: `yaml-editor-drop-${phase.name}`,
+    id: `yaml-editor-drop-${cell.name}`,
     data: { type: 'monaco-editor' },
   });
 
@@ -98,43 +98,59 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     };
   }, []);
 
-  const isSql = phase.tool === 'sql_data';
-  const isPython = phase.tool === 'python_data';
-  const isJs = phase.tool === 'js_data';
-  const isClojure = phase.tool === 'clojure_data';
-  const isWindlass = phase.tool === 'windlass_data';
-  const isLLMPhase = !phase.tool && phase.instructions;
+  const isSql = cell.tool === 'sql_data';
+  const isPython = cell.tool === 'python_data';
+  const isJs = cell.tool === 'js_data';
+  const isClojure = cell.tool === 'clojure_data';
+  const isWindlass = cell.tool === 'windlass_data';
+  const isLLMCell = !cell.tool && cell.instructions;
 
   const typeInfo = {
     sql_data: { language: 'sql', codeKey: 'query', source: 'inputs' },
     python_data: { language: 'python', codeKey: 'code', source: 'inputs' },
     js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
-    llm_phase: { language: 'markdown', codeKey: 'instructions', source: 'phase' },
+    llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
     windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
     linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
     linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
   };
-  const phaseType = phase.tool || (isLLMPhase ? 'llm_phase' : 'python_data');
-  const info = typeInfo[phaseType] || typeInfo.python_data;
+  const cellType = cell.tool || (isLLMCell ? 'llm_cell' : 'python_data');
+  const info = typeInfo[cellType] || typeInfo.python_data;
 
-  // Detect custom editors for this phase
-  const customEditors = useMemo(() => detectPhaseEditors(phase), [phase]);
+  // Detect custom editors for this cell
+  const customEditors = useMemo(() => detectPhaseEditors(cell), [cell]);
   const hasCustomEditors = customEditors.length > 0;
 
   const code = info.source === 'inputs'
-    ? (phase.inputs?.[info.codeKey] || '')
-    : (phase[info.codeKey] || '');
+    ? (cell.inputs?.[info.codeKey] || '')
+    : (cell[info.codeKey] || '');
   const status = cellState?.status || 'pending';
   const error = cellState?.error;
   const images = cellState?.images;
 
+  // DEBUG: Log code extraction
+  React.useEffect(() => {
+    console.log('[CellDetailPanel] Code extraction:', {
+      cellName: cell.name,
+      cellTool: cell.tool,
+      cellType,
+      infoSource: info.source,
+      infoCodeKey: info.codeKey,
+      infoLanguage: info.language,
+      codeLength: code?.length || 0,
+      hasInputs: !!cell.inputs,
+      inputsKeys: cell.inputs ? Object.keys(cell.inputs) : [],
+      cellKeys: Object.keys(cell)
+    });
+  }, [cell, cellType, info, code]);
+
   // Debug - only log when we have meaningful stats
   React.useEffect(() => {
     if (cellState?.duration || cellState?.cost || cellState?.tokens_in) {
-      console.log('[PhaseDetailPanel]', phase.name, '- Duration:', cellState.duration, 'Cost:', cellState.cost, 'Tokens:', cellState.tokens_in, '/', cellState.tokens_out);
+      console.log('[CellDetailPanel]', cell.name, '- Duration:', cellState.duration, 'Cost:', cellState.cost, 'Tokens:', cellState.tokens_in, '/', cellState.tokens_out);
     }
-  }, [phase.name, cellState]);
+  }, [cell.name, cellState]);
 
   // Build HTML for decision tag (converts JSON to HTMX form)
   const buildDecisionHTML = useCallback((decisionData) => {
@@ -244,33 +260,33 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     `;
   }, []);
 
-  // Group messages by sounding index
-  const messagesBySounding = React.useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return null;
+  // Group messages by candidate index
+  const messagesByCandidate = React.useMemo(() => {
+    if (!cellLogs || cellLogs.length === 0) return null;
 
     const grouped = {};
     let winningIndex = null;
-    const hasAnySounding = phaseLogs.some(log =>
-      log.sounding_index !== null && log.sounding_index !== undefined
+    const hasAnyCandidate = cellLogs.some(log =>
+      log.candidate_index !== null && log.candidate_index !== undefined
     );
 
-    if (!hasAnySounding) {
-      // No soundings - return all messages in single group
+    if (!hasAnyCandidate) {
+      // No candidates - return all messages in single group
       return null;
     }
 
-    for (const log of phaseLogs) {
+    for (const log of cellLogs) {
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winningIndex = log.winning_sounding_index;
       }
     }
 
-    for (const log of phaseLogs) {
+    for (const log of cellLogs) {
       if (!['user', 'assistant', 'tool', 'system'].includes(log.role)) continue;
 
-      const soundingIdx = log.sounding_index ?? 'main';
-      if (!grouped[soundingIdx]) {
-        grouped[soundingIdx] = [];
+      const candidateIdx = log.candidate_index ?? 'main';
+      if (!grouped[candidateIdx]) {
+        grouped[candidateIdx] = [];
       }
 
       // Parse JSON fields
@@ -295,7 +311,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
         } catch {}
       }
 
-      grouped[soundingIdx].push({
+      grouped[candidateIdx].push({
         role: log.role,
         node_type: log.node_type,
         turn_number: log.turn_number,
@@ -315,19 +331,19 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
 
     return { grouped, winner: winningIndex };
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
-  // Process phase logs into messages (filtering for relevant roles) - fallback for non-sounding phases
-  const phaseMessages = React.useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return [];
+  // Process cell logs into messages (filtering for relevant roles) - fallback for non-candidate cells
+  const cellMessages = React.useMemo(() => {
+    if (!cellLogs || cellLogs.length === 0) return [];
 
-    // Check if phase has soundings - if so, skip this (use sounding tabs instead)
-    const hasAnySounding = phaseLogs.some(log =>
-      log.sounding_index !== null && log.sounding_index !== undefined
+    // Check if cell has candidates - if so, skip this (use candidate tabs instead)
+    const hasAnyCandidate = cellLogs.some(log =>
+      log.candidate_index !== null && log.candidate_index !== undefined
     );
-    if (hasAnySounding) return [];
+    if (hasAnyCandidate) return [];
 
-    return phaseLogs
+    return cellLogs
       .filter(log => ['user', 'assistant', 'tool', 'system'].includes(log.role))
       .map(log => {
         // Parse JSON fields if they're strings
@@ -370,16 +386,16 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
           session_id: log.session_id  // Include session_id for child session detection
         };
       });
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
   // Use result directly from cellState (don't override it)
   const result = cellState?.result;
 
   // Extract evaluator message (explains why winner was chosen)
   const evaluatorMessage = React.useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return null;
+    if (!cellLogs || cellLogs.length === 0) return null;
 
-    const evaluatorLog = phaseLogs.find(log => log.role === 'evaluator');
+    const evaluatorLog = cellLogs.find(log => log.role === 'evaluator');
     if (!evaluatorLog) return null;
 
     let content = evaluatorLog.content_json;
@@ -394,26 +410,26 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       timestamp: evaluatorLog.timestamp_iso,
       model: evaluatorLog.model
     };
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
   // Extract checkpoint/decision data - supports BOTH checkpoint-based AND tag-based decisions
   const checkpointData = React.useMemo(() => {
-    // PATH 1: Look for checkpoint_waiting event in ALL session logs (might not have phase_name)
-    // Check allSessionLogs first, then fall back to phaseLogs
-    const logsToSearch = allSessionLogs.length > 0 ? allSessionLogs : phaseLogs;
+    // PATH 1: Look for checkpoint_waiting event in ALL session logs (might not have cell_name)
+    // Check allSessionLogs first, then fall back to cellLogs
+    const logsToSearch = allSessionLogs.length > 0 ? allSessionLogs : cellLogs;
 
     if (!logsToSearch || logsToSearch.length === 0) return null;
 
     const checkpointLog = logsToSearch.find(log => log.role === 'checkpoint_waiting');
     if (checkpointLog) {
-      console.log('[PhaseDetailPanel] Found checkpoint_waiting log in session logs');
+      console.log('[CellDetailPanel] Found checkpoint_waiting log in session logs');
 
       let metadata = checkpointLog.metadata_json;
       if (typeof metadata === 'string') {
         try {
           metadata = JSON.parse(metadata);
         } catch (e) {
-          console.error('[PhaseDetailPanel] Failed to parse metadata_json:', e);
+          console.error('[CellDetailPanel] Failed to parse metadata_json:', e);
         }
       }
 
@@ -425,7 +441,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
           } catch {}
         }
 
-        console.log('[PhaseDetailPanel] Using checkpoint ui_spec:', {
+        console.log('[CellDetailPanel] Using checkpoint ui_spec:', {
           checkpointId: metadata.checkpoint_id,
           hasHtml: uiSpec.sections?.some(s => s.type === 'html')
         });
@@ -440,7 +456,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
 
     // PATH 2: Look for <decision> tag in assistant message (legacy/simple decision)
-    for (const log of phaseLogs) {
+    for (const log of cellLogs) {
       if (log.role === 'assistant' && log.content_json) {
         let content = log.content_json;
         if (typeof content === 'string') {
@@ -454,7 +470,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
         if (decisionMatch) {
           try {
             const parsed = JSON.parse(decisionMatch[1]);
-            console.log('[PhaseDetailPanel] Found <decision> tag - building ui_spec');
+            console.log('[CellDetailPanel] Found <decision> tag - building ui_spec');
 
             // Build ui_spec compatible with HTMLSection
             const uiSpec = {
@@ -472,22 +488,22 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
               source: 'decision_tag'
             };
           } catch (e) {
-            console.error('[PhaseDetailPanel] Failed to parse <decision> JSON:', e);
+            console.error('[CellDetailPanel] Failed to parse <decision> JSON:', e);
           }
         }
       }
     }
 
-    //console.log('[PhaseDetailPanel] No checkpoint or decision found');
+    //console.log('[CellDetailPanel] No checkpoint or decision found');
     return null;
-  }, [phaseLogs, allSessionLogs, buildDecisionHTML]);
+  }, [cellLogs, allSessionLogs, buildDecisionHTML]);
 
   // Extract full_request_json from logs for debugging
   const fullRequest = React.useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return null;
+    if (!cellLogs || cellLogs.length === 0) return null;
 
     // Find the first log with full_request_json
-    const logWithRequest = phaseLogs.find(log => log.full_request_json);
+    const logWithRequest = cellLogs.find(log => log.full_request_json);
     if (!logWithRequest) return null;
 
     let request = logWithRequest.full_request_json;
@@ -495,29 +511,29 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       try {
         request = JSON.parse(request);
       } catch (e) {
-        console.error('[PhaseDetailPanel] Failed to parse request JSON:', e);
+        console.error('[CellDetailPanel] Failed to parse request JSON:', e);
       }
     }
     return request;
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
-  // Auto-select winner sounding tab when phase changes and has soundings
+  // Auto-select winner candidate tab when cell changes and has candidates
   React.useEffect(() => {
-    if (messagesBySounding && messagesBySounding.winner !== null) {
-      setActiveOutputTab(`sounding-${messagesBySounding.winner}`);
+    if (messagesByCandidate && messagesByCandidate.winner !== null) {
+      setActiveOutputTab(`candidate-${messagesByCandidate.winner}`);
     }
-  }, [phase.name, messagesBySounding]);
+  }, [cell.name, messagesByCandidate]);
 
-  // Initialize/reset localYaml when phase changes or YAML editor is opened
+  // Initialize/reset localYaml when cell changes or YAML editor is opened
   React.useEffect(() => {
     if (!showYamlEditor) return; // Only initialize when editor is visible
 
-    if (!localYaml && phase) {
-      const initialYaml = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+    if (!localYaml && cell) {
+      const initialYaml = yaml.dump(cell, { indent: 2, lineWidth: -1, noRefs: true });
       setLocalYaml(initialYaml);
       lastSyncedYamlRef.current = initialYaml;
     }
-  }, [phase.name, showYamlEditor]); // Re-init when phase changes or editor opens
+  }, [cell.name, showYamlEditor]); // Re-init when cell changes or editor opens
 
   // Clear localYaml when YAML editor is closed (free memory)
   React.useEffect(() => {
@@ -529,37 +545,37 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     }
   }, [showYamlEditor, localYaml]);
 
-  // Sync phase → localYaml when phase changes externally (not when focused)
+  // Sync cell → localYaml when cell changes externally (not when focused)
   React.useEffect(() => {
     if (yamlEditorFocused) return;
     if (!localYaml) return; // Let initialization effect handle it
 
-    // Don't overwrite user's formatting unless phase structure actually changed
+    // Don't overwrite user's formatting unless cell structure actually changed
     try {
       const currentParsed = yaml.load(localYaml);
       // Deep comparison - only update if structure changed
-      if (JSON.stringify(currentParsed) === JSON.stringify(phase)) {
+      if (JSON.stringify(currentParsed) === JSON.stringify(cell)) {
         return; // No structural change, keep user's formatting and comments!
       }
 
       // Structure changed externally - regenerate YAML
-      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+      const yamlStr = yaml.dump(cell, { indent: 2, lineWidth: -1, noRefs: true });
       if (yamlStr !== lastSyncedYamlRef.current) {
-        console.log('[PhaseDetailPanel] Phase structure changed externally, regenerating YAML');
+        console.log('[CellDetailPanel] Cell structure changed externally, regenerating YAML');
         setLocalYaml(yamlStr);
         lastSyncedYamlRef.current = yamlStr;
       }
     } catch (e) {
       // Parse error in localYaml - regenerate
-      console.warn('[PhaseDetailPanel] Parse error in localYaml, regenerating:', e);
-      const yamlStr = yaml.dump(phase, { indent: 2, lineWidth: -1, noRefs: true });
+      console.warn('[CellDetailPanel] Parse error in localYaml, regenerating:', e);
+      const yamlStr = yaml.dump(cell, { indent: 2, lineWidth: -1, noRefs: true });
       setLocalYaml(yamlStr);
       lastSyncedYamlRef.current = yamlStr;
     }
-  }, [phase, yamlEditorFocused, localYaml]);
+  }, [cell, yamlEditorFocused, localYaml]);
 
   // Use localYaml as the editor value
-  const phaseYaml = localYaml;
+  const cellYaml = localYaml;
 
   const handleYamlChange = useCallback((value) => {
     // Only update local YAML for display, don't sync to store until blur
@@ -575,7 +591,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   }, []);
 
   const handleYamlBlur = useCallback((editorValue) => {
-    console.log('[PhaseDetailPanel] YAML editor blurred, syncing to store');
+    console.log('[CellDetailPanel] YAML editor blurred, syncing to store');
 
     // Prevent sync loop
     if (editorValue === lastSyncedYamlRef.current) {
@@ -588,14 +604,14 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
 
       // Validate that parsed has required fields
       if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Invalid phase structure: must be an object');
+        throw new Error('Invalid cell structure: must be an object');
       }
 
       if (!parsed.name) {
-        throw new Error('Invalid phase: missing required field "name"');
+        throw new Error('Invalid cell: missing required field "name"');
       }
 
-      // Update entire phase object
+      // Update entire cell object
       updateCell(index, parsed);
       lastSyncedYamlRef.current = editorValue;
       setYamlParseError(null);
@@ -611,18 +627,18 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
 
   const handleCodeChange = useCallback((value) => {
     if (info.source === 'inputs') {
-      updateCell(index, { inputs: { ...phase.inputs, [info.codeKey]: value } });
+      updateCell(index, { inputs: { ...cell.inputs, [info.codeKey]: value } });
     } else {
       updateCell(index, { [info.codeKey]: value });
     }
-  }, [index, phase.inputs, info.codeKey, info.source, updateCell]);
+  }, [index, cell.inputs, info.codeKey, info.source, updateCell]);
 
   const handleNameChange = (e) => {
     updateCell(index, { name: e.target.value });
   };
 
   const handleRun = () => {
-    runCell(phase.name);
+    runCell(cell.name);
   };
 
   const handleDelete = () => {
@@ -649,13 +665,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
     if (viewMode === 'replay') return false;
 
     // Check if already responded to
-    const hasResponse = phaseLogs?.some(log =>
+    const hasResponse = cellLogs?.some(log =>
       log.role === 'checkpoint_responded' || log.role === 'checkpoint_cancelled'
     );
 
     // Live if in live mode, has checkpoint, and not yet responded
     const isLive = viewMode === 'live' && !hasResponse && checkpointData.checkpointId;
-    console.log('[PhaseDetailPanel] Decision live status:', {
+    console.log('[CellDetailPanel] Decision live status:', {
       viewMode,
       hasResponse,
       isLive,
@@ -663,44 +679,75 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       source: checkpointData.source
     });
     return isLive;
-  }, [checkpointData, viewMode, phaseLogs]);
+  }, [checkpointData, viewMode, cellLogs]);
 
   // Auto-select decision tab when it exists (even if not live - it's important!)
   React.useEffect(() => {
     if (checkpointData) {
-      console.log('[PhaseDetailPanel] Setting active tab to decision');
+      console.log('[CellDetailPanel] Setting active tab to decision');
       setActiveOutputTab('decision');
     }
-  }, [phase.name, checkpointData]);
+  }, [cell.name, checkpointData]);
 
+  // Validate activeOutputTab when cell changes - reset to 'output' if invalid
+  React.useEffect(() => {
+    // Skip if already on a safe tab
+    if (activeOutputTab === 'output' || activeOutputTab === 'raw' || activeOutputTab === 'request') {
+      return;
+    }
 
+    let isValid = true;
+
+    // Check if current tab is valid for this cell
+    if (activeOutputTab === 'decision' && !checkpointData) {
+      isValid = false;
+    } else if (activeOutputTab === 'images' && (!images || images.length === 0)) {
+      isValid = false;
+    } else if (activeOutputTab === 'error' && !error) {
+      isValid = false;
+    } else if (activeOutputTab === 'messages' && (!cellMessages || cellMessages.length === 0)) {
+      isValid = false;
+    } else if (activeOutputTab.startsWith('candidate-')) {
+      // Check if this candidate index exists
+      const candidateIdx = activeOutputTab.replace('candidate-', '');
+      if (!messagesByCandidate || !messagesByCandidate.grouped[candidateIdx]) {
+        isValid = false;
+      }
+    }
+
+    // Reset to 'output' if invalid
+    if (!isValid) {
+      console.log('[CellDetailPanel] Tab invalid for new cell, resetting:', activeOutputTab, '→ output');
+      setActiveOutputTab('output');
+    }
+  }, [cell.name, activeOutputTab, checkpointData, images, error, cellMessages, messagesByCandidate]);
 
   return (
-    <div className="phase-detail-panel">
+    <div className="cell-detail-panel">
       {/* Header */}
-      <div className="phase-detail-header">
-        <div className="phase-detail-header-left">
+      <div className="cell-detail-header">
+        <div className="cell-detail-header-left">
           <input
-            className="phase-detail-name-input"
-            value={phase.name}
+            className="cell-detail-name-input"
+            value={cell.name}
             onChange={handleNameChange}
-            placeholder="phase_name"
+            placeholder="cell_name"
           />
-          <span className="phase-detail-index">#{index + 1}</span>
+          <span className="cell-detail-index">#{index + 1}</span>
         </div>
 
-        <div className="phase-detail-header-center">
+        <div className="cell-detail-header-center">
           {isWindlass && (
             <>
               <button
-                className={`phase-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
+                className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
                 onClick={() => setActiveTab('code')}
               >
                 <Icon icon="mdi:code-braces" width="16" />
                 Code
               </button>
               <button
-                className={`phase-detail-tab ${activeTab === 'config' ? 'active' : ''}`}
+                className={`cell-detail-tab ${activeTab === 'config' ? 'active' : ''}`}
                 onClick={() => setActiveTab('config')}
               >
                 <Icon icon="mdi:cog" width="16" />
@@ -709,11 +756,11 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
             </>
           )}
           {!isWindlass && !hasCustomEditors && (
-            <div className="phase-detail-mode-label">
+            <div className="cell-detail-mode-label">
               <Icon icon="mdi:code-braces" width="16" />
               Code Editor
               <button
-                className={`phase-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
+                className={`cell-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
                 onClick={() => setShowYamlEditor(!showYamlEditor)}
                 title={showYamlEditor ? 'Hide YAML editor' : 'Show YAML editor'}
               >
@@ -725,7 +772,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
           {!isWindlass && hasCustomEditors && (
             <>
               <button
-                className={`phase-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
+                className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
                 onClick={() => setActiveTab('code')}
               >
                 <Icon icon="mdi:code-braces" width="16" />
@@ -734,16 +781,16 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
               {customEditors.map(editor => (
                 <button
                   key={editor.id}
-                  className={`phase-detail-tab ${activeTab === editor.id ? 'active' : ''}`}
+                  className={`cell-detail-tab ${activeTab === editor.id ? 'active' : ''}`}
                   onClick={() => setActiveTab(editor.id)}
                 >
                   {editor.icon && <Icon icon={editor.icon} width="16" />}
                   {editor.label}
-                  <span className="phase-detail-tab-badge">Custom</span>
+                  <span className="cell-detail-tab-badge">Custom</span>
                 </button>
               ))}
               <button
-                className={`phase-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
+                className={`cell-detail-yaml-toggle ${showYamlEditor ? 'active' : ''}`}
                 onClick={() => setShowYamlEditor(!showYamlEditor)}
                 title={showYamlEditor ? 'Hide YAML editor' : 'Show YAML editor'}
                 style={{ marginLeft: 'auto' }}
@@ -755,27 +802,27 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
           )}
         </div>
 
-        <div className="phase-detail-header-right">
+        <div className="cell-detail-header-right">
           <button
-            className="phase-detail-btn phase-detail-btn-run"
+            className="cell-detail-btn cell-detail-btn-run"
             onClick={handleRun}
             disabled={status === 'running'}
           >
             {status === 'running' ? (
-              <span className="phase-detail-spinner" />
+              <span className="cell-detail-spinner" />
             ) : (
               <Icon icon="mdi:play" width="16" />
             )}
             Run
           </button>
           <button
-            className="phase-detail-btn phase-detail-btn-delete"
+            className="cell-detail-btn cell-detail-btn-delete"
             onClick={handleDelete}
           >
             <Icon icon="mdi:delete" width="16" />
           </button>
           <button
-            className="phase-detail-btn phase-detail-btn-close"
+            className="cell-detail-btn cell-detail-btn-close"
             onClick={onClose}
           >
             <Icon icon="mdi:close" width="16" />
@@ -784,20 +831,20 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
       </div>
 
       {/* Tab Content */}
-      <div className="phase-detail-body">
+      <div className="cell-detail-body">
         {activeTab === 'config' && isWindlass ? (
-          <div className="phase-detail-config">
-            <div className="phase-detail-config-section">
+          <div className="cell-detail-config">
+            <div className="cell-detail-config-section">
               <h4>LLM Configuration</h4>
-              <p className="phase-detail-placeholder">
-                Config UI coming soon: model selection, soundings, wards, handoffs...
+              <p className="cell-detail-placeholder">
+                Config UI coming soon: model selection, candidates, wards, handoffs...
               </p>
             </div>
           </div>
         ) : (
           /* Code/Custom Editor + Results with resizable splitter (always shown) */
           <Split
-            className="phase-detail-split"
+            className="cell-detail-split"
             direction="vertical"
             sizes={[60, 40]}
             minSize={[100, 100]}
@@ -805,46 +852,46 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
             gutterAlign="center"
           >
               {/* Code/Custom Editor Container (keeps consistent structure for Split) */}
-              <div className="phase-detail-code-container">
+              <div className="cell-detail-code-container">
                 {/* Render Custom Editor or Monaco Editor */}
                 {customEditors.find(e => e.id === activeTab) ? (
                   /* Custom Editor (with optional YAML split) */
                   showYamlEditor ? (
                     <Split
-                      className="phase-detail-code-yaml-split"
+                      className="cell-detail-code-yaml-split"
                       direction="horizontal"
                       sizes={[60, 40]}
                       minSize={[200, 200]}
                       gutterSize={6}
                       gutterAlign="center"
                     >
-                      <div className="phase-detail-custom-editor">
+                      <div className="cell-detail-custom-editor">
                         {React.createElement(
                           customEditors.find(e => e.id === activeTab).component,
                           {
-                            phase,
-                            onChange: (updatedPhase) => updateCell(index, updatedPhase),
-                            phaseName: phase.name
+                            cell,
+                            onChange: (updatedCell) => updateCell(index, updatedCell),
+                            cellName: cell.name
                           }
                         )}
                       </div>
-                      <div className="phase-detail-yaml-section">
-                        <div className="phase-detail-yaml-header">
+                      <div className="cell-detail-yaml-section">
+                        <div className="cell-detail-yaml-header">
                           <Icon icon="mdi:file-code-outline" width="14" />
-                          <span>Full Phase YAML</span>
+                          <span>Full Cell YAML</span>
                           {yamlParseError && (
-                            <span className="phase-yaml-error" title={yamlParseError}>
+                            <span className="cell-yaml-error" title={yamlParseError}>
                               <Icon icon="mdi:alert-circle" width="12" />
                               Parse Error
                             </span>
                           )}
-                          <span className="phase-yaml-hint">Auto-saves on blur</span>
+                          <span className="cell-yaml-hint">Auto-saves on blur</span>
                         </div>
                         <Editor
-                          key={`yaml-${phase.name}`}
+                          key={`yaml-${cell.name}`}
                           height="100%"
                           language="yaml"
-                          value={phaseYaml}
+                          value={cellYaml}
                           onChange={handleYamlChange}
                           theme={STUDIO_THEME_NAME}
                           beforeMount={configureMonacoTheme}
@@ -878,13 +925,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       </div>
                     </Split>
                   ) : (
-                    <div className="phase-detail-custom-editor">
+                    <div className="cell-detail-custom-editor">
                       {React.createElement(
                         customEditors.find(e => e.id === activeTab).component,
                         {
-                          phase,
-                          onChange: (updatedPhase) => updateCell(index, updatedPhase),
-                          phaseName: phase.name
+                          cell,
+                          onChange: (updatedCell) => updateCell(index, updatedCell),
+                          cellName: cell.name
                         }
                       )}
                     </div>
@@ -893,7 +940,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                   /* Monaco Code Editor (with optional YAML split) */
                   showYamlEditor ? (
                   <Split
-                    className="phase-detail-code-yaml-split"
+                    className="cell-detail-code-yaml-split"
                     direction="horizontal"
                     sizes={[60, 40]}
                     minSize={[200, 200]}
@@ -902,9 +949,9 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                   >
                     <div
                       ref={setDropRef}
-                      className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                      className={`cell-detail-code-section ${isOver ? 'drop-active' : ''}`}
                     >
-                      <div className="phase-detail-code-header">
+                      <div className="cell-detail-code-header">
                         <Icon icon="mdi:code-braces" width="14" />
                         <span>
                           {info.codeKey === 'query' ? 'Query' :
@@ -914,9 +961,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                            info.codeKey.charAt(0).toUpperCase() + info.codeKey.slice(1)}
                         </span>
                       </div>
-                      <div className="phase-detail-editor-wrapper">
+                      <div className="cell-detail-editor-wrapper">
+                        {/* DEBUG: Show code value */}
+                        {/* <div style={{position: 'absolute', top: 0, right: 0, background: '#ff0066', color: '#fff', padding: '4px', fontSize: '10px', zIndex: 9999}}>
+                          code.length={code?.length || 0}
+                        </div> */}
                         <Editor
-                          key={`editor-${phase.name}`}
+                          key={`editor-${cell.name}`}
                           height="100%"
                         language={info.language}
                         value={code}
@@ -944,25 +995,25 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     </div>
                     <div
                       ref={setYamlDropRef}
-                      className={`phase-detail-yaml-section ${isYamlOver ? 'drop-active' : ''}`}
+                      className={`cell-detail-yaml-section ${isYamlOver ? 'drop-active' : ''}`}
                     >
-                      <div className="phase-detail-yaml-header">
+                      <div className="cell-detail-yaml-header">
                         <Icon icon="mdi:file-code-outline" width="14" />
-                        <span>Full Phase YAML</span>
+                        <span>Full Cell YAML</span>
                         {yamlParseError && (
-                          <span className="phase-yaml-error" title={yamlParseError}>
+                          <span className="cell-yaml-error" title={yamlParseError}>
                             <Icon icon="mdi:alert-circle" width="12" />
                             Parse Error
                           </span>
                         )}
-                        <span className="phase-yaml-hint">Auto-saves on blur</span>
+                        <span className="cell-yaml-hint">Auto-saves on blur</span>
                       </div>
-                      <div className="phase-detail-editor-wrapper">
+                      <div className="cell-detail-editor-wrapper">
                         <Editor
-                          key={`yaml-${phase.name}`}
+                          key={`yaml-${cell.name}`}
                           height="100%"
                           language="yaml"
-                          value={phaseYaml}
+                          value={cellYaml}
                           onChange={handleYamlChange}
                           theme={STUDIO_THEME_NAME}
                           beforeMount={configureMonacoTheme}
@@ -1001,9 +1052,9 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                 ) : (
                   <div
                     ref={setDropRef}
-                    className={`phase-detail-code-section ${isOver ? 'drop-active' : ''}`}
+                    className={`cell-detail-code-section ${isOver ? 'drop-active' : ''}`}
                   >
-                    <div className="phase-detail-code-header">
+                    <div className="cell-detail-code-header">
                       <Icon icon="mdi:code-braces" width="14" />
                       <span>
                         {info.codeKey === 'query' ? 'Query' :
@@ -1013,9 +1064,9 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                          info.codeKey.charAt(0).toUpperCase() + info.codeKey.slice(1)}
                       </span>
                     </div>
-                    <div className="phase-detail-editor-wrapper">
+                    <div className="cell-detail-editor-wrapper">
                       <Editor
-                        key={`editor-${phase.name}`}
+                        key={`editor-${cell.name}`}
                         height="100%"
                         language={info.language}
                         value={code}
@@ -1045,38 +1096,38 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
               </div>
 
               {/* Results Section */}
-              <div className="phase-detail-results-section">
-                <div className="phase-detail-results-header">
-                  <div className="phase-detail-results-header-left">
+              <div className="cell-detail-results-section">
+                <div className="cell-detail-results-header">
+                  <div className="cell-detail-results-header-left">
                     {result?.row_count !== undefined && (
-                      <span className="phase-detail-row-count">{result.row_count} rows</span>
+                      <span className="cell-detail-row-count">{result.row_count} rows</span>
                     )}
                     {cellState?.duration !== undefined && cellState.duration !== null && (
-                      <span className="phase-detail-duration">
+                      <span className="cell-detail-duration">
                         <Icon icon="mdi:clock-outline" width="12" />
                         {formatDuration(cellState.duration)}
                       </span>
                     )}
                     {cellState?.cost > 0 && (
-                      <span className="phase-detail-cost">
+                      <span className="cell-detail-cost">
                         <Icon icon="mdi:currency-usd" width="12" />
                         ${cellState.cost < 0.01 ? '<0.01' : cellState.cost.toFixed(4)}
                       </span>
                     )}
                     {(cellState?.tokens_in > 0 || cellState?.tokens_out > 0) && (
-                      <span className="phase-detail-tokens">
+                      <span className="cell-detail-tokens">
                         <Icon icon="mdi:dice-multiple" width="12" />
                         {cellState.tokens_in || 0}↓ {cellState.tokens_out || 0}↑
                       </span>
                     )}
                   </div>
-                  <div className="phase-detail-results-tabs">
+                  <div className="cell-detail-results-tabs">
                     {/* Decision tab - appears FIRST if present (blocking interaction) */}
                     {checkpointData && (() => {
                       console.log('[PhaseDetailPanel] Rendering Decision tab button');
                       return (
                         <button
-                          className={`phase-detail-results-tab phase-detail-results-tab-decision ${activeOutputTab === 'decision' ? 'active' : ''}`}
+                          className={`cell-detail-results-tab cell-detail-results-tab-decision ${activeOutputTab === 'decision' ? 'active' : ''}`}
                           onClick={() => {
                             console.log('[PhaseDetailPanel] Decision tab clicked');
                             setActiveOutputTab('decision');
@@ -1090,52 +1141,52 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                       );
                     })()}
                     <button
-                      className={`phase-detail-results-tab ${activeOutputTab === 'output' ? 'active' : ''}`}
+                      className={`cell-detail-results-tab ${activeOutputTab === 'output' ? 'active' : ''}`}
                       onClick={() => setActiveOutputTab('output')}
                     >
                       Output
                     </button>
-                    {/* Sounding tabs OR single Messages tab */}
-                    {messagesBySounding ? (
-                      // Multiple soundings - show tab per sounding
-                      Object.keys(messagesBySounding.grouped).sort().map((soundingIdx) => {
-                        // Compare as numbers (soundingIdx from Object.keys is string)
-                        const isWinner = parseInt(soundingIdx) === messagesBySounding.winner || soundingIdx === 'main';
-                        const count = messagesBySounding.grouped[soundingIdx].length;
+                    {/* Candidate tabs OR single Messages tab */}
+                    {messagesByCandidate ? (
+                      // Multiple candidates - show tab per candidate
+                      Object.keys(messagesByCandidate.grouped).sort().map((candidateIdx) => {
+                        // Compare as numbers (candidateIdx from Object.keys is string)
+                        const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
+                        const count = messagesByCandidate.grouped[candidateIdx].length;
 
                         // Debug winner detection
-                        if (soundingIdx === '0' || soundingIdx === '1') {
-                          console.log('[PhaseDetailPanel] Tab', soundingIdx, '- isWinner:', isWinner, 'winner:', messagesBySounding.winner, 'parsed:', parseInt(soundingIdx));
+                        if (candidateIdx === '0' || candidateIdx === '1') {
+                          console.log('[CellDetailPanel] Tab', candidateIdx, '- isWinner:', isWinner, 'winner:', messagesByCandidate.winner, 'parsed:', parseInt(candidateIdx));
                         }
 
                         return (
                           <button
-                            key={soundingIdx}
-                            className={`phase-detail-results-tab ${activeOutputTab === `sounding-${soundingIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
-                            onClick={() => setActiveOutputTab(`sounding-${soundingIdx}`)}
-                            title={isWinner ? `Sounding ${soundingIdx} (WINNER - ${count} messages)` : `Sounding ${soundingIdx} (${count} messages)`}
+                            key={candidateIdx}
+                            className={`cell-detail-results-tab ${activeOutputTab === `candidate-${candidateIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
+                            onClick={() => setActiveOutputTab(`candidate-${candidateIdx}`)}
+                            title={isWinner ? `Candidate ${candidateIdx} (WINNER - ${count} messages)` : `Candidate ${candidateIdx} (${count} messages)`}
                           >
                             {isWinner && <Icon icon="mdi:crown" width="14" />}
                             <Icon icon="mdi:message-processing" width="14" />
-                            S{soundingIdx}
+                            C{candidateIdx}
                           </button>
                         );
                       })
                     ) : (
-                      // No soundings - single Messages tab
-                      phaseMessages.length > 0 && (
+                      // No candidates - single Messages tab
+                      cellMessages.length > 0 && (
                         <button
-                          className={`phase-detail-results-tab ${activeOutputTab === 'messages' ? 'active' : ''}`}
+                          className={`cell-detail-results-tab ${activeOutputTab === 'messages' ? 'active' : ''}`}
                           onClick={() => setActiveOutputTab('messages')}
                         >
                           <Icon icon="mdi:message-processing" width="14" />
-                          Messages ({phaseMessages.length})
+                          Messages ({cellMessages.length})
                         </button>
                       )
                     )}
                     {(result && !error) && (
                       <button
-                        className={`phase-detail-results-tab ${activeOutputTab === 'raw' ? 'active' : ''}`}
+                        className={`cell-detail-results-tab ${activeOutputTab === 'raw' ? 'active' : ''}`}
                         onClick={() => setActiveOutputTab('raw')}
                       >
                         Raw
@@ -1143,7 +1194,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     )}
                     {fullRequest && (
                       <button
-                        className={`phase-detail-results-tab ${activeOutputTab === 'request' ? 'active' : ''}`}
+                        className={`cell-detail-results-tab ${activeOutputTab === 'request' ? 'active' : ''}`}
                         onClick={() => setActiveOutputTab('request')}
                         title="Full LLM request (for debugging)"
                       >
@@ -1153,7 +1204,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     )}
                     {images && images.length > 0 && (
                       <button
-                        className={`phase-detail-results-tab ${activeOutputTab === 'images' ? 'active' : ''}`}
+                        className={`cell-detail-results-tab ${activeOutputTab === 'images' ? 'active' : ''}`}
                         onClick={() => setActiveOutputTab('images')}
                       >
                         <Icon icon="mdi:image" width="14" />
@@ -1162,7 +1213,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     )}
                     {error && (
                       <button
-                        className={`phase-detail-results-tab ${activeOutputTab === 'error' ? 'active' : ''}`}
+                        className={`cell-detail-results-tab ${activeOutputTab === 'error' ? 'active' : ''}`}
                         onClick={() => setActiveOutputTab('error')}
                       >
                         <Icon icon="mdi:alert-circle" width="14" />
@@ -1171,7 +1222,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     )}
                   </div>
                 </div>
-                <div className="phase-detail-results-content">
+                <div className="cell-detail-results-content">
                   {activeOutputTab === 'decision' && checkpointData && (() => {
                     console.log('[PhaseDetailPanel] Rendering decision content:', {
                       source: checkpointData.source,
@@ -1187,9 +1238,9 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     });
 
                     return (
-                      <div className="phase-detail-decision-view">
+                      <div className="cell-detail-decision-view">
                         {isLiveDecision && (
-                          <div className="phase-detail-decision-live-banner">
+                          <div className="cell-detail-decision-live-banner">
                             <Icon icon="mdi:clock-alert" width="16" />
                             <span>Cascade is waiting for your decision</span>
                           </div>
@@ -1204,12 +1255,12 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           />
                         ) : (
                           // Fallback if no HTML section
-                          <div className="phase-detail-decision-fallback">
-                            <div className="phase-detail-decision-note">
+                          <div className="cell-detail-decision-fallback">
+                            <div className="cell-detail-decision-note">
                               <Icon icon="mdi:information-outline" width="16" />
                               No HTML UI found for this checkpoint
                             </div>
-                            <pre className="phase-detail-raw-json">
+                            <pre className="cell-detail-raw-json">
                               {JSON.stringify(checkpointData, null, 2)}
                             </pre>
                           </div>
@@ -1220,17 +1271,22 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                   {activeOutputTab === 'output' && (
                     (result || error) ? (
                       <>
-                        {/* Evaluator reasoning (for soundings) */}
+                        {/* DEBUG: Show result data */}
+                        <div style={{background: '#ff0066', color: '#fff', padding: '4px', fontSize: '10px'}}>
+                          DEBUG OUTPUT: hasResult={!!result} hasError={!!error} resultType={typeof result}
+                          {result && ` keys=${Object.keys(result).join(',')}`}
+                        </div>
+                        {/* Evaluator reasoning (for candidates) */}
                         {evaluatorMessage && (
-                          <div className="phase-detail-evaluator-banner">
-                            <div className="phase-detail-evaluator-header">
+                          <div className="cell-detail-evaluator-banner">
+                            <div className="cell-detail-evaluator-header">
                               <Icon icon="mdi:scale-balance" width="16" />
                               <span>Evaluator Selection</span>
                               {evaluatorMessage.model && (
-                                <span className="phase-detail-evaluator-model">({evaluatorMessage.model})</span>
+                                <span className="cell-detail-evaluator-model">({evaluatorMessage.model})</span>
                               )}
                             </div>
-                            <div className="phase-detail-evaluator-content">
+                            <div className="cell-detail-evaluator-content">
                               {typeof evaluatorMessage.content === 'string' ? (
                                 <pre>{evaluatorMessage.content}</pre>
                               ) : (
@@ -1246,67 +1302,67 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                         />
                       </>
                     ) : (
-                      <div className="phase-detail-no-data">
+                      <div className="cell-detail-no-data">
                         <Icon icon="mdi:package-variant" width="48" />
                         <p>No output yet</p>
-                        <span>Run the phase to see results here</span>
+                        <span>Run the cell to see results here</span>
                       </div>
                     )
                   )}
-                  {/* Sounding-specific message tabs */}
-                  {messagesBySounding && activeOutputTab.startsWith('sounding-') && (
-                    <div className="phase-detail-messages">
+                  {/* Candidate-specific message tabs */}
+                  {messagesByCandidate && activeOutputTab.startsWith('candidate-') && (
+                    <div className="cell-detail-messages">
                       {(() => {
-                        const soundingIdx = activeOutputTab.replace('sounding-', '');
-                        const messages = messagesBySounding.grouped[soundingIdx] || [];
-                        const isWinner = parseInt(soundingIdx) === messagesBySounding.winner || soundingIdx === 'main';
+                        const candidateIdx = activeOutputTab.replace('candidate-', '');
+                        const messages = messagesByCandidate.grouped[candidateIdx] || [];
+                        const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
 
                         return messages.length > 0 ? (
-                          <div className="phase-detail-messages-list">
+                          <div className="cell-detail-messages-list">
                             {isWinner && (
-                              <div className="phase-detail-sounding-winner-banner">
+                              <div className="cell-detail-candidate-winner-banner">
                                 <Icon icon="mdi:crown" width="16" />
-                                This sounding was selected as the winner
+                                This candidate was selected as the winner
                               </div>
                             )}
                             {messages.map((msg, idx) => {
                               // Check if this message is from a child session
                               const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
                               return (
-                              <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role} ${isChildSession ? 'phase-detail-message-child-session' : ''}`}>
-                                <div className="phase-detail-message-header">
-                                  <div className="phase-detail-message-role">
+                              <div key={idx} className={`cell-detail-message cell-detail-message-${msg.role} ${isChildSession ? 'cell-detail-message-child-session' : ''}`}>
+                                <div className="cell-detail-message-header">
+                                  <div className="cell-detail-message-role">
                                     {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
                                     {msg.role === 'assistant' && <Icon icon="mdi:robot" width="16" />}
                                     {msg.role === 'user' && <Icon icon="mdi:account" width="16" />}
                                     {msg.role === 'system' && <Icon icon="mdi:cog" width="16" />}
                                     <span>{msg.role}</span>
                                     {msg.node_type && msg.node_type !== msg.role && (
-                                      <span className="phase-detail-message-node-type">({msg.node_type})</span>
+                                      <span className="cell-detail-message-node-type">({msg.node_type})</span>
                                     )}
                                   </div>
-                                  <div className="phase-detail-message-meta">
+                                  <div className="cell-detail-message-meta">
                                     {msg.duration_ms && (
-                                      <span className="phase-detail-message-duration">
+                                      <span className="cell-detail-message-duration">
                                         <Icon icon="mdi:clock-outline" width="12" />
                                         {Math.round(msg.duration_ms)}ms
                                       </span>
                                     )}
                                     {msg.turn_number && (
-                                      <span className="phase-detail-message-turn">Turn {msg.turn_number}</span>
+                                      <span className="cell-detail-message-turn">Turn {msg.turn_number}</span>
                                     )}
                                     {msg.cost > 0 && (
-                                      <span className="phase-detail-message-cost">
+                                      <span className="cell-detail-message-cost">
                                         <Icon icon="mdi:currency-usd" width="12" />
                                         ${msg.cost.toFixed(4)}
                                       </span>
                                     )}
                                   </div>
                                 </div>
-                                <div className="phase-detail-message-content">
+                                <div className="cell-detail-message-content">
                                   {typeof msg.content === 'string' ? (
                                     msg.content.length > 50 && (msg.content.includes('#') || msg.content.includes('**') || msg.content.includes('```')) ? (
-                                      <div className="phase-detail-message-markdown">
+                                      <div className="cell-detail-message-markdown">
                                         <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
                                       </div>
                                     ) : (
@@ -1317,13 +1373,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                                   )}
                                 </div>
                                 {msg.tool_calls && msg.tool_calls.length > 0 && (
-                                  <div className="phase-detail-message-tool-calls">
-                                    <div className="phase-detail-message-tool-calls-header">
+                                  <div className="cell-detail-message-tool-calls">
+                                    <div className="cell-detail-message-tool-calls-header">
                                       <Icon icon="mdi:hammer-wrench" width="14" />
                                       Tool Calls ({msg.tool_calls.length})
                                     </div>
                                     {msg.tool_calls.map((call, callIdx) => (
-                                      <div key={callIdx} className="phase-detail-tool-call">
+                                      <div key={callIdx} className="cell-detail-tool-call">
                                         <strong>{call.function?.name || call.name}</strong>
                                         <pre>{JSON.stringify(call.function?.arguments || call.arguments, null, 2)}</pre>
                                       </div>
@@ -1335,57 +1391,57 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                             })}
                           </div>
                         ) : (
-                          <div className="phase-detail-messages-empty">
+                          <div className="cell-detail-messages-empty">
                             <Icon icon="mdi:message-off" width="48" />
-                            <p>No messages found for sounding {soundingIdx}</p>
+                            <p>No messages found for candidate {candidateIdx}</p>
                           </div>
                         );
                       })()}
                     </div>
                   )}
-                  {/* Fallback single Messages tab for non-sounding phases */}
+                  {/* Fallback single Messages tab for non-candidate cells */}
                   {activeOutputTab === 'messages' && (
-                    <div className="phase-detail-messages">
-                      {phaseMessages && phaseMessages.length > 0 ? (
-                        <div className="phase-detail-messages-list">
-                          {phaseMessages.map((msg, idx) => {
+                    <div className="cell-detail-messages">
+                      {cellMessages && cellMessages.length > 0 ? (
+                        <div className="cell-detail-messages-list">
+                          {cellMessages.map((msg, idx) => {
                             // Check if this message is from a child session
                             const isChildSession = currentSessionId && msg.session_id && msg.session_id !== currentSessionId;
                             return (
-                            <div key={idx} className={`phase-detail-message phase-detail-message-${msg.role} ${isChildSession ? 'phase-detail-message-child-session' : ''}`}>
-                              <div className="phase-detail-message-header">
-                                <div className="phase-detail-message-role">
+                            <div key={idx} className={`cell-detail-message cell-detail-message-${msg.role} ${isChildSession ? 'cell-detail-message-child-session' : ''}`}>
+                              <div className="cell-detail-message-header">
+                                <div className="cell-detail-message-role">
                                   {msg.role === 'tool' && <Icon icon="mdi:hammer-wrench" width="16" />}
                                   {msg.role === 'assistant' && <Icon icon="mdi:robot" width="16" />}
                                   {msg.role === 'user' && <Icon icon="mdi:account" width="16" />}
                                   {msg.role === 'system' && <Icon icon="mdi:cog" width="16" />}
                                   <span>{msg.role}</span>
                                   {msg.node_type && msg.node_type !== msg.role && (
-                                    <span className="phase-detail-message-node-type">({msg.node_type})</span>
+                                    <span className="cell-detail-message-node-type">({msg.node_type})</span>
                                   )}
                                 </div>
-                                <div className="phase-detail-message-meta">
+                                <div className="cell-detail-message-meta">
                                   {msg.duration_ms && (
-                                    <span className="phase-detail-message-duration">
+                                    <span className="cell-detail-message-duration">
                                       <Icon icon="mdi:clock-outline" width="12" />
                                       {Math.round(msg.duration_ms)}ms
                                     </span>
                                   )}
                                   {msg.turn_number && (
-                                    <span className="phase-detail-message-turn">Turn {msg.turn_number}</span>
+                                    <span className="cell-detail-message-turn">Turn {msg.turn_number}</span>
                                   )}
                                   {msg.cost > 0 && (
-                                    <span className="phase-detail-message-cost">
+                                    <span className="cell-detail-message-cost">
                                       <Icon icon="mdi:currency-usd" width="12" />
                                       ${msg.cost.toFixed(4)}
                                     </span>
                                   )}
                                 </div>
                               </div>
-                              <div className="phase-detail-message-content">
+                              <div className="cell-detail-message-content">
                                 {typeof msg.content === 'string' ? (
                                   msg.content.length > 50 && (msg.content.includes('#') || msg.content.includes('**') || msg.content.includes('```')) ? (
-                                    <div className="phase-detail-message-markdown">
+                                    <div className="cell-detail-message-markdown">
                                       <pre>{msg.content.replace(/\\n/g, '\n')}</pre>
                                     </div>
                                   ) : (
@@ -1396,13 +1452,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                                 )}
                               </div>
                               {msg.tool_calls && msg.tool_calls.length > 0 && (
-                                <div className="phase-detail-message-tool-calls">
-                                  <div className="phase-detail-message-tool-calls-header">
+                                <div className="cell-detail-message-tool-calls">
+                                  <div className="cell-detail-message-tool-calls-header">
                                     <Icon icon="mdi:hammer-wrench" width="14" />
                                     Tool Calls ({msg.tool_calls.length})
                                   </div>
                                   {msg.tool_calls.map((call, callIdx) => (
-                                    <div key={callIdx} className="phase-detail-tool-call">
+                                    <div key={callIdx} className="cell-detail-tool-call">
                                       <strong>{call.function?.name || call.name}</strong>
                                       <pre>{JSON.stringify(call.function?.arguments || call.arguments, null, 2)}</pre>
                                     </div>
@@ -1414,7 +1470,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                           })}
                         </div>
                       ) : (
-                        <div className="phase-detail-messages-empty">
+                        <div className="cell-detail-messages-empty">
                           <Icon icon="mdi:message-off" width="48" />
                           <p>No messages for this phase</p>
                         </div>
@@ -1422,7 +1478,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     </div>
                   )}
                   {activeOutputTab === 'raw' && result && (
-                    <div className="phase-detail-monaco-readonly">
+                    <div className="cell-detail-monaco-readonly">
                       <Editor
                         height="100%"
                         language="json"
@@ -1452,7 +1508,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     </div>
                   )}
                   {activeOutputTab === 'request' && fullRequest && (
-                    <div className="phase-detail-monaco-readonly">
+                    <div className="cell-detail-monaco-readonly">
                       <Editor
                         height="100%"
                         language="json"
@@ -1482,13 +1538,13 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     </div>
                   )}
                   {activeOutputTab === 'images' && images && images.length > 0 && (
-                    <div className="phase-detail-images-only">
+                    <div className="cell-detail-images-only">
                       {images.map((imagePath, idx) => {
                         const imageUrl = imagePath.startsWith('/api')
                           ? `http://localhost:5001${imagePath}`
                           : imagePath;
                         return (
-                          <div key={idx} className="phase-detail-image-container">
+                          <div key={idx} className="cell-detail-image-container">
                             <img src={imageUrl} alt={`Output ${idx + 1}`} />
                           </div>
                         );
@@ -1496,7 +1552,7 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
                     </div>
                   )}
                   {activeOutputTab === 'error' && error && (
-                    <div className="phase-detail-error-detail">
+                    <div className="cell-detail-error-detail">
                       <pre>
                         {typeof error === 'string'
                           ? error.replace(/\\n/g, '\n')
@@ -1517,12 +1573,12 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
         size="sm"
       >
         <ModalHeader
-          title="Delete Phase"
+          title="Delete Cell"
           icon="mdi:delete-alert"
         />
         <ModalContent>
           <p style={{ color: 'var(--color-text-secondary)', lineHeight: '1.5' }}>
-            Are you sure you want to delete <strong style={{ color: 'var(--color-accent-cyan)' }}>"{phase.name}"</strong>?
+            Are you sure you want to delete <strong style={{ color: 'var(--color-accent-cyan)' }}>"{cell.name}"</strong>?
           </p>
           <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)', marginTop: '8px' }}>
             This action cannot be undone.
@@ -1548,4 +1604,4 @@ const PhaseDetailPanel = ({ phase, index, cellState, phaseLogs = [], allSessionL
   );
 };
 
-export default PhaseDetailPanel;
+export default CellDetailPanel;

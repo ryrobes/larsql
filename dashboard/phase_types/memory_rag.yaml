@@ -1,24 +1,27 @@
 type_id: memory_rag
 display_name: Memory (RAG)
 icon: mdi:brain-freeze-outline
-color: "#a855f7"
+color: '#a855f7'
 name_prefix: memory
-description: "Phase with RAG memory - recalls relevant context from prior sessions"
-category: "llm"
+description: Phase with RAG memory - recalls relevant context from prior sessions
+category: llm
 tags:
-  - "advanced"
-  - "ai-ml"
-  - "novel"
-
+- advanced
+- ai-ml
+- novel
 template:
-  instructions: |
-    Answer the question using your memory of past sessions:
+  instructions: 'Answer the question using your memory of past sessions:
+
     {{ input.question }}
 
+
     Your memory will automatically provide relevant context from prior executions.
+
     Use this context to give informed, consistent responses.
+
+    '
   model: anthropic/claude-sonnet-4
-  tackle: []
-  memory: sql_rag_search  # Enable RAG memory
+  traits: []
+  memory: sql_rag_search
   rules:
     max_turns: 3

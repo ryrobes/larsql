@@ -1,47 +1,46 @@
 cascade_id: rabbitize_simple_demo
-
-description: Basic Rabbitize demonstration - navigate to a website, take a screenshot, extract content
-
+description: Basic Rabbitize demonstration - navigate to a website, take a screenshot,
+  extract content
 inputs_schema:
   url: URL to visit
-
 memory: rabbitize_demo_memory2
-
-phases:
-  - handoffs:
-      - explore_page
-    instructions: Start a browser session and navigate to {{ input.url }}. Look at the initial screenshot
-      and describe what you see.
-    name: start_browser
-    rules:
-      max_turns: 1
-    tackle:
-      - rabbitize_start
-  - handoffs:
-      - explore_page_more
-    instructions: Now extract the page content to see what's available. Describe the key elements you
-      find.
-    name: explore_page
-    rules:
-      max_turns: 1
-    tackle:
-      - rabbitize_extract
-      - rabbitize_demo_memory2
-  - handoffs:
-      - close_browser
-    instructions: Move the mouse cursor and click on something to navigate to another page. The browser
-      window is 1920x1080 for reference, so please extrapolate from what resized image you may have.
-    name: explore_page_more
-    rules:
-      max_turns: 3
-      turn_prompt: "\n\n### Did this action do what you expected it to? Did the cursor move to where you\
-        \ expected?\n (this us {{ turn }} of {{ max_turns }} turns in this phase)\n "
-    tackle:
-      - rabbitize_execute
-      - rabbitize_demo_memory2
-  - instructions: Close the browser session and report what you learned.
-    name: close_browser
-    rules:
-      max_turns: 1
-    tackle:
-      - rabbitize_close
+cells:
+- handoffs:
+  - explore_page
+  instructions: Start a browser session and navigate to {{ input.url }}. Look at the
+    initial screenshot and describe what you see.
+  name: start_browser
+  rules:
+    max_turns: 1
+  traits:
+  - rabbitize_start
+- handoffs:
+  - explore_page_more
+  instructions: Now extract the page content to see what's available. Describe the
+    key elements you find.
+  name: explore_page
+  rules:
+    max_turns: 1
+  traits:
+  - rabbitize_extract
+  - rabbitize_demo_memory2
+- handoffs:
+  - close_browser
+  instructions: Move the mouse cursor and click on something to navigate to another
+    page. The browser window is 1920x1080 for reference, so please extrapolate from
+    what resized image you may have.
+  name: explore_page_more
+  rules:
+    max_turns: 3
+    turn_prompt: "\n\n### Did this action do what you expected it to? Did the cursor\
+      \ move to where you expected?\n (this us {{ turn }} of {{ max_turns }} turns\
+      \ in this phase)\n "
+  traits:
+  - rabbitize_execute
+  - rabbitize_demo_memory2
+- instructions: Close the browser session and report what you learned.
+  name: close_browser
+  rules:
+    max_turns: 1
+  traits:
+  - rabbitize_close

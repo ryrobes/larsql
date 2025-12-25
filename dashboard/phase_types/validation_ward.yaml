@@ -1,28 +1,30 @@
 type_id: validation_ward
 display_name: Validation Gate
 icon: mdi:shield-check
-color: "#06b6d4"
+color: '#06b6d4'
 name_prefix: validate
-description: "Phase with pre/post validation wards - blocks or retries on validation failure"
-category: "llm"
+description: Phase with pre/post validation wards - blocks or retries on validation failure
+category: llm
 tags:
-  - "intermediate"
-  - "validation"
-  - "chain"
-
+- intermediate
+- validation
+- chain
 template:
-  instructions: |
-    Process the input data:
+  instructions: 'Process the input data:
+
     {{ input.data }}
 
+
     Your output will be validated against quality criteria.
+
+    '
   model: google/gemini-2.5-flash
-  tackle: []
+  traits: []
   rules:
     max_turns: 1
     max_attempts: 2
   wards:
     post:
-      - validator: grammar_check
-        mode: blocking  # Options: blocking, retry, advisory
-        retry: true
+    - validator: grammar_check
+      mode: blocking
+      retry: true

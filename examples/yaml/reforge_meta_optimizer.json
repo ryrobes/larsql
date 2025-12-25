@@ -5,39 +5,63 @@
     "cascade_json": "The JSON definition of the cascade to optimize",
     "optimization_goal": "What aspect to optimize (e.g., clarity, efficiency, creativity)"
   },
-  "phases": [{
-    "name": "analyze_cascade",
-    "instructions": "Analyze the cascade definition:\n\n{{ input.cascade_json }}\n\nOptimization goal: {{ input.optimization_goal }}\n\nProvide analysis of:\n1. Current prompt structure and clarity\n2. Phase organization and flow\n3. Tool usage effectiveness\n4. Potential improvements for {{ input.optimization_goal }}",
-    "tackle": [],
-    "rules": {"max_turns": 1},
-    "handoffs": ["propose_optimizations"]
-  }, {
-    "name": "propose_optimizations",
-    "instructions": "Based on the analysis, propose optimized cascade JSON.\n\nFocus on: {{ input.optimization_goal }}\n\nProvide:\n1. Improved phase instructions (clearer, more specific)\n2. Better phase organization if needed\n3. Enhanced tool selection\n4. Optimized soundings/wards configuration\n\nOutput the COMPLETE optimized JSON definition.",
-    "tackle": [],
-    "context": {"from": ["previous"]},
-    "soundings": {
-      "factor": 4,
-      "evaluator_instructions": "Evaluate optimized cascade definitions based on:\n1. Instruction clarity and specificity\n2. Achievement of optimization goal: {{ input.optimization_goal }}\n3. Maintaining original cascade intent\n4. Overall quality improvement\n\nSelect the BEST optimized version.",
-      "reforge": {
-        "steps": 3,
-        "honing_prompt": "Further refine the cascade JSON:\n- Make instructions even more specific and actionable\n- Add example inputs/outputs in instructions where helpful\n- Optimize for LLM comprehension\n- Ensure JSON is valid and complete\n- Enhance prompt engineering techniques (few-shot, chain-of-thought, etc.)",
-        "factor_per_step": 2,
-        "mutate": true,
-        "evaluator_override": "Evaluate refined cascade JSONs on:\n1. Production-ready quality\n2. Prompt engineering best practices\n3. Clarity vs. conciseness balance\n4. Technical correctness\n\nPick the most polished, ready-to-deploy version.",
-        "threshold": {
-          "validator": "simple_validator",
-          "mode": "blocking"
-        }
-      }
+  "cells": [
+    {
+      "name": "analyze_cascade",
+      "instructions": "Analyze the cascade definition:\n\n{{ input.cascade_json }}\n\nOptimization goal: {{ input.optimization_goal }}\n\nProvide analysis of:\n1. Current prompt structure and clarity\n2. Phase organization and flow\n3. Tool usage effectiveness\n4. Potential improvements for {{ input.optimization_goal }}",
+      "traits": [],
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "propose_optimizations"
+      ]
     },
-    "rules": {"max_turns": 1},
-    "handoffs": ["validate_json"]
-  }, {
-    "name": "validate_json",
-    "instructions": "Validate the optimized cascade JSON is syntactically correct and semantically sound.\n\nCheck:\n1. Valid JSON syntax\n2. Required fields present\n3. Phase handoffs are valid\n4. Tool names exist\n5. Instructions are coherent\n\nIf valid, provide the final optimized JSON and a summary of improvements.\nIf invalid, note what needs fixing.\n\nStore the optimized cascade using set_state with key 'optimized_cascade'.",
-    "tackle": ["set_state"],
-    "context": {"from": ["all"]},
-    "rules": {"max_turns": 1}
-  }]
+    {
+      "name": "propose_optimizations",
+      "instructions": "Based on the analysis, propose optimized cascade JSON.\n\nFocus on: {{ input.optimization_goal }}\n\nProvide:\n1. Improved phase instructions (clearer, more specific)\n2. Better phase organization if needed\n3. Enhanced tool selection\n4. Optimized soundings/wards configuration\n\nOutput the COMPLETE optimized JSON definition.",
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "candidates": {
+        "factor": 4,
+        "evaluator_instructions": "Evaluate optimized cascade definitions based on:\n1. Instruction clarity and specificity\n2. Achievement of optimization goal: {{ input.optimization_goal }}\n3. Maintaining original cascade intent\n4. Overall quality improvement\n\nSelect the BEST optimized version.",
+        "reforge": {
+          "steps": 3,
+          "honing_prompt": "Further refine the cascade JSON:\n- Make instructions even more specific and actionable\n- Add example inputs/outputs in instructions where helpful\n- Optimize for LLM comprehension\n- Ensure JSON is valid and complete\n- Enhance prompt engineering techniques (few-shot, chain-of-thought, etc.)",
+          "factor_per_step": 2,
+          "mutate": true,
+          "evaluator_override": "Evaluate refined cascade JSONs on:\n1. Production-ready quality\n2. Prompt engineering best practices\n3. Clarity vs. conciseness balance\n4. Technical correctness\n\nPick the most polished, ready-to-deploy version.",
+          "threshold": {
+            "validator": "simple_validator",
+            "mode": "blocking"
+          }
+        }
+      },
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "validate_json"
+      ]
+    },
+    {
+      "name": "validate_json",
+      "instructions": "Validate the optimized cascade JSON is syntactically correct and semantically sound.\n\nCheck:\n1. Valid JSON syntax\n2. Required fields present\n3. Phase handoffs are valid\n4. Tool names exist\n5. Instructions are coherent\n\nIf valid, provide the final optimized JSON and a summary of improvements.\nIf invalid, note what needs fixing.\n\nStore the optimized cascade using set_state with key 'optimized_cascade'.",
+      "traits": [
+        "set_state"
+      ],
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      }
+    }
+  ]
 }

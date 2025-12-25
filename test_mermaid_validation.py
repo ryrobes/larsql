@@ -5,7 +5,7 @@ Quick test script to verify Mermaid validation is working.
 
 import tempfile
 from pathlib import Path
-from windlass.visualizer import validate_and_write_mermaid
+from rvbbit.visualizer import validate_and_write_mermaid
 
 def test_validation():
     """Test both valid and invalid Mermaid diagrams"""

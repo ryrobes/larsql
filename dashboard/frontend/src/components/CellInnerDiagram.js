@@ -13,13 +13,13 @@
 
 import React from 'react';
 import { Icon } from '@iconify/react';
-import './PhaseInnerDiagram.css';
+import './CellInnerDiagram.css';
 
 /**
  * Extract inner complexity config from phase spec
  */
 function extractPhaseComplexity(phase) {
-  const soundings = phase.soundings || {};
+  const soundings = phase.candidates || {};
   const reforge = soundings.reforge || {};
   const wards = phase.wards || {};
 

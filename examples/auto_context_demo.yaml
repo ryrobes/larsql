@@ -1,7 +1,7 @@
 auto_context:
   intra_phase:
-    compress_loops: yes
-    enabled: yes
+    compress_loops: true
+    enabled: true
     loop_history_limit: 2
     mask_observations_after: 2
     min_masked_size: 100
@@ -10,13 +10,25 @@ cascade_id: auto_context_demo
 description: Demonstrates the auto-context system for intra-phase token savings
 inputs_schema:
   topic: Optional topic to focus on
-phases:
-  - instructions: "You are a researcher. Use the linux_shell tool multiple times to explore the current\
-      \ directory and its structure. Run at least 5 different commands to understand the project structure,\
-      \ then summarize what you found.\n\nCommands to try:\n1. ls -la\n2. find . -name '*.py' | head -20\n\
-      3. cat README.md | head -30 (if exists)\n4. ls examples/\n5. wc -l windlass/windlass/*.py"
-    name: research
-    rules:
-      max_turns: 8
-    tackle:
-      - linux_shell
+cells:
+- instructions: 'You are a researcher. Use the linux_shell tool multiple times to
+    explore the current directory and its structure. Run at least 5 different commands
+    to understand the project structure, then summarize what you found.
+
+
+    Commands to try:
+
+    1. ls -la
+
+    2. find . -name ''*.py'' | head -20
+
+    3. cat README.md | head -30 (if exists)
+
+    4. ls examples/
+
+    5. wc -l windlass/windlass/*.py'
+  name: research
+  rules:
+    max_turns: 8
+  traits:
+  - linux_shell

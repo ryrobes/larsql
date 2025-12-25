@@ -1,151 +1,109 @@
-# Smart Analyzer - Dynamic Decision Points Demo
-#
-# This cascade demonstrates LLM-generated decision points where the model
-# has freedom to analyze input and generate context-appropriate UI for
-# human decisions. The LLM decides WHAT to ask and WHAT options to present.
-
 cascade_id: smart_analyzer
-description: |
-  Analyzes input data/content and dynamically generates decision points
+description: 'Analyzes input data/content and dynamically generates decision points
+
   when it encounters ambiguities, issues, or choices that need human input.
+
   The LLM has full freedom to craft the decision UI based on what it finds.
 
+  '
 inputs_schema:
-  content: "Content to analyze (JSON data, text, code, etc.)"
-  task: "What kind of analysis to perform (optional - LLM will infer if not provided)"
+  content: Content to analyze (JSON data, text, code, etc.)
+  task: What kind of analysis to perform (optional - LLM will infer if not provided)
+cells:
+- name: analyze_and_decide
+  model: anthropic/claude-sonnet-4
+  instructions: "You are an intelligent analyzer. Your job is to examine the provided\
+    \ content\nand identify any issues, ambiguities, or decisions that require human\
+    \ input.\n\n## Input\n**Content to analyze:**\n```\n{{ input.content }}\n```\n\
+    \n{% if input.task %}\n**Requested analysis:** {{ input.task }}\n{% endif %}\n\
+    \n## Your Task\n\n1. **Analyze the content** - Look for:\n   - Data quality issues\
+    \ (missing fields, invalid values, inconsistencies)\n   - Ambiguities that could\
+    \ be interpreted multiple ways\n   - Style/convention choices that need human\
+    \ preference\n   - Potential problems or edge cases\n   - Structural decisions\
+    \ that affect downstream processing\n\n2. **Generate decision points** - When\
+    \ you find something that needs human input,\n   output a `<decision>` block.\
+    \ You have COMPLETE FREEDOM to craft the question\n   and options based on what\
+    \ you actually find.\n\n## Decision Block Format\n\n```\n<decision>\n{\n  \"question\"\
+    : \"Your question here - be specific and contextual\",\n  \"context\": \"Explain\
+    \ the situation and why this decision matters\",\n  \"severity\": \"info|warning|error\"\
+    ,\n  \"options\": [\n    {\n      \"id\": \"unique_id\",\n      \"label\": \"\
+    Short label\",\n      \"description\": \"What this choice means and its implications\"\
+    ,\n      \"style\": \"primary|secondary|danger\"  // optional, primary = recommended\n\
+    \    }\n  ],\n  \"allow_custom\": true  // let human provide alternative\n}\n\
+    </decision>\n```\n\n## Guidelines\n\n- Be SPECIFIC to what you actually find -\
+    \ don't use generic placeholders\n- Options should be ACTIONABLE - the human should\
+    \ understand exactly what each does\n- Use \"style\": \"primary\" for your recommended\
+    \ option\n- Use \"style\": \"danger\" for destructive or risky options\n- severity:\
+    \ \"error\" for blocking issues, \"warning\" for concerns, \"info\" for preferences\n\
+    - Include 2-5 options that cover the realistic choices\n- If you find multiple\
+    \ issues, you can output multiple decision blocks\n- If the content is fine and\
+    \ needs no decisions, just say so\n\n## Examples of Good Decision Points\n\n**For\
+    \ data with a weird field name:**\n```\n<decision>\n{\n  \"question\": \"The field\
+    \ 'usr_nm' appears to be a username - how should I normalize it?\",\n  \"context\"\
+    : \"Found abbreviated field 'usr_nm' with values like 'john_doe'. This could map\
+    \ to 'username', 'user_name', or 'userName' depending on your conventions.\",\n\
+    \  \"severity\": \"warning\",\n  \"options\": [\n    {\"id\": \"username\", \"\
+    label\": \"username\", \"description\": \"Single word, lowercase (common for APIs)\"\
+    , \"style\": \"primary\"},\n    {\"id\": \"user_name\", \"label\": \"user_name\"\
+    , \"description\": \"Snake case (common for databases)\"},\n    {\"id\": \"userName\"\
+    , \"label\": \"userName\", \"description\": \"Camel case (common for JavaScript)\"\
+    },\n    {\"id\": \"keep\", \"label\": \"Keep as usr_nm\", \"description\": \"\
+    Preserve original naming\"}\n  ],\n  \"allow_custom\": true\n}\n</decision>\n\
+    ```\n\n**For ambiguous data types:**\n```\n<decision>\n{\n  \"question\": \"The\
+    \ 'date' field contains '03/04/2024' - what format is this?\",\n  \"context\"\
+    : \"This date string is ambiguous: it could be March 4th (US format) or April\
+    \ 3rd (European format). The rest of your data doesn't give clear hints.\",\n\
+    \  \"severity\": \"error\",\n  \"options\": [\n    {\"id\": \"us\", \"label\"\
+    : \"MM/DD/YYYY (US)\", \"description\": \"March 4th, 2024\"},\n    {\"id\": \"\
+    eu\", \"label\": \"DD/MM/YYYY (EU)\", \"description\": \"April 3rd, 2024\"},\n\
+    \    {\"id\": \"infer\", \"label\": \"Try to infer\", \"description\": \"Look\
+    \ at other dates in the dataset for patterns\", \"style\": \"primary\"}\n  ]\n\
+    }\n</decision>\n```\n\nNow analyze the provided content and generate appropriate\
+    \ decision points.\n"
+  decision_points:
+    enabled: true
+    trigger: output
+    timeout_seconds: 600
+    ui:
+      layout: cards
+      max_options: 6
+      allow_text_fallback: true
+    routing:
+      _continue: next
+      _retry: self
+- name: apply_decisions
+  instructions: 'The human has made their decision(s) about the analyzed content.
 
-phases:
-  - name: analyze_and_decide
-    model: "anthropic/claude-sonnet-4"
-    instructions: |
-      You are an intelligent analyzer. Your job is to examine the provided content
-      and identify any issues, ambiguities, or decisions that require human input.
 
-      ## Input
-      **Content to analyze:**
-      ```
-      {{ input.content }}
-      ```
+    ## Original Content
 
-      {% if input.task %}
-      **Requested analysis:** {{ input.task }}
-      {% endif %}
+    ```
 
-      ## Your Task
+    {{ input.content }}
 
-      1. **Analyze the content** - Look for:
-         - Data quality issues (missing fields, invalid values, inconsistencies)
-         - Ambiguities that could be interpreted multiple ways
-         - Style/convention choices that need human preference
-         - Potential problems or edge cases
-         - Structural decisions that affect downstream processing
+    ```
 
-      2. **Generate decision points** - When you find something that needs human input,
-         output a `<decision>` block. You have COMPLETE FREEDOM to craft the question
-         and options based on what you actually find.
 
-      ## Decision Block Format
+    ## Human''s Decision
 
-      ```
-      <decision>
-      {
-        "question": "Your question here - be specific and contextual",
-        "context": "Explain the situation and why this decision matters",
-        "severity": "info|warning|error",
-        "options": [
-          {
-            "id": "unique_id",
-            "label": "Short label",
-            "description": "What this choice means and its implications",
-            "style": "primary|secondary|danger"  // optional, primary = recommended
-          }
-        ],
-        "allow_custom": true  // let human provide alternative
-      }
-      </decision>
-      ```
+    {{ state._decision_analyze_and_decide | tojson }}
 
-      ## Guidelines
 
-      - Be SPECIFIC to what you actually find - don't use generic placeholders
-      - Options should be ACTIONABLE - the human should understand exactly what each does
-      - Use "style": "primary" for your recommended option
-      - Use "style": "danger" for destructive or risky options
-      - severity: "error" for blocking issues, "warning" for concerns, "info" for preferences
-      - Include 2-5 options that cover the realistic choices
-      - If you find multiple issues, you can output multiple decision blocks
-      - If the content is fine and needs no decisions, just say so
+    ## Your Task
 
-      ## Examples of Good Decision Points
 
-      **For data with a weird field name:**
-      ```
-      <decision>
-      {
-        "question": "The field 'usr_nm' appears to be a username - how should I normalize it?",
-        "context": "Found abbreviated field 'usr_nm' with values like 'john_doe'. This could map to 'username', 'user_name', or 'userName' depending on your conventions.",
-        "severity": "warning",
-        "options": [
-          {"id": "username", "label": "username", "description": "Single word, lowercase (common for APIs)", "style": "primary"},
-          {"id": "user_name", "label": "user_name", "description": "Snake case (common for databases)"},
-          {"id": "userName", "label": "userName", "description": "Camel case (common for JavaScript)"},
-          {"id": "keep", "label": "Keep as usr_nm", "description": "Preserve original naming"}
-        ],
-        "allow_custom": true
-      }
-      </decision>
-      ```
+    1. Acknowledge what the human decided
 
-      **For ambiguous data types:**
-      ```
-      <decision>
-      {
-        "question": "The 'date' field contains '03/04/2024' - what format is this?",
-        "context": "This date string is ambiguous: it could be March 4th (US format) or April 3rd (European format). The rest of your data doesn't give clear hints.",
-        "severity": "error",
-        "options": [
-          {"id": "us", "label": "MM/DD/YYYY (US)", "description": "March 4th, 2024"},
-          {"id": "eu", "label": "DD/MM/YYYY (EU)", "description": "April 3rd, 2024"},
-          {"id": "infer", "label": "Try to infer", "description": "Look at other dates in the dataset for patterns", "style": "primary"}
-        ]
-      }
-      </decision>
-      ```
+    2. Explain how you''re applying their choice
 
-      Now analyze the provided content and generate appropriate decision points.
+    3. Show the result or next steps
 
-    decision_points:
-      enabled: true
-      trigger: output
-      timeout_seconds: 600
-      ui:
-        layout: cards
-        max_options: 6
-        allow_text_fallback: true
-      routing:
-        _continue: next
-        _retry: self
+    4. If there are additional issues to address, note them
 
-  - name: apply_decisions
-    instructions: |
-      The human has made their decision(s) about the analyzed content.
 
-      ## Original Content
-      ```
-      {{ input.content }}
-      ```
+    Be concise but clear about what action was taken.
 
-      ## Human's Decision
-      {{ state._decision_analyze_and_decide | tojson }}
-
-      ## Your Task
-
-      1. Acknowledge what the human decided
-      2. Explain how you're applying their choice
-      3. Show the result or next steps
-      4. If there are additional issues to address, note them
-
-      Be concise but clear about what action was taken.
-
-    context:
-      from: [analyze_and_decide]
+    '
+  context:
+    from:
+    - analyze_and_decide

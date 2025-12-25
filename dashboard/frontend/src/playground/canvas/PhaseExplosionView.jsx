@@ -181,12 +181,12 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
   const originY = originRect.top + originRect.height / 2;
 
   // Calculate total height needed for all cards
-  const totalHeight = layout.soundings.length > 0
-    ? layout.soundings[0].y + layout.soundings[0].height +
+  const totalHeight = layout.candidates.length > 0
+    ? layout.candidates[0].y + layout.candidates[0].height +
       (layout.reforgeSteps.length > 0
         ? layout.reforgeSteps[layout.reforgeSteps.length - 1].y +
           layout.reforgeSteps[layout.reforgeSteps.length - 1].height -
-          layout.soundings[0].y + 200 // Extra padding at bottom
+          layout.candidates[0].y + 200 // Extra padding at bottom
         : 200)
     : 800;
 
@@ -210,12 +210,12 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
         </div>
 
       {/* Soundings Section - label only, cards rendered directly in overlay */}
-      {layout.soundings.length > 0 && (
+      {layout.candidates.length > 0 && (
         <>
-          <div className="section-label" style={{ position: 'absolute', left: 40, top: layout.soundings[0].y - 30 }}>
+          <div className="section-label" style={{ position: 'absolute', left: 40, top: layout.candidates[0].y - 30 }}>
             SOUNDINGS {isAggregate ? '→ FUSION' : `(${soundingsFactor} attempts)`}
           </div>
-          {layout.soundings.map((card, i) => (
+          {layout.candidates.map((card, i) => (
             <SoundingCard
               key={`sounding-${i}`}
               card={card}
@@ -229,7 +229,7 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
       )}
 
       {/* Evaluator Reasoning - positioned absolutely */}
-      {(evaluatorReasoning || aggregatorReasoning) && layout.soundings.length > 0 && (
+      {(evaluatorReasoning || aggregatorReasoning) && layout.candidates.length > 0 && (
         <div
           className="explosion-reasoning-inline"
           onClick={(e) => e.stopPropagation()}
@@ -237,7 +237,7 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)',
-            top: layout.soundings[0].y + layout.soundings[0].height + 40,
+            top: layout.candidates[0].y + layout.candidates[0].height + 40,
             maxWidth: 900,
             width: 'calc(100% - 80px)'
           }}

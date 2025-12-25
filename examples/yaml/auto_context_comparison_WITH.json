@@ -1,7 +1,6 @@
 {
   "cascade_id": "auto_context_comparison_WITH",
   "description": "Multi-phase cascade WITH auto-context enabled. Compare with auto_context_comparison_WITHOUT.json",
-
   "auto_context": {
     "intra_phase": {
       "enabled": true,
@@ -16,15 +15,16 @@
       }
     }
   },
-
-  "phases": [
+  "cells": [
     {
       "name": "research",
       "instructions": "You are a research assistant. Research the topic: {{ input.topic }}\n\nProvide:\n1. A clear definition (2-3 sentences)\n2. Three key concepts or components\n3. Two real-world applications\n4. One current challenge\n\nBe thorough but concise.",
       "rules": {
         "max_turns": 1
       },
-      "handoffs": ["analysis"]
+      "handoffs": [
+        "analysis"
+      ]
     },
     {
       "name": "analysis",
@@ -32,8 +32,12 @@
       "context": {
         "mode": "auto",
         "anchors": {
-          "from_phases": ["previous"],
-          "include": ["output"]
+          "from_phases": [
+            "previous"
+          ],
+          "include": [
+            "output"
+          ]
         },
         "selection": {
           "strategy": "hybrid",
@@ -43,7 +47,9 @@
       "rules": {
         "max_turns": 1
       },
-      "handoffs": ["synthesis"]
+      "handoffs": [
+        "synthesis"
+      ]
     },
     {
       "name": "synthesis",
@@ -51,8 +57,13 @@
       "context": {
         "mode": "auto",
         "anchors": {
-          "from_phases": ["research", "analysis"],
-          "include": ["output"]
+          "from_phases": [
+            "research",
+            "analysis"
+          ],
+          "include": [
+            "output"
+          ]
         },
         "selection": {
           "strategy": "hybrid",

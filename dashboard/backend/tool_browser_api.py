@@ -1,5 +1,5 @@
 """
-Tool Browser API - Browse and test all available Windlass tools
+Tool Browser API - Browse and test all available RVBBIT tools
 
 Provides endpoints for:
 - /api/tools/manifest - Get list of all tools with schemas
@@ -16,7 +16,7 @@ from flask import Blueprint, jsonify, request
 # Add windlass to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from windlass.tackle_manifest import get_tackle_manifest
+from rvbbit.traits_manifest import get_trait_manifest
 
 tool_browser_bp = Blueprint('tool_browser', __name__, url_prefix='/api/tools')
 
@@ -39,7 +39,7 @@ def get_tools_manifest():
         }
     """
     try:
-        manifest = get_tackle_manifest(refresh=True)
+        manifest = get_trait_manifest(refresh=True)
         return jsonify({"tools": manifest})
     except Exception as e:
         return jsonify({"error": f"Failed to load tool manifest: {str(e)}"}), 500
@@ -89,11 +89,11 @@ def execute_tool():
             "cascade_id": f"tool_browser_{tool_name}",
             "description": f"Tool Browser test execution: {tool_name}",
             "inputs_schema": {},
-            "phases": [
+            "cells": [
                 {
                     "name": "execute_tool",
                     "instructions": f"Execute the {tool_name} tool with the provided parameters and return the result.",
-                    "tackle": [tool_name],
+                    "traits": [tool_name],
                     "rules": {"max_turns": 1}
                 }
             ]
@@ -107,7 +107,7 @@ def execute_tool():
             json.dump(cascade, f, indent=2)
 
         # Import windlass run_cascade directly (same pattern as app.py run-cascade endpoint)
-        from windlass import run_cascade as execute_cascade
+        from rvbbit import run_cascade as execute_cascade
 
         # Run the cascade in a background thread (async execution)
         # The frontend will track progress via SSE events
@@ -116,7 +116,7 @@ def execute_tool():
         def run_in_background():
             try:
                 # Enable checkpoint system for HITL tools (same as app.py)
-                os.environ['WINDLASS_USE_CHECKPOINTS'] = 'true'
+                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
                 # Call with correct signature: cascade_path, inputs, session_id
                 execute_cascade(cascade_path, parameters, session_id)
@@ -129,12 +129,12 @@ def execute_tool():
 
                 # Update session state to ERROR and publish event
                 try:
-                    from windlass.session_state import (
+                    from rvbbit.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from windlass.events import get_event_bus, Event
-                    from windlass.unified_logs import log_unified
+                    from rvbbit.events import get_event_bus, Event
+                    from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()
@@ -154,7 +154,7 @@ def execute_tool():
                         session_id=session_id,
                         status=SessionStatus.ERROR,
                         error_message=str(e),
-                        error_phase="initialization"
+                        error_cell="initialization"
                     )
 
                     # Publish cascade_error event for UI
@@ -185,7 +185,7 @@ def execute_tool():
                         cascade_id=f"tool_browser:{tool_name}",
                         cascade_config=None,
                         content=f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{error_tb}",
-                        phase_name="initialization",
+                        cell_name="initialization",
                         model=None,
                         tokens_in=0,
                         tokens_out=0,

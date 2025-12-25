@@ -1,35 +1,38 @@
 cascade_id: context_inject_demo
-description: Demonstrates selective context - each phase explicitly declares what prior context it needs
-phases:
-  - handoffs:
-      - feedback
-    instructions: Create an original design for a logo. Describe it in detail with colors and shapes.
-      Include the codeword ORIGINAL-V1 in your response. Then route to feedback.
-    name: original_design
-  - context:
-      from:
-        - previous
-    handoffs:
-      - revision
-    instructions: Review the design and provide constructive feedback. Include the codeword FEEDBACK-F1
-      in your response. Then route to revision.
-    name: feedback
-  - context:
-      from:
-        - previous
-    handoffs:
-      - compare
-    instructions: Based on the feedback, create a revised version of the logo. Include the codeword REVISION-R1
-      in your response. Then route to compare.
-    name: revision
-  - context:
-      from:
-        - all
-    handoffs: []
-    instructions: |-
-      You are in the compare phase. You should see ALL prior context (all phases).
+description: Demonstrates selective context - each phase explicitly declares what
+  prior context it needs
+cells:
+- handoffs:
+  - feedback
+  instructions: Create an original design for a logo. Describe it in detail with colors
+    and shapes. Include the codeword ORIGINAL-V1 in your response. Then route to feedback.
+  name: original_design
+- context:
+    from:
+    - previous
+  handoffs:
+  - revision
+  instructions: Review the design and provide constructive feedback. Include the codeword
+    FEEDBACK-F1 in your response. Then route to revision.
+  name: feedback
+- context:
+    from:
+    - previous
+  handoffs:
+  - compare
+  instructions: Based on the feedback, create a revised version of the logo. Include
+    the codeword REVISION-R1 in your response. Then route to compare.
+  name: revision
+- context:
+    from:
+    - all
+  handoffs: []
+  instructions: 'You are in the compare phase. You should see ALL prior context (all
+    phases).
 
-      Compare the original design (ORIGINAL-V1) with the revised version (REVISION-R1).
 
-      IMPORTANT: You should see ALL codewords: ORIGINAL-V1, FEEDBACK-F1, and REVISION-R1.
-    name: compare
+    Compare the original design (ORIGINAL-V1) with the revised version (REVISION-R1).
+
+
+    IMPORTANT: You should see ALL codewords: ORIGINAL-V1, FEEDBACK-F1, and REVISION-R1.'
+  name: compare

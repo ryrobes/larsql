@@ -1,18 +1,26 @@
 {
   "cascade_id": "memory_flow",
-  "phases": [
+  "cells": [
     {
       "name": "phase1",
       "instructions": "The user's name is {{ input.user_name }}. Acknowledge this.",
-      "tackle": [],
-      "handoffs": ["phase2"]
+      "traits": [],
+      "handoffs": [
+        "phase2"
+      ]
     },
     {
       "name": "phase2",
       "instructions": "What is the user's name? Answer only with the name.",
-      "tackle": [],
-      "context": {"from": ["previous"]},
-      "rules": {"max_turns": 1}
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

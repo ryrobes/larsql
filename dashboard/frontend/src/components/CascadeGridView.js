@@ -47,7 +47,7 @@ function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }
     return cascades.filter(cascade => {
       if (regex.test(cascade.cascade_id)) return true;
       if (cascade.description && regex.test(cascade.description)) return true;
-      if (cascade.phases?.some(p => regex.test(p.name))) return true;
+      if (cascade.cells?.some(p => regex.test(p.name))) return true;
       return false;
     });
   }, [cascades, searchQuery]);
@@ -147,9 +147,9 @@ function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }
   };
 
   const PhasesCellRenderer = (props) => {
-    const soundingsCount = props.data.phases?.filter(p => p.has_soundings).length || 0;
-    const reforgesCount = props.data.phases?.filter(p => p.reforge_steps).length || 0;
-    const wardsCount = props.data.phases?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
+    const soundingsCount = props.data.cells?.filter(p => p.has_soundings).length || 0;
+    const reforgesCount = props.data.cells?.filter(p => p.reforge_steps).length || 0;
+    const wardsCount = props.data.cells?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
 
     return (
       <div className="phases-cell-content">
@@ -221,7 +221,7 @@ function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }
       headerName: 'Phases',
       width: 180,
       cellClass: 'center-cell',
-      valueGetter: (params) => params.data.phases?.length || 0,
+      valueGetter: (params) => params.data.cells?.length || 0,
       cellRenderer: PhasesCellRenderer
     },
     {

@@ -27,7 +27,7 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
     const sorted = [...messages].sort((a, b) => a.timestamp - b.timestamp);
 
     sorted.forEach(msg => {
-      const phaseName = msg.phase_name || '_unknown_';
+      const phaseName = msg.cell_name || '_unknown_';
       if (!(phaseName in map)) {
         map[phaseName] = getSequentialColor(colorIndex);
         colorIndex++;
@@ -62,11 +62,11 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
       prevTimestamp = msg.timestamp;
 
       // Get phase color from our map (matches CascadeBar colors)
-      const phaseName = msg.phase_name || '_unknown_';
+      const phaseName = msg.cell_name || '_unknown_';
       let barColor = phaseColorMap[phaseName] || '#2DD4BF';
 
       // Dim non-winner soundings slightly
-      const isDimmed = msg.sounding_index !== null && !msg.is_winner;
+      const isDimmed = msg.candidate_index !== null && !msg.is_winner;
 
       // Find the original index in all_messages for scrolling
       // Prefer _index from backend (avoids timestamp collision issues)
@@ -75,10 +75,10 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         // Fallback: Match by multiple fields for uniqueness
         originalIndex = messages.findIndex(m =>
           m.timestamp === msg.timestamp &&
-          m.phase_name === msg.phase_name &&
+          m.cell_name === msg.cell_name &&
           m.node_type === msg.node_type &&
           m.turn_number === msg.turn_number &&
-          m.sounding_index === msg.sounding_index &&
+          m.candidate_index === msg.candidate_index &&
           m.role === msg.role
         );
       }
@@ -96,7 +96,7 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         tokens: (msg.tokens_in || 0) + (msg.tokens_out || 0),
         model: msg.model,
         isWinner: msg.is_winner,
-        soundingIndex: msg.sounding_index,
+        soundingIndex: msg.candidate_index,
         barColor,
         isDimmed
       };

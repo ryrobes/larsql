@@ -19,7 +19,7 @@ from flask import Blueprint, jsonify, request
 # Add windlass to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from windlass.session_state import (
+from rvbbit.session_state import (
     SessionStatus,
     BlockedType,
     SessionState,
@@ -290,7 +290,7 @@ def list_blocked_sessions():
                 # Need to check if the checkpoint has research_cockpit metadata
                 # This requires fetching the checkpoint - let's check via blocked_on (checkpoint_id)
                 try:
-                    from windlass.checkpoints import get_checkpoint_manager
+                    from rvbbit.checkpoints import get_checkpoint_manager
                     checkpoint_manager = get_checkpoint_manager()
                     if session.blocked_on:  # blocked_on contains checkpoint_id
                         checkpoint = checkpoint_manager.get_checkpoint(session.blocked_on)

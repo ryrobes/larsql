@@ -13,39 +13,47 @@
         "enabled": true,
         "ttl": 7200,
         "key": "query",
-        "hit_message": "✓ Using cached RAG results (no redundant search)"
+        "hit_message": "\u2713 Using cached RAG results (no redundant search)"
       },
       "sql_query": {
         "enabled": true,
         "ttl": 600,
         "key": "sql_hash",
-        "hit_message": "✓ Using cached SQL results"
+        "hit_message": "\u2713 Using cached SQL results"
       }
     }
   },
-  "phases": [
+  "cells": [
     {
       "name": "explore",
       "instructions": "Search for {{ input.dataset }} tables. Try multiple searches with the same query to see caching in action.",
-      "tackle": ["sql_search"],
+      "traits": [
+        "sql_search"
+      ],
       "rules": {
         "max_turns": 3
       },
-      "handoffs": ["query"]
+      "handoffs": [
+        "query"
+      ]
     },
     {
       "name": "query",
       "instructions": "Based on the schema found, write a SQL query to analyze {{ input.dataset }}. Run it twice to see caching.",
-      "tackle": ["sql_query"],
+      "traits": [
+        "sql_query"
+      ],
       "rules": {
         "max_turns": 2
       },
-      "handoffs": ["analyze"]
+      "handoffs": [
+        "analyze"
+      ]
     },
     {
       "name": "analyze",
       "instructions": "Analyze the query results and provide insights.",
-      "tackle": []
+      "traits": []
     }
   ]
 }

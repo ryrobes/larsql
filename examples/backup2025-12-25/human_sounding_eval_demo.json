@@ -4,12 +4,12 @@
   "inputs_schema": {
     "product": "The product or service to create a tagline for"
   },
-  "phases": [
+  "cells": [
     {
       "name": "generate_taglines",
       "instructions": "Create a compelling, memorable tagline for {{ input.product }}. Be creative and varied in your approach. Consider different angles: emotional appeal, practical benefits, humor, or bold claims.",
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 3,
         "evaluator": "human",
         "human_eval": {
@@ -22,17 +22,25 @@
         },
         "mutate": true
       },
-      "rules": {"max_turns": 1},
-      "handoffs": ["refine_winner"]
+      "rules": {
+        "max_turns": 1
+      },
+      "handoffs": [
+        "refine_winner"
+      ]
     },
     {
       "name": "refine_winner",
       "instructions": "The user selected this tagline as the winner: {{ outputs.generate_taglines }}\n\nPolish and refine this tagline:\n1. Keep the core message\n2. Improve word choice for impact\n3. Ensure it's memorable and easy to say\n4. Provide 2-3 variations with subtle improvements",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "rules": {"max_turns": 1}
+      "rules": {
+        "max_turns": 1
+      }
     }
   ]
 }

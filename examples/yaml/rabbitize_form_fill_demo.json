@@ -5,12 +5,17 @@
     "form_url": "URL of the form to fill",
     "form_data": "JSON object with form field data (e.g., {\"name\": \"John\", \"email\": \"john@example.com\"})"
   },
-  "phases": [
+  "cells": [
     {
       "name": "load_form",
       "instructions": "Start browser and navigate to {{ input.form_url }}. Examine the form and describe what fields you see.",
-      "tackle": ["rabbitize_start", "rabbitize_extract"],
-      "handoffs": ["fill_form"],
+      "traits": [
+        "rabbitize_start",
+        "rabbitize_extract"
+      ],
+      "handoffs": [
+        "fill_form"
+      ],
       "rules": {
         "max_turns": 2
       }
@@ -18,8 +23,14 @@
     {
       "name": "fill_form",
       "instructions": "Fill out the form with this data: {{ input.form_data }}\n\nSteps:\n1. Click on each form field (use rabbitize_extract to find field coordinates)\n2. Type the corresponding value\n3. Verify in the screenshot that the data was entered correctly\n4. Submit the form when all fields are filled\n\nTake one action at a time and check the result screenshot after each action.",
-      "tackle": ["rabbitize_execute", "rabbitize_extract", "route_to"],
-      "handoffs": ["verify_submission"],
+      "traits": [
+        "rabbitize_execute",
+        "rabbitize_extract",
+        "route_to"
+      ],
+      "handoffs": [
+        "verify_submission"
+      ],
       "rules": {
         "max_turns": 20,
         "max_attempts": 3,
@@ -31,7 +42,10 @@
     {
       "name": "verify_submission",
       "instructions": "Check the current page to verify the form was submitted successfully. Look for confirmation messages or redirect. Then close the session.",
-      "tackle": ["rabbitize_extract", "rabbitize_close"],
+      "traits": [
+        "rabbitize_extract",
+        "rabbitize_close"
+      ],
       "rules": {
         "max_turns": 2
       }

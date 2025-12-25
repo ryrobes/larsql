@@ -65,7 +65,7 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
   // Reorganize images into a clearer structure
   const { soundingImages, reforgeImages, mainImages, soundingWinnerIndex, ultimateWinner } = useMemo(() => {
     const filteredImages = phaseName
-      ? images.filter(img => img.phase_name === phaseName)
+      ? images.filter(img => img.cell_name === phaseName)
       : images;
 
     // Separate into categories
@@ -76,14 +76,14 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
 
     filteredImages.forEach(image => {
       const hasReforge = image.reforge_step !== null && image.reforge_step !== undefined;
-      const hasSounding = image.sounding_index !== null && image.sounding_index !== undefined;
+      const hasSounding = image.candidate_index !== null && image.candidate_index !== undefined;
 
       if (hasReforge) {
         // This is a reforge image
         reforges.push(image);
       } else if (hasSounding) {
         // This is a sounding image (not reforge)
-        const idx = image.sounding_index;
+        const idx = image.candidate_index;
         if (!soundings[idx]) {
           soundings[idx] = [];
         }
@@ -243,11 +243,11 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
             />
             <div className="image-modal-info">
               <span className="image-modal-filename">{selectedImage.filename}</span>
-              {selectedImage.phase_name && (
-                <span className="image-modal-phase">Phase: {selectedImage.phase_name}</span>
+              {selectedImage.cell_name && (
+                <span className="image-modal-phase">Phase: {selectedImage.cell_name}</span>
               )}
-              {selectedImage.sounding_index !== null && selectedImage.sounding_index !== undefined && (
-                <span className="image-modal-sounding">Sounding: S{selectedImage.sounding_index}</span>
+              {selectedImage.candidate_index !== null && selectedImage.candidate_index !== undefined && (
+                <span className="image-modal-sounding">Sounding: S{selectedImage.candidate_index}</span>
               )}
               {selectedImage.reforge_step !== null && selectedImage.reforge_step !== undefined && (
                 <span className="image-modal-reforge">

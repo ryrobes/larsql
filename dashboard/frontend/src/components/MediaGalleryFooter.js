@@ -77,7 +77,7 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
   }, [sessionUpdate]);
 
   // Build phase index map for colors
-  const phaseIndexMap = useMemo(() => {
+  const cellIndexMap = useMemo(() => {
     const map = {};
     (phases || []).forEach((phase, idx) => {
       map[phase.name] = idx;
@@ -90,11 +90,11 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
     const byPhase = {};
 
     images.forEach(image => {
-      const phaseName = image.phase_name || 'Unknown';
+      const phaseName = image.cell_name || 'Unknown';
       if (!byPhase[phaseName]) {
         byPhase[phaseName] = {
           phaseName,
-          phaseIndex: phaseIndexMap[phaseName] ?? -1,
+          cellIndex: cellIndexMap[phaseName] ?? -1,
           soundings: {},
           reforges: [],
           main: [],
@@ -103,12 +103,12 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
       }
 
       const hasReforge = image.reforge_step !== null && image.reforge_step !== undefined;
-      const hasSounding = image.sounding_index !== null && image.sounding_index !== undefined;
+      const hasSounding = image.candidate_index !== null && image.candidate_index !== undefined;
 
       if (hasReforge) {
         byPhase[phaseName].reforges.push(image);
       } else if (hasSounding) {
-        const idx = image.sounding_index;
+        const idx = image.candidate_index;
         if (!byPhase[phaseName].soundings[idx]) {
           byPhase[phaseName].soundings[idx] = {
             index: idx,
@@ -129,9 +129,9 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
     // Use API-provided winner if available
     if (apiSoundingWinner !== null) {
       Object.values(byPhase).forEach(phase => {
-        if (phase.soundings[apiSoundingWinner]) {
+        if (phase.candidates[apiSoundingWinner]) {
           phase.soundingWinnerIndex = apiSoundingWinner;
-          Object.values(phase.soundings).forEach(s => {
+          Object.values(phase.candidates).forEach(s => {
             s.isWinner = s.index === apiSoundingWinner;
           });
         }
@@ -143,36 +143,36 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
       phase.reforges.sort((a, b) => (a.reforge_step || 0) - (b.reforge_step || 0));
     });
 
-    return Object.values(byPhase).sort((a, b) => a.phaseIndex - b.phaseIndex);
-  }, [images, phaseIndexMap, apiSoundingWinner]);
+    return Object.values(byPhase).sort((a, b) => a.cellIndex - b.cellIndex);
+  }, [images, cellIndexMap, apiSoundingWinner]);
 
   // Group audio by phase
   const groupedAudio = useMemo(() => {
     const byPhase = {};
     audioFiles.forEach(audio => {
-      const phaseName = audio.phase_name || 'Unknown';
+      const phaseName = audio.cell_name || 'Unknown';
       if (!byPhase[phaseName]) {
         byPhase[phaseName] = {
           phaseName,
-          phaseIndex: phaseIndexMap[phaseName] ?? -1,
+          cellIndex: cellIndexMap[phaseName] ?? -1,
           files: []
         };
       }
       byPhase[phaseName].files.push(audio);
     });
-    return Object.values(byPhase).sort((a, b) => a.phaseIndex - b.phaseIndex);
-  }, [audioFiles, phaseIndexMap]);
+    return Object.values(byPhase).sort((a, b) => a.cellIndex - b.cellIndex);
+  }, [audioFiles, cellIndexMap]);
 
   // Flatten human inputs interactions
   const allHumanInteractions = useMemo(() => {
     return humanInputs.flatMap(p =>
       (p.interactions || []).map(i => ({
         ...i,
-        phase_name: p.phase_name,
-        phaseIndex: phaseIndexMap[p.phase_name] ?? -1
+        cell_name: p.cell_name,
+        cellIndex: cellIndexMap[p.cell_name] ?? -1
       }))
     );
-  }, [humanInputs, phaseIndexMap]);
+  }, [humanInputs, cellIndexMap]);
 
   const handleImageClick = (image) => {
     setSelectedImage(image);
@@ -224,11 +224,11 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
             </div>
             <div className="media-section-content">
               {groupedImages.map((phaseGroup) => {
-                const phaseColor = phaseGroup.phaseIndex >= 0
-                  ? getSequentialColor(phaseGroup.phaseIndex)
+                const phaseColor = phaseGroup.cellIndex >= 0
+                  ? getSequentialColor(phaseGroup.cellIndex)
                   : '#6B7280';
 
-                const soundingIndices = Object.keys(phaseGroup.soundings)
+                const soundingIndices = Object.keys(phaseGroup.candidates)
                   .map(k => parseInt(k))
                   .sort((a, b) => a - b);
 
@@ -264,7 +264,7 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
 
                       {/* Sounding groups */}
                       {soundingIndices.map(idx => {
-                        const sounding = phaseGroup.soundings[idx];
+                        const sounding = phaseGroup.candidates[idx];
                         const isWinner = sounding.isWinner;
 
                         return (
@@ -337,8 +337,8 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
             </div>
             <div className="media-section-content">
               {groupedAudio.map((phaseGroup) => {
-                const phaseColor = phaseGroup.phaseIndex >= 0
-                  ? getSequentialColor(phaseGroup.phaseIndex)
+                const phaseColor = phaseGroup.cellIndex >= 0
+                  ? getSequentialColor(phaseGroup.cellIndex)
                   : '#6B7280';
 
                 return (
@@ -383,14 +383,14 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
             </div>
             <div className="media-section-content">
               {allHumanInteractions.map((interaction, idx) => {
-                const phaseColor = interaction.phaseIndex >= 0
-                  ? getSequentialColor(interaction.phaseIndex)
+                const phaseColor = interaction.cellIndex >= 0
+                  ? getSequentialColor(interaction.cellIndex)
                   : '#6B7280';
 
                 return (
                   <div key={idx} className="media-human-item">
                     <div className="media-phase-badge small" style={{ backgroundColor: phaseColor }}>
-                      {interaction.phase_name}
+                      {interaction.cell_name}
                     </div>
                     <div className="media-human-content">
                       <span className="media-human-question" title={interaction.question}>
@@ -425,15 +425,15 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
             <div className="media-modal-info">
               <span className="media-modal-filename">{selectedImage.filename}</span>
               <div className="media-modal-badges">
-                {selectedImage.phase_name && (
+                {selectedImage.cell_name && (
                   <span className="media-modal-phase">
                     <Icon icon="mdi:layers" width="12" />
-                    {selectedImage.phase_name}
+                    {selectedImage.cell_name}
                   </span>
                 )}
-                {selectedImage.sounding_index !== null && selectedImage.sounding_index !== undefined && (
+                {selectedImage.candidate_index !== null && selectedImage.candidate_index !== undefined && (
                   <span className={`media-modal-sounding ${selectedImage.sounding_is_winner ? 'winner' : ''}`}>
-                    S{selectedImage.sounding_index}
+                    S{selectedImage.candidate_index}
                     {selectedImage.sounding_is_winner && <Icon icon="mdi:trophy" width="12" />}
                   </span>
                 )}

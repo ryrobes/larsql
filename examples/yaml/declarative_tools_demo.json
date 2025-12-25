@@ -5,11 +5,13 @@
     "search_term": "A term to search for in the codebase",
     "directory": "Directory to analyze (default: current directory)"
   },
-  "phases": [
+  "cells": [
     {
       "name": "explore_directory",
       "instructions": "First, let's explore the directory structure to understand what we're working with.\n\nUse the list_directory tool to see what's in {{ input.directory | default('.') }}.\n\nProvide a brief summary of the directory contents.",
-      "tackle": ["list_directory"],
+      "traits": [
+        "list_directory"
+      ],
       "rules": {
         "max_turns": 2
       }
@@ -17,9 +19,13 @@
     {
       "name": "search_codebase",
       "instructions": "Now search for '{{ input.search_term }}' in the directory.\n\nUse the search_files tool to find all occurrences.\n\nSummarize:\n1. How many files contain the search term?\n2. What types of files are they?\n3. Any interesting patterns you notice?",
-      "tackle": ["search_files"],
+      "traits": [
+        "search_files"
+      ],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
       "rules": {
         "max_turns": 2
@@ -28,7 +34,9 @@
     {
       "name": "get_network_info",
       "instructions": "Let's also grab some network context using the HTTP-based get_public_ip tool.\n\nThis demonstrates that declarative tools can also make HTTP API calls!\n\nReport the public IP and location info.",
-      "tackle": ["get_public_ip"],
+      "traits": [
+        "get_public_ip"
+      ],
       "rules": {
         "max_turns": 1
       }
@@ -37,7 +45,9 @@
       "name": "final_summary",
       "instructions": "Provide a final summary of what we discovered:\n\n1. Directory structure overview\n2. Search results for '{{ input.search_term }}'\n3. Network/location context\n\nFormat as a brief report.",
       "context": {
-        "from": ["all"]
+        "from": [
+          "all"
+        ]
       },
       "rules": {
         "max_turns": 1

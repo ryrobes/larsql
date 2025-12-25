@@ -221,9 +221,9 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
                           <Icon icon={getNodeIcon(entry.node_type)} width="18" />
                         </div>
                         <div className="entry-type">{entry.node_type}</div>
-                        {entry.sounding_index !== null && entry.sounding_index !== undefined && (
+                        {entry.candidate_index !== null && entry.candidate_index !== undefined && (
                           <span className="entry-sounding-badge" title="Sounding index">
-                            #{entry.sounding_index}
+                            #{entry.candidate_index}
                           </span>
                         )}
                         <div className="entry-time">{formatTimestamp(entry.timestamp)}</div>

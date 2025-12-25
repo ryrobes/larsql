@@ -1,26 +1,29 @@
 type_id: thinking_mode
 display_name: Deep Reasoning
 icon: mdi:head-lightbulb
-color: "#c084fc"
+color: '#c084fc'
 name_prefix: think
-description: "LLM with extended thinking budget for complex reasoning tasks"
-category: "llm"
+description: LLM with extended thinking budget for complex reasoning tasks
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "standalone"
-
+- intermediate
+- ai-ml
+- standalone
 template:
-  instructions: |
-    Complex problem requiring deep reasoning:
+  instructions: 'Complex problem requiring deep reasoning:
+
     {{ input.problem }}
 
+
     Think step-by-step. Take your time to reason through the problem thoroughly.
+
     Show your reasoning process.
+
+    '
   model: anthropic/claude-sonnet-4
-  tackle: []
+  traits: []
   rules:
     max_turns: 1
   thinking:
     type: enabled
-    budget: 10000  # Token budget for thinking
+    budget: 10000

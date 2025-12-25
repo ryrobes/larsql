@@ -22,17 +22,17 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
 from datetime import datetime
 
-# Add parent directory to path to import windlass
+# Add parent directory to path to import rvbbit
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-# Go up 2 levels: backend -> dashboard -> windlass (repo root)
+# Go up 2 levels: backend -> dashboard, then add windlass package
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_WINDLASS_DIR = _REPO_ROOT  # windlass IS the repo root
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 try:
-    from windlass.config import get_config
-    from windlass.session_registry import get_session_registry, SessionRegistry
+    from rvbbit.config import get_config
+    from rvbbit.session_registry import get_session_registry, SessionRegistry
 except ImportError as e:
     print(f"Warning: Could not import windlass modules: {e}")
     get_config = None
@@ -748,7 +748,7 @@ def list_live_sessions():
     Queries the BrowserSessionManager for running sessions.
     """
     try:
-        from windlass.browser_manager import get_browser_manager
+        from rvbbit.browser_manager import get_browser_manager
         manager = get_browser_manager()
 
         sessions = []
@@ -786,7 +786,7 @@ def proxy_mjpeg_stream(session_id):
     This allows the dashboard to display real-time browser view.
     """
     try:
-        from windlass.browser_manager import get_browser_manager
+        from rvbbit.browser_manager import get_browser_manager
         import requests
 
         manager = get_browser_manager()
@@ -834,7 +834,7 @@ def proxy_mjpeg_stream(session_id):
 def get_live_screenshot(session_id):
     """Get the current screenshot from a live browser session."""
     try:
-        from windlass.browser_manager import get_browser_manager
+        from rvbbit.browser_manager import get_browser_manager
 
         manager = get_browser_manager()
         session = manager.get_session(session_id)
@@ -991,7 +991,7 @@ def delete_flow(flow_id):
 @browser_sessions_bp.route('/api/browser-flows/<flow_id>/register', methods=['POST'])
 def register_flow_as_tool(flow_id):
     """
-    Register a flow as a Windlass tackle (tool).
+    Register a flow as a RVBBIT tackle (tool).
 
     This creates a dynamic tool that can be used in cascades.
     """
@@ -1006,7 +1006,7 @@ def register_flow_as_tool(flow_id):
             flow_data = json.load(f)
 
         # Import the flow registration function
-        from windlass.rabbitize_flows import register_flow_as_tackle
+        from rvbbit.rabbitize_flows import register_flow_as_tackle
 
         tool_name = register_flow_as_tackle(flow_data)
 
@@ -1062,7 +1062,7 @@ def kill_all_rabbitize_sessions():
 # Unified Session Registry Endpoints
 # =============================================================================
 # These endpoints work with the shared session registry that tracks sessions
-# from both the UI and from Windlass cascades.
+# from both the UI and from RVBBIT cascades.
 
 @browser_sessions_bp.route('/api/rabbitize/registry/sessions', methods=['GET'])
 def list_registry_sessions():

@@ -1,13 +1,16 @@
 {
   "cascade_id": "signal_quick_test",
   "description": "Quick test of signal system - waits for signal with 2 minute timeout",
-
-  "phases": [
+  "cells": [
     {
       "name": "wait_for_signal",
       "instructions": "Use the await_signal tool to wait for a signal named 'test_event' with a timeout of '2m'. Set description to 'Quick signal test'.\n\nAfter receiving the signal (or timeout), report what happened.",
-      "tackle": ["await_signal"],
-      "handoffs": ["report_result"]
+      "traits": [
+        "await_signal"
+      ],
+      "handoffs": [
+        "report_result"
+      ]
     },
     {
       "name": "report_result",

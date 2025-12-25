@@ -14,18 +14,18 @@ const renderAudioFromEntry = (entry, sessionId) => {
 
   // Generate audio player for each audio file
   const audioPlayers = entry.audio.map((audioPath, idx) => {
-    // Convert absolute path to relative path format: phase_name/audio_N.ext
-    // audioPath format: /path/to/audio/{session_id}/{phase_name}/audio_0.mp3
+    // Convert absolute path to relative path format: cell_name/audio_N.ext
+    // audioPath format: /path/to/audio/{session_id}/{cell_name}/audio_0.mp3
     const pathParts = audioPath.split('/');
     const sessionIndex = pathParts.indexOf(sessionId);
 
     let relPath = audioPath;
     if (sessionIndex >= 0 && sessionIndex < pathParts.length - 1) {
-      // Extract phase_name/audio_N.ext
+      // Extract cell_name/audio_N.ext
       relPath = pathParts.slice(sessionIndex + 1).join('/');
     } else {
-      // Fallback: use phase_name if available
-      const phaseName = entry.phase_name || 'unknown';
+      // Fallback: use cell_name if available
+      const phaseName = entry.cell_name || 'unknown';
       const filename = pathParts[pathParts.length - 1];
       relPath = `${phaseName}/${filename}`;
     }
@@ -219,7 +219,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
   // For sounding attempts, show attempt info
   if (node_type === 'sounding_attempt') {
     try {
-      const soundingIndex = entry.sounding_index;
+      const soundingIndex = entry.candidate_index;
       const isWinner = entry.is_winner;
 
       return (

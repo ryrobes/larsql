@@ -1,9 +1,9 @@
 cascade_id: image_test
-phases:
-  - instructions: Create a chart titled 'Sales' with data '10,20,30'. Then describe what you see in the
-      image.
-    name: charting
-    rules:
-      max_turns: 2
-    tackle:
-      - create_chart
+cells:
+- instructions: Create a chart titled 'Sales' with data '10,20,30'. Then describe
+    what you see in the image.
+  name: charting
+  rules:
+    max_turns: 2
+  traits:
+  - create_chart

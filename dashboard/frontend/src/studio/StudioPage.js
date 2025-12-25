@@ -13,7 +13,7 @@ import { CascadeNavigator } from './timeline';
 import CascadeTimeline from './timeline/CascadeTimeline';
 import Header from '../components/Header';
 import CascadeBrowserModal from './components/CascadeBrowserModal';
-import './editors'; // Initialize phase editor registry
+import './editors'; // Initialize cell editor registry
 import './StudioPage.css';
 
 function StudioPage({
@@ -54,9 +54,18 @@ function StudioPage({
     replaySessionId,
     cascadeSessionId,
     fetchDefaultModel,
-    fetchPhaseTypes,
+    fetchCellTypes,
     joinLiveSession
   } = useStudioCascadeStore();
+
+  // DEBUG: Log mode and cascade state (runs on EVERY render)
+  console.log('[StudioPage] RENDER:', {
+    mode,
+    hasCascade: !!cascade,
+    cascadeId: cascade?.cascade_id,
+    cellsLength: cascade?.cells?.length || 0,
+    isTimelineMode: mode === 'timeline'
+  });
 
   // Note: Running sessions and sidebar navigation now handled by AppShell
   // StudioPage just renders the main content area
@@ -93,51 +102,51 @@ function StudioPage({
 
     const dragType = active.data.current?.type;
 
-    // Handle phase type drops
-    if (dragType === 'phase-type') {
-      const phaseType = active.data.current.phaseType;
+    // Handle cell type drops
+    if (dragType === 'cell-type') {
+      const cellType = active.data.current.cellType;
       const dropTarget = over.data.current;
 
-      // Drop on phase card → Create new phase with handoff from that card
-      if (dropTarget?.type === 'phase-card') {
-        const sourcePhaseName = dropTarget.phaseName;
-        const sourcePhaseIndex = dropTarget.phaseIndex;
+      // Drop on cell card → Create new cell with handoff from that card
+      if (dropTarget?.type === 'cell-card') {
+        const sourceCellName = dropTarget.cellName;
+        const sourceCellIndex = dropTarget.cellIndex;
 
-        // Get current phase count to predict new name (matches addCell logic)
+        // Get current cell count to predict new name (matches addCell logic)
         const cascadeStore = useStudioCascadeStore.getState();
-        const phasesBefore = cascadeStore.cascade?.phases || [];
-        const cellCount = phasesBefore.length + 1;
+        const cellsBefore = cascadeStore.cascade?.cells || [];
+        const cellCount = cellsBefore.length + 1;
 
-        // Get phase type definition to match naming
-        const phaseTypeDef = cascadeStore.phaseTypes.find(pt => pt.type_id === phaseType);
-        const baseName = phaseTypeDef?.name_prefix || phaseType.replace(/_data$/, '');
+        // Get cell type definition to match naming
+        const cellTypeDef = cascadeStore.cellTypes.find(ct => ct.type_id === cellType);
+        const baseName = cellTypeDef?.name_prefix || cellType.replace(/_data$/, '');
 
         // Find unique name with counter
         let predictedName = `${baseName}_${cellCount}`;
         let counter = cellCount;
-        while (phasesBefore.some(p => p.name === predictedName)) {
+        while (cellsBefore.some(c => c.name === predictedName)) {
           counter++;
           predictedName = `${baseName}_${counter}`;
         }
 
-        // Add new phase after source
+        // Add new cell after source
         // Pass autoChain=false to prevent creating linear chain (only set parent handoff)
-        addCell(phaseType, sourcePhaseIndex, null, false);
+        addCell(cellType, sourceCellIndex, null, false);
 
         return;
       }
 
-      // Drop on canvas background → Create independent phase (no handoffs)
+      // Drop on canvas background → Create independent cell (no handoffs)
       if (dropTarget?.type === 'canvas-background') {
         // Add at end with no auto-chaining
-        addCell(phaseType, null, null, false);
+        addCell(cellType, null, null, false);
         return;
       }
 
       // Drop on drop zone → Insert at position
       const dropPosition = dropTarget?.position;
       if (dropPosition !== undefined) {
-        addCell(phaseType, dropPosition);
+        addCell(cellType, dropPosition);
       }
     }
 
@@ -209,8 +218,8 @@ function StudioPage({
   useEffect(() => {
     fetchConnections();
     fetchDefaultModel();
-    fetchPhaseTypes();
-  }, [fetchConnections, fetchDefaultModel, fetchPhaseTypes]);
+    fetchCellTypes();
+  }, [fetchConnections, fetchDefaultModel, fetchCellTypes]);
 
   // Set default connection for first tab when connections load
   useEffect(() => {
@@ -273,7 +282,7 @@ function StudioPage({
           const result = await useStudioCascadeStore.getState().fetchReplayData(initialSession);
 
           if (result.success) {
-            console.log('[StudioPage] ✓ Replay data loaded:', result.phaseCount, 'phases');
+            console.log('[StudioPage] ✓ Replay data loaded:', result.cellCount, 'cells');
           } else {
             console.warn('[StudioPage] ⚠ Replay data fetch failed:', result.error);
           }
@@ -333,7 +342,7 @@ function StudioPage({
           cascade_id: newCascadeId,
           description: 'New cascade',
           inputs_schema: {},
-          phases: []
+          cells: []
         },
         cascadePath: null,
         cascadeDirty: false,
@@ -384,6 +393,8 @@ function StudioPage({
   //   }
   // }, [mode, cascade, viewMode, replaySessionId, cascadeSessionId]);
 
+  console.log('[StudioPage] About to render. Mode check:', mode, 'isTimeline?', mode === 'timeline');
+
   return (
     <div className="studio-page">
       {mode === 'timeline' ? (
@@ -431,9 +442,9 @@ function StudioPage({
                     {activeDragItem.modelId}
                   </div>
                 )}
-                {activeDragItem.type === 'phase-type' && (
-                  <div className="studio-drag-phase">
-                    Adding {activeDragItem.phaseType}...
+                {activeDragItem.type === 'cell-type' && (
+                  <div className="studio-drag-cell">
+                    Adding {activeDragItem.cellType}...
                   </div>
                 )}
               </div>

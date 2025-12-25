@@ -1,34 +1,46 @@
 {
   "cascade_id": "scratchpad_demo",
-  "description": "Demonstrates scratchpad pattern: messy thinking → clean output",
+  "description": "Demonstrates scratchpad pattern: messy thinking \u2192 clean output",
   "inputs_schema": {
     "problem": "Complex problem to solve"
   },
-  "phases": [
+  "cells": [
     {
       "name": "think",
       "instructions": "Think deeply about this problem: {{ input.problem }}\n\nUse <scratchpad> tags for your rough reasoning:\n<scratchpad>\n[Your messy thinking, exploration, dead ends, etc.]\n</scratchpad>\n\nAfter the scratchpad, provide a brief summary of your approach.",
-      "tackle": [],
+      "traits": [],
       "output_extraction": {
         "pattern": "<scratchpad>(.*?)</scratchpad>",
         "store_as": "reasoning",
         "required": true,
         "format": "text"
       },
-      "handoffs": ["solve"]
+      "handoffs": [
+        "solve"
+      ]
     },
     {
       "name": "solve",
       "instructions": "Based on this reasoning:\n\n{{ state.reasoning }}\n\nGenerate a clean, polished solution to the problem. No scratchpad needed - just the final answer.",
-      "tackle": [],
-      "context": {"from": ["previous"]},
-      "handoffs": ["verify"]
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "handoffs": [
+        "verify"
+      ]
     },
     {
       "name": "verify",
       "instructions": "Verify the solution is correct and complete. What do you see from the previous phases? Confirm you have:\n1. Access to the reasoning (scratchpad content via state)\n2. Access to the clean solution\n\nProvide your verification.",
-      "tackle": [],
-      "context": {"from": ["all"]}
+      "traits": [],
+      "context": {
+        "from": [
+          "all"
+        ]
+      }
     }
   ]
 }

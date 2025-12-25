@@ -1,20 +1,26 @@
 {
   "cascade_id": "iterative_joke",
-  "phases": [
+  "cells": [
     {
       "name": "draft_joke",
       "instructions": "Draft a joke about a pirate who is learning Python programming. Do not output the final joke yet, just brainstorm concepts.",
-      "tackle": [],
-      "handoffs": ["refine_joke"]
+      "traits": [],
+      "handoffs": [
+        "refine_joke"
+      ]
     },
     {
       "name": "refine_joke",
       "instructions": "Take the concepts from the previous turn and write the best possible joke. Then critique it. Then rewrite it to be funnier.",
-      "tackle": [],
+      "traits": [],
       "context": {
-        "from": ["previous"]
+        "from": [
+          "previous"
+        ]
       },
-      "rules": {"max_turns": 3},
+      "rules": {
+        "max_turns": 3
+      },
       "handoffs": []
     }
   ]

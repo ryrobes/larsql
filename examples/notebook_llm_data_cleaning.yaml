@@ -1,120 +1,76 @@
 cascade_id: llm_data_cleaning
-description: "Data cleaning with LLM: SQL loads messy data, LLM normalizes and enriches, Clojure validates, SQL produces clean output."
+description: 'Data cleaning with LLM: SQL loads messy data, LLM normalizes and enriches,
+  Clojure validates, SQL produces clean output.'
 inputs_schema: {}
-
-phases:
-  - name: messy_contacts
-    tool: sql_data
-    inputs:
-      query: |
-        -- Messy contact data that needs cleaning
-        SELECT * FROM (
-          VALUES
-            ('C001', 'john smith', 'john.smith@gmail', '555-1234', 'new york, ny'),
-            ('C002', 'SARAH JONES', 'sarah@company.com', '(555) 555-5678', 'Los Angeles CA 90210'),
-            ('C003', 'Bob Wilson Jr.', 'bob_wilson@yahoo.com', '555.9999', 'chicago'),
-            ('C004', 'María García', 'maria.garcia@outlook.com', '+1 555 111 2222', 'Miami, Florida'),
-            ('C005', 'dr. james brown', 'jbrown@hospital.org', '5553333', 'Boston MA'),
-            ('C006', 'Lisa Chen-Williams', 'lisa.chen.williams@tech.io', '555-444-5555', 'san francisco, california'),
-            ('C007', 'MIKE OCONNOR', 'mike@email', '(555)777-8888', 'Seattle WA 98101'),
-            ('C008', 'anna müller', 'anna.mueller@berlin.de', '+49 30 12345678', 'NYC')
-        ) AS t(id, name, email, phone, location)
-    handoffs: [llm_clean_data]
-
-  - name: llm_clean_data
-    tool: windlass_data
-    inputs:
-      code: |
-        instructions: |
-          Clean and normalize this contact data. Fix all inconsistencies.
-
-          Raw data:
-          {{outputs.messy_contacts}}
-
-          For each contact, normalize:
-          1. name: Proper case (e.g., "John Smith Jr."), keep titles like "Dr."
-          2. email: Validate format, fix obvious typos (add .com if missing domain)
-          3. phone: US format (555) 555-5555, or +country for international
-          4. city: Proper city name
-          5. state: Two-letter state code (e.g., "NY", "CA")
-          6. is_valid_email: boolean - true if email looks valid
-          7. is_international: boolean - true if phone is non-US
-
-        model: google/gemini-2.5-flash
-
-        output_schema:
-          type: array
-          items:
-            type: object
-            properties:
-              id: { type: string }
-              name: { type: string }
-              email: { type: string }
-              phone: { type: string }
-              city: { type: string }
-              state: { type: string }
-              is_valid_email: { type: boolean }
-              is_international: { type: boolean }
-            required: [id, name, email, phone, city, state, is_valid_email]
-    handoffs: [clojure_validate]
-
-  - name: clojure_validate
-    tool: clojure_data
-    inputs:
-      code: |
-        ;; Validate cleaned data and add quality scores
-        (let [contacts (:llm-clean-data data)
-
-              ;; Validation functions
-              valid-email? (fn [email]
-                            (and (string? email)
-                                 (re-matches #".+@.+\..+" email)))
-
-              valid-phone? (fn [phone]
-                            (and (string? phone)
-                                 (or (re-matches #"\(\d{3}\) \d{3}-\d{4}" phone)
-                                     (re-matches #"\+\d+.*" phone))))
-
-              valid-state? (fn [state]
-                            (and (string? state)
-                                 (= 2 (count state))
-                                 (every? #(Character/isUpperCase %) state)))
-
-              ;; Score each record
-              score-contact (fn [c]
-                             (let [checks [(valid-email? (:email c))
-                                          (valid-phone? (:phone c))
-                                          (valid-state? (:state c))
-                                          (not (clojure.string/blank? (:name c)))
-                                          (not (clojure.string/blank? (:city c)))]
-                                   passed (count (filter true? checks))
-                                   score (float (/ passed (count checks)))]
-                               (assoc c
-                                 :quality_score score
-                                 :validation_passed (= passed (count checks))
-                                 :issues (remove nil?
-                                          [(when-not (valid-email? (:email c)) "invalid_email")
-                                           (when-not (valid-phone? (:phone c)) "invalid_phone")
-                                           (when-not (valid-state? (:state c)) "invalid_state")]))))]
-
-          (mapv score-contact contacts))
-    handoffs: [final_clean_data]
-
-  - name: final_clean_data
-    tool: sql_data
-    inputs:
-      query: |
-        -- Final cleaned and validated contact data
-        SELECT
-          id,
-          name,
-          email,
-          phone,
-          city,
-          state,
-          ROUND(quality_score * 100) || '%' as quality_score,
-          CASE WHEN validation_passed THEN '✓' ELSE '✗' END as valid,
-          CASE WHEN is_international THEN 'Yes' ELSE 'No' END as international,
-          array_to_string(issues, ', ') as issues
-        FROM _clojure_validate
-        ORDER BY quality_score DESC, name
+cells:
+- name: messy_contacts
+  tool: sql_data
+  inputs:
+    query: "-- Messy contact data that needs cleaning\nSELECT * FROM (\n  VALUES\n\
+      \    ('C001', 'john smith', 'john.smith@gmail', '555-1234', 'new york, ny'),\n\
+      \    ('C002', 'SARAH JONES', 'sarah@company.com', '(555) 555-5678', 'Los Angeles\
+      \ CA 90210'),\n    ('C003', 'Bob Wilson Jr.', 'bob_wilson@yahoo.com', '555.9999',\
+      \ 'chicago'),\n    ('C004', 'María García', 'maria.garcia@outlook.com', '+1\
+      \ 555 111 2222', 'Miami, Florida'),\n    ('C005', 'dr. james brown', 'jbrown@hospital.org',\
+      \ '5553333', 'Boston MA'),\n    ('C006', 'Lisa Chen-Williams', 'lisa.chen.williams@tech.io',\
+      \ '555-444-5555', 'san francisco, california'),\n    ('C007', 'MIKE OCONNOR',\
+      \ 'mike@email', '(555)777-8888', 'Seattle WA 98101'),\n    ('C008', 'anna müller',\
+      \ 'anna.mueller@berlin.de', '+49 30 12345678', 'NYC')\n) AS t(id, name, email,\
+      \ phone, location)\n"
+  handoffs:
+  - llm_clean_data
+- name: llm_clean_data
+  tool: windlass_data
+  inputs:
+    code: "instructions: |\n  Clean and normalize this contact data. Fix all inconsistencies.\n\
+      \n  Raw data:\n  {{outputs.messy_contacts}}\n\n  For each contact, normalize:\n\
+      \  1. name: Proper case (e.g., \"John Smith Jr.\"), keep titles like \"Dr.\"\
+      \n  2. email: Validate format, fix obvious typos (add .com if missing domain)\n\
+      \  3. phone: US format (555) 555-5555, or +country for international\n  4. city:\
+      \ Proper city name\n  5. state: Two-letter state code (e.g., \"NY\", \"CA\"\
+      )\n  6. is_valid_email: boolean - true if email looks valid\n  7. is_international:\
+      \ boolean - true if phone is non-US\n\nmodel: google/gemini-2.5-flash\n\noutput_schema:\n\
+      \  type: array\n  items:\n    type: object\n    properties:\n      id: { type:\
+      \ string }\n      name: { type: string }\n      email: { type: string }\n  \
+      \    phone: { type: string }\n      city: { type: string }\n      state: { type:\
+      \ string }\n      is_valid_email: { type: boolean }\n      is_international:\
+      \ { type: boolean }\n    required: [id, name, email, phone, city, state, is_valid_email]\n"
+  handoffs:
+  - clojure_validate
+- name: clojure_validate
+  tool: clojure_data
+  inputs:
+    code: ";; Validate cleaned data and add quality scores\n(let [contacts (:llm-clean-data\
+      \ data)\n\n      ;; Validation functions\n      valid-email? (fn [email]\n \
+      \                   (and (string? email)\n                         (re-matches\
+      \ #\".+@.+\\..+\" email)))\n\n      valid-phone? (fn [phone]\n             \
+      \       (and (string? phone)\n                         (or (re-matches #\"\\\
+      (\\d{3}\\) \\d{3}-\\d{4}\" phone)\n                             (re-matches\
+      \ #\"\\+\\d+.*\" phone))))\n\n      valid-state? (fn [state]\n             \
+      \       (and (string? state)\n                         (= 2 (count state))\n\
+      \                         (every? #(Character/isUpperCase %) state)))\n\n  \
+      \    ;; Score each record\n      score-contact (fn [c]\n                   \
+      \  (let [checks [(valid-email? (:email c))\n                               \
+      \   (valid-phone? (:phone c))\n                                  (valid-state?\
+      \ (:state c))\n                                  (not (clojure.string/blank?\
+      \ (:name c)))\n                                  (not (clojure.string/blank?\
+      \ (:city c)))]\n                           passed (count (filter true? checks))\n\
+      \                           score (float (/ passed (count checks)))]\n     \
+      \                  (assoc c\n                         :quality_score score\n\
+      \                         :validation_passed (= passed (count checks))\n   \
+      \                      :issues (remove nil?\n                              \
+      \    [(when-not (valid-email? (:email c)) \"invalid_email\")\n             \
+      \                      (when-not (valid-phone? (:phone c)) \"invalid_phone\"\
+      )\n                                   (when-not (valid-state? (:state c)) \"\
+      invalid_state\")]))))]\n\n  (mapv score-contact contacts))\n"
+  handoffs:
+  - final_clean_data
+- name: final_clean_data
+  tool: sql_data
+  inputs:
+    query: "-- Final cleaned and validated contact data\nSELECT\n  id,\n  name,\n\
+      \  email,\n  phone,\n  city,\n  state,\n  ROUND(quality_score * 100) || '%'\
+      \ as quality_score,\n  CASE WHEN validation_passed THEN '✓' ELSE '✗' END as\
+      \ valid,\n  CASE WHEN is_international THEN 'Yes' ELSE 'No' END as international,\n\
+      \  array_to_string(issues, ', ') as issues\nFROM _clojure_validate\nORDER BY\
+      \ quality_score DESC, name\n"

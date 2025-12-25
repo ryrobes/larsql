@@ -62,7 +62,7 @@ function HumanInputDisplay({ sessionId, phaseName, isRunning, sessionUpdate }) {
 
   // Filter inputs by phase if phaseName is provided
   const phaseInputs = phaseName
-    ? inputs.filter(p => p.phase_name === phaseName)
+    ? inputs.filter(p => p.cell_name === phaseName)
     : inputs;
 
   // Flatten to just interactions for this phase

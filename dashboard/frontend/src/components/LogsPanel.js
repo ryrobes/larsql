@@ -43,16 +43,16 @@ function LogsPanel({ logs }) {
           >
             {log.event_type}
           </span>
-          {log.phase_name && (
+          {log.cell_name && (
             <span style={{ color: '#888', minWidth: '120px' }}>
-              [{log.phase_name}]
+              [{log.cell_name}]
             </span>
           )}
           <span className="log-message">
             {log.message}
-            {log.sounding_index !== null && (
+            {log.candidate_index !== null && (
               <span style={{ color: '#888', marginLeft: '0.5rem' }}>
-                (sounding {log.sounding_index})
+                (sounding {log.candidate_index})
               </span>
             )}
             {log.reforge_step !== null && log.reforge_step > 0 && (

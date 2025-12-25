@@ -4,7 +4,7 @@
   "inputs_schema": {
     "task": "The detailed task to complete"
   },
-  "phases": [
+  "cells": [
     {
       "name": "do_work",
       "instructions": "{{ input.task }}\n\nProvide just a very brief, minimal response (1-2 sentences max). Don't provide details or thoroughness.",

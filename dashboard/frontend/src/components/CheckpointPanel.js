@@ -848,7 +848,7 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
             >
               <div className="checkpoint-info">
                 <span className="checkpoint-cascade">{checkpoint.cascade_id}</span>
-                <span className="checkpoint-phase">Phase: {checkpoint.phase_name}</span>
+                <span className="checkpoint-phase">Phase: {checkpoint.cell_name}</span>
               </div>
               <span className="checkpoint-expand">
                 {expandedCheckpoint === checkpoint.id ? '▼' : '▶'}

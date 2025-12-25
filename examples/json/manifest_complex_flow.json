@@ -4,30 +4,48 @@
   "inputs_schema": {
     "research_topic": "The topic to research and analyze"
   },
-  "phases": [
+  "cells": [
     {
       "name": "initial_analysis",
       "instructions": "Research Topic: {{ input.research_topic }}\n\nProvide an initial analysis of this topic. What are the key aspects to explore?",
-      "tackle": "manifest",
+      "traits": "manifest",
       "manifest_context": "current",
-      "rules": {"max_turns": 2},
-      "handoffs": ["deep_dive"]
+      "rules": {
+        "max_turns": 2
+      },
+      "handoffs": [
+        "deep_dive"
+      ]
     },
     {
       "name": "deep_dive",
       "instructions": "Based on the initial analysis, dive deeper into the most important aspects. Use appropriate tools to enhance your analysis.",
-      "tackle": "manifest",
+      "traits": "manifest",
       "manifest_context": "full",
-      "context": {"from": ["previous"]},
-      "rules": {"max_turns": 3},
-      "handoffs": ["synthesize"]
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "rules": {
+        "max_turns": 3
+      },
+      "handoffs": [
+        "synthesize"
+      ]
     },
     {
       "name": "synthesize",
       "instructions": "Synthesize all findings into a coherent summary with key insights and conclusions.",
-      "tackle": [],
-      "context": {"from": ["all"]},
-      "rules": {"max_turns": 2}
+      "traits": [],
+      "context": {
+        "from": [
+          "all"
+        ]
+      },
+      "rules": {
+        "max_turns": 2
+      }
     }
   ]
 }

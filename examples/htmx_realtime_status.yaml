@@ -1,93 +1,66 @@
 cascade_id: htmx_realtime_status
-description: |
-  Demonstrates real-time status monitoring using HTMX polling.
+description: 'Demonstrates real-time status monitoring using HTMX polling.
+
   Shows how to create live dashboards that update without page refresh.
 
+  '
 inputs_schema:
-  task_description: "What task to monitor"
+  task_description: What task to monitor
+cells:
+- name: setup_monitoring
+  traits:
+  - request_decision
+  - route_to
+  handoffs:
+  - analyze_results
+  rules:
+    max_turns: 5
+  instructions: "Setup monitoring for: {{ input.task_description }}\n\nCreate a status\
+    \ dashboard that shows:\n1. Current status (in progress, completed, failed)\n\
+    2. Progress percentage (0-100%)\n3. Recent activity log (last 5 events)\n4. Time\
+    \ elapsed\n\nUse request_decision with HTMX to build a polling dashboard:\n- Use\
+    \ hx-get + hx-trigger=\"every 2s\" for auto-refresh\n- Show real-time updates\n\
+    - When user is satisfied, they click \"Approve & Continue\"\n\nExample pattern:\n\
+    <div style=\"padding:20px; background:#1a1a1a; border-radius:8px;\">\n  <h2>Task\
+    \ Monitor: {{ input.task_description }}</h2>\n\n  <!-- Status badge that updates\
+    \ every 2s -->\n  <div hx-get=\"/api/session/{{ session_id }}/mock-status\"\n\
+    \       hx-trigger=\"every 2s\"\n       hx-swap=\"innerHTML\">\n    <span class=\"\
+    status-badge\">Checking...</span>\n  </div>\n\n  <!-- Progress bar -->\n  <div\
+    \ style=\"background:#0a0a0a; border-radius:4px; height:20px; margin:16px 0;\"\
+    >\n    <div id=\"progress\" style=\"background:#10b981; height:100%; width:0%;\
+    \ transition:width 0.5s;\"></div>\n  </div>\n\n  <!-- Activity log -->\n  <div\
+    \ id=\"activity-log\" style=\"background:#0a0a0a; padding:12px; border-radius:4px;\
+    \ height:150px; overflow-y:auto;\">\n    <div>• Starting monitoring...</div>\n\
+    \  </div>\n\n  <script>\n    // Simulate progress updates\n    let progress =\
+    \ 0;\n    setInterval(() => {\n      progress = Math.min(progress + Math.random()\
+    \ * 10, 100);\n      document.getElementById('progress').style.width = progress\
+    \ + '%';\n\n      if (progress >= 100) {\n        document.getElementById('activity-log').innerHTML\
+    \ += '<div>• ✓ Complete!</div>';\n      }\n    }, 2000);\n  </script>\n\n  <!--\
+    \ Approval form (shown once monitoring demonstrates functionality) -->\n  <form\
+    \ hx-post=\"/api/checkpoints/{{ checkpoint_id }}/respond\"\n        hx-ext=\"\
+    json-enc\"\n        style=\"margin-top:16px;\">\n    <p>Review the monitoring\
+    \ setup above. When satisfied, approve to continue.</p>\n    <input type=\"hidden\"\
+    \ name=\"response[selected]\" value=\"approve\" id=\"decision\">\n    <button\
+    \ type=\"submit\" onclick=\"document.getElementById('decision').value='approve'\"\
+    >\n      ✓ Approve & Continue\n    </button>\n    <button type=\"button\" onclick=\"\
+    document.getElementById('decision').value='needs_changes'; this.form.requestSubmit();\"\
+    >\n      Needs Changes\n    </button>\n  </form>\n</div>\n\nBuild a complete monitoring\
+    \ dashboard with simulated data.\nWhen approved, route to analyze_results.\n"
+- name: analyze_results
+  instructions: 'User decision: {{ outputs.setup_monitoring.selected }}
 
-phases:
-  - name: setup_monitoring
-    tackle: ["request_decision", "route_to"]
-    handoffs:
-      - analyze_results
-    rules:
-      max_turns: 5
-    instructions: |
-      Setup monitoring for: {{ input.task_description }}
 
-      Create a status dashboard that shows:
-      1. Current status (in progress, completed, failed)
-      2. Progress percentage (0-100%)
-      3. Recent activity log (last 5 events)
-      4. Time elapsed
+    {% if outputs.setup_monitoring.selected == ''approve'' %}
 
-      Use request_decision with HTMX to build a polling dashboard:
-      - Use hx-get + hx-trigger="every 2s" for auto-refresh
-      - Show real-time updates
-      - When user is satisfied, they click "Approve & Continue"
+    Monitoring approved. Provide final analysis.
 
-      Example pattern:
-      <div style="padding:20px; background:#1a1a1a; border-radius:8px;">
-        <h2>Task Monitor: {{ input.task_description }}</h2>
+    {% else %}
 
-        <!-- Status badge that updates every 2s -->
-        <div hx-get="/api/session/{{ session_id }}/mock-status"
-             hx-trigger="every 2s"
-             hx-swap="innerHTML">
-          <span class="status-badge">Checking...</span>
-        </div>
+    User requested changes. Summarize what needs improvement.
 
-        <!-- Progress bar -->
-        <div style="background:#0a0a0a; border-radius:4px; height:20px; margin:16px 0;">
-          <div id="progress" style="background:#10b981; height:100%; width:0%; transition:width 0.5s;"></div>
-        </div>
+    {% endif %}
 
-        <!-- Activity log -->
-        <div id="activity-log" style="background:#0a0a0a; padding:12px; border-radius:4px; height:150px; overflow-y:auto;">
-          <div>• Starting monitoring...</div>
-        </div>
-
-        <script>
-          // Simulate progress updates
-          let progress = 0;
-          setInterval(() => {
-            progress = Math.min(progress + Math.random() * 10, 100);
-            document.getElementById('progress').style.width = progress + '%';
-
-            if (progress >= 100) {
-              document.getElementById('activity-log').innerHTML += '<div>• ✓ Complete!</div>';
-            }
-          }, 2000);
-        </script>
-
-        <!-- Approval form (shown once monitoring demonstrates functionality) -->
-        <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
-              hx-ext="json-enc"
-              style="margin-top:16px;">
-          <p>Review the monitoring setup above. When satisfied, approve to continue.</p>
-          <input type="hidden" name="response[selected]" value="approve" id="decision">
-          <button type="submit" onclick="document.getElementById('decision').value='approve'">
-            ✓ Approve & Continue
-          </button>
-          <button type="button" onclick="document.getElementById('decision').value='needs_changes'; this.form.requestSubmit();">
-            Needs Changes
-          </button>
-        </form>
-      </div>
-
-      Build a complete monitoring dashboard with simulated data.
-      When approved, route to analyze_results.
-
-  - name: analyze_results
-    instructions: |
-      User decision: {{ outputs.setup_monitoring.selected }}
-
-      {% if outputs.setup_monitoring.selected == 'approve' %}
-      Monitoring approved. Provide final analysis.
-      {% else %}
-      User requested changes. Summarize what needs improvement.
-      {% endif %}
-
-    context:
-      from: [setup_monitoring]
+    '
+  context:
+    from:
+    - setup_monitoring

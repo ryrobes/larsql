@@ -47,12 +47,12 @@ export default function SpeciesWidget({ sessionId }) {
   if (error) return null; // Silently fail if no species data
 
   // Only show if we have at least one phase with species data
-  if (!speciesData.phases || speciesData.phases.length === 0) return null;
+  if (!speciesData.cells || speciesData.cells.length === 0) return null;
 
   // For simplicity, show the first phase with the most related sessions
-  const primaryPhase = speciesData.phases.reduce((max, phase) =>
+  const primaryPhase = speciesData.cells.reduce((max, phase) =>
     phase.evolution_depth > (max.evolution_depth || 0) ? phase : max
-  , speciesData.phases[0]);
+  , speciesData.cells[0]);
 
   const hasMultipleSessions = primaryPhase.evolution_depth > 1;
   const relatedCount = primaryPhase.evolution_depth - 1; // Exclude current session
@@ -97,7 +97,7 @@ export default function SpeciesWidget({ sessionId }) {
           <div className="species-details">
             <div className="species-detail-row">
               <span className="detail-label">Phase:</span>
-              <span className="detail-value">{primaryPhase.phase_name}</span>
+              <span className="detail-value">{primaryPhase.cell_name}</span>
             </div>
             <div className="species-detail-row">
               <span className="detail-label">Species Hash:</span>
@@ -150,9 +150,9 @@ export default function SpeciesWidget({ sessionId }) {
             </div>
           </div>
 
-          {speciesData.phases.length > 1 && (
+          {speciesData.cells.length > 1 && (
             <div className="multi-phase-note">
-              ℹ️ This session has {speciesData.phases.length} phases with different species hashes
+              ℹ️ This session has {speciesData.cells.length} phases with different species hashes
             </div>
           )}
         </div>

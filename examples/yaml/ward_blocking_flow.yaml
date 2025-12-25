@@ -2,34 +2,35 @@ cascade_id: ward_blocking_flow
 description: Demonstrates blocking mode - wards that abort execution on failure
 inputs_schema:
   content: Content to publish
-phases:
-  - handoffs:
-      - publish
-    instructions: |-
-      Review this content for publication:
+cells:
+- handoffs:
+  - publish
+  instructions: 'Review this content for publication:
 
-      {{ input.content }}
 
-      Provide your analysis.
-    name: safety_check
-    rules:
-      max_turns: 1
-    wards:
-      post:
-        - mode: blocking
-          validator: content_safety
-        - mode: blocking
-          validator: grammar_check
-      pre:
-        - mode: blocking
-          validator: simple_validator
-  - context:
-      from:
-        - previous
-    instructions: |-
-      Content passed all safety and quality wards!
+    {{ input.content }}
 
-      Confirm it's ready for publication.
-    name: publish
-    tackle:
-      - set_state
+
+    Provide your analysis.'
+  name: safety_check
+  rules:
+    max_turns: 1
+  wards:
+    post:
+    - mode: blocking
+      validator: content_safety
+    - mode: blocking
+      validator: grammar_check
+    pre:
+    - mode: blocking
+      validator: simple_validator
+- context:
+    from:
+    - previous
+  instructions: 'Content passed all safety and quality wards!
+
+
+    Confirm it''s ready for publication.'
+  name: publish
+  traits:
+  - set_state

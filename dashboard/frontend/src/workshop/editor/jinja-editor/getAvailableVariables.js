@@ -53,8 +53,8 @@ function getAvailableVariables(cascade, currentPhaseIndex) {
   }
 
   // 2. Previous phase outputs
-  if (cascade.phases && currentPhaseIndex > 0) {
-    cascade.phases.slice(0, currentPhaseIndex).forEach((phase) => {
+  if (cascade.cells && currentPhaseIndex > 0) {
+    cascade.cells.slice(0, currentPhaseIndex).forEach((phase) => {
       if (phase.name) {
         variables.push({
           path: `outputs.${phase.name}`,
@@ -96,12 +96,12 @@ function getAvailableVariables(cascade, currentPhaseIndex) {
 function extractStateVariables(cascade, upToIndex) {
   const stateVars = new Set();
 
-  if (!cascade.phases) return Array.from(stateVars);
+  if (!cascade.cells) return Array.from(stateVars);
 
   // Simple pattern matching for state.* references in instructions
   const statePattern = /state\.(\w+)/g;
 
-  cascade.phases.slice(0, upToIndex).forEach((phase) => {
+  cascade.cells.slice(0, upToIndex).forEach((phase) => {
     if (phase.instructions) {
       let match;
       while ((match = statePattern.exec(phase.instructions)) !== null) {
@@ -110,7 +110,7 @@ function extractStateVariables(cascade, upToIndex) {
     }
 
     // Check if set_state is in tackle (user might be setting state)
-    if (phase.tackle && phase.tackle.includes('set_state')) {
+    if (phase.traits && phase.traits.includes('set_state')) {
       // We can't know the exact keys without more info,
       // but we can flag that state is being used
     }

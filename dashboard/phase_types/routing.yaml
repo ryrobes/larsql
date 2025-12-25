@@ -1,32 +1,38 @@
 type_id: routing
 display_name: Router
 icon: mdi:directions-fork
-color: "#ec4899"
+color: '#ec4899'
 name_prefix: router
-description: "LLM phase with dynamic routing - can hand off to multiple next phases"
-category: "llm"
+description: LLM phase with dynamic routing - can hand off to multiple next phases
+category: llm
 tags:
-  - "intermediate"
-  - "orchestration"
-  - "standalone"
-
+- intermediate
+- orchestration
+- standalone
 template:
-  instructions: |
-    Analyze the input and decide which path to take:
+  instructions: 'Analyze the input and decide which path to take:
+
     {{ input.data }}
 
+
     Routes available:
+
     - path_a: For option A
+
     - path_b: For option B
+
     - path_c: For option C
 
+
     Use the route_to tool to select the next phase.
+
+    '
   model: google/gemini-2.5-flash
-  tackle:
-    - route_to  # Auto-injected when handoffs configured
+  traits:
+  - route_to
   handoffs:
-    - path_a
-    - path_b
-    - path_c
+  - path_a
+  - path_b
+  - path_c
   rules:
     max_turns: 3

@@ -1,399 +1,369 @@
-# Phase Anatomy Showcase
-#
-# This cascade demonstrates ALL phase features visible in the Phase Anatomy panel.
-# Use this to test the visualization of:
-# - Input layer (instructions, inputs_schema, tool)
-# - Context layer (selective context injection)
-# - Wards layer (pre/post validators)
-# - Soundings layer (factor, mutate, multi-model, max_turns)
-# - Convergence section (evaluator, pre-validator, aggregate mode)
-# - Reforge layer (iterative refinement)
-# - Output layer (schema, extraction, callouts, handoffs)
-
 cascade_id: phase_anatomy_showcase
-description: "Comprehensive showcase of all phase features for testing the Phase Anatomy panel"
-
+description: Comprehensive showcase of all phase features for testing the Phase Anatomy
+  panel
 inputs_schema:
-  topic: "The topic to analyze"
-  depth: "How deep to go (shallow, medium, deep)"
+  topic: The topic to analyze
+  depth: How deep to go (shallow, medium, deep)
+cells:
+- name: initial_analysis
+  instructions: 'You are an expert analyst. Analyze the following topic at the specified
+    depth level.
 
-phases:
-  # ============================================================
-  # PHASE 1: Simple LLM Phase with Instructions
-  # Shows: Input layer with instructions and inputs_schema
-  # ============================================================
-  - name: initial_analysis
-    instructions: |
-      You are an expert analyst. Analyze the following topic at the specified depth level.
 
-      Topic: {{ input.topic }}
-      Depth: {{ input.depth }}
+    Topic: {{ input.topic }}
 
-      Provide a structured analysis with:
-      1. Key concepts
-      2. Main challenges
-      3. Potential opportunities
+    Depth: {{ input.depth }}
 
-      Be concise but thorough.
 
-    model: google/gemini-2.5-flash
+    Provide a structured analysis with:
 
-    rules:
-      max_turns: 2
+    1. Key concepts
 
-    tackle:
-      - manifest
+    2. Main challenges
 
-    output_schema:
-      type: object
-      required:
-        - concepts
-        - challenges
-        - opportunities
+    3. Potential opportunities
 
-  # ============================================================
-  # PHASE 2: Soundings with Multi-Model and Mutations
-  # Shows: Soundings layer with factor, mutate, models, evaluator
-  # ============================================================
-  - name: parallel_brainstorm
-    instructions: |
-      Based on the initial analysis, brainstorm creative solutions.
 
-      Previous analysis: {{ outputs.initial_analysis }}
+    Be concise but thorough.
 
-      Generate 3-5 innovative ideas that address the challenges identified.
-      Think outside the box and consider unconventional approaches.
+    '
+  model: google/gemini-2.5-flash
+  rules:
+    max_turns: 2
+  traits:
+  - manifest
+  output_schema:
+    type: object
+    required:
+    - concepts
+    - challenges
+    - opportunities
+- name: parallel_brainstorm
+  instructions: 'Based on the initial analysis, brainstorm creative solutions.
 
-    context:
-      from:
-        - initial_analysis
-      include:
-        - output
 
-    soundings:
-      factor: 6
-      mutate: true
-      models:
-        - anthropic/claude-sonnet-4
-        - google/gemini-2.5-flash
-        - openai/gpt-4o-mini
+    Previous analysis: {{ outputs.initial_analysis }}
 
-      evaluator_instructions: |
-        Compare the three brainstorming outputs and select the winner.
 
-        Criteria:
-        1. Creativity and originality (40%)
-        2. Feasibility of ideas (30%)
-        3. Relevance to the challenges (30%)
+    Generate 3-5 innovative ideas that address the challenges identified.
 
-        Explain your reasoning and declare the winner by index (0, 1, or 2).
+    Think outside the box and consider unconventional approaches.
 
-      # Polyglot validator - inline Python code for pre-filtering soundings
+    '
+  context:
+    from:
+    - initial_analysis
+    include:
+    - output
+  candidates:
+    factor: 6
+    mutate: true
+    models:
+    - anthropic/claude-sonnet-4
+    - google/gemini-2.5-flash
+    - openai/gpt-4o-mini
+    evaluator_instructions: 'Compare the three brainstorming outputs and select the
+      winner.
+
+
+      Criteria:
+
+      1. Creativity and originality (40%)
+
+      2. Feasibility of ideas (30%)
+
+      3. Relevance to the challenges (30%)
+
+
+      Explain your reasoning and declare the winner by index (0, 1, or 2).
+
+      '
+    validator:
+      python: "if not content or len(content) < 100:\n    result = {\"valid\": False,\
+        \ \"reason\": \"Output too short\"}\nelse:\n    result = {\"valid\": True,\
+        \ \"reason\": \"Output meets minimum length\"}\n"
+  rules:
+    max_turns: 3
+  traits:
+  - manifest
+- name: validated_refinement
+  instructions: 'Take the winning brainstorm and refine it into a concrete proposal.
+
+
+    Winning ideas: {{ outputs.parallel_brainstorm }}
+
+
+    Create a detailed proposal with:
+
+    - Executive summary
+
+    - Implementation steps
+
+    - Resource requirements
+
+    - Timeline estimate
+
+    '
+  context:
+    from:
+    - parallel_brainstorm
+    include:
+    - output
+    - winner
+  wards:
+    pre:
+    - mode: blocking
       validator:
-        python: |
-          if not content or len(content) < 100:
-              result = {"valid": False, "reason": "Output too short"}
-          else:
-              result = {"valid": True, "reason": "Output meets minimum length"}
+        python: "# Check if brainstorm output exists\nif not content or len(content)\
+          \ < 50:\n    result = {\"valid\": False, \"reason\": \"No brainstorm output\
+          \ available\"}\nelse:\n    result = {\"valid\": True, \"reason\": \"Input\
+          \ quality verified\"}\n"
+    post:
+    - mode: advisory
+      validator:
+        python: "required = ['summary', 'steps', 'resources', 'timeline']\nmissing\
+          \ = [r for r in required if r.lower() not in content.lower()]\nif missing:\n\
+          \    result = {\"valid\": False, \"reason\": f\"Missing sections: {missing}\"\
+          }\nelse:\n    result = {\"valid\": True, \"reason\": \"All required sections\
+          \ present\"}\n"
+    - mode: blocking
+      validator:
+        javascript: "const valid = content.length >= 500;\nresult = {\n  valid: valid,\n\
+          \  reason: valid ? \"Sufficient detail provided\" : \"Proposal too brief\"\
+          \n};\n"
+  rules:
+    max_turns: 2
+  model: anthropic/claude-sonnet-4
+- name: iterative_improvement
+  instructions: 'Review and improve the proposal to meet quality standards.
 
-    rules:
-      max_turns: 3
 
-    tackle:
-      - manifest
+    Current proposal: {{ outputs.validated_refinement }}
 
-  # ============================================================
-  # PHASE 3: Wards (Pre and Post Validators)
-  # Shows: Wards layer with blocking and advisory validators
-  # ============================================================
-  - name: validated_refinement
-    instructions: |
-      Take the winning brainstorm and refine it into a concrete proposal.
 
-      Winning ideas: {{ outputs.parallel_brainstorm }}
+    Ensure the proposal:
 
-      Create a detailed proposal with:
-      - Executive summary
-      - Implementation steps
-      - Resource requirements
-      - Timeline estimate
+    1. Has clear, actionable steps
 
-    context:
-      from:
-        - parallel_brainstorm
-      include:
-        - output
-        - winner
+    2. Includes realistic timelines
 
-    wards:
-      pre:
-        - mode: blocking
-          # Polyglot pre-ward - inline Python validation
-          validator:
-            python: |
-              # Check if brainstorm output exists
-              if not content or len(content) < 50:
-                  result = {"valid": False, "reason": "No brainstorm output available"}
-              else:
-                  result = {"valid": True, "reason": "Input quality verified"}
+    3. Addresses potential risks
 
-      post:
-        - mode: advisory
-          # Polyglot post-ward - check for required sections
-          validator:
-            python: |
-              required = ['summary', 'steps', 'resources', 'timeline']
-              missing = [r for r in required if r.lower() not in content.lower()]
-              if missing:
-                  result = {"valid": False, "reason": f"Missing sections: {missing}"}
-              else:
-                  result = {"valid": True, "reason": "All required sections present"}
+    4. Has measurable success criteria
 
-        - mode: blocking
-          # Simple length check using polyglot JavaScript
-          validator:
-            javascript: |
-              const valid = content.length >= 500;
-              result = {
-                valid: valid,
-                reason: valid ? "Sufficient detail provided" : "Proposal too brief"
-              };
+    '
+  context:
+    from:
+    - validated_refinement
+  rules:
+    max_turns: 5
+    max_attempts: 3
+    loop_until:
+      python: "# Check for all required elements in the output\nchecks = {\n    'actionable':\
+        \ 'step' in content.lower() or 'action' in content.lower(),\n    'timeline':\
+        \ 'week' in content.lower() or 'month' in content.lower() or 'day' in content.lower(),\n\
+        \    'risks': 'risk' in content.lower() or 'challenge' in content.lower(),\n\
+        \    'metrics': 'metric' in content.lower() or 'measure' in content.lower()\
+        \ or 'kpi' in content.lower()\n}\npassed = all(checks.values())\nfailed =\
+        \ [k for k, v in checks.items() if not v]\nif passed:\n    result = {\"valid\"\
+        : True, \"reason\": \"All quality criteria met\"}\nelse:\n    result = {\"\
+        valid\": False, \"reason\": f\"Missing elements: {failed}\"}\n"
+    turn_prompt: 'Your previous response was missing some elements: {{ validation_reason
+      }}
 
-    rules:
-      max_turns: 2
+      Please revise to include all required components.
 
-    model: anthropic/claude-sonnet-4
+      '
+  model: google/gemini-2.5-flash
+- name: reforged_synthesis
+  instructions: 'Create a final synthesized document combining all insights.
 
-  # ============================================================
-  # PHASE 4: Loop-Until Validation
-  # Shows: Soundings layer with loop_until and turn_prompt
-  # ============================================================
-  - name: iterative_improvement
-    instructions: |
-      Review and improve the proposal to meet quality standards.
 
-      Current proposal: {{ outputs.validated_refinement }}
+    Original topic: {{ input.topic }}
 
-      Ensure the proposal:
-      1. Has clear, actionable steps
-      2. Includes realistic timelines
-      3. Addresses potential risks
-      4. Has measurable success criteria
+    Analysis: {{ outputs.initial_analysis }}
 
-    context:
-      from:
-        - validated_refinement
+    Improved proposal: {{ outputs.iterative_improvement }}
 
-    rules:
-      max_turns: 5
-      max_attempts: 3
-      # Polyglot loop_until - inline Python validation that runs after each turn
-      loop_until:
-        python: |
-          # Check for all required elements in the output
-          checks = {
-              'actionable': 'step' in content.lower() or 'action' in content.lower(),
-              'timeline': 'week' in content.lower() or 'month' in content.lower() or 'day' in content.lower(),
-              'risks': 'risk' in content.lower() or 'challenge' in content.lower(),
-              'metrics': 'metric' in content.lower() or 'measure' in content.lower() or 'kpi' in content.lower()
-          }
-          passed = all(checks.values())
-          failed = [k for k, v in checks.items() if not v]
-          if passed:
-              result = {"valid": True, "reason": "All quality criteria met"}
-          else:
-              result = {"valid": False, "reason": f"Missing elements: {failed}"}
 
-      turn_prompt: |
-        Your previous response was missing some elements: {{ validation_reason }}
-        Please revise to include all required components.
+    Produce a polished, professional document.
 
-    model: google/gemini-2.5-flash
+    '
+  context:
+    from:
+    - initial_analysis
+    - iterative_improvement
+    include:
+    - output
+  candidates:
+    factor: 2
+    models:
+    - anthropic/claude-sonnet-4
+    - openai/gpt-4o
+    evaluator_instructions: 'Select the better synthesis based on clarity, completeness,
+      and professionalism.
 
-  # ============================================================
-  # PHASE 5: Reforge (Iterative Refinement)
-  # Shows: Reforge layer with steps and validator
-  # ============================================================
-  - name: reforged_synthesis
-    instructions: |
-      Create a final synthesized document combining all insights.
+      '
+    reforge:
+      steps: 3
+      honing_prompt: 'The current output needs improvement: {{ validation_reason }}
 
-      Original topic: {{ input.topic }}
-      Analysis: {{ outputs.initial_analysis }}
-      Improved proposal: {{ outputs.iterative_improvement }}
 
-      Produce a polished, professional document.
+        Please expand and enhance the synthesis while maintaining quality.
 
-    context:
-      from:
-        - initial_analysis
-        - iterative_improvement
-      include:
-        - output
+        '
+  rules:
+    max_turns: 2
+- name: multi_perspective_review
+  instructions: 'Provide a critical review of the synthesized document from your unique
+    perspective.
 
-    soundings:
-      factor: 2
-      models:
-        - anthropic/claude-sonnet-4
-        - openai/gpt-4o
 
-      evaluator_instructions: |
-        Select the better synthesis based on clarity, completeness, and professionalism.
+    Document: {{ outputs.reforged_synthesis }}
 
-      reforge:
-        steps: 3
-        honing_prompt: |
-          The current output needs improvement: {{ validation_reason }}
 
-          Please expand and enhance the synthesis while maintaining quality.
+    Sounding {{ sounding_index }} of {{ sounding_factor }}:
 
-    rules:
-      max_turns: 2
+    {% if sounding_index == 0 %}
 
-  # ============================================================
-  # PHASE 6: Aggregate Mode (Combine All Soundings)
-  # Shows: Convergence section in aggregate mode
-  # ============================================================
-  - name: multi_perspective_review
-    instructions: |
-      Provide a critical review of the synthesized document from your unique perspective.
+    Review from a TECHNICAL perspective - focus on feasibility and implementation
+    details.
 
-      Document: {{ outputs.reforged_synthesis }}
+    {% elif sounding_index == 1 %}
 
-      Sounding {{ sounding_index }} of {{ sounding_factor }}:
-      {% if sounding_index == 0 %}
-      Review from a TECHNICAL perspective - focus on feasibility and implementation details.
-      {% elif sounding_index == 1 %}
-      Review from a BUSINESS perspective - focus on ROI, market fit, and scalability.
-      {% else %}
-      Review from a USER perspective - focus on usability, adoption, and experience.
-      {% endif %}
+    Review from a BUSINESS perspective - focus on ROI, market fit, and scalability.
 
-    context:
-      from:
-        - reforged_synthesis
+    {% else %}
 
-    soundings:
-      factor: 3
-      mode: aggregate
+    Review from a USER perspective - focus on usability, adoption, and experience.
 
-      aggregator_instructions: |
-        Combine all three perspective reviews into a comprehensive feedback document.
-        Organize by perspective (Technical, Business, User) and highlight:
-        - Key strengths identified
-        - Areas for improvement
-        - Recommended next steps
+    {% endif %}
 
-    rules:
-      max_turns: 1
+    '
+  context:
+    from:
+    - reforged_synthesis
+  candidates:
+    factor: 3
+    mode: aggregate
+    aggregator_instructions: 'Combine all three perspective reviews into a comprehensive
+      feedback document.
 
-    model: google/gemini-2.5-flash
+      Organize by perspective (Technical, Business, User) and highlight:
 
-  # ============================================================
-  # PHASE 7: Deterministic Phase (Tool-based)
-  # Shows: Input layer with tool instead of instructions
-  # ============================================================
-  - name: save_results
-    tool: set_state
-    inputs:
-      key: final_analysis
-      value: "{{ outputs.multi_perspective_review }}"
+      - Key strengths identified
 
-  # ============================================================
-  # PHASE 8: Handoffs (Dynamic Routing)
-  # Shows: Output layer with handoffs
-  # ============================================================
-  - name: route_next_action
-    instructions: |
-      Based on the multi-perspective review, determine the best next action.
+      - Areas for improvement
 
-      Review: {{ outputs.multi_perspective_review }}
+      - Recommended next steps
 
-      Decide whether to:
-      1. APPROVE - The proposal is ready for implementation
-      2. REVISE - More work needed on specific areas
-      3. ESCALATE - Needs senior review due to complexity/risk
+      '
+  rules:
+    max_turns: 1
+  model: google/gemini-2.5-flash
+- name: save_results
+  tool: set_state
+  inputs:
+    key: final_analysis
+    value: '{{ outputs.multi_perspective_review }}'
+- name: route_next_action
+  instructions: 'Based on the multi-perspective review, determine the best next action.
 
-      Use the route_to tool to direct to the appropriate next phase.
 
-    context:
-      from:
-        - multi_perspective_review
+    Review: {{ outputs.multi_perspective_review }}
 
-    handoffs:
-      - approve_proposal
-      - request_revision
-      - escalate_review
 
-    rules:
-      max_turns: 2
+    Decide whether to:
 
-    tackle:
-      - manifest
+    1. APPROVE - The proposal is ready for implementation
 
-    callouts: "Decision Point: Routing Next Action"
+    2. REVISE - More work needed on specific areas
 
-  # ============================================================
-  # PHASE 9: Output Extraction
-  # Shows: Output layer with extraction patterns
-  # ============================================================
-  - name: approve_proposal
-    instructions: |
-      Generate the final approval document.
+    3. ESCALATE - Needs senior review due to complexity/risk
 
-      Include:
-      - Approval statement
-      - Key decision factors
-      - Implementation authorization
-      - Success metrics to track
 
-      Format with clear headers.
+    Use the route_to tool to direct to the appropriate next phase.
 
-    output_extraction:
-      pattern: "APPROVED:\\s*(.+)"
-      store_as: approval_status
+    '
+  context:
+    from:
+    - multi_perspective_review
+  handoffs:
+  - approve_proposal
+  - request_revision
+  - escalate_review
+  rules:
+    max_turns: 2
+  traits:
+  - manifest
+  callouts: 'Decision Point: Routing Next Action'
+- name: approve_proposal
+  instructions: 'Generate the final approval document.
 
-    output_schema:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [approved, conditional, pending]
-        authorization_level:
-          type: string
-      required:
-        - status
 
-    rules:
-      max_turns: 1
+    Include:
 
-    model: anthropic/claude-sonnet-4
+    - Approval statement
 
-  # Revision handler
-  - name: request_revision
-    instructions: |
-      Document the specific revisions needed.
+    - Key decision factors
 
-      Based on the review feedback, list:
-      1. Specific areas requiring changes
-      2. Suggested improvements
-      3. Deadline for revisions
+    - Implementation authorization
 
-    rules:
-      max_turns: 1
+    - Success metrics to track
 
-  # Escalation handler
-  - name: escalate_review
-    instructions: |
-      Prepare an escalation brief for senior review.
 
-      Include:
-      - Summary of the proposal
-      - Reasons for escalation
-      - Specific questions for senior leadership
-      - Risk assessment
+    Format with clear headers.
 
-    rules:
-      max_turns: 1
+    '
+  output_extraction:
+    pattern: APPROVED:\s*(.+)
+    store_as: approval_status
+  output_schema:
+    type: object
+    properties:
+      status:
+        type: string
+        enum:
+        - approved
+        - conditional
+        - pending
+      authorization_level:
+        type: string
+    required:
+    - status
+  rules:
+    max_turns: 1
+  model: anthropic/claude-sonnet-4
+- name: request_revision
+  instructions: 'Document the specific revisions needed.
 
-    callouts: "Escalation: High Priority Review"
+
+    Based on the review feedback, list:
+
+    1. Specific areas requiring changes
+
+    2. Suggested improvements
+
+    3. Deadline for revisions
+
+    '
+  rules:
+    max_turns: 1
+- name: escalate_review
+  instructions: 'Prepare an escalation brief for senior review.
+
+
+    Include:
+
+    - Summary of the proposal
+
+    - Reasons for escalation
+
+    - Specific questions for senior leadership
+
+    - Risk assessment
+
+    '
+  rules:
+    max_turns: 1
+  callouts: 'Escalation: High Priority Review'

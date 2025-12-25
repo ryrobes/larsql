@@ -207,7 +207,7 @@ function InstanceGridView({
     const instance = props.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
+    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
     const hasFailed = instance.status === 'failed';
     const isChild = instance._isChild;
 
@@ -238,9 +238,9 @@ function InstanceGridView({
     const instance = props.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
-    const isCompleted = instance.phases?.every(p => p.status === 'completed');
-    const hasFailed = instance.status === 'failed' || instance.phases?.some(p => p.status === 'error');
+    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const isCompleted = instance.cells?.every(p => p.status === 'completed');
+    const hasFailed = instance.status === 'failed' || instance.cells?.some(p => p.status === 'error');
 
     let statusText = 'Unknown';
     let statusClass = '';
@@ -267,7 +267,7 @@ function InstanceGridView({
   };
 
   const PhasesRenderer = (props) => {
-    const phases = props.data.phases || [];
+    const phases = props.data.cells || [];
     const completed = phases.filter(p => p.status === 'completed').length;
     const running = phases.filter(p => p.status === 'running').length;
     const failed = phases.filter(p => p.status === 'error').length;
@@ -363,8 +363,8 @@ function InstanceGridView({
 
     const isRunning = rs?.has(instance.session_id);
     const isFinalizing = fs?.has(instance.session_id);
-    const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
-    const isCompleted = instance.phases?.every(p => p.status === 'completed');
+    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const isCompleted = instance.cells?.every(p => p.status === 'completed');
     const isChild = instance._isChild;
 
     const handleClick = (e, callback, ...args) => {
@@ -479,7 +479,7 @@ function InstanceGridView({
       headerName: 'Phases',
       width: 100,
       cellRenderer: PhasesRenderer,
-      valueGetter: (params) => params.data.phases?.length || 0,
+      valueGetter: (params) => params.data.cells?.length || 0,
       cellClass: 'center-cell'
     },
     {
@@ -569,7 +569,7 @@ function InstanceGridView({
     const instance = params.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
+    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
     const isChild = instance._isChild;
 
     const style = {};
@@ -593,7 +593,7 @@ function InstanceGridView({
     const instance = params.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.phases?.some(p => p.status === 'running');
+    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
     const isChild = instance._isChild;
 
     const classes = [];

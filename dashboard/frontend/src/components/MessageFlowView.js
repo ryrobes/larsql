@@ -7,7 +7,7 @@ import AudioGallery from './AudioGallery';
 import ContextMatrixView from './ContextMatrixView';
 import ContextCrossRefPanel from './ContextCrossRefPanel';
 import SpeciesWidget from './SpeciesWidget';
-import PhaseSpeciesBadges from './PhaseSpeciesBadges';
+import PhaseSpeciesBadges from './CellTypeBadges';
 import MessageItem from './MessageItem';
 import Header from './Header';
 import './MessageFlowView.css';
@@ -288,19 +288,19 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
   // Memoize phase grouping computation - this O(n²) algorithm was running inline in JSX on every render!
   // Now it only recomputes when the underlying data changes
   const { phaseGroups, soundingsBlockMap, reforgeBlockMap } = React.useMemo(() => {
-    // Build a map of phase_name -> soundings block for quick lookup
+    // Build a map of cell_name -> soundings block for quick lookup
     const soundingsBlockMap = {};
     if (data?.soundings_by_phase && data.soundings_by_phase.length > 0) {
       data.soundings_by_phase.forEach(block => {
-        soundingsBlockMap[block.phase_name] = block;
+        soundingsBlockMap[block.cell_name] = block;
       });
     }
 
-    // Build a map of phase_name -> reforge block for quick lookup
+    // Build a map of cell_name -> reforge block for quick lookup
     const reforgeBlockMap = {};
     if (data?.reforge_by_phase && data.reforge_by_phase.length > 0) {
       data.reforge_by_phase.forEach(block => {
-        reforgeBlockMap[block.phase_name] = block;
+        reforgeBlockMap[block.cell_name] = block;
       });
     }
 
@@ -310,13 +310,13 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     let currentMessages = [];
 
     (data?.main_flow || []).forEach((msg, i) => {
-      const phaseName = msg.phase_name || '_unknown_';
+      const phaseName = msg.cell_name || '_unknown_';
 
       if (phaseName !== currentPhase) {
         // Save the previous phase group
         if (currentPhase !== null && currentMessages.length > 0) {
           phaseGroups.push({
-            phase_name: currentPhase,
+            cell_name: currentPhase,
             messages: currentMessages,
             hasSoundings: !!soundingsBlockMap[currentPhase],
             hasReforge: !!reforgeBlockMap[currentPhase]
@@ -333,7 +333,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     // Don't forget the last phase group
     if (currentPhase !== null && currentMessages.length > 0) {
       phaseGroups.push({
-        phase_name: currentPhase,
+        cell_name: currentPhase,
         messages: currentMessages,
         hasSoundings: !!soundingsBlockMap[currentPhase],
         hasReforge: !!reforgeBlockMap[currentPhase]
@@ -343,7 +343,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     // Also check for soundings that might not have messages in main_flow
     if (data?.soundings_by_phase && data.soundings_by_phase.length > 0) {
       data.soundings_by_phase.forEach(block => {
-        const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+        const existingGroup = phaseGroups.find(g => g.cell_name === block.cell_name);
         if (!existingGroup) {
           // Find the right position based on first_timestamp
           let insertIdx = phaseGroups.length;
@@ -355,10 +355,10 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             }
           }
           phaseGroups.splice(insertIdx, 0, {
-            phase_name: block.phase_name,
+            cell_name: block.cell_name,
             messages: [],
             hasSoundings: true,
-            hasReforge: !!reforgeBlockMap[block.phase_name],
+            hasReforge: !!reforgeBlockMap[block.cell_name],
             soundingsOnly: true
           });
         }
@@ -368,7 +368,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
     // Also check for reforge phases that might not have messages in main_flow
     if (data?.reforge_by_phase && data.reforge_by_phase.length > 0) {
       data.reforge_by_phase.forEach(block => {
-        const existingGroup = phaseGroups.find(g => g.phase_name === block.phase_name);
+        const existingGroup = phaseGroups.find(g => g.cell_name === block.cell_name);
         if (!existingGroup) {
           // Find the right position based on first_timestamp
           let insertIdx = phaseGroups.length;
@@ -380,9 +380,9 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             }
           }
           phaseGroups.splice(insertIdx, 0, {
-            phase_name: block.phase_name,
+            cell_name: block.cell_name,
             messages: [],
-            hasSoundings: !!soundingsBlockMap[block.phase_name],
+            hasSoundings: !!soundingsBlockMap[block.cell_name],
             hasReforge: true,
             reforgeOnly: true
           });
@@ -610,8 +610,8 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
       m.role === msg.role &&
       m.node_type === msg.node_type &&
       m.turn_number === msg.turn_number &&
-      m.sounding_index === msg.sounding_index &&
-      m.phase_name === msg.phase_name
+      m.candidate_index === msg.candidate_index &&
+      m.cell_name === msg.cell_name
     );
   }, [data?.all_messages]);
 
@@ -844,7 +844,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
             </div>
             <div className="stats">
               <span>Total Messages: {data.total_messages}</span>
-              <span>Soundings: {data.soundings.length}</span>
+              <span>Soundings: {data.candidates.length}</span>
               <span>Reforge Steps: {data.reforge_steps.length}</span>
               <PhaseSpeciesBadges sessionId={data.session_id} />
             </div>
@@ -963,13 +963,13 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                       <div className="inline-soundings-header">
                         <span className="soundings-icon">🔱</span>
                         <span className="soundings-phase-name">Soundings</span>
-                        <span className="soundings-count">{block.soundings.length} parallel attempts</span>
+                        <span className="soundings-count">{block.candidates.length} parallel attempts</span>
                         {block.winner_index !== null && (
                           <span className="soundings-winner">Winner: S{block.winner_index}</span>
                         )}
                       </div>
                       <div className="soundings-grid">
-                        {block.soundings.map((sounding) => (
+                        {block.candidates.map((sounding) => (
                           <div
                             key={`${phaseName}-${sounding.index}`}
                             className={`sounding-branch ${sounding.is_winner ? 'winner-branch' : ''}`}
@@ -1034,7 +1034,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
                   // Render phase groups
                   return phaseGroups.map((group, groupIdx) => {
-                    const phaseName = group.phase_name;
+                    const phaseName = group.cell_name;
                     const soundingsBlock = soundingsBlockMap[phaseName];
                     const reforgeBlock = reforgeBlockMap[phaseName];
                     const shouldShowSoundings = soundingsBlock && !shownSoundingsPhases.has(phaseName);
@@ -1065,7 +1065,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
 
                     // Add soundings costs if this phase has them
                     if (soundingsBlock) {
-                      soundingsBlock.soundings.forEach(sounding => {
+                      soundingsBlock.candidates.forEach(sounding => {
                         sounding.messages.forEach(msg => {
                           phaseCost += msg.cost || 0;
                           phaseTokens += msg.tokens_in || 0;
@@ -1112,7 +1112,7 @@ function MessageFlowView({ onBack, initialSessionId, onSessionChange, hideContro
                           {group.messages
                             .filter(({ msg }) => {
                               // Skip messages that are part of a sounding (shown in soundings block)
-                              if (soundingsBlock && msg.sounding_index !== null && msg.sounding_index !== undefined) {
+                              if (soundingsBlock && msg.candidate_index !== null && msg.candidate_index !== undefined) {
                                 return false;
                               }
                               // Skip messages that are part of a reforge (shown in reforge block)

@@ -146,7 +146,7 @@ function WorkshopPage() {
       <header className="workshop-header">
         <div className="workshop-header-left">
           <Icon icon="mdi:anchor" width="24" className="workshop-logo" />
-          <h1 className="workshop-title">Windlass Workshop</h1>
+          <h1 className="workshop-title">RVBBIT Workshop</h1>
           {isDirty && <span className="dirty-indicator" title="Unsaved changes">*</span>}
         </div>
 
@@ -200,7 +200,7 @@ function WorkshopPage() {
             <button
               className="toolbar-btn primary"
               onClick={handleRun}
-              disabled={!cascade.phases || cascade.phases.length === 0}
+              disabled={!cascade.cells || cascade.cells.length === 0}
               title="Run Cascade"
             >
               <Icon icon="mdi:play" width="18" />

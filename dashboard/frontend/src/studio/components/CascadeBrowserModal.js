@@ -7,7 +7,7 @@ import './CascadeBrowserModal.css';
  *
  * Displays files from multiple directories:
  * - Examples
- * - Tools (Tackle)
+ * - Tools (Traits)
  * - Cascades
  * - Playground (scratchpad)
  *
@@ -18,7 +18,7 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState(new Set(['examples', 'tackle']));
+  const [expandedCategories, setExpandedCategories] = useState(new Set(['examples', 'traits']));
   const [selectedFile, setSelectedFile] = useState(null);
 
   // Fetch file list on mount - use Studio's /list endpoint
@@ -201,7 +201,7 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
                         <div className="file-meta">
                           <span>
                             <Icon icon="mdi:puzzle" width="12" />
-                            {file.phase_count} phase{file.phase_count !== 1 ? 's' : ''}
+                            {file.cell_count} cell{file.cell_count !== 1 ? 's' : ''}
                           </span>
                           {file.input_count > 0 && (
                             <span>

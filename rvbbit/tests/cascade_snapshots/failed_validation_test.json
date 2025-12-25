@@ -1,0 +1,119 @@
+{
+  "snapshot_name": "failed_validation_test",
+  "description": "",
+  "captured_at": "2025-12-02T07:16:25.439806",
+  "session_id": "test_session_1",
+  "cascade_file": "examples/validation_test_flow.json",
+  "input": {},
+  "execution": {
+    "cells": [
+      {
+        "name": "greeting",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": null,
+            "tool_results": []
+          },
+          {
+            "turn_number": 2,
+            "agent_response": {
+              "content": "Hello SkelrigenUser, it's nice to meet you. Is there something I can help you with or would you like to chat?"
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 3,
+            "agent_response": {
+              "content": "Hello SkelrigenUser, it's nice to meet you! Is there something I can help you with or would you like to chat?"
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 4,
+            "agent_response": {
+              "content": "Hello SkelrigenUser!"
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 5,
+            "agent_response": {
+              "content": "Hello SkelrigenUser! It's nice to meet you. Is there something I can help you with today?"
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 6,
+            "agent_response": {
+              "content": "Hello WindlassUser, it's nice to meet you. Is there something I can help you with or would you like to chat?"
+            },
+            "tool_results": []
+          }
+        ]
+      },
+      {
+        "name": "echo_name",
+        "turns": [
+          {
+            "turn_number": 1,
+            "agent_response": null,
+            "tool_results": []
+          },
+          {
+            "turn_number": 2,
+            "agent_response": {
+              "content": "The user's name \"SkelrigenUser\" spelled backwards is \"resreugnilreks\"."
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 3,
+            "agent_response": {
+              "content": "The name \"SkelrigenUser\" spelled backwards is \"resuNegirleks\"."
+            },
+            "tool_results": []
+          },
+          {
+            "turn_number": 4,
+            "agent_response": null,
+            "tool_results": []
+          },
+          {
+            "turn_number": 5,
+            "agent_response": {
+              "content": "The user's name \"SkelrigenUser\" spelled backwards is \"resUnegirlekS\"."
+            },
+            "tool_results": [
+              {
+                "tool": "unknown",
+                "result": "resUnegirlekS"
+              }
+            ]
+          },
+          {
+            "turn_number": 6,
+            "agent_response": {
+              "content": "Your name \"WindlassUser\" spelled backwards is \"resUssaldniW\"."
+            },
+            "tool_results": [
+              {
+                "tool": "unknown",
+                "result": "resUssaldniW"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "final_state": {},
+    "completion_status": "failed",
+    "error_count": 3,
+    "cells_executed": [
+      "greeting",
+      "echo_name"
+    ]
+  }
+}

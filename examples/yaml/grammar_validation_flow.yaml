@@ -3,23 +3,26 @@ description: Demonstrates grammar validation with retry mechanism
 inputs_schema:
   style: Writing style (formal, casual, technical)
   topic: The topic to write about
-phases:
-  - instructions: |-
-      Write a well-structured paragraph about: {{ input.topic }}
+cells:
+- instructions: 'Write a well-structured paragraph about: {{ input.topic }}
 
-      Style: {{ input.style | default('professional') }}
 
-      Ensure proper grammar, spelling, and punctuation.
-    name: draft_content
-    rules:
-      loop_until: grammar_check
-      max_attempts: 3
-      max_turns: 1
-      retry_instructions: |-
-        Grammar validation failed: {{ validation_error }}
+    Style: {{ input.style | default(''professional'') }}
 
-        Please revise your text to fix these issues. This is attempt {{ attempt }} of {{ max_attempts }}.
-  - handoffs:
-      - end
-    instructions: The content has been validated. Confirm it's ready for publication with a brief summary.
-    name: finalize
+
+    Ensure proper grammar, spelling, and punctuation.'
+  name: draft_content
+  rules:
+    loop_until: grammar_check
+    max_attempts: 3
+    max_turns: 1
+    retry_instructions: 'Grammar validation failed: {{ validation_error }}
+
+
+      Please revise your text to fix these issues. This is attempt {{ attempt }} of
+      {{ max_attempts }}.'
+- handoffs:
+  - end
+  instructions: The content has been validated. Confirm it's ready for publication
+    with a brief summary.
+  name: finalize

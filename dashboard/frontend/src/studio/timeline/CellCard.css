@@ -2,7 +2,7 @@
    PHASE CARD - Compact Horizontal Card
    ============================================ */
 
-.phase-card {
+.cell-card {
   display: flex;
   flex-direction: column;
   width: 240px;
@@ -25,11 +25,11 @@
   will-change: border-color;
 }
 
-.phase-card:hover {
+.cell-card:hover {
   border-color: #2a263a;
 }
 
-.phase-card-drop-target {
+.cell-card-drop-target {
   border-color: #00e5ff !important;
   box-shadow: 0 0 20px rgba(0, 229, 255, 0.6);
   background-color: rgba(0, 229, 255, 0.05);
@@ -39,12 +39,12 @@
    STACKED CARD EFFECT (for soundings/parallel phases)
    ============================================ */
 
-.phase-card-stacked {
+.cell-card-stacked {
   z-index: 1; /* Main card on top */
 }
 
-.phase-card-stacked::before,
-.phase-card-stacked::after {
+.cell-card-stacked::before,
+.cell-card-stacked::after {
   content: '';
   position: absolute;
   width: 100%;
@@ -58,25 +58,25 @@
 }
 
 /* Light up shadow borders when selected */
-.phase-card-selected.phase-card-stacked::before,
-.phase-card-selected.phase-card-stacked::after {
+.cell-card-selected.cell-card-stacked::before,
+.cell-card-selected.cell-card-stacked::after {
   border-color: #00e5ff;
 
 }
 
 /* Shift content to upper-left to match visual center of stack */
-.phase-card-stacked > * {
+.cell-card-stacked > * {
   transform: translate(-3px, -5px);
 }
 
 /* Upper-left shadow card */
-.phase-card-stacked::before {
+.cell-card-stacked::before {
   top: -6px;
   left: -6px;
 }
 
 /* Lower-right shadow card */
-.phase-card-stacked::after {
+.cell-card-stacked::after {
   top: 6px;
   left: 6px;
   z-index: -2; /* Further back than ::before */
@@ -88,8 +88,8 @@
    ============================================ */
 
 /* Diagonal scan lines pattern for active states */
-.phase-card-running:not(.phase-card-selected),
-.phase-card-success:not(.phase-card-selected) {
+.cell-card-running:not(.cell-card-selected),
+.cell-card-success:not(.cell-card-selected) {
   background-color: #0c0a1a; /* Solid black base */
   background-image:
     repeating-linear-gradient(
@@ -102,7 +102,7 @@
 }
 
 /* RUNNING - Cyan/teal pulsing glow */
-.phase-card-running:not(.phase-card-selected) {
+.cell-card-running:not(.cell-card-selected) {
   border-color: #00e5ff;
   animation: running-pulse 2s ease-in-out infinite;
 }
@@ -125,7 +125,7 @@
 }
 
 /* SUCCESS - Settled green/cyan glow with pop */
-.phase-card-success:not(.phase-card-selected) {
+.cell-card-success:not(.cell-card-selected) {
   border-color: #10b981;
   box-shadow:
     0 0 6px rgba(16, 185, 129, 0.4),
@@ -159,7 +159,7 @@
 }
 
 /* ERROR - Shocking pink/red glow */
-.phase-card-error:not(.phase-card-selected) {
+.cell-card-error:not(.cell-card-selected) {
   border-color: #ff006e;
   background-color: #0c0a1a;
   background-image:
@@ -176,7 +176,7 @@
 }
 
 /* SELECTED state - brightest cyan, always wins */
-.phase-card-selected {
+.cell-card-selected {
   border-color: #00e5ff !important;
   background-color: #0c0a1a !important;
   background-image:
@@ -195,7 +195,7 @@
 }
 
 /* Selected + Running: cyan with breathing glow */
-.phase-card-selected.phase-card-running {
+.cell-card-selected.cell-card-running {
   animation: selected-running-hint 1.5s ease-in-out infinite !important;
 }
 
@@ -215,13 +215,13 @@
   }
 }
 
-.phase-card-stale {
+.cell-card-stale {
   border-color: #64748b;
   border-style: dashed;
 }
 
 /* Highlight animation when navigating from sidebar */
-.phase-card.cell-highlight {
+.cell-card.cell-highlight {
   animation: cell-highlight 1.5s ease-out;
 }
 
@@ -242,7 +242,7 @@
    TOP ROW (Index + Status)
    ============================================ */
 
-.phase-card-top-row {
+.cell-card-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -255,14 +255,14 @@
    TYPE ROW (Icon + Label - nested in top row)
    ============================================ */
 
-.phase-card-type-row {
+.cell-card-type-row {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.phase-card-type-label {
+.cell-card-type-label {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -271,42 +271,42 @@
 }
 
 /* Status Icons - fixed width container */
-.phase-card-status-spinner {
+.cell-card-status-spinner {
   width: 14px;
   height: 14px;
   border: 2px solid #1a1628;
   border-top-color: #00e5ff;
   border-radius: 50%;
-  animation: phase-card-spin 0.8s linear infinite;
+  animation: cell-card-spin 0.8s linear infinite;
   flex-shrink: 0;
   filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.6));
 }
 
-@keyframes phase-card-spin {
+@keyframes cell-card-spin {
   to { transform: rotate(360deg); }
 }
 
-.phase-card-status-success,
-.phase-card-status-error {
+.cell-card-status-success,
+.cell-card-status-error {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
 }
 
-.phase-card-status-success {
+.cell-card-status-success {
   color: #00e5ff;
   font-size: 18px;
   filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.8));
 }
 
-.phase-card-status-error {
+.cell-card-status-error {
   color: #ff006e;
   font-size: 18px;
   filter: drop-shadow(0 0 6px rgba(255, 0, 110, 0.6));
 }
 
-.phase-card-status-stale,
-.phase-card-status-pending {
+.cell-card-status-stale,
+.cell-card-status-pending {
   color: #475569;
   font-size: 16px;
   width: 16px;
@@ -318,7 +318,7 @@
    NAME
    ============================================ */
 
-.phase-card-name {
+.cell-card-name {
   font-size: 13px;
   font-weight: 500;
   color: #f0f4f8;
@@ -334,7 +334,7 @@
    BOTTOM ROW (Stats + Badges - all horizontal)
    ============================================ */
 
-.phase-card-bottom-row {
+.cell-card-bottom-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -342,7 +342,7 @@
   justify-content: center;
 }
 
-.phase-card-stat {
+.cell-card-stat {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -350,17 +350,17 @@
   color: #64748b;
 }
 
-.phase-card-stat-rows {
+.cell-card-stat-rows {
   color: #34d399;
 }
 
-.phase-card-stat-cost {
+.cell-card-stat-cost {
   color: #5eead4; /* Brighter emerald (emerald-300) for better visibility on dim cards */
   font-weight: 700; /* Match header boldness */
   text-shadow: 0 0 8px rgba(52, 211, 153, 0.4); /* Subtle glow for visibility */
 }
 
-.phase-card-stat-model {
+.cell-card-stat-model {
   /* Color set dynamically via inline style to match provider */
   max-width: 150px;
   overflow: hidden;
@@ -369,7 +369,7 @@
   white-space: nowrap;
 }
 
-.phase-card-badge {
+.cell-card-badge {
   font-size: 8px;
   padding: 2px 4px;
   border-radius: 3px;
@@ -378,22 +378,22 @@
   letter-spacing: 0.3px;
 }
 
-.phase-card-badge-cached {
+.cell-card-badge-cached {
   background-color: rgba(167, 139, 250, 0.15);
   color: #a78bfa;
 }
 
-.phase-card-badge-fixed {
+.cell-card-badge-fixed {
   background-color: rgba(52, 211, 153, 0.15);
   color: #34d399;
 }
 
-.phase-card-badge-soundings {
+.cell-card-badge-soundings {
   background-color: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
 
-.phase-card-badge-reforge {
+.cell-card-badge-reforge {
   background-color: rgba(96, 165, 250, 0.15);
   color: #60a5fa;
 }
@@ -402,7 +402,7 @@
    SOUNDINGS INDICATOR ROW
    ============================================ */
 
-.phase-card-soundings-row {
+.cell-card-candidates-row {
   display: flex;
   align-items: center;
   justify-content: left;
@@ -412,7 +412,7 @@
   /* border-top: 1px solid #1a1628; */
 }
 
-.phase-card-sounding-dot {
+.cell-card-candidate-dot {
   width: 10px;
   height: 10px;
   border-radius: 2px;
@@ -421,7 +421,7 @@
   transition: all 0.2s ease;
 }
 
-.phase-card-sounding-dot.winner {
+.cell-card-candidate-dot.winner {
   background-color: #fbbf24;
   border: 1px solid #f59e0b;
   box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);

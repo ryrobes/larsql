@@ -1,31 +1,40 @@
 type_id: entity_extractor
 display_name: Entity Extraction (NER)
 icon: mdi:tag-multiple
-color: "#60a5fa"
+color: '#60a5fa'
 name_prefix: ner
-description: "Extract named entities (people, places, organizations, dates, etc.)"
-category: "llm"
+description: Extract named entities (people, places, organizations, dates, etc.)
+category: llm
 tags:
-  - "intermediate"
-  - "ai-ml"
-  - "standalone"
-
+- intermediate
+- ai-ml
+- standalone
 template:
-  instructions: |
-    Extract all named entities from:
+  instructions: 'Extract all named entities from:
+
     {{ input.text | default(outputs.previous_phase) }}
 
+
     Find:
+
     - PERSON: People, characters
+
     - ORG: Companies, organizations
+
     - LOC: Locations, places
+
     - DATE: Dates, times
+
     - PRODUCT: Products, services
+
     - OTHER: Other significant entities
 
+
     Return as JSON array with entity text, type, and context.
+
+    '
   model: google/gemini-2.5-flash
-  tackle: []
+  traits: []
   output_schema:
     type: array
     items:
@@ -35,9 +44,17 @@ template:
           type: string
         type:
           type: string
-          enum: [PERSON, ORG, LOC, DATE, PRODUCT, OTHER]
+          enum:
+          - PERSON
+          - ORG
+          - LOC
+          - DATE
+          - PRODUCT
+          - OTHER
         context:
           type: string
-      required: [text, type]
+      required:
+      - text
+      - type
   rules:
     max_turns: 1

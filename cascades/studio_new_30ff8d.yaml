@@ -1,7 +1,7 @@
 cascade_id: studio_new_30ff8d
 description: New cascade
 inputs_schema: {}
-phases:
+cells:
 - name: browser_1
   tool: linux_shell_dangerous
   inputs:
@@ -24,7 +24,7 @@ phases:
 
     '
   model: anthropic/claude-sonnet-4
-  tackle: []
+  traits: []
   handoffs:
   - phase_3
 - name: phase_3
@@ -38,4 +38,4 @@ phases:
 
     '
   model: anthropic/claude-sonnet-4
-  tackle: []
+  traits: []

@@ -4,12 +4,12 @@
   "inputs_schema": {
     "task": "The task to complete with cost-quality tradeoff"
   },
-  "phases": [
+  "cells": [
     {
       "name": "generate",
       "instructions": "Complete this task: {{ input.task }}",
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 3,
         "evaluator_instructions": "Evaluate the quality of each response. Consider clarity, completeness, and usefulness.",
         "models": [

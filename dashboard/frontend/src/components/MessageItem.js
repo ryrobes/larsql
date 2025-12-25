@@ -264,7 +264,7 @@ const MessageItem = React.memo(function MessageItem({
   const hasContent = msg.content && (typeof msg.content === 'string' ? msg.content.length > 200 : true);
   const isExpandable = hasFullRequest || hasContent;
   const messageCount = hasFullRequest ? msg.full_request.messages.length : 0;
-  const fromSounding = msg.sounding_index !== null;
+  const fromSounding = msg.candidate_index !== null;
   const fromReforge = msg.reforge_step !== null;
   const isFollowUp = msg.node_type === 'follow_up';
   const isInternal = msg.is_internal;
@@ -299,9 +299,9 @@ const MessageItem = React.memo(function MessageItem({
   // Image click handler
   const handleImageClick = useCallback((img) => {
     if (onImageClick) {
-      onImageClick({ ...img, phase: msg.phase_name, messageIndex: globalIndex });
+      onImageClick({ ...img, phase: msg.cell_name, messageIndex: globalIndex });
     }
-  }, [onImageClick, msg.phase_name, globalIndex]);
+  }, [onImageClick, msg.cell_name, globalIndex]);
 
   // Cross-ref click handler
   const handleCrossRefClick = useCallback((e) => {
@@ -336,7 +336,7 @@ const MessageItem = React.memo(function MessageItem({
           >
             {categoryStyle.label}
           </span>
-          {fromSounding && <span className="sounding-badge">S{msg.sounding_index}</span>}
+          {fromSounding && <span className="sounding-badge">S{msg.candidate_index}</span>}
           {fromReforge && <span className="reforge-badge">R{msg.reforge_step}</span>}
           <span className="role-badge" data-role={msg.role}>{msg.role}</span>
           {msg.node_type !== msg.role && (
@@ -620,7 +620,7 @@ const ExpandedFullRequest = React.memo(function ExpandedFullRequest({
                           alt={`LLM message ${i} attachment ${imgIdx + 1}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onImageClick({ url: img.url, phase: msg.phase_name, index: globalIndex, direction: 'in' });
+                            onImageClick({ url: img.url, phase: msg.cell_name, index: globalIndex, direction: 'in' });
                           }}
                         />
                       ) : (

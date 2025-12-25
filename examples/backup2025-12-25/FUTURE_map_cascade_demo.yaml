@@ -35,7 +35,7 @@ phases:
   - name: process_customers
     tool: map_cascade  # NEW: Dedicated mapping tool
     inputs:
-      cascade: "tackle/customer_analytics.yaml"
+      cascade: "traits/customer_analytics.yaml"
 
       # Array to map over - each item spawns one cascade
       map_over: |
@@ -119,7 +119,7 @@ phases:
     tackle: []
 
 ---
-# tackle/customer_analytics.yaml (referenced above)
+# traits/customer_analytics.yaml (referenced above)
 cascade_id: customer_analytics
 description: Analyze single customer metrics
 

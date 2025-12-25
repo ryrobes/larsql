@@ -4,13 +4,13 @@
   "inputs_schema": {
     "task": "A task description that will generate a substantial prompt"
   },
-  "phases": [
+  "cells": [
     {
       "name": "analyze_with_multi_model",
       "instructions": "You are a helpful AI assistant analyzing a task.\n\nTask: {{ input.task }}\n\nPlease provide a detailed analysis covering:\n\n1. **Problem Understanding**: Explain what the task is asking for in your own words\n2. **Key Challenges**: Identify 3-5 potential challenges or edge cases\n3. **Approach**: Outline a step-by-step approach to solve this\n4. **Considerations**: Note any important considerations (performance, security, scalability, etc.)\n5. **Example**: Provide a concrete example demonstrating the solution\n\nBe thorough and comprehensive in your analysis.",
       "model": "x-ai/grok-4.1-fast",
-      "tackle": [],
-      "soundings": {
+      "traits": [],
+      "candidates": {
         "factor": 6,
         "models": [
           "x-ai/grok-4.1-fast",

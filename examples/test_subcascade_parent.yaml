@@ -1,12 +1,7 @@
-# Parent cascade that calls a sub-cascade
-# This tests that sub-cascade paths resolve correctly
-
 cascade_id: test_subcascade_parent
 description: Test sub-cascade path resolution from Studio
-
-phases:
-  - name: call_child
-    tool: windlass_data
-    inputs:
-      # Relative path to child cascade (in same directory)
-      code: examples/test_subcascade_child.yaml
+cells:
+- name: call_child
+  tool: windlass_data
+  inputs:
+    code: examples/test_subcascade_child.yaml

@@ -3,7 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import ModelIcon, { getProviderColor, getProvider } from '../../components/ModelIcon';
 import { Badge } from '../../components';
-import './PhaseCard.css';
+import './CellCard.css';
 
 /**
  * Format milliseconds to human-readable time
@@ -30,16 +30,16 @@ const formatDuration = (ms) => {
 };
 
 /**
- * PhaseCard - Compact horizontal phase card for timeline
+ * CellCard - Compact horizontal cell card for timeline
  *
  * Shows:
  * - Type icon + badge
- * - Phase name
+ * - Cell name
  * - Status indicator
  * - Duration/row count
  * - Quick actions
  */
-const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSelect, defaultModel }) => {
+const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel }) => {
   const status = cellState?.status || 'pending';
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
@@ -47,104 +47,104 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
   // Make card droppable for creating handoffs
   const { setNodeRef, isOver } = useDroppable({
-    id: `phase-card-${phase.name}`,
+    id: `cell-card-${cell.name}`,
     data: {
-      type: 'phase-card',
-      phaseName: phase.name,
-      phaseIndex: index,
+      type: 'cell-card',
+      cellName: cell.name,
+      cellIndex: index,
     },
   });
 
-  // Extract model - from phase YAML or cellState (executed) or default
-  // Only show for LLM phases (deterministic data phases don't use models)
-  const isLLMPhase = !!(phase.tool === 'windlass_data' || phase.instructions);
-  const modelToDisplay = isLLMPhase ? (phase.model || cellState?.model || defaultModel) : null;
+  // Extract model - from cell YAML or cellState (executed) or default
+  // Only show for LLM cells (deterministic data cells don't use models)
+  const isLLMCell = !!(cell.tool === 'windlass_data' || cell.instructions);
+  const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
 
   // Debug logging
   React.useEffect(() => {
-    if (isLLMPhase) {
-      console.log('[PhaseCard]', phase.name, {
-        isLLMPhase,
-        phaseModel: phase.model,
+    if (isLLMCell) {
+      console.log('[CellCard]', cell.name, {
+        isLLMCell,
+        cellModel: cell.model,
         cellStateModel: cellState?.model,
         defaultModel,
         modelToDisplay
       });
     }
-  }, [phase.name, isLLMPhase, phase.model, cellState?.model, defaultModel, modelToDisplay]);
+  }, [cell.name, isLLMCell, cell.model, cellState?.model, defaultModel, modelToDisplay]);
 
-  // Extract soundings config from YAML (before execution)
-  const soundingsConfig = phase.soundings;
-  const hasSoundings = soundingsConfig && soundingsConfig.factor && soundingsConfig.factor > 1;
-  const soundingsFactor = hasSoundings ? soundingsConfig.factor : null;
-  const reforgeSteps = hasSoundings && soundingsConfig.reforge ? soundingsConfig.reforge.steps : null;
+  // Extract candidates config from YAML (before execution)
+  const candidatesConfig = cell.candidates;
+  const hasCandidates = candidatesConfig && candidatesConfig.factor && candidatesConfig.factor > 1;
+  const candidatesFactor = hasCandidates ? candidatesConfig.factor : null;
+  const reforgeSteps = hasCandidates && candidatesConfig.reforge ? candidatesConfig.reforge.steps : null;
 
-  // Extract sounding info from logs (after execution)
-  const soundingInfo = React.useMemo(() => {
-    if (!phaseLogs || phaseLogs.length === 0) return null;
+  // Extract candidate info from logs (after execution)
+  const candidateInfo = React.useMemo(() => {
+    if (!cellLogs || cellLogs.length === 0) return null;
 
-    const soundingIndices = new Set();
+    const candidateIndices = new Set();
     let winningIndex = null;
 
-    for (const log of phaseLogs) {
-      if (log.sounding_index !== null && log.sounding_index !== undefined) {
-        soundingIndices.add(log.sounding_index);
+    for (const log of cellLogs) {
+      if (log.candidate_index !== null && log.candidate_index !== undefined) {
+        candidateIndices.add(log.candidate_index);
       }
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winningIndex = log.winning_sounding_index;
       }
     }
 
-    if (soundingIndices.size === 0) return null;
+    if (candidateIndices.size === 0) return null;
 
     return {
-      soundings: Array.from(soundingIndices).sort((a, b) => a - b),
+      candidates: Array.from(candidateIndices).sort((a, b) => a - b),
       winner: winningIndex
     };
-  }, [phaseLogs]);
+  }, [cellLogs]);
 
-  // Type info - check for tool field or if it's a regular LLM phase
+  // Type info - check for tool field or if it's a regular LLM cell
   const typeInfo = {
     sql_data: { label: 'SQL', icon: 'mdi:database', color: '#60a5fa' },
     python_data: { label: 'Python', icon: 'mdi:language-python', color: '#fbbf24' },
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
-    llm_phase: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
+    llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
     windlass_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize
     linux_shell_dangerous: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize (host)
   };
-  const phaseType = phase.tool || (phase.instructions ? 'llm_phase' : 'python_data');
-  const info = typeInfo[phaseType] || typeInfo.python_data;
+  const cellType = cell.tool || (cell.instructions ? 'llm_cell' : 'python_data');
+  const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Status icon
   const StatusIcon = () => {
     switch (status) {
       case 'running':
-        return <span className="phase-card-status-spinner" />;
+        return <span className="cell-card-status-spinner" />;
       case 'success':
-        return <Icon icon="mdi:check-circle" className="phase-card-status-success" />;
+        return <Icon icon="mdi:check-circle" className="cell-card-status-success" />;
       case 'error':
-        return <Icon icon="mdi:alert-circle" className="phase-card-status-error" />;
+        return <Icon icon="mdi:alert-circle" className="cell-card-status-error" />;
       case 'stale':
-        return <Icon icon="mdi:circle-outline" className="phase-card-status-stale" />;
+        return <Icon icon="mdi:circle-outline" className="cell-card-status-stale" />;
       default:
-        return <Icon icon="mdi:circle-outline" className="phase-card-status-pending" />;
+        return <Icon icon="mdi:circle-outline" className="cell-card-status-pending" />;
     }
   };
 
   return (
     <div
       ref={setNodeRef}
-      className={`phase-card phase-card-${status} ${isSelected ? 'phase-card-selected' : ''} ${hasSoundings ? 'phase-card-stacked' : ''} ${isOver ? 'phase-card-drop-target' : ''}`}
+      className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasCandidates ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''}`}
       onClick={onSelect}
-      data-phase-name={phase.name}
+      data-cell-name={cell.name}
     >
       {/* Top row: Type (Icon + Label) + Status */}
-      <div className="phase-card-top-row">
-        <div className="phase-card-type-row">
+      <div className="cell-card-top-row">
+        <div className="cell-card-type-row">
           <Icon icon={info.icon} width="16" style={{ color: info.color }} />
-          <span className="phase-card-type-label" style={{ color: info.color }}>
+          <span className="cell-card-type-label" style={{ color: info.color }}>
             {info.label}
           </span>
           {hasImages && (
@@ -155,15 +155,15 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
       </div>
 
       {/* Name */}
-      <div className="phase-card-name" title={phase.name}>
-        {phase.name}
+      <div className="cell-card-name" title={cell.name}>
+        {cell.name}
       </div>
 
       {/* Bottom row: Stats + Badges (all horizontal) */}
-      <div className="phase-card-bottom-row">
+      <div className="cell-card-bottom-row">
         {/* Duration (after execution) */}
         {cellState?.duration !== undefined && cellState.duration !== null && (
-          <span className="phase-card-stat">
+          <span className="cell-card-stat">
             <Icon icon="mdi:clock-outline" width="12" />
             {formatDuration(cellState.duration)}
           </span>
@@ -171,7 +171,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
         {/* Row count (after execution) */}
         {cellState?.result?.row_count !== undefined && (
-          <span className="phase-card-stat phase-card-stat-rows">
+          <span className="cell-card-stat cell-card-stat-rows">
             <Icon icon="mdi:table" width="12" />
             {cellState.result.row_count}
           </span>
@@ -179,7 +179,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
 
         {/* Cost (after execution) */}
         {cellState?.cost > 0 && (
-          <span className="phase-card-stat phase-card-stat-cost" title="LLM cost">
+          <span className="cell-card-stat cell-card-stat-cost" title="LLM cost">
             <Icon icon="mdi:currency-usd" width="12" />
             {cellState.cost < 0.01 ? '<$0.01' : `$${cellState.cost.toFixed(4)}`}
           </span>
@@ -188,7 +188,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
         {/* Model - show from YAML or default (BEFORE execution) */}
         {modelToDisplay && (
           <span
-            className="phase-card-stat phase-card-stat-model"
+            className="cell-card-stat cell-card-stat-model"
             title={modelToDisplay}
             style={{ color: getProviderColor(getProvider(modelToDisplay)) }}
           >
@@ -198,7 +198,7 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
         )}
 
         {/* Reforge steps - from YAML (BEFORE execution) */}
-        {reforgeSteps && !soundingInfo && (
+        {reforgeSteps && !candidateInfo && (
           <Badge variant="label" color="purple" size="sm">
             {reforgeSteps}x reforge
           </Badge>
@@ -219,14 +219,14 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
         )}
       </div>
 
-      {/* Soundings indicator row (after execution - shows actual results) */}
-      {soundingInfo && (
-        <div className="phase-card-soundings-row">
-          {soundingInfo.soundings.map((idx) => (
+      {/* Candidates indicator row (after execution - shows actual results) */}
+      {candidateInfo && (
+        <div className="cell-card-candidates-row">
+          {candidateInfo.candidates.map((idx) => (
             <div
               key={idx}
-              className={`phase-card-sounding-dot ${idx === soundingInfo.winner ? 'winner' : ''}`}
-              title={idx === soundingInfo.winner ? `Sounding ${idx} (WINNER)` : `Sounding ${idx}`}
+              className={`cell-card-candidate-dot ${idx === candidateInfo.winner ? 'winner' : ''}`}
+              title={idx === candidateInfo.winner ? `Candidate ${idx} (WINNER)` : `Candidate ${idx}`}
             />
           ))}
         </div>
@@ -235,4 +235,4 @@ const PhaseCard = ({ phase, index, cellState, phaseLogs = [], isSelected, onSele
   );
 };
 
-export default React.memo(PhaseCard);
+export default React.memo(CellCard);

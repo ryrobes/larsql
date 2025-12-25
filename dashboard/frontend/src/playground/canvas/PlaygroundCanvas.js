@@ -9,7 +9,7 @@ import usePlaygroundStore from '../stores/playgroundStore';
 import { useSessionStream } from '../execution/useSessionStream';
 import PromptNode from './nodes/PromptNode';
 import ImageNode from './nodes/ImageNode';
-import PhaseCard from './nodes/PhaseCard';
+import PhaseCard from './nodes/CellCard';
 import 'reactflow/dist/style.css';
 import './PlaygroundCanvas.css';
 

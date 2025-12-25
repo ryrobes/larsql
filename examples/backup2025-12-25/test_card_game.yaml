@@ -2,13 +2,13 @@ cascade_id: test_card_game
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
-phases:
+cells:
 - name: llm_phase
   instructions: '{{ input.prompt }}
 
     '
   model: x-ai/grok-4.1-fast
-  soundings:
+  candidates:
     factor: 3
     max_parallel: 3
     models:

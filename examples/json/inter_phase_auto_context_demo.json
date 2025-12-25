@@ -1,7 +1,6 @@
 {
   "cascade_id": "inter_phase_auto_context_demo",
   "description": "Demonstrates LLM-assisted inter-phase context selection. Phase 2 uses mode: auto to intelligently select relevant context from Phase 1.",
-
   "auto_context": {
     "inter_phase": {
       "enabled": true,
@@ -11,15 +10,16 @@
       }
     }
   },
-
-  "phases": [
+  "cells": [
     {
       "name": "research",
       "instructions": "You are a research assistant. The user wants to learn about {{ input.topic }}.\n\nProvide a comprehensive overview including:\n1. Definition and key concepts\n2. Important applications or use cases\n3. Current challenges or limitations\n4. Future directions\n\nBe thorough but concise.",
       "rules": {
         "max_turns": 1
       },
-      "handoffs": ["synthesis"]
+      "handoffs": [
+        "synthesis"
+      ]
     },
     {
       "name": "synthesis",
@@ -27,8 +27,12 @@
       "context": {
         "mode": "auto",
         "anchors": {
-          "from_phases": ["previous"],
-          "include": ["output"]
+          "from_phases": [
+            "previous"
+          ],
+          "include": [
+            "output"
+          ]
         },
         "selection": {
           "strategy": "hybrid",

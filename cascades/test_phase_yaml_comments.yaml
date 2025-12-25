@@ -1,45 +1,18 @@
-# Test Phase YAML Comments
-# This tests the per-phase "Full YAML Editor" in PhaseDetailPanel
-
 cascade_id: test_phase_yaml_editor
 description: Click a phase and toggle "YAML" to test comment preservation
-
-phases:
-  # First phase - SQL query
-  - name: sql_query
-    tool: sql_data
-    inputs:
-      connection: windlass
-      # This comment should be preserved when editing this phase's YAML
-      query: |
-        SELECT
-          'test' as col1,
-          42 as col2
-
-  # Second phase - Python processing
-  - name: process_data
-    tool: python_data
-    inputs:
-      # Python code with inline comments
-      code: |
-        # Calculate something
-        x = 10
-        y = 20
-
-        # Return the result
-        result = {
-          "sum": x + y,
-          "product": x * y
-        }
-
-  # Third phase - JavaScript
-  - name: format_output
-    tool: js_data
-    inputs:
-      code: |
-        // Format the data
-        const formatted = {
-          timestamp: new Date().toISOString(),
-          // Add more fields here
-          data: { status: "ok" }
-        };
+cells:
+- name: sql_query
+  tool: sql_data
+  inputs:
+    connection: windlass
+    query: "SELECT\n  'test' as col1,\n  42 as col2\n"
+- name: process_data
+  tool: python_data
+  inputs:
+    code: "# Calculate something\nx = 10\ny = 20\n\n# Return the result\nresult =\
+      \ {\n  \"sum\": x + y,\n  \"product\": x * y\n}\n"
+- name: format_output
+  tool: js_data
+  inputs:
+    code: "// Format the data\nconst formatted = {\n  timestamp: new Date().toISOString(),\n\
+      \  // Add more fields here\n  data: { status: \"ok\" }\n};\n"

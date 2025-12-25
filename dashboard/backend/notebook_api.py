@@ -17,20 +17,20 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path for imports
+# Add rvbbit to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-_WINDLASS_DIR = os.path.join(_REPO_ROOT, "windlass")
-if _WINDLASS_DIR not in sys.path:
-    sys.path.insert(0, _WINDLASS_DIR)
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
+if _RVBBIT_DIR not in sys.path:
+    sys.path.insert(0, _RVBBIT_DIR)
 
 try:
-    from windlass import run_cascade
-    from windlass.config import get_config
-    from windlass.eddies.data_tools import sql_data, python_data, js_data, clojure_data, windlass_data
-    from windlass.sql_tools.session_db import get_session_db, cleanup_session_db
-    from windlass.agent import Agent
-    from windlass.unified_logs import log_unified
+    from rvbbit import run_cascade
+    from rvbbit.config import get_config
+    from rvbbit.traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
+    from rvbbit.sql_tools.session_db import get_session_db, cleanup_session_db
+    from rvbbit.agent import Agent
+    from rvbbit.unified_logs import log_unified
 except ImportError as e:
     print(f"Warning: Could not import windlass modules: {e}")
     run_cascade = None
@@ -39,7 +39,7 @@ except ImportError as e:
     python_data = None
     js_data = None
     clojure_data = None
-    windlass_data = None
+    rvbbit_data = None
     Agent = None
     log_unified = None
 
@@ -47,10 +47,10 @@ notebook_bp = Blueprint('notebook', __name__, url_prefix='/api/notebook')
 
 # Default paths
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-WINDLASS_ROOT = os.path.abspath(os.getenv("WINDLASS_ROOT", _DEFAULT_ROOT))
-TACKLE_DIR = os.path.join(WINDLASS_ROOT, "tackle")
-CASCADES_DIR = os.path.join(WINDLASS_ROOT, "cascades")
-EXAMPLES_DIR = os.path.join(WINDLASS_ROOT, "examples")
+RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
+TACKLE_DIR = os.path.join(RVBBIT_ROOT, "tackle")
+CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
+EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "examples")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -90,7 +90,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
-Available: `data.phase_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+Available: `data.cell_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
 
 Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -104,7 +104,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (array of objects, object, or scalar).
-Available: `data.phase_name` for prior phase outputs (arrays of objects), `state`, `input`.
+Available: `data.cell_name` for prior phase outputs (arrays of objects), `state`, `input`.
 
 Return ONLY the corrected JavaScript code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -131,7 +131,7 @@ def attempt_auto_fix(
     error_message: str,
     auto_fix_config: dict,
     session_id: str,
-    phase_name: str,
+    cell_name: str,
     prior_outputs: dict = None,
     inputs: dict = None
 ) -> dict:
@@ -144,7 +144,7 @@ def attempt_auto_fix(
         error_message: The error message
         auto_fix_config: Auto-fix configuration
         session_id: Session ID for cost tracking
-        phase_name: Phase name for logging
+        cell_name: Phase name for logging
         prior_outputs: Prior cell outputs (for python_data)
         inputs: Notebook inputs (for python_data)
 
@@ -218,7 +218,7 @@ def attempt_auto_fix(
                 result = sql_data(
                     query=fixed_code,
                     materialize=True,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'python_data':
@@ -227,7 +227,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'js_data':
@@ -236,7 +236,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'clojure_data':
@@ -245,7 +245,7 @@ def attempt_auto_fix(
                     _outputs=prior_outputs or {},
                     _state={},
                     _input=inputs or {},
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
 
@@ -266,7 +266,7 @@ def attempt_auto_fix(
                     node_type="auto_fix_success",
                     role="system",
                     cascade_id="notebook",
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     content=f"Auto-fix succeeded on attempt {attempt + 1}",
                     metadata={
                         'attempt': attempt + 1,
@@ -292,7 +292,7 @@ def attempt_auto_fix(
                     node_type="auto_fix_failed",
                     role="system",
                     cascade_id="notebook",
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     content=f"Auto-fix attempt {attempt + 1} failed: {last_error}",
                     metadata={
                         'attempt': attempt + 1,
@@ -306,16 +306,16 @@ def attempt_auto_fix(
 
 
 def is_data_cascade(cascade_dict):
-    """Check if a cascade is a data cascade (all deterministic phases)."""
-    phases = cascade_dict.get('phases', [])
-    if not phases:
+    """Check if a cascade is a data cascade (all deterministic cells)."""
+    cells = cascade_dict.get('cells', [])
+    if not cells:
         return False
 
-    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'windlass_data', 'set_state'}
-    for phase in phases:
-        tool = phase.get('tool')
+    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'rvbbit_data', 'set_state'}
+    for cell in cells:
+        tool = cell.get('tool')
         if not tool:
-            # LLM-based phase (has instructions instead of tool)
+            # LLM-based cell (has instructions instead of tool)
             return False
         if tool not in data_tools:
             return False
@@ -364,7 +364,7 @@ def scan_directory_for_notebooks(directory, base_path=""):
                     'path': rel_path,
                     'full_path': item_path,
                     'inputs_schema': cascade.get('inputs_schema', {}),
-                    'phase_count': len(cascade.get('phases', []))
+                    'cell_count': len(cascade.get('cells', []))
                 })
         elif os.path.isdir(item_path):
             # Recurse into subdirectories
@@ -427,7 +427,7 @@ def load_notebook():
             return jsonify({'error': 'Path is required'}), 400
 
         # Resolve full path
-        full_path = os.path.join(WINDLASS_ROOT, path)
+        full_path = os.path.join(RVBBIT_ROOT, path)
 
         if not os.path.exists(full_path):
             return jsonify({'error': f'Notebook not found: {path}'}), 404
@@ -469,7 +469,7 @@ def save_notebook():
             return jsonify({'error': 'Notebook content is required'}), 400
 
         # Resolve full path
-        full_path = os.path.join(WINDLASS_ROOT, path)
+        full_path = os.path.join(RVBBIT_ROOT, path)
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -525,13 +525,13 @@ def run_notebook():
             # Extract phase results from lineage
             phases = {}
             for entry in result.get('lineage', []):
-                phase_name = entry.get('phase')
+                cell_name = entry.get('phase')
                 output = entry.get('output')
                 duration = entry.get('duration_ms')
 
                 # Skip routing messages (strings)
                 if isinstance(output, dict):
-                    phases[phase_name] = {
+                    phases[cell_name] = {
                         'result': sanitize_for_json(output),
                         'duration_ms': duration,
                         'error': output.get('error') if output.get('_route') == 'error' else None
@@ -585,7 +585,7 @@ def run_cell():
 
         tool = cell.get('tool')
         cell_inputs = cell.get('inputs', {})
-        phase_name = cell.get('name', 'cell')
+        cell_name = cell.get('name', 'cell')
 
         # Render Jinja2 templates in cell inputs
         from jinja2 import Template
@@ -635,7 +635,7 @@ def run_cell():
 
                     # Create a mini-cascade with just this phase
                     mini_cascade = {
-                        'cascade_id': f'notebook_{phase_name}',
+                        'cascade_id': f'notebook_{cell_name}',
                         'description': 'Notebook LLM phase',
                         'phases': [rendered_cell]
                     }
@@ -676,7 +676,7 @@ def run_cell():
                     connection=rendered_inputs.get('connection'),
                     limit=rendered_inputs.get('limit', 10000),
                     materialize=True,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'python_data':
@@ -685,7 +685,7 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'js_data':
@@ -694,7 +694,7 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             elif tool == 'clojure_data':
@@ -703,16 +703,16 @@ def run_cell():
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
-            elif tool == 'windlass_data':
-                result = windlass_data(
+            elif tool == 'rvbbit_data':
+                result = rvbbit_data(
                     phase_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
-                    _phase_name=phase_name,
+                    _cell_name=cell_name,
                     _session_id=session_id
                 )
             else:
@@ -727,8 +727,8 @@ def run_cell():
             result = None  # Clear result so we attempt fix
 
         # If execution failed and auto-fix is enabled, try to fix
-        # Skip auto-fix for windlass_data (LLM cells) - too meta
-        if execution_error and auto_fix_config.get('enabled', False) and tool != 'windlass_data':
+        # Skip auto-fix for rvbbit_data (LLM cells) - too meta
+        if execution_error and auto_fix_config.get('enabled', False) and tool != 'rvbbit_data':
             try:
                 result = attempt_auto_fix(
                     tool=tool,
@@ -736,7 +736,7 @@ def run_cell():
                     error_message=str(execution_error),
                     auto_fix_config=auto_fix_config,
                     session_id=session_id,
-                    phase_name=phase_name,
+                    cell_name=cell_name,
                     prior_outputs=prior_outputs,
                     inputs=inputs
                 )

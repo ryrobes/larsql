@@ -4,14 +4,16 @@
   "inputs_schema": {
     "topic": "The topic to discuss"
   },
-  "phases": [{
-    "name": "write_response",
-    "instructions": "Write a brief sentence about: {{ input.topic }}",
-    "rules": {
-      "max_turns": 1,
-      "max_attempts": 3,
-      "loop_until": "keyword_validator",
-      "retry_instructions": "ERROR: {{ validation_error }}\n\nPlease revise your response to include the word 'important'. Attempt {{ attempt }}/{{ max_attempts }}."
+  "cells": [
+    {
+      "name": "write_response",
+      "instructions": "Write a brief sentence about: {{ input.topic }}",
+      "rules": {
+        "max_turns": 1,
+        "max_attempts": 3,
+        "loop_until": "keyword_validator",
+        "retry_instructions": "ERROR: {{ validation_error }}\n\nPlease revise your response to include the word 'important'. Attempt {{ attempt }}/{{ max_attempts }}."
+      }
     }
-  }]
+  ]
 }

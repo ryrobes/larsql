@@ -10,28 +10,42 @@
     "strategy": "sliding_window",
     "warning_threshold": 0.75
   },
-  "phases": [
+  "cells": [
     {
       "name": "research",
       "instructions": "Research {{ input.topic }} extensively. Use multiple searches to gather comprehensive information.",
-      "tackle": ["sql_search"],
+      "traits": [
+        "sql_search"
+      ],
       "rules": {
         "max_turns": 5
       },
-      "handoffs": ["analyze"]
+      "handoffs": [
+        "analyze"
+      ]
     },
     {
       "name": "analyze",
       "instructions": "Based on the research gathered, provide a detailed analysis of {{ input.topic }}. The context has been automatically pruned by token budget enforcement to stay within limits.",
-      "tackle": [],
-      "context": {"from": ["previous"]},
-      "handoffs": ["summarize"]
+      "traits": [],
+      "context": {
+        "from": [
+          "previous"
+        ]
+      },
+      "handoffs": [
+        "summarize"
+      ]
     },
     {
       "name": "summarize",
       "instructions": "Summarize the key findings from the analysis in a concise format.",
-      "tackle": [],
-      "context": {"from": ["all"]}
+      "traits": [],
+      "context": {
+        "from": [
+          "all"
+        ]
+      }
     }
   ]
 }

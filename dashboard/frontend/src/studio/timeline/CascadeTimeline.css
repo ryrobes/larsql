@@ -388,7 +388,7 @@
 }
 
 /* Phase card wrapper for vertical stacking */
-.phase-card-wrapper {
+.cell-card-wrapper {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -519,7 +519,7 @@
 }
 
 /* Override grab cursor for interactive elements */
-.cascade-timeline-strip .phase-card,
+.cascade-timeline-strip .cell-card,
 .cascade-timeline-strip button,
 .cascade-timeline-strip input,
 .cascade-timeline-strip textarea,
@@ -527,7 +527,7 @@
   cursor: pointer;
 }
 
-.cascade-timeline-strip .phase-card:hover {
+.cascade-timeline-strip .cell-card:hover {
   cursor: pointer;
 }
 

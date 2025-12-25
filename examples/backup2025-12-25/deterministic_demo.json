@@ -4,7 +4,7 @@
   "inputs_schema": {
     "query": "A SQL query to analyze"
   },
-  "phases": [
+  "cells": [
     {
       "name": "validate_query",
       "tool": "python:windlass.demo_tools.validate_sql",
@@ -15,13 +15,18 @@
         "valid": "execute_query",
         "invalid": "fix_query"
       },
-      "handoffs": ["execute_query", "fix_query"]
+      "handoffs": [
+        "execute_query",
+        "fix_query"
+      ]
     },
     {
       "name": "fix_query",
       "instructions": "The SQL query was invalid. Please analyze and fix the following query:\n\nOriginal Query: {{ input.query }}\n\nValidation Error: {{ state.output_validate_query.error }}\n\nProvide the corrected SQL query.",
-      "tackle": [],
-      "handoffs": ["execute_query"]
+      "traits": [],
+      "handoffs": [
+        "execute_query"
+      ]
     },
     {
       "name": "execute_query",
@@ -31,15 +36,21 @@
       },
       "on_error": {
         "instructions": "SQL execution failed with error: {{ state.last_deterministic_error.error }}\n\nOriginal query: {{ input.query }}\n\nPlease diagnose the issue and suggest a fix.",
-        "tackle": ["smart_sql_run"],
-        "rules": {"max_turns": 3}
+        "traits": [
+          "smart_sql_run"
+        ],
+        "rules": {
+          "max_turns": 3
+        }
       },
-      "handoffs": ["summarize_results"]
+      "handoffs": [
+        "summarize_results"
+      ]
     },
     {
       "name": "summarize_results",
       "instructions": "Summarize the query results:\n\nQuery: {{ input.query }}\nResults: {{ state.output_execute_query | tojson }}\n\nProvide a human-readable summary of what the data shows.",
-      "tackle": []
+      "traits": []
     }
   ]
 }

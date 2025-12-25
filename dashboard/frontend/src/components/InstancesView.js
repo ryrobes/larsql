@@ -4,7 +4,7 @@ import RichMarkdown from './RichMarkdown';
 // PhaseBar removed - now only shown in SplitDetailView
 import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
-import SoundingsExplorer from './SoundingsExplorer';
+import SoundingsExplorer from './CandidatesExplorer';
 import InstanceGridView from './InstanceGridView';
 import CascadeFlowModal from './CascadeFlowModal';
 // MermaidPreview, ImageGallery, HumanInputDisplay removed - now only shown in SplitDetailView
@@ -12,7 +12,7 @@ import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
 import RunPercentile from './RunPercentile';
-import PhaseSpeciesBadges from './PhaseSpeciesBadges';
+import PhaseSpeciesBadges from './CellTypeBadges';
 import Header from './Header';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
@@ -240,10 +240,10 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         const checkCompletion = (instance) => {
           if (finalizingSessions.has(instance.session_id)) {
             // Check if this instance is REALLY done
-            const allPhasesComplete = instance.phases?.every(p =>
+            const allPhasesComplete = instance.cells?.every(p =>
               p.status === 'completed' || p.status === 'error'
             );
-            const hasData = instance.total_cost > 0 || instance.phases?.length > 0;
+            const hasData = instance.total_cost > 0 || instance.cells?.length > 0;
 
             if (allPhasesComplete && hasData) {
               console.log(`[SQL] Instance ${instance.session_id} is truly complete, notifying parent`);
@@ -438,8 +438,8 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               }
 
               // Add phase name if available
-              if (entry.phase_name) {
-                metaParts.push(`phase: ${entry.phase_name}`);
+              if (entry.cell_name) {
+                metaParts.push(`phase: ${entry.cell_name}`);
               }
 
               newMessages[sessionId] = {
@@ -827,8 +827,8 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
   // Helper function to render an instance row (for both parents and children)
   const renderInstanceRow = (instance, isChild = false) => {
-    const isCompleted = instance.phases?.every(p => p.status === 'completed');
-    const hasRunning = instance.phases?.some(p => p.status === 'running');
+    const isCompleted = instance.cells?.every(p => p.status === 'completed');
+    const hasRunning = instance.cells?.some(p => p.status === 'running');
     const sseIsRunning = runningSessions && runningSessions.has(instance.session_id);
     const isFinalizing = finalizingSessions && finalizingSessions.has(instance.session_id);
 
@@ -1043,7 +1043,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   totalCost={instance.total_cost}
                   winnerModel={
                     // Compute winner models from phases with soundings
-                    instance.phases
+                    instance.cells
                       ?.filter(p => p.sounding_total > 1)
                       .flatMap(p => (p.sounding_attempts || []).filter(a => a.is_winner && a.model).map(a => a.model))
                       .filter((m, i, arr) => arr.indexOf(m) === i) // unique
@@ -1054,9 +1054,9 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
 
             {/* Middle section: CascadeBar with inputs (~55%) */}
             <div className="cascade-section-compact">
-              {instance.phases && instance.phases.length > 1 && (
+              {instance.cells && instance.cells.length > 1 && (
                 <CascadeBar
-                  phases={instance.phases}
+                  phases={instance.cells}
                   totalCost={instance.total_cost}
                   isRunning={isSessionRunning || hasRunning}
                 />

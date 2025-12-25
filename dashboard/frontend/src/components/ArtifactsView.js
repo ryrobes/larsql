@@ -588,7 +588,7 @@ function ArtifactCard({ artifact, onClick, isSelected, onToggleSelect }) {
           </span>
           <span className="meta-item">
             <Icon icon="mdi:hexagon-outline" width="14" />
-            {artifact.phase_name}
+            {artifact.cell_name}
           </span>
         </div>
 

@@ -8,9 +8,9 @@ function MetricsCards({ instance }) {
   // Calculate metrics
   const totalCost = instance.total_cost || 0;
   const totalTime = instance.duration_seconds || 0;
-  const toolCount = instance.phases?.reduce((sum, p) => sum + (p.tool_calls?.length || 0), 0) || 0;
-  const wardCount = instance.phases?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
-  const soundingCount = instance.phases?.reduce((sum, p) => sum + (p.sounding_attempts?.length || 0), 0) || 0;
+  const toolCount = instance.cells?.reduce((sum, p) => sum + (p.tool_calls?.length || 0), 0) || 0;
+  const wardCount = instance.cells?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
+  const soundingCount = instance.cells?.reduce((sum, p) => sum + (p.sounding_attempts?.length || 0), 0) || 0;
   const totalTokens = (instance.total_tokens_in || 0) + (instance.total_tokens_out || 0);
 
   // Only show metrics that are applicable (non-zero)

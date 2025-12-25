@@ -61,13 +61,13 @@ function PromptNode({ data }) {
           <div className="dna-bar">
             {parentWinners.map((parent, idx) => (
               <div
-                key={`${parent.session_id}_${parent.sounding_index}`}
+                key={`${parent.session_id}_${parent.candidate_index}`}
                 className="dna-segment"
                 style={{
                   backgroundColor: dnaColors[idx % dnaColors.length],
                   width: `${100 / parentWinners.length}%`
                 }}
-                title={`Gen ${parent.generation} #${parent.sounding_index}: ${parent.prompt_snippet}...`}
+                title={`Gen ${parent.generation} #${parent.candidate_index}: ${parent.prompt_snippet}...`}
               />
             ))}
           </div>
@@ -97,7 +97,7 @@ function PromptNode({ data }) {
       )}
 
       <div className="node-footer">
-        <span className="sounding-index">#{data.sounding_index}</span>
+        <span className="sounding-index">#{data.candidate_index}</span>
         {isExpanded && data.mutation_template && (
           <div className="mutation-template">
             Template: {data.mutation_template}

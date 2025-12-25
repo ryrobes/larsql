@@ -1,46 +1,40 @@
-cascade_id: "bash_json_transform"
-description: "Generate and transform JSON using bash - demonstrates jq integration"
+cascade_id: bash_json_transform
+description: Generate and transform JSON using bash - demonstrates jq integration
+cells:
+- name: generate_users
+  tool: bash_data
+  inputs:
+    script: '# Generate CSV data
 
-phases:
-  # Phase 1: Generate CSV data with bash
-  - name: generate_users
-    tool: bash_data
-    inputs:
-      script: |
-        # Generate CSV data
-        echo "id,name,score"
-        echo "1,Alice,95"
-        echo "2,Bob,87"
-        echo "3,Charlie,92"
-        echo "4,Diana,88"
-        echo "5,Eve,98"
-      output_format: csv
-    handoffs: [transform_to_json]
+      echo "id,name,score"
 
-  # Phase 2: Convert CSV to JSON and filter with jq
-  # Input: _generate_users table as CSV from stdin
-  # Output: JSON array to stdout
-  - name: transform_to_json
-    tool: bash_data
-    inputs:
-      script: |
-        # Read CSV, convert to JSON objects with jq
-        # Skip header, then use jq to parse CSV-like format
-        tail -n +2 | awk -F',' '{
-          printf "{\"id\":%s,\"name\":\"%s\",\"score\":%s}\n", $1, $2, $3
-        }' | jq -s 'map(select(.score >= 90)) | map(. + {grade: (if .score >= 95 then "A" else "B" end)})'
-      output_format: json
-    handoffs: [analyze]
+      echo "1,Alice,95"
 
-  # Phase 3: Query the result with SQL
-  - name: analyze
-    tool: sql_data
-    inputs:
-      query: |
-        SELECT
-          grade,
-          COUNT(*) as student_count,
-          AVG(score) as avg_score
-        FROM _transform_to_json
-        GROUP BY grade
-        ORDER BY grade
+      echo "2,Bob,87"
+
+      echo "3,Charlie,92"
+
+      echo "4,Diana,88"
+
+      echo "5,Eve,98"
+
+      '
+    output_format: csv
+  handoffs:
+  - transform_to_json
+- name: transform_to_json
+  tool: bash_data
+  inputs:
+    script: "# Read CSV, convert to JSON objects with jq\n# Skip header, then use\
+      \ jq to parse CSV-like format\ntail -n +2 | awk -F',' '{\n  printf \"{\\\"id\\\
+      \":%s,\\\"name\\\":\\\"%s\\\",\\\"score\\\":%s}\\n\", $1, $2, $3\n}' | jq -s\
+      \ 'map(select(.score >= 90)) | map(. + {grade: (if .score >= 95 then \"A\" else\
+      \ \"B\" end)})'\n"
+    output_format: json
+  handoffs:
+  - analyze
+- name: analyze
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  grade,\n  COUNT(*) as student_count,\n  AVG(score) as avg_score\n\
+      FROM _transform_to_json\nGROUP BY grade\nORDER BY grade\n"
