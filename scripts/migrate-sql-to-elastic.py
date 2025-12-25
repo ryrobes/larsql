@@ -16,10 +16,10 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from windlass.config import get_config
-from windlass.db_adapter import get_db
-from windlass.sql_tools.config import load_discovery_metadata
-from windlass.elastic import get_elastic_client, create_sql_schema_index, bulk_index_sql_schemas
+from rvbbit.config import get_config
+from rvbbit.db_adapter import get_db
+from rvbbit.sql_tools.config import load_discovery_metadata
+from rvbbit.elastic import get_elastic_client, create_sql_schema_index, bulk_index_sql_schemas
 
 
 def sanitize_for_json(obj):
@@ -48,7 +48,7 @@ def main():
     meta = load_discovery_metadata()
     if not meta:
         print("✗ No SQL discovery metadata found")
-        print("  Run: windlass sql chart")
+        print("  Run: rvbbit sql chart")
         return 1
 
     print(f"✓ Found SQL discovery metadata")
@@ -172,7 +172,7 @@ def main():
         return 1
 
     # Ensure index exists
-    if not es.indices.exists(index='windlass_sql_schemas'):
+    if not es.indices.exists(index='rvbbit_sql_schemas'):
         print("Creating index...")
         create_sql_schema_index()
 
@@ -192,7 +192,7 @@ def main():
             indexed_ids = set()
 
             # Get all IDs in index
-            all_docs = es.search(index='windlass_sql_schemas', body={'size': 200, '_source': False})
+            all_docs = es.search(index='rvbbit_sql_schemas', body={'size': 200, '_source': False})
             for hit in all_docs['hits']['hits']:
                 indexed_ids.add(hit['_id'])
 
@@ -212,8 +212,8 @@ def main():
         return 1
 
     # Refresh and verify
-    es.indices.refresh(index='windlass_sql_schemas')
-    count = es.count(index='windlass_sql_schemas')
+    es.indices.refresh(index='rvbbit_sql_schemas')
+    count = es.count(index='rvbbit_sql_schemas')
     print()
     print(f"✓ Verification: {count['count']} documents in Elasticsearch")
     print()

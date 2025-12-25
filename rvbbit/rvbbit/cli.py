@@ -154,11 +154,44 @@ def main():
         help='Initialize ClickHouse schema (create tables if needed)'
     )
 
-    # SQL query command
-    sql_parser = subparsers.add_parser('sql', help='Query ClickHouse with SQL (supports magic table names)')
-    sql_parser.add_argument('query', help='SQL query (use all_data, all_evals as table names)')
-    sql_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
-    sql_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
+    # SQL command group (query and server)
+    sql_parser = subparsers.add_parser('sql', help='SQL commands (query or start PostgreSQL server)')
+    sql_subparsers = sql_parser.add_subparsers(dest='sql_command', help='SQL subcommands')
+
+    # sql query (for querying ClickHouse)
+    sql_query_parser = sql_subparsers.add_parser(
+        'query',
+        help='Query ClickHouse with SQL (supports magic table names like all_data, all_evals)',
+        aliases=['q']  # Allow 'rvbbit sql q "SELECT..."'
+    )
+    sql_query_parser.add_argument('query', help='SQL query (use all_data, all_evals as table names)')
+    sql_query_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
+    sql_query_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
+    sql_query_parser.set_defaults(func=cmd_sql)
+
+    # sql server (PostgreSQL wire protocol server)
+    sql_server_parser = sql_subparsers.add_parser(
+        'server',
+        help='Start PostgreSQL wire protocol server (connect from DBeaver, psql, Tableau, etc.)',
+        aliases=['serve']  # Allow 'rvbbit sql serve'
+    )
+    sql_server_parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0 = all interfaces)'
+    )
+    sql_server_parser.add_argument(
+        '--port',
+        type=int,
+        default=15432,
+        help='Port to listen on (default: 15432; standard PostgreSQL is 5432)'
+    )
+    sql_server_parser.add_argument(
+        '--session-prefix',
+        default='pg_client',
+        help='Prefix for DuckDB session IDs (default: pg_client)'
+    )
+    sql_server_parser.set_defaults(func=cmd_sql_server)
 
     # Embedding command group
     embed_parser = subparsers.add_parser('embed', help='Embedding system management')
@@ -495,30 +528,7 @@ def main():
     tools_find_parser.add_argument('query', help='Natural language query (e.g., "parse PDF documents")')
     tools_find_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
 
-    # ========================================================================
-    # SERVER COMMAND - PostgreSQL wire protocol server
-    # ========================================================================
-    server_parser = subparsers.add_parser(
-        'server',
-        help='Start PostgreSQL wire protocol server (connect from DBeaver, psql, Tableau, etc.)'
-    )
-    server_parser.add_argument(
-        '--host',
-        default='0.0.0.0',
-        help='Host to listen on (default: 0.0.0.0 = all interfaces)'
-    )
-    server_parser.add_argument(
-        '--port',
-        type=int,
-        default=5433,
-        help='Port to listen on (default: 5433; use 5432 for standard PostgreSQL port, may require sudo)'
-    )
-    server_parser.add_argument(
-        '--session-prefix',
-        default='pg_client',
-        help='Prefix for DuckDB session IDs (default: pg_client)'
-    )
-    server_parser.set_defaults(func=cmd_server)
+    # Note: 'server' command moved to 'sql server' subcommand above for clarity
 
     args = parser.parse_args()
 
@@ -586,7 +596,37 @@ def main():
             db_parser.print_help()
             sys.exit(1)
     elif args.command == 'sql':
-        cmd_sql(args)
+        # Handle sql subcommands (query or server)
+        if args.sql_command == 'query' or args.sql_command == 'q':
+            cmd_sql(args)
+        elif args.sql_command == 'server' or args.sql_command == 'serve':
+            cmd_sql_server(args)
+        elif args.sql_command is None:
+            # Backward compatibility: rvbbit sql "SELECT..." (old style)
+            # Check if there are remaining args that look like a query
+            if len(sys.argv) > 2 and not sys.argv[2].startswith('--'):
+                # Treat as old-style query
+                print("⚠️  DEPRECATED: Use 'rvbbit sql query \"SELECT...\"' instead of 'rvbbit sql \"SELECT...\"'")
+                print("   (still works for backward compatibility)\n")
+                # Create a fake args object with query
+                class FakeArgs:
+                    query = sys.argv[2]
+                    format = 'table'
+                    limit = None
+                fake_args = FakeArgs()
+                # Parse any --format or --limit flags
+                for i, arg in enumerate(sys.argv[3:]):
+                    if arg == '--format' and i+4 < len(sys.argv):
+                        fake_args.format = sys.argv[i+4]
+                    elif arg == '--limit' and i+4 < len(sys.argv):
+                        fake_args.limit = int(sys.argv[i+4])
+                cmd_sql(fake_args)
+            else:
+                sql_parser.print_help()
+                sys.exit(1)
+        else:
+            sql_parser.print_help()
+            sys.exit(1)
     elif args.command == 'embed':
         if args.embed_command == 'status':
             cmd_embed_status(args)
@@ -3051,7 +3091,7 @@ def cmd_tools_find(args):
     semantic_find_tools(args.query, limit=args.limit)
 
 
-def cmd_server(args):
+def cmd_sql_server(args):
     """Start RVBBIT PostgreSQL wire protocol server."""
     from rvbbit.server import start_postgres_server
 
@@ -3059,6 +3099,10 @@ def cmd_server(args):
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
     print(f"   Session prefix: {args.session_prefix}")
+    print()
+    print(f"💡 TIP: Connect with:")
+    print(f"   psql postgresql://localhost:{args.port}/default")
+    print(f"   DBeaver: New Connection → PostgreSQL → localhost:{args.port}")
     print()
 
     # Start server (blocking call)

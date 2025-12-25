@@ -1,5 +1,5 @@
 """
-Pytest configuration for windlass tests.
+Pytest configuration for RVBBIT tests.
 
 This file is automatically loaded by pytest when running from the repo root.
 It registers custom markers to avoid warnings.

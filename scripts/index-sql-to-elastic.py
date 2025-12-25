@@ -12,13 +12,13 @@ import sys
 import os
 from datetime import datetime
 
-# Add windlass to path
+# Add rvbbit to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from windlass.db_adapter import get_db
-from windlass.elastic import get_elastic_client, create_sql_schema_index, bulk_index_sql_schemas
-from windlass.sql_tools.config import load_discovery_metadata
-from windlass.config import get_config
+from rvbbit.db_adapter import get_db
+from rvbbit.elastic import get_elastic_client, create_sql_schema_index, bulk_index_sql_schemas
+from rvbbit.sql_tools.config import load_discovery_metadata
+from rvbbit.config import get_config
 
 
 def load_sql_schemas_from_clickhouse():
@@ -28,7 +28,7 @@ def load_sql_schemas_from_clickhouse():
     # Get SQL discovery metadata
     meta = load_discovery_metadata()
     if not meta:
-        print("No SQL discovery metadata found. Run: windlass sql chart")
+        print("No SQL discovery metadata found. Run: rvbbit sql chart")
         return []
 
     print(f"  RAG ID: {meta.rag_id}")
@@ -141,7 +141,7 @@ def main():
         return 1
 
     # Verify
-    from windlass.elastic import get_index_stats
+    from rvbbit.elastic import get_index_stats
     stats = get_index_stats()
     print("Index Statistics:")
     print(f"  Documents: {stats.get('doc_count', 0)}")
@@ -152,7 +152,7 @@ def main():
     print("✓ Indexing complete!")
     print()
     print("Test search:")
-    print("  curl http://localhost:9200/windlass_sql_schemas/_search?pretty")
+    print("  curl http://localhost:9200/rvbbit_sql_schemas/_search?pretty")
     print()
     print("Next: Try SQL search in dashboard UI")
     print("  http://localhost:5550/#/search/sql")

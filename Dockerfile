@@ -1,4 +1,4 @@
-# Windlass Server
+# RVBBIT Server
 # Multi-stage build for Python + Node.js (Rabbitize browser automation)
 
 # =============================================================================
@@ -62,13 +62,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 # Set up workspace
 WORKDIR /app
-ENV WINDLASS_ROOT=/data
+ENV RVBBIT_ROOT=/data
 ENV PYTHONUNBUFFERED=1
 
-# Install Python dependencies (windlass package)
-COPY windlass/pyproject.toml windlass/README.md ./windlass/
-COPY windlass/windlass ./windlass/windlass
-RUN pip install --no-cache-dir ./windlass
+# Install Python dependencies (rvbbit package)
+COPY rvbbit/pyproject.toml rvbbit/README.md ./rvbbit/
+COPY rvbbit/rvbbit ./rvbbit/rvbbit
+RUN pip install --no-cache-dir ./rvbbit
 
 # Install dashboard backend dependencies
 COPY dashboard/backend/requirements.txt ./dashboard/backend/
@@ -100,9 +100,9 @@ COPY tackle ./tackle
 RUN mkdir -p /data/logs /data/graphs /data/states /data/images /data/audio /data/session_dbs
 
 # Default environment (override with docker-compose or -e flags)
-ENV WINDLASS_USE_CLICKHOUSE_SERVER=true
-ENV WINDLASS_CLICKHOUSE_HOST=clickhouse
-ENV WINDLASS_CLICKHOUSE_PORT=9000
+ENV RVBBIT_USE_CLICKHOUSE_SERVER=true
+ENV RVBBIT_CLICKHOUSE_HOST=clickhouse
+ENV RVBBIT_CLICKHOUSE_PORT=9000
 ENV FLASK_ENV=production
 
 # Health check (uses cascade-definitions endpoint as proxy for health)

@@ -2909,18 +2909,18 @@ def get_static_mermaid_from_cascade(cascade_path=None):
 
         # Resolve path (support relative to RVBBIT_ROOT)
         config = get_config()
-        windlass_root = Path(config.root_dir)
+        rvbbit_root = Path(config.root_dir)
 
         # Try as absolute path first
         resolved_path = Path(cascade_path)
         if not resolved_path.is_absolute():
             # Try relative to RVBBIT_ROOT
-            resolved_path = windlass_root / cascade_path
+            resolved_path = rvbbit_root / cascade_path
 
         # Also check common directories
         if not resolved_path.exists():
             for subdir in ['examples', 'cascades', 'tackle']:
-                candidate = windlass_root / subdir / cascade_path
+                candidate = rvbbit_root / subdir / cascade_path
                 if candidate.exists():
                     resolved_path = candidate
                     break
@@ -2930,10 +2930,10 @@ def get_static_mermaid_from_cascade(cascade_path=None):
                 'error': f'Cascade file not found: {cascade_path}',
                 'searched_paths': [
                     str(Path(cascade_path)),
-                    str(windlass_root / cascade_path),
-                    str(windlass_root / 'examples' / cascade_path),
-                    str(windlass_root / 'cascades' / cascade_path),
-                    str(windlass_root / 'tackle' / cascade_path),
+                    str(rvbbit_root / cascade_path),
+                    str(rvbbit_root / 'examples' / cascade_path),
+                    str(rvbbit_root / 'cascades' / cascade_path),
+                    str(rvbbit_root / 'tackle' / cascade_path),
                 ]
             }), 404
 
