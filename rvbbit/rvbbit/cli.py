@@ -193,6 +193,19 @@ def main():
     )
     sql_server_parser.set_defaults(func=cmd_sql_server)
 
+    # sql crawl (database schema discovery)
+    sql_crawl_parser = sql_subparsers.add_parser(
+        'crawl',
+        help='Discover and index all SQL database schemas (crawl connections and build RAG index)',
+        aliases=['discover', 'scan']  # Allow 'rvbbit sql discover' or 'rvbbit sql scan'
+    )
+    sql_crawl_parser.add_argument(
+        '--session',
+        default=None,
+        help='Session ID for discovery (default: auto-generated)'
+    )
+    sql_crawl_parser.set_defaults(func=cmd_sql_crawl)
+
     # Embedding command group
     embed_parser = subparsers.add_parser('embed', help='Embedding system management')
     embed_subparsers = embed_parser.add_subparsers(dest='embed_command', help='Embedding subcommands')
@@ -596,11 +609,13 @@ def main():
             db_parser.print_help()
             sys.exit(1)
     elif args.command == 'sql':
-        # Handle sql subcommands (query or server)
+        # Handle sql subcommands (query, server, or crawl)
         if args.sql_command == 'query' or args.sql_command == 'q':
             cmd_sql(args)
         elif args.sql_command == 'server' or args.sql_command == 'serve':
             cmd_sql_server(args)
+        elif args.sql_command in ('crawl', 'discover', 'scan'):
+            cmd_sql_crawl(args)
         elif args.sql_command is None:
             # Backward compatibility: rvbbit sql "SELECT..." (old style)
             # Check if there are remaining args that look like a query
@@ -1104,12 +1119,6 @@ def cmd_sql(args):
     from rvbbit.db_adapter import get_db_adapter
     from rich.console import Console
     from rich.table import Table
-
-    # Short-circuit for discovery commands
-    if args.query.lower() in ("chart", "discover", "scan"):
-        from rvbbit.sql_tools.discovery import discover_all_schemas
-        discover_all_schemas()
-        return
 
     config = get_config()
     db = get_db_adapter()
@@ -3111,6 +3120,13 @@ def cmd_sql_server(args):
         port=args.port,
         session_prefix=args.session_prefix
     )
+
+
+def cmd_sql_crawl(args):
+    """Discover and index all SQL database schemas."""
+    from rvbbit.sql_tools.discovery import discover_all_schemas
+
+    discover_all_schemas(session_id=args.session)
 
 
 if __name__ == "__main__":

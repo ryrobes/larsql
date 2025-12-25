@@ -78,12 +78,16 @@ def execute_sql():
 
         from rvbbit.sql_tools.session_db import get_session_db
         from rvbbit.sql_tools.udf import register_rvbbit_udf
+        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
 
         # Get or create session DuckDB
         conn = get_session_db(session_id)
 
         # Register RVBBIT UDFs (idempotent - won't re-register)
         register_rvbbit_udf(conn)
+
+        # Rewrite RVBBIT MAP/RUN syntax to standard SQL
+        query = rewrite_rvbbit_syntax(query)
 
         # Execute query
         result_df = conn.execute(query).fetchdf()

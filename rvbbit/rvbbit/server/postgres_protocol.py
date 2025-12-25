@@ -21,10 +21,13 @@ class MessageType:
     # Client → Server
     QUERY = ord('Q')
     TERMINATE = ord('X')
-    PARSE = ord('P')  # Extended query (v2)
-    BIND = ord('B')   # Extended query (v2)
-    EXECUTE = ord('E')  # Extended query (v2)
-    SYNC = ord('S')   # Extended query (v2)
+    PARSE = ord('P')      # Extended query
+    BIND = ord('B')       # Extended query
+    DESCRIBE = ord('D')   # Extended query
+    EXECUTE = ord('E')    # Extended query
+    CLOSE = ord('C')      # Extended query
+    SYNC = ord('S')       # Extended query
+    FLUSH = ord('H')      # Extended query (optional)
 
     # Server → Client
     AUTHENTICATION = ord('R')
@@ -490,6 +493,275 @@ class BackendKeyData:
 
 
 # ============================================================================
+# Extended Query Protocol Messages (Parse, Bind, Execute, Describe, Close)
+# ============================================================================
+
+class ParseMessage:
+    """Parse message - prepare a SQL statement with parameter placeholders."""
+
+    @staticmethod
+    def decode(payload: bytes) -> dict:
+        """
+        Decode Parse message from client.
+
+        Args:
+            payload: Message payload
+
+        Returns:
+            {
+                'statement_name': str,
+                'query': str,
+                'param_types': List[int]  # Type OIDs
+            }
+        """
+        offset = 0
+
+        # Statement name (null-terminated string)
+        null_idx = payload.find(b'\x00', offset)
+        statement_name = payload[offset:null_idx].decode('utf-8')
+        offset = null_idx + 1
+
+        # Query string (null-terminated)
+        null_idx = payload.find(b'\x00', offset)
+        query = payload[offset:null_idx].decode('utf-8')
+        offset = null_idx + 1
+
+        # Parameter count (2 bytes, network order)
+        param_count = struct.unpack('!H', payload[offset:offset+2])[0]
+        offset += 2
+
+        # Parameter type OIDs (4 bytes each)
+        param_types = []
+        for _ in range(param_count):
+            oid = struct.unpack('!I', payload[offset:offset+4])[0]
+            param_types.append(oid)
+            offset += 4
+
+        return {
+            'statement_name': statement_name,
+            'query': query,
+            'param_types': param_types
+        }
+
+
+class BindMessage:
+    """Bind message - bind parameters to a prepared statement."""
+
+    @staticmethod
+    def decode(payload: bytes) -> dict:
+        """
+        Decode Bind message from client.
+
+        Args:
+            payload: Message payload
+
+        Returns:
+            {
+                'portal_name': str,
+                'statement_name': str,
+                'param_formats': List[int],  # 0=text, 1=binary
+                'param_values': List[bytes],  # Raw parameter values
+                'result_formats': List[int]   # 0=text, 1=binary
+            }
+        """
+        offset = 0
+
+        # Portal name (null-terminated)
+        null_idx = payload.find(b'\x00', offset)
+        portal_name = payload[offset:null_idx].decode('utf-8')
+        offset = null_idx + 1
+
+        # Statement name (null-terminated)
+        null_idx = payload.find(b'\x00', offset)
+        statement_name = payload[offset:null_idx].decode('utf-8')
+        offset = null_idx + 1
+
+        # Parameter format codes count (int16)
+        format_count = struct.unpack('!H', payload[offset:offset+2])[0]
+        offset += 2
+
+        # Parameter format codes
+        param_formats = []
+        for _ in range(format_count):
+            fmt = struct.unpack('!H', payload[offset:offset+2])[0]
+            param_formats.append(fmt)
+            offset += 2
+
+        # Parameter values count (int16)
+        param_count = struct.unpack('!H', payload[offset:offset+2])[0]
+        offset += 2
+
+        # Parameter values
+        param_values = []
+        for _ in range(param_count):
+            # Length (int32, -1 means NULL)
+            length = struct.unpack('!i', payload[offset:offset+4])[0]
+            offset += 4
+
+            if length == -1:
+                param_values.append(None)
+            else:
+                value = payload[offset:offset+length]
+                param_values.append(value)
+                offset += length
+
+        # Result format codes count (int16)
+        result_format_count = struct.unpack('!H', payload[offset:offset+2])[0]
+        offset += 2
+
+        # Result format codes
+        result_formats = []
+        for _ in range(result_format_count):
+            fmt = struct.unpack('!H', payload[offset:offset+2])[0]
+            result_formats.append(fmt)
+            offset += 2
+
+        return {
+            'portal_name': portal_name,
+            'statement_name': statement_name,
+            'param_formats': param_formats,
+            'param_values': param_values,
+            'result_formats': result_formats
+        }
+
+
+class DescribeMessage:
+    """Describe message - get metadata for statement or portal."""
+
+    @staticmethod
+    def decode(payload: bytes) -> dict:
+        """
+        Decode Describe message from client.
+
+        Args:
+            payload: Message payload
+
+        Returns:
+            {
+                'type': str,  # 'S' (statement) or 'P' (portal)
+                'name': str
+            }
+        """
+        describe_type = chr(payload[0])  # 'S' or 'P'
+        name = payload[1:].rstrip(b'\x00').decode('utf-8')
+
+        return {
+            'type': describe_type,
+            'name': name
+        }
+
+
+class ExecuteMessage:
+    """Execute message - execute a bound portal."""
+
+    @staticmethod
+    def decode(payload: bytes) -> dict:
+        """
+        Decode Execute message from client.
+
+        Args:
+            payload: Message payload
+
+        Returns:
+            {
+                'portal_name': str,
+                'max_rows': int  # 0 = all rows
+            }
+        """
+        null_idx = payload.find(b'\x00')
+        portal_name = payload[:null_idx].decode('utf-8')
+        max_rows = struct.unpack('!I', payload[null_idx+1:null_idx+5])[0]
+
+        return {
+            'portal_name': portal_name,
+            'max_rows': max_rows
+        }
+
+
+class CloseMessage:
+    """Close message - close a prepared statement or portal."""
+
+    @staticmethod
+    def decode(payload: bytes) -> dict:
+        """
+        Decode Close message from client.
+
+        Args:
+            payload: Message payload
+
+        Returns:
+            {
+                'type': str,  # 'S' (statement) or 'P' (portal)
+                'name': str
+            }
+        """
+        close_type = chr(payload[0])  # 'S' or 'P'
+        name = payload[1:].rstrip(b'\x00').decode('utf-8')
+
+        return {
+            'type': close_type,
+            'name': name
+        }
+
+
+class ParseComplete:
+    """ParseComplete message - statement parsing successful."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """Build ParseComplete message (code '1')."""
+        return PostgresMessage.build_message(ord('1'), b'')
+
+
+class BindComplete:
+    """BindComplete message - parameter binding successful."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """Build BindComplete message (code '2')."""
+        return PostgresMessage.build_message(ord('2'), b'')
+
+
+class CloseComplete:
+    """CloseComplete message - statement/portal closed."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """Build CloseComplete message (code '3')."""
+        return PostgresMessage.build_message(ord('3'), b'')
+
+
+class ParameterDescription:
+    """ParameterDescription message - describes statement parameters."""
+
+    @staticmethod
+    def encode(param_types: List[int]) -> bytes:
+        """
+        Build ParameterDescription message.
+
+        Args:
+            param_types: List of parameter type OIDs
+
+        Returns:
+            Encoded message
+        """
+        payload = struct.pack('!H', len(param_types))  # Parameter count
+        for oid in param_types:
+            payload += struct.pack('!I', oid)
+
+        return PostgresMessage.build_message(ord('t'), payload)
+
+
+class NoData:
+    """NoData message - statement produces no result set."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """Build NoData message (code 'n')."""
+        return PostgresMessage.build_message(ord('n'), b'')
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -595,3 +867,65 @@ def send_error(sock, message: str, detail: str = None, severity: str = 'ERROR', 
     """
     sock.sendall(ErrorResponse.encode(severity, message, detail))
     sock.sendall(ReadyForQuery.encode(transaction_status))
+
+
+def send_execute_results(sock, result_df, send_row_description=True):
+    """
+    Send Execute message results to client (Extended Query Protocol).
+
+    In Extended Query Protocol:
+    - If Describe Portal sent RowDescription → Execute sends only DataRows
+    - If Describe Portal sent NoData → Execute must send RowDescription + DataRows
+
+    Sequence (if send_row_description=True):
+    1. RowDescription (column metadata)
+    2. DataRow (one per result row)
+    3. CommandComplete
+    (NO ReadyForQuery - that comes after Sync!)
+
+    Sequence (if send_row_description=False):
+    1. DataRow (one per result row) - RowDescription was sent by Describe
+    2. CommandComplete
+    (NO ReadyForQuery - that comes after Sync!)
+
+    Args:
+        sock: Client socket
+        result_df: pandas DataFrame with query results
+        send_row_description: If True, send RowDescription (default)
+    """
+    import pandas as pd
+
+    # 1. Optionally send RowDescription (if Describe didn't send it)
+    if send_row_description:
+        columns = []
+        for col_name, dtype in zip(result_df.columns, result_df.dtypes):
+            dtype_str = str(dtype).upper()
+            if 'INT64' in dtype_str:
+                duckdb_type = 'BIGINT'
+            elif 'INT32' in dtype_str or 'INT' in dtype_str:
+                duckdb_type = 'INTEGER'
+            elif 'FLOAT64' in dtype_str or 'FLOAT' in dtype_str:
+                duckdb_type = 'DOUBLE'
+            elif 'BOOL' in dtype_str:
+                duckdb_type = 'BOOLEAN'
+            elif 'DATETIME' in dtype_str:
+                duckdb_type = 'TIMESTAMP'
+            elif 'OBJECT' in dtype_str:
+                duckdb_type = 'VARCHAR'
+            else:
+                duckdb_type = 'VARCHAR'
+            columns.append((col_name, duckdb_type))
+
+        sock.sendall(RowDescription.encode(columns))
+
+    # 2. Send DataRow for each row
+    for idx, row in result_df.iterrows():
+        values = [row[col] for col in result_df.columns]
+        sock.sendall(DataRow.encode(values))
+
+    # 3. Send CommandComplete
+    row_count = len(result_df)
+    command_tag = f"SELECT {row_count}"
+    sock.sendall(CommandComplete.encode(command_tag))
+
+    # 4. NO ReadyForQuery! (Extended Query Protocol sends that after Sync)

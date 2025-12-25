@@ -30,8 +30,199 @@ from rvbbit.session_state import (
     request_session_cancellation,
     cleanup_zombie_sessions,
 )
+from rvbbit.db_adapter import get_db
 
 sessions_bp = Blueprint('sessions', __name__)
+
+
+def _enrich_sessions_with_metrics(sessions: list) -> list:
+    """
+    Enrich session list with aggregated metrics from unified_logs.
+
+    Adds:
+    - total_cost: Sum of all costs for the session
+    - message_count: Count of messages in the session
+    - input_data: Initial cascade inputs (from metadata)
+    """
+    if not sessions:
+        return sessions
+
+    try:
+        db = get_db()
+        session_ids = [s.session_id for s in sessions]
+
+        # Build IN clause for session IDs
+        session_ids_str = "', '".join(session_ids)
+
+        # First, get cascade-level averages for comparison
+        cascade_ids = list(set([s.cascade_id for s in sessions if s.cascade_id]))
+        cascade_ids_str = "', '".join(cascade_ids)
+
+        avg_query = f"""
+            SELECT
+                ss.cascade_id,
+                AVG(metrics.total_cost) as avg_cost,
+                AVG(metrics.message_count) as avg_messages,
+                AVG(
+                    dateDiff('second',
+                        toDateTime(ss.started_at),
+                        toDateTime(ss.completed_at)
+                    )
+                ) as avg_duration
+            FROM session_state ss
+            LEFT JOIN (
+                SELECT
+                    session_id,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as message_count
+                FROM unified_logs
+                GROUP BY session_id
+            ) metrics ON ss.session_id = metrics.session_id
+            WHERE ss.cascade_id IN ('{cascade_ids_str}')
+                AND ss.status IN ('completed', 'error', 'cancelled')
+                AND ss.started_at IS NOT NULL
+                AND ss.completed_at IS NOT NULL
+            GROUP BY ss.cascade_id
+        """
+
+        avg_result = db.query(avg_query)
+
+        # Build cascade averages map
+        cascade_avgs = {}
+        for row in avg_result:
+            cid = row.get('cascade_id')
+            cascade_avgs[cid] = {
+                'avg_cost': float(row.get('avg_cost', 0) or 0),
+                'avg_messages': float(row.get('avg_messages', 0) or 0),
+                'avg_duration': float(row.get('avg_duration', 0) or 0),
+            }
+
+        # Query for aggregated metrics from unified_logs
+        query = f"""
+            SELECT
+                ul.session_id,
+                SUM(ul.cost) as total_cost,
+                COUNT(*) as message_count
+            FROM unified_logs ul
+            WHERE ul.session_id IN ('{session_ids_str}')
+            GROUP BY ul.session_id
+        """
+
+        result = db.query(query)
+
+        # Build lookup map with default values for ALL sessions
+        metrics_map = {}
+
+        # Initialize map for all sessions
+        for session in sessions:
+            metrics_map[session.session_id] = {
+                'total_cost': 0.0,
+                'message_count': 0,
+                'input_data': None,
+            }
+
+        # Populate with actual metrics from unified_logs
+        for row in result:
+            sid = row.get('session_id')
+            if sid in metrics_map:
+                metrics_map[sid]['total_cost'] = float(row.get('total_cost', 0) or 0)
+                metrics_map[sid]['message_count'] = int(row.get('message_count', 0) or 0)
+
+        # Get input_data from cascade_sessions table (much more reliable!)
+        input_query = f"""
+            SELECT
+                session_id,
+                input_data
+            FROM cascade_sessions
+            WHERE session_id IN ('{session_ids_str}')
+        """
+
+        input_result = db.query(input_query)
+
+        import json
+        input_count = 0
+        for row in input_result:
+            sid = row.get('session_id')
+            input_count += 1
+            if sid in metrics_map and row.get('input_data'):
+                try:
+                    # Parse JSON if it's a string
+                    input_data = row['input_data']
+                    if isinstance(input_data, str):
+                        input_data = json.loads(input_data)
+                    metrics_map[sid]['input_data'] = input_data
+                    print(f"[DEBUG] Added input_data for {sid}: {input_data}")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse input_data for {sid}: {e}")
+                    # If parsing fails, store raw string
+                    metrics_map[sid]['input_data'] = row['input_data']
+            else:
+                if sid not in metrics_map:
+                    print(f"[DEBUG] Session {sid} not in metrics_map")
+                elif not row.get('input_data'):
+                    print(f"[DEBUG] Session {sid} has no input_data")
+
+        print(f"[DEBUG] Processed {input_count} input_data rows from cascade_sessions")
+
+        # Attach metrics to session objects with percent differences
+        enriched = []
+        for session in sessions:
+            session_dict = _session_to_dict(session, is_zombie=False, can_resume=False)
+            metrics = metrics_map.get(session.session_id, {})
+
+            # Basic metrics
+            session_dict['total_cost'] = metrics.get('total_cost', 0.0)
+            session_dict['message_count'] = metrics.get('message_count', 0)
+            session_dict['input_data'] = metrics.get('input_data')
+
+            # Calculate percent differences from cascade averages
+            cascade_avg = cascade_avgs.get(session.cascade_id, {})
+
+            # Cost difference
+            avg_cost = cascade_avg.get('avg_cost', 0)
+            if avg_cost > 0:
+                cost_diff = ((session_dict['total_cost'] - avg_cost) / avg_cost) * 100
+                session_dict['cost_diff_pct'] = round(cost_diff, 1)
+            else:
+                session_dict['cost_diff_pct'] = None
+
+            # Message count difference
+            avg_messages = cascade_avg.get('avg_messages', 0)
+            if avg_messages > 0:
+                msg_diff = ((session_dict['message_count'] - avg_messages) / avg_messages) * 100
+                session_dict['messages_diff_pct'] = round(msg_diff, 1)
+            else:
+                session_dict['messages_diff_pct'] = None
+
+            # Duration difference
+            avg_duration = cascade_avg.get('avg_duration', 0)
+            if session.started_at and session.completed_at and avg_duration > 0:
+                # Calculate session duration in seconds
+                from datetime import datetime
+                if isinstance(session.started_at, str):
+                    started = datetime.fromisoformat(session.started_at.replace('Z', '+00:00'))
+                else:
+                    started = session.started_at
+                if isinstance(session.completed_at, str):
+                    completed = datetime.fromisoformat(session.completed_at.replace('Z', '+00:00'))
+                else:
+                    completed = session.completed_at
+
+                duration_seconds = (completed - started).total_seconds()
+                duration_diff = ((duration_seconds - avg_duration) / avg_duration) * 100
+                session_dict['duration_diff_pct'] = round(duration_diff, 1)
+            else:
+                session_dict['duration_diff_pct'] = None
+
+            enriched.append(session_dict)
+
+        return enriched
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # On error, return sessions without enrichment
+        return [_session_to_dict(s, is_zombie=False, can_resume=False) for s in sessions]
 
 
 def _get_fresh_session(session_id: str) -> SessionState:
@@ -109,13 +300,15 @@ def list_all_sessions():
         if active_only:
             sessions = [s for s in sessions if s.is_active()]
 
-        # Build response with computed fields
-        result = []
-        for session in sessions:
+        # Enrich sessions with metrics from unified_logs
+        result = _enrich_sessions_with_metrics(sessions)
+
+        # Add zombie/resume flags to enriched data
+        for i, session in enumerate(sessions):
             is_zombie = _check_is_zombie(session)
-            # can_resume requires checkpoint and resumable flag
             can_resume = session.resumable and session.last_checkpoint_id is not None
-            result.append(_session_to_dict(session, is_zombie, can_resume))
+            result[i]['is_zombie'] = is_zombie
+            result[i]['can_resume'] = can_resume
 
         return jsonify({
             'sessions': result,

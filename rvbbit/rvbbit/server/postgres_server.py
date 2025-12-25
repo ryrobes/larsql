@@ -31,9 +31,22 @@ from .postgres_protocol import (
     MessageType,
     CommandComplete,
     ReadyForQuery,
+    ErrorResponse,
     send_startup_response,
     send_query_results,
-    send_error
+    send_execute_results,
+    send_error,
+    # Extended Query Protocol classes
+    ParseMessage,
+    BindMessage,
+    DescribeMessage,
+    ExecuteMessage,
+    CloseMessage,
+    ParseComplete,
+    BindComplete,
+    CloseComplete,
+    ParameterDescription,
+    NoData
 )
 
 
@@ -58,6 +71,10 @@ class ClientConnection:
         self.query_count = 0
         self.transaction_status = 'I'  # 'I' = idle, 'T' = in transaction, 'E' = error
 
+        # Extended Query Protocol state
+        self.prepared_statements = {}  # name → {query, param_types, param_count}
+        self.portals = {}               # name → {statement_name, params, result_formats, query}
+
     def setup_session(self):
         """
         Create DuckDB session and register RVBBIT UDFs.
@@ -79,6 +96,12 @@ class ClientConnection:
             # DuckDB v1.4.2+ has built-in pg_catalog support - no need to create views!
             # Just ensure DuckDB's built-in catalog is enabled
             print(f"[{self.session_id}]   ℹ️  Using DuckDB's built-in pg_catalog (v1.4.2+)")
+
+            # Create views for ATTACH'd databases so they appear in DBeaver
+            self._create_attached_db_views()
+
+            # Register UDF to refresh views after manual ATTACH
+            self._register_refresh_views_udf()
 
             print(f"[{self.session_id}] ✓ Session created with RVBBIT UDFs registered")
 
@@ -375,6 +398,196 @@ class ClientConnection:
             traceback.print_exc()
             print(f"[{self.session_id}]   ⚠️  Schema introspection will NOT work!")
 
+    def _cleanup_orphaned_views(self):
+        """
+        Clean up views pointing to DETACH'd or non-existent databases.
+
+        After server restart, ATTACH'd databases are gone but views remain.
+        This method drops orphaned views (views with __ pattern that point to non-existent DBs).
+        """
+        try:
+            # Get all currently attached databases
+            attached_db_names = set()
+            attached_dbs = self.duckdb_conn.execute("""
+                SELECT database_name
+                FROM duckdb_databases()
+                WHERE NOT internal
+                  AND database_name NOT IN ('system', 'temp', 'memory')
+                  AND database_name NOT LIKE 'pg_client_%'
+            """).fetchall()
+
+            for (db_name,) in attached_dbs:
+                attached_db_names.add(db_name)
+
+            # Get all views with __ pattern (ATTACH'd database views)
+            views = self.duckdb_conn.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'main'
+                  AND table_type = 'VIEW'
+                  AND table_name LIKE '%__%'
+            """).fetchall()
+
+            dropped_count = 0
+            for (view_name,) in views:
+                # Extract database name from view (before __)
+                db_prefix = view_name.split('__')[0] if '__' in view_name else None
+
+                # If database doesn't exist, drop the view
+                if db_prefix and db_prefix not in attached_db_names:
+                    try:
+                        self.duckdb_conn.execute(f'DROP VIEW IF EXISTS main."{view_name}"')
+                        dropped_count += 1
+                    except:
+                        pass
+
+            if dropped_count > 0:
+                print(f"[{self.session_id}]   🧹 Cleaned up {dropped_count} orphaned views (DETACH'd databases)")
+
+        except Exception as e:
+            # Non-fatal
+            print(f"[{self.session_id}]   ⚠️  Could not cleanup orphaned views: {e}")
+
+    def _create_attached_db_views(self):
+        """
+        Create views in main schema for all tables in ATTACH'd databases.
+
+        This makes ATTACH'd cascade sessions browsable in DBeaver!
+
+        For each table in attached database:
+          test_session.main._load_products → view: test_session__load_products
+
+        DBeaver can then browse these views under the main schema.
+        """
+        try:
+            # First, clean up any orphaned views from DETACH'd databases
+            self._cleanup_orphaned_views()
+
+            # Get all attached databases (exclude system DBs and current DB)
+            attached_dbs = self.duckdb_conn.execute("""
+                SELECT database_name, database_oid
+                FROM duckdb_databases()
+                WHERE NOT internal
+                  AND database_name NOT IN ('system', 'temp', 'memory')
+                  AND database_name NOT LIKE 'pg_client_%'
+                ORDER BY database_name
+            """).fetchall()
+
+            if not attached_dbs:
+                print(f"[{self.session_id}]   ℹ️  No ATTACH'd databases to expose")
+                return
+
+            view_count = 0
+            for db_name, db_oid in attached_dbs:
+                # Get tables in this database
+                tables = self.duckdb_conn.execute(f"""
+                    SELECT schema_name, table_name
+                    FROM duckdb_tables()
+                    WHERE database_name = '{db_name}'
+                      AND NOT temporary
+                    ORDER BY schema_name, table_name
+                """).fetchall()
+
+                for schema, table in tables:
+                    # Create view name: dbname__tablename
+                    # Use double underscore to distinguish from regular table names
+                    view_name = f"{db_name}__{table}"
+
+                    try:
+                        # Create view pointing to attached database table
+                        self.duckdb_conn.execute(f"""
+                            CREATE OR REPLACE VIEW main."{view_name}" AS
+                            SELECT * FROM "{db_name}"."{schema}"."{table}"
+                        """)
+                        view_count += 1
+                    except Exception as e:
+                        # Skip if view creation fails
+                        pass
+
+            if view_count > 0:
+                print(f"[{self.session_id}]   ✅ Created {view_count} views for ATTACH'd databases")
+            else:
+                print(f"[{self.session_id}]   ℹ️  No tables found in ATTACH'd databases")
+
+        except Exception as e:
+            # Non-fatal - ATTACH views are nice-to-have
+            print(f"[{self.session_id}]   ⚠️  Could not create ATTACH'd DB views: {e}")
+
+    def _handle_detach(self, query: str):
+        """
+        Handle DETACH command - cleanup views before detaching.
+
+        Args:
+            query: DETACH statement (e.g., "DETACH my_db" or "DETACH IF EXISTS my_db")
+        """
+        import re
+
+        # Extract database name from DETACH statement
+        # Handles: DETACH db_name, DETACH IF EXISTS db_name, DETACH DATABASE db_name
+        match = re.search(r'DETACH\s+(?:IF\s+EXISTS\s+)?(?:DATABASE\s+)?(\w+)', query, re.IGNORECASE)
+
+        if match:
+            db_name = match.group(1)
+            print(f"[{self.session_id}]   🗑️  DETACH {db_name} - cleaning up views...")
+
+            # Drop all views for this database
+            try:
+                views_to_drop = self.duckdb_conn.execute(f"""
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main'
+                      AND table_type = 'VIEW'
+                      AND table_name LIKE '{db_name}__%%'
+                """).fetchall()
+
+                dropped_count = 0
+                for (view_name,) in views_to_drop:
+                    try:
+                        self.duckdb_conn.execute(f'DROP VIEW IF EXISTS main."{view_name}"')
+                        dropped_count += 1
+                    except:
+                        pass
+
+                if dropped_count > 0:
+                    print(f"[{self.session_id}]      🧹 Dropped {dropped_count} views for {db_name}")
+
+            except Exception as e:
+                print(f"[{self.session_id}]      ⚠️  Could not cleanup views: {e}")
+
+        # Execute the actual DETACH command
+        try:
+            self.duckdb_conn.execute(query)
+            self.sock.sendall(CommandComplete.encode('DETACH'))
+            self.sock.sendall(ReadyForQuery.encode('I'))
+            print(f"[{self.session_id}]   ✓ DETACH executed")
+
+        except Exception as e:
+            error_message = str(e)
+            send_error(self.sock, error_message, transaction_status=self.transaction_status)
+            print(f"[{self.session_id}]   ✗ DETACH error: {error_message}")
+
+    def _register_refresh_views_udf(self):
+        """
+        Register refresh_attached_views() UDF.
+
+        Users can call this after manually ATTACH'ing a database:
+          SELECT refresh_attached_views();
+
+        This will create views for the newly ATTACH'd database's tables.
+        """
+        try:
+            def refresh_attached_views() -> str:
+                """Refresh views for ATTACH'd databases."""
+                # Call the view creation method
+                self._create_attached_db_views()
+                return "Views refreshed for ATTACH'd databases"
+
+            self.duckdb_conn.create_function('refresh_attached_views', refresh_attached_views)
+            print(f"[{self.session_id}]   ✅ Registered refresh_attached_views() UDF")
+
+        except Exception as e:
+            print(f"[{self.session_id}]   ⚠️  Could not register refresh UDF: {e}")
+
     def handle_startup(self, startup_params: dict):
         """
         Handle client startup message.
@@ -442,10 +655,19 @@ class ClientConnection:
                 self._handle_rollback()
                 return
 
+            # Handle DETACH commands - cleanup views for the detached database
+            if query_upper.startswith('DETACH '):
+                self._handle_detach(query)
+                return
+
             # Handle PostgreSQL catalog queries (pg_catalog, information_schema)
             if self._is_catalog_query(query):
                 self._handle_catalog_query(query)
                 return
+
+            # Rewrite RVBBIT MAP/RUN syntax to standard SQL
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+            query = rewrite_rvbbit_syntax(query)
 
             # Execute on DuckDB
             result_df = self.duckdb_conn.execute(query).fetchdf()
@@ -553,7 +775,34 @@ class ClientConnection:
                 print(f"[{self.session_id}]   ✓ HAS_PRIVILEGE function handled")
                 return
 
-            # Special case 3: PostgreSQL functions that don't exist in DuckDB
+            # Special case 3: SIMPLE pg_namespace queries (not JOINs!) - include ATTACH'd databases
+            # Only bypass if it's the main table, not part of a JOIN
+            if ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper) and 'JOIN' not in query_upper:
+                print(f"[{self.session_id}]   🔧 Enhancing pg_namespace to include ATTACH'd databases...")
+                try:
+                    # Get all attached databases from duckdb_databases()
+                    # Map them as PostgreSQL schemas
+                    enhanced_query = """
+                        SELECT
+                            database_name as nspname,
+                            database_oid as oid
+                        FROM duckdb_databases()
+                        WHERE database_name NOT IN ('system', 'temp')
+                        UNION ALL
+                        SELECT 'pg_catalog' as nspname, 11 as oid
+                        UNION ALL
+                        SELECT 'information_schema' as nspname, 12 as oid
+                        ORDER BY nspname
+                    """
+                    result_df = self.duckdb_conn.execute(enhanced_query).fetchdf()
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    print(f"[{self.session_id}]   ✅ Enhanced pg_namespace with ATTACH'd databases ({len(result_df)} schemas)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠️  Could not enhance pg_namespace: {e}")
+                    # Fall through to default handler
+
+            # Special case 4: PostgreSQL functions that don't exist in DuckDB
             if 'PG_GET_KEYWORDS' in query_upper:
                 # Return empty - DuckDB doesn't have this function
                 result_df = pd.DataFrame(columns=['word', 'catcode', 'catdesc'])
@@ -767,14 +1016,44 @@ class ClientConnection:
 
         return rewritten
 
-    def _handle_set_command(self, query: str):
+    def _execute_show_and_send_extended(self, query: str):
         """
-        Handle PostgreSQL SET/RESET commands.
+        Execute SHOW command and send results via Extended Query Protocol.
 
-        Many PostgreSQL clients send session configuration commands
-        that DuckDB doesn't support (e.g., extra_float_digits, DateStyle).
+        Sends only DataRows + CommandComplete (RowDescription sent by Describe Portal).
 
-        For v1, we silently accept these to maintain compatibility.
+        Args:
+            query: SHOW command
+        """
+        import pandas as pd
+        query_upper = query.upper()
+
+        # SHOW search_path
+        if 'SEARCH_PATH' in query_upper:
+            result_df = pd.DataFrame({'search_path': ['main, pg_catalog']})
+        # SHOW timezone
+        elif 'TIMEZONE' in query_upper or 'TIME ZONE' in query_upper:
+            result_df = pd.DataFrame({'TimeZone': ['UTC']})
+        # SHOW server_version
+        elif 'SERVER_VERSION' in query_upper:
+            result_df = pd.DataFrame({'server_version': ['14.0']})
+        # SHOW transaction isolation level
+        elif 'TRANSACTION' in query_upper and 'ISOLATION' in query_upper:
+            result_df = pd.DataFrame({'transaction_isolation': ['read committed']})
+        # Try DuckDB native
+        else:
+            try:
+                result_df = self.duckdb_conn.execute(query).fetchdf()
+            except:
+                result_df = pd.DataFrame({'setting': ['']})
+
+        send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
+
+    def _execute_set_command(self, query: str):
+        """
+        Execute SET/RESET command (internal - no responses sent).
+
+        Used by both Simple Query and Extended Query handlers.
 
         Args:
             query: SET or RESET command
@@ -800,22 +1079,35 @@ class ClientConnection:
         is_ignored = any(setting in query_upper for setting in IGNORED_SETTINGS)
 
         if is_ignored:
-            # Silently accept (send CommandComplete)
-            print(f"[{self.session_id}]   ℹ️  Ignoring PostgreSQL-specific SET: {query[:60]}")
-            self.sock.sendall(CommandComplete.encode('SET'))
-            self.sock.sendall(ReadyForQuery.encode('I'))
+            # Silently ignore
+            print(f"[{self.session_id}]      Ignoring PostgreSQL-specific SET: {query[:60]}")
         else:
             # Try to execute on DuckDB (might work for some SET commands)
             try:
                 self.duckdb_conn.execute(query)
-                print(f"[{self.session_id}]   ✓ SET command executed on DuckDB")
-                self.sock.sendall(CommandComplete.encode('SET'))
-                self.sock.sendall(ReadyForQuery.encode('I'))
+                print(f"[{self.session_id}]      SET command executed on DuckDB")
             except Exception as e:
-                # DuckDB doesn't support this either - ignore and pretend it worked
-                print(f"[{self.session_id}]   ℹ️  Ignoring unsupported SET: {query[:60]}")
-                self.sock.sendall(CommandComplete.encode('SET'))
-                self.sock.sendall(ReadyForQuery.encode('I'))
+                # DuckDB doesn't support this either - ignore
+                print(f"[{self.session_id}]      Ignoring unsupported SET: {query[:60]}")
+
+    def _handle_set_command(self, query: str):
+        """
+        Handle PostgreSQL SET/RESET commands (Simple Query Protocol).
+
+        Many PostgreSQL clients send session configuration commands
+        that DuckDB doesn't support (e.g., extra_float_digits, DateStyle).
+
+        For v1, we silently accept these to maintain compatibility.
+
+        Args:
+            query: SET or RESET command
+        """
+        # Execute the SET command
+        self._execute_set_command(query)
+
+        # Send responses (Simple Query Protocol sends immediately)
+        self.sock.sendall(CommandComplete.encode('SET'))
+        self.sock.sendall(ReadyForQuery.encode('I'))
 
     def _handle_show_command(self, query: str):
         """
@@ -893,8 +1185,14 @@ class ClientConnection:
             send_error(self.sock, error_message, detail=error_detail, transaction_status=self.transaction_status)
             print(f"[{self.session_id}]   ✗ SHOW command error: {error_message}")
 
-    def _handle_begin(self):
-        """Handle BEGIN transaction."""
+    def _handle_begin(self, send_ready=True):
+        """
+        Handle BEGIN transaction.
+
+        Args:
+            send_ready: If True, send ReadyForQuery (Simple Query mode)
+                       If False, don't send (Extended Query - waits for Sync)
+        """
         try:
             if self.transaction_status == 'T':
                 # Already in transaction - commit current one first
@@ -906,15 +1204,26 @@ class ClientConnection:
             self.transaction_status = 'T'
 
             self.sock.sendall(CommandComplete.encode('BEGIN'))
-            self.sock.sendall(ReadyForQuery.encode('T'))  # 'T' = in transaction
+            if send_ready:
+                self.sock.sendall(ReadyForQuery.encode('T'))  # 'T' = in transaction
             print(f"[{self.session_id}]   ✓ BEGIN transaction")
 
         except Exception as e:
             print(f"[{self.session_id}]   ✗ BEGIN error: {e}")
-            send_error(self.sock, str(e))
+            if send_ready:
+                send_error(self.sock, str(e))
+            else:
+                # In Extended Query, errors are sent but not ReadyForQuery (wait for Sync)
+                self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
 
-    def _handle_commit(self):
-        """Handle COMMIT transaction."""
+    def _handle_commit(self, send_ready=True):
+        """
+        Handle COMMIT transaction.
+
+        Args:
+            send_ready: If True, send ReadyForQuery (Simple Query mode)
+                       If False, don't send (Extended Query - waits for Sync)
+        """
         try:
             if self.transaction_status == 'E':
                 # Transaction is in error state - can't commit
@@ -928,15 +1237,25 @@ class ClientConnection:
             self.transaction_status = 'I'
 
             self.sock.sendall(CommandComplete.encode('COMMIT'))
-            self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
+            if send_ready:
+                self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
             print(f"[{self.session_id}]   ✓ COMMIT transaction")
 
         except Exception as e:
             print(f"[{self.session_id}]   ✗ COMMIT error: {e}")
-            send_error(self.sock, str(e))
+            if send_ready:
+                send_error(self.sock, str(e))
+            else:
+                self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
 
-    def _handle_rollback(self):
-        """Handle ROLLBACK transaction."""
+    def _handle_rollback(self, send_ready=True):
+        """
+        Handle ROLLBACK transaction.
+
+        Args:
+            send_ready: If True, send ReadyForQuery (Simple Query mode)
+                       If False, don't send (Extended Query - waits for Sync)
+        """
         try:
             if self.transaction_status in ['T', 'E']:
                 # Rollback active or errored transaction
@@ -946,12 +1265,450 @@ class ClientConnection:
             self.transaction_status = 'I'
 
             self.sock.sendall(CommandComplete.encode('ROLLBACK'))
-            self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
+            if send_ready:
+                self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
             print(f"[{self.session_id}]   ✓ ROLLBACK transaction")
 
         except Exception as e:
             print(f"[{self.session_id}]   ✗ ROLLBACK error: {e}")
-            send_error(self.sock, str(e))
+            if send_ready:
+                send_error(self.sock, str(e))
+            else:
+                self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+
+    def _handle_parse(self, msg: dict):
+        """
+        Handle Parse message - prepare a SQL statement.
+
+        Args:
+            msg: Decoded Parse message {statement_name, query, param_types}
+        """
+        stmt_name = msg['statement_name']
+        query = msg['query']
+        param_types = msg['param_types']
+
+        print(f"[{self.session_id}]   🔧 Parse statement '{stmt_name or '(unnamed)'}': {query[:80]}...")
+
+        try:
+            # Rewrite RVBBIT MAP/RUN syntax to standard SQL BEFORE preparing
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+            original_query = query
+            query = rewrite_rvbbit_syntax(query)
+
+            if query != original_query:
+                print(f"[{self.session_id}]      🔄 Rewrote RVBBIT syntax ({len(original_query)} → {len(query)} chars)")
+
+            # Store prepared statement
+            # We don't actually use DuckDB PREPARE yet - just store the query
+            # DuckDB PREPARE has different syntax ($1 vs ?)
+            self.prepared_statements[stmt_name] = {
+                'query': query,
+                'param_types': param_types,
+                'param_count': len(param_types)
+            }
+
+            # Send ParseComplete
+            self.sock.sendall(ParseComplete.encode())
+            print(f"[{self.session_id}]      ✓ Statement prepared ({len(param_types)} parameters)")
+
+        except Exception as e:
+            print(f"[{self.session_id}]      ✗ Parse error: {e}")
+            send_error(self.sock, f"Parse error: {str(e)}", transaction_status=self.transaction_status)
+
+    def _handle_bind(self, msg: dict):
+        """
+        Handle Bind message - bind parameters to prepared statement.
+
+        Args:
+            msg: Decoded Bind message {portal_name, statement_name, param_formats, param_values, result_formats}
+        """
+        portal_name = msg['portal_name']
+        stmt_name = msg['statement_name']
+        param_values = msg['param_values']
+        param_formats = msg['param_formats']
+        result_formats = msg['result_formats']
+
+        print(f"[{self.session_id}]   🔗 Bind portal '{portal_name or '(unnamed)'}' to statement '{stmt_name or '(unnamed)'}'")
+
+        try:
+            # Get prepared statement
+            if stmt_name not in self.prepared_statements:
+                raise Exception(f"Prepared statement '{stmt_name}' does not exist")
+
+            stmt = self.prepared_statements[stmt_name]
+
+            # Convert parameter values from wire format to Python types
+            params = []
+            for i, value_bytes in enumerate(param_values):
+                if value_bytes is None:
+                    params.append(None)
+                else:
+                    # Get format (0=text, 1=binary)
+                    fmt = param_formats[i] if i < len(param_formats) else (param_formats[0] if param_formats else 0)
+
+                    if fmt == 0:  # Text format
+                        value_str = value_bytes.decode('utf-8')
+
+                        # Get parameter type OID (0 = infer type)
+                        param_type = stmt['param_types'][i] if i < len(stmt['param_types']) else 0
+
+                        # Cast based on type
+                        if param_type == 0:
+                            # Type not specified - infer from value
+                            # Try int first, then float, else string
+                            try:
+                                params.append(int(value_str))
+                            except:
+                                try:
+                                    params.append(float(value_str))
+                                except:
+                                    params.append(value_str)
+                        elif param_type == 23:  # INTEGER
+                            params.append(int(value_str))
+                        elif param_type == 20:  # BIGINT
+                            params.append(int(value_str))
+                        elif param_type == 701:  # DOUBLE
+                            params.append(float(value_str))
+                        elif param_type == 16:  # BOOLEAN
+                            params.append(value_str.lower() in ('t', 'true', '1', 'yes'))
+                        else:  # VARCHAR, TEXT, etc.
+                            params.append(value_str)
+                    else:
+                        # Binary format - decode based on type
+                        import struct
+                        param_type = stmt['param_types'][i] if i < len(stmt['param_types']) else 0
+
+                        if param_type == 23:  # INTEGER (int32)
+                            params.append(struct.unpack('!i', value_bytes)[0])
+                        elif param_type == 20:  # BIGINT (int64)
+                            params.append(struct.unpack('!q', value_bytes)[0])
+                        elif param_type == 21:  # SMALLINT (int16)
+                            params.append(struct.unpack('!h', value_bytes)[0])
+                        elif param_type == 701:  # DOUBLE (float64)
+                            params.append(struct.unpack('!d', value_bytes)[0])
+                        elif param_type == 700:  # FLOAT (float32)
+                            params.append(struct.unpack('!f', value_bytes)[0])
+                        elif param_type == 16:  # BOOLEAN (1 byte)
+                            params.append(value_bytes[0] != 0)
+                        elif param_type in [1043, 25]:  # VARCHAR, TEXT
+                            params.append(value_bytes.decode('utf-8'))
+                        else:
+                            # Unknown type - try to decode as string
+                            try:
+                                params.append(value_bytes.decode('utf-8'))
+                            except:
+                                # If that fails, just use the bytes as-is
+                                params.append(value_bytes)
+
+            # Store portal
+            self.portals[portal_name] = {
+                'statement_name': stmt_name,
+                'params': params,
+                'result_formats': result_formats,
+                'query': stmt['query'],
+                'row_description_sent': False  # Track if Describe sent RowDescription
+            }
+
+            # Send BindComplete
+            self.sock.sendall(BindComplete.encode())
+            print(f"[{self.session_id}]      ✓ Parameters bound ({len(params)} values)")
+
+        except Exception as e:
+            print(f"[{self.session_id}]      ✗ Bind error: {e}")
+            send_error(self.sock, f"Bind error: {str(e)}", transaction_status=self.transaction_status)
+
+    def _handle_describe(self, msg: dict):
+        """
+        Handle Describe message - describe statement or portal.
+
+        Args:
+            msg: Decoded Describe message {type, name}
+        """
+        describe_type = msg['type']
+        name = msg['name']
+
+        print(f"[{self.session_id}]   📋 Describe {describe_type} '{name or '(unnamed)'}'")
+
+        try:
+            if describe_type == 'S':  # Statement
+                if name not in self.prepared_statements:
+                    raise Exception(f"Prepared statement '{name}' does not exist")
+
+                stmt = self.prepared_statements[name]
+
+                # Send ParameterDescription
+                self.sock.sendall(ParameterDescription.encode(stmt['param_types']))
+
+                # Send NoData (we don't know columns without executing)
+                self.sock.sendall(NoData.encode())
+
+                print(f"[{self.session_id}]      ✓ Statement described ({len(stmt['param_types'])} parameters)")
+
+            elif describe_type == 'P':  # Portal
+                if name not in self.portals:
+                    raise Exception(f"Portal '{name}' does not exist")
+
+                # For all portals: Return NoData
+                # Column metadata will come from Execute's RowDescription
+                # This avoids double-execution and keeps protocol simple
+                self.sock.sendall(NoData.encode())
+                print(f"[{self.session_id}]      ✓ Portal described (NoData - Execute will send columns)")
+
+        except Exception as e:
+            print(f"[{self.session_id}]      ✗ Describe error: {e}")
+            send_error(self.sock, f"Describe error: {str(e)}", transaction_status=self.transaction_status)
+
+    def _handle_execute(self, msg: dict):
+        """
+        Handle Execute message - execute a bound portal.
+
+        Args:
+            msg: Decoded Execute message {portal_name, max_rows}
+        """
+        portal_name = msg['portal_name']
+        max_rows = msg['max_rows']
+
+        print(f"[{self.session_id}]   ▶️  Execute portal '{portal_name or '(unnamed)'}' (max_rows={max_rows})")
+
+        try:
+            # Get portal
+            if portal_name not in self.portals:
+                raise Exception(f"Portal '{portal_name}' does not exist")
+
+            portal = self.portals[portal_name]
+            query = portal['query']
+            params = portal['params']
+
+            # Check for special PostgreSQL functions and commands
+            query_upper = query.upper().strip()
+
+            # SHOW commands - Handle via Extended Query
+            if query_upper.startswith('SHOW '):
+                print(f"[{self.session_id}]      Detected SHOW command via Extended Query")
+                # Handle SHOW and send results via Extended Query (no RowDescription!)
+                self._execute_show_and_send_extended(query)
+                return
+
+            # pg_get_keywords() - Return empty result
+            if 'PG_GET_KEYWORDS' in query_upper:
+                print(f"[{self.session_id}]      Detected pg_get_keywords() - returning empty")
+                import pandas as pd
+                send_execute_results(self.sock, pd.DataFrame(columns=['word']), send_row_description=True)  # Describe sent NoData
+                return
+
+            # pg_class queries with c.* - Use the bypass logic
+            if 'FROM PG_CATALOG.PG_CLASS' in query_upper and ('C.*' in query_upper or 'C.OID' in query_upper):
+                print(f"[{self.session_id}]      Detected pg_class c.* query - using safe column bypass")
+                try:
+                    # Extract WHERE clause from original query
+                    import re
+                    where_match = re.search(r'\bWHERE\b(.+?)(?:ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+                    if where_match:
+                        where_clause = where_match.group(1).strip()
+                        # Strip type casts from WHERE clause too
+                        where_clause = where_clause.replace('::int8', '').replace('::int4', '').replace('::int2', '')
+                        where_clause = where_clause.replace('::text', '').replace('::varchar', '')
+
+                        # Replace table alias (DBeaver might use 'pc', 'c', 'cl', etc.)
+                        # Our bypass always uses 'c', so replace all variations
+                        where_clause = re.sub(r'\b(pc|cl|cls|pg_class)\s*\.', 'c.', where_clause, flags=re.IGNORECASE)
+
+                        # Convert $1, $2 to ? for DuckDB
+                        for i in range(len(params), 0, -1):
+                            where_clause = where_clause.replace(f'${i}', '?')
+                    else:
+                        where_clause = "c.relkind NOT IN ('i', 'I', 'c')"
+
+                    print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
+
+                    # Use safe column subset (avoids regclass and missing functions)
+                    safe_query = f"""
+                        SELECT
+                            c.oid,
+                            c.relname,
+                            c.relnamespace,
+                            c.relkind,
+                            c.relowner,
+                            COALESCE(c.relhasindex, false) as relhasindex,
+                            NULL::BOOLEAN as relrowsecurity,
+                            NULL::BOOLEAN as relforcerowsecurity,
+                            NULL::BOOLEAN as relispartition,
+                            NULL::VARCHAR as description,
+                            NULL::VARCHAR as partition_expr,
+                            NULL::VARCHAR as partition_key
+                        FROM pg_catalog.pg_class c
+                        WHERE {where_clause}
+                        LIMIT 1000
+                    """
+                    result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
+                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
+                    print(f"[{self.session_id}]      ✓ pg_class bypass executed ({len(result_df)} rows)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]      ✗ Bypass failed: {str(e)[:200]}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fall through
+
+            # pg_attribute queries with a.* - Use safe column subset
+            if 'FROM PG_CATALOG.PG_ATTRIBUTE' in query_upper and 'A.*' in query_upper:
+                print(f"[{self.session_id}]      Detected pg_attribute a.* query - using safe column bypass")
+                try:
+                    # Extract WHERE clause
+                    import re
+                    where_match = re.search(r'\bWHERE\b(.+?)(?:ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
+                    if where_match:
+                        where_clause = where_match.group(1).strip()
+                        # Convert $1, $2 to ?
+                        for i in range(len(params), 0, -1):
+                            where_clause = where_clause.replace(f'${i}', '?')
+                    else:
+                        where_clause = "a.attnum > 0 AND NOT a.attisdropped"
+
+                    print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
+
+                    # Use safe column subset
+                    safe_query = f"""
+                        SELECT
+                            c.relname,
+                            a.attname,
+                            a.attnum,
+                            a.atttypid,
+                            a.attnotnull,
+                            a.attlen,
+                            a.attrelid,
+                            NULL::VARCHAR as def_value,
+                            NULL::VARCHAR as description,
+                            NULL::INTEGER as objid
+                        FROM pg_catalog.pg_attribute a
+                        INNER JOIN pg_catalog.pg_class c ON (a.attrelid = c.oid)
+                        WHERE {where_clause}
+                        ORDER BY a.attnum
+                        LIMIT 1000
+                    """
+                    result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
+                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
+                    print(f"[{self.session_id}]      ✓ pg_attribute bypass executed ({len(result_df)} rows)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]      ✗ pg_attribute bypass failed: {str(e)[:200]}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fall through
+
+            # Strip regclass/regtype/regproc casts from ANY other pg_catalog query
+            if 'PG_CATALOG' in query_upper and ('::REGCLASS' in query_upper or '::REGTYPE' in query_upper or '::REGPROC' in query_upper or '::OID' in query_upper):
+                print(f"[{self.session_id}]      Detected pg_catalog query with type casts - stripping")
+                # Strip all PostgreSQL type casts
+                clean_query = query
+                for cast in ['::regclass', '::regtype', '::regproc', '::oid', '::REGCLASS', '::REGTYPE', '::REGPROC', '::OID']:
+                    clean_query = clean_query.replace(cast, '')
+
+                # Convert placeholders
+                duckdb_query = clean_query
+                for i in range(len(params), 0, -1):
+                    duckdb_query = duckdb_query.replace(f'${i}', '?')
+
+                try:
+                    result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()
+                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
+                    print(f"[{self.session_id}]      ✓ Catalog query executed after stripping type casts ({len(result_df)} rows)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]      ✗ Even after stripping, query failed: {str(e)[:100]}")
+                    # Fall through to error handling
+
+            # Check if this is a SET or RESET command
+            if query_upper.startswith('SET ') or query_upper.startswith('RESET '):
+                # Handle SET commands via Extended Query Protocol
+                print(f"[{self.session_id}]      Detected SET/RESET via Extended Query")
+                self._execute_set_command(query)
+                # Send CommandComplete (SET commands don't return rows!)
+                self.sock.sendall(CommandComplete.encode('SET'))
+                print(f"[{self.session_id}]      ✓ SET/RESET handled")
+                return
+
+            # Check if this is a transaction command
+            if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
+                print(f"[{self.session_id}]      Detected BEGIN via Extended Query")
+                self._handle_begin(send_ready=False)  # Extended Query - wait for Sync
+                return
+            elif query_upper in ['COMMIT', 'COMMIT TRANSACTION', 'COMMIT WORK', 'END', 'END TRANSACTION']:
+                print(f"[{self.session_id}]      Detected COMMIT via Extended Query")
+                self._handle_commit(send_ready=False)  # Extended Query - wait for Sync
+                return
+            elif query_upper in ['ROLLBACK', 'ROLLBACK TRANSACTION', 'ROLLBACK WORK', 'ABORT']:
+                print(f"[{self.session_id}]      Detected ROLLBACK via Extended Query")
+                self._handle_rollback(send_ready=False)  # Extended Query - wait for Sync
+                return
+
+            # Convert PostgreSQL placeholders ($1, $2, ...) to DuckDB placeholders (?)
+            # Must replace in reverse order to avoid conflicts ($10 before $1)
+            duckdb_query = query
+            for i in range(len(params), 0, -1):
+                duckdb_query = duckdb_query.replace(f'${i}', '?')
+
+            print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
+            print(f"[{self.session_id}]      Parameters: {params}")
+
+            # Execute with parameters
+            result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()
+
+            # Limit rows if max_rows > 0
+            if max_rows > 0:
+                result_df = result_df.head(max_rows)
+
+            # Send results (WITH RowDescription since Describe sent NoData for regular queries)
+            send_execute_results(self.sock, result_df, send_row_description=True)
+
+            print(f"[{self.session_id}]      ✓ Executed, returned {len(result_df)} rows")
+
+        except Exception as e:
+            print(f"[{self.session_id}]      ✗ Execute error: {e}")
+            # Mark transaction as errored
+            if self.transaction_status == 'T':
+                self.transaction_status = 'E'
+            send_error(self.sock, f"Execute error: {str(e)}", transaction_status=self.transaction_status)
+
+    def _handle_close(self, msg: dict):
+        """
+        Handle Close message - close prepared statement or portal.
+
+        Args:
+            msg: Decoded Close message {type, name}
+        """
+        close_type = msg['type']
+        name = msg['name']
+
+        print(f"[{self.session_id}]   🗑️  Close {close_type} '{name or '(unnamed)'}'")
+
+        try:
+            if close_type == 'S':  # Statement
+                if name in self.prepared_statements:
+                    del self.prepared_statements[name]
+                    print(f"[{self.session_id}]      ✓ Statement closed")
+            elif close_type == 'P':  # Portal
+                if name in self.portals:
+                    del self.portals[name]
+                    print(f"[{self.session_id}]      ✓ Portal closed")
+
+            # Send CloseComplete
+            self.sock.sendall(CloseComplete.encode())
+
+        except Exception as e:
+            print(f"[{self.session_id}]      ✗ Close error: {e}")
+            send_error(self.sock, f"Close error: {str(e)}", transaction_status=self.transaction_status)
+
+    def _handle_sync(self):
+        """
+        Handle Sync message - synchronization point.
+
+        Sends ReadyForQuery with current transaction status.
+        """
+        print(f"[{self.session_id}]   🔄 Sync (transaction_status={self.transaction_status})")
+
+        # Send ReadyForQuery with current transaction status
+        self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
 
     def handle(self):
         """
@@ -1016,14 +1773,29 @@ class ClientConnection:
                     print(f"[{self.session_id}] Client requested termination")
                     break
 
-                elif msg_type in [MessageType.PARSE, MessageType.BIND, MessageType.EXECUTE, MessageType.SYNC]:
-                    # Extended query protocol (v2 feature)
-                    print(f"[{self.session_id}] Extended query protocol not yet supported")
-                    send_error(
-                        self.sock,
-                        "Extended query protocol not implemented. Use simple query protocol.",
-                        detail="Prepared statements (PARSE/BIND/EXECUTE) are not yet supported in RVBBIT v1."
-                    )
+                # Extended Query Protocol (NEW!)
+                elif msg_type == MessageType.PARSE:
+                    msg = ParseMessage.decode(payload)
+                    self._handle_parse(msg)
+
+                elif msg_type == MessageType.BIND:
+                    msg = BindMessage.decode(payload)
+                    self._handle_bind(msg)
+
+                elif msg_type == MessageType.DESCRIBE:
+                    msg = DescribeMessage.decode(payload)
+                    self._handle_describe(msg)
+
+                elif msg_type == MessageType.EXECUTE:
+                    msg = ExecuteMessage.decode(payload)
+                    self._handle_execute(msg)
+
+                elif msg_type == MessageType.CLOSE:
+                    msg = CloseMessage.decode(payload)
+                    self._handle_close(msg)
+
+                elif msg_type == MessageType.SYNC:
+                    self._handle_sync()
 
                 else:
                     # Unknown message type

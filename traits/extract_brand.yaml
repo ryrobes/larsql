@@ -1,0 +1,25 @@
+cascade_id: extract_brand
+description: Extract brand name from product text
+
+inputs_schema:
+  product_name: Product name or description
+
+cells:
+  - name: extract
+    instructions: |
+      Extract the brand name from this product title.
+
+      Product: {{ input.product_name }}
+
+      Return ONLY the brand name (e.g., "Apple", "Samsung", "Sony").
+      Do not include model numbers, colors, or other details.
+      If no clear brand is present, return "Unknown".
+
+    output_schema:
+      type: object
+      properties:
+        brand:
+          type: string
+          description: The extracted brand name
+      required:
+        - brand

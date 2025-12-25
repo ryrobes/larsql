@@ -128,6 +128,16 @@
   font-size: var(--font-size-sm);
 }
 
+/* Clickable row styles */
+.console-grid-row-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.console-grid-row-clickable:hover {
+  background-color: rgba(0, 229, 255, 0.05) !important;
+}
+
 /* ============================================
    RESPONSIVE
    ============================================ */

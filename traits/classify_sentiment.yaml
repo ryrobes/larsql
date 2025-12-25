@@ -1,0 +1,23 @@
+cascade_id: classify_sentiment
+description: Classify sentiment of text as positive, negative, or neutral
+
+inputs_schema:
+  review_text: Text to analyze for sentiment
+
+cells:
+  - name: classify
+    instructions: |
+      Classify the sentiment of this text.
+
+      Text: {{ input.review_text }}
+
+      Return one word only: positive, negative, or neutral
+
+    output_schema:
+      type: object
+      properties:
+        sentiment:
+          type: string
+          enum: [positive, negative, neutral]
+      required:
+        - sentiment

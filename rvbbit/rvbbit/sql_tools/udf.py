@@ -340,13 +340,9 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
             "rvbbit",
             udf_wrapper
         )
-        # Register aliases for backwards compatibility
+        # Register alias
         connection.create_function(
             "rvbbit_udf",
-            udf_wrapper
-        )
-        connection.create_function(
-            "windlass_udf",
             udf_wrapper
         )
         _registered_connections.add(conn_id)
@@ -365,20 +361,16 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
             cascade_udf_wrapper,
             return_type="VARCHAR"
         )
-        # Register aliases for backwards compatibility
+        # Register alias
         connection.create_function(
             "rvbbit_cascade_udf",
-            cascade_udf_wrapper,
-            return_type="VARCHAR"
-        )
-        connection.create_function(
-            "windlass_cascade_udf",
             cascade_udf_wrapper,
             return_type="VARCHAR"
         )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_run: {e}")
+
 
 
 def clear_udf_cache():

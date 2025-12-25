@@ -1,0 +1,35 @@
+cascade_id: enrich_contact
+description: Enrich contact information with industry and company size
+
+inputs_schema:
+  email: Email address
+  company_name: Company name
+  website: Company website
+
+cells:
+  - name: analyze
+    instructions: |
+      Analyze this company contact information:
+
+      Email: {{ input.email }}
+      Company: {{ input.company_name }}
+      Website: {{ input.website }}
+
+      Return a JSON object with:
+      - industry: The company's primary industry (e.g., "Technology", "Healthcare", "Finance")
+      - size: Estimated company size (e.g., "Startup", "Small", "Medium", "Large", "Enterprise")
+      - role: Estimated role of email contact (e.g., "Sales", "Support", "Executive")
+
+    output_schema:
+      type: object
+      properties:
+        industry:
+          type: string
+        size:
+          type: string
+        role:
+          type: string
+      required:
+        - industry
+        - size
+        - role

@@ -1,0 +1,15 @@
+{
+  "cascade_id": "grammar_check",
+  "description": "Validates grammar and spelling in text",
+  "tags": ["text", "quality", "writing", "validation"],
+  "inputs_schema": {
+    "content": "The text to check for grammar and spelling issues"
+  },
+  "phases": [{
+    "name": "check",
+    "instructions": "Review the following text for grammar and spelling errors:\n\n{{ input.content }}\n\nCheck for:\n- Spelling mistakes\n- Grammar issues\n- Punctuation errors\n- Basic readability\n\nReturn ONLY a JSON object with this exact format:\n{\"valid\": true/false, \"reason\": \"explanation of issues found or confirmation it's good\", \"issues\": [list of specific issues]}\n\nIf there are 3 or more significant issues, mark as invalid. Minor issues are acceptable.",
+    "rules": {
+      "max_turns": 1
+    }
+  }]
+}

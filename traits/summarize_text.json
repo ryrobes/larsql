@@ -1,0 +1,16 @@
+{
+  "cascade_id": "summarize_text",
+  "description": "Summarizes long text into key points and takeaways",
+  "inputs_schema": {
+    "text": "The text to summarize",
+    "style": "Summary style: 'bullets' for bullet points, 'paragraph' for prose (default: bullets)"
+  },
+  "phases": [
+    {
+      "name": "summarize",
+      "instructions": "Summarize this text: {{ input.text }}\n\nStyle: {{ input.style | default('bullets') }}\n\nIf bullets: Create 3-5 bullet points capturing the main ideas.\nIf paragraph: Write a concise 2-3 sentence summary.\n\nFocus on the most important information and key takeaways.",
+      "tackle": [],
+      "rules": {"max_turns": 1}
+    }
+  ]
+}
