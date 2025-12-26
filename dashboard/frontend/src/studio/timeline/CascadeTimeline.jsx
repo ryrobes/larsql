@@ -23,7 +23,8 @@ const InputEdgesSVG = React.memo(({
   inputColorMap,
   timelineOffset,
   timelineHeight,
-  scrollOffset
+  scrollOffset,
+  cellCostMetrics = {}
 }) => {
   if (process.env.NODE_ENV === 'development') {
     console.log('[InputEdgesSVG] Rendering', { timelineHeight });
@@ -36,6 +37,10 @@ const InputEdgesSVG = React.memo(({
     damping: 30,
     mass: 0.8,
   };
+
+  // Card dimensions (from CellCard.css)
+  const CARD_WIDTH = 240;
+  const CARD_HEIGHT = 90;
 
   return (
     <svg
@@ -69,14 +74,28 @@ const InputEdgesSVG = React.memo(({
             const inputY = inputPositions[inputName] || 50;
             const inputColor = inputColorMap[inputName] || '#ffd700';
 
+            // Get scale for this cell
+            const cellMetrics = cellCostMetrics[node.cell?.name] || {};
+            const scale = cellMetrics.scale || 1.0;
+
+            // Calculate visual offset due to scaling
+            // Scale grows from center, so card extends (scale - 1) * width / 2 on left side
+            const scaleOffset = (scale - 1) * CARD_WIDTH / 2;
+
             const x1 = timelineOffset.left;
             const SIDEBAR_TOP = 0;
             const y1 = SIDEBAR_TOP + inputY + 52;
-            const x2 = timelineOffset.left + (node.x - scrollOffset.x);
-            const y2 = timelineOffset.top + (node.y + 50 - scrollOffset.y);
+
+            // Adjust x2 to account for visual position after scaling
+            const baseX2 = timelineOffset.left + (node.x - scrollOffset.x);
+            const x2 = baseX2 - scaleOffset; // Move left by offset (card grew left)
+
+            // Adjust y2 to account for vertical scaling (card center height)
+            const baseY2 = timelineOffset.top + (node.y + 50 - scrollOffset.y);
+            const y2 = baseY2; // Y offset is minimal for our case, keep simple
 
             // Don't draw if target is off-screen
-            if (x2 < timelineOffset.left - 240 || x2 > window.innerWidth) return null;
+            if (x2 < timelineOffset.left - 300 || x2 > window.innerWidth) return null;
 
             const dx = x2 - x1;
             const cx1 = x1 + Math.min(60, dx * 0.3);
@@ -114,7 +133,7 @@ InputEdgesSVG.displayName = 'InputEdgesSVG';
  * Only re-renders when layout changes
  * Uses Framer Motion to animate edge path changes
  */
-const CellEdgesSVG = React.memo(({ edges, width, height }) => {
+const CellEdgesSVG = React.memo(({ edges, width, height, cellCostMetrics = {} }) => {
   if (process.env.NODE_ENV === 'development') {
     console.log('[CellEdgesSVG] Rendering');
   }
@@ -126,6 +145,10 @@ const CellEdgesSVG = React.memo(({ edges, width, height }) => {
     damping: 30,
     mass: 0.8,
   };
+
+  // Card dimensions
+  const CARD_WIDTH = 240;
+  const CARD_HEIGHT = 90;
 
   return (
     <svg
@@ -144,10 +167,21 @@ const CellEdgesSVG = React.memo(({ edges, width, height }) => {
       {edges.map((edge, idx) => {
         const { source, target, contextType, isBranch, isMerge } = edge;
 
-        const x1 = source.x + 240;
-        const y1 = source.y + 65;
-        const x2 = target.x;
-        const y2 = target.y + 65;
+        // Get scales for source and target cells
+        const sourceMetrics = cellCostMetrics[source.cell?.name] || {};
+        const targetMetrics = cellCostMetrics[target.cell?.name] || {};
+        const sourceScale = sourceMetrics.scale || 1.0;
+        const targetScale = targetMetrics.scale || 1.0;
+
+        // Calculate visual offsets due to scaling
+        const sourceRightOffset = (sourceScale - 1) * CARD_WIDTH / 2;
+        const targetLeftOffset = (targetScale - 1) * CARD_WIDTH / 2;
+
+        // Adjust edge endpoints to match visual card boundaries
+        const x1 = source.x + CARD_WIDTH + sourceRightOffset; // Source right edge
+        const y1 = source.y + CARD_HEIGHT / 2;                 // Source vertical center
+        const x2 = target.x - targetLeftOffset;                // Target left edge
+        const y2 = target.y + CARD_HEIGHT / 2;                 // Target vertical center
 
         const colorMap = {
           data: '#00e5ff',
@@ -195,8 +229,8 @@ CellEdgesSVG.displayName = 'CellEdgesSVG';
  *
  * @param {boolean} linearMode - If true, arrange in single row instead of DAG layers
  */
-const buildFBPLayout = (cells, inputsSchema, linearMode = false) => {
-  if (!cells || cells.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {} };
+const buildFBPLayout = (cells, inputsSchema, linearMode = false, cellCostMetrics = {}) => {
+  if (!cells || cells.length === 0) return { nodes: [], edges: [], width: 0, height: 0, inputPositions: {}, inputColorMap: {} };
 
   // Input parameter color palette (warm/pastel to avoid clash with context colors)
   const inputColors = [
@@ -320,13 +354,14 @@ const buildFBPLayout = (cells, inputsSchema, linearMode = false) => {
     });
   });
 
-  const CARD_WIDTH = 240;
-  const CARD_HEIGHT = 130;
-  const HORIZONTAL_GAP = linearMode ? 60 : 120; // Tighter in linear mode
+  const BASE_CARD_WIDTH = 240;
+  const BASE_CARD_HEIGHT = 130;
+  const MIN_HORIZONTAL_GAP = linearMode ? 60 : 120; // Minimum gap between cards
   const VERTICAL_GAP = 0; // No vertical spacing - cards touch
   const PADDING_LEFT = 160; // More space from sidebar
   const PADDING_TOP = linearMode ? 20 : 40; // Less vertical padding in linear
   const PADDING_RIGHT = 40;
+  const ANNOTATION_CLEARANCE = 25; // Extra space below for annotations
 
   // Topological layering (columns)
   const layers = [];
@@ -357,39 +392,73 @@ const buildFBPLayout = (cells, inputsSchema, linearMode = false) => {
 
   if (linearMode) {
     // Linear mode: single horizontal row (array order)
+    let xPos = PADDING_LEFT;
+
     cells.forEach((cell, idx) => {
-      const x = PADDING_LEFT + (idx * (CARD_WIDTH + HORIZONTAL_GAP));
-      const y = PADDING_TOP;
+      const scale = cellCostMetrics[cell.name]?.scale || 1.0;
 
       nodes.push({
         cellIdx: idx,
         cell: cells[idx],
-        x,
-        y,
+        x: xPos,
+        y: PADDING_TOP,
         layer: 0,
         isBranch: outDegree[idx] > 1,
         isMerge: inDegree[idx] > 1,
         inputDeps: graph[idx].inputDeps,
       });
+
+      // Calculate visual right edge after center-origin scaling
+      // Card at xPos, width 240, center at (xPos + 120)
+      // After scale S, visual right edge: (xPos + 120) + (120 * S)
+      const visualRightEdge = xPos + 120 * (1 + scale);
+
+      // Next card starts after this card's visual right edge + gap + annotation clearance
+      xPos = visualRightEdge + MIN_HORIZONTAL_GAP + 20; // Extra 20px for annotation text
     });
   } else {
-    // FBP mode: layered graph
+    // FBP mode: layered graph with collision-aware positioning
+    const layerXPositions = []; // Track x position for each layer
+
     layers.forEach((layer, layerIdx) => {
-      const x = PADDING_LEFT + (layerIdx * (CARD_WIDTH + HORIZONTAL_GAP));
+      // Calculate max width in previous layer to determine this layer's X
+      let layerX = PADDING_LEFT;
+      if (layerIdx > 0 && layerXPositions[layerIdx - 1] !== undefined) {
+        // Find max scaled width in previous layer
+        const prevLayer = layers[layerIdx - 1];
+        const prevLayerMaxScale = Math.max(...prevLayer.map(cellIdx => {
+          const scale = cellCostMetrics[cells[cellIdx].name]?.scale || 1.0;
+          return scale;
+        }), 1.0);
+        const prevLayerMaxWidth = BASE_CARD_WIDTH * prevLayerMaxScale;
+
+        layerX = layerXPositions[layerIdx - 1] + prevLayerMaxWidth + MIN_HORIZONTAL_GAP;
+      } else if (layerIdx > 0) {
+        layerX = PADDING_LEFT + (layerIdx * (BASE_CARD_WIDTH + MIN_HORIZONTAL_GAP));
+      }
+
+      layerXPositions[layerIdx] = layerX;
+
+      // Accumulate Y positions accounting for each cell's scaled height
+      let yPos = PADDING_TOP;
 
       layer.forEach((cellIdx, posInLayer) => {
-        const y = PADDING_TOP + (posInLayer * (CARD_HEIGHT + VERTICAL_GAP));
+        const scale = cellCostMetrics[cells[cellIdx].name]?.scale || 1.0;
+        const scaledHeight = BASE_CARD_HEIGHT * scale;
 
         nodes.push({
           cellIdx,
           cell: cells[cellIdx],
-          x,
-          y,
+          x: layerX,
+          y: yPos,
           layer: layerIdx,
           isBranch: outDegree[cellIdx] > 1,
           isMerge: inDegree[cellIdx] > 1,
           inputDeps: graph[cellIdx].inputDeps,
         });
+
+        // Move Y position for next card in this layer
+        yPos += scaledHeight + VERTICAL_GAP + ANNOTATION_CLEARANCE;
       });
     });
   }
@@ -433,15 +502,26 @@ const buildFBPLayout = (cells, inputsSchema, linearMode = false) => {
     });
   });
 
-  // Calculate canvas dimensions
+  // Calculate canvas dimensions accounting for scales
   const width = linearMode
-    ? cells.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT
-    : layers.length * (CARD_WIDTH + HORIZONTAL_GAP) + PADDING_LEFT + PADDING_RIGHT;
+    ? nodes.reduce((sum, node) => {
+        const scale = cellCostMetrics[node.cell.name]?.scale || 1.0;
+        return sum + (BASE_CARD_WIDTH * scale) + MIN_HORIZONTAL_GAP;
+      }, PADDING_LEFT + PADDING_RIGHT)
+    : nodes.reduce((maxX, node) => {
+        const scale = cellCostMetrics[node.cell.name]?.scale || 1.0;
+        const nodeRight = node.x + (BASE_CARD_WIDTH * scale);
+        return Math.max(maxX, nodeRight);
+      }, 0) + PADDING_RIGHT;
 
   const maxNodesInLayer = linearMode ? 1 : Math.max(...layers.map(l => l.length), 1);
   const height = linearMode
-    ? CARD_HEIGHT + (PADDING_TOP * 2) // Compact height for linear
-    : maxNodesInLayer * (CARD_HEIGHT + VERTICAL_GAP) + PADDING_TOP * 2;
+    ? (BASE_CARD_HEIGHT * 1.3) + (PADDING_TOP * 2) + ANNOTATION_CLEARANCE // Account for max scale
+    : nodes.reduce((maxY, node) => {
+        const scale = cellCostMetrics[node.cell.name]?.scale || 1.0;
+        const nodeBottom = node.y + (BASE_CARD_HEIGHT * scale) + ANNOTATION_CLEARANCE;
+        return Math.max(maxY, nodeBottom);
+      }, 0) + PADDING_TOP;
 
   return { nodes, edges, width, height, inputPositions, inputColorMap };
 };
@@ -892,9 +972,56 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     });
   }, [cascade, cells, inputsSchema]);
 
+  // Calculate cost metrics for each cell (MUST be before layout)
+  const cellCostMetrics = useMemo(() => {
+    if (!cells || cells.length === 0) return {};
+
+    const metrics = {};
+    let totalCost = 0;
+    let maxCost = 0;
+
+    // First pass: collect costs
+    cells.forEach(cell => {
+      const cost = cellStates[cell.name]?.cost || 0;
+      metrics[cell.name] = { cost };
+      totalCost += cost;
+      if (cost > maxCost) maxCost = cost;
+    });
+
+    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
+
+    // Second pass: calculate deltas and scales
+    Object.keys(metrics).forEach(cellName => {
+      const cost = metrics[cellName].cost;
+      const duration = cellStates[cellName]?.duration || 0;
+      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
+
+      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
+      let scale = 1.0;
+      if (costDeltaPct > 100) scale = 1.3;
+      else if (costDeltaPct > 50) scale = 1.2;
+      else if (costDeltaPct > 10) scale = 1.1;
+      else if (costDeltaPct < -50) scale = 0.85;
+      else if (costDeltaPct < -20) scale = 0.9;
+
+      // Color
+      let color = 'cyan';
+      if (costDeltaPct > 50) color = 'red';
+      else if (costDeltaPct > 10) color = 'orange';
+      else if (costDeltaPct < -20) color = 'green';
+
+      metrics[cellName].costDeltaPct = costDeltaPct;
+      metrics[cellName].duration = duration;
+      metrics[cellName].scale = scale;
+      metrics[cellName].color = color;
+    });
+
+    return metrics;
+  }, [cells, cellStates]);
+
   const layout = useMemo(
     () => {
-      const result = buildFBPLayout(cells, inputsSchema, layoutMode === 'linear');
+      const result = buildFBPLayout(cells, inputsSchema, layoutMode === 'linear', cellCostMetrics);
       console.log('[CascadeTimeline] FBP Layout built:', {
         cellsInput: cells.length,
         nodesOutput: result.nodes.length,
@@ -904,7 +1031,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
       });
       return result;
     },
-    [cells, inputsSchema, layoutMode]
+    [cells, inputsSchema, layoutMode, cellCostMetrics]
   );
 
   const handleDescriptionChange = (e) => {
@@ -1022,51 +1149,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const cellCount = cells.length;
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
 
-  // Calculate cost metrics for each cell
-  const cellCostMetrics = useMemo(() => {
-    if (!cells || cells.length === 0) return {};
-
-    const metrics = {};
-    let totalCost = 0;
-    let maxCost = 0;
-
-    // First pass: collect costs
-    cells.forEach(cell => {
-      const cost = stableCellStates[cell.name]?.cost || 0;
-      metrics[cell.name] = { cost };
-      totalCost += cost;
-      if (cost > maxCost) maxCost = cost;
-    });
-
-    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
-
-    // Second pass: calculate deltas and scales
-    Object.keys(metrics).forEach(cellName => {
-      const cost = metrics[cellName].cost;
-      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
-
-      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
-      let scale = 1.0;
-      if (costDeltaPct > 100) scale = 1.3;
-      else if (costDeltaPct > 50) scale = 1.2;
-      else if (costDeltaPct > 10) scale = 1.1;
-      else if (costDeltaPct < -50) scale = 0.85;
-      else if (costDeltaPct < -20) scale = 0.9;
-
-      // Color
-      let color = 'cyan';
-      if (costDeltaPct > 50) color = 'red';
-      else if (costDeltaPct > 10) color = 'orange';
-      else if (costDeltaPct < -20) color = 'green';
-
-      metrics[cellName].costDeltaPct = costDeltaPct;
-      metrics[cellName].scale = scale;
-      metrics[cellName].color = color;
-    });
-
-    return metrics;
-  }, [cells, stableCellStates]);
-
   if (!cascade) {
     return (
       <div className="cascade-timeline cascade-loading">
@@ -1111,7 +1193,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
               </div>
               {/* Always show cost when session exists, even if $0.00 */}
               <div className="cascade-total-cost-compact" title={`Total cascade cost (polling: ${shouldPoll ? 'active' : 'inactive'})`}>
-                <Icon icon="mdi:currency-usd" width="14" />
                 <span className="cascade-total-cost-value">
                   {totalCost === 0 ? '$0.00' : (totalCost < 0.01 ? '<$0.01' : `$${totalCost.toFixed(4)}`)}
                 </span>
@@ -1254,6 +1335,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
           timelineOffset={timelineOffset}
           timelineHeight={timelineHeight}
           scrollOffset={scrollOffset}
+          cellCostMetrics={cellCostMetrics}
         />
       )}
 
@@ -1291,6 +1373,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             edges={layout.edges}
             width={layout.width}
             height={layout.height}
+            cellCostMetrics={cellCostMetrics}
           />
 
           {/* Positioned cell cards */}

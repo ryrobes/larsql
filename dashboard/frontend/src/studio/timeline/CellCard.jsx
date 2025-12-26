@@ -39,7 +39,7 @@ const formatDuration = (ms) => {
  * - Duration/row count
  * - Quick actions
  */
-const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel }) => {
+const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel, costMetrics }) => {
   // Development-only render logging
   if (process.env.NODE_ENV === 'development') {
     console.log(`[CellCard] Rendering ${cell.name}`, { status: cellState?.status, logsCount: cellLogs.length });
@@ -49,6 +49,28 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
   const hasImages = cellState?.images && cellState.images.length > 0;
+
+  // Get first image for background decoration
+  const firstImage = hasImages ? cellState.images[0] : null;
+  const imageUrl = firstImage ? `http://localhost:5001${firstImage}` : null;
+
+  // Cost metrics for scaling and annotations
+  const scale = costMetrics?.scale || 1.0;
+  const costDeltaPct = costMetrics?.costDeltaPct || 0;
+  const duration = costMetrics?.duration || 0;
+  const costColor = costMetrics?.color || 'cyan';
+  const showAnnotation = costMetrics && Math.abs(costDeltaPct) > 5;
+
+  // Format duration
+  const formatDurationShort = (ms) => {
+    if (!ms) return null;
+    if (ms < 1000) return '<1s';
+    const seconds = Math.floor(ms / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds > 0 ? `${minutes}m${remainingSeconds}s` : `${minutes}m`;
+  };
 
   // Make card droppable for creating handoffs
   const { setNodeRef, isOver } = useDroppable({
@@ -131,12 +153,14 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasCandidates ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''}`}
-      onClick={handleClick}
-      data-cell-name={cell.name}
-    >
+    <div className="cell-card-wrapper" style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+      <div
+        ref={setNodeRef}
+        className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasCandidates ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''} ${imageUrl ? 'has-image-bg' : ''}`}
+        onClick={handleClick}
+        data-cell-name={cell.name}
+        style={imageUrl ? { '--bg-image-url': `url(${imageUrl})` } : undefined}
+      >
       {/* Top row: Type (Icon + Label) + Status */}
       <div className="cell-card-top-row">
         <div className="cell-card-type-row">
@@ -174,23 +198,22 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
           </span>
         )}
 
-        {/* Cost (after execution) */}
-        {cellState?.cost > 0 && (
-          <span className="cell-card-stat cell-card-stat-cost" title="LLM cost">
-            <Icon icon="mdi:currency-usd" width="12" />
-            {cellState.cost < 0.01 ? '<$0.01' : `$${cellState.cost.toFixed(4)}`}
-          </span>
-        )}
-
-        {/* Model - show from YAML or default (BEFORE execution) */}
+        {/* Model - floated to the right */}
         {modelToDisplay && (
           <span
             className="cell-card-stat cell-card-stat-model"
             title={modelToDisplay}
-            style={{ color: getProviderColor(getProvider(modelToDisplay)) }}
+            style={{ color: getProviderColor(getProvider(modelToDisplay)), marginLeft: 'auto' }}
           >
             <ModelIcon modelId={modelToDisplay} size={12} showTooltip={false} />
             {modelToDisplay.split('/').pop().slice(0, 15)}
+          </span>
+        )}
+
+        {/* Cost (after execution) - no icon, just text */}
+        {cellState?.cost > 0 && (
+          <span className="cell-card-stat cell-card-stat-cost" title="LLM cost">
+            {cellState.cost < 0.01 ? '<$0.01' : `$${cellState.cost.toFixed(4)}`}
           </span>
         )}
 
@@ -228,6 +251,17 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
           ))}
         </div>
       )}
+      </div>
+
+      {/* Blueprint-style cost annotation */}
+      {showAnnotation && (
+        <div className={`cell-cost-annotation ${costColor}`}>
+          {costDeltaPct > 0 ? '+' : ''}{costDeltaPct.toFixed(0)}% cost
+          {duration > 0 && (
+            <span className="annotation-duration"> · {formatDurationShort(duration)}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -240,6 +274,11 @@ const arePropsEqual = (prevProps, nextProps) => {
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.defaultModel !== nextProps.defaultModel) return false;
   if (prevProps.onSelect !== nextProps.onSelect) return false;
+
+  // Cost metrics - check if changed
+  const prevCost = prevProps.costMetrics?.cost || 0;
+  const nextCost = nextProps.costMetrics?.cost || 0;
+  if (prevCost !== nextCost) return false;
 
   // Cell config - compare by reference (should be stable from layout memoization)
   if (prevProps.cell !== nextProps.cell) {

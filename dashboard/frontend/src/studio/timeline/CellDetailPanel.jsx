@@ -112,7 +112,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     python_data: { language: 'python', codeKey: 'code', source: 'inputs' },
     js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
-    llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
+    llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' }, 
     windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
     linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
     linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
@@ -583,12 +583,26 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     // Only update local YAML for display, don't sync to store until blur
     setLocalYaml(value);
 
-    // Try to validate for immediate error feedback
+    // Validate as complete YAML document by wrapping fragment
     try {
-      yaml.load(value);
-      setYamlParseError(null);
+      // Indent the cell YAML and wrap in a parent structure for validation
+      const indented = value.split('\n').map(line => '  ' + line).join('\n');
+      const wrappedYaml = `cells:\n${indented}`;
+
+      const parsed = yaml.load(wrappedYaml);
+
+      // Check if parse succeeded and returned valid structure
+      if (parsed && parsed.cells && typeof parsed.cells === 'object') {
+        setYamlParseError(null);
+      }
     } catch (e) {
-      setYamlParseError(e.message);
+      // Only show parse error if it's a real syntax error
+      // Ignore errors for empty/whitespace-only
+      if (value.trim().length > 0) {
+        setYamlParseError(e.message);
+      } else {
+        setYamlParseError(null);
+      }
     }
   }, []);
 
@@ -602,6 +616,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     }
 
     try {
+      // Parse the cell YAML directly (it's a valid YAML object on its own)
       const parsed = yaml.load(editorValue);
 
       // Validate that parsed has required fields
@@ -613,8 +628,8 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
         throw new Error('Invalid cell: missing required field "name"');
       }
 
-      // Update entire cell object
-      updateCell(index, parsed);
+      // Update entire cell object (spread to preserve all keys)
+      updateCell(index, { ...parsed });
       lastSyncedYamlRef.current = editorValue;
       setYamlParseError(null);
       // Only set unfocused after successful update
@@ -1038,14 +1053,27 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           }}
                           options={{
                             minimap: { enabled: false },
-                            fontSize: 13,
-                            fontFamily: "'Google Sans Code', monospace",
-                            lineNumbers: 'on',
+                            fontSize: 12,
+                            fontFamily: "'Google Sans Code', 'Menlo', monospace",
+                            lineNumbers: 'off',
+                            renderLineHighlight: 'line',
                             renderLineHighlightOnlyWhenFocus: true,
                             wordWrap: 'on',
+                            wrappingStrategy: 'advanced',
                             automaticLayout: true,
                             scrollBeyondLastLine: false,
+                            folding: true,
+                            foldingStrategy: 'indentation',
+                            showFoldingControls: 'mouseover',
+                            bracketPairColorization: { enabled: true },
+                            guides: {
+                              indentation: true,
+                              bracketPairs: true,
+                            },
                             padding: { top: 12, bottom: 12 },
+                            smoothScrolling: true,
+                            cursorBlinking: 'smooth',
+                            cursorSmoothCaretAnimation: 'on',
                           }}
                         />
                       </div>

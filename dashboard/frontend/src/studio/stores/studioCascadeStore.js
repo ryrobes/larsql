@@ -615,6 +615,8 @@ const useStudioCascadeStore = create(
           if (state.cascade) {
             Object.assign(state.cascade, updates);
             state.cascadeDirty = true;
+            // Invalidate cached YAML (cascade modified programmatically)
+            state.cascadeYamlText = null;
           }
         });
       },
@@ -763,6 +765,8 @@ output_schema:
 
           state.cascadeDirty = true;
           state.cellStates[newCell.name] = { status: 'pending' };
+          // Invalidate cached YAML (cascade structure changed)
+          state.cascadeYamlText = null;
         });
       },
 
@@ -797,6 +801,11 @@ output_schema:
           Object.assign(cell, updates);
           state.cascadeDirty = true;
 
+          // Invalidate cached YAML text (cascade was modified programmatically)
+          // This forces YAML editor to regenerate from current cascade object
+          // Comments will be lost, but structure will be accurate
+          state.cascadeYamlText = null;
+
           // Mark downstream cells as stale
           if (updates.inputs) {
             get().markDownstreamStale(index);
@@ -828,6 +837,8 @@ output_schema:
           // Remove the cell
           cells.splice(index, 1);
           state.cascadeDirty = true;
+          // Invalidate cached YAML (cascade structure changed)
+          state.cascadeYamlText = null;
         });
       },
 
@@ -855,6 +866,8 @@ output_schema:
           });
 
           state.cascadeDirty = true;
+          // Invalidate cached YAML (cascade structure changed)
+          state.cascadeYamlText = null;
         });
       },
 
@@ -1384,11 +1397,26 @@ output_schema:
         try {
           // Parse YAML
           const yaml = require('js-yaml');
+
+          // Check for empty/whitespace input first
+          if (!yamlString || !yamlString.trim()) {
+            throw new Error('YAML is empty');
+          }
+
           const parsed = yaml.load(yamlString);
 
+          // Check if parse returned null/undefined (can happen with empty docs, just comments, etc.)
+          if (!parsed || typeof parsed !== 'object') {
+            throw new Error('YAML parsing returned empty result - check for syntax errors or ensure document has content');
+          }
+
           // Validate required fields
-          if (!parsed.cascade_id || !Array.isArray(parsed.cells)) {
-            throw new Error('Invalid cascade: missing cascade_id or cells array');
+          if (!parsed.cascade_id) {
+            throw new Error('Missing required field: cascade_id');
+          }
+
+          if (!Array.isArray(parsed.cells)) {
+            throw new Error('Missing or invalid field: cells (must be an array)');
           }
 
           // Validate cells have required fields
@@ -1399,12 +1427,13 @@ output_schema:
           }
 
           set(state => {
-            // Update cascade object
+            // Update cascade object - PRESERVE ALL KEYS from parsed YAML
+            // Don't filter/whitelist - as long as it's valid YAML, keep everything
             state.cascade = {
-              cascade_id: parsed.cascade_id,
-              description: parsed.description || '',
-              inputs_schema: parsed.inputs_schema || {},
-              phases: parsed.cells
+              ...parsed,  // Spread all keys from parsed YAML
+              cells: parsed.cells,  // Ensure cells is present (required)
+              description: parsed.description || '',  // Ensure description has default
+              inputs_schema: parsed.inputs_schema || {},  // Ensure inputs_schema has default
             };
 
             // Store raw YAML text (preserves comments and formatting)

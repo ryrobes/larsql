@@ -109,22 +109,17 @@
   white-space: nowrap;
 }
 
-/* Compact Total Cost - Now inline in left section */
+/* Compact Total Cost - Clean, no border/background */
 .cascade-total-cost-compact {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.15), rgba(16, 185, 129, 0.15));
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(52, 211, 153, 0.4);
   white-space: nowrap;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.15);
   flex-shrink: 0; /* Don't shrink cost */
 }
 
 .cascade-total-cost-value {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
   color: #34d399;
   font-family: 'Google Sans Code', monospace;

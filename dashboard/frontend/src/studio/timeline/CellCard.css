@@ -1,4 +1,49 @@
 /* ============================================
+   CELL CARD WRAPPER - For scaling and annotations
+   ============================================ */
+
+.cell-card-wrapper {
+  position: relative;
+  transition: transform 0.3s ease;
+}
+
+/* Blueprint-style cost annotation */
+.cell-cost-annotation {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 1);
+  z-index: 100;
+}
+
+.cell-cost-annotation.cyan {
+  color: var(--color-accent-cyan);
+}
+
+.cell-cost-annotation.green {
+  color: var(--color-accent-green);
+}
+
+.cell-cost-annotation.orange {
+  color: #fb923c;
+}
+
+.cell-cost-annotation.red {
+  color: var(--color-accent-pink);
+}
+
+.annotation-duration {
+  opacity: 0.7;
+  font-weight: var(--font-weight-medium);
+}
+
+/* ============================================
    PHASE CARD - Compact Horizontal Card
    ============================================ */
 
@@ -23,6 +68,37 @@
   box-sizing: border-box;
   contain: layout style;
   will-change: border-color;
+  overflow: hidden; /* Clip background image */
+}
+
+/* Image background decoration - more visible */
+.cell-card.has-image-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--bg-image-url);
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: grayscale(50%) brightness(0.5) contrast(1.1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Tint overlay to blend with theme */
+.cell-card.has-image-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(10, 8, 24, 0.6), rgba(12, 10, 26, 0.7));
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Ensure content is above image layers */
+.cell-card.has-image-bg > * {
+  position: relative;
+  z-index: 2;
 }
 
 .cell-card:hover {

@@ -1,0 +1,19 @@
+type_id: image_gen
+display_name: Image Gen
+icon: mdi:image-auto
+color: "#ff006e"
+name_prefix: image_gen
+description: "Generate images using vision models"
+category: "ai-ml"
+tags:
+  - "quick-start"
+  - "ai-ml"
+  - "popular"
+  - "beginner"
+
+template:
+  instructions: "{{ input.prompt }}"
+  model: google/gemini-2.5-flash-image
+  image_config:
+    width: 1024
+    height: 1024

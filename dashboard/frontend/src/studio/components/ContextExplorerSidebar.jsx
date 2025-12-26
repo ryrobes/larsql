@@ -13,6 +13,87 @@ const ROLE_COLORS = {
 };
 
 /**
+ * Token heatmap color scale - SAME as ContextMatrixView
+ * Blue (low) → cyan → green → yellow → orange → red (high)
+ */
+const getTokenColor = (tokens, maxTokens) => {
+  if (!tokens || !maxTokens) return '#333333';
+  const ratio = Math.min(tokens / maxTokens, 1);
+
+  if (ratio < 0.2) {
+    // Blue to cyan
+    const t = ratio / 0.2;
+    return `rgb(${Math.round(30 + t * 30)}, ${Math.round(100 + t * 155)}, ${Math.round(200 + t * 55)})`;
+  } else if (ratio < 0.4) {
+    // Cyan to green
+    const t = (ratio - 0.2) / 0.2;
+    return `rgb(${Math.round(60 - t * 10)}, ${Math.round(255 - t * 55)}, ${Math.round(255 - t * 155)})`;
+  } else if (ratio < 0.6) {
+    // Green to yellow
+    const t = (ratio - 0.4) / 0.2;
+    return `rgb(${Math.round(50 + t * 205)}, ${Math.round(200 + t * 55)}, ${Math.round(100 - t * 50)})`;
+  } else if (ratio < 0.8) {
+    // Yellow to orange
+    const t = (ratio - 0.6) / 0.2;
+    return `rgb(${Math.round(255)}, ${Math.round(255 - t * 100)}, ${Math.round(50 - t * 50)})`;
+  } else {
+    // Orange to red
+    const t = (ratio - 0.8) / 0.2;
+    return `rgb(${Math.round(255 - t * 30)}, ${Math.round(155 - t * 100)}, ${Math.round(0)})`;
+  }
+};
+
+/**
+ * Clean preview text for grid display
+ * Removes quotes, escapes, converts newlines to spaces
+ */
+const cleanPreview = (content) => {
+  if (!content) return '';
+
+  let cleaned = content;
+
+  // Convert object to string
+  if (typeof cleaned === 'object') {
+    cleaned = JSON.stringify(cleaned);
+  }
+
+  // Try to parse as JSON (might be double-encoded)
+  if (typeof cleaned === 'string') {
+    try {
+      const parsed = JSON.parse(cleaned);
+      // If result is string, unwrap it
+      if (typeof parsed === 'string') {
+        cleaned = parsed;
+      } else {
+        // Keep as JSON string
+        cleaned = JSON.stringify(parsed);
+      }
+    } catch {
+      // Not valid JSON, keep as-is
+    }
+
+    // Remove wrapping quotes
+    if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+        (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+      cleaned = cleaned.slice(1, -1);
+    }
+
+    // Unescape sequences
+    cleaned = cleaned
+      .replace(/\\n/g, ' ')      // Newlines → spaces
+      .replace(/\\t/g, ' ')      // Tabs → spaces
+      .replace(/\\r/g, '')       // Carriage returns → remove
+      .replace(/\\"/g, '"')      // Escaped quotes → quotes
+      .replace(/\\'/g, "'")      // Escaped quotes → quotes
+      .replace(/\\\\/g, '\\')    // Escaped backslashes → backslash
+      .replace(/\s+/g, ' ')      // Multiple spaces → single space
+      .trim();
+  }
+
+  return cleaned;
+};
+
+/**
  * ContextExplorerSidebar - Replaces CascadeNavigator when a message with context is selected
  *
  * Shows:
@@ -59,15 +140,14 @@ const ContextExplorerSidebar = ({
       const matches = hashIndex[hash] || [];
       const linkedMsg = matches[0]; // Take first match
 
-      // Extract content preview
+      // Extract and clean content preview
       let preview = '';
       if (linkedMsg) {
         const content = linkedMsg.content_json || linkedMsg.content;
-        if (typeof content === 'string') {
-          preview = content.slice(0, 120);
-        } else if (content) {
-          preview = JSON.stringify(content).slice(0, 120);
-        }
+        const rawPreview = typeof content === 'string'
+          ? content.slice(0, 120)
+          : JSON.stringify(content).slice(0, 120);
+        preview = cleanPreview(rawPreview);
       }
 
       return {
@@ -101,7 +181,7 @@ const ContextExplorerSidebar = ({
       }));
   }, [selectedMessage, allLogs]);
 
-  // Calculate token breakdown including selected message
+  // Calculate token breakdown including selected message with global rankings
   const tokenBreakdown = useMemo(() => {
     const ancestorTokens = ancestors.reduce((sum, a) => sum + (a.estimated_tokens || 0), 0);
     const selectedTokens = selectedMessage.estimated_tokens || 0;
@@ -113,12 +193,34 @@ const ContextExplorerSidebar = ({
       tokenPercentage: totalTokens > 0 ? (a.estimated_tokens / totalTokens) * 100 : 0
     }));
 
+    // GLOBAL RANKING: Sort all ancestors by token size and assign ranks
+    const sortedByTokens = [...ancestorsWithPct].sort((a, b) =>
+      (b.estimated_tokens || 0) - (a.estimated_tokens || 0)
+    );
+
+    // Assign ranks (1 = largest, 2 = second largest, etc.)
+    const ranks = new Map();
+    sortedByTokens.forEach((ancestor, idx) => {
+      ranks.set(ancestor.hash, idx + 1);
+    });
+
+    // Find max tokens for color scaling
+    const maxTokens = sortedByTokens[0]?.estimated_tokens || 0;
+
+    // Enrich with ranks
+    const ancestorsEnriched = ancestorsWithPct.map(a => ({
+      ...a,
+      globalRank: ranks.get(a.hash),
+      globalMaxTokens: maxTokens
+    }));
+
     return {
       totalTokens,
       ancestorTokens,
       selectedTokens,
       selectedTokenPercentage: totalTokens > 0 ? (selectedTokens / totalTokens) * 100 : 0,
-      ancestorsWithPct
+      ancestorsWithPct: ancestorsEnriched,
+      maxTokens
     };
   }, [ancestors, selectedMessage]);
 
@@ -493,31 +595,46 @@ const ContextExplorerSidebar = ({
             </div>
           ) : (
             <>
-              {tokenBreakdown.ancestorsWithPct.map((ancestor) => (
-              <button
-                key={`${ancestor.position}-${ancestor.hash}`}
-                className={`ce-message-block ${hoveredHash === ancestor.hash ? 'highlighted' : ''} ${!ancestor.hasMatch ? 'no-match' : ''}`}
-                onClick={() => {
-                  if (ancestor.hasMatch && onNavigateToMessage && allLogs[ancestor.index]) {
-                    onNavigateToMessage(allLogs[ancestor.index]);
-                  }
-                }}
-                onMouseEnter={() => onHoverHash && onHoverHash(ancestor.hash)}
-                onMouseLeave={() => onHoverHash && onHoverHash(null)}
-                disabled={!ancestor.hasMatch}
-              >
-                <div className="ce-block-header">
-                  <span className="ce-block-position">#{ancestor.position}</span>
-                  <span className="ce-block-role" style={{ color: ROLE_COLORS[ancestor.role] || '#64748b' }}>
-                    {ancestor.role}
-                  </span>
-                  {ancestor.phase !== 'unknown' && (
-                    <>
-                      <span className="ce-block-separator">·</span>
-                      <span className="ce-block-phase">{ancestor.phase}</span>
-                    </>
-                  )}
-                </div>
+              {tokenBreakdown.ancestorsWithPct.map((ancestor) => {
+                // Calculate border color based on global token size
+                const borderColor = getTokenColor(ancestor.estimated_tokens, ancestor.globalMaxTokens);
+
+                return (
+                  <button
+                    key={`${ancestor.position}-${ancestor.hash}`}
+                    className={`ce-message-block ${hoveredHash === ancestor.hash ? 'highlighted' : ''} ${!ancestor.hasMatch ? 'no-match' : ''}`}
+                    style={{
+                      borderLeftColor: borderColor,
+                      borderLeftWidth: '3px',
+                      borderLeftStyle: 'solid'
+                    }}
+                    onClick={() => {
+                      if (ancestor.hasMatch && onNavigateToMessage && allLogs[ancestor.index]) {
+                        onNavigateToMessage(allLogs[ancestor.index]);
+                      }
+                    }}
+                    onMouseEnter={() => onHoverHash && onHoverHash(ancestor.hash)}
+                    onMouseLeave={() => onHoverHash && onHoverHash(null)}
+                    disabled={!ancestor.hasMatch}
+                  >
+                    <div className="ce-block-header">
+                      <span className="ce-block-position">#{ancestor.position}</span>
+                      <span className="ce-block-role" style={{ color: ROLE_COLORS[ancestor.role] || '#64748b' }}>
+                        {ancestor.role}
+                      </span>
+                      {ancestor.phase !== 'unknown' && (
+                        <>
+                          <span className="ce-block-separator">·</span>
+                          <span className="ce-block-phase">{ancestor.phase}</span>
+                        </>
+                      )}
+                      {/* Global rank badge */}
+                      {ancestor.globalRank && (
+                        <span className="ce-block-rank" title={`#${ancestor.globalRank} largest by tokens`}>
+                          #{ancestor.globalRank}
+                        </span>
+                      )}
+                    </div>
 
                 {/* Content preview */}
                 {ancestor.preview && (
@@ -561,7 +678,8 @@ const ContextExplorerSidebar = ({
                   </div>
                 )}
               </button>
-              ))}
+                );
+              })}
 
               {/* Ghost block for selected message itself */}
               <div className="ce-message-block ghost-block">
@@ -581,12 +699,11 @@ const ContextExplorerSidebar = ({
                 {/* Content preview for selected message */}
                 {(() => {
                   const content = selectedMessage.content_json || selectedMessage.content;
-                  let preview = '';
-                  if (typeof content === 'string') {
-                    preview = content.slice(0, 120);
-                  } else if (content) {
-                    preview = JSON.stringify(content).slice(0, 120);
-                  }
+                  const rawPreview = typeof content === 'string'
+                    ? content.slice(0, 120)
+                    : JSON.stringify(content).slice(0, 120);
+                  const preview = cleanPreview(rawPreview);
+
                   return preview ? (
                     <div className="ce-block-preview">
                       {preview}{preview.length >= 120 ? '...' : ''}

@@ -4,7 +4,7 @@
   height: 100%;
   background-color: #080510;
   color: #cbd5e1;
-  overflow-y: auto;
+  overflow: hidden;
   font-size: 13px;
 }
 
@@ -526,6 +526,21 @@
 
 .cascade-navigator::-webkit-scrollbar-thumb:hover {
   background: #2a2638;
+}
+
+/* Quick Access Primitives - Headerless, Always Visible */
+.nav-quick-access {
+  border-bottom: 1px solid #1a1628;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.nav-quick-access-pills {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
 }
 
 /* Phase Types Section - Draggable Palette */

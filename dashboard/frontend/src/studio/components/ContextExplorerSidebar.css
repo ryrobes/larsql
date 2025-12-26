@@ -382,6 +382,7 @@
   cursor: pointer;
   transition: all var(--transition-normal);
   text-align: left;
+  position: relative; /* For rank badge positioning */
 }
 
 .ce-message-block:hover {
@@ -430,6 +431,7 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  position: relative;
 }
 
 .ce-block-position {
@@ -455,6 +457,23 @@
   font-size: 11px;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
+}
+
+/* Global token rank badge - positioned in upper right */
+.ce-block-rank {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  backdrop-filter: blur(4px);
+  z-index: 10;
 }
 
 .ce-block-footer {

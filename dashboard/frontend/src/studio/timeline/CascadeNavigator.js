@@ -597,7 +597,7 @@ function CellTypeSubsection({ title, icon, cellTypes, defaultExpanded = true }) 
 
 // Cell Types section (draggable palette with organized subsections)
 function CellTypesSection() {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Load cell types from store (declarative from YAML files)
   const cellTypesFromStore = useStudioCascadeStore(state => state.cellTypes);
@@ -784,10 +784,10 @@ function CascadeNavigator() {
       // Prefer raw YAML text from store (preserves comments/formatting)
       // Fall back to yaml.dump() only if no raw text available
       const yamlStr = cascadeYamlText || yaml.dump({
-        cascade_id: cascade.cascade_id,
+        ...cascade,  // Spread all keys from cascade object (preserve unknown fields)
+        cells: cascade.cells || [],  // Ensure cells is present (correct field name)
         description: cascade.description || '',
         inputs_schema: cascade.inputs_schema || {},
-        phases: cascade.cells || []
       }, {
         indent: 2,
         lineWidth: -1,
@@ -1079,6 +1079,19 @@ function CascadeNavigator() {
               <InputsForm schema={cascade.inputs_schema} />
             </div>
           )}
+
+          {/* Quick Access Primitives - Headerless, Always Visible */}
+          <div className="nav-quick-access">
+            <div className="nav-quick-access-pills">
+              <CellTypePill type="llm_phase" icon="mdi:brain" label="LLM" color="#a78bfa" />
+              <CellTypePill type="image_gen" icon="mdi:image-auto" label="Image" color="#ff006e" />
+              <CellTypePill type="python_data" icon="mdi:language-python" label="Python" color="#fbbf24" />
+              <CellTypePill type="sql_data" icon="mdi:database" label="SQL" color="#60a5fa" />
+              <CellTypePill type="shell_command" icon="mdi:console" label="Bash" color="#64748b" />
+              <CellTypePill type="js_data" icon="mdi:language-javascript" label="JS" color="#f7df1e" />
+              <CellTypePill type="clojure_data" icon="simple-icons:clojure" label="Clojure" color="#63b132" />
+            </div>
+          </div>
 
           {/* Cell Types Section (Draggable Palette) */}
           <CellTypesSection />
