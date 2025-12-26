@@ -72,6 +72,7 @@ const ROLE_CONFIG = {
 const SessionMessagesLog = ({
   logs = [],
   onSelectCell,
+  onMessageClick,
   currentSessionId = null,
   showFilters = true,
   filterByCell = null,
@@ -171,12 +172,23 @@ const SessionMessagesLog = ({
   }, [logs, filters, filterByCell, filterByCandidate]);
 
   // Cell renderers
-  const RoleCellRenderer = useCallback(({ value }) => {
+  const RoleCellRenderer = useCallback(({ value, data }) => {
     const config = ROLE_CONFIG[value] || { icon: 'mdi:help-circle-outline', color: '#64748b', label: value };
+    const candidateIdx = data.candidate_index;
+    const reforgeStep = data.reforge_step;
+
+    let prefix = '';
+    if (candidateIdx !== null && candidateIdx !== undefined) {
+      prefix = `C${candidateIdx} `;
+    }
+    if (reforgeStep !== null && reforgeStep !== undefined && reforgeStep > 0) {
+      prefix += `R${reforgeStep} `;
+    }
+
     return (
       <div className="sml-role-cell" style={{ '--role-color': config.color }}>
         <Icon icon={config.icon} width="14" />
-        <span>{config.label}</span>
+        <span>{prefix}{config.label}</span>
       </div>
     );
   }, []);
@@ -345,6 +357,30 @@ const SessionMessagesLog = ({
       });
     }
 
+    // Context count column
+    cols.push({
+      field: 'context_hashes',
+      headerName: 'Ctx',
+      width: 55,
+      cellRenderer: (params) => {
+        const count = params.value?.length || 0;
+        if (count === 0) return null;
+        return (
+          <div className="sml-context-count" data-tooltip={`${count} messages in context`}>
+            {count}
+          </div>
+        );
+      },
+      sortable: true,
+      comparator: (a, b) => (a?.length || 0) - (b?.length || 0),
+      equals: (a, b) => {
+        // Only update if array length changed (prevents blinking)
+        const lenA = a?.length || 0;
+        const lenB = b?.length || 0;
+        return lenA === lenB;
+      },
+    });
+
     cols.push(
       {
         field: 'content_json',
@@ -449,15 +485,28 @@ const SessionMessagesLog = ({
     // Toggle selection - if clicking same row, deselect
     if (selectedMessage?.message_id === clickedMessage.message_id) {
       setSelectedMessage(null);
+      // Also clear context explorer when deselecting
+      if (onMessageClick) {
+        onMessageClick(null);
+      }
     } else {
       setSelectedMessage(clickedMessage);
+
+      // Trigger context explorer for messages with context
+      if (onMessageClick) {
+        onMessageClick(clickedMessage);
+      }
     }
-  }, [selectedMessage]);
+  }, [selectedMessage, onMessageClick]);
 
   // Close detail panel
   const closeDetailPanel = useCallback(() => {
     setSelectedMessage(null);
-  }, []);
+    // Also clear context explorer
+    if (onMessageClick) {
+      onMessageClick(null);
+    }
+  }, [onMessageClick]);
 
   // Refresh row styles when selection changes
   useEffect(() => {

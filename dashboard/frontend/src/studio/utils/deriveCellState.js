@@ -164,15 +164,15 @@ export function deriveCellState(logs, cellName) {
   };
 
   // Log final state
-  console.log('[deriveCellState]', cellName, 'Final state:', {
-    status,
-    hasResult: !!result,
-    resultType: result ? typeof result : 'null',
-    hasRows: result?.rows?.length,
-    duration: finalState.duration,
-    cost: finalState.cost,
-    hasImages: !!images
-  });
+  // console.log('[deriveCellState]', cellName, 'Final state:', {
+  //   status,
+  //   hasResult: !!result,
+  //   resultType: result ? typeof result : 'null',
+  //   hasRows: result?.rows?.length,
+  //   duration: finalState.duration,
+  //   cost: finalState.cost,
+  //   hasImages: !!images
+  // });
 
   return finalState;
 }

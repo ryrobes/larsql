@@ -379,6 +379,17 @@
   background-color: rgba(45, 212, 191, 0.18) !important;
 }
 
+/* Context count indicator */
+.sml-context-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent-purple);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* LLM interaction messages (user → LLM, assistant ← LLM) - subtle cyan outline */
 .sml-grid-container .ag-row.sml-row-llm-message {
   border: 1px solid rgba(0, 229, 255, 0.25);

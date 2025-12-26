@@ -13,6 +13,7 @@ import { CascadeNavigator } from './timeline';
 import CascadeTimeline from './timeline/CascadeTimeline';
 import Header from '../components/Header';
 import CascadeBrowserModal from './components/CascadeBrowserModal';
+import ContextExplorerSidebar from './components/ContextExplorerSidebar';
 import './editors'; // Initialize cell editor registry
 import './StudioPage.css';
 
@@ -59,13 +60,13 @@ function StudioPage({
   } = useStudioCascadeStore();
 
   // DEBUG: Log mode and cascade state (runs on EVERY render)
-  console.log('[StudioPage] RENDER:', {
-    mode,
-    hasCascade: !!cascade,
-    cascadeId: cascade?.cascade_id,
-    cellsLength: cascade?.cells?.length || 0,
-    isTimelineMode: mode === 'timeline'
-  });
+  // console.log('[StudioPage] RENDER:', {
+  //   mode,
+  //   hasCascade: !!cascade,
+  //   cascadeId: cascade?.cascade_id,
+  //   cellsLength: cascade?.cells?.length || 0,
+  //   isTimelineMode: mode === 'timeline'
+  // });
 
   // Note: Running sessions and sidebar navigation now handled by AppShell
   // StudioPage just renders the main content area
@@ -79,6 +80,11 @@ function StudioPage({
   // Cascade browser modal state
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 
+  // Context explorer state
+  const [selectedContextMessage, setSelectedContextMessage] = useState(null);
+  const [allSessionLogs, setAllSessionLogs] = useState([]);
+  const [isMessagesViewVisible, setIsMessagesViewVisible] = useState(false);
+
   // Handle cascade load from browser
   const handleBrowserLoad = useCallback(async (file) => {
     try {
@@ -87,6 +93,50 @@ function StudioPage({
       console.error('[StudioPage] Load failed:', err);
     }
   }, [loadCascade]);
+
+  // Handle message selection with context
+  const handleMessageContextSelect = useCallback((message) => {
+    console.log('[StudioPage] Message selected:', message);
+    console.log('[StudioPage] Has context_hashes?', message?.context_hashes, 'Length:', message?.context_hashes?.length);
+
+    // Handle deselection (null message)
+    if (!message) {
+      console.log('[StudioPage] Message deselected, clearing context explorer');
+      setSelectedContextMessage(null);
+      return;
+    }
+
+    // Only show context explorer if message has context
+    if (message.context_hashes && message.context_hashes.length > 0) {
+      console.log('[StudioPage] Showing context explorer for message');
+      setSelectedContextMessage(message);
+    } else {
+      console.log('[StudioPage] Message has no context, not showing explorer');
+      setSelectedContextMessage(null);
+    }
+  }, []);
+
+  // Clear context explorer when messages view becomes invisible
+  useEffect(() => {
+    if (!isMessagesViewVisible && selectedContextMessage) {
+      console.log('[StudioPage] Messages view hidden, clearing context explorer');
+      setSelectedContextMessage(null);
+    }
+  }, [isMessagesViewVisible, selectedContextMessage]);
+
+  // Close context explorer
+  const handleCloseContextExplorer = useCallback(() => {
+    setSelectedContextMessage(null);
+  }, []);
+
+  // Navigate to message (from matrix or blocks list)
+  const handleNavigateToMessage = useCallback((message) => {
+    console.log('[StudioPage] Navigate to message:', message);
+    // Pass the message directly to context selector
+    if (message) {
+      handleMessageContextSelect(message);
+    }
+  }, [handleMessageContextSelect]);
 
   // Drag and drop handlers for timeline mode
   const handleDragStart = (event) => {
@@ -407,7 +457,7 @@ function StudioPage({
   //   }
   // }, [mode, cascade, viewMode, replaySessionId, cascadeSessionId]);
 
-  console.log('[StudioPage] About to render. Mode check:', mode, 'isTimeline?', mode === 'timeline');
+  //console.log('[StudioPage] About to render. Mode check:', mode, 'isTimeline?', mode === 'timeline');
 
   return (
     <div className="studio-page">
@@ -425,9 +475,18 @@ function StudioPage({
               gutterAlign="center"
               direction="horizontal"
             >
-              {/* Left Sidebar - Cascade Navigator */}
+              {/* Left Sidebar - Conditional: Context Explorer or Cascade Navigator */}
               <div className="studio-schema-panel timeline-mode">
-                <CascadeNavigator />
+                {selectedContextMessage && isMessagesViewVisible ? (
+                  <ContextExplorerSidebar
+                    selectedMessage={selectedContextMessage}
+                    allLogs={allSessionLogs}
+                    onClose={handleCloseContextExplorer}
+                    onNavigateToMessage={handleNavigateToMessage}
+                  />
+                ) : (
+                  <CascadeNavigator />
+                )}
               </div>
 
               {/* Timeline Area */}
@@ -435,6 +494,9 @@ function StudioPage({
                 <CascadeTimeline
                   key="timeline-mode"
                   onOpenBrowser={() => setIsBrowserOpen(true)}
+                  onMessageContextSelect={handleMessageContextSelect}
+                  onLogsUpdate={setAllSessionLogs}
+                  onMessagesViewVisibleChange={setIsMessagesViewVisible}
                 />
               </div>
             </Split>

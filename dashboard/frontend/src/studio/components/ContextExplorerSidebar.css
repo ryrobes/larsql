@@ -1,0 +1,355 @@
+/* ============================================
+   CONTEXT EXPLORER SIDEBAR - Windlass Theme
+   Context lineage visualization and navigation
+   ============================================ */
+
+.context-explorer-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border-dim);
+  overflow: hidden;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.ce-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md);
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-dim);
+  flex-shrink: 0;
+}
+
+.ce-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.ce-header-title svg {
+  color: var(--color-accent-cyan);
+}
+
+.ce-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.ce-close-btn:hover {
+  background-color: rgba(255, 0, 110, 0.1);
+  color: var(--color-accent-pink);
+}
+
+/* ============================================
+   SELECTED MESSAGE INFO
+   ============================================ */
+
+.ce-selected-message {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-dim);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.ce-msg-role-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--space-sm);
+  background-color: var(--color-bg-input);
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+}
+
+.ce-role-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.ce-separator {
+  color: var(--color-text-dim);
+  font-size: 10px;
+}
+
+.ce-msg-phase {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.ce-msg-hash {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+/* ============================================
+   STATS ROW
+   ============================================ */
+
+.ce-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-bg-input);
+  border-bottom: 1px solid var(--color-border-dim);
+  flex-shrink: 0;
+}
+
+.ce-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.ce-stat-label {
+  font-size: 9px;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: var(--font-weight-medium);
+}
+
+.ce-stat-value {
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ce-stat-value.cyan {
+  color: var(--color-accent-cyan);
+}
+
+/* ============================================
+   MATRIX SECTION (30-40%)
+   ============================================ */
+
+.ce-matrix-section {
+  flex: 0 0 auto;
+  height: 40%;
+  min-height: 300px;
+  max-height: 500px;
+  border-bottom: 1px solid var(--color-border-dim);
+  position: relative;
+}
+
+/* ============================================
+   CONTEXT LIST (60-70%)
+   ============================================ */
+
+.ce-context-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ce-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-dim);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.ce-section-header svg {
+  color: var(--color-accent-purple);
+}
+
+/* ============================================
+   MESSAGE BLOCKS
+   ============================================ */
+
+.ce-message-blocks {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ce-message-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-sm);
+  background-color: var(--color-bg-input);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-align: left;
+}
+
+.ce-message-block:hover {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
+}
+
+.ce-message-block.highlighted {
+  background-color: rgba(0, 229, 255, 0.1);
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.3);
+}
+
+.ce-message-block.no-match {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: rgba(255, 0, 110, 0.05);
+  border-color: rgba(255, 0, 110, 0.2);
+}
+
+.ce-message-block.no-match:hover {
+  background-color: rgba(255, 0, 110, 0.05);
+  box-shadow: none;
+}
+
+.ce-block-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ce-block-position {
+  font-size: 10px;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ce-block-role {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.ce-block-separator {
+  color: var(--color-text-dim);
+  font-size: 9px;
+}
+
+.ce-block-phase {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+.ce-block-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.ce-block-hash {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+}
+
+.ce-block-tokens {
+  font-size: 9px;
+  color: var(--color-accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium);
+}
+
+.ce-block-warning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--color-accent-pink);
+  margin-top: 2px;
+}
+
+/* ============================================
+   DESCENDANTS SECTION
+   ============================================ */
+
+.ce-descendants {
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+.ce-descendants summary {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.ce-descendants summary::-webkit-details-marker {
+  display: none;
+}
+
+.ce-descendants[open] .ce-message-blocks {
+  max-height: 300px;
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+
+.ce-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl);
+  color: var(--color-text-dim);
+}
+
+.ce-empty-state p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}

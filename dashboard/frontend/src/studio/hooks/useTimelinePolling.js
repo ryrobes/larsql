@@ -98,8 +98,14 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
         const updatedMessageIds = new Set();
 
         for (const row of validRows) {
+          if (!row.message_id) {
+            // No message_id (some system messages) - skip to avoid duplicates
+            // These are typically phase_start/phase_complete events already in logs
+            continue;
+          }
+
           if (seenIdsRef.current.has(row.message_id)) {
-            // Already seen - check if cost was backfilled
+            // Already seen - check if cost/tokens were backfilled
             if (row.cost && row.cost > 0) {
               updatedMessageIds.add(row.message_id);
             }
@@ -122,8 +128,9 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
             const updated = prev.map(existingRow => {
               if (updatedMessageIds.has(existingRow.message_id)) {
                 const newVersion = validRows.find(r => r.message_id === existingRow.message_id);
-                if (newVersion && newVersion.cost && (!existingRow.cost || existingRow.cost === 0)) {
-                  return { ...existingRow, cost: newVersion.cost };
+                if (newVersion) {
+                  // Merge all fields from new version (preserves context_hashes, etc.)
+                  return { ...existingRow, ...newVersion };
                 }
               }
               return existingRow;

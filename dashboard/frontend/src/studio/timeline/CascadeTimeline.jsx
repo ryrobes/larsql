@@ -492,8 +492,8 @@ const CanvasDropZone = () => {
  * - Middle strip: Horizontal scrolling cell cards (left→right) with drop zones
  * - Bottom panel: Selected cell details (config, code, outputs)
  */
-const CascadeTimeline = ({ onOpenBrowser }) => {
-  console.log('[CascadeTimeline] Component mounting/rendering');
+const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, onMessagesViewVisibleChange }) => {
+  //console.log('[CascadeTimeline] Component mounting/rendering');
 
   // Optimized store selectors - only subscribe to what we need
   const cascade = useStudioCascadeStore(state => state.cascade);
@@ -521,11 +521,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   const setLiveMode = useStudioCascadeStore(state => state.setLiveMode);
   const updateCellStatesFromPolling = useStudioCascadeStore(state => state.updateCellStatesFromPolling);
 
-  console.log('[CascadeTimeline] Store data:', {
-    hasCascade: !!cascade,
-    cascadeId: cascade?.cascade_id,
-    cellsInCascade: cascade?.cells?.length || 0
-  });
+  // console.log('[CascadeTimeline] Store data:', {
+  //   hasCascade: !!cascade,
+  //   cascadeId: cascade?.cascade_id,
+  //   cellsInCascade: cascade?.cells?.length || 0
+  // });
 
   // Poll for execution updates - either live or replay session
   const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
@@ -536,16 +536,46 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  console.log('[CascadeTimeline] Polling logic:', {
-    viewMode,
-    replaySessionId,
-    cascadeSessionId,
-    isRunningAll,
-    sessionToPoll,
-    shouldPoll,
-  });
+  // console.log('[CascadeTimeline] Polling logic:', {
+  //   viewMode,
+  //   replaySessionId,
+  //   cascadeSessionId,
+  //   isRunningAll,
+  //   sessionToPoll,
+  //   shouldPoll,
+  // });
 
   const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionStatusFor, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
+
+  // Debug: Check if logs now include context data & notify parent
+  useEffect(() => {
+    if (logs && logs.length > 0) {
+      const withContext = logs.filter(l => l.context_hashes?.length > 0);
+      console.log('[CascadeTimeline] Logs with context:', {
+        total: logs.length,
+        withContext: withContext.length,
+        sampleWithContext: withContext[0]
+      });
+
+      // Notify parent of logs update
+      if (onLogsUpdate) {
+        onLogsUpdate(logs);
+      }
+    }
+  }, [logs, onLogsUpdate]);
+
+  // Track if messages view is visible (no cell selected + logs exist)
+  useEffect(() => {
+    const isMessagesViewVisible = selectedCellIndex === null && logs && logs.length > 0;
+    console.log('[CascadeTimeline] Messages view visible:', isMessagesViewVisible, {
+      selectedCellIndex,
+      logsLength: logs?.length
+    });
+
+    if (onMessagesViewVisibleChange) {
+      onMessagesViewVisibleChange(isMessagesViewVisible);
+    }
+  }, [selectedCellIndex, logs, onMessagesViewVisibleChange]);
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
@@ -1324,6 +1354,12 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
             onSelectCell={(cellName) => {
               const idx = cells.findIndex(c => c.name === cellName);
               if (idx !== -1) setSelectedCellIndex(idx);
+            }}
+            onMessageClick={(message) => {
+              // Always notify parent (handles deselect and non-context messages)
+              if (onMessageContextSelect) {
+                onMessageContextSelect(message);
+              }
             }}
           />
         ) : (

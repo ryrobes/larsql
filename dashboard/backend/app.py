@@ -4104,7 +4104,10 @@ def playground_session_stream(session_id):
                 full_request_json,
                 tool_calls_json,
                 images_json,
-                has_images
+                has_images,
+                content_hash,
+                context_hashes,
+                estimated_tokens
             FROM unified_logs
             WHERE (startsWith(session_id, '{session_id}') OR parent_session_id = '{session_id}')
               AND timestamp > '{after}'
