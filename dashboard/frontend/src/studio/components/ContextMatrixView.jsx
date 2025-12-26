@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Icon } from '@iconify/react';
 import './ContextMatrixView.css';
 
-// Role colors for cells (defined outside component to avoid dependency issues)
+// Role colors for cells - UNIFIED with message grid
+// Matches ROLE_CONFIG from SessionMessagesLog
 const ROLE_COLORS = {
-  'system': '#a78bfa',
-  'user': '#60a5fa',
-  'assistant': '#34d399',
-  'tool': '#fbbf24',
+  'assistant': '#a78bfa',  // Purple - LLM responses
+  'user': '#34d399',       // Green - User input
+  'system': '#fbbf24',     // Yellow - System setup
+  'tool': '#60a5fa',       // Blue - Tool results
   'default': '#666666'
 };
 
@@ -33,7 +34,9 @@ function ContextMatrixView({
   data,
   onMessageSelect,
   onHashSelect,
+  onHashHover,
   selectedMessage = null,
+  hoveredHash = null,
   compact = false
 }) {
   const canvasRef = useRef(null);
@@ -253,6 +256,17 @@ function ContextMatrixView({
       ctx.strokeRect(labelWidth, y, width - labelWidth, cellSize);
     }
 
+    // Highlight externally hovered hash (from blocks hover)
+    if (hoveredHash && matrixData.uniqueHashes.includes(hoveredHash)) {
+      const hashIdx = matrixData.uniqueHashes.indexOf(hoveredHash);
+      const y = headerHeight + hashIdx * cellSize + pan.y;
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(labelWidth, y, width - labelWidth, cellSize);
+      ctx.setLineDash([]);
+    }
+
     // Highlight hovered cell crosshair (cyan)
     if (hoveredCell) {
       ctx.strokeStyle = 'rgba(0, 229, 255, 0.5)';
@@ -298,7 +312,7 @@ function ContextMatrixView({
     ctx.textAlign = 'center';
     ctx.fillText('LLM Calls (chronological)', labelWidth + (width - labelWidth) / 2, 14);
 
-  }, [matrixData, zoom, pan, hoveredCell, selectedColumn, selectedRow, cellSize, colorMode, getTokenColor]);
+  }, [matrixData, zoom, pan, hoveredCell, selectedColumn, selectedRow, cellSize, colorMode, getTokenColor, hoveredHash]);
 
   // Mouse handlers
   const handleMouseMove = useCallback((e) => {
@@ -341,10 +355,18 @@ function ContextMatrixView({
         isInContext,
         hashInfo: matrixData.hashInfo[hash]
       });
+
+      // Emit hover event for cross-component highlighting
+      if (onHashHover && isInContext) {
+        onHashHover(hash);
+      }
     } else {
       setHoveredCell(null);
+      if (onHashHover) {
+        onHashHover(null);
+      }
     }
-  }, [matrixData, isDragging, dragStart, pan, cellSize]);
+  }, [matrixData, isDragging, dragStart, pan, cellSize, onHashHover]);
 
   const handleMouseDown = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -526,6 +548,7 @@ function ContextMatrixView({
         />
       </div>
 
+      {/* Tooltip disabled - cross-highlighting provides better context
       {hoveredCell && (() => {
         // Calculate tooltip position to right of sidebar
         const containerRect = containerRef.current?.getBoundingClientRect();
@@ -576,6 +599,7 @@ function ContextMatrixView({
           </div>
         );
       })()}
+      */}
     </div>
   );
 }

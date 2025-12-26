@@ -492,7 +492,7 @@ const CanvasDropZone = () => {
  * - Middle strip: Horizontal scrolling cell cards (left→right) with drop zones
  * - Bottom panel: Selected cell details (config, code, outputs)
  */
-const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, onMessagesViewVisibleChange }) => {
+const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, onMessagesViewVisibleChange, hoveredHash, onHoverHash, gridSelectedMessage, onGridMessageSelect }) => {
   //console.log('[CascadeTimeline] Component mounting/rendering');
 
   // Optimized store selectors - only subscribe to what we need
@@ -1351,11 +1351,18 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
           <SessionMessagesLog
             logs={logs}
             currentSessionId={sessionToPoll}
+            hoveredHash={hoveredHash}
+            onHoverHash={onHoverHash}
+            externalSelectedMessage={gridSelectedMessage}
             onSelectCell={(cellName) => {
               const idx = cells.findIndex(c => c.name === cellName);
               if (idx !== -1) setSelectedCellIndex(idx);
             }}
             onMessageClick={(message) => {
+              // Update grid selection state
+              if (onGridMessageSelect) {
+                onGridMessageSelect(message);
+              }
               // Always notify parent (handles deselect and non-context messages)
               if (onMessageContextSelect) {
                 onMessageContextSelect(message);

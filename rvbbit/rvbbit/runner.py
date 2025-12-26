@@ -6268,7 +6268,15 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
         Uses LLM to assign numeric quality scores to each candidate.
 
         Returns:
-            Tuple of (List of quality scores (0-100 scale), evaluator response content)
+            Tuple of (
+                List of quality scores (0-100 scale),
+                evaluator response content,
+                cost (float),
+                tokens_in (int),
+                tokens_out (int),
+                request_id (str),
+                model (str)
+            )
         """
         indent = "  " * self.depth
 
@@ -6309,7 +6317,14 @@ Use only numbers 0-100 for scores."""
 
         # Get scores
         score_response = scoring_agent.run(score_prompt, context_messages=[])
+
+        # Extract all response data (not just content!)
         score_content = score_response.get("content", "")
+        score_cost = score_response.get("cost", 0.0)
+        score_tokens_in = score_response.get("tokens_in", 0)
+        score_tokens_out = score_response.get("tokens_out", 0)
+        score_request_id = score_response.get("id")
+        score_model = score_response.get("model", self.model)
 
         console.print(f"{indent}  [dim]Quality scores: {score_content[:200]}...[/dim]")
 
@@ -6324,7 +6339,7 @@ Use only numbers 0-100 for scores."""
         for i in range(len(sounding_results)):
             scores.append(score_map.get(i + 1, 50.0))  # Default to 50 if not found
 
-        return scores, score_content
+        return scores, score_content, score_cost, score_tokens_in, score_tokens_out, score_request_id, score_model
 
     def _log_pareto_frontier(
         self,
@@ -7174,11 +7189,37 @@ Use only numbers 0-100 for scores."""
 
                 # Get quality scores
                 console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
-                quality_scores, evaluator_reasoning = self._get_quality_scores_from_evaluator(
+                (quality_scores, evaluator_reasoning, eval_cost, eval_tokens_in,
+                 eval_tokens_out, eval_request_id, eval_model) = self._get_quality_scores_from_evaluator(
                     valid_sounding_results,
                     phase.candidates.evaluator_instructions,
                     evaluator_trace
                 )
+
+                # Log evaluator LLM call to unified_logs (with full cost tracking)
+                log_unified(
+                    session_id=self.session_id,
+                    parent_session_id=getattr(self, 'parent_session_id', None),
+                    trace_id=evaluator_trace.id,
+                    parent_id=soundings_trace.id,
+                    node_type="evaluator",
+                    role="assistant",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    cascade_config=None,
+                    content=evaluator_reasoning,
+                    cell_name=phase.name,
+                    model=eval_model,
+                    tokens_in=eval_tokens_in,
+                    tokens_out=eval_tokens_out,
+                    cost=eval_cost,
+                    duration_ms=0,  # Not tracked for evaluators
+                    tool_name=None,
+                    tool_args=None,
+                    tool_result=None,
+                    request_id=eval_request_id,
+                )
+
                 for i, sr in enumerate(valid_sounding_results):
                     sr["quality_score"] = quality_scores[i]
                 console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
@@ -7309,8 +7350,38 @@ Use only numbers 0-100 for scores."""
                     api_key=self.api_key
                 )
                 eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
+                # Extract all response data for cost tracking
                 eval_content = eval_response.get("content", "")
+                eval_cost = eval_response.get("cost", 0.0)
+                eval_tokens_in = eval_response.get("tokens_in", 0)
+                eval_tokens_out = eval_response.get("tokens_out", 0)
+                eval_request_id = eval_response.get("id")
+                eval_model = eval_response.get("model", self.model)
                 console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+
+                # Log evaluator LLM call to unified_logs (cost-aware path)
+                log_unified(
+                    session_id=self.session_id,
+                    parent_session_id=getattr(self, 'parent_session_id', None),
+                    trace_id=evaluator_trace.id,
+                    parent_id=soundings_trace.id,
+                    node_type="evaluator",
+                    role="assistant",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    cascade_config=None,
+                    content=eval_content,
+                    cell_name=phase.name,
+                    model=eval_model,
+                    tokens_in=eval_tokens_in,
+                    tokens_out=eval_tokens_out,
+                    cost=eval_cost,
+                    duration_ms=0,
+                    tool_name=None,
+                    tool_args=None,
+                    tool_result=None,
+                    request_id=eval_request_id,
+                )
 
                 # Extract winner index
                 winner_index = 0
@@ -7390,8 +7461,38 @@ Use only numbers 0-100 for scores."""
                     api_key=self.api_key
                 )
                 eval_response = evaluator_agent.run(eval_prompt, context_messages=eval_context_messages)
+                # Extract all response data for cost tracking
                 eval_content = eval_response.get("content", "")
+                eval_cost = eval_response.get("cost", 0.0)
+                eval_tokens_in = eval_response.get("tokens_in", 0)
+                eval_tokens_out = eval_response.get("tokens_out", 0)
+                eval_request_id = eval_response.get("id")
+                eval_model = eval_response.get("model", self.model)
                 console.print(f"{indent}  [bold magenta]Evaluator:[/bold magenta] {eval_content[:200]}...")
+
+                # Log evaluator LLM call to unified_logs (quality-only path)
+                log_unified(
+                    session_id=self.session_id,
+                    parent_session_id=getattr(self, 'parent_session_id', None),
+                    trace_id=evaluator_trace.id,
+                    parent_id=soundings_trace.id,
+                    node_type="evaluator",
+                    role="assistant",
+                    depth=self.depth,
+                    cascade_id=self.config.cascade_id,
+                    cascade_config=None,
+                    content=eval_content,
+                    cell_name=phase.name,
+                    model=eval_model,
+                    tokens_in=eval_tokens_in,
+                    tokens_out=eval_tokens_out,
+                    cost=eval_cost,
+                    duration_ms=0,
+                    tool_name=None,
+                    tool_args=None,
+                    tool_result=None,
+                    request_id=eval_request_id,
+                )
 
                 # Extract winner index
                 winner_index = 0
@@ -7570,12 +7671,16 @@ Use only numbers 0-100 for scores."""
             evaluator_metadata["semantic_actor"] = "evaluator"
             evaluator_metadata["semantic_purpose"] = "evaluation_output"
 
+            # Skip auto-logging to unified_logs if we already logged directly
+            # All evaluator paths now log via log_unified() for full cost tracking
+            skip_auto_log = use_pareto or use_cost_aware or (not (use_human_eval or use_hybrid_eval or winner_already_set))
+
             self.echo.add_history({
                 "role": "evaluator",
                 "content": eval_content,  # Full content, no truncation
                 "node_type": "evaluator"
             }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
-               metadata=evaluator_metadata)
+               metadata=evaluator_metadata, skip_unified_log=skip_auto_log)
 
         # Add winning result to history
         # IMPORTANT: Include candidate_index and is_winner so UI can identify winning model

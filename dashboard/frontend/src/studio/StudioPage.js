@@ -84,6 +84,8 @@ function StudioPage({
   const [selectedContextMessage, setSelectedContextMessage] = useState(null);
   const [allSessionLogs, setAllSessionLogs] = useState([]);
   const [isMessagesViewVisible, setIsMessagesViewVisible] = useState(false);
+  const [hoveredHash, setHoveredHash] = useState(null); // Cross-component hover highlighting
+  const [gridSelectedMessage, setGridSelectedMessage] = useState(null); // Grid selection state
 
   // Handle cascade load from browser
   const handleBrowserLoad = useCallback(async (file) => {
@@ -130,13 +132,15 @@ function StudioPage({
   }, []);
 
   // Navigate to message (from matrix or blocks list)
+  // This is for browsing context - scroll to message without changing selection
   const handleNavigateToMessage = useCallback((message) => {
-    console.log('[StudioPage] Navigate to message:', message);
-    // Pass the message directly to context selector
+    console.log('[StudioPage] Navigate to message (scroll only):', message);
+    // Just trigger scroll/flash in grid, don't change selection
+    // The grid will handle scrolling and flash effect via scrollToMessage prop
     if (message) {
-      handleMessageContextSelect(message);
+      setGridSelectedMessage({ ...message, _scrollOnly: true });
     }
-  }, [handleMessageContextSelect]);
+  }, []);
 
   // Drag and drop handlers for timeline mode
   const handleDragStart = (event) => {
@@ -481,6 +485,8 @@ function StudioPage({
                   <ContextExplorerSidebar
                     selectedMessage={selectedContextMessage}
                     allLogs={allSessionLogs}
+                    hoveredHash={hoveredHash}
+                    onHoverHash={setHoveredHash}
                     onClose={handleCloseContextExplorer}
                     onNavigateToMessage={handleNavigateToMessage}
                   />
@@ -497,6 +503,10 @@ function StudioPage({
                   onMessageContextSelect={handleMessageContextSelect}
                   onLogsUpdate={setAllSessionLogs}
                   onMessagesViewVisibleChange={setIsMessagesViewVisible}
+                  hoveredHash={hoveredHash}
+                  onHoverHash={setHoveredHash}
+                  gridSelectedMessage={gridSelectedMessage}
+                  onGridMessageSelect={setGridSelectedMessage}
                 />
               </div>
             </Split>

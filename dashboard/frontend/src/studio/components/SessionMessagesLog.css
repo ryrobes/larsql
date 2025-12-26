@@ -426,6 +426,29 @@
   background: linear-gradient(to left, rgba(0, 229, 255, 0.15), rgba(167, 139, 250, 0.2) 40%) !important;
 }
 
+/* Cross-component hover highlighting (from matrix/blocks) */
+.sml-grid-container .ag-row.sml-row-hover-highlighted {
+  background-color: rgba(0, 229, 255, 0.12) !important;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.15), 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+/* Flash effect for scroll-only navigation */
+.sml-grid-container .ag-row.sml-row-flash {
+  animation: rowFlash 1.5s ease-out;
+}
+
+@keyframes rowFlash {
+  0% {
+    background-color: rgba(0, 229, 255, 0.3) !important;
+    box-shadow: inset 0 0 20px rgba(0, 229, 255, 0.4), 0 0 12px rgba(0, 229, 255, 0.5);
+  }
+  100% {
+    background-color: transparent !important;
+    box-shadow: none;
+  }
+}
+
 /* ============================================
    SPLIT CONTAINER
    ============================================ */

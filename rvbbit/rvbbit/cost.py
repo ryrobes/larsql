@@ -94,19 +94,25 @@ class CostTracker:
                 tokens_in = data.get("native_tokens_prompt", 0)
                 tokens_out = data.get("native_tokens_completion", 0)
                 model = data.get("model")  # OpenRouter returns the model used
+                generation_time = data.get("generation_time")  # Time in seconds from OpenRouter
+
+                # Convert generation_time to milliseconds (if available)
+                duration_ms = None
+                if generation_time is not None:
+                    duration_ms = int(generation_time * 1000)  # Convert seconds to ms
 
                 # Log with cost data
-                self._log_pending_or_fallback(item, cost, tokens_in, tokens_out, model)
+                self._log_pending_or_fallback(item, cost, tokens_in, tokens_out, model, duration_ms)
             else:
                 # API call failed - log without cost
-                self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None)
+                self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None, duration_ms=None)
 
         except Exception as e:
             print(f"[CostTracker Error] {e}")
             # Log without cost on error
-            self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None)
+            self._log_pending_or_fallback(item, cost=None, tokens_in=0, tokens_out=0, model=None, duration_ms=None)
 
-    def _log_pending_or_fallback(self, item, cost, tokens_in, tokens_out, model=None):
+    def _log_pending_or_fallback(self, item, cost, tokens_in, tokens_out, model=None, duration_ms=None):
         """
         Log the message with cost data.
 
@@ -115,6 +121,7 @@ class CostTracker:
 
         Args:
             model: Model name from OpenRouter API response (fallback if not in pending_message)
+            duration_ms: Generation time in milliseconds from OpenRouter (None if unavailable)
         """
         pending_message = item.get("pending_message")
 
@@ -130,6 +137,11 @@ class CostTracker:
             # If pending_message doesn't have model but we got it from OpenRouter, use it
             if not pending_message.get("model") and model:
                 pending_message["model"] = model
+
+            # Add duration_ms if available from OpenRouter (overwrite if already set)
+            # OpenRouter's generation_time is server-side, more accurate than client-side timing
+            if duration_ms is not None:
+                pending_message["duration_ms"] = duration_ms
 
             # Log complete message with cost included
             log_unified(**pending_message)

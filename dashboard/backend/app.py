@@ -4093,6 +4093,7 @@ def playground_session_stream(session_id):
                 is_winner,
                 reforge_step,
                 winning_candidate_index,
+                turn_number,
                 model,
                 cost,
                 duration_ms,

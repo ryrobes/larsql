@@ -171,7 +171,15 @@ class Agent:
         retries = 2
         for attempt in range(retries + 1):
             try:
+                # Track client-side latency (includes network + generation time)
+                import time
+                start_time = time.time()
+
                 response = litellm.completion(**args)
+
+                # Calculate total duration (network + generation)
+                duration_ms = int((time.time() - start_time) * 1000)
+
                 message = response.choices[0].message
 
                 # Convert to dict
@@ -253,6 +261,7 @@ class Agent:
                     "tokens_out": tokens_out,  # Use immediate counts from LiteLLM
                     "tokens_reasoning": tokens_reasoning,
                     "provider": provider,
+                    "duration_ms": duration_ms,  # Client-side latency (will be overwritten by server-side time from OpenRouter if available)
                     # Reasoning config info for logging
                     "reasoning_enabled": self.reasoning_config is not None,
                     "reasoning_effort": self.reasoning_config.effort if self.reasoning_config else None,

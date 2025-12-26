@@ -73,6 +73,9 @@ const SessionMessagesLog = ({
   logs = [],
   onSelectCell,
   onMessageClick,
+  hoveredHash = null,
+  onHoverHash,
+  externalSelectedMessage = null,
   currentSessionId = null,
   showFilters = true,
   filterByCell = null,
@@ -84,8 +87,34 @@ const SessionMessagesLog = ({
 }) => {
   const gridRef = useRef(null);
 
-  // Selected row state
-  const [selectedMessage, setSelectedMessage] = useState(null);
+  // Selected row state (use external if provided)
+  const [internalSelectedMessage, setInternalSelectedMessage] = useState(null);
+
+  // Handle scroll-only navigation (from context blocks)
+  useEffect(() => {
+    if (externalSelectedMessage?._scrollOnly) {
+      // Scroll to this message without selecting it
+      const messageToScrollTo = externalSelectedMessage;
+      const rowNode = gridRef.current?.api?.getRowNode(messageToScrollTo.message_id);
+
+      if (rowNode) {
+        gridRef.current.api.ensureNodeVisible(rowNode, 'middle');
+
+        // Flash the row briefly
+        const rowElement = document.querySelector(`[row-id="${messageToScrollTo.message_id}"]`);
+        if (rowElement) {
+          rowElement.classList.add('sml-row-flash');
+          setTimeout(() => {
+            rowElement.classList.remove('sml-row-flash');
+          }, 1500);
+        }
+      }
+    }
+  }, [externalSelectedMessage]);
+
+  const selectedMessage = (externalSelectedMessage && !externalSelectedMessage._scrollOnly)
+    ? externalSelectedMessage
+    : internalSelectedMessage;
 
   // Image modal state
   const [modalImage, setModalImage] = useState(null);
@@ -176,6 +205,7 @@ const SessionMessagesLog = ({
     const config = ROLE_CONFIG[value] || { icon: 'mdi:help-circle-outline', color: '#64748b', label: value };
     const candidateIdx = data.candidate_index;
     const reforgeStep = data.reforge_step;
+    const turnNumber = data.turn_number;
 
     let prefix = '';
     if (candidateIdx !== null && candidateIdx !== undefined) {
@@ -183,6 +213,10 @@ const SessionMessagesLog = ({
     }
     if (reforgeStep !== null && reforgeStep !== undefined && reforgeStep > 0) {
       prefix += `R${reforgeStep} `;
+    }
+    // Only show turn if >= 1 (turn 0 is normal, turn 1+ indicates loops/iterations)
+    if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 1) {
+      prefix += `T${turnNumber} `;
     }
 
     return (
@@ -484,13 +518,13 @@ const SessionMessagesLog = ({
     const clickedMessage = event.data;
     // Toggle selection - if clicking same row, deselect
     if (selectedMessage?.message_id === clickedMessage.message_id) {
-      setSelectedMessage(null);
+      setInternalSelectedMessage(null);
       // Also clear context explorer when deselecting
       if (onMessageClick) {
         onMessageClick(null);
       }
     } else {
-      setSelectedMessage(clickedMessage);
+      setInternalSelectedMessage(clickedMessage);
 
       // Trigger context explorer for messages with context
       if (onMessageClick) {
@@ -501,19 +535,19 @@ const SessionMessagesLog = ({
 
   // Close detail panel
   const closeDetailPanel = useCallback(() => {
-    setSelectedMessage(null);
+    setInternalSelectedMessage(null);
     // Also clear context explorer
     if (onMessageClick) {
       onMessageClick(null);
     }
   }, [onMessageClick]);
 
-  // Refresh row styles when selection changes
+  // Refresh row styles when selection or hover changes
   useEffect(() => {
     if (gridRef.current?.api) {
       gridRef.current.api.redrawRows();
     }
-  }, [selectedMessage]);
+  }, [selectedMessage, hoveredHash]);
 
   // Format content for display in detail panel
   const formatContent = useCallback((content) => {
@@ -646,6 +680,10 @@ const SessionMessagesLog = ({
                   } else if (params.data.role === 'assistant') {
                     classes.push('sml-row-llm-message');
                     classes.push('sml-row-llm-received');
+                  }
+                  // Cross-component hover highlighting
+                  if (hoveredHash && (params.data.content_hash === hoveredHash || params.data.context_hashes?.includes(hoveredHash))) {
+                    classes.push('sml-row-hover-highlighted');
                   }
                   return classes.join(' ');
                 }}
@@ -851,6 +889,10 @@ const SessionMessagesLog = ({
                 } else if (params.data.role === 'assistant') {
                   classes.push('sml-row-llm-message');
                   classes.push('sml-row-llm-received');
+                }
+                // Cross-component hover highlighting
+                if (hoveredHash && (params.data.content_hash === hoveredHash || params.data.context_hashes?.includes(hoveredHash))) {
+                  classes.push('sml-row-hover-highlighted');
                 }
                 return classes.join(' ');
               }}
