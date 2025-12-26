@@ -562,6 +562,32 @@ function CellTypePill({ type, icon, label, color }) {
   );
 }
 
+// Input placeholder pill (special draggable for input scaffolding)
+// Memoized to prevent recreation on parent re-renders
+const InputPill = React.memo(() => {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: 'special-input',
+    data: { type: 'input-placeholder' },
+  });
+
+  const color = '#34d399'; // Green like user messages
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`nav-cell-type-pill ${isDragging ? 'dragging' : ''}`}
+      style={{ borderColor: color + '34' }}
+    >
+      <Icon icon="mdi:textbox" width="16" style={{ color }} />
+      <span style={{ color }}>Input</span>
+    </div>
+  );
+});
+
+InputPill.displayName = 'InputPill';
+
 // Cell type subsection
 function CellTypeSubsection({ title, icon, cellTypes, defaultExpanded = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -1085,6 +1111,7 @@ function CascadeNavigator() {
             <div className="nav-quick-access-pills">
               <CellTypePill type="llm_phase" icon="mdi:brain" label="LLM" color="#a78bfa" />
               <CellTypePill type="image_gen" icon="mdi:image-auto" label="Image" color="#ff006e" />
+              <InputPill />
               <CellTypePill type="python_data" icon="mdi:language-python" label="Python" color="#fbbf24" />
               <CellTypePill type="sql_data" icon="mdi:database" label="SQL" color="#60a5fa" />
               <CellTypePill type="shell_command" icon="mdi:console" label="Bash" color="#64748b" />

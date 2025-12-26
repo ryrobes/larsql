@@ -291,3 +291,45 @@
   font-weight: 600;
   box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
 }
+
+.studio-drag-cell {
+  padding: 10px 16px;
+  background-color: #0a0614;
+  border: 2px solid #a78bfa;
+  border-radius: 8px;
+  color: #a78bfa;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.4);
+}
+
+.studio-drag-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #0a0614;
+  border: 2px solid #34d399;
+  border-radius: 6px;
+  color: #34d399;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.4);
+}
+
+.studio-drag-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #0a0614;
+  border: 2px solid #fbbf24;
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Google Sans Code', monospace;
+  box-shadow: 0 8px 24px rgba(251, 191, 36, 0.4);
+}

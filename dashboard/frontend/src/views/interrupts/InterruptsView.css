@@ -1,0 +1,303 @@
+/* ============================================
+   INTERRUPTS VIEW
+   HITL checkpoint management
+   ============================================ */
+
+.interrupts-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: var(--space-lg);
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+  box-sizing: border-box;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.interrupts-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.interrupts-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.interrupts-title h1 {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  background: linear-gradient(135deg, var(--color-accent-yellow), var(--color-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.interrupts-subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  margin: 0;
+  margin-left: 44px; /* Align with title text */
+}
+
+/* ============================================
+   LOADING & EMPTY STATES
+   ============================================ */
+
+.interrupts-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl);
+  color: var(--color-text-muted);
+}
+
+.interrupts-loading .spinning {
+  animation: spin 1s linear infinite;
+}
+
+.interrupts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  text-align: center;
+  min-height: 400px;
+}
+
+.interrupts-empty .empty-icon {
+  color: var(--color-accent-green);
+  opacity: 0.6;
+}
+
+.interrupts-empty h2 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.interrupts-empty p {
+  margin: 0;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  max-width: 400px;
+}
+
+/* ============================================
+   ERROR STATE
+   ============================================ */
+
+.interrupts-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--color-accent-red);
+  background-color: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* ============================================
+   CHECKPOINT LIST
+   ============================================ */
+
+.interrupts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ============================================
+   CHECKPOINT CARD
+   ============================================ */
+
+.checkpoint-card {
+  overflow: hidden;
+  transition: all var(--transition-normal);
+}
+
+.checkpoint-card:hover {
+  border-color: var(--color-accent-purple);
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.15);
+}
+
+/* Card Header */
+.checkpoint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  background-color: rgba(10, 5, 16, 0.6);
+  border-bottom: 1px solid var(--color-border-dim);
+  transition: background-color var(--transition-fast);
+}
+
+.checkpoint-header:hover {
+  background-color: rgba(10, 5, 16, 0.8);
+}
+
+.checkpoint-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.checkpoint-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.checkpoint-session,
+.checkpoint-cascade,
+.checkpoint-cell {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.checkpoint-session {
+  color: var(--color-accent-cyan);
+  cursor: help;
+}
+
+.checkpoint-cascade {
+  color: var(--color-accent-purple);
+}
+
+.checkpoint-cell {
+  color: var(--color-accent-green);
+}
+
+.checkpoint-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-yellow);
+}
+
+.checkpoint-actions-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.expand-icon {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+/* Card Content */
+.checkpoint-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Phase Output */
+.checkpoint-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.output-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.output-text {
+  padding: 12px;
+  background-color: rgba(10, 5, 16, 0.6);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Checkpoint UI */
+.checkpoint-ui {
+  /* DynamicUI and HTMLSection have their own styles */
+}
+
+/* Actions */
+.checkpoint-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .interrupts-view {
+    padding: var(--space-md);
+  }
+
+  .checkpoint-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .checkpoint-actions-header {
+    align-self: flex-end;
+  }
+
+  .checkpoint-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

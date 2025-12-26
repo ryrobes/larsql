@@ -9,7 +9,7 @@ import CellDetailPanel from './CellDetailPanel';
 import { CellAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
 import { Tooltip } from '../../components/RichTooltip';
-import { Button } from '../../components';
+import { Button, Modal, ModalHeader, ModalContent, ModalFooter } from '../../components';
 import './CascadeTimeline.css';
 
 /**
@@ -601,6 +601,12 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const setLiveMode = useStudioCascadeStore(state => state.setLiveMode);
   const updateCellStatesFromPolling = useStudioCascadeStore(state => state.updateCellStatesFromPolling);
 
+  // Screen wipe transition state
+  const [isWiping, setIsWiping] = useState(false);
+
+  // New cascade confirmation modal
+  const [showNewModal, setShowNewModal] = useState(false);
+
   // console.log('[CascadeTimeline] Store data:', {
   //   hasCascade: !!cascade,
   //   cascadeId: cascade?.cascade_id,
@@ -972,68 +978,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     });
   }, [cascade, cells, inputsSchema]);
 
-  // Calculate cost metrics for each cell (MUST be before layout)
-  const cellCostMetrics = useMemo(() => {
-    if (!cells || cells.length === 0) return {};
-
-    const metrics = {};
-    let totalCost = 0;
-    let maxCost = 0;
-
-    // First pass: collect costs
-    cells.forEach(cell => {
-      const cost = cellStates[cell.name]?.cost || 0;
-      metrics[cell.name] = { cost };
-      totalCost += cost;
-      if (cost > maxCost) maxCost = cost;
-    });
-
-    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
-
-    // Second pass: calculate deltas and scales
-    Object.keys(metrics).forEach(cellName => {
-      const cost = metrics[cellName].cost;
-      const duration = cellStates[cellName]?.duration || 0;
-      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
-
-      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
-      let scale = 1.0;
-      if (costDeltaPct > 100) scale = 1.3;
-      else if (costDeltaPct > 50) scale = 1.2;
-      else if (costDeltaPct > 10) scale = 1.1;
-      else if (costDeltaPct < -50) scale = 0.85;
-      else if (costDeltaPct < -20) scale = 0.9;
-
-      // Color
-      let color = 'cyan';
-      if (costDeltaPct > 50) color = 'red';
-      else if (costDeltaPct > 10) color = 'orange';
-      else if (costDeltaPct < -20) color = 'green';
-
-      metrics[cellName].costDeltaPct = costDeltaPct;
-      metrics[cellName].duration = duration;
-      metrics[cellName].scale = scale;
-      metrics[cellName].color = color;
-    });
-
-    return metrics;
-  }, [cells, cellStates]);
-
-  const layout = useMemo(
-    () => {
-      const result = buildFBPLayout(cells, inputsSchema, layoutMode === 'linear', cellCostMetrics);
-      console.log('[CascadeTimeline] FBP Layout built:', {
-        cellsInput: cells.length,
-        nodesOutput: result.nodes.length,
-        edgesOutput: result.edges.length,
-        width: result.width,
-        height: result.height
-      });
-      return result;
-    },
-    [cells, inputsSchema, layoutMode, cellCostMetrics]
-  );
-
   const handleDescriptionChange = (e) => {
     updateCascade({ description: e.target.value });
   };
@@ -1063,6 +1007,33 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     if (window.confirm('Restart session? This will clear all outputs.')) {
       await restartSession();
     }
+  };
+
+  const handleNew = async () => {
+    // If dirty, show confirmation modal
+    if (cascadeDirty) {
+      setShowNewModal(true);
+      return;
+    }
+
+    // No unsaved changes, proceed directly
+    executeNewCascade();
+  };
+
+  const executeNewCascade = () => {
+    setShowNewModal(false);
+
+    // Trigger screen wipe effect
+    setIsWiping(true);
+
+    // Wait for wipe animation to cover screen
+    setTimeout(() => {
+      newCascade();
+      // Wait for new cascade to load, then reverse wipe
+      setTimeout(() => {
+        setIsWiping(false);
+      }, 100);
+    }, 500); // Duration of wipe animation
   };
 
   const handleLoad = async (path) => {
@@ -1126,6 +1097,69 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     stableCellStatesRef.current = newStableStates;
     return newStableStates;
   }, [cellStates]);
+
+  // Calculate cost metrics for each cell (needs stableCellStates, before layout)
+  const cellCostMetrics = useMemo(() => {
+    if (!cells || cells.length === 0) return {};
+
+    const metrics = {};
+    let totalCost = 0;
+    let maxCost = 0;
+
+    // First pass: collect costs
+    cells.forEach(cell => {
+      const cost = stableCellStates[cell.name]?.cost || 0;
+      metrics[cell.name] = { cost };
+      totalCost += cost;
+      if (cost > maxCost) maxCost = cost;
+    });
+
+    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
+
+    // Second pass: calculate deltas and scales
+    Object.keys(metrics).forEach(cellName => {
+      const cost = metrics[cellName].cost;
+      const duration = stableCellStates[cellName]?.duration || 0;
+      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
+
+      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
+      let scale = 1.0;
+      if (costDeltaPct > 100) scale = 1.3;
+      else if (costDeltaPct > 50) scale = 1.2;
+      else if (costDeltaPct > 10) scale = 1.1;
+      else if (costDeltaPct < -50) scale = 0.85;
+      else if (costDeltaPct < -20) scale = 0.9;
+
+      // Color
+      let color = 'cyan';
+      if (costDeltaPct > 50) color = 'red';
+      else if (costDeltaPct > 10) color = 'orange';
+      else if (costDeltaPct < -20) color = 'green';
+
+      metrics[cellName].costDeltaPct = costDeltaPct;
+      metrics[cellName].duration = duration;
+      metrics[cellName].scale = scale;
+      metrics[cellName].color = color;
+    });
+
+    return metrics;
+  }, [cells, stableCellStates]);
+
+  // Layout must come after cellCostMetrics
+  const layout = useMemo(
+    () => {
+      const result = buildFBPLayout(cells, inputsSchema, layoutMode === 'linear', cellCostMetrics);
+      console.log('[CascadeTimeline] FBP Layout built:', {
+        cellsInput: cells.length,
+        nodesOutput: result.nodes.length,
+        edgesOutput: result.edges.length,
+        width: result.width,
+        height: result.height
+      });
+      return result;
+    },
+    [cells, inputsSchema, layoutMode, cellCostMetrics]
+  );
 
   // Count messages by role, filtering out system messages (phase_*)
   let messageCounts = null;
@@ -1229,7 +1263,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
           <div className="cascade-control-divider" />
 
           {/* Layout Toggle */}
-          <div className="cascade-view-toggle">
+          {/* <div className="cascade-view-toggle">
             <Tooltip label="Linear view" description="IDE-style sequential layout">
               <button
                 className={`cascade-view-btn ${layoutMode === 'linear' ? 'active' : ''}`}
@@ -1246,7 +1280,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                 <Icon icon="mdi:graph" width="16" />
               </button>
             </Tooltip>
-          </div>
+          </div> */}
 
           {/* Edge Legend */}
           <Tooltip
@@ -1254,7 +1288,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             description="Cyan: Data flow • Purple: Context • Gray: Execution order • Pink: Branch/merge • Warm: Input params"
           >
             <div className="cascade-edge-legend">
-              <Icon icon="mdi:information-outline" width="14" />
+              {/* <Icon icon="mdi:information-outline" width="14" /> */}
               <div className="legend-dots">
                 <div className="legend-dot" style={{ backgroundColor: '#00e5ff' }} />
                 <div className="legend-dot" style={{ backgroundColor: '#a78bfa' }} />
@@ -1279,9 +1313,20 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
           <div className="cascade-control-divider" />
 
-          <span className="cascade-stats">
+          {/* <span className="cascade-stats">
             {completedCount}/{cellCount} cells
-          </span>
+          </span> */}
+
+          {/* New Cascade Button */}
+          <Tooltip label="New" description="Create blank cascade">
+            <Button
+              variant="secondary"
+              icon="mdi:file-plus-outline"
+              onClick={handleNew}
+            >
+              New
+            </Button>
+          </Tooltip>
 
           {/* Open Cascade Button */}
           <Tooltip label="Open" description="Open cascade file">
@@ -1294,13 +1339,13 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             </Button>
           </Tooltip>
 
-          {/* <Tooltip label="Restart" description="Clear session and start fresh">
+          <Tooltip label="Clear" description="Clear session and start fresh">
             <Button
               variant="secondary"
               icon="mdi:restart"
               onClick={handleRestart}
-            />
-          </Tooltip> */}
+            > Clear </Button>
+          </Tooltip>
 
           <Tooltip label="Save" description="Save cascade changes">
             <Button
@@ -1517,6 +1562,128 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
           />
         </div>
       )}
+
+      {/* Screen Wipe Transition - Cyberpunk GPU Effect */}
+      {isWiping && (
+        <>
+          {/* Main gradient wipe */}
+          <motion.div
+            className="cascade-screen-wipe"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{
+              duration: 0.5,
+              ease: [0.87, 0, 0.13, 1]
+            }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: 'linear-gradient(90deg, #000000 0%, #001a1a 20%, #003366 60%, #00e5ff 100%)',
+              transformOrigin: 'left',
+              zIndex: 9998,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Scanlines overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, delay: 0.1 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 229, 255, 0.03) 2px, rgba(0, 229, 255, 0.03) 4px)',
+              zIndex: 9999,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Grid overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.15 }}
+            transition={{ duration: 0.3, delay: 0.15 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              backgroundImage: `
+                linear-gradient(rgba(0, 229, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.1) 1px, transparent 1px)
+              `,
+              backgroundSize: '50px 50px',
+              zIndex: 10000,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Glowing edge accent */}
+          <motion.div
+            initial={{ scaleX: 0, opacity: 0 }}
+            animate={{ scaleX: 1, opacity: 1 }}
+            transition={{
+              duration: 0.5,
+              ease: [0.87, 0, 0.13, 1]
+            }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              boxShadow: 'inset -3px 0 20px rgba(0, 229, 255, 0.8), inset -10px 0 60px rgba(167, 139, 250, 0.4)',
+              transformOrigin: 'left',
+              zIndex: 10001,
+              pointerEvents: 'none'
+            }}
+          />
+        </>
+      )}
+
+      {/* Confirmation Modal for New Cascade */}
+      <Modal
+        isOpen={showNewModal}
+        onClose={() => setShowNewModal(false)}
+        size="small"
+      >
+        <ModalHeader
+          icon="mdi:alert-circle-outline"
+          title="Unsaved Changes"
+          iconColor="#fbbf24"
+        />
+        <ModalContent>
+          <p style={{ marginBottom: '12px', color: '#cbd5e1' }}>
+            You have unsaved changes to the current cascade.
+          </p>
+          <p style={{ color: '#94a3b8' }}>
+            Creating a new cascade will discard these changes.
+          </p>
+        </ModalContent>
+        <ModalFooter align="right">
+          <Button
+            variant="secondary"
+            onClick={() => setShowNewModal(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            icon="mdi:file-plus-outline"
+            onClick={executeNewCascade}
+          >
+            Create New
+          </Button>
+        </ModalFooter>
+      </Modal>
 
     </div>
   );

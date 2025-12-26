@@ -49,6 +49,7 @@ function StudioPage({
     fetchCascades,
     loadCascade,
     addCell,
+    updateCascade,
     setReplayMode,
     cascade,
     viewMode,
@@ -201,6 +202,183 @@ function StudioPage({
       const dropPosition = dropTarget?.position;
       if (dropPosition !== undefined) {
         addCell(cellType, dropPosition);
+      }
+    }
+
+    // Handle model drops
+    if (dragType === 'model') {
+      const modelId = active.data.current.modelId;
+      const dropTarget = over.data.current;
+
+      // Drop on cell card → Update that cell's model
+      if (dropTarget?.type === 'cell-card') {
+        const cellIndex = dropTarget.cellIndex;
+        const cascadeStore = useStudioCascadeStore.getState();
+        const cellToUpdate = cascadeStore.cascade?.cells[cellIndex];
+
+        if (cellToUpdate) {
+          const updatedCells = [...cascadeStore.cascade.cells];
+          updatedCells[cellIndex] = {
+            ...cellToUpdate,
+            model: modelId
+          };
+
+          updateCascade({ cells: updatedCells });
+        }
+        return;
+      }
+
+      // Drop on canvas → Create new llm_phase with this model
+      if (dropTarget?.type === 'canvas-background') {
+        // Sanitize model name for cell name
+        const sanitizeName = (modelId) => {
+          return modelId
+            .split('/').pop() // Get model name after provider
+            .replace(/[^a-z0-9_]/gi, '_') // Replace non-alphanumeric with underscore
+            .toLowerCase()
+            .slice(0, 30); // Max 30 chars
+        };
+
+        const baseName = sanitizeName(modelId);
+        const cascadeStore = useStudioCascadeStore.getState();
+        const existingCells = cascadeStore.cascade?.cells || [];
+
+        // Find unique name
+        let cellName = baseName;
+        let counter = 1;
+        while (existingCells.some(c => c.name === cellName)) {
+          cellName = `${baseName}_${counter}`;
+          counter++;
+        }
+
+        // Create llm_phase cell
+        const newCell = {
+          name: cellName,
+          instructions: "{{ input.prompt }}",
+          model: modelId,
+        };
+
+        const updatedCells = [...existingCells, newCell];
+        updateCascade({ cells: updatedCells });
+        return;
+      }
+    }
+
+    // Handle tool/trait drops
+    if (dragType === 'tool') {
+      const toolId = active.data.current.toolId;
+      const dropTarget = over.data.current;
+
+      // Drop on cell card → Append to traits array
+      if (dropTarget?.type === 'cell-card') {
+        const cellIndex = dropTarget.cellIndex;
+        const cascadeStore = useStudioCascadeStore.getState();
+        const cellToUpdate = cascadeStore.cascade?.cells[cellIndex];
+
+        if (cellToUpdate) {
+          const existingTraits = cellToUpdate.traits || [];
+          const updatedTraits = existingTraits.includes(toolId)
+            ? existingTraits // Don't add duplicate
+            : [...existingTraits, toolId];
+
+          const updatedCells = [...cascadeStore.cascade.cells];
+          updatedCells[cellIndex] = {
+            ...cellToUpdate,
+            traits: updatedTraits
+          };
+
+          updateCascade({ cells: updatedCells });
+        }
+        return;
+      }
+
+      // Drop on canvas → Create new llm_phase with this trait
+      if (dropTarget?.type === 'canvas-background') {
+        const cascadeStore = useStudioCascadeStore.getState();
+        const existingCells = cascadeStore.cascade?.cells || [];
+
+        // Find unique name
+        let cellName = `use_${toolId}`;
+        let counter = 1;
+        while (existingCells.some(c => c.name === cellName)) {
+          cellName = `use_${toolId}_${counter}`;
+          counter++;
+        }
+
+        // Create llm_phase cell with trait
+        const newCell = {
+          name: cellName,
+          instructions: "{{ input.prompt }}",
+          traits: [toolId],
+        };
+
+        const updatedCells = [...existingCells, newCell];
+        updateCascade({ cells: updatedCells });
+        return;
+      }
+    }
+
+    // Handle input placeholder drops
+    if (dragType === 'input-placeholder') {
+      const dropTarget = over.data.current;
+
+      // Drop on canvas → Create llm_phase with input placeholder
+      if (dropTarget?.type === 'canvas-background') {
+        const cascadeStore = useStudioCascadeStore.getState();
+        const existingCells = cascadeStore.cascade?.cells || [];
+
+        // Find unique name
+        let cellName = 'with_input';
+        let counter = 1;
+        while (existingCells.some(c => c.name === cellName)) {
+          cellName = `with_input_${counter}`;
+          counter++;
+        }
+
+        // Create llm_phase cell with input reference
+        const newCell = {
+          name: cellName,
+          instructions: "Process this data:\n\n{{ input.RENAME_ME }}",
+        };
+
+        const updatedCells = [...existingCells, newCell];
+        updateCascade({ cells: updatedCells });
+        return;
+      }
+
+      // Drop on cell → Add input to cell's inputs object (or create it)
+      if (dropTarget?.type === 'cell-card') {
+        const cellIndex = dropTarget.cellIndex;
+        const cascadeStore = useStudioCascadeStore.getState();
+        const cellToUpdate = cascadeStore.cascade?.cells[cellIndex];
+
+        if (cellToUpdate) {
+          // Create inputs object if it doesn't exist
+          const currentInputs = cellToUpdate.inputs || {};
+
+          // Find a unique input name
+          let inputName = 'RENAME_ME';
+          let counter = 1;
+          while (currentInputs[inputName]) {
+            inputName = `RENAME_ME_${counter}`;
+            counter++;
+          }
+
+          // Add new input field with Jinja2 reference
+          const updatedInputs = {
+            ...currentInputs,
+            [inputName]: '{{ input.RENAME_ME }}'
+          };
+
+          const updatedCells = [...cascadeStore.cascade.cells];
+          updatedCells[cellIndex] = {
+            ...cellToUpdate,
+            inputs: updatedInputs
+          };
+
+          updateCascade({ cells: updatedCells });
+        }
+        return;
       }
     }
 
@@ -531,6 +709,18 @@ function StudioPage({
                 {activeDragItem.type === 'cell-type' && (
                   <div className="studio-drag-cell">
                     Adding {activeDragItem.cellType}...
+                  </div>
+                )}
+                {activeDragItem.type === 'input-placeholder' && (
+                  <div className="studio-drag-input">
+                    <Icon icon="mdi:textbox" width="14" style={{ color: '#34d399' }} />
+                    <span style={{ color: '#34d399' }}>Input</span>
+                  </div>
+                )}
+                {activeDragItem.type === 'tool' && (
+                  <div className="studio-drag-tool">
+                    <Icon icon="mdi:tools" width="14" />
+                    {activeDragItem.toolId}
                   </div>
                 )}
               </div>
