@@ -106,7 +106,7 @@ function formatRowCount(count) {
 }
 
 // Cell node with expandable columns
-function CellNode({ cell, index, cellState, isActive, onNavigate }) {
+function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, costDeltaPct = 0, costBarWidth = 0 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const status = cellState?.status || 'pending';
@@ -116,6 +116,17 @@ function CellNode({ cell, index, cellState, isActive, onNavigate }) {
   const rowCount = result?.row_count || result?.rows?.length || 0;
   const columns = result?.columns || [];
   const rows = result?.rows || [];
+
+  // Determine cost indicator color
+  const getCostColor = () => {
+    if (cost === 0) return null;
+    if (costDeltaPct > 50) return 'red';
+    if (costDeltaPct > 10) return 'orange';
+    if (costDeltaPct < -20) return 'green';
+    return 'cyan';
+  };
+
+  const costColor = getCostColor();
 
   // Infer column types from first row if not provided
   const columnInfo = columns.map(col => {
@@ -228,7 +239,29 @@ function CellNode({ cell, index, cellState, isActive, onNavigate }) {
         )}
         <StatusIcon status={status} />
         <Icon icon={toolIcon} className="nav-tool-icon" style={{ color: toolColor }} />
-        <span className="nav-cell-name">{cell.name}</span>
+        <div className="nav-cell-content">
+          <span className="nav-cell-name">{cell.name}</span>
+          {/* Cost visualization - hollow border bar */}
+          {cost > 0 && (
+            <div className="nav-cell-cost-viz">
+              <div
+                className={`nav-cost-bar ${costColor || 'cyan'}`}
+                style={{ width: `${costBarWidth}%` }}
+                title={`$${cost.toFixed(6)}`}
+              />
+              <div className="nav-cost-metrics">
+                <span className={`nav-cost-amount ${costColor || 'cyan'}`}>
+                  ${cost < 0.01 ? '<0.01' : cost.toFixed(4)}
+                </span>
+                {Math.abs(costDeltaPct) > 5 && (
+                  <span className={`nav-cost-delta ${costColor || 'cyan'}`}>
+                    {costDeltaPct > 0 ? '+' : ''}{costDeltaPct.toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         {/* Stats: row count, duration, and cache indicator */}
         <div className="nav-cell-stats">
           {cellState?.cached && (
@@ -1076,16 +1109,39 @@ function CascadeNavigator() {
             </div>
 
             <div className="nav-cells-list">
-              {cells.map((cell, index) => (
-                <CellNode
-                  key={cell.name}
-                  cell={cell}
-                  index={index}
-                  cellState={cellStates[cell.name]}
-                  isActive={selectedCellIndex === index}
-                  onNavigate={scrollToCell}
-                />
-              ))}
+              {(() => {
+                // Calculate cost metrics
+                const cellCosts = cells.map((cell, index) => {
+                  const cost = cellStates[cell.name]?.cost || 0;
+                  return { cell, index, cost };
+                });
+
+                const totalCost = cellCosts.reduce((sum, c) => sum + c.cost, 0);
+                const avgCost = cellCosts.length > 0 ? totalCost / cellCosts.length : 0;
+                const maxCost = Math.max(...cellCosts.map(c => c.cost), 0.0001); // Avoid div by 0
+
+                // Sort by cost (descending) for "hot cells first"
+                const sortedCells = [...cellCosts].sort((a, b) => b.cost - a.cost);
+
+                return sortedCells.map(({ cell, index, cost }) => {
+                  const costPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
+                  const barWidth = maxCost > 0 ? (cost / maxCost) * 100 : 0;
+
+                  return (
+                    <CellNode
+                      key={cell.name}
+                      cell={cell}
+                      index={index}
+                      cellState={cellStates[cell.name]}
+                      isActive={selectedCellIndex === index}
+                      onNavigate={scrollToCell}
+                      cost={cost}
+                      costDeltaPct={costPct}
+                      costBarWidth={barWidth}
+                    />
+                  );
+                });
+              })()}
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-communi
 import { Icon } from '@iconify/react';
 import Split from 'react-split';
 import { Modal } from '../../components';
+import MessageContentViewer from './MessageContentViewer';
 import './SessionMessagesLog.css';
 
 // Register AG Grid modules
@@ -259,17 +260,55 @@ const SessionMessagesLog = ({
     if (!value) return <span className="sml-null">—</span>;
 
     let content = value;
+
+    // Convert object to string
     if (typeof content === 'object') {
       content = JSON.stringify(content);
     }
 
+    // Clean and sanitize the content for single-line grid display
+    let cleaned = content;
+
+    // Try to parse as JSON (might be double-encoded string)
+    if (typeof cleaned === 'string') {
+      try {
+        const parsed = JSON.parse(cleaned);
+        // If parsed result is a string, use it (unwrap from JSON encoding)
+        if (typeof parsed === 'string') {
+          cleaned = parsed;
+        } else {
+          // It's an object/array, keep as JSON string
+          cleaned = JSON.stringify(parsed);
+        }
+      } catch {
+        // Not valid JSON, keep as-is
+      }
+
+      // Remove wrapping quotes if present
+      if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+          (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+        cleaned = cleaned.slice(1, -1);
+      }
+
+      // Unescape common sequences
+      cleaned = cleaned
+        .replace(/\\n/g, ' ')      // Newlines → spaces (for single-line display)
+        .replace(/\\t/g, ' ')      // Tabs → spaces
+        .replace(/\\r/g, '')       // Carriage returns → remove
+        .replace(/\\"/g, '"')      // Escaped quotes → quotes
+        .replace(/\\'/g, "'")      // Escaped quotes → quotes
+        .replace(/\\\\/g, '\\')    // Escaped backslashes → backslash
+        .replace(/\s+/g, ' ')      // Multiple spaces → single space
+        .trim();
+    }
+
     // Truncate long content
     const maxLen = 200;
-    const truncated = content.length > maxLen
-      ? content.substring(0, maxLen) + '...'
-      : content;
+    const truncated = cleaned.length > maxLen
+      ? cleaned.substring(0, maxLen) + '...'
+      : cleaned;
 
-    return <span className="sml-content" title={content}>{truncated}</span>;
+    return <span className="sml-content" title={cleaned}>{truncated}</span>;
   }, []);
 
   const MetricCellRenderer = useCallback(({ value, colDef }) => {
@@ -549,21 +588,6 @@ const SessionMessagesLog = ({
     }
   }, [selectedMessage, hoveredHash]);
 
-  // Format content for display in detail panel
-  const formatContent = useCallback((content) => {
-    if (!content) return '';
-    if (typeof content === 'string') {
-      // Try to parse as JSON for pretty printing
-      try {
-        const parsed = JSON.parse(content);
-        return JSON.stringify(parsed, null, 2);
-      } catch {
-        return content;
-      }
-    }
-    return JSON.stringify(content, null, 2);
-  }, []);
-
   // Calculate stats
   const stats = useMemo(() => {
     let totalCost = 0;
@@ -739,7 +763,9 @@ const SessionMessagesLog = ({
                     <Icon icon="mdi:text" width="14" />
                     <span>Content</span>
                   </div>
-                  <pre className="sml-detail-pre">{formatContent(selectedMessage.content_json)}</pre>
+                  <div className="sml-detail-content-container">
+                    <MessageContentViewer content={selectedMessage.content_json} />
+                  </div>
                 </div>
 
                 {/* Images Section */}
@@ -847,7 +873,9 @@ const SessionMessagesLog = ({
                       <Icon icon="mdi:code-json" width="14" />
                       <span>Metadata</span>
                     </div>
-                    <pre className="sml-detail-pre sml-detail-pre-muted">{formatContent(selectedMessage.metadata_json)}</pre>
+                    <div className="sml-detail-metadata-container">
+                      <MessageContentViewer content={selectedMessage.metadata_json} />
+                    </div>
                   </div>
                 )}
               </div>

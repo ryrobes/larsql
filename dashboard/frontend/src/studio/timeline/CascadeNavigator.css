@@ -208,7 +208,9 @@
 }
 
 .nav-cell-node.active .nav-cell-row {
-  background-color: rgba(45, 212, 191, 0.15);
+  background-color: rgba(255, 0, 110, 0.08);
+  border: 1px solid var(--color-accent-pink);
+  box-shadow: inset 0 0 8px rgba(255, 0, 110, 0.1);
 }
 
 .cell-status-icon {
@@ -221,12 +223,107 @@
   flex-shrink: 0;
 }
 
-.nav-cell-name {
+.nav-cell-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nav-cell-name {
   color: #e2e8f0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Cost visualization */
+.nav-cell-cost-viz {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-cost-bar {
+  height: 8px;
+  border-radius: 2px;
+  border: 2px solid;
+  background: transparent;
+  min-width: 8px;
+  max-width: 120px;
+  transition: all var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.nav-cost-bar.cyan {
+  border-color: var(--color-accent-cyan);
+}
+
+.nav-cost-bar.green {
+  border-color: var(--color-accent-green);
+}
+
+.nav-cost-bar.orange {
+  border-color: #fb923c;
+}
+
+.nav-cost-bar.red {
+  border-color: var(--color-accent-pink);
+}
+
+.nav-cost-metrics {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.nav-cost-amount {
+  font-weight: var(--font-weight-bold);
+}
+
+.nav-cost-amount.cyan {
+  color: var(--color-accent-cyan);
+}
+
+.nav-cost-amount.green {
+  color: var(--color-accent-green);
+}
+
+.nav-cost-amount.orange {
+  color: #fb923c;
+}
+
+.nav-cost-amount.red {
+  color: var(--color-accent-pink);
+}
+
+.nav-cost-delta {
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.8;
+}
+
+.nav-cost-delta.cyan {
+  color: var(--color-accent-cyan);
+}
+
+.nav-cost-delta.green {
+  color: var(--color-accent-green);
+}
+
+.nav-cost-delta.orange {
+  color: #fb923c;
+}
+
+.nav-cost-delta.red {
+  color: var(--color-accent-pink);
 }
 
 .nav-cell-stats {

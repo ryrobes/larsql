@@ -1022,6 +1022,51 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const cellCount = cells.length;
   const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
 
+  // Calculate cost metrics for each cell
+  const cellCostMetrics = useMemo(() => {
+    if (!cells || cells.length === 0) return {};
+
+    const metrics = {};
+    let totalCost = 0;
+    let maxCost = 0;
+
+    // First pass: collect costs
+    cells.forEach(cell => {
+      const cost = stableCellStates[cell.name]?.cost || 0;
+      metrics[cell.name] = { cost };
+      totalCost += cost;
+      if (cost > maxCost) maxCost = cost;
+    });
+
+    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
+
+    // Second pass: calculate deltas and scales
+    Object.keys(metrics).forEach(cellName => {
+      const cost = metrics[cellName].cost;
+      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
+
+      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
+      let scale = 1.0;
+      if (costDeltaPct > 100) scale = 1.3;
+      else if (costDeltaPct > 50) scale = 1.2;
+      else if (costDeltaPct > 10) scale = 1.1;
+      else if (costDeltaPct < -50) scale = 0.85;
+      else if (costDeltaPct < -20) scale = 0.9;
+
+      // Color
+      let color = 'cyan';
+      if (costDeltaPct > 50) color = 'red';
+      else if (costDeltaPct > 10) color = 'orange';
+      else if (costDeltaPct < -20) color = 'green';
+
+      metrics[cellName].costDeltaPct = costDeltaPct;
+      metrics[cellName].scale = scale;
+      metrics[cellName].color = color;
+    });
+
+    return metrics;
+  }, [cells, stableCellStates]);
+
   if (!cascade) {
     return (
       <div className="cascade-timeline cascade-loading">
@@ -1279,6 +1324,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                   isSelected={selectedCellIndex === node.cellIdx}
                   onSelect={handleSelectCell}
                   defaultModel={defaultModel}
+                  costMetrics={cellCostMetrics[node.cell.name]}
                 />
               </motion.div>
             );

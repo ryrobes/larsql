@@ -616,6 +616,26 @@
   z-index: 1;
 }
 
+/* Content container for Monaco viewer */
+.sml-detail-content-container {
+  min-height: 200px;
+  height: 300px;
+  max-height: 500px;
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+}
+
+/* Metadata container for Monaco viewer (slightly shorter) */
+.sml-detail-metadata-container {
+  min-height: 150px;
+  height: 200px;
+  max-height: 400px;
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+}
+
 .sml-detail-pre {
   margin: 0;
   padding: 12px 16px;
