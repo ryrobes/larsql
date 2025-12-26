@@ -130,6 +130,11 @@ const CascadesView = ({ navigate, params = {} }) => {
         input_data: session.input_data,
         start_time: session.started_at,
         end_time: session.completed_at,
+        message_count: session.message_count || 0,
+        // Include percentage differences (calculated by backend)
+        cost_diff_pct: session.cost_diff_pct,
+        messages_diff_pct: session.messages_diff_pct,
+        duration_diff_pct: session.duration_diff_pct,
       }));
 
       setInstances(transformed);
@@ -282,6 +287,56 @@ const CascadesView = ({ navigate, params = {} }) => {
       cellStyle: { color: '#34d399', fontFamily: 'var(--font-mono)' },
     },
     {
+      field: 'cost_diff_pct',
+      headerName: 'Δ%',
+      width: 85,
+      valueFormatter: (params) => {
+        if (params.value === null || params.value === undefined) return '-';
+        const val = params.value;
+        return val > 0 ? `+${val}%` : `${val}%`;
+      },
+      cellStyle: (params) => {
+        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
+        const val = params.value;
+        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
+        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
+      },
+      tooltipValueGetter: (params) => {
+        if (params.value === null || params.value === undefined) return null;
+        return `${params.value}% vs cascade average cost`;
+      },
+    },
+    {
+      field: 'message_count',
+      headerName: 'Messages',
+      width: 95,
+      valueFormatter: (params) => {
+        const count = params.value || 0;
+        return count > 0 ? count.toString() : '-';
+      },
+      cellStyle: { fontFamily: 'var(--font-mono)' },
+    },
+    {
+      field: 'messages_diff_pct',
+      headerName: 'Δ%',
+      width: 85,
+      valueFormatter: (params) => {
+        if (params.value === null || params.value === undefined) return '-';
+        const val = params.value;
+        return val > 0 ? `+${val}%` : `${val}%`;
+      },
+      cellStyle: (params) => {
+        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
+        const val = params.value;
+        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
+        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
+      },
+      tooltipValueGetter: (params) => {
+        if (params.value === null || params.value === undefined) return null;
+        return `${params.value}% vs cascade average messages`;
+      },
+    },
+    {
       field: 'duration_seconds',
       headerName: 'Duration',
       width: 100,
@@ -294,6 +349,27 @@ const CascadesView = ({ navigate, params = {} }) => {
         return `${mins}m ${remainingSecs}s`;
       },
       cellStyle: { fontFamily: 'var(--font-mono)' },
+    },
+    {
+      field: 'duration_diff_pct',
+      headerName: 'Δ%',
+      width: 85,
+      valueFormatter: (params) => {
+        if (params.value === null || params.value === undefined) return '-';
+        const val = params.value;
+        return val > 0 ? `+${val}%` : `${val}%`;
+      },
+      cellStyle: (params) => {
+        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
+        const val = params.value;
+        // For duration: faster is better (negative is good)
+        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
+        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
+      },
+      tooltipValueGetter: (params) => {
+        if (params.value === null || params.value === undefined) return null;
+        return `${params.value}% vs cascade average duration`;
+      },
     },
     {
       field: 'input_data',

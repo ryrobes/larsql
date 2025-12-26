@@ -125,6 +125,143 @@ const ContextExplorerSidebar = ({
   // Get selected message cost (this is the actual LLM call cost)
   const messageCost = selectedMessage.cost || 0;
 
+  // Calculate waste score - BOTH input context AND output response
+  const wasteAnalysis = useMemo(() => {
+    if (!allLogs) {
+      return { wasteScore: 0, wastedTokens: 0, totalTokens: 0, inputWaste: 0, outputWaste: 0, futureMessageCount: 0 };
+    }
+
+    const selectedTimestamp = selectedMessage.timestamp || selectedMessage.timestamp_iso;
+    const tokensIn = selectedMessage.tokens_in || 0;
+    const tokensOut = selectedMessage.tokens_out || 0;
+    const totalCallTokens = tokensIn + tokensOut;
+
+    // Find all future messages (after this one)
+    const futureMessages = allLogs.filter(m => {
+      if (!m.context_hashes?.length) return false;
+      const msgTime = m.timestamp || m.timestamp_iso;
+      return msgTime > selectedTimestamp;
+    });
+
+    // If no future messages, can't calculate waste (nothing to re-use with)
+    if (futureMessages.length === 0) {
+      return {
+        wasteScore: null, // null = can't determine (terminal message)
+        wastedTokens: 0,
+        totalTokens: totalCallTokens,
+        inputWaste: 0,
+        outputWaste: 0,
+        futureMessageCount: 0
+      };
+    }
+
+    // Check INPUT waste: context sent to LLM but never re-used
+    let wastedInputTokens = 0;
+    if (selectedMessage.context_hashes && selectedMessage.context_hashes.length > 0) {
+      const contextHashesSent = selectedMessage.context_hashes;
+
+      // Track which input hashes were re-used
+      const reusedInputHashes = new Set();
+      futureMessages.forEach(m => {
+        m.context_hashes.forEach(h => {
+          if (contextHashesSent.includes(h)) {
+            reusedInputHashes.add(h);
+          }
+        });
+      });
+
+      // Calculate proportion of wasted hashes
+      const wastedInputHashes = contextHashesSent.filter(h => !reusedInputHashes.has(h));
+      const wasteRatio = wastedInputHashes.length / contextHashesSent.length;
+
+      // Scale by ACTUAL tokensIn (not estimated) to stay in same token space
+      wastedInputTokens = wasteRatio * tokensIn;
+    }
+
+    // Check OUTPUT waste: response generated but never re-used
+    let wastedOutputTokens = 0;
+    if (selectedMessage.content_hash) {
+      // Check if this message's output appears in any future context
+      const responseWasReused = futureMessages.some(m =>
+        m.context_hashes?.includes(selectedMessage.content_hash)
+      );
+
+      if (!responseWasReused) {
+        wastedOutputTokens = tokensOut; // Response was generated but never used
+      }
+    }
+
+    const totalWastedTokens = wastedInputTokens + wastedOutputTokens;
+    // Cap at 100% to handle edge cases
+    const wasteScore = totalCallTokens > 0 ? Math.min((totalWastedTokens / totalCallTokens) * 100, 100) : 0;
+
+    return {
+      wasteScore,
+      wastedTokens: Math.round(totalWastedTokens),
+      totalTokens: totalCallTokens,
+      inputWaste: Math.round(wastedInputTokens),
+      outputWaste: Math.round(wastedOutputTokens),
+      futureMessageCount: futureMessages.length
+    };
+  }, [selectedMessage, allLogs, hashIndex]);
+
+  // Detect context patterns
+  const patterns = useMemo(() => {
+    const detected = [];
+    const turnNumber = selectedMessage.turn_number || 0;
+    const contextCount = selectedMessage.context_hashes?.length || 0;
+
+    // Tool Spew: Large tool output
+    const toolMessages = ancestors.filter(a => a.role === 'tool' && a.estimated_tokens > 5000);
+    if (toolMessages.length > 0) {
+      const toolMsg = toolMessages[0];
+      if (wasteAnalysis.wasteScore > 60) {
+        detected.push({
+          type: 'TOOL SPEW',
+          severity: 'high',
+          message: `${toolMsg.phase || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — massive but rarely referenced`
+        });
+      } else if (wasteAnalysis.wasteScore < 20) {
+        detected.push({
+          type: 'TOOL SPEW',
+          severity: 'low',
+          message: `${toolMsg.phase || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — large but efficiently re-used`
+        });
+      }
+    }
+
+    // Snowball Drift: Many messages accumulating
+    if (turnNumber >= 3 && contextCount > 10 && wasteAnalysis.wasteScore > 40) {
+      detected.push({
+        type: 'SNOWBALL DRIFT',
+        severity: 'medium',
+        message: `Turn ${turnNumber} with ${contextCount} messages — accumulating unused context`
+      });
+    }
+
+    // Loop Bloat: High turn count
+    if (turnNumber >= 5 && wasteAnalysis.wasteScore > 50) {
+      detected.push({
+        type: 'LOOP BLOAT',
+        severity: 'high',
+        message: `Turn ${turnNumber} carrying ${contextCount} messages — loop accumulating waste`
+      });
+    }
+
+    // System Overload: Large system prompt
+    const systemMessages = ancestors.filter(a => a.role === 'system' && a.estimated_tokens > 3000);
+    if (systemMessages.length > 0) {
+      const sysMsg = systemMessages[0];
+      detected.push({
+        type: 'SYSTEM OVERLOAD',
+        severity: 'info',
+        message: `${sysMsg.phase || 'system'} setup (${sysMsg.estimated_tokens.toLocaleString()} tok) — consider trimming instructions`
+      });
+    }
+
+    return detected;
+  }, [selectedMessage, ancestors, wasteAnalysis]);
+
   // Generate plain-language summary with formatting
   const contextSummary = useMemo(() => {
     const tokensIn = selectedMessage.tokens_in || 0;
@@ -133,25 +270,81 @@ const ContextExplorerSidebar = ({
 
     const elements = [];
 
-    // Cost breakdown sentence
+    // Cost breakdown sentence with visual bar
     if (messageCost > 0 && totalCallTokens > 0) {
       const inputPct = ((tokensIn / totalCallTokens) * 100).toFixed(0);
       const outputPct = ((tokensOut / totalCallTokens) * 100).toFixed(0);
 
       elements.push(
-        <span key="cost">
-          This call cost <span className="ce-summary-cost">${messageCost.toFixed(6)}</span>.{' '}
-          <span className="ce-summary-pct">{inputPct}%</span> was prompt payload,{' '}
-          <span className="ce-summary-pct">{outputPct}%</span> was the response.
-        </span>
+        <div key="cost" className="ce-summary-block">
+          <div className="ce-summary-text">
+            This call cost <span className="ce-summary-cost">${messageCost.toFixed(6)}</span>.{' '}
+            <span className="ce-summary-pct">{inputPct}%</span> was sent context,{' '}
+            <span className="ce-summary-pct">{outputPct}%</span> was model output.
+          </div>
+          <div className="ce-token-bar">
+            <div className="ce-token-bar-in" style={{ width: `${inputPct}%` }} title={`${tokensIn.toLocaleString()} tokens in`} />
+            <div className="ce-token-bar-out" style={{ width: `${outputPct}%` }} title={`${tokensOut.toLocaleString()} tokens out`} />
+          </div>
+        </div>
       );
     } else if (totalCallTokens > 0) {
+      const inputPct = ((tokensIn / totalCallTokens) * 100).toFixed(0);
+      const outputPct = ((tokensOut / totalCallTokens) * 100).toFixed(0);
+
       elements.push(
-        <span key="tokens">
-          This call used <span className="ce-summary-tokens">{totalCallTokens.toLocaleString()} tokens</span>{' '}
-          (<span className="ce-summary-tokens">{tokensIn.toLocaleString()}</span> in,{' '}
-          <span className="ce-summary-tokens">{tokensOut.toLocaleString()}</span> out).
-        </span>
+        <div key="tokens" className="ce-summary-block">
+          <div className="ce-summary-text">
+            This call used <span className="ce-summary-tokens">{totalCallTokens.toLocaleString()} tokens</span>{' '}
+            (<span className="ce-summary-tokens">{tokensIn.toLocaleString()}</span> in,{' '}
+            <span className="ce-summary-tokens">{tokensOut.toLocaleString()}</span> out).
+          </div>
+          <div className="ce-token-bar">
+            <div className="ce-token-bar-in" style={{ width: `${inputPct}%` }} />
+            <div className="ce-token-bar-out" style={{ width: `${outputPct}%` }} />
+          </div>
+        </div>
+      );
+    }
+
+    // Pattern warnings
+    if (patterns.length > 0) {
+      elements.push(
+        <div key="patterns" className="ce-pattern-warnings">
+          {patterns.map((p, idx) => (
+            <div key={idx} className={`ce-pattern-warning severity-${p.severity}`}>
+              <span className="ce-pattern-type">⚠️ {p.type}</span>: {p.message}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Waste score (only if we have future messages to analyze)
+    if (wasteAnalysis.wasteScore !== null && wasteAnalysis.futureMessageCount > 0) {
+      const wasteColor = wasteAnalysis.wasteScore < 20 ? 'green' :
+                        wasteAnalysis.wasteScore < 40 ? 'yellow' :
+                        wasteAnalysis.wasteScore < 60 ? 'orange' : 'red';
+      const wasteEmoji = wasteAnalysis.wasteScore < 20 ? '🟢' :
+                        wasteAnalysis.wasteScore < 40 ? '🟡' :
+                        wasteAnalysis.wasteScore < 60 ? '🟧' : '🔴';
+
+      elements.push(
+        <div key="waste" className="ce-summary-block">
+          <div className="ce-summary-text">
+            Waste Score: <span className={`ce-waste-score ${wasteColor}`}>
+              {wasteEmoji} {wasteAnalysis.wasteScore.toFixed(1)}%
+            </span>{' '}
+            (<span className="ce-summary-tokens">{wasteAnalysis.wastedTokens.toLocaleString()} tok</span> never re-used)
+          </div>
+        </div>
+      );
+    } else if (wasteAnalysis.futureMessageCount === 0) {
+      // Terminal message - no waste calculation possible
+      elements.push(
+        <div key="waste" className="ce-summary-text" style={{ opacity: 0.6, fontStyle: 'italic' }}>
+          Terminal message — no future context to analyze for waste.
+        </div>
       );
     }
 
@@ -165,8 +358,8 @@ const ContextExplorerSidebar = ({
       if (sorted.length > 0) {
         const label = sorted.length === 1 ? 'Top contributor' : 'Top contributors';
         elements.push(
-          <span key="contributors">
-            {' '}{label}:{' '}
+          <div key="contributors" className="ce-summary-text">
+            {label}:{' '}
             {sorted.map((a, idx) => {
               const desc = a.role === 'system' ? 'system setup' :
                           a.role === 'user' ? 'user input' :
@@ -185,19 +378,19 @@ const ContextExplorerSidebar = ({
               );
             })}
             .
-          </span>
+          </div>
         );
       }
     } else if (elements.length > 0) {
-      elements.push(<span key="no-context"> No prior context.</span>);
+      elements.push(<div key="no-context" className="ce-summary-text">No prior context.</div>);
     }
 
     if (elements.length === 0) {
-      return <span>This message had no context or cost data.</span>;
+      return <div className="ce-summary-text">This message had no context or cost data.</div>;
     }
 
     return <>{elements}</>;
-  }, [selectedMessage, ancestors, messageCost]);
+  }, [selectedMessage, ancestors, messageCost, wasteAnalysis, patterns]);
 
   return (
     <div className="context-explorer-sidebar">
