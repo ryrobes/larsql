@@ -269,22 +269,36 @@ function StudioPage({
       // Small delay to ensure component is fully mounted and CascadeTimeline is ready
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Priority 1: If session provided, load it in replay mode (includes cascade)
+      // Priority 1: If session provided, check if it's running or finished
       if (initialSession) {
         console.log('[StudioPage] Loading session from URL:', initialSession);
 
         try {
-          // Step 1: Load cascade definition
-          await setReplayMode(initialSession);
+          // First, check if this session is currently running
+          const statusRes = await fetch(`http://localhost:5001/api/sessions/${initialSession}`);
+          const statusData = await statusRes.json();
 
-          // Step 2: Fetch session data BEFORE activating UI
-          console.log('[StudioPage] Fetching replay data...');
-          const result = await useStudioCascadeStore.getState().fetchReplayData(initialSession);
+          const isActiveSession = statusData.session_id &&
+                                   ['starting', 'running', 'blocked'].includes(statusData.status?.toLowerCase());
 
-          if (result.success) {
-            console.log('[StudioPage] ✓ Replay data loaded:', result.cellCount, 'cells');
+          if (isActiveSession) {
+            console.log('[StudioPage] ⚡ Session is RUNNING, joining as live session');
+            // Join as live session (not replay)
+            await joinLiveSession(initialSession, statusData.cascade_id, statusData.cascade_file || null);
           } else {
-            console.warn('[StudioPage] ⚠ Replay data fetch failed:', result.error);
+            console.log('[StudioPage] 📖 Session is finished, loading in replay mode');
+            // Step 1: Load cascade definition
+            await setReplayMode(initialSession);
+
+            // Step 2: Fetch session data BEFORE activating UI
+            console.log('[StudioPage] Fetching replay data...');
+            const result = await useStudioCascadeStore.getState().fetchReplayData(initialSession);
+
+            if (result.success) {
+              console.log('[StudioPage] ✓ Replay data loaded:', result.cellCount, 'cells');
+            } else {
+              console.warn('[StudioPage] ⚠ Replay data fetch failed:', result.error);
+            }
           }
 
           // Step 3: Activate timeline mode (UI rehydrates from cellStates)

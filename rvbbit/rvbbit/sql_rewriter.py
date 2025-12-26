@@ -56,7 +56,7 @@ def rewrite_rvbbit_syntax(query: str) -> str:
     if stmt.mode == 'MAP':
         return _rewrite_map(stmt)
     elif stmt.mode == 'RUN':
-        raise NotImplementedError("RVBBIT RUN coming in Phase 3")
+        return _rewrite_run(stmt)
     else:
         raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
 
@@ -259,11 +259,73 @@ FROM rvbbit_raw r
     return rewritten
 
 
+def _rewrite_run(stmt: RVBBITStatement) -> str:
+    """
+    Rewrite RVBBIT RUN to batch cascade execution.
+
+    RUN executes cascade ONCE over entire dataset (vs MAP = once per row).
+
+    Args:
+        stmt: Parsed RUN statement
+
+    Returns:
+        Rewritten SQL
+
+    Example:
+        Input:  RVBBIT RUN 'batch.yaml' USING (SELECT * FROM t LIMIT 500)
+                WITH (as_table = 'batch_data')
+
+        Output: SELECT rvbbit_run_batch(
+                  'batch.yaml',
+                  (SELECT json_group_array(to_json(i)) FROM (...) i),
+                  'batch_data'
+                ) AS result
+    """
+    using_query = _ensure_limit_run(stmt.using_query)
+
+    # Get table name from WITH options (or generate one)
+    table_name = stmt.with_options.get('as_table')
+    if not table_name:
+        # Auto-generate table name
+        import hashlib
+        import time
+        query_hash = hashlib.md5(f"{stmt.cascade_path}{using_query}{time.time()}".encode()).hexdigest()[:8]
+        table_name = f"_rvbbit_batch_{query_hash}"
+
+    # Use rvbbit_run_batch UDF that:
+    # 1. Creates temp table from JSON array
+    # 2. Runs cascade with table reference
+    # 3. Returns metadata row
+    rewritten = f"""
+SELECT rvbbit_run_batch(
+  '{stmt.cascade_path}',
+  (SELECT json_group_array(to_json(i)) FROM ({using_query}) AS i),
+  '{table_name}'
+) AS result
+    """.strip()
+
+    return rewritten
+
+
 def _ensure_limit(query: str) -> str:
     """Ensure query has LIMIT for safety."""
     if re.search(r'\bLIMIT\s+\d+', query.upper()):
         return query
     return f"{query.rstrip().rstrip(';')} LIMIT {DEFAULT_MAP_LIMIT}"
+
+
+def _ensure_limit_run(query: str) -> str:
+    """
+    Ensure RUN query has LIMIT for safety.
+
+    RUN is for batches, so allow up to 10,000 rows by default.
+    """
+    DEFAULT_RUN_LIMIT = 10000
+
+    if re.search(r'\bLIMIT\s+\d+', query.upper()):
+        return query
+
+    return f"{query.rstrip().rstrip(';')} LIMIT {DEFAULT_RUN_LIMIT}"
 
 
 # ============================================================================
@@ -273,12 +335,12 @@ def _ensure_limit(query: str) -> str:
 def get_rewriter_info() -> Dict[str, Any]:
     """Get rewriter information."""
     return {
-        'version': '0.2.0',
-        'phase': 'Phase 2',
+        'version': '0.3.0',
+        'phase': 'Phase 3',
         'supported_features': {
             'RVBBIT MAP': True,
             'RVBBIT MAP PARALLEL': True,  # Syntax supported, threading TBD
-            'RVBBIT RUN': False,
+            'RVBBIT RUN': True,
             'AS alias': True,
             'WITH options': True,
             'Auto-LIMIT': True

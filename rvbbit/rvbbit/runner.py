@@ -145,12 +145,21 @@ class RVBBITHooks:
 class RVBBITRunner:
     def __init__(self, config_path: str | dict, session_id: str = "default", overrides: dict = None,
                  depth: int = 0, parent_trace: TraceNode = None, hooks: RVBBITHooks = None,
-                 candidate_index: int = None, parent_session_id: str = None):
+                 candidate_index: int = None, parent_session_id: str = None,
+                 caller_id: str = None, invocation_metadata: dict = None):
         self.config_path = config_path
         self.config = load_cascade_config(config_path)
         self.session_id = session_id
         self.overrides = overrides or {}
-        self.echo = get_echo(session_id, parent_session_id=parent_session_id)
+
+        # Get or create Echo with caller tracking
+        self.echo = get_echo(session_id, parent_session_id=parent_session_id,
+                            caller_id=caller_id, invocation_metadata=invocation_metadata)
+
+        # Store caller tracking for propagation
+        self.caller_id = caller_id
+        self.invocation_metadata = invocation_metadata
+
         self.depth = depth
         self.max_depth = 5
         self.hooks = hooks or RVBBITHooks()
@@ -225,6 +234,15 @@ class RVBBITRunner:
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._heartbeat_running = False
         self._heartbeat_interval = 30  # seconds
+
+    def _log(self, **kwargs):
+        """Helper to log with automatic caller tracking fields."""
+        from .unified_logs import log_unified
+        log_unified(
+            caller_id=self.caller_id,
+            invocation_metadata=self.invocation_metadata,
+            **kwargs
+        )
 
     def _save_to_memory(self, message: dict):
         """
@@ -1381,11 +1399,11 @@ class RVBBITRunner:
 
         if ref_lower == "all":
             if self.echo.lineage:
-                cells = [entry.get("phase") for entry in self.echo.lineage]
-                console.print(f"    [dim]Resolved 'all' → {phases}[/dim]")
-                return phases
+                cells = [entry.get("cell") for entry in self.echo.lineage]
+                console.print(f"    [dim]Resolved 'all' → {cells}[/dim]")
+                return cells
             else:
-                console.print(f"    [dim yellow]Cannot resolve 'all': no phases have completed yet[/dim yellow]")
+                console.print(f"    [dim yellow]Cannot resolve 'all': no cells have completed yet[/dim yellow]")
                 return []  # Return empty list, not None (allows loop to work)
 
         elif ref_lower == "first":
@@ -1394,7 +1412,7 @@ class RVBBITRunner:
                 console.print(f"    [dim]Resolved 'first' → '{resolved}'[/dim]")
                 return resolved
             else:
-                console.print(f"    [dim yellow]Cannot resolve 'first': no phases have completed yet[/dim yellow]")
+                console.print(f"    [dim yellow]Cannot resolve 'first': no cells have completed yet[/dim yellow]")
                 return None
 
         elif ref_lower in ("previous", "prev"):
@@ -1403,7 +1421,7 @@ class RVBBITRunner:
                 console.print(f"    [dim]Resolved 'previous' → '{resolved}'[/dim]")
                 return resolved
             else:
-                console.print(f"    [dim yellow]Cannot resolve 'previous': no phases have completed yet[/dim yellow]")
+                console.print(f"    [dim yellow]Cannot resolve 'previous': no cells have completed yet[/dim yellow]")
                 return None
 
         # Not a special keyword - return as literal phase name
@@ -4088,7 +4106,8 @@ Refinement directive: {reforge_config.honing_prompt}
 
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
                    trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade", depth=self.depth,
-                   candidate_index=self.candidate_index, parent_session_id=self.parent_session_id)
+                   candidate_index=self.candidate_index, parent_session_id=self.parent_session_id,
+                   caller_id=self.caller_id, invocation_metadata=self.invocation_metadata)
 
         # Add structure to Echo for visualization
         self.echo.add_history({
@@ -4349,9 +4368,11 @@ Refinement directive: {reforge_config.honing_prompt}
                     'config_path': config_path_str,
                     'created_at': datetime.now(),
                     'parent_session_id': self.parent_session_id or '',  # ClickHouse doesn't support None for String type
-                    'depth': self.depth
+                    'depth': self.depth,
+                    'caller_id': self.caller_id or '',
+                    'invocation_metadata_json': json.dumps(self.invocation_metadata) if self.invocation_metadata else '{}'
                 }],
-                columns=['session_id', 'cascade_id', 'cascade_definition', 'input_data', 'config_path', 'created_at', 'parent_session_id', 'depth']
+                columns=['session_id', 'cascade_id', 'cascade_definition', 'input_data', 'config_path', 'created_at', 'parent_session_id', 'depth', 'caller_id', 'invocation_metadata_json']
             )
         except Exception as e:
             # Don't fail cascade if cascade_sessions save fails (table might not exist yet)
@@ -11409,8 +11430,18 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
 def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
                 depth: int = 0, parent_trace: TraceNode = None, hooks: RVBBITHooks = None, parent_session_id: str = None,
-                candidate_index: int = None) -> dict:
-    runner = RVBBITRunner(config_path, session_id, overrides, depth, parent_trace, hooks, candidate_index=candidate_index, parent_session_id=parent_session_id)
+                candidate_index: int = None, caller_id: str = None, invocation_metadata: dict = None) -> dict:
+
+    # If caller tracking not provided, try to get from context
+    if caller_id is None:
+        from .caller_context import get_caller_context
+        ctx_caller_id, ctx_metadata = get_caller_context()
+        if ctx_caller_id:
+            caller_id = ctx_caller_id
+            invocation_metadata = invocation_metadata or ctx_metadata
+
+    runner = RVBBITRunner(config_path, session_id, overrides, depth, parent_trace, hooks, candidate_index=candidate_index,
+                          parent_session_id=parent_session_id, caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     result = runner.run(input_data)
 

@@ -301,6 +301,10 @@ class UnifiedLogger:
         parent_session_id: str = None,
         parent_message_id: str = None,
 
+        # Caller tracking (NEW)
+        caller_id: str = None,
+        invocation_metadata: Dict = None,
+
         # Message classification
         node_type: str = "message",
         role: str = None,
@@ -419,6 +423,10 @@ class UnifiedLogger:
             "parent_id": parent_id,
             "parent_session_id": parent_session_id,
             "parent_message_id": parent_message_id,
+
+            # Caller tracking (NEW)
+            "caller_id": caller_id or "",
+            "invocation_metadata_json": safe_json(invocation_metadata) if invocation_metadata else "{}",
 
             # Classification
             "node_type": node_type or "message",
@@ -591,6 +599,8 @@ def log_unified(
     parent_id: str = None,
     parent_session_id: str = None,
     parent_message_id: str = None,
+    caller_id: str = None,
+    invocation_metadata: Dict = None,
     node_type: str = "message",
     role: str = None,
     depth: int = 0,
@@ -641,12 +651,28 @@ def log_unified(
     This is a NON-BLOCKING call. Messages are buffered and written to ClickHouse
     in batches. Cost data is UPDATEd separately after OpenRouter's delay.
     """
+    # If caller tracking not provided, look it up from Echo automatically
+    # This ensures ALL log calls (including direct log_unified() calls) get caller tracking!
+    if caller_id is None or invocation_metadata is None:
+        try:
+            from .echo import _session_manager
+            if session_id in _session_manager.sessions:
+                echo = _session_manager.sessions[session_id]
+                if echo.caller_id:
+                    caller_id = caller_id or echo.caller_id
+                if echo.invocation_metadata:
+                    invocation_metadata = invocation_metadata or echo.invocation_metadata
+        except Exception:
+            pass  # No Echo available, that's OK
+
     _get_logger().log(
         session_id=session_id,
         trace_id=trace_id,
         parent_id=parent_id,
         parent_session_id=parent_session_id,
         parent_message_id=parent_message_id,
+        caller_id=caller_id,
+        invocation_metadata=invocation_metadata,
         node_type=node_type,
         role=role,
         depth=depth,

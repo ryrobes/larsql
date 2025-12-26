@@ -215,8 +215,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 56px;
   background: linear-gradient(
     135deg,
     rgba(0, 229, 255, 0.12) 0%,
@@ -227,7 +227,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   overflow: visible;
-  padding: 3px 2px 2px 2px;
+  padding: 5px 3px 4px 3px;
 }
 
 .vsidebar-running-btn:hover {
@@ -256,11 +256,12 @@
 }
 
 .vsidebar-running-avatar {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: #00e5ff;
   letter-spacing: -0.5px;
   text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+  line-height: 1;
 }
 
 .vsidebar-running-btn.current .vsidebar-running-avatar {
@@ -302,26 +303,39 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  font-size: 7px;
+  gap: 2px;
+  font-size: 9.5px;
   font-weight: 600;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.75);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   pointer-events: none;
   z-index: 1;
 }
 
 .vsidebar-running-stat {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   white-space: nowrap;
-  padding: 1px 2px;
+  padding: 1px 3px;
+  font-variant-numeric: tabular-nums;
 }
 
-.vsidebar-running-btn:hover .vsidebar-running-stats {
-  color: rgba(255, 255, 255, 0.9);
+.vsidebar-running-stat-time {
+  color: rgba(0, 229, 255, 0.9);
 }
 
-.vsidebar-running-btn.current .vsidebar-running-stats {
+.vsidebar-running-stat-cost {
   color: rgba(52, 211, 153, 0.9);
+}
+
+.vsidebar-running-btn:hover .vsidebar-running-stat-time,
+.vsidebar-running-btn:hover .vsidebar-running-stat-cost {
+  filter: brightness(1.2);
+}
+
+.vsidebar-running-btn.current .vsidebar-running-stat-time,
+.vsidebar-running-btn.current .vsidebar-running-stat-cost {
+  filter: brightness(1.1);
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
@@ -6,6 +6,7 @@ import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js/dist/plotly';
 import RichMarkdown from '../../../components/RichMarkdown';
 import AnsiRenderer from '../../../components/AnsiRenderer';
+import { Modal } from '../../../components';
 import { configureMonacoTheme, STUDIO_THEME_NAME } from '../../utils/monacoTheme';
 
 // Create Plot component
@@ -120,6 +121,8 @@ const detailGridTheme = themeQuartz.withParams({
  * Extracted as-is for separation. Internals should be refactored later.
  */
 const ResultRenderer = ({ result, error, images }) => {
+  // Image modal state
+  const [modalImage, setModalImage] = useState(null);
   // Prepare data for AG Grid
   const gridColumnDefs = React.useMemo(() => {
     if (!result?.columns) return [];
@@ -163,42 +166,72 @@ const ResultRenderer = ({ result, error, images }) => {
   // Images from metadata_json (check FIRST before other types)
   if (images && images.length > 0) {
     return (
-      <div className="cell-detail-images">
-        {images.map((imagePath, idx) => {
-          // imagePath is like: "/api/images/shy-pika-4e58df/riverflow_v2_max_preview/image_0.png"
-          const imageUrl = imagePath.startsWith('http')
-            ? imagePath
-            : `http://localhost:5001${imagePath}`;
+      <>
+        <div className="cell-detail-images">
+          {images.map((imagePath, idx) => {
+            // imagePath is like: "/api/images/shy-pika-4e58df/riverflow_v2_max_preview/image_0.png"
+            const imageUrl = imagePath.startsWith('http')
+              ? imagePath
+              : `http://localhost:5001${imagePath}`;
 
-          return (
-            <div key={idx} className="cell-detail-image">
-              <img
-                src={imageUrl}
-                alt={`Output image ${idx + 1}`}
-                style={{ maxWidth: '100%', height: 'auto', borderRadius: '4px' }}
-                onError={(e) => {
-                  console.error('[ResultRenderer] Image load failed:', imageUrl);
-                  e.target.style.display = 'none';
-                }}
-              />
-            </div>
-          );
-        })}
-        {/* Also show result data if present */}
-        {result && (
-          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
-              Additional Output:
-            </div>
-            {typeof result === 'string' && <pre style={{ fontSize: '12px', color: '#cbd5e1' }}>{result}</pre>}
-            {typeof result === 'object' && result?.rows && (
-              <div style={{ fontSize: '11px', color: '#888' }}>
-                {result.rows.length} rows returned
+            return (
+              <div key={idx} className="cell-detail-image">
+                <img
+                  src={imageUrl}
+                  alt={`Output image ${idx + 1}`}
+                  style={{ maxWidth: '100%', height: 'auto', borderRadius: '4px', cursor: 'pointer' }}
+                  onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
+                  title="Click to view full size"
+                  onError={(e) => {
+                    console.error('[ResultRenderer] Image load failed:', imageUrl);
+                    e.target.style.display = 'none';
+                  }}
+                />
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            );
+          })}
+          {/* Also show result data if present */}
+          {result && (
+            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
+                Additional Output:
+              </div>
+              {typeof result === 'string' && <pre style={{ fontSize: '12px', color: '#cbd5e1' }}>{result}</pre>}
+              {typeof result === 'object' && result?.rows && (
+                <div style={{ fontSize: '11px', color: '#888' }}>
+                  {result.rows.length} rows returned
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Image Modal */}
+        <Modal
+          isOpen={!!modalImage}
+          onClose={() => setModalImage(null)}
+          size="full"
+          closeOnBackdrop={true}
+          closeOnEscape={true}
+          className="result-image-modal"
+        >
+          {modalImage && (
+            <div className="result-modal-image-container">
+              <div className="result-modal-image-header">
+                <span className="result-modal-image-title">{modalImage.path}</span>
+              </div>
+              <div className="result-modal-image-body">
+                <img
+                  src={modalImage.url}
+                  alt="Full size"
+                  className="result-modal-image"
+                  onClick={() => setModalImage(null)}
+                />
+              </div>
+            </div>
+          )}
+        </Modal>
+      </>
     );
   }
 
@@ -271,19 +304,52 @@ const ResultRenderer = ({ result, error, images }) => {
 
   // Image result (matplotlib, PIL)
   if (result?.type === 'image' && (result?.api_url || result?.base64)) {
+    const imageUrl = result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`;
+    const imageName = result.content || 'Generated Image';
+
     return (
-      <div className="cell-detail-image">
-        <img
-          src={result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`}
-          alt={result.content || "Phase output"}
-          style={{ maxWidth: '100%', height: 'auto' }}
-        />
-        {result.width && result.height && (
-          <div className="cell-detail-image-info">
-            {result.width} × {result.height}
-          </div>
-        )}
-      </div>
+      <>
+        <div className="cell-detail-image">
+          <img
+            src={imageUrl}
+            alt={imageName}
+            style={{ maxWidth: '100%', height: 'auto', cursor: 'pointer' }}
+            onClick={() => setModalImage({ url: imageUrl, path: imageName })}
+            title="Click to view full size"
+          />
+          {result.width && result.height && (
+            <div className="cell-detail-image-info">
+              {result.width} × {result.height}
+            </div>
+          )}
+        </div>
+
+        {/* Image Modal */}
+        <Modal
+          isOpen={!!modalImage}
+          onClose={() => setModalImage(null)}
+          size="full"
+          closeOnBackdrop={true}
+          closeOnEscape={true}
+          className="result-image-modal"
+        >
+          {modalImage && (
+            <div className="result-modal-image-container">
+              <div className="result-modal-image-header">
+                <span className="result-modal-image-title">{modalImage.path}</span>
+              </div>
+              <div className="result-modal-image-body">
+                <img
+                  src={modalImage.url}
+                  alt="Full size"
+                  className="result-modal-image"
+                  onClick={() => setModalImage(null)}
+                />
+              </div>
+            </div>
+          )}
+        </Modal>
+      </>
     );
   }
 

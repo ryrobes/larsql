@@ -665,8 +665,21 @@ class ClientConnection:
                 self._handle_catalog_query(query)
                 return
 
+            # Set caller context for RVBBIT queries (enables cost tracking and debugging)
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement
+            if _is_rvbbit_statement(query):
+                from rvbbit.session_naming import generate_woodland_id
+                from rvbbit.caller_context import set_caller_context, build_sql_metadata
+
+                caller_id = f"sql-{generate_woodland_id()}"
+                metadata = build_sql_metadata(
+                    sql_query=query,
+                    protocol="postgresql_wire",
+                    triggered_by="postgres_server"
+                )
+                set_caller_context(caller_id, metadata)
+
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
-            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
             query = rewrite_rvbbit_syntax(query)
 
             # Execute on DuckDB

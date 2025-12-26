@@ -532,17 +532,19 @@ def get_running_sessions():
         #print("[API] get_running_sessions called")
         db = get_db()
         current_time = time.time()
+        #print(f"[API] current_time (Python time.time()): {current_time}")
 
         # Query recent sessions from ClickHouse (last 10 minutes, most recent first)
         # Use argMax to get the latest cascade_id/cascade_file for each session_id
         # This handles ClickHouse merge timing and ensures one row per session
+        # NOTE: Cast DateTime64(6) to Unix timestamp in seconds for proper parsing
         query = """
         SELECT
             session_id,
             argMax(cascade_id, timestamp) as cascade_id,
             argMax(cascade_file, timestamp) as cascade_file,
-            MIN(timestamp) as start_time,
-            MAX(timestamp) as last_activity,
+            toUnixTimestamp(MIN(timestamp)) as start_time,
+            toUnixTimestamp(MAX(timestamp)) as last_activity,
             COUNT(*) as message_count,
             SUM(cost) as total_cost
         FROM unified_logs
@@ -592,16 +594,22 @@ def get_running_sessions():
         for row in results:
             session_id, cascade_id, cascade_file, start_time, last_activity, msg_count, total_cost = row
 
-            # Parse timestamps
+            # Parse timestamps (should now be Unix timestamps in seconds from toUnixTimestamp())
+            # ClickHouse can return datetime objects or numeric timestamps
             if hasattr(start_time, 'timestamp'):
                 start_ts = start_time.timestamp()
+            elif start_time is not None:
+                # Should be Unix timestamp in seconds from toUnixTimestamp()
+                start_ts = float(start_time)
             else:
-                start_ts = float(start_time) if start_time else current_time
+                start_ts = current_time
 
             if hasattr(last_activity, 'timestamp'):
                 last_ts = last_activity.timestamp()
+            elif last_activity is not None:
+                last_ts = float(last_activity)
             else:
-                last_ts = float(last_activity) if last_activity else current_time
+                last_ts = current_time
 
             # Parse cost (handle None, NaN, etc.)
             cost = 0.0
@@ -632,12 +640,23 @@ def get_running_sessions():
                 is_running = (current_time - last_ts) < 30
                 status = 'running' if is_running else 'completed'
 
+            age_seconds = round(current_time - start_ts, 1)
+
+            # SAFETY: If age is negative or astronomical, something is wrong
+            if age_seconds < 0:
+                print(f"[WARNING] Negative age_seconds for session {session_id}: {age_seconds} (current_time={current_time}, start_ts={start_ts})")
+                age_seconds = 0
+            elif age_seconds > 86400:  # More than 24 hours
+                print(f"[WARNING] age_seconds > 24 hours for session {session_id}: {age_seconds} (current_time={current_time}, start_ts={start_ts})")
+                # Clamp to 24 hours max
+                age_seconds = 86400
+
             sessions_info.append({
                 'session_id': session_id,
                 'cascade_id': cascade_id,
                 'cascade_file': cascade_file,
                 'status': status,
-                'age_seconds': round(current_time - start_ts, 1),
+                'age_seconds': age_seconds,
                 'cost': round(cost, 6),
                 'start_time': start_ts,
             })

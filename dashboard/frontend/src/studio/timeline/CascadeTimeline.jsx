@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
+import { motion } from 'framer-motion';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useTimelinePolling from '../hooks/useTimelinePolling';
 import CellCard from './CellCard';
@@ -14,17 +15,27 @@ import './CascadeTimeline.css';
 /**
  * InputEdgesSVG - Memoized SVG layer for input parameter connections
  * Only re-renders when layout, positions, or viewport changes
+ * Uses Framer Motion to animate edge path changes
  */
 const InputEdgesSVG = React.memo(({
   nodes,
   inputPositions,
   inputColorMap,
   timelineOffset,
+  timelineHeight,
   scrollOffset
 }) => {
   if (process.env.NODE_ENV === 'development') {
-    console.log('[InputEdgesSVG] Rendering');
+    console.log('[InputEdgesSVG] Rendering', { timelineHeight });
   }
+
+  // Shared animation config (matches cell edges)
+  const edgeTransition = {
+    type: 'spring',
+    stiffness: 300,
+    damping: 30,
+    mass: 0.8,
+  };
 
   return (
     <svg
@@ -43,9 +54,9 @@ const InputEdgesSVG = React.memo(({
         <clipPath id="timeline-clip">
           <rect
             x="0"
-            y="0"
+            y={timelineOffset.top}
             width="100%"
-            height={timelineOffset.top + 600} // Approximate timeline height
+            height={timelineHeight || 400} // Use measured height, fallback to 400
           />
         </clipPath>
       </defs>
@@ -71,16 +82,22 @@ const InputEdgesSVG = React.memo(({
             const cx1 = x1 + Math.min(60, dx * 0.3);
             const cx2 = x2 - Math.min(60, dx * 0.3);
 
+            const pathD = `M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`;
+            const pathKey = `input-${node.cellIdx}-${inputName}`;
+
             return (
-              <path
-                key={`input-${node.cellIdx}-${inputName}`}
-                d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+              <motion.path
+                key={pathKey}
+                d={pathD}
                 stroke={inputColor}
                 strokeWidth="2.5"
                 fill="none"
                 opacity="0.75"
                 strokeLinecap="round"
                 strokeDasharray="5 5"
+                initial={{ d: pathD }}
+                animate={{ d: pathD }}
+                transition={edgeTransition}
               />
             );
           });
@@ -95,11 +112,20 @@ InputEdgesSVG.displayName = 'InputEdgesSVG';
 /**
  * CellEdgesSVG - Memoized SVG layer for cell-to-cell connections
  * Only re-renders when layout changes
+ * Uses Framer Motion to animate edge path changes
  */
 const CellEdgesSVG = React.memo(({ edges, width, height }) => {
   if (process.env.NODE_ENV === 'development') {
     console.log('[CellEdgesSVG] Rendering');
   }
+
+  // Shared animation config for smooth edge transitions
+  const edgeTransition = {
+    type: 'spring',
+    stiffness: 300,
+    damping: 30,
+    mass: 0.8,
+  };
 
   return (
     <svg
@@ -137,15 +163,23 @@ const CellEdgesSVG = React.memo(({ edges, width, height }) => {
         const cx1 = x1 + dx * 0.5;
         const cx2 = x2 - dx * 0.5;
 
+        const pathD = `M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`;
+
+        // Use stable key based on source and target cell indices
+        const edgeKey = `edge-${source.cellIdx}-${target.cellIdx}`;
+
         return (
-          <path
-            key={`edge-${idx}`}
-            d={`M ${x1},${y1} C ${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
+          <motion.path
+            key={edgeKey}
+            d={pathD}
             stroke={finalColor}
             strokeWidth="3"
             fill="none"
             opacity={opacity}
             strokeLinecap="round"
+            initial={{ d: pathD }}
+            animate={{ d: pathD }}
+            transition={edgeTransition}
           />
         );
       })}
@@ -502,7 +536,16 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     ? !!replaySessionId
     : !!(cascadeSessionId && isRunningAll);
 
-  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
+  console.log('[CascadeTimeline] Polling logic:', {
+    viewMode,
+    replaySessionId,
+    cascadeSessionId,
+    isRunningAll,
+    sessionToPoll,
+    shouldPoll,
+  });
+
+  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionStatusFor, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
 
   // console.log('[CascadeTimeline] Polling decision:', {
   //   viewMode,
@@ -515,11 +558,30 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   // Handle session terminal states (error, completed, cancelled, orphaned)
   // This is the authoritative check from session_state table
   useEffect(() => {
+    console.log('[CascadeTimeline] Terminal state check:', {
+      sessionStatus,
+      sessionStatusFor,
+      cascadeSessionId,
+      isRunningAll,
+      sessionToPoll,
+    });
+
     if (!sessionStatus || !cascadeSessionId) return;
+
+    // CRITICAL: Only react if sessionStatus is for the CURRENT cascadeSessionId
+    // Prevents stale status from old session killing new runs
+    if (sessionStatusFor !== cascadeSessionId) {
+      console.log('[CascadeTimeline] Ignoring stale sessionStatus:', {
+        statusFor: sessionStatusFor,
+        currentSession: cascadeSessionId,
+        status: sessionStatus
+      });
+      return;
+    }
 
     const terminalStatuses = ['completed', 'error', 'cancelled', 'orphaned'];
     if (terminalStatuses.includes(sessionStatus) && isRunningAll) {
-      console.log(`[CascadeTimeline] Session ${sessionStatus}, stopping execution:`, {
+      console.log(`[CascadeTimeline] ⚠️ SETTING isRunningAll = FALSE due to terminal status:`, {
         sessionId: cascadeSessionId,
         sessionStatus,
         sessionError
@@ -528,7 +590,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       // Update the store to stop execution
       useStudioCascadeStore.setState({ isRunningAll: false });
     }
-  }, [sessionStatus, cascadeSessionId, isRunningAll, sessionError]);
+  }, [sessionStatus, sessionStatusFor, cascadeSessionId, isRunningAll, sessionError, sessionToPoll]);
 
   // Debug polling state
   React.useEffect(() => {
@@ -581,7 +643,13 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
   const [layoutMode, setLayoutMode] = useState('linear'); // 'linear' or 'graph'
   const [scrollOffset, setScrollOffset] = useState({ x: 0, y: 0 });
   const [timelineOffset, setTimelineOffset] = useState({ left: 0, top: 0 });
+  const [timelineHeight, setTimelineHeight] = useState(0); // Actual measured height for clipping
   const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
+
+  // Split panel resize state
+  const [graphPanelHeight, setGraphPanelHeight] = useState(null); // null = use default heights
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef({ y: 0, initialHeight: 0 });
 
   // Grab-to-scroll state
   const [isGrabbing, setIsGrabbing] = useState(false);
@@ -628,6 +696,49 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
     setIsGrabbing(false);
   }, []);
 
+  // Split panel resize handlers
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const stripEl = timelineRef.current;
+    if (!stripEl) return;
+
+    const currentHeight = stripEl.clientHeight;
+    resizeStartRef.current = {
+      y: e.clientY,
+      initialHeight: currentHeight,
+    };
+  }, []);
+
+  const handleResizeMove = useCallback((e) => {
+    if (!isResizing) return;
+
+    const dy = e.clientY - resizeStartRef.current.y;
+    const newHeight = resizeStartRef.current.initialHeight + dy;
+
+    // Clamp height between 150px and 600px
+    const clampedHeight = Math.max(150, Math.min(600, newHeight));
+    setGraphPanelHeight(clampedHeight);
+
+    // Auto-switch layout mode based on height threshold
+    // Threshold: 280px (between linear's 180px and graph's 400px)
+    // Add hysteresis: switch to graph at 290px, back to linear at 270px
+    const GRAPH_THRESHOLD = 290;
+    const LINEAR_THRESHOLD = 270;
+
+    if (clampedHeight >= GRAPH_THRESHOLD && layoutMode === 'linear') {
+      console.log('[CascadeTimeline] Auto-switching to graph mode at', clampedHeight);
+      setLayoutMode('graph');
+    } else if (clampedHeight <= LINEAR_THRESHOLD && layoutMode === 'graph') {
+      console.log('[CascadeTimeline] Auto-switching to linear mode at', clampedHeight);
+      setLayoutMode('linear');
+    }
+  }, [isResizing, layoutMode]);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
   // Attach grab-to-scroll listeners
   useEffect(() => {
     if (isGrabbing) {
@@ -640,6 +751,24 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
       };
     }
   }, [isGrabbing, handleGrabMove, handleGrabEnd]);
+
+  // Attach resize listeners
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+      // Prevent text selection while resizing
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove);
+        window.removeEventListener('mouseup', handleResizeEnd);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
 
   // Measure timeline position relative to viewport (for input lines)
   // AND track scroll position for input edges
@@ -654,7 +783,11 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         top: rect.top,   // Distance from viewport top (control bar)
       };
       setTimelineOffset(newOffset);
-      //console.log('[Timeline Offset]', newOffset);
+      setTimelineHeight(rect.height); // Track actual height for clipping
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Timeline Offset & Height]', { ...newOffset, height: rect.height });
+      }
     };
 
     // Handle scroll on the timeline strip (horizontal scroll)
@@ -712,7 +845,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         scrollRafRef.current = null;
       }
     };
-  }, [layoutMode, cascade?.cascade_id]); // Re-measure when layout or cascade changes
+  }, [layoutMode, cascade?.cascade_id, graphPanelHeight]); // Re-measure when layout, cascade, or height changes
 
   // Build FBP layout (must be before early returns)
   const cells = cascade?.cells || [];
@@ -1044,6 +1177,7 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           inputPositions={layout.inputPositions}
           inputColorMap={layout.inputColorMap}
           timelineOffset={timelineOffset}
+          timelineHeight={timelineHeight}
           scrollOffset={scrollOffset}
         />
       )}
@@ -1054,8 +1188,12 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
         ref={timelineRef}
         onMouseDown={handleGrabStart}
         style={{
-          minHeight: cells.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px'),
-          maxHeight: cells.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px'),
+          // Use custom height if set by resize, otherwise use defaults
+          height: graphPanelHeight
+            ? `${graphPanelHeight}px`
+            : (cells.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '400px')),
+          minHeight: graphPanelHeight ? undefined : (cells.length === 0 ? '100%' : (layoutMode === 'linear' ? '180px' : '150px')),
+          maxHeight: graphPanelHeight ? undefined : (cells.length === 0 ? 'none' : (layoutMode === 'linear' ? '180px' : '400px')),
           flex: cells.length === 0 ? 1 : undefined, // Expand to fill when empty
           cursor: isGrabbing ? 'grabbing' : 'grab',
         }}
@@ -1081,29 +1219,40 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           />
 
           {/* Positioned cell cards */}
-          {layout.nodes.map(node => (
-            <div
-              key={`node-${node.cellIdx}`}
-              className="fbp-node"
-              style={{
-                position: 'absolute',
-                left: `${node.x}px`,
-                top: `${node.y}px`,
-                width: '240px',
-                zIndex: selectedCellIndex === node.cellIdx ? 100 : 50, // Raised above input edges
-              }}
-            >
-              <CellCard
-                cell={node.cell}
-                index={node.cellIdx}
-                cellState={stableCellStates[node.cell.name]}
-                cellLogs={cellLogsByName[node.cell.name] || EMPTY_LOGS_ARRAY}
-                isSelected={selectedCellIndex === node.cellIdx}
-                onSelect={handleSelectCell}
-                defaultModel={defaultModel}
-              />
-            </div>
-          ))}
+          {layout.nodes.map(node => {
+            // Animation config for cell position changes
+            const nodeTransition = {
+              type: 'spring',
+              stiffness: 300,
+              damping: 30,
+              mass: 0.8,
+            };
+
+            return (
+              <motion.div
+                key={`node-${node.cellIdx}`}
+                className="fbp-node"
+                style={{
+                  position: 'absolute',
+                  width: '240px',
+                  zIndex: selectedCellIndex === node.cellIdx ? 100 : 50, // Raised above input edges
+                }}
+                initial={{ left: node.x, top: node.y }}
+                animate={{ left: node.x, top: node.y }}
+                transition={nodeTransition}
+              >
+                <CellCard
+                  cell={node.cell}
+                  index={node.cellIdx}
+                  cellState={stableCellStates[node.cell.name]}
+                  cellLogs={cellLogsByName[node.cell.name] || EMPTY_LOGS_ARRAY}
+                  isSelected={selectedCellIndex === node.cellIdx}
+                  onSelect={handleSelectCell}
+                  defaultModel={defaultModel}
+                />
+              </motion.div>
+            );
+          })}
 
           {/* Empty state hint */}
           {cells.length === 0 && (
@@ -1114,6 +1263,47 @@ const CascadeTimeline = ({ onOpenBrowser }) => {
           )}
         </div>
       </div>
+
+      {/* Resize handle for split panel */}
+      {cells.length > 0 && (
+        <div
+          className="cascade-resize-handle"
+          onMouseDown={handleResizeStart}
+          style={{
+            height: '4px',
+            background: isResizing ? 'rgba(167, 139, 250, 0.5)' : 'transparent',
+            cursor: 'ns-resize',
+            position: 'relative',
+            zIndex: 10,
+            transition: isResizing ? 'none' : 'background 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = 'rgba(167, 139, 250, 0.3)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.background = 'transparent';
+            }
+          }}
+        >
+          {/* Visual indicator dots */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            display: 'flex',
+            gap: '4px',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#64748b' }} />
+            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#64748b' }} />
+            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#64748b' }} />
+          </div>
+        </div>
+      )}
 
       {/* Bottom Detail Panel - hide completely when no cells */}
       {cells.length > 0 && (

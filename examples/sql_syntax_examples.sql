@@ -218,21 +218,65 @@ USING (
 
 
 -- ============================================================================
+-- Example 11: RVBBIT RUN - Batch Processing (NEW! Phase 3)
+-- ============================================================================
+
+-- Process entire dataset as ONE cascade (vs MAP = once per row)
+RVBBIT RUN 'traits/analyze_batch.yaml'
+USING (
+  SELECT * FROM (VALUES
+    ('Apple iPhone 15', 1199.99),
+    ('Samsung Galaxy S24', 1299.99),
+    ('Sony WH-1000XM5', 399.99),
+    ('Google Pixel 8', 899.99),
+    ('OnePlus 12', 799.99)
+  ) AS t(product_name, price)
+)
+WITH (as_table = 'products_batch');
+
+-- Returns: Single row with metadata
+-- {
+--   "status": "success",
+--   "session_id": "batch-clever-fox-abc123",
+--   "table_created": "products_batch",
+--   "row_count": 5,
+--   "outputs": {...}
+-- }
+
+
+-- ============================================================================
+-- Example 12: RUN with Auto-Generated Table Name
+-- ============================================================================
+
+-- If you don't specify as_table, one is auto-generated
+RVBBIT RUN 'traits/analyze_batch.yaml'
+USING (
+  SELECT * FROM (VALUES
+    ('Product A', 100),
+    ('Product B', 200)
+  ) AS t(name, price)
+);
+
+-- Auto-generates table like: _rvbbit_batch_a3f2e1b9
+
+
+-- ============================================================================
 -- Notes on Current Limitations
 -- ============================================================================
 
 -- ✅ SUPPORTED:
 -- - RVBBIT MAP (sequential, row-by-row)
--- - RVBBIT MAP PARALLEL <n> (concurrent processing)
+-- - RVBBIT MAP PARALLEL <n> (syntax accepted, sequential for now)
+-- - RVBBIT RUN (batch processing - cascade runs ONCE over dataset)
 -- - AS alias
--- - WITH options
+-- - WITH options (cache, budget_dollars, as_table)
 -- - Auto-LIMIT injection
 --
 -- ❌ NOT YET SUPPORTED (coming in later phases):
--- - RVBBIT RUN (batch processing)
+-- - Real threading for MAP PARALLEL (Phase 2B)
 -- - RVBBIT MAP BATCH <n> (chunked processing)
--- - RETURNING (...) clause
--- - RETURNING TABLE
+-- - RETURNING (...) clause (field extraction)
+-- - RETURNING TABLE (multi-table outputs)
 -- - Nested RVBBIT statements
 
 

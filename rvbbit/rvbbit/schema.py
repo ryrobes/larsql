@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     parent_session_id Nullable(String),
     parent_message_id Nullable(String),
 
+    -- Caller Tracking (NEW - for cost rollup and debugging)
+    caller_id String DEFAULT '',
+    invocation_metadata_json String DEFAULT '{}' CODEC(ZSTD(3)),
+
     -- Classification
     node_type LowCardinality(String),
     role LowCardinality(String),
@@ -115,6 +119,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
 
     -- Indexes for common query patterns
     INDEX idx_session_id session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_caller_id caller_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade_id cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cell_name cell_name TYPE bloom_filter GRANULARITY 1,
     INDEX idx_species_hash species_hash TYPE bloom_filter GRANULARITY 1,
@@ -504,6 +509,10 @@ CREATE TABLE IF NOT EXISTS session_state (
     cascade_id String,
     parent_session_id Nullable(String),
 
+    -- Caller Tracking (NEW - for grouping related sessions)
+    caller_id String DEFAULT '',
+    invocation_metadata_json String DEFAULT '{}' CODEC(ZSTD(3)),
+
     -- Execution status
     status Enum8(
         'starting' = 1,
@@ -559,6 +568,7 @@ CREATE TABLE IF NOT EXISTS session_state (
     INDEX idx_status status TYPE set(10) GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_parent parent_session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_caller_id caller_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_heartbeat heartbeat_at TYPE minmax GRANULARITY 1,
     INDEX idx_started started_at TYPE minmax GRANULARITY 1
 )

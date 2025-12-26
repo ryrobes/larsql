@@ -19,13 +19,40 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                 # Additional unified fields
                 cascade_id: str = None, cascade_file: str = None, cell_name: str = None,
                 turn_number: int = None, attempt_number: int = None, parent_session_id: str = None,
-                species_hash: str = None, phase_config: dict = None):
+                species_hash: str = None, phase_config: dict = None,
+                # Caller tracking (NEW)
+                caller_id: str = None, invocation_metadata: dict = None):
     """
     Log a message to the unified logging system.
 
     Routes to unified_logs.log_unified() which writes to data/*.parquet.
     """
     from .unified_logs import log_unified
+
+    # If caller tracking not provided, look it up from Echo (stored in SessionManager)
+    # This ensures ALL log calls get caller tracking automatically!
+    if caller_id is None or invocation_metadata is None:
+        try:
+            from .echo import _session_manager
+            if session_id in _session_manager.sessions:
+                echo = _session_manager.sessions[session_id]
+                if echo.caller_id:
+                    caller_id = caller_id or echo.caller_id
+                if echo.invocation_metadata:
+                    invocation_metadata = invocation_metadata or echo.invocation_metadata
+        except Exception as e:
+            pass  # Fallback: try ContextVars
+
+        # Fallback to ContextVars if Echo lookup failed
+        if caller_id is None:
+            try:
+                from .caller_context import get_caller_context
+                ctx_caller_id, ctx_metadata = get_caller_context()
+                if ctx_caller_id:
+                    caller_id = ctx_caller_id
+                    invocation_metadata = ctx_metadata
+            except Exception:
+                pass  # No caller tracking available
 
     # Extract cascade context from metadata if not passed directly
     if metadata and isinstance(metadata, dict):
@@ -36,6 +63,8 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
     log_unified(
         session_id=session_id,
         parent_session_id=parent_session_id,
+        caller_id=caller_id,
+        invocation_metadata=invocation_metadata,
         trace_id=trace_id,
         parent_id=parent_id,
         node_type=node_type,

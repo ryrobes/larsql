@@ -198,6 +198,7 @@ IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_RO
 AUDIO_DIR = os.path.abspath(os.getenv("RVBBIT_AUDIO_DIR", os.path.join(RVBBIT_ROOT, "audio")))
 EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "examples")))
 TACKLE_DIR = os.path.abspath(os.getenv("RVBBIT_TACKLE_DIR", os.path.join(RVBBIT_ROOT, "tackle")))
+TRAITS_DIR = os.path.abspath(os.getenv("RVBBIT_TRAITS_DIR", os.path.join(RVBBIT_ROOT, "traits")))
 CASCADES_DIR = os.path.abspath(os.getenv("RVBBIT_CASCADES_DIR", os.path.join(RVBBIT_ROOT, "cascades")))
 # Also search inside the windlass package for examples (supports YAML cascade files)
 PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(RVBBIT_ROOT, "windlass", "examples"))
@@ -447,106 +448,141 @@ def get_available_columns():
 
 
 
+# Cache for cascade definitions (filesystem scan is expensive)
+_cascade_definitions_cache = {
+    'data': None,
+    'timestamp': 0,
+    'ttl': 60  # Cache for 60 seconds
+}
+
 @app.route('/api/cascade-definitions', methods=['GET'])
 def get_cascade_definitions():
     """
     Get all cascade definitions (from filesystem) with execution metrics from ClickHouse.
+
+    Uses intelligent caching:
+    - Cascade definitions cached for 60s (filesystem scan is slow)
+    - Metrics ALWAYS fetched fresh from ClickHouse (they change frequently)
+
+    Query params:
+        refresh: Set to 'true' to force cache refresh
     """
     try:
-        # Scan filesystem for all cascade definitions
-        all_cascades = {}
+        import time
+        now = time.time()
 
-        search_paths = [
-            EXAMPLES_DIR,
-            TACKLE_DIR,
-            CASCADES_DIR,
-            PACKAGE_EXAMPLES_DIR,
-            PLAYGROUND_SCRATCHPAD_DIR,
-        ]
+        # Check for force refresh
+        force_refresh = request.args.get('refresh', '').lower() == 'true'
 
-        for search_dir in search_paths:
-            if not os.path.exists(search_dir):
-                continue
+        # Check cache for cascade list (not metrics!)
+        if (not force_refresh and
+            _cascade_definitions_cache['data'] is not None and
+            now - _cascade_definitions_cache['timestamp'] < _cascade_definitions_cache['ttl']):
+            # Use cached cascade definitions
+            all_cascades = _cascade_definitions_cache['data'].copy()
+            cache_age = now - _cascade_definitions_cache['timestamp']
+            print(f"[CASCADE-CACHE] Using cached data ({len(all_cascades)} cascades, age: {cache_age:.1f}s)")
+        else:
+            # Scan filesystem for all cascade definitions
+            all_cascades = {}
 
-            # Find all JSON and YAML cascade files
-            for ext in CASCADE_EXTENSIONS:
-                for filepath in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
-                    try:
-                        config = load_config_file(filepath)
-                        cascade_id = config.get('cascade_id')
+            search_paths = [
+                EXAMPLES_DIR,
+                TACKLE_DIR,      # Legacy traits directory
+                TRAITS_DIR,      # Traits (tools that are cascades)
+                CASCADES_DIR,
+                PACKAGE_EXAMPLES_DIR,
+                PLAYGROUND_SCRATCHPAD_DIR,
+            ]
 
-                        if cascade_id and cascade_id not in all_cascades:
-                            # Extract phase data with full spec
-                            phases_data = []
-                            for p in config.get("phases", []):
-                                rules = p.get("rules", {})
-                                soundings = p.get("soundings", {})
-                                wards = p.get("wards", {})
+            for search_dir in search_paths:
+                if not os.path.exists(search_dir):
+                    continue
 
-                                phases_data.append({
-                                    "name": p["name"],
-                                    "instructions": p.get("instructions", ""),
-                                    # Soundings
-                                    "has_soundings": "soundings" in p,
-                                    "soundings_factor": soundings.get("factor") if soundings else None,
-                                    "reforge_steps": soundings.get("reforge", {}).get("steps") if soundings.get("reforge") else None,
-                                    "candidates": soundings if soundings else None,
-                                    # Wards
-                                    "has_wards": bool(wards),
-                                    "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
-                                    "wards": wards if wards else None,
-                                    # Rules
-                                    "max_turns": rules.get("max_turns", 1),
-                                    "max_attempts": rules.get("max_attempts"),
-                                    "has_loop_until": "loop_until" in rules,
-                                    "loop_until": rules.get("loop_until"),
-                                    "has_turn_prompt": "turn_prompt" in rules,
-                                    "has_retry_instructions": "retry_instructions" in rules,
-                                    # Deterministic phases
-                                    "is_deterministic": "tool" in p and "instructions" not in p,
-                                    "deterministic_tool": p.get("tool"),
-                                    "deterministic_inputs": p.get("inputs"),
-                                    "routing": p.get("routing"),
-                                    # Error handling
-                                    "on_error": p.get("on_error"),
-                                    # Output validation
-                                    "output_schema": p.get("output_schema"),
-                                    # Sub-cascades
-                                    "sub_cascades": p.get("sub_cascades"),
-                                    "async_cascades": p.get("async_cascades"),
-                                    # Model & tools
-                                    "model": p.get("model"),
-                                    "traits": p.get("tackle"),
-                                    "handoffs": p.get("handoffs"),
-                                    "context": p.get("context"),
-                                    # Metrics (enriched later)
-                                    "avg_cost": 0.0,
-                                    "avg_duration": 0.0,
-                                })
+                # Find all JSON and YAML cascade files
+                for ext in CASCADE_EXTENSIONS:
+                    for filepath in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
+                        try:
+                            config = load_config_file(filepath)
+                            cascade_id = config.get('cascade_id')
 
-                            all_cascades[cascade_id] = {
-                                'cascade_id': cascade_id,
-                                'description': config.get('description', ''),
-                                'cascade_file': filepath,
-                                'phases': phases_data,
-                                'inputs_schema': config.get('inputs_schema', {}),
-                                # Root-level features
-                                'memory': config.get('memory'),
-                                'tool_caching': config.get('tool_caching'),
-                                'triggers': config.get('triggers'),
-                                'cascade_soundings': config.get('soundings'),  # Cascade-level soundings
-                                'metrics': {
-                                    'run_count': 0,
-                                    'total_cost': 0.0,
-                                    'avg_duration_seconds': 0.0,
-                                    'min_duration_seconds': 0.0,
-                                    'max_duration_seconds': 0.0,
+                            if cascade_id and cascade_id not in all_cascades:
+                                # Extract phase data with full spec
+                                phases_data = []
+                                for p in config.get("phases", []):
+                                    rules = p.get("rules", {})
+                                    soundings = p.get("soundings", {})
+                                    wards = p.get("wards", {})
+
+                                    phases_data.append({
+                                        "name": p["name"],
+                                        "instructions": p.get("instructions", ""),
+                                        # Soundings
+                                        "has_soundings": "soundings" in p,
+                                        "soundings_factor": soundings.get("factor") if soundings else None,
+                                        "reforge_steps": soundings.get("reforge", {}).get("steps") if soundings.get("reforge") else None,
+                                        "candidates": soundings if soundings else None,
+                                        # Wards
+                                        "has_wards": bool(wards),
+                                        "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
+                                        "wards": wards if wards else None,
+                                        # Rules
+                                        "max_turns": rules.get("max_turns", 1),
+                                        "max_attempts": rules.get("max_attempts"),
+                                        "has_loop_until": "loop_until" in rules,
+                                        "loop_until": rules.get("loop_until"),
+                                        "has_turn_prompt": "turn_prompt" in rules,
+                                        "has_retry_instructions": "retry_instructions" in rules,
+                                        # Deterministic phases
+                                        "is_deterministic": "tool" in p and "instructions" not in p,
+                                        "deterministic_tool": p.get("tool"),
+                                        "deterministic_inputs": p.get("inputs"),
+                                        "routing": p.get("routing"),
+                                        # Error handling
+                                        "on_error": p.get("on_error"),
+                                        # Output validation
+                                        "output_schema": p.get("output_schema"),
+                                        # Sub-cascades
+                                        "sub_cascades": p.get("sub_cascades"),
+                                        "async_cascades": p.get("async_cascades"),
+                                        # Model & tools
+                                        "model": p.get("model"),
+                                        "traits": p.get("tackle"),
+                                        "handoffs": p.get("handoffs"),
+                                        "context": p.get("context"),
+                                        # Metrics (enriched later)
+                                        "avg_cost": 0.0,
+                                        "avg_duration": 0.0,
+                                    })
+
+                                all_cascades[cascade_id] = {
+                                    'cascade_id': cascade_id,
+                                    'description': config.get('description', ''),
+                                    'cascade_file': filepath,
+                                    'phases': phases_data,
+                                    'inputs_schema': config.get('inputs_schema', {}),
+                                    # Root-level features
+                                    'memory': config.get('memory'),
+                                    'tool_caching': config.get('tool_caching'),
+                                    'triggers': config.get('triggers'),
+                                    'cascade_soundings': config.get('soundings'),  # Cascade-level soundings
+                                    'metrics': {
+                                        'run_count': 0,
+                                        'total_cost': 0.0,
+                                        'avg_duration_seconds': 0.0,
+                                        'min_duration_seconds': 0.0,
+                                        'max_duration_seconds': 0.0,
+                                    }
                                 }
-                            }
-                    except:
-                        continue
+                        except:
+                            continue
 
-        # Enrich with metrics from ClickHouse
+            # Cache the cascade definitions
+            _cascade_definitions_cache['data'] = all_cascades.copy()
+            _cascade_definitions_cache['timestamp'] = now
+            print(f"[CASCADE-CACHE] Cached {len(all_cascades)} cascade definitions")
+
+        # ALWAYS enrich with FRESH metrics from ClickHouse (not cached)
         conn = get_db_connection()
 
         try:
@@ -718,8 +754,12 @@ def get_cascade_instances(cascade_id):
     Get all run instances for a specific cascade definition.
 
     Data source: ClickHouse unified_logs table (real-time with ~1s latency)
+
+    Query params:
+        limit: Max instances to return (default: 50)
     """
     try:
+        limit = int(request.args.get('limit', 50))  # Default to 50 for performance
         conn = get_db_connection()
         columns = get_available_columns()
 
@@ -792,9 +832,9 @@ def get_cascade_instances(cascade_id):
         FROM all_sessions a
         LEFT JOIN session_costs c ON a.session_id = c.session_id
         ORDER BY a.depth, a.start_time DESC
-        LIMIT 100
+        LIMIT ?
         """
-        session_results = conn.execute(sessions_query, [cascade_id]).fetchall()
+        session_results = conn.execute(sessions_query, [cascade_id, limit]).fetchall()
 
         # BATCH QUERIES: Get all data for all sessions at once to avoid N+1 problem
         # All 12 queries are now batched - reduced from ~100+ queries (6 per session × ~10-100 sessions)
@@ -3237,6 +3277,20 @@ def run_cascade():
 
         import threading
         from rvbbit.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        from rvbbit.session_naming import generate_woodland_id
+        from rvbbit.caller_context import build_ui_metadata
+
+        # Generate caller tracking for UI invocations
+        caller_id = f"ui-{generate_woodland_id()}"
+        component = data.get('source', 'unknown')  # playground, notebook, sessions, etc.
+        action = data.get('action', 'run')
+        cascade_source = 'scratch' if cascade_yaml else 'file'
+
+        invocation_metadata = build_ui_metadata(
+            component=component,
+            action=action,
+            source=cascade_source
+        )
 
         def run_in_background():
             try:
@@ -3249,7 +3303,8 @@ def run_cascade():
                     ResearchSessionAutoSaveHooks()
                 )
 
-                execute_cascade(cascade_path, inputs, session_id, hooks=hooks)
+                execute_cascade(cascade_path, inputs, session_id, hooks=hooks,
+                              caller_id=caller_id, invocation_metadata=invocation_metadata)
             except Exception as e:
                 # Handle early cascade failures (e.g., validation errors before runner starts)
                 # This ensures the UI knows the cascade failed and can display the error

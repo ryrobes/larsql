@@ -34,6 +34,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
   const [error, setError] = useState(null);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [sessionStatus, setSessionStatus] = useState(null);  // 'running', 'completed', 'error', 'cancelled', 'orphaned'
+  const [sessionStatusFor, setSessionStatusFor] = useState(null);  // Which session the status is for
   const [sessionError, setSessionError] = useState(null);    // Error message if status == 'error'
   const [totalCost, setTotalCost] = useState(0);
   const [childSessions, setChildSessions] = useState({});    // Child sub-cascades spawned by this session
@@ -143,6 +144,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
       // Update session status from authoritative session_state table
       if (data.session_status !== undefined) {
         setSessionStatus(data.session_status);
+        setSessionStatusFor(sessionId);  // Track which session this status is for
       }
       if (data.session_error !== undefined) {
         setSessionError(data.session_error);
@@ -186,26 +188,34 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
         pollIntervalRef.current = null;
       }
 
-      // Then clear all state
+      // Then clear all state IMMEDIATELY
       setLogs([]);
       setIsPolling(false);
       setSessionComplete(false);
-      setSessionStatus(null);
+      setSessionStatus(null);  // CRITICAL: Clear stale status
+      setSessionStatusFor(null);  // Clear which session the status is for
       setSessionError(null);
       setTotalCost(0);
       setChildSessions({});
       cursorRef.current = '1970-01-01 00:00:00';
       seenIdsRef.current.clear();
       prevSessionRef.current = sessionId;
+
+      // Force a re-render by updating state synchronously
+      console.log('[useTimelinePolling] Cleared sessionStatus to prevent stale terminal state');
     }
   }, [sessionId]);
 
   // Start/stop polling based on execution state
   useEffect(() => {
-    //console.log('[useTimelinePolling] Start/stop check:', { sessionId, isRunning });
+    console.log('[useTimelinePolling] Start/stop check:', {
+      sessionId,
+      isRunning,
+      hasInterval: !!pollIntervalRef.current
+    });
 
     if (!sessionId || !isRunning) {
-      //console.log('[useTimelinePolling] Stopping polling (no session or not running)');
+      console.log('[useTimelinePolling] Stopping polling (no session or not running)');
       setIsPolling(false);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -214,7 +224,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
       return;
     }
 
-    //console.log('[useTimelinePolling] Starting polling for session:', sessionId);
+    console.log('[useTimelinePolling] Starting polling for session:', sessionId, 'isReplayMode:', isReplayMode);
     setIsPolling(true);
 
     // Initial poll
@@ -222,16 +232,16 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
 
     // Set up interval
     pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    //console.log('[useTimelinePolling] Poll interval set (every', POLL_INTERVAL_MS, 'ms)');
+    console.log('[useTimelinePolling] Poll interval set (every', POLL_INTERVAL_MS, 'ms)');
 
     return () => {
-      //console.log('[useTimelinePolling] Cleanup: stopping poll interval');
+      console.log('[useTimelinePolling] Cleanup: stopping poll interval for session:', sessionId);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
     };
-  }, [sessionId, isRunning, poll]);
+  }, [sessionId, isRunning, poll, isReplayMode]);
 
   // Continue polling briefly after completion (for final cost data)
   useEffect(() => {
@@ -272,6 +282,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
     isPolling,         // Currently polling
     sessionComplete,   // Session finished (from logs or session_state)
     sessionStatus,     // Authoritative status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
+    sessionStatusFor,  // Which session the status belongs to (prevents stale status bugs)
     sessionError,      // Error message if sessionStatus == 'error'
     totalCost,         // Accumulated session cost
     childSessions,     // Child sub-cascades spawned by this session

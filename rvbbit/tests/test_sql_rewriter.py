@@ -10,6 +10,7 @@ from rvbbit.sql_rewriter import (
     _is_rvbbit_statement,
     _parse_rvbbit_statement,
     _rewrite_map,
+    _rewrite_run,
     _ensure_limit,
     _extract_balanced_parens,
     _parse_with_options,
@@ -331,12 +332,60 @@ def test_rewrite_rvbbit_syntax_map():
     assert 'AS enriched' in result
 
 
-def test_rewrite_rvbbit_syntax_run_not_implemented():
-    """Should raise NotImplementedError for RUN (Phase 3)."""
-    query = "RVBBIT RUN 'batch.yaml' USING (SELECT * FROM t LIMIT 100)"
+def test_parse_basic_run():
+    """Should parse basic RUN statement."""
+    stmt = _parse_rvbbit_statement(
+        "RVBBIT RUN 'batch.yaml' USING (SELECT * FROM t LIMIT 500)"
+    )
+    assert stmt.mode == 'RUN'
+    assert stmt.cascade_path == 'batch.yaml'
+    assert 'SELECT * FROM t LIMIT 500' in stmt.using_query
 
-    with pytest.raises(NotImplementedError, match="Phase 3"):
-        rewrite_rvbbit_syntax(query)
+
+def test_parse_run_with_as_table():
+    """Should parse RUN with as_table option."""
+    stmt = _parse_rvbbit_statement("""
+        RVBBIT RUN 'batch.yaml'
+        USING (SELECT * FROM t LIMIT 100)
+        WITH (as_table = 'my_batch_data')
+    """)
+    assert stmt.mode == 'RUN'
+    assert stmt.with_options['as_table'] == 'my_batch_data'
+
+
+def test_rewrite_run_basic():
+    """Should rewrite RUN to batch UDF call."""
+    stmt = _parse_rvbbit_statement(
+        "RVBBIT RUN 'batch.yaml' USING (SELECT a, b FROM t LIMIT 100) WITH (as_table = 'batch_data')"
+    )
+    rewritten = _rewrite_run(stmt)
+
+    assert 'rvbbit_run_batch(' in rewritten
+    assert "'batch.yaml'" in rewritten
+    assert 'json_group_array' in rewritten
+    assert "'batch_data'" in rewritten
+    assert 'SELECT a, b FROM t LIMIT 100' in rewritten
+
+
+def test_rewrite_run_auto_table_name():
+    """Should auto-generate table name if not specified."""
+    stmt = _parse_rvbbit_statement(
+        "RVBBIT RUN 'batch.yaml' USING (SELECT * FROM t)"
+    )
+    rewritten = _rewrite_run(stmt)
+
+    assert 'rvbbit_run_batch(' in rewritten
+    assert "'_rvbbit_batch_" in rewritten  # Auto-generated name
+
+
+def test_rewrite_rvbbit_syntax_run():
+    """Should rewrite RVBBIT RUN end-to-end."""
+    query = "RVBBIT RUN 'batch.yaml' USING (SELECT * FROM t LIMIT 100) WITH (as_table = 'data')"
+    result = rewrite_rvbbit_syntax(query)
+
+    assert 'rvbbit_run_batch(' in result
+    assert "'batch.yaml'" in result
+    assert "'data'" in result
 
 
 # ============================================================================

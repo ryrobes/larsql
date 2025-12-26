@@ -1071,18 +1071,38 @@ output_schema:
         const state = get();
         if (!state.cascade || state.isRunningAll) return;
 
+        console.log('[runCascadeStandard] Starting. Current state:', {
+          viewMode: state.viewMode,
+          replaySessionId: state.replaySessionId,
+          cascadeSessionId: state.cascadeSessionId,
+        });
+
         // Generate session ID
         const sessionId = autoGenerateSessionId();
 
         set(s => {
           s.isRunningAll = true;
           s.cascadeSessionId = sessionId;
+          s.sessionId = sessionId; // Keep sessionId in sync
           s.viewMode = 'live'; // Force live mode when running new cascade
           s.replaySessionId = null; // Clear any replay session
+
+          // CRITICAL: Clear child sessions to prevent stale data
+          s.childSessions = {};
+
           // Reset all cell states to pending
           s.cascade.cells.forEach(cell => {
             s.cellStates[cell.name] = { status: 'pending' };
           });
+        });
+
+        const newState = get();
+        console.log('[runCascadeStandard] State after set:', {
+          viewMode: newState.viewMode,
+          replaySessionId: newState.replaySessionId,
+          cascadeSessionId: newState.cascadeSessionId,
+          sessionId: newState.sessionId,
+          isRunningAll: newState.isRunningAll,
         });
 
         try {
@@ -1110,6 +1130,7 @@ output_schema:
 
           console.log('[runCascadeStandard] Execution started, session:', sessionId);
           console.log('[runCascadeStandard] Polling will update cell states');
+          console.log('[runCascadeStandard] isRunningAll should still be true:', get().isRunningAll);
           // Polling (via useTimelinePolling) will update cellStates automatically
           // isRunningAll will be set to false when all phases complete
           // Note: Running does NOT save the file - user must explicitly click Save
@@ -1117,6 +1138,7 @@ output_schema:
         } catch (err) {
           console.error('[runCascadeStandard] Error:', err);
           set(s => {
+            console.log('[runCascadeStandard] Setting isRunningAll = false due to error');
             s.isRunningAll = false;
             // Keep cascadeSessionId even on error so it stays visible in header
             // s.cascadeSessionId = null;
@@ -1204,14 +1226,26 @@ output_schema:
         const state = get();
         if (!state.cascade || state.isRunningAll) return;
 
-        // Ensure we have a session ID (generate fresh for run all)
+        // Generate fresh session ID for this run
+        const newSessionId = autoGenerateSessionId();
+
+        // CRITICAL: Transition from replay to live mode
         set(s => {
+          // Clear replay mode state
+          s.viewMode = 'live';
+          s.replaySessionId = null;
+
+          // Set up for live execution
           s.isRunningAll = true;
-          s.sessionId = autoGenerateSessionId();
+          s.sessionId = newSessionId;
+          s.cascadeSessionId = newSessionId;  // CRITICAL: This is what polling uses!
+
           // Reset all cell states to pending
           s.cascade.cells.forEach(cell => {
             s.cellStates[cell.name] = { status: 'pending' };
           });
+
+          console.log('[runAllCells] Transitioning to live mode. Session:', newSessionId);
         });
 
         try {

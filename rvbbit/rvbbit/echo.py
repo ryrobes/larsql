@@ -11,7 +11,8 @@ class Echo:
     - node_type: cascade, phase, turn, tool, soundings, reforge, etc.
     - metadata: Dict with additional context (cell_name, candidate_index, etc.)
     """
-    def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None):
+    def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None,
+                 caller_id: str = None, invocation_metadata: Dict = None):
         self.session_id = session_id
         self.parent_session_id = parent_session_id
         self.state = initial_state or {}
@@ -26,6 +27,9 @@ class Echo:
         self._mermaid_failure_count: int = 0  # Track failures to avoid log spam
         # Memory callback for saving messages
         self._message_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+        # Caller tracking (NEW)
+        self.caller_id = caller_id
+        self.invocation_metadata = invocation_metadata
 
     def set_cascade_context(self, cascade_id: str):
         """Set the current cascade context for metadata enrichment."""
@@ -332,10 +336,12 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, Echo] = {}
 
-    def get_session(self, session_id: str, parent_session_id: str = None) -> Echo:
+    def get_session(self, session_id: str, parent_session_id: str = None,
+                   caller_id: str = None, invocation_metadata: Dict = None) -> Echo:
         if session_id not in self.sessions:
             print(f"[SessionManager] Creating NEW Echo for {session_id}")
-            self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id)
+            self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id,
+                                            caller_id=caller_id, invocation_metadata=invocation_metadata)
         else:
             print(f"[SessionManager] REUSING existing Echo for {session_id}")
             print(f"[SessionManager]   State keys: {list(self.sessions[session_id].state.keys())}")
@@ -344,5 +350,6 @@ class SessionManager:
 
 _session_manager = SessionManager()
 
-def get_echo(session_id: str, parent_session_id: str = None) -> Echo:
-    return _session_manager.get_session(session_id, parent_session_id)
+def get_echo(session_id: str, parent_session_id: str = None,
+            caller_id: str = None, invocation_metadata: Dict = None) -> Echo:
+    return _session_manager.get_session(session_id, parent_session_id, caller_id, invocation_metadata)

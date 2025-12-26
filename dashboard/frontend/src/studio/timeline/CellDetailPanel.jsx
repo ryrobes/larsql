@@ -54,6 +54,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const [localYaml, setLocalYaml] = useState('');
   const [yamlParseError, setYamlParseError] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [modalImage, setModalImage] = useState(null);
   const lastSyncedYamlRef = useRef('');
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
@@ -1273,10 +1274,10 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     (result || error) ? (
                       <>
                         {/* DEBUG: Show result data */}
-                        <div style={{background: '#ff0066', color: '#fff', padding: '4px', fontSize: '10px'}}>
+                        {/* <div style={{background: '#ff0066', color: '#fff', padding: '4px', fontSize: '10px'}}>
                           DEBUG OUTPUT: hasResult={!!result} hasError={!!error} resultType={typeof result}
                           {result && ` keys=${Object.keys(result).join(',')}`}
-                        </div>
+                        </div> */}
                         {/* Evaluator reasoning (for candidates) */}
                         {evaluatorMessage && (
                           <div className="cell-detail-evaluator-banner">
@@ -1416,7 +1417,13 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           : imagePath;
                         return (
                           <div key={idx} className="cell-detail-image-container">
-                            <img src={imageUrl} alt={`Output ${idx + 1}`} />
+                            <img
+                              src={imageUrl}
+                              alt={`Output ${idx + 1}`}
+                              onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
+                              style={{ cursor: 'pointer' }}
+                              title="Click to view full size"
+                            />
                           </div>
                         );
                       })}
@@ -1470,6 +1477,32 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
             Delete
           </Button>
         </ModalFooter>
+      </Modal>
+
+      {/* Image Modal - Full size view */}
+      <Modal
+        isOpen={!!modalImage}
+        onClose={() => setModalImage(null)}
+        size="full"
+        closeOnBackdrop={true}
+        closeOnEscape={true}
+        className="result-image-modal"
+      >
+        {modalImage && (
+          <div className="result-modal-image-container">
+            <div className="result-modal-image-header">
+              <span className="result-modal-image-title">{modalImage.path}</span>
+            </div>
+            <div className="result-modal-image-body">
+              <img
+                src={modalImage.url}
+                alt="Full size"
+                className="result-modal-image"
+                onClick={() => setModalImage(null)}
+              />
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

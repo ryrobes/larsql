@@ -874,10 +874,27 @@ def cmd_run(args):
     print(f"Session ID: {session_id}")
     print()
 
+    # Generate caller tracking for CLI invocations
+    from rvbbit.session_naming import generate_woodland_id
+    from rvbbit.caller_context import build_cli_metadata
+    import sys
+
+    caller_id = f"cli-{generate_woodland_id()}"
+    input_source = "file" if os.path.exists(args.input) else "inline"
+    invocation_metadata = build_cli_metadata(
+        command_args=sys.argv,
+        cascade_file=args.config,
+        input_source=input_source
+    )
+
+    print(f"Caller ID: {caller_id}")
+    print()
+
     # Enable event hooks for real-time updates
     hooks = EventPublishingHooks()
 
-    result = run_cascade(args.config, input_data, session_id, overrides=overrides, hooks=hooks)
+    result = run_cascade(args.config, input_data, session_id, overrides=overrides, hooks=hooks,
+                        caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     print()
     print("="*60)

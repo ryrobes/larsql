@@ -101,14 +101,14 @@ class Config(BaseModel):
 
     # Content directories - cascade/tool definitions
     examples_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "examples"))
-    tackle_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "tackle"))
+    tackle_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "traits"))
     cascades_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cascades"))
 
     # Tackle search paths (for manifest/quartermaster)
     tackle_dirs: List[str] = Field(
         default=[
             os.path.join(_RVBBIT_ROOT, "examples"),
-            os.path.join(_RVBBIT_ROOT, "tackle"),
+            os.path.join(_RVBBIT_ROOT, "traits"),
             os.path.join(_RVBBIT_ROOT, "cascades"),
         ]
     )

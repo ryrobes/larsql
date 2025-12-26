@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS cascade_sessions (
     config_path String,          -- Original file path if loaded from file
     created_at DateTime DEFAULT now(),
     parent_session_id String,    -- Parent session for sub-cascades (empty string if none)
-    depth UInt8 DEFAULT 0        -- Depth in cascade tree
+    depth UInt8 DEFAULT 0,       -- Depth in cascade tree
+    caller_id String DEFAULT '', -- Parent caller that initiated this cascade
+    invocation_metadata_json String DEFAULT '{}' CODEC(ZSTD(3))  -- Full invocation context
 )
 ENGINE = MergeTree()
 ORDER BY (cascade_id, created_at);

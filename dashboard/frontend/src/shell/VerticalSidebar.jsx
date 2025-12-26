@@ -48,6 +48,54 @@ const VerticalSidebar = ({
   const topViews = getTopViews();
   const bottomViews = getBottomViews();
 
+  // Force re-render every second to update live time displays
+  const [currentTime, setCurrentTime] = React.useState(Date.now());
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000); // Update every second for live time
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Track session start times (from first poll) for client-side duration calculation
+  const sessionStartTimesRef = React.useRef({});
+  React.useEffect(() => {
+    runningSessions.forEach(session => {
+      if (!sessionStartTimesRef.current[session.session_id]) {
+        // First time seeing this session - record when we first saw it
+        // Use age_seconds from API to backdate the start time
+
+        // SAFETY: Validate age_seconds is reasonable (not a timestamp!)
+        const ageSeconds = session.age_seconds || 0;
+        if (ageSeconds > 86400) {
+          // More than 24 hours - likely a timestamp, not a duration
+          console.error('[VerticalSidebar] Suspicious age_seconds (>24h):', ageSeconds, 'for session:', session.session_id);
+          // Use start_time from API if available, or just use current time
+          if (session.start_time && session.start_time > 1000000000 && session.start_time < 4000000000) {
+            // Looks like Unix timestamp in seconds
+            sessionStartTimesRef.current[session.session_id] = session.start_time * 1000;
+          } else {
+            // Fallback: assume session just started
+            sessionStartTimesRef.current[session.session_id] = Date.now();
+          }
+        } else {
+          // Normal case: age_seconds is a duration
+          const ageMs = ageSeconds * 1000;
+          sessionStartTimesRef.current[session.session_id] = Date.now() - ageMs;
+        }
+      }
+    });
+
+    // Clean up sessions that are no longer running
+    const activeIds = new Set(runningSessions.map(s => s.session_id));
+    Object.keys(sessionStartTimesRef.current).forEach(sessionId => {
+      if (!activeIds.has(sessionId)) {
+        delete sessionStartTimesRef.current[sessionId];
+      }
+    });
+  }, [runningSessions]);
+
   // Map of legacy callbacks (during migration)
   const legacyCallbacks = {
     cockpit: onCockpit,
@@ -102,6 +150,18 @@ const VerticalSidebar = ({
             <div className="vsidebar-running-list">
               {runningSessions.map((session) => {
                 const isCurrent = session.session_id === currentSessionId;
+
+                // DEBUG: Log session data to understand what we're getting
+                if (process.env.NODE_ENV === 'development' && Math.random() < 0.1) {
+                  console.log('[VerticalSidebar] Session data:', {
+                    session_id: session.session_id,
+                    cascade_id: session.cascade_id,
+                    age_seconds: session.age_seconds,
+                    cost: session.cost,
+                    start_time: session.start_time,
+                  });
+                }
+
                 // Generate a short display name from cascade_id
                 const displayName = (session.cascade_id || 'cascade')
                   .replace(/[_-]/g, ' ')
@@ -112,16 +172,62 @@ const VerticalSidebar = ({
 
                 // Format cost for display (always 3 decimal places)
                 const costDisplay = session.cost != null && !isNaN(session.cost)
-                  ? `$${session.cost.toFixed(3)}`
+                  ? (session.cost < 0.001 ? '<$0.001' : `$${session.cost.toFixed(3)}`)
                   : '$0.000';
 
-                // Format duration for display
-                const ageSeconds = session.age_seconds != null ? session.age_seconds : 0;
-                const durationDisplay = ageSeconds < 60
-                  ? `${Math.round(ageSeconds)}s`
-                  : ageSeconds < 3600
-                  ? `${Math.floor(ageSeconds / 60)}m`
-                  : `${Math.floor(ageSeconds / 3600)}h`;
+                // Calculate live duration client-side for smooth ticking
+                // SAFETY: Ensure age_seconds is a reasonable number (not a timestamp)
+                let ageSeconds = 0;
+
+                if (session.age_seconds != null && !isNaN(session.age_seconds)) {
+                  const rawAge = session.age_seconds;
+
+                  // If age_seconds looks like a Unix timestamp (> 1 billion), it's wrong
+                  if (rawAge > 1000000000) {
+                    console.warn('[VerticalSidebar] age_seconds looks like timestamp:', rawAge, 'for session:', session.session_id);
+                    ageSeconds = 0; // Fallback: show 0 instead of garbage
+                  } else if (rawAge > 86400) {
+                    // More than 24 hours but less than timestamp range - clamp it
+                    console.warn('[VerticalSidebar] age_seconds > 24 hours:', rawAge, 'for session:', session.session_id);
+                    ageSeconds = Math.floor(rawAge); // Use as-is but floor it
+                  } else if (rawAge >= 0) {
+                    // Normal case: calculate elapsed time from stored start
+                    const startTime = sessionStartTimesRef.current[session.session_id];
+                    if (startTime && (Date.now() - startTime) < 86400000) {
+                      // Have valid start time, use it for smooth ticking
+                      const elapsedMs = currentTime - startTime;
+                      ageSeconds = Math.floor(elapsedMs / 1000);
+                    } else {
+                      // No valid start time or it's too old - use API value directly
+                      ageSeconds = Math.floor(rawAge);
+                    }
+                  } else {
+                    // Negative age - use 0
+                    console.warn('[VerticalSidebar] Negative age_seconds:', rawAge, 'for session:', session.session_id);
+                    ageSeconds = 0;
+                  }
+                } else {
+                  ageSeconds = 0;
+                }
+
+                // Format duration for display (compact format)
+                let durationDisplay;
+                if (ageSeconds < 60) {
+                  durationDisplay = `${ageSeconds}s`;
+                } else if (ageSeconds < 600) {
+                  // Under 10 minutes: show "5m30"
+                  const mins = Math.floor(ageSeconds / 60);
+                  const secs = ageSeconds % 60;
+                  durationDisplay = `${mins}m${secs.toString().padStart(2, '0')}`;
+                } else if (ageSeconds < 3600) {
+                  // 10-60 minutes: just show minutes "45m"
+                  durationDisplay = `${Math.floor(ageSeconds / 60)}m`;
+                } else {
+                  // Over an hour: show hours and minutes "2h15"
+                  const hours = Math.floor(ageSeconds / 3600);
+                  const mins = Math.floor((ageSeconds % 3600) / 60);
+                  durationDisplay = `${hours}h${mins.toString().padStart(2, '0')}`;
+                }
 
                 return (
                   <RichTooltip
@@ -146,8 +252,14 @@ const VerticalSidebar = ({
                         {displayName}
                       </span>
                       <span className="vsidebar-running-stats">
-                        <span className="vsidebar-running-stat">{durationDisplay}</span>
-                        <span className="vsidebar-running-stat">{costDisplay}</span>
+                        <span className="vsidebar-running-stat vsidebar-running-stat-time" title="Running time">
+                          <Icon icon="mdi:clock-outline" width="9" style={{ marginRight: '2px' }} />
+                          {durationDisplay}
+                        </span>
+                        <span className="vsidebar-running-stat vsidebar-running-stat-cost" title="Total cost">
+                          <Icon icon="mdi:currency-usd" width="9" style={{ marginRight: '2px' }} />
+                          {costDisplay}
+                        </span>
                       </span>
                       <span className="vsidebar-running-pulse" />
                     </button>

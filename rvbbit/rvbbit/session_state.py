@@ -66,6 +66,10 @@ class SessionState:
     current_cell: Optional[str] = None
     depth: int = 0
 
+    # Caller tracking (NEW)
+    caller_id: Optional[str] = None
+    invocation_metadata_json: str = '{}'
+
     # Blocked state details
     blocked_type: Optional[BlockedType] = None
     blocked_on: Optional[str] = None
@@ -106,6 +110,8 @@ class SessionState:
             "parent_session_id": self.parent_session_id,
             "current_cell": self.current_cell,
             "depth": self.depth,
+            "caller_id": self.caller_id,
+            "invocation_metadata_json": self.invocation_metadata_json,
             "blocked_type": self.blocked_type.value if self.blocked_type else None,
             "blocked_on": self.blocked_on,
             "blocked_description": self.blocked_description,
@@ -201,12 +207,28 @@ class SessionStateManager:
             Created SessionState object
         """
         now = _utcnow()
+
+        # Look up caller_id from Echo (if it exists)
+        caller_id_val = None
+        invocation_metadata_val = '{}'
+        try:
+            from .echo import _session_manager
+            if session_id in _session_manager.sessions:
+                echo = _session_manager.sessions[session_id]
+                caller_id_val = echo.caller_id
+                if echo.invocation_metadata:
+                    invocation_metadata_val = json.dumps(echo.invocation_metadata)
+        except Exception:
+            pass  # If Echo doesn't exist yet, that's OK
+
         state = SessionState(
             session_id=session_id,
             cascade_id=cascade_id,
             status=SessionStatus.STARTING,
             parent_session_id=parent_session_id,
             depth=depth,
+            caller_id=caller_id_val,
+            invocation_metadata_json=invocation_metadata_val,
             heartbeat_at=now,
             started_at=now,
             updated_at=now,
@@ -618,6 +640,8 @@ class SessionStateManager:
                 'status': state.status.value,
                 'current_cell': state.current_cell,
                 'depth': state.depth,
+                'caller_id': state.caller_id or '',
+                'invocation_metadata_json': state.invocation_metadata_json or '{}',
                 'blocked_type': state.blocked_type.value if state.blocked_type else None,
                 'blocked_on': state.blocked_on,
                 'blocked_description': state.blocked_description,

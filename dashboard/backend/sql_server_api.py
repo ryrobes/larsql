@@ -78,13 +78,26 @@ def execute_sql():
 
         from rvbbit.sql_tools.session_db import get_session_db
         from rvbbit.sql_tools.udf import register_rvbbit_udf
-        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement
 
         # Get or create session DuckDB
         conn = get_session_db(session_id)
 
         # Register RVBBIT UDFs (idempotent - won't re-register)
         register_rvbbit_udf(conn)
+
+        # Set caller context for RVBBIT queries (enables cost tracking and debugging)
+        if _is_rvbbit_statement(query):
+            from rvbbit.session_naming import generate_woodland_id
+            from rvbbit.caller_context import set_caller_context, build_sql_metadata
+
+            caller_id = f"http-{generate_woodland_id()}"
+            metadata = build_sql_metadata(
+                sql_query=query,
+                protocol="http",
+                triggered_by="http_api"
+            )
+            set_caller_context(caller_id, metadata)
 
         # Rewrite RVBBIT MAP/RUN syntax to standard SQL
         query = rewrite_rvbbit_syntax(query)

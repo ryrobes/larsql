@@ -148,6 +148,9 @@ register_trait("await_signal", await_signal)
 register_trait("fire_signal", fire_signal)
 register_trait("list_signals", signal_list_signals)
 
+# Backward compatibility aliases (for old cascade definitions)
+register_trait("run_sql", run_sql)  # Alias for smart_sql_run (from .traits.sql)
+
 __all__ = [
     "run_cascade",
     "set_provider",

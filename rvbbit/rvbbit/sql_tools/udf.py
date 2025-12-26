@@ -239,13 +239,19 @@ def rvbbit_cascade_udf_impl(
         # Debug: Print each UDF invocation
         print(f"🔧 [UDF] Calling rvbbit_run: session={session_id}, input={str(inputs)[:50]}...")
 
-        # Run cascade
+        # Get caller context (set by SQL server before UDF was called)
+        from ..caller_context import get_caller_context
+        caller_id, invocation_metadata = get_caller_context()
+
+        # Run cascade with caller tracking
         from ..runner import run_cascade
 
         result = run_cascade(
             resolved_path,
             inputs,
-            session_id=session_id
+            session_id=session_id,
+            caller_id=caller_id,
+            invocation_metadata=invocation_metadata
         )
 
         # Serialize relevant outputs as JSON
@@ -292,6 +298,132 @@ def rvbbit_cascade_udf_impl(
         import traceback
         logging.getLogger(__name__).error(f"rvbbit_cascade_udf error for '{cascade_path}': {e}\n{traceback.format_exc()}")
         return json.dumps({"error": str(e), "status": "failed"})
+
+
+def rvbbit_run_batch(
+    cascade_path: str,
+    rows_json_array: str,
+    table_name: str,
+    conn: duckdb.DuckDBPyConnection
+) -> str:
+    """
+    Execute cascade once over batch of rows (RVBBIT RUN implementation).
+
+    Creates temp table from rows, runs cascade with table reference.
+
+    Args:
+        cascade_path: Path to cascade file
+        rows_json_array: JSON array of all rows
+        table_name: Desired temp table name (e.g., 'batch_data')
+        conn: DuckDB connection for temp table creation
+
+    Returns:
+        JSON metadata: {status, session_id, table_created, row_count}
+
+    Example:
+        result = rvbbit_run_batch(
+            'cascades/fraud_batch.yaml',
+            '[{"id":1},{"id":2}]',
+            'batch_txns',
+            conn
+        )
+        # Creates table: batch_txns
+        # Runs cascade with input: {"data_table": "batch_txns"}
+        # Returns: '{"status":"success","session_id":"...","row_count":2}'
+    """
+    import json as json_module
+    import uuid
+
+    try:
+        # Parse rows
+        rows = json_module.loads(rows_json_array)
+        if not isinstance(rows, list):
+            raise ValueError("Expected JSON array")
+
+        # Create temp table from rows
+        if rows:
+            # Infer schema from first row
+            first_row = rows[0]
+            columns = []
+            for key, val in first_row.items():
+                if isinstance(val, bool):
+                    col_type = 'BOOLEAN'
+                elif isinstance(val, int):
+                    col_type = 'BIGINT'
+                elif isinstance(val, float):
+                    col_type = 'DOUBLE'
+                else:
+                    col_type = 'VARCHAR'
+                columns.append(f"{key} {col_type}")
+
+            # Create table
+            create_sql = f"CREATE TEMP TABLE {table_name} ({', '.join(columns)})"
+            conn.execute(create_sql)
+
+            # Insert rows
+            for row in rows:
+                placeholders = ', '.join(['?' for _ in row])
+                insert_sql = f"INSERT INTO {table_name} VALUES ({placeholders})"
+                conn.execute(insert_sql, list(row.values()))
+
+        # Generate session ID
+        from ..session_naming import generate_woodland_id
+        session_id = f"batch-{generate_woodland_id()}"
+
+        print(f"🔧 [RUN] Starting batch: session={session_id}, table={table_name}, rows={len(rows)}")
+
+        # Get caller context (set by SQL server before UDF was called)
+        from ..caller_context import get_caller_context
+        caller_id, invocation_metadata = get_caller_context()
+
+        # Run cascade with table reference
+        import os
+        resolved_path = cascade_path
+        if not os.path.isabs(cascade_path):
+            resolved_path = os.path.join(os.getcwd(), cascade_path)
+
+        if not os.path.exists(resolved_path):
+            for ext in [".yaml", ".yml", ".json"]:
+                if os.path.exists(resolved_path + ext):
+                    resolved_path = resolved_path + ext
+                    break
+
+        if not os.path.exists(resolved_path):
+            return json_module.dumps({"error": f"Cascade not found: {cascade_path}", "status": "failed"})
+
+        from ..runner import run_cascade
+
+        # Pass table name as input
+        cascade_inputs = {
+            "data_table": table_name,
+            "row_count": len(rows)
+        }
+
+        result = run_cascade(
+            resolved_path,
+            cascade_inputs,
+            session_id=session_id,
+            caller_id=caller_id,
+            invocation_metadata=invocation_metadata
+        )
+
+        print(f"✅ [RUN] Completed: session={session_id}, status={result.get('status')}")
+
+        # Return metadata
+        return json_module.dumps({
+            "status": result.get("status", "unknown"),
+            "session_id": session_id,
+            "table_created": table_name,
+            "row_count": len(rows),
+            "has_errors": result.get("has_errors", False),
+            "outputs": result.get("outputs", {})
+        })
+
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).error(f"rvbbit_run_batch error: {e}\n{traceback.format_exc()}")
+        return json_module.dumps({"error": str(e), "status": "failed"})
 
 
 def rvbbit_run_parallel_batch(
@@ -450,6 +582,21 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_run: {e}")
+
+    # Register batch RUN UDF (for RVBBIT RUN syntax)
+    try:
+        def run_batch_wrapper(cascade_path: str, rows_json: str, table_name: str) -> str:
+            """Wrapper for batch RUN - creates temp table and runs cascade."""
+            return rvbbit_run_batch(cascade_path, rows_json, table_name, connection)
+
+        connection.create_function(
+            "rvbbit_run_batch",
+            run_batch_wrapper,
+            return_type="VARCHAR"
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register rvbbit_run_batch: {e}")
 
     # TODO Phase 2B: Register parallel batch UDF when threading is implemented
     # try:
