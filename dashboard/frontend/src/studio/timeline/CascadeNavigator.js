@@ -711,10 +711,10 @@ function CascadeNavigator() {
     viewMode,
     replaySessionId,
     parentSessionId,
-    parentCell
+    parentCell,
+    selectedCellIndex
   } = useStudioCascadeStore();
 
-  const [activeCell, setActiveCell] = useState(null);
   const [inputValidationError, setInputValidationError] = useState(null);
 
   // YAML editor state
@@ -740,8 +740,9 @@ function CascadeNavigator() {
 
   // Sync cascade to YAML when cascade changes externally
   // ONLY update if editor is not focused (prevents fighting with user input)
+  // Update even when editor is hidden so it's ready when toggled on
   useEffect(() => {
-    if (!cascade || yamlViewMode === false || editorFocused) return;
+    if (!cascade || editorFocused) return;
 
     // Get raw YAML from store if available (preserves formatting/comments)
     const { cascadeYamlText } = useStudioCascadeStore.getState();
@@ -772,7 +773,7 @@ function CascadeNavigator() {
       console.error('[CascadeNavigator] Failed to serialize cascade to YAML:', error);
       setYamlParseError(error.message);
     }
-  }, [cascade, yamlViewMode, editorFocused]);
+  }, [cascade, editorFocused]);
 
   // Handle YAML editor changes (just update local state for live validation)
   const handleYamlChange = useCallback((newYaml) => {
@@ -811,8 +812,6 @@ function CascadeNavigator() {
 
   // Scroll to cell and select it in timeline
   const scrollToCell = useCallback((cellName, options = {}) => {
-    setActiveCell(cellName);
-
     // Find cell index and select in timeline
     const { cascade, setSelectedCellIndex, setDesiredOutputTab } = useStudioCascadeStore.getState();
     const cellIndex = cascade?.cells?.findIndex(c => c.name === cellName);
@@ -1083,7 +1082,7 @@ function CascadeNavigator() {
                   cell={cell}
                   index={index}
                   cellState={cellStates[cell.name]}
-                  isActive={activeCell === cell.name}
+                  isActive={selectedCellIndex === index}
                   onNavigate={scrollToCell}
                 />
               ))}

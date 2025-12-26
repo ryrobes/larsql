@@ -5,8 +5,9 @@ Handles syncing tools from in-memory registry to ClickHouse and analytics.
 """
 
 import json
+import hashlib
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
@@ -19,7 +20,131 @@ from .traits_manifest import get_trait_manifest
 console = Console()
 
 
-def sync_tools_to_db():
+def normalize_tool_type(tool_type_str: str) -> str:
+    """
+    Normalize tool type to match DB enum values.
+
+    Maps various type strings to: 'function', 'cascade', 'memory', 'validator'
+    """
+    if 'cascade' in tool_type_str:
+        return 'cascade'
+    elif 'memory' in tool_type_str:
+        return 'memory'
+    elif 'validator' in tool_type_str:
+        return 'validator'
+    else:
+        return 'function'
+
+
+def compute_manifest_hash(manifest: Dict) -> str:
+    """
+    Compute a stable hash of the tool manifest.
+
+    Uses tool names and descriptions to detect changes.
+    Returns a hash string that changes only when tools are added/removed/modified.
+    """
+    # Create a sorted, deterministic representation
+    tool_items = []
+    for tool_name in sorted(manifest.keys()):
+        tool_info = manifest[tool_name]
+        description = tool_info.get('description', '')
+        tool_type = normalize_tool_type(tool_info.get('type', 'function'))
+        # Include name, normalized type, and description in hash
+        tool_items.append(f"{tool_name}|{tool_type}|{description}")
+
+    # Join and hash
+    manifest_str = '\n'.join(tool_items)
+    return hashlib.sha256(manifest_str.encode('utf-8')).hexdigest()
+
+
+def tools_have_changed(manifest: Dict) -> Tuple[bool, Optional[str]]:
+    """
+    Check if the current tool manifest differs from what's in the database.
+
+    Returns:
+        (changed: bool, reason: Optional[str])
+        - changed: True if tools need to be synced
+        - reason: Description of what changed (or None if unchanged)
+    """
+    db = get_db()
+
+    try:
+        # Get current tools from database
+        db_tools_query = """
+            SELECT
+                tool_name,
+                tool_type,
+                tool_description
+            FROM tool_manifest_vectors FINAL
+            ORDER BY tool_name
+        """
+
+        db_tools = db.query(db_tools_query)
+
+        # If database is empty, we need to sync
+        if not db_tools:
+            return (True, "Database is empty - initial sync required")
+
+        # Build a comparable representation of DB tools
+        db_manifest = {}
+        for row in db_tools:
+            db_manifest[row['tool_name']] = {
+                'type': row['tool_type'],
+                'description': row['tool_description']
+            }
+
+        # Compare counts first (quick check)
+        if len(manifest) != len(db_manifest):
+            added = set(manifest.keys()) - set(db_manifest.keys())
+            removed = set(db_manifest.keys()) - set(manifest.keys())
+
+            changes = []
+            if added:
+                changes.append(f"{len(added)} added")
+            if removed:
+                changes.append(f"{len(removed)} removed")
+
+            return (True, f"Tool count changed: {', '.join(changes)}")
+
+        # Compute hashes for deep comparison
+        current_hash = compute_manifest_hash(manifest)
+
+        # Build comparable manifest from DB
+        db_comparable = {}
+        for tool_name, tool_data in db_manifest.items():
+            db_comparable[tool_name] = {
+                'type': tool_data['type'],
+                'description': tool_data['description']
+            }
+
+        db_hash = compute_manifest_hash(db_comparable)
+
+        # Compare hashes
+        if current_hash != db_hash:
+            # Find what actually changed
+            modified = []
+            for tool_name in manifest.keys():
+                if tool_name in db_manifest:
+                    current_desc = manifest[tool_name].get('description', '')
+                    db_desc = db_manifest[tool_name]['description']
+                    if current_desc != db_desc:
+                        modified.append(tool_name)
+
+            if modified:
+                return (True, f"{len(modified)} tool(s) modified: {', '.join(modified[:5])}")
+            else:
+                return (True, "Tool metadata changed")
+
+        # No changes detected
+        return (False, None)
+
+    except Exception as e:
+        # If we can't check, assume tools have changed (safe default)
+        console.print(f"[yellow]⚠ Could not check for changes: {e}[/yellow]")
+        return (True, f"Unable to verify (will sync): {e}")
+
+
+def sync_tools_to_db(force: bool = False):
     """
     Sync current tool manifest to ClickHouse tool_manifest_vectors table.
 
@@ -28,6 +153,10 @@ def sync_tools_to_db():
     - Tool usage analytics
     - Semantic tool search
     - Historical tracking
+
+    Args:
+        force: If True, always sync even if tools haven't changed.
+               If False (default), skip sync if tools are unchanged.
     """
     config = get_config()
     db = get_db()
@@ -45,6 +174,20 @@ def sync_tools_to_db():
     except Exception as e:
         console.print(f"[red]✗ Failed to get manifest: {e}[/red]")
         return
+
+    # Step 1.5: Check if tools have changed (unless forced)
+    if not force:
+        console.print("[cyan]Checking for changes...[/cyan]")
+        changed, reason = tools_have_changed(manifest)
+
+        if not changed:
+            console.print("[green]✓[/green] Tools unchanged - skipping sync")
+            console.print("[dim]  (Use --force or force=True to sync anyway)[/dim]\n")
+            return
+        else:
+            console.print(f"[yellow]⚡[/yellow] Changes detected: {reason}")
+    else:
+        console.print("[yellow]⚡[/yellow] Force mode - syncing all tools")
 
     # Step 2: Generate embeddings for all tool descriptions
     console.print("[cyan]Generating embeddings for tool descriptions...[/cyan]")

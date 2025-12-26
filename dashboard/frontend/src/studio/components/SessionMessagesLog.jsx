@@ -575,6 +575,8 @@ const SessionMessagesLog = ({
                 animateRows={false}
                 suppressCellFocus={true}
                 enableCellTextSelection={true}
+                suppressColumnVirtualisation={true}
+                suppressAnimationFrame={true}
                 getRowId={(params) => params.data.message_id || `${params.data.timestamp_iso}-${params.data.trace_id || params.node.id}`}
                 onRowClicked={onRowClicked}
                 rowSelection="single"
@@ -586,6 +588,15 @@ const SessionMessagesLog = ({
                   // Highlight child session messages with different background
                   if (currentSessionId && params.data.session_id && params.data.session_id !== currentSessionId) {
                     classes.push('sml-row-child-session');
+                  }
+                  // Subtle highlight for LLM interaction messages (user → LLM, assistant ← LLM)
+                  // Directional gradient: user (sent) = left→right, assistant (received) = right→left
+                  if (params.data.role === 'user') {
+                    classes.push('sml-row-llm-message');
+                    classes.push('sml-row-llm-sent');
+                  } else if (params.data.role === 'assistant') {
+                    classes.push('sml-row-llm-message');
+                    classes.push('sml-row-llm-received');
                   }
                   return classes.join(' ');
                 }}
@@ -769,6 +780,8 @@ const SessionMessagesLog = ({
               animateRows={false}
               suppressCellFocus={true}
               enableCellTextSelection={true}
+              suppressColumnVirtualisation={true}
+              suppressAnimationFrame={true}
               getRowId={(params) => params.data.message_id || `${params.data.timestamp_iso}-${params.data.trace_id || params.node.id}`}
               onRowClicked={onRowClicked}
               rowSelection="single"
@@ -780,6 +793,15 @@ const SessionMessagesLog = ({
                 // Highlight child session messages with different background
                 if (currentSessionId && params.data.session_id && params.data.session_id !== currentSessionId) {
                   classes.push('sml-row-child-session');
+                }
+                // Subtle highlight for LLM interaction messages (user → LLM, assistant ← LLM)
+                // Directional gradient: user (sent) = left→right, assistant (received) = right→left
+                if (params.data.role === 'user') {
+                  classes.push('sml-row-llm-message');
+                  classes.push('sml-row-llm-sent');
+                } else if (params.data.role === 'assistant') {
+                  classes.push('sml-row-llm-message');
+                  classes.push('sml-row-llm-received');
                 }
                 return classes.join(' ');
               }}

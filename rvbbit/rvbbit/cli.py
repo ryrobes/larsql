@@ -502,6 +502,11 @@ def main():
         'sync',
         help='Sync tool manifest to database'
     )
+    tools_sync_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force sync even if tools have not changed'
+    )
 
     # tools list
     tools_list_parser = tools_subparsers.add_parser(
@@ -3076,7 +3081,8 @@ def cmd_tools_sync(args):
     """Sync tool manifest to database."""
     from rvbbit.tools_mgmt import sync_tools_to_db
 
-    sync_tools_to_db()
+    force = getattr(args, 'force', False)
+    sync_tools_to_db(force=force)
 
 
 def cmd_tools_list(args):

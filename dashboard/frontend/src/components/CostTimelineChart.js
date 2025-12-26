@@ -18,24 +18,29 @@ import './CostTimelineChart.css';
  * - Direct, honest representation of values
  * - Smooth interactions that reveal detail on demand
  */
-function CostTimelineChart({ cascadeFilter = null }) {
+function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredModel, setHoveredModel] = useState(null);
 
-  useEffect(() => {
-    fetchCostTimeline();
-  }, [cascadeFilter]);
+  // Stable string representation of cascadeIds to avoid infinite re-renders
+  const cascadeIdsKey = cascadeIds.join(',');
 
-  const fetchCostTimeline = async () => {
+  useEffect(() => {
+    const fetchCostTimeline = async () => {
     try {
       setLoading(true);
 
       const params = new URLSearchParams();
-      if (cascadeFilter) {
+
+      // Prefer cascadeIds (array) over cascadeFilter (single string) for backwards compatibility
+      if (cascadeIds && cascadeIds.length > 0) {
+        params.append('cascade_ids', cascadeIds.join(','));
+      } else if (cascadeFilter) {
         params.append('cascade_id', cascadeFilter);
       }
+
       params.append('limit', '14');
 
       const res = await fetch(`http://localhost:5001/api/analytics/cost-timeline?${params}`);
@@ -53,7 +58,10 @@ function CostTimelineChart({ cascadeFilter = null }) {
     } finally {
       setLoading(false);
     }
-  };
+    };
+
+    fetchCostTimeline();
+  }, [cascadeFilter, cascadeIdsKey]);
 
   // Cyberpunk color palette - cyan, purple, pink neon
   const colorPalette = useMemo(() => ({

@@ -47,7 +47,8 @@ def get_cost_timeline():
     Get cost over time with breakdown by model.
 
     Query params:
-        cascade_id: Optional filter by cascade (supports wildcards)
+        cascade_id: Optional filter by single cascade (supports wildcards)
+        cascade_ids: Optional filter by multiple cascades (comma-separated list)
         limit: Max number of time buckets to return (default 30)
 
     Returns:
@@ -74,14 +75,26 @@ def get_cost_timeline():
         }
     """
     try:
+        # Support both single cascade_id and multiple cascade_ids (comma-separated)
         cascade_filter = request.args.get('cascade_id', '').strip()
+        cascade_ids_filter = request.args.get('cascade_ids', '').strip()
         limit = int(request.args.get('limit', 30))
 
         db = get_db()
 
         # Build WHERE clause for cascade filter
         where_parts = ["cost > 0"]
-        if cascade_filter:
+
+        # Handle multiple cascade IDs (preferred for filtering)
+        if cascade_ids_filter:
+            # Parse comma-separated list
+            cascade_list = [cid.strip() for cid in cascade_ids_filter.split(',') if cid.strip()]
+            if cascade_list:
+                # Build IN clause
+                escaped_ids = ["'{}'".format(cid.replace("'", "''")) for cid in cascade_list]
+                where_parts.append(f"cascade_id IN ({', '.join(escaped_ids)})")
+        # Handle single cascade ID (backwards compatibility)
+        elif cascade_filter:
             # Support wildcards
             if '*' in cascade_filter or '?' in cascade_filter:
                 # Convert to SQL LIKE pattern

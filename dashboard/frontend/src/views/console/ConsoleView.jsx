@@ -374,23 +374,12 @@ const ConsoleView = () => {
         <div className="console-subtitle">
           System analytics and recent activity
         </div>
-        {/* Test toast button (for demo) */}
-        {process.env.NODE_ENV === 'development' && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="mdi:bell"
-            onClick={() => showToast('Toast test!', { type: 'success' })}
-          >
-            Test Toast
-          </Button>
-        )}
       </div>
 
       {/* Cost Chart Section */}
       <div className="console-section">
         <div className="console-section-header">
-          <Icon icon="mdi:chart-line" width="20" />
+          <Icon icon="mdi:chart-line" width="14" />
           <h2>Cost Timeline</h2>
         </div>
         <div className="console-chart-wrapper">
@@ -401,7 +390,7 @@ const ConsoleView = () => {
       {/* Sessions Table */}
       <div className="console-section">
         <div className="console-section-header">
-          <Icon icon="mdi:table" width="20" />
+          <Icon icon="mdi:table" width="14" />
           <h2>Recent Sessions</h2>
           <span className="console-count">{sessions.length} sessions</span>
         </div>

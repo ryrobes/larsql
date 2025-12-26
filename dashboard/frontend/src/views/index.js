@@ -74,6 +74,14 @@ export const views = {
     enabled: true,
   },
 
+  evolution: {
+    component: lazy(() => import('./evolution/EvolutionView')),
+    icon: 'mdi:dna',
+    label: 'Evolution',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

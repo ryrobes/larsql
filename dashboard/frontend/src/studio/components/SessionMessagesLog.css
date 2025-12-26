@@ -379,6 +379,42 @@
   background-color: rgba(45, 212, 191, 0.18) !important;
 }
 
+/* LLM interaction messages (user → LLM, assistant ← LLM) - subtle cyan outline */
+.sml-grid-container .ag-row.sml-row-llm-message {
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 2px;
+}
+
+/* Sent to LLM (user) - gradient left → right */
+.sml-grid-container .ag-row.sml-row-llm-sent {
+  background: linear-gradient(to right, rgba(0, 229, 255, 0.06), transparent 40%) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-llm-sent:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+  background: linear-gradient(to right, rgba(0, 229, 255, 0.1), transparent 40%) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-llm-sent.sml-row-selected {
+  border-color: rgba(0, 229, 255, 0.6);
+  background: linear-gradient(to right, rgba(0, 229, 255, 0.15), rgba(167, 139, 250, 0.2) 40%) !important;
+}
+
+/* Received from LLM (assistant) - gradient right → left */
+.sml-grid-container .ag-row.sml-row-llm-received {
+  background: linear-gradient(to left, rgba(0, 229, 255, 0.06), transparent 40%) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-llm-received:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+  background: linear-gradient(to left, rgba(0, 229, 255, 0.1), transparent 40%) !important;
+}
+
+.sml-grid-container .ag-row.sml-row-llm-received.sml-row-selected {
+  border-color: rgba(0, 229, 255, 0.6);
+  background: linear-gradient(to left, rgba(0, 229, 255, 0.15), rgba(167, 139, 250, 0.2) 40%) !important;
+}
+
 /* ============================================
    SPLIT CONTAINER
    ============================================ */

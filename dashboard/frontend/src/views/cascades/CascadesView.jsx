@@ -47,6 +47,16 @@ const CascadesView = ({ navigate, params = {} }) => {
   const containerRef = useRef(null);
   const { navigate: navStore } = useNavigationStore();
 
+  // Filter state
+  const [filters, setFilters] = useState({
+    search: '',
+    runCount: new Set(),     // '0', '1-10', '11-50', '50+'
+    costRange: new Set(),    // '$0', '$0-$1', '$1-$10', '$10+'
+    status: new Set(),       // For instances: 'completed', 'error', 'running', etc.
+    hasCandidates: null,     // null | true | false
+    hasSubCascades: null,    // null | true | false
+  });
+
   // Handle loading cascade into Studio for first run
   const handleLoadInStudio = async () => {
     if (!selectedCascade) return;
@@ -336,6 +346,130 @@ const CascadesView = ({ navigate, params = {} }) => {
     resizable: true,
   }), []);
 
+  // Apply filters to cascades
+  const filteredCascades = useMemo(() => {
+    return cascades.filter(cascade => {
+      // Search filter
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const matchesId = cascade.cascade_id?.toLowerCase().includes(searchLower);
+        const matchesDesc = cascade.description?.toLowerCase().includes(searchLower);
+        if (!matchesId && !matchesDesc) return false;
+      }
+
+      // Run count ranges
+      if (filters.runCount.size > 0) {
+        const count = cascade.metrics?.run_count || 0;
+        let matches = false;
+        if (filters.runCount.has('0') && count === 0) matches = true;
+        if (filters.runCount.has('1-10') && count >= 1 && count <= 10) matches = true;
+        if (filters.runCount.has('11-50') && count >= 11 && count <= 50) matches = true;
+        if (filters.runCount.has('50+') && count > 50) matches = true;
+        if (!matches) return false;
+      }
+
+      // Cost ranges
+      if (filters.costRange.size > 0) {
+        const cost = cascade.metrics?.total_cost || 0;
+        let matches = false;
+        if (filters.costRange.has('$0') && cost === 0) matches = true;
+        if (filters.costRange.has('$0-$1') && cost > 0 && cost <= 1) matches = true;
+        if (filters.costRange.has('$1-$10') && cost > 1 && cost <= 10) matches = true;
+        if (filters.costRange.has('$10+') && cost > 10) matches = true;
+        if (!matches) return false;
+      }
+
+      // Has Candidates toggle
+      if (filters.hasCandidates !== null) {
+        const hasCandidates = cascade.graph_complexity?.has_soundings || false;
+        if (hasCandidates !== filters.hasCandidates) return false;
+      }
+
+      // Has Sub-Cascades toggle
+      if (filters.hasSubCascades !== null) {
+        const hasSubCascades = cascade.graph_complexity?.has_sub_cascades || false;
+        if (hasSubCascades !== filters.hasSubCascades) return false;
+      }
+
+      return true;
+    });
+  }, [cascades, filters]);
+
+  // Apply filters to instances
+  const filteredInstances = useMemo(() => {
+    return instances.filter(instance => {
+      // Search filter
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const matchesSessionId = instance.session_id?.toLowerCase().includes(searchLower);
+        const matchesInputs = JSON.stringify(instance.input_data || {}).toLowerCase().includes(searchLower);
+        if (!matchesSessionId && !matchesInputs) return false;
+      }
+
+      // Status filter
+      if (filters.status.size > 0) {
+        const status = instance.status?.toLowerCase();
+        if (!filters.status.has(status)) return false;
+      }
+
+      // Cost ranges
+      if (filters.costRange.size > 0) {
+        const cost = instance.total_cost || 0;
+        let matches = false;
+        if (filters.costRange.has('$0') && cost === 0) matches = true;
+        if (filters.costRange.has('$0-$0.10') && cost > 0 && cost <= 0.10) matches = true;
+        if (filters.costRange.has('$0.10-$1') && cost > 0.10 && cost <= 1) matches = true;
+        if (filters.costRange.has('$1+') && cost > 1) matches = true;
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [instances, filters]);
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return filters.search !== '' ||
+      filters.runCount.size > 0 ||
+      filters.costRange.size > 0 ||
+      filters.status.size > 0 ||
+      filters.hasCandidates !== null ||
+      filters.hasSubCascades !== null;
+  }, [filters]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      runCount: new Set(),
+      costRange: new Set(),
+      status: new Set(),
+      hasCandidates: null,
+      hasSubCascades: null,
+    });
+  };
+
+  // Toggle filter chip
+  const toggleFilter = (category, value) => {
+    setFilters(prev => {
+      const newSet = new Set(prev[category]);
+      if (newSet.has(value)) {
+        newSet.delete(value);
+      } else {
+        newSet.add(value);
+      }
+      return { ...prev, [category]: newSet };
+    });
+  };
+
+  // Toggle boolean filter
+  const toggleBooleanFilter = (key) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: prev[key] === null ? true : (prev[key] === true ? false : null)
+    }));
+  };
+
   // Handle cascade row click - transition to instances view
   const handleCascadeClick = (event) => {
     const { cascade_id } = event.data;
@@ -367,10 +501,27 @@ const CascadesView = ({ navigate, params = {} }) => {
     params.api.sizeColumnsToFit();
   };
 
-  // Determine which grid data to show
-  const gridData = selectedCascade ? instances : cascades;
+  // Determine which grid data to show (with filters applied)
+  const gridData = selectedCascade ? filteredInstances : filteredCascades;
+  const totalData = selectedCascade ? instances : cascades;
   const columnDefs = selectedCascade ? instanceColumns : cascadeColumns;
   const handleRowClick = selectedCascade ? handleInstanceClick : handleCascadeClick;
+
+  // Determine cascade filter for chart (show filtered data in chart)
+  const cascadeIdsForChart = useMemo(() => {
+    // If specific cascade selected, show just that one
+    if (selectedCascade) {
+      return [selectedCascade];
+    }
+
+    // If filters are active, show only filtered cascades
+    if (hasActiveFilters && filteredCascades.length > 0) {
+      return filteredCascades.map(c => c.cascade_id);
+    }
+
+    // Otherwise show all cascades (empty array = no filter)
+    return [];
+  }, [selectedCascade, filteredCascades, hasActiveFilters]);
 
   return (
     <div className="cascades-view">
@@ -399,28 +550,154 @@ const CascadesView = ({ navigate, params = {} }) => {
         </div>
       </div>
 
-      {/* Cost Chart Section - filtered when cascade selected */}
+      {/* Cost Chart Section - filtered when cascade selected or filters active */}
       <div className="cascades-section">
         <div className="cascades-section-header">
-          <Icon icon="mdi:chart-line" width="20" />
+          <Icon icon="mdi:chart-line" width="14" />
           <h2>Cost Timeline</h2>
-          {selectedCascade && (
-            <span className="cascades-filter-label">Filtered to: {selectedCascade}</span>
-          )}
+          <span className={`cascades-filter-label ${cascadeIdsForChart.length === 0 ? 'invisible' : ''}`}>
+            {cascadeIdsForChart.length === 1
+              ? `Filtered to: ${cascadeIdsForChart[0]}`
+              : cascadeIdsForChart.length > 1
+                ? `Filtered to ${cascadeIdsForChart.length} cascades`
+                : '\u00A0' /* non-breaking space to maintain height */
+            }
+          </span>
         </div>
         <div className="cascades-chart-wrapper">
-          <CostTimelineChart cascadeFilter={selectedCascade} />
+          <CostTimelineChart cascadeIds={cascadeIdsForChart} />
         </div>
       </div>
 
       {/* Grid Section */}
       <div className="cascades-section">
         <div className="cascades-section-header">
-          <Icon icon="mdi:table" width="20" />
+          <Icon icon="mdi:table" width="14" />
           <h2>{selectedCascade ? 'Execution History' : 'All Cascades'}</h2>
           <span className="cascades-count">
-            {gridData.length} {selectedCascade ? 'sessions' : 'cascades'}
+            {hasActiveFilters
+              ? `${gridData.length} of ${totalData.length}`
+              : gridData.length
+            } {selectedCascade ? 'sessions' : 'cascades'}
           </span>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="cascades-filter-bar">
+          {/* Search */}
+          <div className="filter-search">
+            <Icon icon="mdi:magnify" width="14" />
+            <input
+              type="text"
+              placeholder={selectedCascade ? "Search sessions..." : "Search cascades..."}
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            />
+            {filters.search && (
+              <Icon
+                icon="mdi:close-circle"
+                width="14"
+                className="filter-search-clear"
+                onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+              />
+            )}
+          </div>
+
+          {/* Run Count (cascades only) */}
+          {!selectedCascade && (
+            <div className="filter-group">
+              <span className="filter-label">Runs</span>
+              <div className="filter-chips">
+                {['0', '1-10', '11-50', '50+'].map(range => (
+                  <button
+                    key={range}
+                    className={`filter-chip ${filters.runCount.has(range) ? 'active' : ''}`}
+                    onClick={() => toggleFilter('runCount', range)}
+                  >
+                    {range}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Status (instances only) */}
+          {selectedCascade && (
+            <div className="filter-group">
+              <span className="filter-label">Status</span>
+              <div className="filter-chips">
+                {['completed', 'error', 'running', 'blocked'].map(status => (
+                  <button
+                    key={status}
+                    className={`filter-chip status-${status} ${filters.status.has(status) ? 'active' : ''}`}
+                    onClick={() => toggleFilter('status', status)}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cost Range */}
+          <div className="filter-group">
+            <span className="filter-label">Cost</span>
+            <div className="filter-chips">
+              {selectedCascade
+                ? ['$0', '$0-$0.10', '$0.10-$1', '$1+'].map(range => (
+                    <button
+                      key={range}
+                      className={`filter-chip ${filters.costRange.has(range) ? 'active' : ''}`}
+                      onClick={() => toggleFilter('costRange', range)}
+                    >
+                      {range}
+                    </button>
+                  ))
+                : ['$0', '$0-$1', '$1-$10', '$10+'].map(range => (
+                    <button
+                      key={range}
+                      className={`filter-chip ${filters.costRange.has(range) ? 'active' : ''}`}
+                      onClick={() => toggleFilter('costRange', range)}
+                    >
+                      {range}
+                    </button>
+                  ))
+              }
+            </div>
+          </div>
+
+          {/* Feature Toggles (cascades only) */}
+          {!selectedCascade && (
+            <div className="filter-group">
+              <span className="filter-label">Features</span>
+              <div className="filter-chips">
+                <button
+                  className={`filter-toggle ${filters.hasCandidates === true ? 'active' : ''} ${filters.hasCandidates === false ? 'inactive' : ''}`}
+                  onClick={() => toggleBooleanFilter('hasCandidates')}
+                  title={filters.hasCandidates === null ? 'Show all' : filters.hasCandidates ? 'With candidates' : 'Without candidates'}
+                >
+                  <Icon icon="mdi:routes" width="12" />
+                  Candidates
+                </button>
+                <button
+                  className={`filter-toggle ${filters.hasSubCascades === true ? 'active' : ''} ${filters.hasSubCascades === false ? 'inactive' : ''}`}
+                  onClick={() => toggleBooleanFilter('hasSubCascades')}
+                  title={filters.hasSubCascades === null ? 'Show all' : filters.hasSubCascades ? 'With sub-cascades' : 'Without sub-cascades'}
+                >
+                  <Icon icon="mdi:file-tree" width="12" />
+                  Sub-Cascades
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button className="filter-clear" onClick={clearFilters}>
+              <Icon icon="mdi:close-circle" width="14" />
+              Clear
+            </button>
+          )}
         </div>
 
         {error && (
