@@ -4423,33 +4423,40 @@ Refinement directive: {reforge_config.honing_prompt}
 
                 db = get_db()
 
-                # Extract final output from last executed cell
+                # Extract final output from cascade execution
                 final_output = None
 
-                # Strategy: Get last cell's output from state using lineage
-                if result and result.get("state"):
-                    state = result["state"]
+                # Strategy 1: Try to get from lineage (most reliable for all cell types)
+                if result and result.get("lineage") and len(result["lineage"]) > 0:
+                    # Get last lineage entry
+                    lineage_entry = result["lineage"][-1]
 
-                    # Use lineage to get execution order (most reliable)
-                    if result.get("lineage") and len(result["lineage"]) > 0:
-                        # Get last cell name from lineage (lineage is list of dicts with 'cell' key)
-                        lineage_entry = result["lineage"][-1]
-                        last_cell = lineage_entry.get("cell") if isinstance(lineage_entry, dict) else lineage_entry
+                    # Lineage contains the actual output in the 'output' field
+                    if isinstance(lineage_entry, dict) and "output" in lineage_entry:
+                        final_output = lineage_entry["output"]
 
-                        # State stores outputs as "output_{cell_name}" convention
-                        output_key = f"output_{last_cell}"
+                # Strategy 2: Fallback to history for LLM cells with text responses
+                if final_output is None and result and result.get("history"):
+                    history = result["history"]
 
-                        if output_key in state:
-                            final_output = state[output_key]
+                    # Iterate in reverse to find last message with actual content
+                    for message in reversed(history):
+                        # Skip system and phase_complete messages (no real content)
+                        msg_role = message.get("role", "")
+                        if msg_role in ["system", "phase_complete", "structure"]:
+                            continue
 
-                    # Fallback: Get last cell from cells definition
-                    if final_output is None and self.config.cells:
-                        # Iterate cells in reverse to find last one with output
-                        for cell in reversed(self.config.cells):
-                            output_key = f"output_{cell.name}"
-                            if output_key in state:
-                                final_output = state[output_key]
-                                break
+                        # Get content_json from this message (preferred)
+                        content_json = message.get("content_json")
+                        if content_json:
+                            final_output = content_json
+                            break
+
+                        # Fallback to 'content' field if content_json not available
+                        content = message.get("content")
+                        if content and not content.startswith("Phase:") and not content.startswith("Cascade:"):
+                            final_output = content
+                            break
 
                 # Serialize output for storage (preserve format as-is)
                 if final_output is not None:

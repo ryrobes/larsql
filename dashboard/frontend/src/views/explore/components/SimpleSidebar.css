@@ -1,0 +1,141 @@
+/* ============================================
+   SIMPLE SIDEBAR - Lightweight orchestration sidebar
+   ============================================ */
+
+.simple-sidebar {
+  width: 320px;
+  height: 100%;
+  background: var(--color-bg-primary);
+  border-left: 1px solid var(--color-border-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* ============================================
+   SECTIONS
+   ============================================ */
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ============================================
+   STATUS DISPLAY
+   ============================================ */
+
+.status-display {
+  display: flex;
+  align-items: center;
+}
+
+/* ============================================
+   COST DISPLAY
+   ============================================ */
+
+.cost-display {
+  font-size: 28px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent-green);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   SESSION INFO
+   ============================================ */
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+}
+
+.info-label {
+  color: var(--color-text-muted);
+}
+
+.info-value {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ============================================
+   ACTIONS
+   ============================================ */
+
+.sidebar-actions {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+/* ============================================
+   FOOTER (Session ID)
+   ============================================ */
+
+.sidebar-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-dim);
+  margin-top: auto;
+}
+
+.session-id-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.session-id-value {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+
+.simple-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.simple-sidebar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.simple-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.3);
+  border-radius: 3px;
+}
+
+.simple-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.5);
+}
