@@ -79,6 +79,7 @@ def get_cost_timeline():
         cascade_filter = request.args.get('cascade_id', '').strip()
         cascade_ids_filter = request.args.get('cascade_ids', '').strip()
         limit = int(request.args.get('limit', 30))
+        granularity = request.args.get('granularity', '').strip()  # 'hour', 'day', 'week', 'month'
 
         db = get_db()
 
@@ -120,8 +121,20 @@ def get_cost_timeline():
         earliest = time_range.get('earliest')
         latest = time_range.get('latest')
 
-        # Determine bucket
-        bucket_type, bucket_expression = _determine_time_bucket(earliest, latest)
+        # Determine bucket - use manual granularity if provided, otherwise auto-determine
+        if granularity and granularity in ['hour', 'day', 'week', 'month']:
+            # Manual granularity specified
+            bucket_type = granularity
+            bucket_expressions = {
+                'hour': "toStartOfHour(timestamp)",
+                'day': "toDate(timestamp)",
+                'week': "toMonday(timestamp)",
+                'month': "toStartOfMonth(timestamp)"
+            }
+            bucket_expression = bucket_expressions[granularity]
+        else:
+            # Auto-determine based on time range
+            bucket_type, bucket_expression = _determine_time_bucket(earliest, latest)
 
         # Query cost grouped by time bucket and model
         # Use model_requested (cleaner), fallback to model with timestamp stripped

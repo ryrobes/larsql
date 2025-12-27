@@ -846,9 +846,11 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
             cell_name = cell['cell_name']
             species_hash = cell['species_hash'] or ''
 
-            # Calculate contribution percentages
-            cell_cost_pct = (cell['cell_cost'] / cascade_total_cost * 100) if cascade_total_cost > 0 else 0
-            cell_duration_pct = (cell['cell_duration_ms'] / cascade_total_duration * 100) if cascade_total_duration > 0 else 0
+            # Calculate contribution percentages (handle None values from incomplete/error cells)
+            cell_cost = cell.get('cell_cost') or 0
+            cell_duration = cell.get('cell_duration_ms') or 0
+            cell_cost_pct = (cell_cost / cascade_total_cost * 100) if cascade_total_cost > 0 and cell_cost else 0
+            cell_duration_pct = (cell_duration / cascade_total_duration * 100) if cascade_total_duration > 0 and cell_duration else 0
 
             # Analyze context attribution (RVBBIT's unique capability!)
             context_attr = _analyze_context_attribution(session_id, cell_name, db)

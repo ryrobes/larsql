@@ -9,7 +9,6 @@ import CellCard from './CellCard';
 import CellDetailPanel from './CellDetailPanel';
 import { CellAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
-import { BudgetStatusBar } from '../components/BudgetStatusBar';
 import { Tooltip } from '../../components/RichTooltip';
 import { Button, Modal, ModalHeader, ModalContent, ModalFooter } from '../../components';
 import './CascadeTimeline.css';
@@ -635,8 +634,8 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
   const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionStatusFor, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
 
-  // Get budget data for this session
-  const { events: budgetEvents } = useBudgetData(sessionId);
+  // Get budget data for this session (use sessionToPoll to match polling logic)
+  const { events: budgetEvents } = useBudgetData(sessionToPoll);
 
   // Debug: Check if logs now include context data & notify parent
   useEffect(() => {
@@ -1364,9 +1363,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
         </div>
       </div>
 
-      {/* Budget Status Bar */}
-      {sessionId && <BudgetStatusBar sessionId={sessionId} />}
-
       {/* Fixed overlay for input parameter connections - only if inputs exist */}
       {Object.keys(inputsSchema).length > 0 && (
         <InputEdgesSVG
@@ -1450,23 +1446,19 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                   defaultModel={defaultModel}
                   costMetrics={cellCostMetrics[node.cell.name]}
                 />
-                {/* Budget Enforcement Marker */}
+                {/* Budget Enforcement Annotation - above node, right-aligned (like cost below) */}
                 {budgetEvents && budgetEvents.filter(e => e.cell_name === node.cell.name).length > 0 && (
                   <div
                     style={{
                       position: 'absolute',
-                      top: '-8px',
-                      right: '-8px',
-                      background: 'linear-gradient(135deg, #f59e0b, #f97316)',
-                      color: '#fff',
-                      fontSize: '10px',
-                      fontWeight: '700',
-                      padding: '3px 6px',
-                      borderRadius: '4px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                      top: '-32px',
+                      right: '0',
+                      fontSize: '11px',
                       fontFamily: 'IBM Plex Mono, monospace',
-                      zIndex: 200,
+                      fontWeight: '700',
+                      color: '#fbbf24',
+                      whiteSpace: 'nowrap',
+                      textShadow: '0 0 6px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 1)',
                       cursor: 'help',
                     }}
                     title={`Budget enforced: ${budgetEvents.filter(e => e.cell_name === node.cell.name).map(e => `-${((e.budget_tokens_pruned || 0) / 1000).toFixed(1)}K tokens`).join(', ')}`}

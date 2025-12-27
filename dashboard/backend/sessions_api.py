@@ -37,12 +37,16 @@ sessions_bp = Blueprint('sessions', __name__)
 
 def _enrich_sessions_with_metrics(sessions: list) -> list:
     """
-    Enrich session list with aggregated metrics from unified_logs.
+    Enrich session list with analytics metrics from cascade_analytics and cell_analytics tables.
 
     Adds:
-    - total_cost: Sum of all costs for the session
-    - message_count: Count of messages in the session
-    - input_data: Initial cascade inputs (from metadata)
+    - total_cost, total_duration_ms, message_count (from cascade_analytics)
+    - cost_z_score, duration_z_score, is_cost_outlier, is_duration_outlier
+    - cluster_avg_cost, cluster_avg_duration, cluster_run_count
+    - context_cost_pct, total_context_cost_estimated
+    - input_category, input_char_count
+    - bottleneck_cell, bottleneck_cell_pct
+    - Legacy: cost_diff_pct, messages_diff_pct, duration_diff_pct (for backwards compatibility)
     """
     if not sessions:
         return sessions
@@ -54,35 +58,185 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
         # Build IN clause for session IDs
         session_ids_str = "', '".join(session_ids)
 
-        # First, get cascade-level averages for comparison
-        cascade_ids = list(set([s.cascade_id for s in sessions if s.cascade_id]))
-        cascade_ids_str = "', '".join(cascade_ids)
-
-        avg_query = f"""
+        # Query cascade_analytics (without correlated subqueries - ClickHouse doesn't support them well)
+        # This replaces the old unified_logs + manual aggregation approach (~100x faster)
+        analytics_query = f"""
             SELECT
-                ss.cascade_id,
-                AVG(metrics.total_cost) as avg_cost,
-                AVG(metrics.message_count) as avg_messages,
-                AVG(
-                    dateDiff('second',
-                        toDateTime(ss.started_at),
-                        toDateTime(ss.completed_at)
-                    )
-                ) as avg_duration
-            FROM session_state ss
-            LEFT JOIN (
+                ca.session_id,
+                ca.total_cost,
+                ca.total_duration_ms,
+                ca.message_count,
+                ca.input_category,
+                ca.input_char_count,
+                ca.cost_z_score,
+                ca.duration_z_score,
+                ca.is_cost_outlier,
+                ca.is_duration_outlier,
+                ca.cluster_avg_cost,
+                ca.cluster_avg_duration,
+                ca.cluster_run_count,
+                ca.context_cost_pct,
+                ca.total_context_cost_estimated,
+                ca.cells_with_context,
+                ca.genus_hash
+            FROM cascade_analytics ca
+            WHERE ca.session_id IN ('{session_ids_str}')
+        """
+
+        analytics_result = db.query(analytics_query)  # Returns list of dicts
+
+        # Separate query for bottleneck cells (avoid correlated subquery issues)
+        # Only report bottleneck if there are multiple cells (single-cell cascades aren't bottlenecks)
+        bottleneck_query = f"""
+            SELECT
+                session_id,
+                argMax(cell_name, cell_cost_pct) as bottleneck_cell,
+                max(cell_cost_pct) as bottleneck_cell_pct,
+                count(*) as cell_count
+            FROM cell_analytics
+            WHERE session_id IN ('{session_ids_str}')
+            GROUP BY session_id
+            HAVING cell_count > 1
+        """
+
+        bottleneck_result = db.query(bottleneck_query)  # Returns list of dicts
+
+        # Build bottleneck map
+        bottleneck_map = {}
+        for row in bottleneck_result:
+            sid = row.get('session_id')
+            if sid:
+                bottleneck_map[sid] = {
+                    'bottleneck_cell': row.get('bottleneck_cell'),
+                    'bottleneck_cell_pct': float(row.get('bottleneck_cell_pct', 0) or 0),
+                }
+
+        # Build metrics map
+        metrics_map = {}
+
+        # Initialize map for all sessions
+        for session in sessions:
+            metrics_map[session.session_id] = {
+                'total_cost': 0.0,
+                'total_duration_ms': 0,
+                'message_count': 0,
+                'input_data': None,
+                'output': None,
+                'genus_hash': None,
+                'input_category': None,
+                'input_char_count': 0,
+                'cost_z_score': 0.0,
+                'duration_z_score': 0.0,
+                'is_cost_outlier': False,
+                'is_duration_outlier': False,
+                'cluster_avg_cost': 0.0,
+                'cluster_avg_duration': 0.0,
+                'cluster_run_count': 0,
+                'context_cost_pct': 0.0,
+                'total_context_cost_estimated': 0.0,
+                'cells_with_context': 0,
+                'bottleneck_cell': None,
+                'bottleneck_cell_pct': 0.0,
+            }
+
+        # Populate with actual metrics from cascade_analytics
+        for row in analytics_result:
+            sid = row.get('session_id')
+            if sid in metrics_map:
+                metrics_map[sid].update({
+                    'total_cost': float(row.get('total_cost', 0) or 0),
+                    'total_duration_ms': int(row.get('total_duration_ms', 0) or 0),
+                    'message_count': int(row.get('message_count', 0) or 0),
+                    'input_category': row.get('input_category'),
+                    'input_char_count': int(row.get('input_char_count', 0) or 0),
+                    'cost_z_score': float(row.get('cost_z_score', 0) or 0),
+                    'duration_z_score': float(row.get('duration_z_score', 0) or 0),
+                    'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
+                    'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
+                    'cluster_avg_cost': float(row.get('cluster_avg_cost', 0) or 0),
+                    'cluster_avg_duration': float(row.get('cluster_avg_duration', 0) or 0),
+                    'cluster_run_count': int(row.get('cluster_run_count', 0) or 0),
+                    'context_cost_pct': float(row.get('context_cost_pct', 0) or 0),
+                    'total_context_cost_estimated': float(row.get('total_context_cost_estimated', 0) or 0),
+                    'cells_with_context': int(row.get('cells_with_context', 0) or 0),
+                    'genus_hash': row.get('genus_hash'),
+                })
+
+                # Merge bottleneck data
+                if sid in bottleneck_map:
+                    metrics_map[sid]['bottleneck_cell'] = bottleneck_map[sid]['bottleneck_cell']
+                    metrics_map[sid]['bottleneck_cell_pct'] = bottleneck_map[sid]['bottleneck_cell_pct']
+
+        # Get input_data and output from cascade_sessions table
+        # ALWAYS fetch this regardless of cascade_analytics presence
+        cascade_sessions_query = f"""
+            SELECT
+                session_id,
+                input_data,
+                LEFT(output, 300) as output_truncated
+            FROM cascade_sessions
+            WHERE session_id IN ('{session_ids_str}')
+        """
+
+        cascade_sessions_result = db.query(cascade_sessions_query)
+
+        import json
+        for row in cascade_sessions_result:
+            sid = row.get('session_id')
+
+            if sid in metrics_map:
+                # Process input_data
+                if row.get('input_data'):
+                    try:
+                        input_data = row['input_data']
+                        if isinstance(input_data, str):
+                            input_data = json.loads(input_data)
+                        metrics_map[sid]['input_data'] = input_data
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to parse input_data for {sid}: {e}")
+                        metrics_map[sid]['input_data'] = row['input_data']
+
+                # Process output
+                if row.get('output_truncated'):
+                    metrics_map[sid]['output'] = row['output_truncated']
+
+        # Fallback: For sessions not in cascade_analytics, fetch cost/message_count from unified_logs
+        sessions_without_analytics = [sid for sid in metrics_map.keys()
+                                      if metrics_map[sid]['total_cost'] == 0.0 and metrics_map[sid]['message_count'] == 0]
+
+        if sessions_without_analytics:
+            fallback_ids_str = "', '".join(sessions_without_analytics)
+            fallback_query = f"""
                 SELECT
                     session_id,
                     SUM(cost) as total_cost,
                     COUNT(*) as message_count
                 FROM unified_logs
+                WHERE session_id IN ('{fallback_ids_str}')
                 GROUP BY session_id
-            ) metrics ON ss.session_id = metrics.session_id
-            WHERE ss.cascade_id IN ('{cascade_ids_str}')
-                AND ss.status IN ('completed', 'error', 'cancelled')
-                AND ss.started_at IS NOT NULL
-                AND ss.completed_at IS NOT NULL
-            GROUP BY ss.cascade_id
+            """
+            fallback_result = db.query(fallback_query)
+
+            for row in fallback_result:
+                sid = row.get('session_id')
+                if sid in metrics_map:
+                    metrics_map[sid]['total_cost'] = float(row.get('total_cost', 0) or 0)
+                    metrics_map[sid]['message_count'] = int(row.get('message_count', 0) or 0)
+
+        # Calculate legacy percent differences for backwards compatibility (hidden by default in UI)
+        cascade_ids = list(set([s.cascade_id for s in sessions if s.cascade_id]))
+        cascade_ids_str = "', '".join(cascade_ids)
+
+        # Legacy cascade averages (for backwards compatibility with old diff% columns)
+        avg_query = f"""
+            SELECT
+                cascade_id,
+                AVG(total_cost) as avg_cost,
+                AVG(message_count) as avg_messages,
+                AVG(total_duration_ms / 1000.0) as avg_duration
+            FROM cascade_analytics
+            WHERE cascade_id IN ('{cascade_ids_str}')
+            GROUP BY cascade_id
         """
 
         avg_result = db.query(avg_query)
@@ -97,101 +251,16 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 'avg_duration': float(row.get('avg_duration', 0) or 0),
             }
 
-        # Query for aggregated metrics from unified_logs
-        query = f"""
-            SELECT
-                ul.session_id,
-                SUM(ul.cost) as total_cost,
-                COUNT(*) as message_count
-            FROM unified_logs ul
-            WHERE ul.session_id IN ('{session_ids_str}')
-            GROUP BY ul.session_id
-        """
-
-        result = db.query(query)
-
-        # Build lookup map with default values for ALL sessions
-        metrics_map = {}
-
-        # Initialize map for all sessions
-        for session in sessions:
-            metrics_map[session.session_id] = {
-                'total_cost': 0.0,
-                'message_count': 0,
-                'input_data': None,
-                'output': None,
-                'genus_hash': None,
-            }
-
-        # Populate with actual metrics from unified_logs
-        for row in result:
-            sid = row.get('session_id')
-            if sid in metrics_map:
-                metrics_map[sid]['total_cost'] = float(row.get('total_cost', 0) or 0)
-                metrics_map[sid]['message_count'] = int(row.get('message_count', 0) or 0)
-
-        # Get input_data, output, and genus_hash from cascade_sessions table
-        input_query = f"""
-            SELECT
-                session_id,
-                input_data,
-                LEFT(output, 300) as output_truncated,
-                genus_hash
-            FROM cascade_sessions
-            WHERE session_id IN ('{session_ids_str}')
-        """
-
-        input_result = db.query(input_query)
-
-        import json
-        input_count = 0
-        for row in input_result:
-            sid = row.get('session_id')
-            input_count += 1
-            if sid in metrics_map:
-                # Process input_data
-                if row.get('input_data'):
-                    try:
-                        # Parse JSON if it's a string
-                        input_data = row['input_data']
-                        if isinstance(input_data, str):
-                            input_data = json.loads(input_data)
-                        metrics_map[sid]['input_data'] = input_data
-                        #print(f"[DEBUG] Added input_data for {sid}: {input_data}")
-                    except Exception as e:
-                        print(f"[DEBUG] Failed to parse input_data for {sid}: {e}")
-                        # If parsing fails, store raw string
-                        metrics_map[sid]['input_data'] = row['input_data']
-
-                # Process output (already truncated to 300 chars by SQL)
-                if row.get('output_truncated'):
-                    metrics_map[sid]['output'] = row['output_truncated']
-
-                # Process genus_hash
-                if row.get('genus_hash'):
-                    metrics_map[sid]['genus_hash'] = row['genus_hash']
-            else:
-                if sid not in metrics_map:
-                    print(f"[DEBUG] Session {sid} not in metrics_map")
-                elif not row.get('input_data'):
-                    print(f"[DEBUG] Session {sid} has no input_data")
-
-        print(f"[DEBUG] Processed {input_count} input_data rows from cascade_sessions")
-
-        # Attach metrics to session objects with percent differences
+        # Attach metrics to session objects
         enriched = []
         for session in sessions:
             session_dict = _session_to_dict(session, is_zombie=False, can_resume=False)
             metrics = metrics_map.get(session.session_id, {})
 
-            # Basic metrics
-            session_dict['total_cost'] = metrics.get('total_cost', 0.0)
-            session_dict['message_count'] = metrics.get('message_count', 0)
-            session_dict['input_data'] = metrics.get('input_data')
-            session_dict['output'] = metrics.get('output')
-            session_dict['genus_hash'] = metrics.get('genus_hash')
+            # Add all new analytics metrics
+            session_dict.update(metrics)
 
-            # Calculate percent differences from cascade averages
+            # Calculate legacy percent differences (for hidden columns)
             cascade_avg = cascade_avgs.get(session.cascade_id, {})
 
             # Cost difference
@@ -212,19 +281,8 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
 
             # Duration difference
             avg_duration = cascade_avg.get('avg_duration', 0)
-            if session.started_at and session.completed_at and avg_duration > 0:
-                # Calculate session duration in seconds
-                from datetime import datetime
-                if isinstance(session.started_at, str):
-                    started = datetime.fromisoformat(session.started_at.replace('Z', '+00:00'))
-                else:
-                    started = session.started_at
-                if isinstance(session.completed_at, str):
-                    completed = datetime.fromisoformat(session.completed_at.replace('Z', '+00:00'))
-                else:
-                    completed = session.completed_at
-
-                duration_seconds = (completed - started).total_seconds()
+            if session_dict['total_duration_ms'] > 0 and avg_duration > 0:
+                duration_seconds = session_dict['total_duration_ms'] / 1000.0
                 duration_diff = ((duration_seconds - avg_duration) / avg_duration) * 100
                 session_dict['duration_diff_pct'] = round(duration_diff, 1)
             else:
@@ -517,6 +575,102 @@ def list_blocked_sessions():
         return jsonify({
             'sessions': result,
             'total': len(result)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@sessions_bp.route('/api/console/kpis', methods=['GET'])
+def get_console_kpis():
+    """
+    System-wide KPIs for console header panel.
+
+    Returns:
+        24h cost + trend, active outliers, avg context%, top bottleneck cell
+    """
+    try:
+        db = get_db()
+
+        # 24h cost + trend
+        cost_24h_query = """
+            SELECT
+                SUM(total_cost) as total,
+                AVG(total_cost) as avg_cost
+            FROM cascade_analytics
+            WHERE created_at > now() - INTERVAL 1 DAY
+        """
+        cost_24h_result = db.query(cost_24h_query)  # Returns list of dicts
+        cost_24h = cost_24h_result[0] if len(cost_24h_result) > 0 else {'total': 0, 'avg_cost': 0}
+
+        cost_prev_24h_query = """
+            SELECT AVG(total_cost) as avg_cost
+            FROM cascade_analytics
+            WHERE created_at BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+        """
+        cost_prev_24h_result = db.query(cost_prev_24h_query)
+        cost_prev_24h = cost_prev_24h_result[0] if len(cost_prev_24h_result) > 0 else {'avg_cost': 0}
+
+        cost_trend_pct = ((cost_24h['avg_cost'] - cost_prev_24h['avg_cost']) / cost_prev_24h['avg_cost'] * 100) if cost_prev_24h['avg_cost'] > 0 else 0
+
+        # Active outliers
+        outlier_query = """
+            SELECT COUNT(*) as count
+            FROM cascade_analytics
+            WHERE is_cost_outlier = true
+                AND created_at > now() - INTERVAL 1 DAY
+        """
+        outlier_result = db.query(outlier_query)
+        outlier_count = int(outlier_result[0]['count']) if len(outlier_result) > 0 else 0
+
+        # Avg context% (weighted average, not average of percentages)
+        context_stats_query = """
+            SELECT
+                SUM(total_context_cost_estimated) as total_context,
+                SUM(total_cost) as total_cost
+            FROM cascade_analytics
+            WHERE created_at > now() - INTERVAL 1 DAY
+        """
+        context_stats_result = db.query(context_stats_query)
+        context_stats = context_stats_result[0] if len(context_stats_result) > 0 else {'total_context': 0, 'total_cost': 0}
+
+        context_prev_query = """
+            SELECT
+                SUM(total_context_cost_estimated) as total_context,
+                SUM(total_cost) as total_cost
+            FROM cascade_analytics
+            WHERE created_at BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+        """
+        context_prev_result = db.query(context_prev_query)
+        context_prev = context_prev_result[0] if len(context_prev_result) > 0 else {'total_context': 0, 'total_cost': 0}
+
+        avg_context_pct = (context_stats['total_context'] / context_stats['total_cost'] * 100) if context_stats['total_cost'] > 0 else 0
+        prev_context_pct = (context_prev['total_context'] / context_prev['total_cost'] * 100) if context_prev['total_cost'] > 0 else 0
+        context_trend_pct = avg_context_pct - prev_context_pct
+
+        # Top bottleneck cell
+        bottleneck_query = """
+            SELECT
+                cell_name,
+                AVG(cell_cost_pct) as avg_pct
+            FROM cell_analytics
+            WHERE created_at > now() - INTERVAL 1 DAY
+            GROUP BY cell_name
+            ORDER BY avg_pct DESC
+            LIMIT 1
+        """
+        bottleneck_result = db.query(bottleneck_query)
+
+        return jsonify({
+            'total_cost_24h': float(cost_24h['total']) if cost_24h['total'] is not None else 0.0,
+            'cost_trend': f"{'↑' if cost_trend_pct > 0 else '↓'} {abs(cost_trend_pct):.1f}%",
+            'outlier_count': outlier_count,
+            'avg_context_pct': float(avg_context_pct),
+            'context_trend': f"{'↑' if context_trend_pct > 0 else '↓'} {abs(context_trend_pct):.1f}pp",  # pp = percentage points
+            'top_bottleneck_cell': bottleneck_result[0]['cell_name'] if len(bottleneck_result) > 0 else 'N/A',
+            'top_bottleneck_pct': float(bottleneck_result[0]['avg_pct']) if len(bottleneck_result) > 0 else 0.0
         })
 
     except Exception as e:

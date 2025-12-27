@@ -1,47 +1,53 @@
 .budget-status-bar {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 12px;
+  margin: 0 0 8px 0;
   font-family: 'IBM Plex Mono', monospace;
+  width: 100%;
+  box-sizing: border-box;
+  border-bottom: 1px solid #1a1628;
 }
 
 .budget-status-bar.budget-green {
-  border-left: 3px solid #34d399;
+  /* No special border styling - use text color instead */
 }
 
 .budget-status-bar.budget-yellow {
-  border-left: 3px solid #fbbf24;
+  /* No special border styling - use text color instead */
 }
 
 .budget-status-bar.budget-red {
-  border-left: 3px solid #f87171;
+  /* No special border styling - use text color instead */
 }
 
 .budget-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: #a0a0a0;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
 }
 
 .budget-header-main {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
 }
 
 .budget-title {
   font-weight: 600;
-  color: #e0e0e0;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .budget-percentage {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
 }
 
 .budget-green .budget-percentage {
@@ -60,20 +66,22 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 3px;
+  font-size: 10px;
   color: #fbbf24;
+  font-weight: 500;
 }
 
 .budget-progress-bar {
-  height: 6px;
-  background: #2a2a2a;
-  border-radius: 3px;
+  height: 4px;
+  background: #0f0a15;
+  border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  border: 1px solid #1a1628;
 }
 
 .budget-progress-fill {
@@ -96,24 +104,27 @@
 
 .budget-details {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
-  font-size: 11px;
-  color: #707070;
+  gap: 10px;
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
 }
 
 .budget-detail-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .budget-detail-label {
-  color: #909090;
+  color: #64748b;
+  font-weight: 400;
 }
 
 .budget-detail-value {
-  color: #e0e0e0;
+  color: #94a3b8;
   font-weight: 500;
 }
 

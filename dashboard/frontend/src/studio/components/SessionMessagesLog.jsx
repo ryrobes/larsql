@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react';
 import Split from 'react-split';
 import { Modal } from '../../components';
 import MessageContentViewer from './MessageContentViewer';
+import { BudgetStatusBar } from './BudgetStatusBar';
 import './SessionMessagesLog.css';
 
 // Register AG Grid modules
@@ -626,6 +627,9 @@ const SessionMessagesLog = ({
     <div className={`session-messages-log ${compact ? 'sml-compact' : ''} ${className}`}>
       {/* Main table area */}
       <div className={`sml-table-area ${!showFilters ? 'sml-table-area-full' : ''}`}>
+        {/* Budget Status Bar - at top of content area */}
+        <BudgetStatusBar sessionId={currentSessionId} />
+
         {/* Stats bar */}
         <div className="sml-stats-bar">
           <div className="sml-stats-left">

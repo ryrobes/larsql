@@ -4,11 +4,125 @@ import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-communi
 import { Icon } from '@iconify/react';
 import { Button, useToast } from '../../components';
 import CostTimelineChart from '../../components/CostTimelineChart';
+import KPICard from '../receipts/components/KPICard';
 import useNavigationStore from '../../stores/navigationStore';
 import './ConsoleView.css';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Cell renderer components for AG Grid
+const InputBadgeRenderer = (props) => {
+  const category = props.value;
+  const badges = {
+    tiny: { label: 'T', color: '#34d399' },
+    small: { label: 'S', color: '#60a5fa' },
+    medium: { label: 'M', color: '#94a3b8' },
+    large: { label: 'L', color: '#fbbf24' },
+    huge: { label: 'H', color: '#f87171' }
+  };
+
+  // Handle empty/null category
+  if (!category) {
+    return <span style={{ color: '#475569', fontSize: '11px' }}>-</span>;
+  }
+
+  const badge = badges[category] || { label: '?', color: '#94a3b8' };
+
+  return (
+    <span style={{
+      background: badge.color,
+      color: '#0f172a',
+      padding: '2px 6px',
+      borderRadius: '3px',
+      fontSize: '11px',
+      fontWeight: '600'
+    }}>
+      {badge.label}
+    </span>
+  );
+};
+
+const CostRenderer = (props) => {
+  const cost = props.value || 0;
+  const zScore = props.data.cost_z_score || 0;
+  const isOutlier = props.data.is_cost_outlier;
+
+  const color = isOutlier ? '#f87171' :
+                Math.abs(zScore) > 1 ? '#fbbf24' :
+                '#34d399';
+
+  const zDisplay = Math.abs(zScore) > 1 ? `(${zScore > 0 ? '+' : ''}${zScore.toFixed(1)}σ)` : '';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>${cost.toFixed(4)}</div>
+      {zDisplay && <div style={{ fontSize: '10px', marginTop: '2px' }}>{zDisplay}</div>}
+    </div>
+  );
+};
+
+const ContextRenderer = (props) => {
+  const pct = props.value || 0;
+  const contextCost = props.data.total_context_cost_estimated || 0;
+  const totalCost = props.data.total_cost || 0;
+  const newCost = totalCost - contextCost;
+
+  const color = pct > 60 ? '#fbbf24' : pct < 30 ? '#34d399' : '#94a3b8';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{pct.toFixed(0)}%</div>
+      {pct > 0 && (
+        <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+          ctx: ${contextCost.toFixed(3)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BottleneckRenderer = (props) => {
+  const cell = props.value;
+  const pct = props.data.bottleneck_cell_pct || 0;
+
+  if (!cell || pct < 40) {
+    return <span style={{ color: '#475569' }}>-</span>;
+  }
+
+  const color = pct > 70 ? '#f87171' : '#fbbf24';
+
+  return (
+    <div style={{ color, fontWeight: '500', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+      <div>{cell}</div>
+      <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+        {pct.toFixed(0)}% of cascade
+      </div>
+    </div>
+  );
+};
+
+const DurationRenderer = (props) => {
+  const ms = props.value || 0;
+  const seconds = (ms / 1000).toFixed(1);
+  const clusterAvg = props.data.cluster_avg_duration || 0;
+  const isOutlier = props.data.is_duration_outlier;
+
+  const color = isOutlier ? '#f87171' : '#94a3b8';
+
+  const multiplier = clusterAvg > 0 ? (ms / clusterAvg).toFixed(1) : null;
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{seconds}s</div>
+      {isOutlier && multiplier && (
+        <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+          {multiplier}x slower
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Dark theme for AG Grid matching Studio
 const darkTheme = themeQuartz.withParams({
@@ -38,6 +152,7 @@ const darkTheme = themeQuartz.withParams({
  */
 const ConsoleView = () => {
   const [sessions, setSessions] = useState([]);
+  const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridHeight, setGridHeight] = useState(600); // Dynamic grid height
@@ -64,7 +179,7 @@ const ConsoleView = () => {
         return;
       }
 
-      // Transform sessions to include duration and new metrics
+      // Transform sessions to include duration and analytics metrics
       const rows = (data.sessions || []).map(session => ({
         session_id: session.session_id,
         cascade_id: session.cascade_id,
@@ -79,12 +194,28 @@ const ConsoleView = () => {
           ? formatDuration(new Date(session.completed_at) - new Date(session.started_at))
           : session.status === 'RUNNING' ? 'Running...' : '-',
         total_cost: session.total_cost || 0,
+        total_duration_ms: session.total_duration_ms || 0,
         message_count: session.message_count || 0,
         input_data: session.input_data,
         output: session.output || null,
+        // Legacy percent diff columns (hidden by default)
         cost_diff_pct: session.cost_diff_pct,
         messages_diff_pct: session.messages_diff_pct,
         duration_diff_pct: session.duration_diff_pct,
+        // New analytics metrics
+        input_category: session.input_category,
+        input_char_count: session.input_char_count || 0,
+        cost_z_score: session.cost_z_score || 0,
+        duration_z_score: session.duration_z_score || 0,
+        is_cost_outlier: session.is_cost_outlier || false,
+        is_duration_outlier: session.is_duration_outlier || false,
+        cluster_avg_cost: session.cluster_avg_cost || 0,
+        cluster_avg_duration: session.cluster_avg_duration || 0,
+        cluster_run_count: session.cluster_run_count || 0,
+        context_cost_pct: session.context_cost_pct || 0,
+        total_context_cost_estimated: session.total_context_cost_estimated || 0,
+        bottleneck_cell: session.bottleneck_cell,
+        bottleneck_cell_pct: session.bottleneck_cell_pct || 0,
       }));
 
       // Only update state if data actually changed (prevent unnecessary re-renders)
@@ -114,10 +245,31 @@ const ConsoleView = () => {
     }
   };
 
+  // Fetch KPIs from console/kpis API
+  const fetchKpis = async () => {
+    try {
+      const res = await fetch('http://localhost:5001/api/console/kpis');
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('[Console] KPI fetch error:', data.error);
+        return;
+      }
+
+      setKpis(data);
+    } catch (err) {
+      console.error('[Console] KPI fetch failed:', err.message);
+    }
+  };
+
   // Poll every 10 seconds (slower to reduce flicker, data doesn't change that fast)
   useEffect(() => {
     fetchSessions();
-    const interval = setInterval(fetchSessions, 10000);
+    fetchKpis();
+    const interval = setInterval(() => {
+      fetchSessions();
+      fetchKpis();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -223,100 +375,164 @@ const ConsoleView = () => {
       headerName: 'Output',
       flex: 2,
       minWidth: 180,
+      wrapText: true,
+      autoHeight: true,
       valueFormatter: (params) => {
         if (!params.value) return '-';
-        // Truncate to 200 chars for display (already truncated to 300 from backend)
+        // Truncate to 150 chars for wrapping display
         const output = String(params.value);
-        return output.length > 200 ? output.slice(0, 200) + '...' : output;
+        return output.length > 150 ? output.slice(0, 150) + '...' : output;
       },
       tooltipValueGetter: (params) => {
         if (!params.value) return null;
         // Show full truncated output (300 chars) in tooltip
         return String(params.value);
       },
-      cellStyle: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#94a3b8' },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px',
+        color: '#94a3b8',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '8px',
+        paddingBottom: '8px'
+      },
     },
+    // INPUT SIZE BADGE
+    {
+      field: 'input_category',
+      headerName: 'Input',
+      headerTooltip: 'Input size category for apples-to-apples comparison',
+      width: 80,
+      cellRenderer: InputBadgeRenderer,
+      tooltipValueGetter: (params) => {
+        const cat = params.value;
+        const charCount = params.data.input_char_count || 0;
+        if (!cat) {
+          return charCount > 0 ? `Input size: ${charCount} chars (no category)` : 'No input data';
+        }
+        return `Input size: ${cat} (${charCount} chars)`;
+      },
+    },
+    // COST WITH Z-SCORE
     {
       field: 'total_cost',
       headerName: 'Cost',
-      width: 110,
-      valueFormatter: (params) => {
+      headerTooltip: 'Statistical anomaly score vs similar input size runs',
+      width: 130,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: CostRenderer,
+      tooltipValueGetter: (params) => {
         const cost = params.value || 0;
-        return cost > 0 ? `$${cost.toFixed(6)}` : '-';
+        const clusterAvg = params.data.cluster_avg_cost || 0;
+        const clusterSize = params.data.cluster_run_count || 0;
+        const zScore = params.data.cost_z_score || 0;
+        return `Cost: $${cost.toFixed(4)} | Cluster avg: $${clusterAvg.toFixed(4)} (n=${clusterSize} similar runs) | Z-score: ${zScore.toFixed(1)}σ`;
       },
-      cellStyle: { color: '#34d399', fontFamily: 'var(--font-mono)' },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
     },
+    // CONTEXT %
     {
-      field: 'cost_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
+      field: 'context_cost_pct',
+      headerName: 'Context%',
+      headerTooltip: 'Percentage of cost from context injection vs new tokens',
+      width: 100,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: ContextRenderer,
       tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average cost`;
+        const pct = params.value || 0;
+        const contextCost = params.data.total_context_cost_estimated || 0;
+        const totalCost = params.data.total_cost || 0;
+        const newCost = totalCost - contextCost;
+        return `Context cost: $${contextCost.toFixed(4)} (${pct.toFixed(0)}%) | New tokens: $${newCost.toFixed(4)}`;
+      },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
       },
     },
+    // BOTTLENECK CELL
     {
-      field: 'message_count',
-      headerName: 'Messages',
-      width: 95,
-      valueFormatter: (params) => {
-        const count = params.value || 0;
-        return count > 0 ? count.toString() : '-';
-      },
-      cellStyle: { fontFamily: 'var(--font-mono)' },
-    },
-    {
-      field: 'messages_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
+      field: 'bottleneck_cell',
+      headerName: 'Bottleneck',
+      headerTooltip: 'Cell that consumed the most cascade cost/time',
+      width: 140,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: BottleneckRenderer,
       tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average messages`;
+        const cell = params.value;
+        const pct = params.data.bottleneck_cell_pct || 0;
+        return cell ? `Cell '${cell}' consumed ${pct.toFixed(0)}% of cascade cost` : 'No dominant bottleneck';
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
       },
     },
+    // DURATION WITH MULTIPLIER
+    {
+      field: 'total_duration_ms',
+      headerName: 'Duration',
+      headerTooltip: 'Execution time compared to similar input size runs',
+      width: 120,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: DurationRenderer,
+      tooltipValueGetter: (params) => {
+        const ms = params.value || 0;
+        const clusterAvg = params.data.cluster_avg_duration || 0;
+        const clusterSize = params.data.cluster_run_count || 0;
+        const multiplier = clusterAvg > 0 ? (ms / clusterAvg).toFixed(1) : 0;
+        return `Duration: ${(ms/1000).toFixed(1)}s | Cluster avg: ${(clusterAvg/1000).toFixed(1)}s (n=${clusterSize} similar runs) | ${multiplier}x ${ms > clusterAvg ? 'slower' : 'faster'}`;
+      },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    // LEGACY COLUMNS (HIDDEN)
+    { field: 'cost_diff_pct', hide: true },
+    { field: 'messages_diff_pct', hide: true },
+    { field: 'duration_diff_pct', hide: true },
+    { field: 'message_count', hide: true }, // Replaced by Context%
     {
       field: 'input_data',
       headerName: 'Inputs',
       flex: 2,
       minWidth: 150,
+      wrapText: true,
+      autoHeight: true,
       valueFormatter: (params) => {
         if (!params.value) return '-';
         try {
           const inputs = typeof params.value === 'string' ? JSON.parse(params.value) : params.value;
           if (typeof inputs === 'object' && inputs !== null) {
-            // Show first few keys
-            const keys = Object.keys(inputs);
-            if (keys.length === 0) return '{}';
-            if (keys.length <= 2) {
-              return keys.map(k => `${k}: ${JSON.stringify(inputs[k])}`).join(', ');
-            }
-            return `${keys.length} inputs`;
+            const str = JSON.stringify(inputs, null, 2);
+            // Truncate to 150 chars (same as output)
+            return str.length > 150 ? str.slice(0, 150) + '...' : str;
           }
-          return JSON.stringify(inputs).slice(0, 50);
+          const str = JSON.stringify(inputs);
+          return str.length > 150 ? str.slice(0, 150) + '...' : str;
         } catch {
-          return String(params.value).slice(0, 50);
+          const str = String(params.value);
+          return str.length > 150 ? str.slice(0, 150) + '...' : str;
         }
       },
       tooltipValueGetter: (params) => {
@@ -328,32 +544,13 @@ const ConsoleView = () => {
           return String(params.value);
         }
       },
-      cellStyle: { fontFamily: 'var(--font-mono)', fontSize: '12px' },
-    },
-    {
-      field: 'duration',
-      headerName: 'Duration',
-      width: 95,
-    },
-    {
-      field: 'duration_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        // For duration: faster is better (negative is good)
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
-      tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average duration`;
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '8px',
+        paddingBottom: '8px'
       },
     },
     {
@@ -434,6 +631,40 @@ const ConsoleView = () => {
           System analytics and recent activity
         </div>
       </div>
+
+      {/* KPI Header Panel */}
+      {kpis && (
+        <div className="console-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          <KPICard
+            icon="mdi:cash"
+            title="24h Cost"
+            value={`$${kpis.total_cost_24h.toFixed(2)}`}
+            subtitle={kpis.cost_trend}
+            color="#34d399"
+          />
+          <KPICard
+            icon="mdi:alert-circle"
+            title="Active Outliers"
+            value={kpis.outlier_count}
+            subtitle="in last 24h"
+            color={kpis.outlier_count > 0 ? '#f87171' : '#94a3b8'}
+          />
+          <KPICard
+            icon="mdi:percent"
+            title="Avg Context%"
+            value={`${kpis.avg_context_pct.toFixed(0)}%`}
+            subtitle={kpis.context_trend}
+            color="#60a5fa"
+          />
+          <KPICard
+            icon="mdi:target"
+            title="Top Bottleneck"
+            value={kpis.top_bottleneck_cell}
+            subtitle={`${kpis.top_bottleneck_pct.toFixed(0)}% avg`}
+            color="#fbbf24"
+          />
+        </div>
+      )}
 
       {/* Cost Chart Section */}
       <div className="console-section">

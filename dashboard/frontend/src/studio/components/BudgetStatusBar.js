@@ -14,6 +14,16 @@ import './BudgetStatusBar.css';
 export function BudgetStatusBar({ sessionId }) {
   const { budgetConfig, events, totalEnforcements, totalPruned, currentUsage, loading, error } = useBudgetData(sessionId);
 
+  // Debug logging
+  console.log('[BudgetStatusBar]', {
+    sessionId,
+    budgetConfig,
+    totalEnforcements,
+    totalPruned,
+    loading,
+    error
+  });
+
   // Don't render anything if no sessionId
   if (!sessionId) {
     return null;

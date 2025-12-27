@@ -23,6 +23,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredModel, setHoveredModel] = useState(null);
+  const [granularity, setGranularity] = useState('day');  // 'hour', 'day', 'week', 'month'
 
   // Stable string representation of cascadeIds to avoid infinite re-renders
   const cascadeIdsKey = cascadeIds.join(',');
@@ -42,6 +43,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
       }
 
       params.append('limit', '14');
+      params.append('granularity', granularity);
 
       const res = await fetch(`http://localhost:5001/api/analytics/cost-timeline?${params}`);
       const result = await res.json();
@@ -61,7 +63,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
     };
 
     fetchCostTimeline();
-  }, [cascadeFilter, cascadeIdsKey]);
+  }, [cascadeFilter, cascadeIdsKey, granularity]);
 
   // Cyberpunk color palette - cyan, purple, pink neon
   const colorPalette = useMemo(() => ({
@@ -138,11 +140,22 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
     return value.toString();
   };
 
-  // Format time bucket
+  // Format time bucket - convert UTC to local timezone
   const formatTimeBucket = (bucket) => {
     if (!data) return bucket;
     const bucketType = data.bucket_type;
-    const date = new Date(bucket);
+
+    // Parse the timestamp correctly based on format
+    let date;
+    if (bucket.includes('T')) {
+      // ISO format with time (e.g., "2025-12-25T10:00:00Z")
+      date = new Date(bucket);
+    } else {
+      // Date-only format (e.g., "2025-12-25")
+      // Parse as local date to avoid timezone shifts
+      const parts = bucket.split('-');
+      date = new Date(parts[0], parts[1] - 1, parts[2]);
+    }
 
     if (bucketType === 'hour') {
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -281,11 +294,32 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
       <div className="analytics-header">
         <div className="header-primary">
           <h3 className="analytics-title">Cost Analytics</h3>
-          <span className="analytics-period">
-            {data.bucket_type === 'hour' ? 'Hourly' :
-             data.bucket_type === 'day' ? 'Daily' :
-             data.bucket_type === 'week' ? 'Weekly' : 'Monthly'}
-          </span>
+          <div className="granularity-toggle">
+            <button
+              className={`granularity-btn ${granularity === 'hour' ? 'active' : ''}`}
+              onClick={() => setGranularity('hour')}
+            >
+              Hourly
+            </button>
+            <button
+              className={`granularity-btn ${granularity === 'day' ? 'active' : ''}`}
+              onClick={() => setGranularity('day')}
+            >
+              Daily
+            </button>
+            <button
+              className={`granularity-btn ${granularity === 'week' ? 'active' : ''}`}
+              onClick={() => setGranularity('week')}
+            >
+              Weekly
+            </button>
+            <button
+              className={`granularity-btn ${granularity === 'month' ? 'active' : ''}`}
+              onClick={() => setGranularity('month')}
+            >
+              Monthly
+            </button>
+          </div>
         </div>
         <div className="header-stats">
           <div className="header-stat">
