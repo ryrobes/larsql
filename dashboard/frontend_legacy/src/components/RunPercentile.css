@@ -1,0 +1,96 @@
+.run-percentile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  background: transparent;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.percentile-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 11px;
+  color: #8899AA;
+  margin-bottom: 0.25rem;
+}
+
+.percentile-header svg {
+  opacity: 0.7;
+}
+
+.percentile-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.percentile-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 10px;
+  color: #8899AA;
+  min-width: 40px;
+}
+
+.percentile-label svg {
+  opacity: 0.6;
+}
+
+.percentile-bar-container {
+  flex: 1;
+  height: 8px;
+}
+
+.percentile-bar-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    rgba(94, 234, 212, 0.15) 0%,
+    rgba(94, 234, 212, 0.15) 25%,
+    rgba(90, 141, 196, 0.15) 25%,
+    rgba(90, 141, 196, 0.15) 75%,
+    rgba(248, 113, 113, 0.15) 75%,
+    rgba(248, 113, 113, 0.15) 100%
+  );
+  border-radius: 4px;
+}
+
+.percentile-bar-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+  transition: left 0.3s ease;
+}
+
+.percentile-value {
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
+}
+
+.percentile-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #556677;
+  margin-top: 0.25rem;
+  padding: 0 2px;
+}
+
+.legend-low {
+  color: #5EEAD4;
+}
+
+.legend-high {
+  color: #f87171;
+}

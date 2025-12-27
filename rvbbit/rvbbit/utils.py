@@ -11,27 +11,32 @@ import hashlib
 
 def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
-    Compute a deterministic hash ("species hash") for a phase configuration.
+    Compute a deterministic hash ("species hash") for a cell configuration.
 
-    The species hash captures the "DNA" of a prompt - the template, config,
-    and input parameters that define the effective prompt sent to the model.
-    This allows comparing prompts across runs that use the same template AND inputs.
+    The species hash captures the "DNA" of a cell execution - the template, config,
+    and input parameters that define the effective prompt/code sent to the model/runtime.
+    This allows comparing cell executions across runs that use the same template AND inputs.
+
+    Updated to handle BOTH LLM cells (instructions-based) and deterministic cells (tool-based).
 
     Species identity includes:
-    - instructions: The Jinja2 template (pre-rendering)
-    - input_data: Template parameters that affect the rendered prompt
-    - soundings: Full config (factor, evaluator_instructions, mutations, reforge)
+    - instructions (LLM cells) OR tool+code (deterministic cells)
+    - input_data: Template parameters that affect the rendered prompt/code
+    - candidates: Full config (factor, evaluator_instructions, mutations, reforge)
     - rules: max_turns, loop_until, etc.
+    - output_schema, wards: Validation and output requirements
 
     Species identity EXCLUDES (these are filterable attributes):
     - model: Allows "which model wins with this template?" analysis
+    - cascade_id: Allows reusing cells across cascades
+    - timestamps, session_id: Not part of identity
 
     Args:
-        phase_config: Dict from CellConfig.model_dump() or phase JSON
+        phase_config: Dict from CellConfig.model_dump() or cell JSON
         input_data: Input parameters that get rendered into the template
 
     Returns:
-        16-character hex hash, or None if phase_config is None/empty
+        16-character hex hash, or "unknown_species" if phase_config is invalid
 
     Example:
         >>> config = {"instructions": "Write a poem about {{topic}}", "candidates": {"factor": 3}}
@@ -39,36 +44,167 @@ def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Opt
         'a1b2c3d4e5f6g7h8'
     """
     if not phase_config:
-        return None
+        return "unknown_species"
 
-    # Extract the DNA-defining fields (order matters for deterministic hash)
-    spec_parts = {
-        # The template itself - the core DNA
-        'instructions': phase_config.get('instructions', ''),
+    # Determine if this is a deterministic cell (tool-based) or LLM cell (instructions-based)
+    is_deterministic = bool(phase_config.get('tool'))
 
-        # Input data - template parameters that affect rendered prompt
-        # Include this because different inputs = different effective prompts
-        'input_data': input_data or {},
+    if is_deterministic:
+        # For deterministic cells (sql_data, python_data, js_data, etc.)
+        # Hash the tool name and its inputs (code, query, etc.)
+        spec_parts = {
+            'tool': phase_config.get('tool'),
+            'inputs': phase_config.get('inputs', {}),  # Tool inputs (code, query, etc.)
+            'input_data': input_data or {},  # Cascade inputs
+            'rules': phase_config.get('rules'),
+            'for_each_row': phase_config.get('for_each_row'),  # SQL mapping config
+        }
+    else:
+        # For LLM cells (instructions-based)
+        spec_parts = {
+            # The template itself - the core DNA
+            'instructions': phase_config.get('instructions', ''),
 
-        # Soundings config affects prompt generation strategy
-        'candidates': phase_config.get('soundings'),
+            # Input data - template parameters that affect rendered prompt
+            'input_data': input_data or {},
 
-        # Rules affect execution behavior (max_turns, loop_until, etc.)
-        'rules': phase_config.get('rules'),
+            # Candidates config affects prompt generation strategy
+            'candidates': phase_config.get('candidates') or phase_config.get('soundings'),
 
-        # Output schema affects what we're asking for
-        'output_schema': phase_config.get('output_schema'),
+            # Rules affect execution behavior
+            'rules': phase_config.get('rules'),
 
-        # Wards (validators) affect the evolution pressure
-        'wards': phase_config.get('wards'),
-    }
+            # Output schema affects what we're asking for
+            'output_schema': phase_config.get('output_schema'),
+
+            # Wards (validators) affect the evolution pressure
+            'wards': phase_config.get('wards'),
+        }
 
     # Create deterministic JSON string (sorted keys, no whitespace)
-    # None values are preserved as null in JSON
     spec_json = json.dumps(spec_parts, sort_keys=True, separators=(',', ':'), default=str)
 
     # SHA256 truncated to 16 chars (64 bits) - collision-resistant for our use case
     return hashlib.sha256(spec_json.encode('utf-8')).hexdigest()[:16]
+
+
+def _compute_input_fingerprint(input_data: Optional[Dict[str, Any]]) -> str:
+    """
+    Compute structural fingerprint of inputs (keys + types + size buckets).
+
+    This allows clustering similar inputs by both structure AND size:
+    - {"product_name": "iPhone"} → fingerprint X (str_tiny)
+    - {"product_name": "Samsung Galaxy S24..."} → fingerprint Y (str_small)
+    - {"user_id": 123} → fingerprint Z (DIFFERENT structure)
+
+    Includes size buckets for strings and arrays to enable size-based clustering.
+
+    Returns:
+        JSON string representing input structure with size hints
+    """
+    if not input_data:
+        return "empty"
+
+    def get_structure(obj):
+        if isinstance(obj, dict):
+            return {k: get_structure(obj[k]) for k in sorted(obj.keys())}
+        elif isinstance(obj, list):
+            # Include array length bucket for clustering
+            length_bucket = (
+                'tiny' if len(obj) < 10 else
+                'small' if len(obj) < 100 else
+                'medium' if len(obj) < 1000 else
+                'large'
+            )
+            return ['array', length_bucket]
+        elif isinstance(obj, str):
+            # Include string length bucket for clustering different-sized inputs
+            length_bucket = (
+                'tiny' if len(obj) < 20 else
+                'small' if len(obj) < 100 else
+                'medium' if len(obj) < 500 else
+                'large'
+            )
+            return ['str', length_bucket]
+        elif isinstance(obj, (int, float)):
+            # Include number magnitude bucket
+            abs_val = abs(obj)
+            magnitude = (
+                'tiny' if abs_val < 10 else
+                'small' if abs_val < 1000 else
+                'medium' if abs_val < 1000000 else
+                'large'
+            )
+            return [type(obj).__name__, magnitude]
+        else:
+            return type(obj).__name__
+
+    structure = get_structure(input_data)
+    return json.dumps(structure, sort_keys=True)
+
+
+def compute_genus_hash(cascade_config: Dict[str, Any], input_data: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Compute cascade-level identity hash (genus_hash).
+
+    The genus hash captures the "species" of a CASCADE INVOCATION - the
+    structure and inputs that define comparable cascade runs.
+
+    Think of it as: species_hash is for a single cell, genus_hash is for the whole cascade.
+
+    Genus identity includes:
+    - cascade_id: Which cascade template
+    - cells: Array of cell names + types (structure)
+    - input_data: Top-level inputs passed to cascade
+    - input_fingerprint: Structure of inputs (for clustering similar invocations)
+
+    Genus identity EXCLUDES:
+    - Cell-level instructions (too granular - use species_hash for that)
+    - model (allows cross-model comparison)
+    - session_id, timestamps (not part of identity)
+
+    Args:
+        cascade_config: Dict with cascade_id and cells array
+        input_data: Top-level inputs passed to cascade
+
+    Returns:
+        16-character hex hash
+
+    Example:
+        >>> config = {"cascade_id": "extract_brand", "cells": [{"name": "extract", "tool": None}, ...]}
+        >>> compute_genus_hash(config, {"product_name": "iPhone 15"})
+        'f1e2d3c4b5a69788'
+    """
+    if not cascade_config:
+        return "unknown_genus"
+
+    # Extract genus-defining fields
+    genus_parts = {
+        # Cascade identity
+        'cascade_id': cascade_config.get('cascade_id', 'unknown'),
+
+        # Cascade structure (cell names + types, not full config)
+        'cells': [
+            {
+                'name': cell.get('name'),
+                'type': 'deterministic' if cell.get('tool') else 'llm',
+                'tool': cell.get('tool'),  # Include tool type for deterministic cells
+            }
+            for cell in cascade_config.get('cells', [])
+        ],
+
+        # Input structure (for clustering)
+        'input_fingerprint': _compute_input_fingerprint(input_data),
+
+        # Input data (for exact matching)
+        'input_data': input_data or {},
+    }
+
+    # Create deterministic JSON string
+    genus_json = json.dumps(genus_parts, sort_keys=True, separators=(',', ':'), default=str)
+
+    # SHA256 truncated to 16 chars
+    return hashlib.sha256(genus_json.encode('utf-8')).hexdigest()[:16]
 
 def encode_image_base64(image_path: str, max_dimension: int = 1280) -> str:
     """

@@ -1,0 +1,156 @@
+/* ============================================
+   CONSOLE VIEW
+   System analytics and session monitoring
+   ============================================ */
+
+.console-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--space-lg);
+  width: 100%;
+  height: 100vh;
+  overflow-y: auto;
+  background-color: var(--color-bg-primary);
+  box-sizing: border-box;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.console-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.console-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--color-text-primary);
+}
+
+.console-title h1 {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.console-subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  margin-left: 44px; /* Align with title text */
+}
+
+/* ============================================
+   SECTIONS (Flat Studio-style)
+   ============================================ */
+
+.console-section {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border-dim);
+  padding-bottom: 0;
+}
+
+.console-section:last-child {
+  border-bottom: none;
+  flex: 1; /* Sessions table takes remaining space */
+  padding-bottom: 0;
+}
+
+.console-chart-wrapper {
+  padding: 0 var(--space-lg);
+  height: 330px;
+  overflow: hidden;
+}
+
+.console-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 6px var(--space-lg);
+  background-color: transparent;
+  border: none;
+  margin-bottom: 6px;
+}
+
+.console-section-header h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.console-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   ERROR STATE
+   ============================================ */
+
+.console-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  color: var(--color-error);
+  background-color: rgba(255, 0, 110, 0.05);
+  border: 1px solid rgba(255, 0, 110, 0.2);
+  border-radius: var(--radius-md);
+  margin: var(--space-md);
+}
+
+/* ============================================
+   AG GRID CONTAINER
+   ============================================ */
+
+.console-grid-container {
+  width: 100%;
+  height: 500px;
+  background-color: var(--color-bg-primary);
+  overflow: hidden;
+  padding: 0 var(--space-lg);
+}
+
+/* Custom cell styles */
+.console-session-id {
+  font-family: var(--font-mono);
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-sm);
+}
+
+/* Clickable row styles */
+.console-grid-row-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.console-grid-row-clickable:hover {
+  background-color: rgba(0, 229, 255, 0.05) !important;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 1200px) {
+  .console-view {
+    padding: var(--space-lg);
+    gap: var(--space-lg);
+  }
+}

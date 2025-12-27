@@ -1,0 +1,461 @@
+/**
+ * Cost Analytics V2 - Elegant data visualization
+ *
+ * Design principles:
+ * - Minimal chrome, maximum clarity
+ * - Harmonious with dashboard's blue-teal palette
+ * - Subtle interactions that reveal detail
+ * - Let the data breathe
+ */
+
+/* Container - Pure black, minimal chrome */
+.cost-analytics-v2 {
+  background: #000000;
+  border: none;
+  border-radius: 0;
+  padding: 12px 0;
+  margin-bottom: 0;
+  min-height: 330px;
+  transition: border-color 0.3s ease;
+}
+
+/* Loading, error, empty states */
+.cost-analytics-v2.loading,
+.cost-analytics-v2.error,
+.cost-analytics-v2.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px;
+  color: #64748b;
+  font-size: 0.875rem;
+  height: 330px;
+}
+
+.cost-analytics-v2.error {
+  color: #CF6679;
+}
+
+.loading-pulse {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.3), rgba(167, 139, 250, 0.3));
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.error-icon {
+  color: #CF6679;
+  font-size: 1.25rem;
+}
+
+/* Header */
+.analytics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  min-height: 40px;
+}
+
+.header-primary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.analytics-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.analytics-period {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.header-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.header-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.stat-label {
+  font-size: 0.5625rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  letter-spacing: -0.02em;
+}
+
+.stat-value.cost {
+  color: #00e5ff;
+}
+
+.stat-value.tokens {
+  color: #a78bfa;
+}
+
+/* Main content area */
+.analytics-content {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 28px;
+  align-items: start;
+  min-height: 260px;
+}
+
+@media (max-width: 1100px) {
+  .analytics-content {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+/* Charts column */
+.charts-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 260px;
+}
+
+/* Chart section */
+.chart-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.chart-section.token-section {
+  border-top: 1px solid rgba(0, 229, 255, 0.08);
+  padding-top: 4px;
+}
+
+.chart-label {
+  width: 48px;
+  flex-shrink: 0;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chart-label-text {
+  font-size: 0.5625rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.token-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.token-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.5625rem;
+  color: #64748b;
+}
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* Timeline chart */
+.timeline-chart {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Recharts overrides for minimal styling */
+.timeline-chart .recharts-cartesian-grid line {
+  stroke: rgba(74, 158, 221, 0.06);
+}
+
+.timeline-chart .recharts-text {
+  fill: #64748b;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+}
+
+/* Model breakdown */
+.model-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.breakdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.breakdown-title {
+  font-size: 0.5625rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.breakdown-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+}
+
+.breakdown-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 72px;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 0;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.breakdown-row:hover,
+.breakdown-row.hovered {
+  background: rgba(74, 158, 221, 0.04);
+}
+
+.breakdown-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.breakdown-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.breakdown-row:hover .breakdown-dot,
+.breakdown-row.hovered .breakdown-dot {
+  transform: scale(1.3);
+}
+
+.breakdown-name {
+  font-size: 0.75rem;
+  color: #B0BCC8;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s ease;
+}
+
+.breakdown-row:hover .breakdown-name,
+.breakdown-row.hovered .breakdown-name {
+  color: #F0F4F8;
+}
+
+.breakdown-bar-container {
+  height: 5px;
+  background: rgba(74, 158, 221, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.breakdown-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+  min-width: 2px;
+}
+
+.breakdown-values {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.breakdown-cost {
+  font-size: 0.6875rem;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-weight: 600;
+  color: #00e5ff;
+  min-width: 38px;
+  text-align: right;
+}
+
+.breakdown-percent {
+  font-size: 0.625rem;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  color: #64748b;
+  min-width: 24px;
+  text-align: right;
+}
+
+/* Filter indicator */
+.filter-indicator {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(74, 158, 221, 0.1);
+  font-size: 0.6875rem;
+  color: #64748b;
+}
+
+.filter-value {
+  color: #a78bfa;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-weight: 500;
+}
+
+/* Tooltip V2 */
+.cost-tooltip-v2 {
+  background: rgba(11, 18, 25, 0.95);
+  border: 1px solid rgba(74, 158, 221, 0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(74, 158, 221, 0.1);
+  backdrop-filter: blur(12px);
+  min-width: 140px;
+}
+
+.tooltip-header-v2 {
+  font-size: 0.625rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.tooltip-total-v2 {
+  font-size: 1.125rem;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-weight: 700;
+  color: #00e5ff;
+  letter-spacing: -0.02em;
+}
+
+.tooltip-models-v2 {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(74, 158, 221, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tooltip-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tooltip-model-name {
+  font-size: 0.6875rem;
+  color: #9AA5B1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltip-model-cost {
+  font-size: 0.6875rem;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-weight: 500;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+/* Token tooltip */
+.tooltip-token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.token-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.token-value {
+  font-size: 0.75rem;
+  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-weight: 600;
+  color: #F0F4F8;
+}
+
+/* ======================================
+   Legacy styles (kept for backwards compatibility)
+   ====================================== */
+
+.cost-timeline-container {
+  background: rgba(16, 24, 32, 0.6);
+  border: 1px solid rgba(74, 158, 221, 0.12);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.cost-timeline-container.loading,
+.cost-timeline-container.error,
+.cost-timeline-container.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.cost-timeline-container.error {
+  color: #CF6679;
+}

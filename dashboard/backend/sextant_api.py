@@ -2441,20 +2441,24 @@ def get_prompt_evolution(session_id):
         phase_filter = request.args.get('cell_name')
 
         # 1. Get metadata for the current session (cascade_id, cell_name, species_hash, timestamp)
-        # IMPORTANT: Use MAX(timestamp) to get the latest timestamp from this session
-        # This ensures we include all sounding_attempt rows which are logged AFTER agent responses
+        # IMPORTANT: Pick the phase with the MOST sounding data (most candidates)
+        # This ensures we show the most interesting evolution, not a random phase
         session_query = f"""
             SELECT
                 cascade_id,
                 cell_name,
                 species_hash,
-                MAX(timestamp) as timestamp
+                MAX(timestamp) as timestamp,
+                COUNT(DISTINCT candidate_index) as candidate_count
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND species_hash IS NOT NULL
               AND species_hash != ''
               AND cell_name IS NOT NULL
+              AND candidate_index IS NOT NULL
+              AND node_type = 'sounding_attempt'
             GROUP BY cascade_id, cell_name, species_hash
+            ORDER BY candidate_count DESC
             LIMIT 1
         """
 
@@ -2487,27 +2491,41 @@ def get_prompt_evolution(session_id):
             future_filter = f", (timestamp > '{session_timestamp}') as is_future"
 
         # 3. Query all soundings for this species
-        # NOTE: Include ALL soundings (baseline with mutation_applied=NULL and mutated ones)
-        # Use sounding_attempt rows which have the best metadata
+        # NOTE: Cost is on agent rows, not sounding_attempt rows
+        # For baseline candidates (mutation_applied IS NULL), get the actual prompt from user messages
         evolution_query = f"""
             SELECT
-                session_id,
-                candidate_index,
-                mutation_applied,
-                mutation_type,
-                mutation_template,
-                is_winner,
-                timestamp,
-                model
-                {future_filter}
-            FROM unified_logs
-            WHERE cascade_id = '{cascade_id}'
-              AND cell_name = '{cell_name}'
-              AND species_hash = '{species_hash}'
-              AND candidate_index IS NOT NULL
-              AND node_type = 'sounding_attempt'
-              {time_filter}
-            ORDER BY timestamp ASC, candidate_index ASC
+                sa.session_id as session_id,
+                sa.candidate_index as candidate_index,
+                sa.mutation_applied as mutation_applied,
+                sa.mutation_type as mutation_type,
+                sa.mutation_template as mutation_template,
+                sa.is_winner as is_winner,
+                sa.timestamp as timestamp,
+                sa.model as model,
+                SUM(CASE WHEN agent.role = 'assistant' THEN agent.cost ELSE 0 END) as cost,
+                any(user_msg.content_json) as baseline_prompt_json
+                {future_filter.replace('timestamp', 'sa.timestamp') if future_filter else ''}
+            FROM unified_logs sa
+            LEFT JOIN unified_logs agent ON
+                agent.session_id = sa.session_id
+                AND agent.candidate_index = sa.candidate_index
+                AND agent.role = 'assistant'
+            LEFT JOIN unified_logs user_msg ON
+                user_msg.session_id = sa.session_id
+                AND user_msg.candidate_index = sa.candidate_index
+                AND user_msg.role = 'user'
+                AND user_msg.node_type = 'user'
+            WHERE sa.cascade_id = '{cascade_id}'
+              AND sa.cell_name = '{cell_name}'
+              AND sa.species_hash = '{species_hash}'
+              AND sa.candidate_index IS NOT NULL
+              AND sa.node_type = 'sounding_attempt'
+              {time_filter.replace('timestamp', 'sa.timestamp') if time_filter else ''}
+            GROUP BY sa.session_id, sa.candidate_index, sa.mutation_applied,
+                     sa.mutation_type, sa.mutation_template, sa.is_winner,
+                     sa.timestamp, sa.model
+            ORDER BY sa.timestamp ASC, sa.candidate_index ASC
         """
 
         results = db.query(evolution_query, output_format='dict')
@@ -2538,8 +2556,15 @@ def get_prompt_evolution(session_id):
                     'is_future': row.get('is_future', False) if 'is_future' in row else False
                 }
 
-            # For baseline soundings (mutation_applied is NULL), show a placeholder
-            prompt_text = row['mutation_applied'] if row['mutation_applied'] else '[Baseline - Original Phase Instructions]'
+            # For baseline soundings (mutation_applied is NULL), use the actual baseline prompt
+            # Otherwise use the mutated prompt (mutation_applied)
+            if row['mutation_applied']:
+                prompt_text = row['mutation_applied']
+            elif row.get('baseline_prompt_json'):
+                # Extract text from content_json
+                prompt_text = extract_content_text(row['baseline_prompt_json'])
+            else:
+                prompt_text = '[Baseline - No prompt data available]'
 
             generations[sess_id]['soundings'].append({
                 'candidate_index': row['candidate_index'],
@@ -2547,7 +2572,8 @@ def get_prompt_evolution(session_id):
                 'type': row['mutation_type'],
                 'template': row['mutation_template'],
                 'is_winner': row['is_winner'],
-                'model': row['model']
+                'model': row['model'],
+                'cost': float(row['cost']) if row.get('cost') else 0
             })
 
         # Sort generations by timestamp
@@ -2589,13 +2615,17 @@ def get_prompt_evolution(session_id):
                 node_id = f"{generation['session_id']}_{sounding['candidate_index']}"
 
                 # Build parent winners list for DNA inheritance bar
+                # IMPORTANT: Only use the last N winners (active training set), not entire gene pool
+                winner_limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
+                active_gene_pool = gene_pool[-winner_limit:] if len(gene_pool) > winner_limit else gene_pool
+
                 parent_winners = []
-                for parent_gen_idx, parent_session_id, parent_sounding in gene_pool:
+                for parent_gen_idx, parent_session_id, parent_sounding in active_gene_pool:
                     parent_winners.append({
                         'generation': parent_gen_idx + 1,
                         'session_id': parent_session_id,
                         'candidate_index': parent_sounding['candidate_index'],
-                        'prompt_snippet': (parent_sounding['prompt'] or '')[:30]
+                        'prompt_snippet': (parent_sounding['prompt'] or '')[:100]  # Increased from 30 to 100 chars
                     })
 
                 nodes.append({
@@ -2610,6 +2640,7 @@ def get_prompt_evolution(session_id):
                         'mutation_template': sounding['template'],
                         'is_winner': sounding['is_winner'],
                         'model': sounding['model'],
+                        'cost': sounding.get('cost', 0),
                         'is_current_session': is_current_session,
                         'is_future': is_future,
                         'session_id': generation['session_id'],

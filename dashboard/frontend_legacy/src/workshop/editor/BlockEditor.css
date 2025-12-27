@@ -1,0 +1,163 @@
+/* BlockEditor - Editor Container Layout */
+
+.block-editor {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ============================================
+   PALETTE CONTAINER
+   ============================================ */
+
+.palette-container {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-default);
+  transition: width 0.2s ease;
+  position: relative;
+}
+
+.palette-container.open {
+  width: 200px;
+}
+
+.palette-container.closed {
+  width: 32px;
+}
+
+.palette-toggle {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 24px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.palette-toggle:hover {
+  background: var(--storm-cloud);
+  color: var(--ocean-primary);
+  border-color: var(--ocean-secondary);
+}
+
+/* ============================================
+   CANVAS CONTAINER
+   ============================================ */
+
+.canvas-container {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* ============================================
+   YAML PANEL CONTAINER
+   ============================================ */
+
+.yaml-panel-container {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-default);
+  overflow: hidden;
+}
+
+/* ============================================
+   DRAG OVERLAY
+   ============================================ */
+
+.drag-overlay-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--midnight-fjord);
+  border: 2px solid var(--ocean-primary);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+/* Drag overlay colors */
+.drag-overlay-block.color-ocean {
+  border-color: var(--ocean-primary);
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(74, 158, 221, 0.15));
+}
+
+.drag-overlay-block.color-teal {
+  border-color: var(--ocean-teal);
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(40, 196, 181, 0.15));
+}
+
+.drag-overlay-block.color-slate {
+  border-color: var(--slate-blue);
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(121, 137, 168, 0.15));
+}
+
+.drag-overlay-block.color-brass {
+  border-color: var(--compass-brass);
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(217, 164, 65, 0.15));
+}
+
+.drag-overlay-block.color-gray {
+  border-color: var(--mist-gray);
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(140, 156, 172, 0.15));
+}
+
+/* Model drag overlay */
+.drag-overlay-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(168, 85, 247, 0.15));
+  border: 2px solid #a855f7;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+/* Tool drag overlay */
+.drag-overlay-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(45, 212, 191, 0.15));
+  border: 2px solid var(--ocean-teal);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+.drag-overlay-tool.manifest {
+  background: linear-gradient(135deg, var(--midnight-fjord), rgba(217, 165, 83, 0.2));
+  border-color: var(--compass-brass);
+  color: var(--compass-brass);
+}

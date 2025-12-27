@@ -331,7 +331,8 @@ class UnifiedLogger:
         cascade_config: dict = None,
         cell_name: str = None,
         phase_config: dict = None,
-        species_hash: str = None,  # Hash of phase template DNA for prompt evolution tracking
+        species_hash: str = None,  # Hash of cell template DNA for prompt evolution tracking
+        genus_hash: str = None,    # Hash of cascade invocation DNA for trending/analytics
 
         # LLM provider data
         model: str = None,              # Resolved model name (from API response)
@@ -455,6 +456,7 @@ class UnifiedLogger:
             "cell_name": cell_name,
             "cell_json": safe_json(phase_config),
             "species_hash": species_hash,
+            "genus_hash": genus_hash,
 
             # LLM provider data
             "model": model,
@@ -621,6 +623,7 @@ def log_unified(
     cell_name: str = None,
     phase_config: dict = None,
     species_hash: str = None,
+    genus_hash: str = None,
     model: str = None,
     model_requested: str = None,
     request_id: str = None,
@@ -651,9 +654,9 @@ def log_unified(
     This is a NON-BLOCKING call. Messages are buffered and written to ClickHouse
     in batches. Cost data is UPDATEd separately after OpenRouter's delay.
     """
-    # If caller tracking not provided, look it up from Echo automatically
-    # This ensures ALL log calls (including direct log_unified() calls) get caller tracking!
-    if caller_id is None or invocation_metadata is None:
+    # If caller tracking or genus_hash not provided, look it up from Echo automatically
+    # This ensures ALL log calls (including direct log_unified() calls) get tracking!
+    if caller_id is None or invocation_metadata is None or genus_hash is None:
         try:
             from .echo import _session_manager
             if session_id in _session_manager.sessions:
@@ -662,6 +665,8 @@ def log_unified(
                     caller_id = caller_id or echo.caller_id
                 if echo.invocation_metadata:
                     invocation_metadata = invocation_metadata or echo.invocation_metadata
+                if echo.genus_hash:
+                    genus_hash = genus_hash or echo.genus_hash
         except Exception:
             pass  # No Echo available, that's OK
 
@@ -693,6 +698,7 @@ def log_unified(
         cell_name=cell_name,
         phase_config=phase_config,
         species_hash=species_hash,
+        genus_hash=genus_hash,
         model=model,
         model_requested=model_requested,
         request_id=request_id,

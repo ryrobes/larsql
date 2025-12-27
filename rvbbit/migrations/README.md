@@ -58,6 +58,10 @@ with open('windlass/migrations/add_callouts_columns.sql') as f:
 - `add_reasoning_columns.sql` - Adds extended thinking columns (2025-12-19)
 - `add_ui_sql_log_columns.sql` - Adds UI query tracking columns (2025-12-20)
 - `add_output_column_to_cascade_sessions.sql` - Adds `output` column for storing final cascade results (2025-12-27)
+- `add_genus_hash_columns.sql` - Adds `genus_hash` for cascade-level identity and analytics (2025-12-27)
+- `create_cascade_analytics_table.sql` - Creates `cascade_analytics` table for pre-computed context-aware analytics (2025-12-27)
+- `create_cell_analytics_table.sql` - Creates `cell_analytics` table for per-cell performance metrics (2025-12-27)
+- `add_context_attribution_columns.sql` - Adds context cost attribution columns to expose hidden context injection costs (2025-12-27)
 
 ## Notes
 

@@ -1,0 +1,198 @@
+/* ============================================
+   MODAL BACKDROP
+   ============================================ */
+
+.wl-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-modal);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+
+  /* Cyberpunk backdrop - dark with subtle blur */
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+
+  animation: backdrop-fade 0.15s var(--ease-out);
+}
+
+/* ============================================
+   MODAL CONTAINER
+   ============================================ */
+
+.wl-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--space-xl) * 2);
+
+  /* Pure black with neon border */
+  background-color: #000000;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: var(--radius-lg);
+
+  /* Shadows and glow */
+  box-shadow:
+    var(--shadow-xl),
+    0 0 40px rgba(0, 229, 255, 0.15),
+    0 0 1px rgba(255, 255, 255, 0.1) inset;
+
+  /* Animations handled by Framer Motion */
+}
+
+/* ============================================
+   MODAL SIZES
+   ============================================ */
+
+.wl-modal-sm {
+  width: 400px;
+}
+
+.wl-modal-md {
+  width: 600px;
+}
+
+.wl-modal-lg {
+  width: 800px;
+}
+
+.wl-modal-xl {
+  width: 1000px;
+}
+
+.wl-modal-full {
+  width: calc(100vw - var(--space-xl) * 2);
+  height: calc(100vh - var(--space-xl) * 2);
+}
+
+/* ============================================
+   CLOSE BUTTON
+   ============================================ */
+
+.wl-modal-close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 10;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.wl-modal-close:hover {
+  background-color: rgba(255, 0, 110, 0.1);
+  border-color: rgba(255, 0, 110, 0.3);
+  color: var(--color-accent-pink);
+}
+
+/* ============================================
+   MODAL HEADER
+   ============================================ */
+
+.wl-modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.wl-modal-header-icon {
+  flex-shrink: 0;
+  color: var(--color-accent-cyan);
+}
+
+.wl-modal-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.wl-modal-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-tight);
+}
+
+.wl-modal-subtitle {
+  margin: 4px 0 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-normal);
+}
+
+/* ============================================
+   MODAL CONTENT
+   ============================================ */
+
+.wl-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl);
+  min-height: 0; /* Allow flex shrink */
+}
+
+.wl-modal-content-no-padding {
+  padding: 0;
+}
+
+/* Custom scrollbar for modal content */
+.wl-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.wl-modal-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wl-modal-content::-webkit-scrollbar-thumb {
+  background: var(--color-border-medium);
+  border-radius: 4px;
+}
+
+/* ============================================
+   MODAL FOOTER
+   ============================================ */
+
+.wl-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-xl);
+  border-top: 1px solid rgba(0, 229, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.wl-modal-footer-left {
+  justify-content: flex-start;
+}
+
+.wl-modal-footer-center {
+  justify-content: center;
+}
+
+.wl-modal-footer-right {
+  justify-content: flex-end;
+}
+
+.wl-modal-footer-between {
+  justify-content: space-between;
+}

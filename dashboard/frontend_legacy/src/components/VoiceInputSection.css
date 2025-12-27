@@ -1,0 +1,291 @@
+/* VoiceInputSection Component Styles */
+
+.voice-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.voice-input-section.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Label */
+.voice-input-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+}
+
+/* Mode toggle */
+.voice-input-mode-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--midnight-deep, #070A0D);
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.mode-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-button:hover {
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-button.active {
+  background: var(--ocean-primary, #4A9EDD);
+  color: white;
+}
+
+.mode-button svg {
+  font-size: 16px;
+}
+
+/* Voice recorder container */
+.voice-input-recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  background: var(--midnight-deep, #070A0D);
+  border: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+}
+
+.voice-input-hint {
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  text-align: center;
+}
+
+/* Result display */
+.voice-input-result {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ocean-teal, #5EEAD4);
+}
+
+.result-header .success-icon {
+  font-size: 18px;
+}
+
+.result-content {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.result-text {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+  line-height: 1.6;
+}
+
+.result-text .quote-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--ocean-primary, #4A9EDD);
+  margin-top: 2px;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.result-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+}
+
+.result-action svg {
+  font-size: 16px;
+}
+
+/* Edit mode */
+.result-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.edit-textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--midnight-fjord, #0B1219);
+  border: 1px solid var(--ocean-primary, #4A9EDD);
+  border-radius: 8px;
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.edit-textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.3);
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edit-button.save {
+  background: var(--ocean-teal, #5EEAD4);
+  color: var(--midnight-deep, #070A0D);
+}
+
+.edit-button.save:hover {
+  background: #6EEEE0;
+}
+
+.edit-button.cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.edit-button.cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+}
+
+.edit-button svg {
+  font-size: 14px;
+}
+
+/* Text input mode */
+.voice-input-text {
+  width: 100%;
+}
+
+.text-input {
+  width: 100%;
+  padding: 12px;
+  background: var(--midnight-deep, #070A0D);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 8px;
+  color: var(--text-primary, rgba(255, 255, 255, 0.9));
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.15s ease;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--ocean-primary, #4A9EDD);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
+}
+
+.text-input::placeholder {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+}
+
+.text-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Compact variant for inline use */
+.voice-input-section.compact .voice-input-recorder {
+  padding: 16px;
+}
+
+.voice-input-section.compact .voice-input-mode-toggle {
+  align-self: flex-start;
+}
+
+/* Error state */
+.voice-input-section.error .voice-input-recorder {
+  border-color: var(--danger-red, #EF4444);
+}
+
+.voice-input-section .error-message {
+  font-size: 12px;
+  color: var(--danger-red, #EF4444);
+  margin-top: 4px;
+}
+
+/* Loading state */
+.voice-input-section.loading .voice-input-recorder {
+  position: relative;
+}
+
+.voice-input-section.loading .voice-input-recorder::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

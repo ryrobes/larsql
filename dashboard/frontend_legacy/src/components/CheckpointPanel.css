@@ -1,0 +1,824 @@
+.checkpoint-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 850px;
+  max-height: 90vh;
+  background: #121212;
+  border: 2px solid #6B7FBB;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(107, 127, 187, 0.3);
+  z-index: 1000;
+  overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.checkpoint-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #6B7FBB44 0%, #8b5cf644 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.checkpoint-icon {
+  font-size: 1.2em;
+}
+
+.checkpoint-title {
+  flex: 1;
+}
+
+.checkpoint-dismiss {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.4em;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.checkpoint-dismiss:hover {
+  opacity: 1;
+}
+
+.checkpoint-list {
+  max-height: calc(90vh - 60px);
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.checkpoint-item {
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.checkpoint-item.expanded {
+  border-color: #6B7FBB;
+}
+
+.checkpoint-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.checkpoint-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checkpoint-cascade {
+  color: #5A8DC4;
+  font-weight: 500;
+  font-size: 0.95em;
+}
+
+.checkpoint-phase {
+  color: #888;
+  font-size: 0.85em;
+}
+
+.checkpoint-expand {
+  color: #6B7FBB;
+  font-size: 0.8em;
+}
+
+.checkpoint-details {
+  padding: 0 14px 14px;
+  border-top: 1px solid #333;
+}
+
+/* ===========================================================================
+   LAYOUT SYSTEM
+   =========================================================================== */
+
+.checkpoint-layout {
+  margin-top: 12px;
+}
+
+/* Two-column grid layout */
+.checkpoint-layout.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Default, overridden by inline style */
+  gap: 16px;
+  align-items: start; /* Align columns at top */
+}
+
+/* Support for custom column widths */
+.checkpoint-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0; /* Allow flex items to shrink */
+  width: 100%; /* Fill grid cell */
+}
+
+/* Ensure all sections fill their column */
+.checkpoint-column > .section,
+.checkpoint-column > .section-input,
+.checkpoint-column > .section-card-grid,
+.checkpoint-column > .section-image,
+.checkpoint-column > .section-preview,
+.checkpoint-column > .section-data-table {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.checkpoint-column.sticky {
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+/* Vertical layout */
+.checkpoint-layout.vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ===========================================================================
+   SECTION BASE STYLES
+   =========================================================================== */
+
+.section {
+  background: #0a0a0a;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* ===========================================================================
+   IMAGE SECTION
+   =========================================================================== */
+
+.section-image {
+  text-align: center;
+  padding: 8px;
+}
+
+.section-image img {
+  border-radius: 6px;
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+  min-height: 100px; /* Prevent layout shift on load */
+  background: #1a1a2e; /* Placeholder background */
+}
+
+/* Handle broken images gracefully */
+.section-image img[src=""],
+.section-image img:not([src]) {
+  display: none;
+}
+
+.section-image .image-caption {
+  color: #888;
+  font-size: 0.85em;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+/* ===========================================================================
+   DATA TABLE SECTION
+   =========================================================================== */
+
+.section-data-table {
+  overflow: hidden;
+}
+
+.section-data-table .data-table-title {
+  color: #5A8DC4;
+  font-weight: 600;
+  font-size: 0.95em;
+  margin-bottom: 10px;
+}
+
+.section-data-table .data-table-wrapper {
+  overflow: auto;
+}
+
+.section-data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.section-data-table th {
+  background: #1a1a2e;
+  color: #6B7FBB;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #333;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.section-data-table td {
+  padding: 8px 12px;
+  color: #ddd;
+  border-bottom: 1px solid #222;
+}
+
+.section-data-table tr.striped td {
+  background: #111;
+}
+
+/* ===========================================================================
+   PREVIEW SECTION (Text/Markdown/Code)
+   =========================================================================== */
+
+.section-preview {
+  overflow: hidden;
+}
+
+.section-preview .preview-label {
+  color: #888;
+  font-size: 0.8em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-preview .preview-content {
+  overflow-y: auto;
+  color: #ddd;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.section-preview .preview-content.code {
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
+  white-space: pre-wrap;
+  background: #0d0d0d;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.section-preview .preview-text {
+  white-space: pre-wrap;
+}
+
+/* Markdown rendering */
+.section-preview .markdown-content {
+  line-height: 1.6;
+}
+
+.section-preview .markdown-content h2 {
+  color: #6B7FBB;
+  font-size: 1.2em;
+  margin: 16px 0 8px 0;
+  border-bottom: 1px solid #333;
+  padding-bottom: 4px;
+}
+
+.section-preview .markdown-content h3 {
+  color: #5A8DC4;
+  font-size: 1.1em;
+  margin: 12px 0 6px 0;
+}
+
+.section-preview .markdown-content h4 {
+  color: #ddd;
+  font-size: 1em;
+  margin: 10px 0 4px 0;
+}
+
+.section-preview .markdown-content strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.section-preview .markdown-content em {
+  color: #ccc;
+  font-style: italic;
+}
+
+.section-preview .markdown-content p {
+  margin: 8px 0;
+}
+
+.section-preview .markdown-content .code-block {
+  background: #0d0d0d;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+}
+
+.section-preview .markdown-content .inline-code {
+  background: #1a1a2e;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  color: #fbbf24;
+}
+
+/* ===========================================================================
+   CARD GRID SECTION
+   =========================================================================== */
+
+.section-card-grid {
+  padding: 8px;
+  background: transparent;
+  width: 100%; /* Ensure card grid fills column */
+}
+
+.card-grid {
+  display: grid;
+  gap: 12px;
+  width: 100%; /* Ensure grid fills container */
+}
+
+.card-grid .card {
+  background: #0a0a0a;
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-grid .card.selected {
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.15);
+  box-shadow: 0 0 0 2px rgba(107, 127, 187, 0.3);
+}
+
+.card-grid .card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-grid .card-badge {
+  position: absolute;
+  top: -6px;
+  right: 6px;
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
+  color: white;
+  font-size: 0.65em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.card-grid .card-image {
+  margin: -12px -12px 12px -12px;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+}
+
+.card-grid .card-image img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+}
+
+.card-grid .card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-grid .card-title {
+  color: #6B7FBB;
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.card-grid .card-desc {
+  color: #aaa;
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+
+.card-grid .card-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.card-grid .metadata-chip {
+  background: #252525;
+  color: #888;
+  font-size: 0.75em;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+/* ===========================================================================
+   INPUT SECTIONS
+   =========================================================================== */
+
+.section-input {
+  background: transparent;
+  padding: 0;
+}
+
+.section-input .input-prompt {
+  color: #fbbf24;
+  font-weight: 500;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 6px;
+}
+
+.section-input .input-label {
+  color: #888;
+  font-size: 0.9em;
+  margin-bottom: 8px;
+}
+
+/* Confirmation buttons */
+.checkpoint-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.checkpoint-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.checkpoint-btn.approve {
+  background: linear-gradient(135deg, #5EEAD4 0%, #10b981 100%);
+  color: white;
+}
+
+.checkpoint-btn.approve:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(94, 234, 212, 0.4);
+}
+
+.checkpoint-btn.reject {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  color: white;
+}
+
+.checkpoint-btn.reject:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(248, 113, 113, 0.4);
+}
+
+.checkpoint-btn.cancel {
+  background: #333;
+  color: #aaa;
+}
+
+.checkpoint-btn.cancel:hover:not(:disabled) {
+  background: #444;
+}
+
+.checkpoint-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Choice options */
+.choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.choice-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.choice-option.selected {
+  border-color: #6B7FBB;
+  background: rgba(107, 127, 187, 0.15);
+}
+
+.choice-option input[type="radio"],
+.choice-option input[type="checkbox"] {
+  margin-top: 4px;
+  accent-color: #6B7FBB;
+  flex-shrink: 0;
+}
+
+.choice-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.choice-label {
+  color: #6B7FBB;
+  font-weight: 600;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.choice-desc {
+  display: block;
+  color: #ccc;
+  font-size: 0.95em;
+  line-height: 1.4;
+}
+
+.choice-desc.extracted {
+  color: #fff;
+  font-weight: 500;
+}
+
+/* Rating stars */
+.rating-stars {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.rating-stars .star {
+  background: none;
+  border: none;
+  font-size: 1.8em;
+  color: #555;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: all 0.15s;
+}
+
+.rating-stars .star:hover {
+  transform: scale(1.1);
+}
+
+.rating-stars .star.filled {
+  color: #fbbf24;
+}
+
+.rating-value {
+  margin-left: 12px;
+  color: #888;
+  font-size: 0.9em;
+}
+
+.rating-label {
+  color: #5A8DC4;
+  font-size: 0.9em;
+  margin-bottom: 12px;
+}
+
+/* Text input */
+.section-input.text textarea {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 0.9em;
+  resize: vertical;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.section-input.text textarea:focus {
+  outline: none;
+  border-color: #6B7FBB;
+}
+
+/* ===========================================================================
+   LEGACY SUPPORT
+   =========================================================================== */
+
+.checkpoint-title-text {
+  color: #5A8DC4;
+  font-weight: 600;
+  font-size: 1.1em;
+  margin: 12px 0;
+}
+
+.checkpoint-fallback-note {
+  color: #888;
+  font-size: 0.9em;
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+.checkpoint-output {
+  margin: 12px 0;
+}
+
+.output-label {
+  color: #888;
+  font-size: 0.8em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.output-content {
+  background: #0a0a0a;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #ddd;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.checkpoint-prompt {
+  color: #fbbf24;
+  font-weight: 500;
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 6px;
+}
+
+.checkpoint-input {
+  margin-top: 12px;
+}
+
+/* Reasoning textarea */
+.checkpoint-reasoning {
+  margin-top: 12px;
+}
+
+.checkpoint-reasoning textarea {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 0.85em;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.checkpoint-reasoning textarea:focus {
+  outline: none;
+  border-color: #6B7FBB;
+}
+
+/* ===========================================================================
+   SCROLLBAR STYLING
+   =========================================================================== */
+
+.checkpoint-list::-webkit-scrollbar,
+.output-content::-webkit-scrollbar,
+.preview-content::-webkit-scrollbar,
+.data-table-wrapper::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.checkpoint-list::-webkit-scrollbar-track,
+.output-content::-webkit-scrollbar-track,
+.preview-content::-webkit-scrollbar-track,
+.data-table-wrapper::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.checkpoint-list::-webkit-scrollbar-thumb,
+.output-content::-webkit-scrollbar-thumb,
+.preview-content::-webkit-scrollbar-thumb,
+.data-table-wrapper::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.checkpoint-list::-webkit-scrollbar-thumb:hover,
+.output-content::-webkit-scrollbar-thumb:hover,
+.preview-content::-webkit-scrollbar-thumb:hover,
+.data-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* ===========================================================================
+   RESPONSIVE (smaller screens)
+   =========================================================================== */
+
+@media (max-width: 950px) {
+  .checkpoint-panel {
+    width: calc(100vw - 40px);
+    right: 20px;
+  }
+
+  .checkpoint-layout.two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .checkpoint-column {
+    width: 100% !important;
+  }
+}
+
+/* ===========================================================================
+   SOUNDING EVAL LINK
+   =========================================================================== */
+
+.sounding-eval-link {
+  padding: 16px;
+  text-align: center;
+}
+
+.sounding-eval-message {
+  color: #6B7FBB;
+  font-size: 1.1em;
+  margin-bottom: 16px;
+}
+
+.open-comparison-btn {
+  background: linear-gradient(135deg, #6B7FBB 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.open-comparison-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(107, 127, 187, 0.4);
+}
+
+/* ===========================================================================
+   AUDIBLE LINK
+   =========================================================================== */
+
+.audible-link {
+  padding: 16px;
+  text-align: center;
+}
+
+.audible-message {
+  color: #fbbf24;
+  font-size: 1.1em;
+  margin-bottom: 16px;
+}
+
+.open-audible-btn {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #1a1a1a;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.open-audible-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}

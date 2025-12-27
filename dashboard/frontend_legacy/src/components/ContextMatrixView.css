@@ -1,0 +1,336 @@
+/* Context Matrix View - Heatmap visualization of context relationships */
+
+.context-matrix-view {
+  background: #0B1219;
+  border: 1px solid #2C3B4B;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 400px;
+}
+
+.context-matrix-view.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #6B7280;
+  gap: 0.5rem;
+  padding: 2rem;
+}
+
+.context-matrix-view.empty p {
+  margin: 0;
+}
+
+.context-matrix-view.empty .hint {
+  font-size: 0.8rem;
+  color: #4B5563;
+}
+
+/* Header */
+.matrix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(22, 32, 42, 0.6);
+  border-bottom: 1px solid #2C3B4B;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.matrix-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #F0F4F8;
+}
+
+.matrix-title svg {
+  color: #6B7FBB;
+}
+
+.matrix-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.matrix-stats > span {
+  font-size: 0.75rem;
+  color: #9AA5B1;
+  white-space: nowrap;
+}
+
+.matrix-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.matrix-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(22, 32, 42, 0.6);
+  border: 1px solid #2C3B4B;
+  border-radius: 6px;
+  color: #9AA5B1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.matrix-controls button:hover {
+  background: rgba(74, 158, 221, 0.1);
+  border-color: rgba(74, 158, 221, 0.4);
+  color: #4A9EDD;
+}
+
+.matrix-controls button.close-btn:hover {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #f87171;
+}
+
+/* Legend */
+.matrix-legend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(22, 32, 42, 0.3);
+  border-bottom: 1px solid #2C3B4B;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: #9AA5B1;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-hint {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #6B7280;
+  font-style: italic;
+}
+
+/* Color mode toggle */
+.color-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: rgba(11, 18, 25, 0.6);
+  border-radius: 6px;
+  padding: 2px;
+  margin-right: 0.75rem;
+}
+
+.color-mode-toggle .mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #6B7280;
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.color-mode-toggle .mode-btn:hover {
+  color: #9AA5B1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.color-mode-toggle .mode-btn.active {
+  background: rgba(107, 127, 187, 0.2);
+  color: #6B7FBB;
+}
+
+.legend-item.token-max {
+  font-family: 'JetBrains Mono', monospace;
+  color: #fb923c;
+  font-weight: 600;
+}
+
+/* Canvas container */
+.matrix-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 300px;
+}
+
+.matrix-container canvas {
+  display: block;
+}
+
+/* Tooltip - positioned top-right outside the matrix grid */
+.matrix-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(11, 18, 25, 0.97);
+  border: 1px solid rgba(107, 127, 187, 0.4);
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 200px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(107, 127, 187, 0.1);
+  z-index: 100;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.matrix-tooltip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6B7FBB, #5A8DC4);
+  border-radius: 8px 8px 0 0;
+}
+
+.tooltip-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6B7FBB;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tooltip-title svg {
+  opacity: 0.8;
+}
+
+.tooltip-header {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #2C3B4B;
+}
+
+.tooltip-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.tooltip-status.in-context {
+  background: rgba(94, 234, 212, 0.2);
+  color: #5EEAD4;
+}
+
+.tooltip-status.not-in-context {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9AA5B1;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.tooltip-label {
+  color: #6B7280;
+  min-width: 60px;
+}
+
+.tooltip-row > span:last-child {
+  color: #F0F4F8;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+}
+
+.tooltip-preview {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  color: #9AA5B1;
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.4;
+}
+
+/* Large tooltip variant */
+.matrix-tooltip-large {
+  min-width: 320px;
+  max-width: 420px;
+}
+
+.matrix-tooltip-large .tooltip-preview-large {
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Token row styling */
+.tooltip-tokens .token-value {
+  color: #fb923c;
+  font-weight: 700;
+}
+
+/* Selection highlight animation */
+@keyframes selectionPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.matrix-container canvas.has-selection {
+  animation: selectionPulse 1.5s ease-in-out infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .matrix-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .matrix-stats {
+    flex-wrap: wrap;
+  }
+
+  .matrix-legend {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .legend-hint {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 0.25rem;
+  }
+}

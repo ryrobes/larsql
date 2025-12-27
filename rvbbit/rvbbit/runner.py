@@ -4107,7 +4107,8 @@ Refinement directive: {reforge_config.honing_prompt}
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
                    trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade", depth=self.depth,
                    candidate_index=self.candidate_index, parent_session_id=self.parent_session_id,
-                   caller_id=self.caller_id, invocation_metadata=self.invocation_metadata)
+                   caller_id=self.caller_id, invocation_metadata=self.invocation_metadata,
+                   genus_hash=getattr(self, 'genus_hash', None))
 
         # Add structure to Echo for visualization
         self.echo.add_history({
@@ -4298,7 +4299,8 @@ Refinement directive: {reforge_config.honing_prompt}
         # Log cascade completion with status
         log_message(self.session_id, "system", f"Cascade {final_status}: {self.config.cascade_id}",
                    metadata={"status": final_status, "error_count": len(result.get("errors", []))},
-                   node_type=f"cascade_{final_status}", parent_session_id=self.parent_session_id)
+                   node_type=f"cascade_{final_status}", parent_session_id=self.parent_session_id,
+                   genus_hash=getattr(self, 'genus_hash', None))
 
         return result
 
@@ -4380,6 +4382,39 @@ Refinement directive: {reforge_config.honing_prompt}
             # Don't fail cascade if cascade_sessions save fails (table might not exist yet)
             logger = logging.getLogger(__name__)
             logger.debug(f"Could not save cascade definition to cascade_sessions: {e}")
+
+        # Compute cascade-level genus_hash for analytics and trending
+        try:
+            from .utils import compute_genus_hash
+            from .db_adapter import get_db
+
+            # Build cascade config for hashing
+            cascade_config_for_hash = {
+                'cascade_id': self.config.cascade_id,
+                'cells': [cell.dict() if hasattr(cell, 'dict') else cell for cell in self.config.cells] if self.config.cells else [],
+            }
+
+            # Compute genus_hash (cascade invocation identity)
+            genus_hash = compute_genus_hash(cascade_config_for_hash, input_data)
+
+            # Update cascade_sessions with genus_hash
+            db = get_db()
+            db.update_row(
+                'cascade_sessions',
+                {'genus_hash': genus_hash},
+                f"session_id = '{self.session_id}'",
+                sync=False
+            )
+
+            # Store in both runner instance AND Echo for auto-injection into ALL logs
+            self.genus_hash = genus_hash
+            self.echo.genus_hash = genus_hash
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not compute genus_hash: {e}")
+            self.genus_hash = None
+            self.echo.genus_hash = None
 
         # Set hooks context for tools (allows checkpoint callbacks)
         set_current_hooks(self.hooks)
@@ -4482,6 +4517,26 @@ Refinement directive: {reforge_config.honing_prompt}
                 logger = logging.getLogger(__name__)
                 logger.debug(f"Could not save output to cascade_sessions: {e}")
 
+            # Trigger analytics worker (async, non-blocking)
+            # Pre-computes context-aware insights, Z-scores, and anomaly detection
+            try:
+                from .analytics_worker import analyze_cascade_execution
+                import threading
+
+                def run_analytics():
+                    try:
+                        analyze_cascade_execution(self.session_id)
+                    except Exception as e:
+                        logger = logging.getLogger(__name__)
+                        logger.debug(f"Analytics worker failed: {e}")
+
+                # Run in background thread (don't block cascade completion)
+                analytics_thread = threading.Thread(target=run_analytics, daemon=True)
+                analytics_thread.start()
+
+            except Exception:
+                pass  # Analytics is optional, never fail cascade
+
             # For cascade soundings, emit cascade_complete event here since
             # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent
             if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):
@@ -4504,7 +4559,8 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Log cascade completion with status
                 log_message(self.session_id, "system", f"Cascade {final_status_str}: {self.config.cascade_id}",
                            metadata={"status": final_status_str, "error_count": len(result.get("errors", []))},
-                           node_type=f"cascade_{final_status_str}", parent_session_id=self.parent_session_id)
+                           node_type=f"cascade_{final_status_str}", parent_session_id=self.parent_session_id,
+                           genus_hash=getattr(self, 'genus_hash', None))
 
             return result
 
@@ -6477,6 +6533,8 @@ Use only numbers 0-100 for scores."""
         Execute a phase with soundings (Tree of Thought).
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
+        from .unified_logs import log_unified
+
         indent = "  " * self.depth
 
         # Resolve soundings factor FIRST (may be Jinja2 template string)
@@ -7556,9 +7614,6 @@ Use only numbers 0-100 for scores."""
                     tokens_out=eval_tokens_out,
                     cost=eval_cost,
                     duration_ms=0,
-                    tool_name=None,
-                    tool_args=None,
-                    tool_result=None,
                     request_id=eval_request_id,
                 )
 
@@ -9265,11 +9320,24 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         indent = "  " * self.depth
         start_time = time.time()
 
+        # Compute species hash for this cell execution (ALWAYS)
+        try:
+            from .utils import compute_species_hash
+
+            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
+            phase_species_hash = compute_species_hash(phase_config, input_data)
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not compute species_hash for deterministic {phase.name}: {e}")
+            phase_species_hash = "unknown_species"
+
         # Log phase start
         log_message(self.session_id, "phase_start", phase.name,
                     trace_id=trace.id, parent_id=trace.parent_id, node_type="deterministic_phase",
                     depth=self.depth, parent_session_id=self.parent_session_id,
                     cell_name=phase.name, cascade_id=self.config.cascade_id,
+                    species_hash=phase_species_hash,
                     metadata={"phase_type": "deterministic", "tool": phase.tool})
 
         # Update phase progress
@@ -9314,6 +9382,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 cascade_id=self.config.cascade_id,
                 cascade_file=self.config_path if isinstance(self.config_path, str) else None,
                 cell_name=phase.name,
+                species_hash=phase_species_hash,
                 content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
                 duration_ms=duration_ms,
                 metadata={
@@ -9439,11 +9508,22 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         rag_prompt = ""
         rag_tool_names: List[str] = []
 
-        # Compute species hash for this phase execution (ONLY for soundings with rewrite mutations)
-        # This will be used when logging agent responses for winner learning
-        phase_species_hash = None
-        if self.current_phase_candidate_index is not None and mutation_mode == 'rewrite':
-            phase_species_hash = compute_species_hash(phase.dict(), input_data)
+        # Compute species hash for this cell execution (ALWAYS)
+        # Used for analytics, prompt optimization, and model comparison
+        try:
+            from .utils import compute_species_hash
+
+            # Get phase config as dict
+            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
+
+            # Compute species_hash (cell-level identity)
+            phase_species_hash = compute_species_hash(phase_config, input_data)
+
+        except Exception as e:
+            # Fallback to unknown if computation fails (don't break execution)
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not compute species_hash for {phase.name}: {e}")
+            phase_species_hash = "unknown_species"
 
         # Set current phase name for tools like ask_human to use
         set_current_cell_name(phase.name)

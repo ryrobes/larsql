@@ -1,0 +1,336 @@
+/**
+ * RichMarkdown Styles - Windlass Design System
+ * Cyberpunk/Tron theme optimized for LLM content
+ * Migrated from old color scheme to use CSS variables
+ */
+
+.rich-markdown {
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  font-size: 0.95em;
+}
+
+/* ===== Typography ===== */
+
+.rich-markdown h1,
+.rich-markdown h2,
+.rich-markdown h3,
+.rich-markdown h4,
+.rich-markdown h5,
+.rich-markdown h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-accent-cyan);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.rich-markdown h1 {
+  font-size: 1.8em;
+  border-bottom: 2px solid var(--color-accent-cyan);
+  padding-bottom: 0.3em;
+  box-shadow: 0 2px 8px rgba(0, 229, 255, 0.15);
+}
+
+.rich-markdown h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--color-border-medium);
+  padding-bottom: 0.3em;
+}
+
+.rich-markdown h3 {
+  font-size: 1.3em;
+}
+
+.rich-markdown h4 {
+  font-size: 1.1em;
+  color: var(--color-text-primary);
+  text-shadow: none;
+}
+
+.rich-markdown h5 {
+  font-size: 1.0em;
+  color: var(--color-text-primary);
+  text-shadow: none;
+}
+
+.rich-markdown h6 {
+  font-size: 0.95em;
+  color: var(--color-text-muted);
+  text-shadow: none;
+}
+
+.rich-markdown p {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+/* ===== Lists ===== */
+
+.rich-markdown ul,
+.rich-markdown ol {
+  margin: 0.5em 0 1em 0;
+  padding-left: 2em;
+}
+
+.rich-markdown li {
+  margin: 0.3em 0;
+}
+
+.rich-markdown ul ul,
+.rich-markdown ol ol,
+.rich-markdown ul ol,
+.rich-markdown ol ul {
+  margin: 0.3em 0;
+}
+
+/* Task lists (GFM) */
+.rich-markdown input[type="checkbox"] {
+  margin-right: 0.5em;
+  vertical-align: middle;
+  accent-color: var(--color-accent-cyan);
+}
+
+/* ===== Code ===== */
+
+/* Inline code */
+.rich-markdown code {
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-sm);
+  padding: 0.15em 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--color-accent-purple);
+}
+
+/* Code blocks (handled by SyntaxHighlighter, but provide fallback) */
+.rich-markdown pre {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-accent-cyan);
+  border-radius: var(--radius-md);
+  padding: 1em;
+  overflow-x: auto;
+  margin: 1em 0;
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.rich-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* ===== Tables ===== */
+
+.markdown-table-wrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent-cyan);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.rich-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--color-bg-primary);
+}
+
+.rich-markdown th,
+.rich-markdown td {
+  border: 1px solid var(--color-border-dim);
+  padding: 0.6em 1em;
+  text-align: left;
+}
+
+.rich-markdown th {
+  background: var(--color-bg-secondary);
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-accent-cyan);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.rich-markdown tr:nth-child(even) {
+  background: rgba(10, 8, 24, 0.3);
+}
+
+.rich-markdown tr:hover {
+  background: rgba(0, 229, 255, 0.05);
+  box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.1);
+  transition: all var(--transition-normal);
+}
+
+/* ===== Blockquotes ===== */
+
+.markdown-blockquote {
+  border-left: 4px solid var(--color-accent-purple);
+  padding-left: 1em;
+  margin: 1em 0;
+  color: var(--color-text-muted);
+  font-style: italic;
+  background: linear-gradient(
+    90deg,
+    rgba(167, 139, 250, 0.08) 0%,
+    rgba(167, 139, 250, 0.02) 100%
+  );
+  padding: 0.5em 0 0.5em 1em;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  box-shadow: -4px 0 8px rgba(167, 139, 250, 0.15);
+}
+
+.markdown-blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ===== Links ===== */
+
+.rich-markdown a {
+  color: var(--color-accent-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all var(--transition-normal);
+  text-shadow: 0 0 4px rgba(0, 229, 255, 0.2);
+}
+
+.rich-markdown a:hover {
+  color: var(--color-accent-cyan);
+  border-bottom-color: var(--color-accent-cyan);
+  text-shadow: var(--shadow-glow-cyan);
+  filter: brightness(1.2);
+}
+
+.external-link {
+  position: relative;
+}
+
+.external-icon {
+  display: inline-block;
+  margin-left: 0.2em;
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+/* ===== Math (KaTeX) ===== */
+
+/* Inline math */
+.rich-markdown .katex {
+  font-size: 1.05em;
+}
+
+/* Display/block math */
+.rich-markdown .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+/* Make KaTeX work on dark background */
+.rich-markdown .katex {
+  color: var(--color-text-secondary);
+}
+
+.rich-markdown .katex .base {
+  color: var(--color-text-secondary);
+}
+
+/* ===== Horizontal Rules ===== */
+
+.rich-markdown hr {
+  border: none;
+  border-top: 2px solid var(--color-accent-cyan);
+  margin: 2em 0;
+  box-shadow: 0 1px 8px rgba(0, 229, 255, 0.3);
+}
+
+/* ===== Images ===== */
+
+.rich-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  margin: 1em 0;
+  border: 1px solid var(--color-accent-cyan);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+/* ===== Strikethrough (GFM) ===== */
+
+.rich-markdown del {
+  color: var(--color-text-dim);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* ===== Emphasis ===== */
+
+.rich-markdown em {
+  font-style: italic;
+  color: var(--color-accent-purple);
+}
+
+.rich-markdown strong {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+/* ===== Footnotes (if supported) ===== */
+
+.rich-markdown .footnotes {
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 1px solid var(--color-border-dim);
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+}
+
+.rich-markdown .footnotes ol {
+  padding-left: 1.5em;
+}
+
+/* ===== Details/Summary (HTML5) ===== */
+
+.rich-markdown details {
+  background: var(--gradient-cyan);
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.5em 1em;
+  margin: 1em 0;
+}
+
+.rich-markdown summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-accent-cyan);
+  user-select: none;
+  transition: all var(--transition-normal);
+}
+
+.rich-markdown summary:hover {
+  color: var(--color-accent-cyan);
+  text-shadow: var(--shadow-glow-cyan);
+  filter: brightness(1.2);
+}
+
+.rich-markdown details[open] summary {
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid var(--color-border-dim);
+  padding-bottom: 0.5em;
+}
+
+/* ===== Responsive Tweaks ===== */
+
+@media (max-width: 768px) {
+  .rich-markdown {
+    font-size: 0.9em;
+  }
+
+  .markdown-table-wrapper {
+    font-size: 0.85em;
+  }
+}

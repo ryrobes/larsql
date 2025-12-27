@@ -1,0 +1,1169 @@
+/* ExecutionNotebook - Horizontal Timeline Visualization */
+
+.execution-notebook {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--abyssal-slate);
+}
+
+/* ============================================
+   NOTEBOOK HEADER
+   ============================================ */
+
+.notebook-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.notebook-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.notebook-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-id {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--storm-cloud);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-secondary);
+}
+
+.clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clear-btn:hover {
+  background: rgba(207, 102, 121, 0.2);
+  color: var(--bloodaxe-red);
+}
+
+/* ============================================
+   STATUS BAR
+   ============================================ */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-right .stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.status-right .stat.cost {
+  color: var(--success-green);
+}
+
+.status-bar.status-running {
+  background: rgba(217, 165, 83, 0.15);
+  color: var(--compass-brass);
+  border-bottom: 1px solid var(--compass-brass);
+}
+
+.status-bar.status-completed {
+  background: rgba(74, 222, 128, 0.1);
+  color: var(--success-green);
+  border-bottom: 1px solid var(--success-green);
+}
+
+.status-bar.status-error {
+  background: rgba(207, 102, 121, 0.15);
+  color: var(--bloodaxe-red);
+  border-bottom: 1px solid var(--bloodaxe-red);
+}
+
+/* ============================================
+   NOTEBOOK CONTENT
+   ============================================ */
+
+.notebook-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.notebook-empty,
+.notebook-ready {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--mist-gray);
+  padding: 32px;
+}
+
+.notebook-empty h3,
+.notebook-ready h3 {
+  margin: 16px 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.notebook-empty p,
+.notebook-ready p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.ready-hint {
+  margin-top: 8px !important;
+  font-size: 13px !important;
+  opacity: 0.7;
+}
+
+/* ============================================
+   TIMELINE SCROLL
+   ============================================ */
+
+.timeline-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.timeline-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 60px;
+  min-height: 100%;
+  padding-bottom: 24px;
+  position: relative;
+}
+
+/* Wrapped timeline layout */
+.timeline-track.timeline-track-wrapped {
+  display: block;
+  position: relative;
+}
+
+.phase-position-wrapper {
+  z-index: 1;
+  overflow: visible;
+}
+
+/* ============================================
+   PHASE COLUMN
+   ============================================ */
+
+.phase-column {
+  flex-shrink: 0;
+  width: 220px;
+  background: var(--bg-card);
+  border: 2px solid var(--storm-cloud);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  transition: all 0.15s ease;
+  z-index: 1; /* Above SVG arrows */
+}
+
+.phase-column.status-pending {
+  opacity: 0.6;
+}
+
+.phase-column.status-running {
+  border-color: var(--compass-brass);
+  box-shadow: 0 0 12px rgba(217, 165, 83, 0.3);
+}
+
+.phase-column.status-completed {
+  border-color: var(--success-green);
+}
+
+.phase-column.status-error {
+  border-color: var(--bloodaxe-red);
+}
+
+.phase-column.has-output {
+  cursor: pointer;
+}
+
+.phase-column.has-output:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.phase-column.expanded {
+  width: 400px;
+}
+
+/* Column connector - positioned between phase-column-wrappers */
+/* Only shown for adjacent phases without handoffs */
+.column-connector {
+  position: absolute;
+  right: -56px; /* Center in the 80px gap */
+  top: 40px; /* Align with header */
+  display: flex;
+  align-items: center;
+  z-index: 2;
+}
+
+.connector-line-h {
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(to right, var(--ocean-secondary), var(--ocean-primary));
+}
+
+.connector-arrow-h {
+  color: var(--ocean-primary);
+  margin-left: -6px;
+}
+
+/* Column header */
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--storm-cloud);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.column-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--ocean-muted);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ocean-primary);
+}
+
+.column-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Column body */
+.column-body {
+  padding: 12px;
+  min-height: 50px;
+}
+
+.column-pending,
+.column-running,
+.column-completed,
+.column-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.column-pending {
+  color: var(--mist-gray);
+}
+
+.column-running {
+  color: var(--compass-brass);
+}
+
+.column-running .soundings-info {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.column-completed {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.result-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.column-error {
+  color: var(--bloodaxe-red);
+}
+
+/* ============================================
+   SOUNDINGS PREVIEW
+   ============================================ */
+
+.soundings-preview {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-default);
+  background: rgba(11, 18, 25, 0.3);
+}
+
+.soundings-grid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sounding-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--storm-cloud);
+  border: 2px solid var(--mist-gray);
+  transition: all 0.15s ease;
+}
+
+.sounding-dot.running {
+  background: var(--compass-brass);
+  border-color: var(--compass-brass);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.sounding-dot.completed {
+  background: var(--slate-blue);
+  border-color: var(--slate-blue);
+}
+
+.sounding-dot.winner {
+  background: var(--ocean-teal);
+  border-color: var(--ocean-teal);
+  box-shadow: 0 0 6px var(--ocean-teal);
+}
+
+.more-soundings {
+  font-size: 11px;
+  color: var(--mist-gray);
+}
+
+/* ============================================
+   PHASE OUTPUT
+   ============================================ */
+
+.output-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-top: 1px solid var(--border-default);
+  font-size: 11px;
+  color: var(--mist-gray);
+  background: rgba(11, 18, 25, 0.3);
+}
+
+.phase-column.has-output:hover .output-hint {
+  color: var(--ocean-primary);
+  background: rgba(74, 158, 221, 0.1);
+}
+
+.phase-output {
+  border-top: 1px solid var(--border-default);
+  background: var(--midnight-fjord);
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.output-header span {
+  flex: 1;
+}
+
+.output-content {
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.output-content pre {
+  margin: 0;
+  font-size: 12px;
+  font-family: 'Google Sans Code', 'Menlo', 'Ubuntu Mono', monospace;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* ============================================
+   RUNNING PHASE DETAILS
+   ============================================ */
+
+.column-running .turn-counter {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(217, 165, 83, 0.2);
+  border-radius: 4px;
+}
+
+.column-running .live-cost {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--success-green);
+}
+
+.column-running .soundings-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* ============================================
+   ACTIVITY INDICATOR
+   ============================================ */
+
+.activity-indicator {
+  display: flex;
+  align-items: center;
+  color: var(--ocean-teal);
+}
+
+.activity-indicator .pulse {
+  animation: pulse-icon 1s ease-in-out infinite;
+}
+
+/* ============================================
+   EXECUTION LOG
+   ============================================ */
+
+.execution-log {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-card);
+  max-height: 200px;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.execution-log.expanded {
+  max-height: 400px;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.log-header:hover {
+  background: var(--storm-cloud);
+}
+
+.log-entries {
+  padding: 0 12px 12px 12px;
+  overflow-y: auto;
+  max-height: calc(100% - 36px);
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-time {
+  font-family: monospace;
+  color: var(--mist-gray);
+  flex-shrink: 0;
+}
+
+.log-message {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   PHASE COLUMN WRAPPER (for ghost blocks)
+   ============================================ */
+
+.phase-column-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.phase-column.has-soundings .column-header {
+  background: linear-gradient(135deg, var(--storm-cloud) 0%, rgba(107, 114, 142, 0.3) 100%);
+}
+
+.soundings-badge {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: rgba(107, 114, 142, 0.3);
+  border-radius: 10px;
+  font-size: 10px;
+  color: var(--slate-blue-light);
+}
+
+.column-running.soundings-mode {
+  color: var(--slate-blue-light);
+}
+
+.column-running .wave-icon {
+  animation: wave-bob 2s ease-in-out infinite;
+}
+
+.soundings-progress {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(107, 114, 142, 0.2);
+  border-radius: 4px;
+}
+
+.winner-badge {
+  color: var(--compass-brass) !important;
+  background: rgba(217, 165, 83, 0.15);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ============================================
+   GHOST SOUNDING BLOCKS - "Depth Soundings"
+   Stacked VERTICALLY below the phase like depth soundings
+   ============================================ */
+
+.soundings-depth {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 8px;
+  width: 100%;
+}
+
+/* Vertical depth line - like a sounding line dropped into water */
+.depth-line {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--slate-blue) 0%,
+    rgba(107, 114, 142, 0.3) 50%,
+    transparent 100%
+  );
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+.ghost-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Individual ghost block - compact card */
+.ghost-block {
+  width: 180px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px dashed rgba(107, 114, 142, 0.4);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  position: relative;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.ghost-block:hover {
+  background: rgba(44, 59, 75, 0.8);
+  border-color: var(--slate-blue);
+  transform: translateY(-2px);
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.ghost-block.selected {
+  background: rgba(44, 59, 75, 0.9);
+  border-color: var(--ocean-primary);
+  border-style: solid;
+  opacity: 1;
+  width: 200px;
+}
+
+/* Ghost header - single row with all info */
+.ghost-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ghost-index {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--mist-gray);
+  padding: 2px 5px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.ghost-header .crown {
+  color: var(--compass-brass);
+  filter: drop-shadow(0 0 4px var(--compass-brass));
+}
+
+/* Inline stats in header */
+.ghost-stat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--mist-gray);
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+/* Ghost output preview */
+.ghost-output {
+  margin-top: 6px;
+  padding: 6px;
+  background: rgba(11, 18, 25, 0.6);
+  border-radius: 4px;
+  border: 1px solid rgba(74, 158, 221, 0.15);
+  max-height: 40px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.ghost-output.expanded {
+  max-height: 200px;
+  overflow-y: auto;
+  border-color: rgba(74, 158, 221, 0.3);
+}
+
+.ghost-output pre {
+  margin: 0;
+  font-size: 9px;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
+  color: var(--mist-gray);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.ghost-output.expanded pre {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   GHOST BLOCK STATES
+   ============================================ */
+
+/* Pending - barely visible, waiting */
+.ghost-block.ghost-pending {
+  opacity: 0.3;
+  border-style: dotted;
+}
+
+.ghost-block.ghost-pending .ghost-index {
+  color: var(--storm-cloud);
+}
+
+/* Running - pulsing glow, more visible */
+.ghost-block.ghost-running {
+  opacity: 0.9;
+  border-color: var(--slate-blue);
+  border-style: solid;
+  animation: ghost-pulse 2s ease-in-out infinite;
+  box-shadow:
+    0 0 10px rgba(107, 114, 142, 0.3),
+    inset 0 0 20px rgba(107, 114, 142, 0.1);
+}
+
+.ghost-block.ghost-running .ghost-index {
+  color: var(--slate-blue-light);
+  background: rgba(107, 114, 142, 0.3);
+}
+
+/* Completed (non-winner) - faded, receding */
+.ghost-block.ghost-completed {
+  opacity: 0.4;
+  border-style: dashed;
+  border-color: rgba(107, 114, 142, 0.3);
+}
+
+.ghost-block.ghost-completed .ghost-header {
+  color: var(--mist-gray);
+}
+
+.ghost-block.ghost-completed .ghost-index {
+  opacity: 0.6;
+}
+
+/* Winner - glowing, prominent, "rises" up */
+.ghost-block.ghost-winner {
+  opacity: 1;
+  border: 2px solid var(--ocean-teal);
+  border-style: solid;
+  background: linear-gradient(
+    135deg,
+    rgba(45, 212, 191, 0.15) 0%,
+    rgba(30, 41, 59, 0.8) 100%
+  );
+  box-shadow:
+    0 0 20px rgba(45, 212, 191, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: scale(1.05);
+  animation: winner-glow 3s ease-in-out infinite;
+}
+
+.ghost-block.ghost-winner .ghost-index {
+  color: var(--ocean-teal);
+  background: rgba(45, 212, 191, 0.2);
+  font-weight: 700;
+}
+
+.ghost-block.ghost-winner:hover {
+  transform: scale(1.05) translateY(-3px);
+}
+
+/* Winner glow effect */
+.winner-glow {
+  position: absolute;
+  inset: -4px;
+  border-radius: 10px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(45, 212, 191, 0.2) 0%,
+    transparent 70%
+  );
+  z-index: -1;
+  animation: glow-breathe 2s ease-in-out infinite;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+@keyframes pulse-icon {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes wave-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-5deg); }
+  75% { transform: translateY(2px) rotate(5deg); }
+}
+
+@keyframes ghost-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 10px rgba(107, 114, 142, 0.3),
+      inset 0 0 20px rgba(107, 114, 142, 0.1);
+    border-color: var(--slate-blue);
+  }
+  50% {
+    box-shadow:
+      0 0 20px rgba(107, 114, 142, 0.5),
+      inset 0 0 30px rgba(107, 114, 142, 0.2);
+    border-color: var(--slate-blue-light);
+  }
+}
+
+@keyframes winner-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 20px rgba(45, 212, 191, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 30px rgba(45, 212, 191, 0.6),
+      0 6px 16px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes glow-breathe {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* ============================================
+   GHOST PHASE COLUMN - Preview before execution
+   Shows what the timeline will look like
+   ============================================ */
+
+.ghost-wrapper {
+  position: relative;
+}
+
+.phase-column.ghost-phase {
+  opacity: 0.7;
+  border: 2px dashed var(--storm-cloud);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--bg-card),
+    var(--bg-card) 10px,
+    rgba(44, 59, 75, 0.5) 10px,
+    rgba(44, 59, 75, 0.5) 20px
+  );
+  position: relative;
+}
+
+.phase-column.ghost-phase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(74, 158, 221, 0.05) 0%,
+    transparent 50%,
+    rgba(74, 158, 221, 0.05) 100%
+  );
+  animation: ghost-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes ghost-shimmer {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.phase-column.ghost-phase .column-header {
+  background: rgba(44, 59, 75, 0.6);
+}
+
+.ghost-number {
+  position: relative;
+}
+
+.ghost-indicator {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ocean-secondary);
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: bold;
+  color: var(--midnight-fjord);
+}
+
+.ghost-eye {
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+.ghost-badge {
+  opacity: 0.7;
+  border: 1px dashed var(--slate-blue);
+  background: transparent;
+}
+
+.ghost-badge .reforge-icon {
+  margin-left: 2px;
+  color: var(--compass-brass);
+  opacity: 0.7;
+}
+
+/* Ghost connector */
+.ghost-connector .connector-line-h {
+  width: 48px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--storm-cloud) 0px,
+    var(--storm-cloud) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.ghost-connector .connector-arrow-h {
+  color: var(--storm-cloud);
+}
+
+.ghost-connector {
+  right: -56px;
+}
+
+/* Ghost body content */
+.phase-column.ghost-phase .column-body.ghost-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+}
+
+.ghost-preview-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--mist-gray);
+}
+
+.ghost-icon {
+  opacity: 0.5;
+  animation: ghost-float 3s ease-in-out infinite;
+}
+
+@keyframes ghost-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.ghost-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.ghost-model {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  color: var(--slate-blue-light);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-instructions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border-left: 2px solid var(--ocean-secondary);
+  font-size: 10px;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+.ghost-instructions span {
+  flex: 1;
+  word-break: break-word;
+}
+
+.ghost-instructions svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+/* Ghost tackle indicator */
+.ghost-tackle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-top: 1px dashed var(--storm-cloud);
+  font-size: 10px;
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+/* Ghost soundings depth - preview version */
+.ghost-soundings-depth {
+  opacity: 0.6;
+}
+
+.ghost-depth-line {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--storm-cloud) 0px,
+    var(--storm-cloud) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.ghost-preview-block {
+  background: rgba(30, 41, 59, 0.4) !important;
+  border-color: var(--storm-cloud) !important;
+}
+
+.ghost-preview-block .ghost-header {
+  opacity: 0.6;
+}
+
+.ghost-preview-block .ghost-question {
+  color: var(--mist-gray);
+  opacity: 0.5;
+}
+
+/* Ghost mode indicator */
+.ghost-mode-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--mist-gray);
+  opacity: 0.6;
+}
+
+/* Ghost handoffs indicator - small badge showing route count */
+.ghost-handoffs-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(217, 165, 83, 0.1);
+  border: 1px dashed var(--compass-brass);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--compass-brass);
+  opacity: 0.7;
+}
+
+/* ============================================
+   HANDOFF ARROWS SVG
+   ============================================ */
+
+.handoff-arrows-svg {
+  z-index: 0;
+  overflow: visible;
+}
+
+.handoff-path {
+  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+}
+
+.handoff-path.executed {
+  filter: drop-shadow(0 0 4px var(--teal-primary));
+}
+
+/* Animation for executed paths */
+@keyframes path-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}

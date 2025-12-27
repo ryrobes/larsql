@@ -1,0 +1,200 @@
+/* TackleChips - Tool selection component */
+
+.tackle-chips {
+  position: relative;
+  width: 100%;
+}
+
+/* ============================================
+   CHIPS CONTAINER
+   ============================================ */
+
+.chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  min-height: 38px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.chips-container:hover {
+  border-color: var(--border-hover);
+}
+
+.chips-container.focused {
+  border-color: var(--ocean-primary);
+  box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.15);
+}
+
+/* ============================================
+   CHIPS
+   ============================================ */
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 8px;
+  background: var(--storm-cloud);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--midnight-fjord);
+  border-color: var(--ocean-secondary);
+  color: var(--text-primary);
+}
+
+.chip.manifest {
+  background: linear-gradient(135deg, rgba(74, 158, 221, 0.15), rgba(40, 196, 181, 0.15));
+  border-color: var(--ocean-primary);
+  color: var(--ocean-primary);
+}
+
+.chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--mist-gray);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.chip-remove:hover {
+  background: var(--danger-red);
+  color: white;
+}
+
+/* ============================================
+   INPUT
+   ============================================ */
+
+.chips-input {
+  flex: 1;
+  min-width: 80px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.chips-input::placeholder {
+  color: var(--mist-gray);
+}
+
+/* ============================================
+   DROPDOWN
+   ============================================ */
+
+.chips-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.dropdown-loading,
+.dropdown-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--mist-gray);
+}
+
+.dropdown-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.dropdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.dropdown-item:hover {
+  background: var(--storm-cloud);
+}
+
+.dropdown-item.manifest {
+  background: rgba(74, 158, 221, 0.08);
+  border-left: 2px solid var(--ocean-primary);
+}
+
+.dropdown-item.manifest:hover {
+  background: rgba(74, 158, 221, 0.15);
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.item-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: var(--mist-gray);
+  padding-left: 22px;
+}
+
+/* ============================================
+   HINT
+   ============================================ */
+
+.dropdown-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-default);
+  font-size: 11px;
+  color: var(--ocean-secondary);
+}

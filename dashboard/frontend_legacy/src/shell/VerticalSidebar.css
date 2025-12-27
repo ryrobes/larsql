@@ -1,0 +1,341 @@
+/* ============================================
+   VERTICAL SIDEBAR - Mac/Windows-style Dock
+   ============================================ */
+
+.vertical-sidebar {
+  width: 56px;
+  height: 100vh;
+  background-color: #0a0818;
+  border-right: 1px solid #1a1628;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+/* ============================================
+   BRAND
+   ============================================ */
+
+.vsidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+}
+
+.vsidebar-brand-logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+/* ============================================
+   NAVIGATION
+   ============================================ */
+
+.vsidebar-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  width: 100%;
+  padding: 0 6px;
+}
+
+.vsidebar-nav-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vsidebar-nav-btn:hover {
+  background-color: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.3);
+  color: #00e5ff;
+}
+
+.vsidebar-nav-btn.active {
+  background-color: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #00e5ff;
+}
+
+/* ============================================
+   TOOLTIPS
+   ============================================ */
+
+.vsidebar-tooltip {
+  position: absolute;
+  left: 100%;
+  margin-left: 12px;
+  background-color: #0f0e21;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #f0f4f8;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Tooltip arrow */
+.vsidebar-tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: #1a1628;
+}
+
+.vsidebar-tooltip::after {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: -1px;
+  border: 5px solid transparent;
+  border-right-color: #0f0e21;
+}
+
+/* ============================================
+   BOTTOM SECTION
+   ============================================ */
+
+.vsidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 6px;
+  border-top: 1px solid #1a1628;
+  padding-top: 12px;
+}
+
+.vsidebar-blocked-btn {
+  position: relative;
+}
+
+.vsidebar-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  padding: 0 4px;
+  box-shadow: 0 2px 4px rgba(248, 113, 113, 0.4);
+}
+
+/* ============================================
+   RUNNING CASCADES SECTION
+   ============================================ */
+
+.vsidebar-running-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #1a1628;
+}
+
+.vsidebar-running-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #00e5ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vsidebar-running-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #00e5ff;
+  border-radius: 50%;
+  animation: running-dot-pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+}
+
+@keyframes running-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.vsidebar-running-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.vsidebar-running-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 44px;
+  height: 56px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 229, 255, 0.12) 0%,
+    rgba(0, 200, 225, 0.06) 100%
+  );
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: visible;
+  padding: 5px 3px 4px 3px;
+}
+
+.vsidebar-running-btn:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 229, 255, 0.2) 0%,
+    rgba(0, 200, 225, 0.12) 100%
+  );
+  border-color: #00e5ff;
+  transform: scale(1.08);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.3);
+}
+
+.vsidebar-running-btn.current {
+  background: linear-gradient(
+    135deg,
+    rgba(52, 211, 153, 0.2) 0%,
+    rgba(16, 185, 129, 0.1) 100%
+  );
+  border-color: #34d399;
+}
+
+.vsidebar-running-btn.current:hover {
+  border-color: #34d399;
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
+}
+
+.vsidebar-running-avatar {
+  font-size: 14px;
+  font-weight: 700;
+  color: #00e5ff;
+  letter-spacing: -0.5px;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+  line-height: 1;
+}
+
+.vsidebar-running-btn.current .vsidebar-running-avatar {
+  color: #34d399;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+}
+
+/* Pulsing ring around running cascade button */
+.vsidebar-running-pulse {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border: 2px solid rgba(0, 229, 255, 0.4);
+  border-radius: 12px;
+  animation: running-ring-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes running-ring-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.vsidebar-running-btn.current .vsidebar-running-pulse {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+/* Running cascade stats (duration and cost) */
+.vsidebar-running-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.vsidebar-running-stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  padding: 1px 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vsidebar-running-stat-time {
+  color: rgba(0, 229, 255, 0.9);
+}
+
+.vsidebar-running-stat-cost {
+  color: rgba(52, 211, 153, 0.9);
+}
+
+.vsidebar-running-btn:hover .vsidebar-running-stat-time,
+.vsidebar-running-btn:hover .vsidebar-running-stat-cost {
+  filter: brightness(1.2);
+}
+
+.vsidebar-running-btn.current .vsidebar-running-stat-time,
+.vsidebar-running-btn.current .vsidebar-running-stat-cost {
+  filter: brightness(1.1);
+}

@@ -1,0 +1,112 @@
+/* ============================================
+   CHECKPOINT RENDERER - Universal component
+   ============================================ */
+
+.checkpoint-renderer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Error state */
+.checkpoint-renderer-error {
+  padding: 16px;
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  border-radius: 6px;
+  color: var(--color-accent-red);
+  font-size: var(--font-size-sm);
+}
+
+/* ============================================
+   VARIANTS - Different rendering contexts
+   ============================================ */
+
+/* Inline (in chat/timeline) - minimal chrome */
+.checkpoint-renderer-inline {
+  background: transparent;
+}
+
+.checkpoint-renderer-inline .checkpoint-phase-output {
+  background: rgba(0, 0, 0, 0.4);
+  border-left: 3px solid var(--color-accent-cyan);
+}
+
+/* Modal (overlay) - card-like */
+.checkpoint-renderer-modal {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+/* Page (dedicated view) - full width */
+.checkpoint-renderer-page {
+  background: transparent;
+}
+
+/* ============================================
+   PHASE OUTPUT
+   ============================================ */
+
+.checkpoint-phase-output {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 4px;
+}
+
+.phase-output-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.phase-output-text {
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ============================================
+   UI CONTAINER
+   ============================================ */
+
+.checkpoint-ui-container {
+  /* DynamicUI and HTMLSection have their own styling */
+}
+
+/* ============================================
+   ACTIONS (for modal variant)
+   ============================================ */
+
+.checkpoint-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+.checkpoint-cancel-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--color-border-medium);
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.checkpoint-cancel-btn:hover {
+  border-color: var(--color-accent-red);
+  color: var(--color-accent-red);
+  background: rgba(255, 71, 87, 0.1);
+}

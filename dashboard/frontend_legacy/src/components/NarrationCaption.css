@@ -1,0 +1,79 @@
+/* Live narration caption with word-by-word highlighting */
+.narration-caption {
+  position: fixed;
+  bottom: 80px;  /* Higher up from bottom */
+  /* Center relative to content pane (viewport - 320px sidebar) */
+  /* Center of content = (100vw - 320px) / 2 = 50vw - 160px */
+  left: calc(50% - 160px);
+  transform: translateX(-50%) translateY(60px);  /* Start below (for slide-up entry) */
+  max-width: 1100px; /* Wider for better readability */
+  width: auto;
+  min-width: 300px;
+  max-height: 40vh; /* Allow up to 40% of viewport height */
+  z-index: 1000;
+  pointer-events: none; /* Don't block interaction */
+  opacity: 0;
+  transition: opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  justify-content: center;
+}
+
+.narration-caption.active {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);  /* Slide up into position */
+}
+
+.narration-caption.fading {
+  opacity: 0;
+  transform: translateX(-50%) translateY(40px);  /* Slide back down */
+}
+
+.caption-text {
+  background: linear-gradient(135deg, rgba(12, 10, 18, 0.96), rgba(18, 16, 24, 0.96));
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 12px;
+  padding: 20px 32px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 20px rgba(167, 139, 250, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-size: 1.625rem;
+  line-height: 1.8;
+  text-align: left;
+  font-weight: 400;
+  max-height: 40vh;
+  overflow-y: auto;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  width: fit-content;
+  max-width: 100%;
+  min-height: fit-content;
+}
+
+.caption-word {
+  display: inline-block;
+  color: #666;
+  transition: color 0.2s ease-out, text-shadow 0.2s ease-out, -webkit-text-stroke 0.1s ease-out;
+  margin-right: 0.35em;
+  word-break: keep-all;
+  /* Prevent layout shift from any transforms */
+  transform-origin: center;
+  will-change: text-shadow, color;
+}
+
+.caption-word.spoken {
+  color: #e0e0e0;
+  text-shadow: 0 0 4px rgba(167, 139, 250, 0.3);
+}
+
+.caption-word.current {
+  color: #a78bfa;
+  /* Use text-stroke instead of font-weight to avoid width changes */
+  -webkit-text-stroke: 0.5px currentColor;
+  /* Faster transition for responsive feel */
+  transition: text-shadow 0.05s ease-out, -webkit-text-stroke 0.05s ease-out;
+}
+
+/* Note: Slide animation is handled by .narration-caption transitions */

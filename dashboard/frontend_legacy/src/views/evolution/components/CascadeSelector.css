@@ -1,0 +1,48 @@
+/* Cascade Selector */
+.cascade-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  max-width: 500px;
+}
+
+.selector-icon {
+  color: #00e5ff;
+  flex-shrink: 0;
+}
+
+.cascade-select {
+  flex: 1;
+  padding: 10px 14px;
+  background: #0a0510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  color: #f0f4f8;
+  font-size: 13px;
+  font-family: 'Google Sans Code', monospace;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.cascade-select:hover:not(:disabled) {
+  border-color: #00e5ff;
+  background: #100a1a;
+}
+
+.cascade-select:focus {
+  border-color: #00e5ff;
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
+}
+
+.cascade-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cascade-select option {
+  background: #0a0510;
+  color: #f0f4f8;
+  padding: 8px;
+}

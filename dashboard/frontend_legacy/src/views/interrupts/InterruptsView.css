@@ -1,0 +1,398 @@
+/* ============================================
+   INTERRUPTS VIEW - Studio-style split layout
+   ============================================ */
+
+/* Loading/Empty States */
+.interrupts-view-loading,
+.interrupts-view-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl);
+  color: var(--color-text-muted);
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+.interrupts-view-loading .spinning {
+  animation: spin 1s linear infinite;
+}
+
+.interrupts-view-empty .empty-icon {
+  color: var(--color-accent-green);
+  opacity: 0.6;
+}
+
+.interrupts-view-empty h2 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.interrupts-view-empty p {
+  margin: 0;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Split Layout Container */
+.interrupts-view-split {
+  width: 100%;
+  height: 100vh;
+  background-color: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.interrupts-horizontal-split {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+}
+
+/* Horizontal gutter (between list and detail) */
+.interrupts-horizontal-split > .gutter {
+  background-color: #1a1628;
+  cursor: col-resize;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.interrupts-horizontal-split > .gutter:hover {
+  background-color: #00e5ff;
+}
+
+.interrupts-horizontal-split > .gutter:active {
+  background-color: #00e5ff;
+}
+
+/* Gutter visual indicator */
+.interrupts-horizontal-split > .gutter::after {
+  content: '';
+  display: block;
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: background-color 0.15s ease;
+  width: 2px;
+  height: 32px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.interrupts-horizontal-split > .gutter:hover::after {
+  background-color: #0a0a0a;
+}
+
+/* ============================================
+   LEFT SIDEBAR - Checkpoint List
+   ============================================ */
+
+.interrupts-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border-dim);
+  overflow: hidden;
+}
+
+.interrupts-sidebar-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border-dim);
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.interrupts-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Checkpoint List Item */
+.checkpoint-list-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background-color: var(--color-bg-primary);
+}
+
+.checkpoint-list-item:hover {
+  background-color: rgba(0, 229, 255, 0.05);
+  border-left: 2px solid var(--color-accent-cyan);
+}
+
+.checkpoint-list-item.selected {
+  background-color: rgba(0, 229, 255, 0.1);
+  border-left: 3px solid var(--color-accent-cyan);
+  box-shadow: inset 0 0 20px rgba(0, 229, 255, 0.1);
+}
+
+.checkpoint-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.checkpoint-wait-time {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-yellow);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+}
+
+.checkpoint-list-session {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-cyan);
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkpoint-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+}
+
+.checkpoint-list-cascade {
+  color: var(--color-accent-purple);
+  font-weight: var(--font-weight-medium);
+}
+
+.checkpoint-list-cell {
+  color: var(--color-accent-green);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ============================================
+   RIGHT PANEL - Checkpoint Detail
+   ============================================ */
+
+.interrupts-detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.interrupts-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-dim);
+  background-color: rgba(0, 0, 0, 0.6);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.detail-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink */
+}
+
+.detail-header-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  overflow: hidden;
+}
+
+.detail-session {
+  color: var(--color-accent-cyan);
+  font-weight: var(--font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-cascade {
+  color: var(--color-accent-purple);
+  font-weight: var(--font-weight-medium);
+}
+
+.detail-cell {
+  color: var(--color-accent-green);
+  font-weight: var(--font-weight-medium);
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Detail Content */
+.interrupts-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-phase-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.output-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.output-text {
+  padding: 12px;
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.detail-checkpoint-ui {
+  /* DynamicUI and HTMLSection have their own styles */
+}
+
+/* Detail Empty State */
+.interrupts-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 100%;
+  color: var(--color-text-dim);
+}
+
+.interrupts-detail-empty p {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+/* ============================================
+   ERROR TOAST
+   ============================================ */
+
+.interrupts-error-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: rgba(248, 113, 113, 0.95);
+  color: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  z-index: var(--z-toast);
+  animation: slideInUp 0.3s ease;
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+
+.interrupts-list::-webkit-scrollbar,
+.interrupts-detail-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.interrupts-list::-webkit-scrollbar-track,
+.interrupts-detail-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.interrupts-list::-webkit-scrollbar-thumb,
+.interrupts-detail-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.3);
+  border-radius: 3px;
+}
+
+.interrupts-list::-webkit-scrollbar-thumb:hover,
+.interrupts-detail-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.5);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .interrupts-detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .detail-header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

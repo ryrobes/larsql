@@ -1,0 +1,65 @@
+/* ========================================
+   AlertsPanel Component Styles
+   ======================================== */
+
+.alerts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* Header */
+.alerts-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alerts-panel-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.alerts-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: rgba(100, 116, 139, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Grid Container */
+.alerts-grid-container {
+  background: #000000;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 200px;
+}
+
+/* Empty State */
+.alerts-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 40px;
+  text-align: center;
+}
+
+.alerts-empty-state p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.alerts-empty-state span {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}

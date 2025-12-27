@@ -1,0 +1,417 @@
+/* Phase bar - Simplified horizontal bar chart style */
+.phase-bar-container {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #16202A;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  /* Prevent layout shift - contain layout reflows within this container */
+  contain: layout style;
+}
+
+.phase-bar-container:last-child {
+  border-bottom: none;
+}
+
+.phase-bar-container:hover {
+  cursor: pointer;
+}
+
+/* Header: Name + Cost */
+.phase-bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+
+.phase-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Color indicator square that matches cascade bar legend */
+.phase-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.phase-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #F0F4F8;
+}
+
+.phase-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.phase-cost {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #4A9EDD;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+}
+
+/* Bar track and fill */
+.phase-bar-track {
+  height: 18px;
+  background: #0B1219;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.phase-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.3), rgba(74, 158, 221, 0.6));
+  /* Hint browser to optimize for width changes */
+  will-change: width;
+}
+
+/* Status-based colors (for instances) */
+.phase-bar-fill.status-completed {
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.3), rgba(74, 158, 221, 0.7));
+}
+
+.phase-bar-fill.status-running {
+  background: linear-gradient(90deg, rgba(217, 165, 83, 0.3), rgba(217, 165, 83, 0.7));
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.phase-bar-fill.status-error {
+  background: linear-gradient(90deg, rgba(207, 102, 121, 0.3), rgba(207, 102, 121, 0.7));
+}
+
+.phase-bar-fill.status-pending {
+  background: linear-gradient(90deg, rgba(44, 59, 75, 0.2), rgba(44, 59, 75, 0.3));
+  opacity: 0.5;
+}
+
+@keyframes shimmer {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Spinning icon for running status */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Individual sounding bars - normalized view */
+.individual-soundings {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Prevent layout shift during updates */
+  contain: layout style;
+}
+
+.individual-sounding-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Fixed height to prevent layout shift */
+  height: 20px;
+  min-height: 20px;
+}
+
+.sounding-index-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 42px;
+  justify-content: flex-start;
+}
+
+.winner-icon,
+.running-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.individual-sounding-track {
+  flex: 1;
+  height: 16px;
+  background: #0B1219;
+  border-radius: 4px;
+  overflow: visible;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.individual-sounding-bar {
+  height: 100%;
+  border-radius: 4px;
+  position: relative;
+  transition: width 0.3s ease, filter 0.2s ease;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  /* Hint browser to optimize for width changes */
+  will-change: width;
+}
+
+.individual-sounding-bar.winner {
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.4), rgba(74, 158, 221, 0.7));
+  filter: brightness(1.2);
+  box-shadow: 0 0 8px rgba(74, 158, 221, 0.4);
+}
+
+.individual-sounding-bar.loser {
+  background: linear-gradient(90deg, rgba(74, 158, 221, 0.15), rgba(74, 158, 221, 0.3));
+  opacity: 0.6;
+  filter: saturate(0.5);
+}
+
+.individual-sounding-bar.running {
+  background: linear-gradient(90deg, rgba(217, 165, 83, 0.3), rgba(217, 165, 83, 0.6));
+  animation: soundingPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(217, 165, 83, 0.4);
+}
+
+@keyframes soundingPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(217, 165, 83, 0.3);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 16px rgba(217, 165, 83, 0.6);
+  }
+}
+
+.individual-sounding-bar:hover {
+  filter: brightness(1.4);
+}
+
+.sounding-cost-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #4A9EDD;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+/* Model label - shown to the right of the bar when multi-model soundings */
+.sounding-model-label {
+  position: absolute;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #9AA5B1;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.individual-sounding-row:hover .sounding-model-label {
+  opacity: 1;
+  color: #F0F4F8;
+}
+
+/* Dark text for model labels overlapping bright winner bars */
+.sounding-model-label.on-winner-bar {
+  color: #0a0a0a;
+  text-shadow: 0 0 2px rgba(74, 158, 221, 0.5);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.individual-sounding-row:hover .sounding-model-label.on-winner-bar {
+  color: #0a0a0a;
+}
+
+/* Phase message count in header */
+.phase-message-count {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #6B7280;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+  padding: 1px 4px;
+  background: rgba(107, 114, 128, 0.15);
+  border-radius: 3px;
+}
+
+/* Container for sounding row + activity detail */
+.individual-sounding-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Prevent layout recalculation from propagating */
+  contain: layout style;
+}
+
+/* Activity row under each sounding bar */
+.sounding-activity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 50px; /* Align with sounding track (past index label) */
+  height: 16px; /* Fixed height to prevent jumping */
+  min-height: 16px;
+  max-height: 16px;
+  gap: 8px;
+  overflow: hidden; /* Clip any overflow */
+}
+
+.sounding-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0; /* Don't shrink stats */
+  height: 14px;
+}
+
+.sounding-msg-count,
+.sounding-turn-count {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6B7280;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+  line-height: 14px; /* Match container height */
+}
+
+.sounding-turn-count {
+  color: #9CA3AF;
+  padding: 0 3px;
+  background: rgba(156, 163, 175, 0.1);
+  border-radius: 2px;
+}
+
+/* Snippet container - holds prefix badge and content */
+.sounding-snippet {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0; /* Critical for flex truncation */
+  flex: 1;
+  overflow: hidden;
+  height: 14px; /* Fixed height */
+}
+
+.sounding-snippet.running {
+  animation: snippetPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes snippetPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Snippet prefix badge */
+.snippet-prefix {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: lowercase;
+  line-height: 12px; /* Consistent height */
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.snippet-tool {
+  background: rgba(217, 165, 83, 0.25);
+  color: #D9A553;
+}
+
+.snippet-result {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.snippet-assistant {
+  background: rgba(74, 158, 221, 0.2);
+  color: #4A9EDD;
+}
+
+.snippet-ward {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.snippet-default {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9CA3AF;
+}
+
+/* Snippet content - truncates with ellipsis */
+.snippet-content {
+  font-size: 9px;
+  font-weight: 400;
+  color: #6B7280;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0; /* Critical for flex truncation */
+  line-height: 14px; /* Match container height */
+}
+
+.sounding-snippet.running .snippet-content {
+  color: #9CA3AF;
+}
+
+/* Clickable phase header for scroll navigation */
+.phase-bar-header.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s ease;
+}
+
+.phase-bar-header.clickable:hover {
+  background-color: rgba(96, 165, 250, 0.15);
+}
+
+.phase-bar-header.clickable:active {
+  background-color: rgba(96, 165, 250, 0.25);
+}
+
+/* Clickable sounding rows for scroll navigation */
+.individual-sounding-row.clickable {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s ease;
+}
+
+.individual-sounding-row.clickable:hover {
+  background-color: rgba(78, 201, 176, 0.15);
+}
+
+.individual-sounding-row.clickable:active {
+  background-color: rgba(78, 201, 176, 0.25);
+}

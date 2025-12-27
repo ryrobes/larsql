@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="RVBBIT UI" />
+    <link rel="icon" type="image/png" href="boot-rabbit-neon3.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather&family=Quicksand&family=Libre+Baskerville&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Inter&family=Julius+Sans+One&family=Manrope:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <link rel="preload" href="/loading.webm" as="video" type="video/webm">
+    <title>RVBBIT</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root" style="background-color: black;"></div>
+
+    <!-- HTMX for interactive checkpoints -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/json-enc.js"></script>
+    <script>
+      // HTMX configuration
+      htmx.config.globalViewTransitions = true;
+      htmx.config.defaultSwapStyle = 'innerHTML';
+
+      // Suppress harmless ResizeObserver errors in development
+      // These occur when ResizeObserver fires faster than RAF can process
+      window.addEventListener('error', (e) => {
+        if (e.message && e.message.includes('ResizeObserver')) {
+          e.stopImmediatePropagation();
+          return false;
+        }
+      });
+    </script>
+  </body>
+</html>

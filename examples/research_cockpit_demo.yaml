@@ -15,11 +15,12 @@ description: 'Interactive research assistant optimized for the Research Cockpit 
   '
 inputs_schema:
   initial_query: Your first research question (optional)
+model: x-ai/grok-4.1-fast
+#model: openrouter/auto
 cells:
 - name: research_loop
   ui_mode: research_cockpit
   traits: manifest
-  model: x-ai/grok-4.1-fast
   rules:
     max_turns: 100
   handoffs:
@@ -68,12 +69,16 @@ cells:
     \ coordinates\n\n**Presentation:**\n- `request_decision(html=\"...\", options=[...])`\
     \ - Show results with rich UI\n- `create_artifact(html=\"...\")` - Publish final\
     \ dashboards\n\n## HTML Guidelines\n\nWhen creating HTML for request_decision:\n\
-    - Use Plotly for charts: `Plotly.newPlot('id', data, {paper_bgcolor:'#1a1a1a'})`\n\
-    - Fetch data: `fetch('/api/sql/query', {method:'POST', body:JSON.stringify({...})})`\n\
-    - ALWAYS check `result.error` before using `result.rows`\n- Form must: `hx-post=\"\
-    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\"`\n- Use `name=\"\
-    response[key]\"` for form fields\n- Please use the FULL responsive WIDTH instead\
-    \ of constraining it.\n\n## Example Flow\n\nTurn 1: Explore schema\n  → sql_query(\"\
+    - Use Plotly charts with AppShell theme: `Plotly.newPlot('id', data, {paper_bgcolor:'transparent',\
+    \ plot_bgcolor:'#000', font:{color:'#cbd5e1', family:'Google Sans Code, monospace',\
+    \ size:11}, xaxis:{gridcolor:'rgba(255,255,255,0.05)'}, yaxis:{gridcolor:'rgba(255,255,255,0.05)'}})`\n\
+    - Fetch data: `fetch('/api/sql/query', {method:'POST', body:JSON.stringify({connection:'...',\
+    \ sql:'...', limit:1000})})`\n    - ALWAYS check `result.error` before using `result.rows`\
+    \ (critical!)\n- Forms must use: `hx-post=\"/api/checkpoints/{{ checkpoint_id\
+    \ }}/respond\" hx-ext=\"json-enc\"`\n- Use `name=\"response[key]\"` for form\
+    \ fields (json-enc converts to nested JSON)\n- Styling: Pure black backgrounds,\
+    \ cyan (#00e5ff) accents, Google Sans Code font (12px, monospace)\n- Layout:\
+    \ Use FULL width, data-dense, no unnecessary margins\n\n## Example Flow\n\nTurn 1: Explore schema\n  → sql_query(\"\
     SELECT * FROM market_research.zollege_courses LIMIT 1\")\n  → Check response.error\n\
     \  → STOP (don't call request_decision yet!)\n\nTurn 2: Review schemas, test queries\n\
     \  → sql_query(\"SELECT program_type, COUNT(*) FROM market_research.zollege_courses\

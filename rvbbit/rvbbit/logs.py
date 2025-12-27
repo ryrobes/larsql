@@ -19,7 +19,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                 # Additional unified fields
                 cascade_id: str = None, cascade_file: str = None, cell_name: str = None,
                 turn_number: int = None, attempt_number: int = None, parent_session_id: str = None,
-                species_hash: str = None, phase_config: dict = None,
+                species_hash: str = None, genus_hash: str = None, phase_config: dict = None,
                 # Caller tracking (NEW)
                 caller_id: str = None, invocation_metadata: dict = None):
     """
@@ -29,9 +29,9 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
     """
     from .unified_logs import log_unified
 
-    # If caller tracking not provided, look it up from Echo (stored in SessionManager)
-    # This ensures ALL log calls get caller tracking automatically!
-    if caller_id is None or invocation_metadata is None:
+    # If caller tracking or genus_hash not provided, look it up from Echo (stored in SessionManager)
+    # This ensures ALL log calls get tracking automatically!
+    if caller_id is None or invocation_metadata is None or genus_hash is None:
         try:
             from .echo import _session_manager
             if session_id in _session_manager.sessions:
@@ -40,6 +40,8 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                     caller_id = caller_id or echo.caller_id
                 if echo.invocation_metadata:
                     invocation_metadata = invocation_metadata or echo.invocation_metadata
+                if echo.genus_hash:
+                    genus_hash = genus_hash or echo.genus_hash
         except Exception as e:
             pass  # Fallback: try ContextVars
 
@@ -79,6 +81,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
         cascade_file=cascade_file,
         cell_name=cell_name,
         species_hash=species_hash,
+        genus_hash=genus_hash,
         phase_config=phase_config,
         duration_ms=duration_ms,
         tokens_in=tokens_in,

@@ -668,7 +668,12 @@ def request_decision(
                 * Plotly.js - Interactive charts (Plotly.newPlot('#chart', data, layout))
                 * Vega-Lite - Grammar of graphics (vegaEmbed('#chart', spec))
                 * AG Grid v33+ - Professional data tables with sorting/filtering
-                * Use dark theme for Plotly: paper_bgcolor='#1a1a1a', plot_bgcolor='#0a0a0a'
+                * AppShell Theme (IMPORTANT - use these exact colors!):
+                  - paper_bgcolor: 'transparent' (not solid color!)
+                  - plot_bgcolor: '#000' (pure black)
+                  - font: {color: '#cbd5e1', family: 'Google Sans Code, monospace', size: 11}
+                  - gridcolor: 'rgba(255,255,255,0.05)' (subtle grid lines)
+                  - Line colors: Use cyan (#00e5ff), purple (#a78bfa), green (#22d399)
                 * AG Grid v33 THEMING (CRITICAL - no CSS classes needed!):
                   - Use the Theming API via gridOptions.theme
                   - For dark mode: theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark)
@@ -754,11 +759,17 @@ def request_decision(
                   <button type="submit" onclick="document.getElementById('decision').value='approve'">Approve</button>
                   <button type="button" onclick="document.getElementById('decision').value='reject'; this.form.requestSubmit();">Reject</button>
                 </form>
-              - Example (with Plotly chart):
-                <div id="myChart"></div>
+              - Example (with Plotly chart - AppShell theme):
+                <div id="myChart" style="width: 100%; height: 400px;"></div>
                 <script>
-                  Plotly.newPlot('myChart', [{x:[1,2,3], y:[2,4,3], type:'bar'}],
-                    {paper_bgcolor:'#1a1a1a', plot_bgcolor:'#0a0a0a', font:{color:'#e5e7eb'}});
+                  Plotly.newPlot('myChart', [{x:[1,2,3], y:[2,4,3], type:'bar'}], {
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: '#000',
+                    font: {color: '#cbd5e1', family: 'Google Sans Code, monospace', size: 11},
+                    margin: {t: 10, r: 10, b: 30, l: 40},
+                    xaxis: {gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(0,229,255,0.2)'},
+                    yaxis: {gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(0,229,255,0.2)'}
+                  });
                 </script>
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
                   <button name="response[selected]" value="approve">Approve Chart</button>
@@ -783,6 +794,50 @@ def request_decision(
                 </script>
                 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
                   <button name="response[selected]" value="approve">Approve Data</button>
+                </form>
+              - Example (COMPLETE - AppShell theme with Plotly + SQL data):
+                <div id="analysisChart" style="width: 100%; height: 350px;"></div>
+                <script>
+                  // Fetch data from SQL
+                  fetch('http://localhost:5001/api/sql/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                      connection: 'research_dbs',
+                      sql: 'SELECT category, SUM(amount) as total FROM sales GROUP BY category ORDER BY total DESC LIMIT 10',
+                      limit: 1000
+                    })
+                  }).then(r => r.json()).then(result => {
+                    if (result.error) {
+                      document.getElementById('analysisChart').innerHTML =
+                        '<div style="color:#ff4757;padding:20px;">Error: ' + result.error + '</div>';
+                      return;
+                    }
+
+                    // Extract columns (from your test query)
+                    const catIdx = result.columns.indexOf('category');
+                    const totalIdx = result.columns.indexOf('total');
+
+                    // Create Plotly chart with AppShell theme
+                    Plotly.newPlot('analysisChart', [{
+                      x: result.rows.map(r => r[catIdx]),
+                      y: result.rows.map(r => r[totalIdx]),
+                      type: 'bar',
+                      marker: {color: '#00e5ff'}
+                    }], {
+                      paper_bgcolor: 'transparent',
+                      plot_bgcolor: '#000',
+                      font: {color: '#cbd5e1', family: 'Google Sans Code, monospace', size: 11},
+                      margin: {t: 10, r: 10, b: 40, l: 50},
+                      xaxis: {gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(0,229,255,0.2)'},
+                      yaxis: {gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor: 'rgba(0,229,255,0.2)'}
+                    });
+                  });
+                </script>
+                <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+                  <h3>What would you like to explore next?</h3>
+                  <input type="text" name="response[next_query]" placeholder="Enter your follow-up question..." style="width: 100%; margin-bottom: 12px;" />
+                  <button name="response[selected]" value="continue">Continue Research</button>
                 </form>
         timeout_seconds: Maximum wait time (default 600 = 10 minutes)
 
@@ -1065,33 +1120,38 @@ def _build_html_decision_ui(html: str, question: str, context: str, severity: st
 
     # Inject system extras INSIDE the form (before closing </form> tag)
     # This ensures they're submitted with the LLM's form data
+    # UPDATED: AppShell theme styling (pure black, cyan accents, data-dense)
     extras_html = """
 <!-- System-provided extras (always included, auto-merged with form) -->
-<div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid #333;">
-  <div style="margin-bottom: 16px;">
-    <label style="display: block; margin-bottom: 8px; color: #9ca3af; font-size: 0.875rem; font-weight: 500;">
-      💬 Additional Notes (optional):
+<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0, 229, 255, 0.2);">
+  <div style="margin-bottom: 12px;">
+    <label style="display: block; margin-bottom: 6px; color: #94a3b8; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">
+      💬 Additional Notes (optional)
     </label>
     <textarea
       name="response[notes]"
       placeholder="Add context, feedback, or clarifications..."
       rows="3"
-      style="width: 100%; background: #0a0a0a; border: 1px solid #333; color: #e5e7eb; padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+      style="width: 100%; background: rgba(0, 0, 0, 0.8); border: 1px solid rgba(0, 229, 255, 0.2); color: #cbd5e1; padding: 7px 9px; border-radius: 4px; font-family: 'Google Sans Code', monospace; font-size: 12px; resize: vertical; transition: all 0.15s;"
+      onfocus="this.style.borderColor='#00e5ff'; this.style.boxShadow='0 0 0 2px rgba(0, 229, 255, 0.1)'; this.style.background='#000';"
+      onblur="this.style.borderColor='rgba(0, 229, 255, 0.2)'; this.style.boxShadow='none'; this.style.background='rgba(0, 0, 0, 0.8)';"></textarea>
   </div>
 
   <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-    <label style="display: flex; align-items: center; gap: 8px; color: #9ca3af; font-size: 0.875rem; cursor: pointer;">
+    <label style="display: flex; align-items: center; gap: 8px; color: #94a3b8; font-size: 11px; cursor: pointer;">
       <input
         type="checkbox"
         name="response[include_screenshot]"
         value="true"
-        style="width: auto; cursor: pointer;">
-      <span>📸 Include screenshot with response</span>
+        style="accent-color: #00e5ff; width: 16px; height: 16px; cursor: pointer;">
+      <span>📸 Include screenshot</span>
     </label>
 
     <button
       type="submit"
-      style="background: #4A9EDD; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.875rem; white-space: nowrap;">
+      style="background: linear-gradient(135deg, #00e5ff 0%, #a78bfa 100%); color: #000; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.15s; white-space: nowrap;"
+      onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 0 20px rgba(0, 229, 255, 0.4)';"
+      onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
       Submit Response
     </button>
   </div>
@@ -1345,52 +1405,165 @@ def _build_screenshot_html(body_html: str) -> str:
     Mirrors the iframe template from frontend HTMLSection.js
     """
     base_css = """
+/* RVBBIT AppShell Theme - Data-dense HTMX forms (synced with frontend) */
 :root {
-  --bg-darkest: #0a0a0a;
-  --bg-dark: #121212;
-  --bg-card: #1a1a1a;
-  --border-default: #333;
-  --text-primary: #e5e7eb;
+  --bg-darkest: #000000;
+  --bg-dark: #0a0510;
+  --bg-card: rgba(0, 0, 0, 0.6);
+  --border-default: rgba(0, 229, 255, 0.2);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --text-primary: #cbd5e1;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-cyan: #00e5ff;
   --accent-purple: #a78bfa;
-  --accent-green: #10b981;
-  --accent-red: #ef4444;
+  --accent-green: #22d399;
+  --accent-red: #ff4757;
+  --accent-yellow: #fbbf24;
 }
 
 body {
   margin: 0;
-  padding: 16px;
-  font-family: 'Quicksand', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
+  padding: 10px;
+  font-family: 'Google Sans Code', 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text-primary);
-  background: #1a1a1a;
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; }
 
-h1, h2, h3 {
-  color: var(--accent-purple);
-  font-weight: 600;
-  margin: 0 0 0.75rem 0;
+h1, h2, h3, h4, h5, h6 {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+h1 { font-size: 1.125rem; }
+h2 { font-size: 1rem; }
+h3 { font-size: 0.875rem; }
+
+p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+input, select, textarea {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  padding: 7px 9px;
+  border-radius: 4px;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+  background: #000;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 50px;
+  line-height: 1.5;
 }
 
 button {
-  background: var(--accent-purple);
-  color: white;
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+  color: #000;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: 4px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
 }
 
-input, textarea {
-  background: var(--bg-darkest);
-  border: 1px solid var(--border-default);
-  color: var(--text-primary);
-  padding: 0.5rem 0.75rem;
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+code, pre {
+  font-family: 'Google Sans Code', monospace;
+  background: rgba(0, 0, 0, 0.8);
   border-radius: 4px;
-  font-family: inherit;
+}
+
+code {
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--accent-purple);
+}
+
+pre {
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  line-height: 1.5;
+}
+
+label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+th, td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+th {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+
+tr:hover {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+a:hover {
+  text-decoration: underline;
+  filter: brightness(1.2);
 }
 """
 
@@ -1398,8 +1571,10 @@ input, textarea {
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=1200">
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>{base_css}</style>
 
   <!-- Visualization libraries -->

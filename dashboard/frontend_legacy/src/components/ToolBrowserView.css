@@ -1,0 +1,58 @@
+.tool-browser-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0B1219;
+  color: #e5e7eb;
+  padding: 2rem;
+  overflow: hidden;
+}
+
+.tool-browser-split {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.tool-browser-pane {
+  overflow: auto;
+  background: #0B1219;
+}
+
+.gutter {
+  background: #1f2937;
+  cursor: col-resize;
+  transition: background 0.2s;
+}
+
+.gutter:hover {
+  background: #374151;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #8b92a0;
+  padding: 2rem;
+}
+
+.empty-state svg {
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.empty-state h2 {
+  font-size: 1.25rem;
+  margin: 0.5rem 0;
+  color: #e5e7eb;
+}
+
+.empty-state p {
+  font-size: 0.875rem;
+  color: #8b92a0;
+  margin: 0;
+}

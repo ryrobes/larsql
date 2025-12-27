@@ -1,0 +1,350 @@
+.image-gallery {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Prevent layout shift during updates */
+  contain: layout style;
+}
+
+/* Section containers */
+.gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: #9AA5B1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.section-header svg {
+  color: #64748b;
+}
+
+.section-count {
+  font-weight: 400;
+  color: #64748b;
+  font-size: 0.65rem;
+}
+
+/* Reforge header styling */
+.reforge-header {
+  color: #8B9FCC;
+}
+
+.reforge-header svg {
+  color: #8B9FCC;
+}
+
+.refined-from {
+  font-weight: 400;
+  color: #D9A553;
+  font-size: 0.65rem;
+  margin-left: 4px;
+}
+
+/* Gallery rows - horizontal layout */
+.gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* Soundings row */
+.soundings-row {
+  gap: 12px;
+}
+
+/* Reforges row */
+.reforges-row {
+  gap: 12px;
+  padding: 8px;
+  background: rgba(139, 159, 204, 0.08);
+  border-radius: 8px;
+  border: 1px solid rgba(139, 159, 204, 0.2);
+}
+
+/* Individual sounding item */
+.sounding-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(30, 41, 59, 0.4);
+  border-radius: 8px;
+  border: 1px solid #2C3B4B;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sounding-item:hover {
+  border-color: #3d4f5f;
+}
+
+/* Winner sounding - gold highlight */
+.sounding-item.is-winner {
+  border-color: #D9A553;
+  background: rgba(217, 165, 83, 0.1);
+  box-shadow: 0 0 8px rgba(217, 165, 83, 0.3);
+}
+
+.sounding-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #9AA5B1;
+  background: rgba(22, 32, 42, 0.8);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+}
+
+.sounding-item.is-winner .sounding-badge {
+  color: #D9A553;
+  background: rgba(217, 165, 83, 0.2);
+}
+
+.winner-icon {
+  color: #D9A553;
+}
+
+.sounding-thumbnails {
+  display: flex;
+  gap: 4px;
+}
+
+/* Individual reforge item */
+.reforge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.reforge-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #8B9FCC;
+  background: rgba(139, 159, 204, 0.2);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'Google Sans Code', 'Google Sans Code', 'Courier New', monospace;
+}
+
+.reforge-badge.ultimate {
+  color: #D9A553;
+  background: rgba(217, 165, 83, 0.3);
+  border: 1px solid #D9A553;
+}
+
+.crown-icon {
+  color: #D9A553;
+}
+
+.reforge-item.is-ultimate-winner {
+  position: relative;
+}
+
+.ultimate-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #D9A553;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  margin-top: 2px;
+}
+
+/* Thumbnail containers */
+.image-thumbnail-container {
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.image-thumbnail-container:hover {
+  transform: scale(1.05);
+  opacity: 0.95;
+}
+
+/* Size variants */
+.image-thumbnail-container.size-small {
+  width: 60px;
+}
+
+.image-thumbnail-container.size-small .image-thumbnail {
+  width: 60px;
+  height: 50px;
+}
+
+/* Winner highlights */
+.image-thumbnail-container.sounding-winner {
+  border-color: rgba(217, 165, 83, 0.5);
+}
+
+.image-thumbnail-container.ultimate-winner {
+  border-color: #D9A553;
+  box-shadow: 0 0 12px rgba(217, 165, 83, 0.5);
+}
+
+.image-thumbnail-container.ultimate-winner:hover {
+  box-shadow: 0 0 16px rgba(217, 165, 83, 0.7);
+}
+
+/* Reforge image styling (non-winner) */
+.image-thumbnail-container.reforge-image {
+  border-color: rgba(139, 159, 204, 0.4);
+}
+
+.image-thumbnail-container.reforge-image:hover {
+  border-color: rgba(139, 159, 204, 0.6);
+}
+
+/* Ultimate winner badge overlay */
+.ultimate-winner-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(217, 165, 83, 0.9);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.ultimate-winner-badge svg {
+  color: #0d1117;
+}
+
+/* More images overlay */
+.more-images-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #F0F4F8;
+  pointer-events: none;
+  border-radius: 4px;
+}
+
+.image-thumbnail {
+  width: 80px;
+  height: 60px;
+  object-fit: cover;
+  display: block;
+  border-radius: 4px;
+  /* Fallback background for broken images */
+  background: #1e2937;
+}
+
+/* Full-size image modal */
+.image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 40px;
+}
+
+.image-modal-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.image-modal-close {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-modal-close:hover {
+  opacity: 1;
+}
+
+.image-modal-full {
+  max-width: 100%;
+  max-height: calc(90vh - 60px);
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.image-modal-info {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.image-modal-filename {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+
+.image-modal-phase {
+  font-size: 0.8rem;
+  color: #6B7FBB;
+}
+
+.image-modal-sounding {
+  font-size: 0.8rem;
+  color: #4A9EDD;
+  font-weight: 600;
+}
+
+.image-modal-reforge {
+  font-size: 0.8rem;
+  color: #8B9FCC;
+  font-weight: 600;
+}

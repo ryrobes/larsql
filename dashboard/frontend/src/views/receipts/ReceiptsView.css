@@ -1,0 +1,218 @@
+/* ========================================
+   ReceiptsView - Cost & Reliability Explorer
+   Dark, data-dense aesthetic matching Studio
+   ======================================== */
+
+.receipts-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0a0a0a;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.receipts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid var(--color-border-dim);
+  flex-shrink: 0;
+}
+
+.receipts-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.receipts-header-left h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.receipts-subtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.receipts-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Time Range Selector */
+.receipts-time-select {
+  background: #0a0614;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition-normal);
+}
+
+.receipts-time-select:hover {
+  border-color: var(--color-accent-cyan);
+}
+
+.receipts-time-select:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+}
+
+/* ========================================
+   Tabs
+   ======================================== */
+
+.receipts-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background-color: #080510;
+  border-bottom: 1px solid var(--color-border-dim);
+  flex-shrink: 0;
+}
+
+.receipts-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-normal);
+  position: relative;
+}
+
+.receipts-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+}
+
+.receipts-tab.active {
+  background-color: rgba(0, 229, 255, 0.1);
+  color: var(--color-accent-cyan);
+  border-bottom: 2px solid var(--color-accent-cyan);
+  border-radius: 6px 6px 0 0;
+}
+
+.receipts-tab-badge {
+  background: var(--color-accent-pink);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* ========================================
+   Content Area
+   ======================================== */
+
+.receipts-content {
+  flex: 1;
+  background-color: #000000;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Loading State */
+.receipts-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 80px 40px;
+  text-align: center;
+}
+
+.receipts-loading p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Error State */
+.receipts-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  margin: 16px;
+  background: linear-gradient(90deg, rgba(255, 0, 110, 0.05) 0%, rgba(10, 6, 20, 0) 30%);
+  border: 1px solid rgba(255, 0, 110, 0.3);
+  border-left: 3px solid var(--color-accent-pink);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+}
+
+.receipts-error strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.receipts-error p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ========================================
+   Responsive
+   ======================================== */
+
+@media (max-width: 768px) {
+  .receipts-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .receipts-header-right {
+    width: 100%;
+  }
+
+  .receipts-time-select {
+    width: 100%;
+  }
+
+  .overview-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

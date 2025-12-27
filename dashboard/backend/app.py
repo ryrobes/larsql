@@ -64,6 +64,7 @@ from browser_sessions_api import browser_sessions_bp
 from sql_query_api import sql_query_bp
 from notebook_api import notebook_bp
 from studio_api import studio_bp
+from receipts_api import receipts_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -77,6 +78,7 @@ app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
 # New unified Studio API (combines SQL Query + Notebook)
 app.register_blueprint(studio_bp)
+app.register_blueprint(receipts_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
@@ -3234,11 +3236,12 @@ def run_cascade():
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
         from rvbbit import run_cascade as execute_cascade
-        import uuid
+        from rvbbit.session_naming import generate_woodland_id
         import tempfile
 
         if not session_id:
-            session_id = f"workshop_{uuid.uuid4().hex[:12]}"
+            # Use new woodland naming system with exp_ prefix for Explore sessions
+            session_id = f"exp_{generate_woodland_id()}"
 
         # Handle cascade_yaml + cascade_path combinations
         temp_file = None
@@ -3475,8 +3478,9 @@ def playground_run_from():
 
         print(f"[Playground RunFrom] Upstream: {upstream_cells}, Target+downstream: {target_and_downstream}")
 
-        # Create new session ID
-        new_session_id = f"workshop_{uuid.uuid4().hex[:12]}"
+        # Create new session ID using woodland naming system
+        from rvbbit.session_naming import generate_woodland_id
+        new_session_id = f"exp_{generate_woodland_id()}"
 
         # Copy images from cached session to new session for upstream cells
         if cached_session_id and upstream_cells:
@@ -4297,14 +4301,16 @@ def introspect_cascade_endpoint():
 
 @app.route('/api/cancel-cascade', methods=['POST'])
 def cancel_cascade():
-    """Cancel a running cascade gracefully.
+    """Cancel a running cascade.
 
-    The cascade will stop at the next phase boundary.
+    For active cascades: Sets cancellation flag (graceful).
+    For zombie cascades: Force-updates DB status immediately.
     """
     try:
         data = request.json
         session_id = data.get('session_id')
         reason = data.get('reason', 'User requested cancellation')
+        force = data.get('force', False)
 
         if not session_id:
             return jsonify({'error': 'session_id required'}), 400
@@ -4312,20 +4318,34 @@ def cancel_cascade():
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from rvbbit.session_state import request_session_cancellation, get_session
+        from rvbbit.session_state import (
+            request_session_cancellation,
+            get_session,
+            update_session_status,
+            SessionStatus
+        )
 
-        # Request cancellation
+        # SIMPLIFIED: Always force-cancel by updating DB status directly
+        # This works for both running and zombie sessions
+        print(f"[cancel-cascade] Cancelling session: {session_id}, Reason: {reason}")
+
+        # Update DB status to cancelled
+        update_session_status(
+            session_id=session_id,
+            status=SessionStatus.CANCELLED,
+            cancel_reason=reason
+        )
+
+        # Also set cancellation flag for running processes
         request_session_cancellation(session_id, reason)
 
-        # Get current session state
-        state = get_session(session_id)
-        status = state.status.value if state else 'unknown'
+        print(f"[cancel-cascade] Session {session_id} marked as cancelled in DB")
 
         return jsonify({
             'success': True,
             'session_id': session_id,
-            'status': status,
-            'message': f'Cancellation requested for session {session_id}'
+            'status': 'cancelled',
+            'message': f'Session {session_id} cancelled successfully'
         })
 
     except Exception as e:

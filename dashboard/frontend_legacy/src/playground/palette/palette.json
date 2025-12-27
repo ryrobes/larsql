@@ -1,0 +1,69 @@
+{
+  "categories": [
+    {
+      "id": "generator",
+      "name": "Generators",
+      "icon": "mdi:creation",
+      "color": "#a78bfa"
+    },
+    {
+      "id": "transformer",
+      "name": "Transformers",
+      "icon": "mdi:auto-fix",
+      "color": "#10b981"
+    },
+    {
+      "id": "utility",
+      "name": "Utilities",
+      "icon": "mdi:tools",
+      "color": "#8b5cf6"
+    },
+    {
+      "id": "agent",
+      "name": "Agent",
+      "icon": "mdi:robot",
+      "color": "#06b6d4"
+    }
+  ],
+  "palette": [
+    {
+      "id": "llm_phase",
+      "name": "LLM Phase",
+      "category": "agent",
+      "nodeType": "phase",
+      "icon": "mdi:cog-play",
+      "color": "#06b6d4",
+      "description": "Custom LLM phase with full YAML control"
+    },
+    {
+      "id": "phase_card",
+      "name": "Phase Card",
+      "category": "agent",
+      "nodeType": "card",
+      "icon": "mdi:cards-playing-outline",
+      "color": "#8B5CF6",
+      "description": "Two-sided card with flip animation, stacked deck for soundings"
+    },
+    {
+      "id": "decompose",
+      "name": "Decompose",
+      "category": "transformer",
+      "harbor": { "tool": "image_decompose" },
+      "inputs": { "image": true },
+      "outputs": { "mode": "gallery" },
+      "icon": "mdi:layers-outline",
+      "color": "#10b981",
+      "description": "Split image into layers"
+    },
+    {
+      "id": "compose",
+      "name": "Compose",
+      "category": "utility",
+      "local": { "tool": "image_compose" },
+      "inputs": { "images": true },
+      "outputs": { "mode": "single" },
+      "icon": "mdi:layers-triple",
+      "color": "#8b5cf6"
+    }
+  ]
+}

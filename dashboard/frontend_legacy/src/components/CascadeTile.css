@@ -1,0 +1,257 @@
+/* Cascade Tile Component */
+.cascade-tile {
+  position: relative; /* Changed from absolute - wrapper div handles positioning */
+  /* Dramatic dark gradient - renders UNDER everything */
+  background: radial-gradient(
+    ellipse at top left,
+    rgba(22, 32, 42, 0.4) 0%,
+    rgba(11, 18, 25, 1) 40%,
+    rgba(8, 12, 18, 1) 100%
+  );
+  border-radius: 0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid rgba(74, 158, 221, 0.3); /* Glacial Ice border */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  /* Fill the wrapper */
+  width: 100%;
+  height: 100%;
+}
+
+.cascade-tile:hover {
+  transform: translateY(-4px);
+  border-color: #4A9EDD; /* Glacial Ice */
+  box-shadow: 0 8px 24px rgba(74, 158, 221, 0.4);
+}
+
+.cascade-tile.no-runs {
+  opacity: 0.6;
+  border-color: rgba(102, 102, 102, 0.3);
+}
+
+.cascade-tile.no-runs:hover {
+  opacity: 0.8;
+  border-color: rgba(102, 102, 102, 0.6);
+}
+
+.cascade-tile.running {
+  border-color: #D9A553; /* Compass Brass */
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: #D9A553; /* Compass Brass */
+    box-shadow: 0 4px 12px rgba(217, 165, 83, 0.4);
+  }
+  50% {
+    border-color: #4A9EDD; /* Glacial Ice */
+    box-shadow: 0 8px 24px rgba(74, 158, 221, 0.6);
+  }
+}
+
+/* Mermaid Background - NEW: Below title, left of metrics column */
+.mermaid-background {
+  position: absolute;
+  top: 70px; /* 20px padding + 50px title */
+  left: 20px;
+  right: 106px; /* 70px metrics + 16px gap + 20px padding */
+  bottom: 20px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 1; /* Full brightness */
+  z-index: 1;
+  background: transparent;
+}
+
+.mermaid-background svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  background: transparent !important;
+}
+
+/* Tile Placeholder - Same bounds as mermaid */
+.tile-placeholder {
+  position: absolute;
+  top: 70px; /* 20px padding + 50px title */
+  left: 20px;
+  right: 106px; /* 70px metrics + 16px gap + 20px padding */
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #9AA5B1;
+  z-index: 1;
+}
+
+.tile-placeholder .iconify {
+  opacity: 0.4;
+  width: 64px;
+  height: 64px;
+}
+
+.placeholder-text {
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+/* Title Area - Top of tile, full width */
+.tile-title-area {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  height: 50px; /* title + description */
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tile-title-text {
+  flex: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.tile-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #F0F4F8; /* Frosted White */
+  margin: 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-description {
+  font-size: 0.75rem;
+  color: #9AA5B1; /* Muted text */
+  margin: 4px 0 0 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #D9A553; /* Compass Brass */
+  color: #0B1219; /* Midnight Fjord */
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Metrics Column - Right side, vertical list */
+.tile-metrics {
+  position: absolute;
+  top: 70px; /* 20px padding + 50px title */
+  right: 20px;
+  bottom: 20px;
+  width: 70px; /* Compact width */
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  /* No background - let tile gradient show through */
+}
+
+/* Metric divider for visual separation */
+.metric-divider {
+  height: 1px;
+  background: rgba(74, 158, 221, 0.2);
+  margin: 4px 0;
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #F0F4F8; /* Frosted White */
+  white-space: nowrap;
+}
+
+.metric-item span {
+  flex: 1;
+  text-align: right;
+}
+
+.metric-item .iconify {
+  opacity: 0.8;
+  color: #4A9EDD; /* Glacial Ice */
+}
+
+/* Special metric colors */
+.metric-item.soundings .iconify {
+  color: #D9A553; /* Compass Brass */
+}
+
+.metric-item.reforges .iconify {
+  color: #D9A553; /* Compass Brass */
+}
+
+.metric-item.wards .iconify {
+  color: #4A9EDD; /* Glacial Ice */
+}
+
+/* Cost Display - Fixed bottom right corner */
+.tile-cost-display {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.cost-total {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #4A9EDD; /* Glacial Ice */
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 0, 0, 0.7),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.cost-avg {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4A9EDD; /* Glacial Ice */
+  opacity: 0.6;
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 16px rgba(0, 0, 0, 0.7),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .tile-title {
+    font-size: 1rem;
+  }
+
+  .tile-description {
+    font-size: 0.8rem;
+  }
+
+  .metric-item {
+    font-size: 0.8rem;
+  }
+}

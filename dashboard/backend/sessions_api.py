@@ -120,6 +120,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 'message_count': 0,
                 'input_data': None,
                 'output': None,
+                'genus_hash': None,
             }
 
         # Populate with actual metrics from unified_logs
@@ -129,12 +130,13 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 metrics_map[sid]['total_cost'] = float(row.get('total_cost', 0) or 0)
                 metrics_map[sid]['message_count'] = int(row.get('message_count', 0) or 0)
 
-        # Get input_data and output from cascade_sessions table (much more reliable!)
+        # Get input_data, output, and genus_hash from cascade_sessions table
         input_query = f"""
             SELECT
                 session_id,
                 input_data,
-                LEFT(output, 300) as output_truncated
+                LEFT(output, 300) as output_truncated,
+                genus_hash
             FROM cascade_sessions
             WHERE session_id IN ('{session_ids_str}')
         """
@@ -164,6 +166,10 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 # Process output (already truncated to 300 chars by SQL)
                 if row.get('output_truncated'):
                     metrics_map[sid]['output'] = row['output_truncated']
+
+                # Process genus_hash
+                if row.get('genus_hash'):
+                    metrics_map[sid]['genus_hash'] = row['genus_hash']
             else:
                 if sid not in metrics_map:
                     print(f"[DEBUG] Session {sid} not in metrics_map")
@@ -183,6 +189,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
             session_dict['message_count'] = metrics.get('message_count', 0)
             session_dict['input_data'] = metrics.get('input_data')
             session_dict['output'] = metrics.get('output')
+            session_dict['genus_hash'] = metrics.get('genus_hash')
 
             # Calculate percent differences from cascade averages
             cascade_avg = cascade_avgs.get(session.cascade_id, {})

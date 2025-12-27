@@ -1,0 +1,301 @@
+/* ========================================
+   ContextBreakdownPanel Component Styles
+   ======================================== */
+
+.context-breakdown-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* Header */
+.context-breakdown-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-breakdown-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.context-breakdown-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: rgba(100, 116, 139, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Empty State */
+.context-breakdown-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 40px;
+  text-align: center;
+}
+
+.context-breakdown-empty p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.context-breakdown-empty span {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  max-width: 500px;
+}
+
+/* Session List */
+.context-breakdown-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.context-breakdown-session {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Session Header */
+.context-breakdown-session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 6px;
+}
+
+.context-breakdown-session-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-breakdown-session-time {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.context-breakdown-session-id {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.context-breakdown-session-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.context-breakdown-session-cells,
+.context-breakdown-session-cost {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.context-breakdown-session-cost {
+  font-family: var(--font-mono);
+  color: #34d399;
+  font-weight: 600;
+  min-width: 90px;
+  text-align: right;
+}
+
+/* Cells within session */
+.context-breakdown-cells {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}
+
+.context-breakdown-cell {
+  overflow: hidden;
+}
+
+/* Cell Header (simplified, no click) */
+.context-breakdown-cell-header-simple {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.context-breakdown-cell-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.context-breakdown-cell-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-breakdown-cell-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-breakdown-cell-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+
+.context-breakdown-cascade-name {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.context-breakdown-cell-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Cell Right Side */
+.context-breakdown-cell-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.context-breakdown-cell-cost {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: #34d399;
+  min-width: 90px;
+  text-align: right;
+}
+
+.context-breakdown-view-btn {
+  padding: 6px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.context-breakdown-view-btn:hover {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
+/* Messages Table */
+.context-breakdown-messages {
+  border-top: 1px solid var(--color-border-dim);
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.context-breakdown-messages-header {
+  display: grid;
+  grid-template-columns: 100px 120px 80px 90px 100px 1fr;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-border-dim);
+  margin-bottom: 8px;
+}
+
+.context-breakdown-message {
+  display: grid;
+  grid-template-columns: 100px 120px 80px 90px 100px 1fr;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  border-radius: 4px;
+  transition: var(--transition-normal);
+  font-size: 13px;
+}
+
+.context-breakdown-message:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.context-breakdown-message-hash {
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.context-breakdown-message-source {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.context-breakdown-message-tokens,
+.context-breakdown-message-cost {
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* Percentage Bar */
+.context-breakdown-message-pct {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-breakdown-message-pct-bar {
+  height: 6px;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.context-breakdown-message-pct span {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 45px;
+  text-align: right;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .context-breakdown-messages-header,
+  .context-breakdown-message {
+    grid-template-columns: 90px 100px 70px 80px 90px 1fr;
+    gap: 8px;
+  }
+}

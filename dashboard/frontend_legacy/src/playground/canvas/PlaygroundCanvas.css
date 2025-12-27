@@ -1,0 +1,129 @@
+/* PlaygroundCanvas - React Flow Canvas */
+
+.playground-canvas-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  outline: none;
+}
+
+/* Grid lines are rendered by the Background component - don't override */
+
+/* Controls styling */
+.playground-canvas-wrapper .react-flow__controls {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.playground-canvas-wrapper .react-flow__controls-button {
+  background: var(--bg-card);
+  border: none;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+}
+
+.playground-canvas-wrapper .react-flow__controls-button:hover {
+  background: var(--storm-cloud);
+  color: var(--text-primary);
+}
+
+.playground-canvas-wrapper .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.playground-canvas-wrapper .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* MiniMap styling */
+.playground-canvas-wrapper .react-flow__minimap {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Edge styling */
+.playground-canvas-wrapper .react-flow__edge-path {
+  stroke: var(--ocean-primary);
+  stroke-width: 2;
+}
+
+.playground-canvas-wrapper .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--ocean-secondary);
+  stroke-width: 3;
+}
+
+/* Handle styling */
+.playground-canvas-wrapper .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: var(--ocean-primary);
+  border: 2px solid var(--bg-card);
+}
+
+.playground-canvas-wrapper .react-flow__handle:hover {
+  background: var(--ocean-secondary);
+}
+
+.playground-canvas-wrapper .react-flow__handle.connecting {
+  background: var(--ocean-teal);
+}
+
+/* Reset ALL React Flow node wrapper styles for dense, consistent nodes */
+.playground-canvas-wrapper .react-flow__node,
+.playground-canvas-wrapper .react-flow__node.selectable,
+.playground-canvas-wrapper .react-flow__node.selected,
+.playground-canvas-wrapper .react-flow__node.dragging,
+.playground-canvas-wrapper .react-flow__node:hover,
+.playground-canvas-wrapper .react-flow__node:focus,
+.playground-canvas-wrapper .react-flow__node:focus-visible,
+.playground-canvas-wrapper .react-flow__node-prompt,
+.playground-canvas-wrapper .react-flow__node-phase,
+.playground-canvas-wrapper .react-flow__node-image {
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Ensure inner node content fills wrapper completely */
+.playground-canvas-wrapper .react-flow__node > div {
+  margin: 0;
+}
+
+/* Empty state */
+.canvas-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.canvas-empty-state h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.canvas-empty-state p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}

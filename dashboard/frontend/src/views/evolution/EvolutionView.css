@@ -1,127 +1,367 @@
-/* ============================================
-   EVOLUTION VIEW
-   Prompt optimization and training data
-   ============================================ */
-
+/* Evolution View */
 .evolution-view {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: var(--space-lg);
-  width: 100%;
-  height: 100vh;
-  overflow-y: auto;
-  background-color: var(--color-bg-primary);
-  box-sizing: border-box;
+  height: 100%;
+  background: #000000;
+  color: #f0f4f8;
+  overflow: hidden;
 }
 
-/* ============================================
-   HEADER
-   ============================================ */
-
+/* Header */
 .evolution-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  background: linear-gradient(180deg, #0a0510 0%, #000000 100%);
+  border-bottom: 1px solid #1a1628;
 }
 
-.evolution-title {
+.evolution-header-left {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  color: var(--color-text-primary);
+  gap: 16px;
 }
 
-.evolution-title h1 {
+.evolution-icon {
+  color: #00e5ff;
+}
+
+.evolution-header-text h1 {
   margin: 0;
-  font-size: var(--font-size-3xl);
-  font-weight: var(--font-weight-bold);
-  background: linear-gradient(135deg, var(--color-accent-purple), var(--color-accent-pink));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0f4f8;
 }
 
 .evolution-subtitle {
-  font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  margin-left: 44px; /* Align with title text */
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
 }
 
-/* ============================================
-   SECTIONS
-   ============================================ */
-
-.evolution-section {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--color-bg-primary);
-  border-bottom: 1px solid var(--color-border-dim);
-  padding-bottom: 0;
-}
-
-.evolution-section:last-child {
-  border-bottom: none;
-  flex: 1;
-  padding-bottom: 0;
-}
-
-.evolution-section-header {
+.evolution-header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: 6px var(--space-lg);
-  background-color: transparent;
+  gap: 16px;
+}
+
+.evolution-stats {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.evolution-stats .stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #cbd5e1;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.evolution-stats .stat-item svg {
+  color: #00e5ff;
+}
+
+/* Controls */
+.evolution-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 32px;
+  background: #000000;
+  border-bottom: 1px solid #1a1628;
+}
+
+/* View Mode Toggle */
+.view-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: #0a0510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
   border: none;
-  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid #1a1628;
 }
 
-.evolution-section-header h2 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-muted);
+.mode-btn:last-child {
+  border-right: none;
+}
+
+.mode-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.mode-btn.active {
+  background: #00e5ff;
+  color: #000000;
+}
+
+.mode-btn.active svg {
+  color: #000000;
+}
+
+.evolution-session-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #00e5ff;
+}
+
+.evolution-session-badge code {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+}
+
+.clear-session-btn {
+  background: none;
+  border: none;
+  color: #00e5ff;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.clear-session-btn:hover {
+  background: rgba(0, 229, 255, 0.15);
+}
+
+/* Empty State */
+.evolution-empty {
   flex: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-}
-
-/* ============================================
-   PLACEHOLDER STATE
-   ============================================ */
-
-.evolution-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-lg);
-  padding: var(--space-3xl);
-  color: var(--color-text-muted);
-  min-height: 200px;
+  padding: 80px 32px;
+  text-align: center;
 }
 
-.evolution-placeholder h3 {
-  margin: 0;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
+.evolution-empty svg {
+  color: #475569;
+  margin-bottom: 24px;
 }
 
-.evolution-placeholder p {
-  margin: 0;
-  font-size: var(--font-size-md);
-  color: var(--color-text-secondary);
+.evolution-empty h2 {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #f0f4f8;
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
+.evolution-empty p {
+  max-width: 600px;
+  margin: 0 0 32px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #94a3b8;
+}
 
-@media (max-width: 1200px) {
-  .evolution-view {
-    padding: var(--space-lg);
-    gap: var(--space-lg);
-  }
+.evolution-empty-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 500px;
+}
+
+.hint-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+  text-align: left;
+}
+
+.hint-item svg {
+  color: #00e5ff;
+  flex-shrink: 0;
+}
+
+/* Main Content Sections */
+.evolution-species-section {
+  padding: 20px 32px;
+  background: #000000;
+  border-bottom: 1px solid #1a1628;
+}
+
+.evolution-main-section {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.evolution-split {
+  display: flex;
+  height: 100%;
+}
+
+.evolution-phylogeny-section {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.evolution-timeline-section {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Split.js gutter styling */
+.evolution-split .gutter {
+  background: #1a1628;
+  cursor: col-resize;
+  transition: background 0.15s ease;
+}
+
+.evolution-split .gutter:hover {
+  background: #00e5ff;
+}
+
+.evolution-patterns-section {
+  background: #000000;
+  border-top: 1px solid #1a1628;
+}
+
+.patterns-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 32px;
+  background: #0a0510;
+  border: none;
+  color: #f0f4f8;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.patterns-toggle:hover {
+  background: #100a1a;
+}
+
+.patterns-toggle svg:first-child {
+  color: #64748b;
+}
+
+.patterns-toggle svg:nth-child(2) {
+  color: #00e5ff;
+}
+
+.patterns-hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+/* Analysis Panel */
+.analysis-panel {
+  display: flex;
+  flex-direction: column;
+  background: #000000;
+  height: 500px;
+}
+
+.analysis-tabs {
+  display: flex;
+  gap: 0;
+  background: #0a0510;
+  border-bottom: 1px solid #1a1628;
+  padding: 0 20px;
+}
+
+.analysis-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: -1px;
+}
+
+.analysis-tab:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.analysis-tab.active {
+  color: #00e5ff;
+  border-bottom-color: #00e5ff;
+}
+
+.analysis-tab svg {
+  width: 16px;
+  height: 16px;
+}
+
+.analysis-tab-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Custom scrollbar */
+.patterns-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.patterns-content::-webkit-scrollbar-track {
+  background: #0a0510;
+}
+
+.patterns-content::-webkit-scrollbar-thumb {
+  background: #1a1628;
+  border-radius: 4px;
+}
+
+.patterns-content::-webkit-scrollbar-thumb:hover {
+  background: #2a2638;
 }
