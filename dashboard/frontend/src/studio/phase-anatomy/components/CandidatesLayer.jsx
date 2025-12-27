@@ -63,10 +63,10 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
   // Generate lane data - spec or execution
   const lanes = React.useMemo(() => {
     if (execution?.candidates && execution.candidates.length > 0) {
-      // Execution mode - use actual data
+      // Execution mode - use actual data from logs (no placeholders)
       return execution.candidates.map((c, idx) => ({
         index: idx,
-        mutation: c.mutation || (mutate ? ['rewrite', 'augment', 'approach', 'original'][idx % 4] : null),
+        mutation: c.mutation || null,  // Only show mutation if we have it from logs
         model: c.model,
         turns: c.turns || [],
         toolCalls: c.toolCalls || [],

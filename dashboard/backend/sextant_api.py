@@ -2918,24 +2918,64 @@ def evolve_species():
             return jsonify({'error': 'Missing required fields'}), 400
         
         config = get_config()
-        
-        # Find cascade file - check multiple locations
-        possible_paths = [
-            Path(config.cascades_dir) / f"{cascade_id}.yaml",
-            Path(config.cascades_dir) / f"{cascade_id}.json",
-            Path(config.examples_dir) / f"{cascade_id}.yaml",
-            Path(config.examples_dir) / f"{cascade_id}.json",
-            Path(config.tackle_dir) / f"{cascade_id}.yaml",
+
+        # Find cascade file - search directories and match by cascade_id in file content
+        search_dirs = [
+            Path(config.cascades_dir),
+            Path(config.examples_dir),
+            Path(config.tackle_dir),
         ]
-        
+
         cascade_file = None
-        for path in possible_paths:
-            if path.exists():
-                cascade_file = path
+
+        # First try exact filename match
+        for search_dir in search_dirs:
+            for ext in ['.yaml', '.json']:
+                exact_path = search_dir / f"{cascade_id}{ext}"
+                if exact_path.exists():
+                    cascade_file = exact_path
+                    break
+            if cascade_file:
                 break
-        
+
+        # If not found, search all files and match by cascade_id in content
         if not cascade_file:
-            return jsonify({'error': f'Cascade file not found for: {cascade_id}'}), 404
+            for search_dir in search_dirs:
+                if not search_dir.exists():
+                    continue
+
+                for file_path in search_dir.glob('*.yaml'):
+                    try:
+                        with open(file_path, 'r') as f:
+                            content = yaml.safe_load(f)
+                            if content and content.get('cascade_id') == cascade_id:
+                                cascade_file = file_path
+                                break
+                    except:
+                        continue
+
+                if cascade_file:
+                    break
+
+                # Also check JSON files
+                for file_path in search_dir.glob('*.json'):
+                    try:
+                        with open(file_path, 'r') as f:
+                            content = json.load(f)
+                            if content and content.get('cascade_id') == cascade_id:
+                                cascade_file = file_path
+                                break
+                    except:
+                        continue
+
+                if cascade_file:
+                    break
+
+        if not cascade_file:
+            return jsonify({
+                'error': f'Cascade file not found for: {cascade_id}',
+                'searched_dirs': [str(d) for d in search_dirs]
+            }), 404
         
         # Load cascade definition
         with open(cascade_file, 'r') as f:

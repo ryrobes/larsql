@@ -1299,18 +1299,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             </div>
           </Tooltip>
 
-          {/* Anatomy Panel Toggle */}
-          <Tooltip label="Cell Anatomy" description="Internal structure visualization">
-            <Button
-              variant="secondary"
-              active={showAnatomyPanel}
-              icon="mdi:cpu"
-              onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
-            >
-              Anatomy
-            </Button>
-          </Tooltip>
-
           <div className="cascade-control-divider" />
 
           {/* <span className="cascade-stats">
@@ -1549,6 +1537,18 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             <p>Select a cell above to view details</p>
           </div>
         )
+      )}
+
+      {/* Right Edge Anatomy Tab - Only show when cell is selected */}
+      {selectedCell && (
+        <div
+          className={`cascade-anatomy-edge-tab ${showAnatomyPanel ? 'active' : ''}`}
+          onClick={() => setShowAnatomyPanel(!showAnatomyPanel)}
+          title="Cell Anatomy - Internal structure visualization"
+        >
+          <Icon icon="mdi:cogs" width="20" />
+          <span className="cascade-anatomy-edge-label">Anatomy</span>
+        </div>
       )}
 
       {/* Right Side Panel - Cell Anatomy */}

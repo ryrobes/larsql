@@ -261,12 +261,21 @@ def analyze_cascade_execution(session_id: str) -> Dict:
         # Add cell-level anomalies
         anomalies.extend(cell_anomalies)
 
+        # Count cells with context for relevance analysis reporting
+        import os
+        cells_with_context = cascade_context_metrics.get('cells_with_context', 0)
+        relevance_enabled = os.getenv('RVBBIT_ENABLE_RELEVANCE_ANALYSIS', 'true').lower() == 'true'
+
+        logger.info(f"[Analytics] {session_id}: {len(cell_result.get('cell_rows', []))} cells analyzed, "
+                   f"{cells_with_context} with context (relevance analysis: {'enabled' if relevance_enabled else 'disabled'})")
+
         return {
             'success': True,
             'session_id': session_id,
             'anomalies': anomalies,
             'z_scores': z_scores,
             'cell_anomalies': cell_anomalies,
+            'cells_with_context': cells_with_context,
         }
 
     except Exception as e:
@@ -1267,13 +1276,15 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         import json as json_module
 
         # Get the assistant output for this cell
+        # Prefer the winner candidate, or the last message if no winner marked
         output_query = f"""
-            SELECT content, content_hash
+            SELECT content_json, content_hash
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
               AND role = 'assistant'
               AND model IS NOT NULL
+            ORDER BY is_winner DESC, timestamp DESC
             LIMIT 1
         """
 
@@ -1282,7 +1293,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             logger.debug(f"No assistant output found for {cell_name}, skipping relevance analysis")
             return
 
-        output_content = output_result[0]['content']
+        output_content = output_result[0]['content_json']
 
         # Get all context messages that were found in breakdown
         # Query to get the unique context hashes for this cell
@@ -1304,7 +1315,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
 
             # Look up the actual content
             content_query = f"""
-                SELECT content, tokens_in, tokens_out
+                SELECT content_json, tokens_in, tokens_out
                 FROM unified_logs
                 WHERE session_id = '{session_id}'
                   AND content_hash = '{ctx_hash}'
@@ -1313,7 +1324,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
 
             content_result = db.query(content_query)
             if content_result:
-                ctx_content = content_result[0]['content']
+                ctx_content = content_result[0]['content_json']
                 ctx_tokens = (content_result[0]['tokens_in'] or 0) + (content_result[0]['tokens_out'] or 0)
 
                 # Get the cost from breakdown table
@@ -1339,19 +1350,20 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             return
 
         # Run the relevance analysis cascade
-        runner = RVBBITRunner()
         analysis_session_id = f"{session_id}_relevance_{cell_name}"
 
         logger.info(f"Analyzing relevance for {len(context_messages)} context messages in {cell_name}")
 
-        result = runner.run_cascade(
-            cascade_file='traits/analyze_context_relevance.yaml',
-            input_data={
-                'output_content': output_content,
-                'context_messages': context_messages,
-            },
-            session_id=analysis_session_id
+        runner = RVBBITRunner(
+            config_path='traits/analyze_context_relevance.yaml',
+            session_id=analysis_session_id,
+            depth=1  # Mark as sub-cascade
         )
+
+        result = runner.run(input_data={
+            'output_content': output_content,
+            'context_messages': context_messages,
+        })
 
         if not result or not result.get('output'):
             logger.warning(f"Relevance analysis returned no output for {cell_name}")
@@ -1360,6 +1372,16 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         # Parse the JSON response
         try:
             relevance_scores = json_module.loads(result['output'])
+
+            # Handle case where LLM returns single object instead of array (common with 1 context message)
+            if isinstance(relevance_scores, dict):
+                logger.debug(f"LLM returned single object instead of array, wrapping it")
+                relevance_scores = [relevance_scores]
+
+            if not isinstance(relevance_scores, list):
+                logger.warning(f"Relevance analysis returned unexpected type {type(relevance_scores)} for {cell_name}")
+                return
+
         except json_module.JSONDecodeError:
             logger.warning(f"Could not parse relevance analysis JSON for {cell_name}: {result.get('output', '')[:200]}")
             return
@@ -1397,7 +1419,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
 
             db.query(update_query)
 
-        logger.info(f"✓ Relevance analysis complete for {cell_name}: {len(relevance_scores)} messages scored, cost=${analysis_cost:.6f}")
+        logger.info(f"[Relevance] ✓ {cell_name}: scored {len(relevance_scores)} messages, cost=${analysis_cost:.6f}, session={analysis_session_id}")
 
     except Exception as e:
         logger.warning(f"Relevance analysis failed for {cell_name}: {e}")
@@ -1545,17 +1567,32 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 columns=list(breakdown_rows[0].keys())
             )
 
-            # Optional: Run relevance analysis (if enabled)
+            # Optional: Run relevance analysis (enabled by default, opt-out with RVBBIT_ENABLE_RELEVANCE_ANALYSIS=false)
             import os
-            if os.getenv('RVBBIT_ENABLE_RELEVANCE_ANALYSIS', 'false').lower() == 'true':
-                logger.info(f"Running relevance analysis for {cell_name} in {session_id}")
-                _analyze_context_relevance(
-                    session_id=session_id,
-                    cascade_id=cascade_id,
-                    cell_name=cell_name,
-                    messages=messages,
-                    db=db
-                )
+            if os.getenv('RVBBIT_ENABLE_RELEVANCE_ANALYSIS', 'true').lower() == 'true':
+                # Check if already analyzed (avoid duplicate runs)
+                check_query = f"""
+                    SELECT COUNT(*) as analyzed_count
+                    FROM cell_context_breakdown
+                    WHERE session_id = '{session_id}'
+                      AND cell_name = '{cell_name}'
+                      AND relevance_score IS NOT NULL
+                    LIMIT 1
+                """
+                check_result = db.query(check_query)
+                already_analyzed = check_result and check_result[0]['analyzed_count'] > 0
+
+                if already_analyzed:
+                    logger.debug(f"Skipping relevance analysis for {cell_name} (already analyzed)")
+                else:
+                    logger.info(f"[Relevance] Analyzing {cell_name} in {session_id} ({len(breakdown_rows)} context messages)")
+                    _analyze_context_relevance(
+                        session_id=session_id,
+                        cascade_id=cascade_id,
+                        cell_name=cell_name,
+                        messages=messages,
+                        db=db
+                    )
 
     except Exception as e:
         logger.debug(f"Could not create context breakdown for {cell_name}: {e}")

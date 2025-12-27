@@ -766,6 +766,59 @@
    PHASE ANATOMY PANEL CONTAINER
    ============================================ */
 
+/* Right Edge Anatomy Tab - Floating button on right edge */
+.cascade-anatomy-edge-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 99; /* Below anatomy panel but above content */
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
+}
+
+.cascade-anatomy-edge-tab:hover {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.25), rgba(139, 92, 246, 0.15));
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: -6px 0 16px rgba(167, 139, 250, 0.2);
+  transform: translateY(-50%) translateX(-2px);
+}
+
+.cascade-anatomy-edge-tab.active {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.3), rgba(139, 92, 246, 0.2));
+  border-color: #a78bfa;
+  box-shadow: -6px 0 20px rgba(167, 139, 250, 0.4);
+}
+
+.cascade-anatomy-edge-tab svg {
+  color: #a78bfa;
+  filter: drop-shadow(0 0 4px rgba(167, 139, 250, 0.5));
+}
+
+.cascade-anatomy-edge-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
 .cascade-anatomy-panel-container {
   position: fixed;
   top: 50px; /* Below the control bar header */

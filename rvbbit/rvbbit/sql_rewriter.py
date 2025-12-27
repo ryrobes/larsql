@@ -49,13 +49,18 @@ class RVBBITStatement:
 
 def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     """Detect and rewrite RVBBIT MAP/RUN syntax."""
+    # Normalize query first (remove comments, normalize whitespace)
+    normalized = query.strip()
+    lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
+    normalized = ' '.join(line for line in lines if line)
+
     # Check for EXPLAIN prefix
-    explain_match = re.match(r'EXPLAIN\s+', query.strip(), re.IGNORECASE)
+    explain_match = re.match(r'EXPLAIN\s+', normalized, re.IGNORECASE)
     if explain_match:
         from rvbbit.sql_explain import explain_rvbbit_map, format_explain_result
 
         # Strip EXPLAIN and parse statement
-        inner_query = query[explain_match.end():].strip()
+        inner_query = normalized[explain_match.end():].strip()
 
         if not _is_rvbbit_statement(inner_query):
             # Not an RVBBIT statement, return as-is (might be regular EXPLAIN)
@@ -80,10 +85,10 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         plan_text_escaped = plan_text.replace("'", "''")
         return f"SELECT '{plan_text_escaped}' AS query_plan"
 
-    if not _is_rvbbit_statement(query):
+    if not _is_rvbbit_statement(normalized):
         return query
 
-    stmt = _parse_rvbbit_statement(query)
+    stmt = _parse_rvbbit_statement(normalized)
 
     if stmt.mode == 'MAP':
         return _rewrite_map(stmt)
@@ -104,13 +109,23 @@ def _is_rvbbit_statement(query: str) -> bool:
 def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     """Parse RVBBIT statement."""
     query = query.strip()
-    lines = [line.split('--')[0] for line in query.split('\n')]
-    query = '\n'.join(lines).strip()
+    # Remove SQL comments and normalize whitespace
+    lines = [line.split('--')[0].strip() for line in query.split('\n')]
+    # Join with spaces (not newlines) to normalize multi-line queries
+    query = ' '.join(line for line in lines if line)
+
+    # Check for CREATE TABLE wrapper
+    create_table_name = None
+    create_match = re.match(r'CREATE\s+(?:TEMP\s+)?TABLE\s+(\w+)\s+AS\s+', query, re.IGNORECASE)
+    if create_match:
+        create_table_name = create_match.group(1)
+        # Strip CREATE TABLE wrapper
+        query = query[create_match.end():].strip()
 
     # Extract mode
     mode_match = re.match(r'RVBBIT\s+(MAP|RUN)', query, re.IGNORECASE)
     if not mode_match:
-        raise RVBBITSyntaxError("Expected RVBBIT MAP or RVBBIT RUN")
+        raise RVBBITSyntaxError(f"Expected RVBBIT MAP or RVBBIT RUN, got: {query[:50]}...")
 
     mode = mode_match.group(1).upper()
     remaining = query[mode_match.end():].strip()
@@ -143,18 +158,23 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     result_alias = None
     output_columns = None
 
-    as_match = re.match(r'AS\s+(\w+)', remaining, re.IGNORECASE)
-    if as_match:
-        result_alias = as_match.group(1)
-        remaining = remaining[as_match.end():].strip()
-    else:
-        # Try AS (col TYPE, col TYPE, ...)
-        as_schema_match = re.match(r'AS\s*\(', remaining, re.IGNORECASE)
-        if as_schema_match:
-            remaining = remaining[as_schema_match.end():].strip()
-            schema_content, remaining = _extract_balanced_parens('(' + remaining)
+    # Check for AS keyword
+    if remaining.upper().startswith('AS '):
+        # Have AS - is it AS identifier or AS (...)?
+        after_as_keyword = remaining[3:].strip()  # Skip 'AS '
+
+        if after_as_keyword.startswith('('):
+            # AS (col TYPE, ...) schema
+            schema_content, after_schema = _extract_balanced_parens(after_as_keyword)
             if schema_content:
                 output_columns = _parse_output_schema(schema_content)
+                remaining = after_schema.strip()
+        else:
+            # AS identifier
+            id_match = re.match(r'(\w+)', after_as_keyword)
+            if id_match:
+                result_alias = id_match.group(1)
+                remaining = after_as_keyword[id_match.end():].strip()
 
     # Extract USING clause
     if not remaining.upper().startswith('USING'):
@@ -178,6 +198,10 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     # Store DISTINCT flag in with_options
     if is_distinct:
         with_options['distinct'] = True
+
+    # Store CREATE TABLE name if present (takes precedence over WITH as_table)
+    if create_table_name:
+        with_options['as_table'] = create_table_name
 
     # Infer schema from cascade if requested
     if with_options.get('infer_schema') and not output_columns:
@@ -438,8 +462,8 @@ def _rewrite_map(stmt: RVBBITStatement) -> str:
     result_column = stmt.result_alias or stmt.with_options.get('result_column', DEFAULT_RESULT_COLUMN)
 
     # Apply DISTINCT deduplication if requested
-    if stmt.with_options.get('distinct'):
-        dedupe_by = stmt.with_options.get('dedupe_by')
+    dedupe_by = stmt.with_options.get('dedupe_by')
+    if stmt.with_options.get('distinct') or dedupe_by:
         if dedupe_by:
             # Dedupe by specific column(s)
             using_query = f"SELECT DISTINCT ON ({dedupe_by}) * FROM ({using_query}) AS t"
@@ -504,21 +528,23 @@ FROM rvbbit_raw r
     # Handle typed output columns if specified
     if stmt.output_columns:
         # Generate typed column extraction from JSON result
+        # Data is at: $.state.validated_output.{col_name} (for output_schema cascades)
         select_cols = []
         for col_name, col_type in stmt.output_columns:
+            # Extract from state.validated_output (where output_schema results are stored)
             if col_type in ('VARCHAR', 'TEXT', 'STRING'):
-                expr = f"json_extract_string(_raw_result, '$.{col_name}') AS {col_name}"
+                expr = f"json_extract_string(_raw_result, '$.state.validated_output.{col_name}') AS {col_name}"
             elif col_type in ('BIGINT', 'INTEGER', 'INT'):
-                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS BIGINT) AS {col_name}"
+                expr = f"CAST(json_extract(_raw_result, '$.state.validated_output.{col_name}') AS BIGINT) AS {col_name}"
             elif col_type in ('DOUBLE', 'FLOAT', 'REAL'):
-                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS DOUBLE) AS {col_name}"
+                expr = f"CAST(json_extract(_raw_result, '$.state.validated_output.{col_name}') AS DOUBLE) AS {col_name}"
             elif col_type == 'BOOLEAN':
-                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS BOOLEAN) AS {col_name}"
+                expr = f"CAST(json_extract(_raw_result, '$.state.validated_output.{col_name}') AS BOOLEAN) AS {col_name}"
             elif col_type == 'JSON':
-                expr = f"json_extract(_raw_result, '$.{col_name}') AS {col_name}"
+                expr = f"json_extract(_raw_result, '$.state.validated_output.{col_name}') AS {col_name}"
             else:
                 # Generic cast for other types
-                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS {col_type}) AS {col_name}"
+                expr = f"CAST(json_extract(_raw_result, '$.state.validated_output.{col_name}') AS {col_type}) AS {col_name}"
 
             select_cols.append(expr)
 
@@ -539,6 +565,23 @@ SELECT
   {',\n  '.join(select_cols)}
 FROM rvbbit_raw r
             """.strip()
+
+    # Handle table materialization if requested
+    as_table = stmt.with_options.get('as_table')
+    if as_table:
+        # Wrap query to materialize results to a table
+        rewritten = f"""
+WITH rvbbit_data AS (
+  {rewritten}
+),
+rvbbit_materialize AS (
+  SELECT rvbbit_materialize_table(
+    '{as_table}',
+    (SELECT json_group_array(to_json(r)) FROM rvbbit_data r)
+  ) as metadata
+)
+SELECT * FROM {as_table}
+        """.strip()
 
     return rewritten
 

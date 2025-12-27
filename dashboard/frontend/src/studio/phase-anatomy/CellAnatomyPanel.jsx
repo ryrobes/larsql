@@ -220,9 +220,10 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
           candidate.model = log.model;
         }
 
-        // Track mutation type (not the full mutated prompt text)
-        if (metadata.mutation_type && !candidate.mutation) {
-          candidate.mutation = metadata.mutation_type;
+        // Track mutation type (stored as direct column, not in metadata_json)
+        // Set it whenever we see it in the log (overwrites if already set)
+        if (log.mutation_type) {
+          candidate.mutation = log.mutation_type;
         }
 
         // Accumulate cost

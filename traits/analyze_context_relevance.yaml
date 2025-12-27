@@ -36,8 +36,19 @@ cells:
       Score 0 means: "This context was completely unused and could be removed"
       Score 100 means: "This context was critical and heavily used throughout"
 
-      **Output Format (STRICT JSON):**
-      Return a JSON array with one entry per context message:
+      **Output Format (STRICT JSON ARRAY):**
+      CRITICAL: You MUST return a JSON ARRAY, even if there is only one context message!
+
+      CORRECT (one message):
+      [
+        {
+          "hash": "abc12345",
+          "score": 85,
+          "reason": "Information about X directly cited in response."
+        }
+      ]
+
+      CORRECT (multiple messages):
       [
         {
           "hash": "abc12345",
@@ -50,6 +61,13 @@ cells:
           "reason": "Provided background but not directly used. Could likely be removed."
         }
       ]
+
+      WRONG (will fail validation):
+      {
+        "hash": "abc12345",
+        "score": 85,
+        "reason": "..."
+      }
 
       Be honest and critical. The goal is to identify waste, not justify everything.
       Low scores help users optimize costs. High scores validate necessary context.

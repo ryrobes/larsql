@@ -647,6 +647,57 @@ def rvbbit_map_parallel_exec(
         }])
 
 
+def rvbbit_materialize_table(
+    table_name: str,
+    rows_json_array: str,
+    conn: duckdb.DuckDBPyConnection
+) -> str:
+    """
+    Materialize query results to a temp table.
+
+    Args:
+        table_name: Name for the table to create
+        rows_json_array: JSON array of rows to materialize
+        conn: DuckDB connection
+
+    Returns:
+        Metadata JSON
+    """
+    import json as json_module
+    import pandas as pd
+
+    try:
+        rows = json_module.loads(rows_json_array)
+        if not isinstance(rows, list):
+            raise ValueError("Expected JSON array")
+
+        if len(rows) == 0:
+            # Create empty table
+            conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} (empty VARCHAR)")
+            return json_module.dumps({"status": "success", "row_count": 0})
+
+        # Convert to DataFrame
+        df = pd.DataFrame(rows)
+
+        # Materialize to temp table
+        conn.register("_temp_materialize", df)
+        conn.execute(f"CREATE OR REPLACE TEMP TABLE {table_name} AS SELECT * FROM _temp_materialize")
+        conn.unregister("_temp_materialize")
+
+        return json_module.dumps({
+            "status": "success",
+            "table_created": table_name,
+            "row_count": len(df),
+            "columns": list(df.columns)
+        })
+
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).error(f"rvbbit_materialize_table error: {e}\n{traceback.format_exc()}")
+        return json_module.dumps({"error": str(e), "status": "failed"})
+
+
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):
     """
     Register rvbbit_udf as a DuckDB user-defined function.
@@ -758,6 +809,21 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_map_parallel_exec: {e}")
+
+    # Register table materialization UDF (for CREATE TABLE AS / WITH as_table)
+    try:
+        def materialize_wrapper(table_name: str, rows_json: str) -> str:
+            """Wrapper for table materialization."""
+            return rvbbit_materialize_table(table_name, rows_json, connection)
+
+        connection.create_function(
+            "rvbbit_materialize_table",
+            materialize_wrapper,
+            return_type="VARCHAR"
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register rvbbit_materialize_table: {e}")
 
     # TODO Phase 2B: Register parallel batch UDF when threading is implemented
     # try:
