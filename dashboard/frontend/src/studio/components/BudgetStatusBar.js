@@ -15,34 +15,43 @@ export function BudgetStatusBar({ sessionId }) {
   const { budgetConfig, events, totalEnforcements, totalPruned, currentUsage, loading, error } = useBudgetData(sessionId);
 
   // Debug logging
-  console.log('[BudgetStatusBar]', {
+  console.log('[BudgetStatusBar] Render check:', {
     sessionId,
-    budgetConfig,
+    hasBudgetConfig: !!budgetConfig,
+    strategy: budgetConfig?.strategy,
     totalEnforcements,
     totalPruned,
+    eventsLength: events.length,
     loading,
-    error
+    error,
+    willRender: !(!sessionId || loading || error || !budgetConfig)
   });
 
   // Don't render anything if no sessionId
   if (!sessionId) {
+    console.log('[BudgetStatusBar] Not rendering: no sessionId');
     return null;
   }
 
   // Don't show loading state - just wait silently
   if (loading) {
+    console.log('[BudgetStatusBar] Not rendering: loading');
     return null;
   }
 
   // Silently ignore errors - they're expected when session doesn't exist yet
   if (error) {
+    console.log('[BudgetStatusBar] Not rendering: error', error);
     return null;
   }
 
   // No budget configured for this cascade - don't render
   if (!budgetConfig) {
+    console.log('[BudgetStatusBar] Not rendering: no budgetConfig');
     return null;
   }
+
+  console.log('[BudgetStatusBar] RENDERING with config:', budgetConfig);
 
   // Calculate metrics
   const maxTokens = budgetConfig.max_total || 100000;

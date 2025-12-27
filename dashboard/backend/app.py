@@ -693,6 +693,89 @@ def get_cascade_definitions():
             except Exception as e:
                 print(f"[ERROR] Batch latest sessions query failed: {e}")
 
+            # BATCH QUERY 3: Get cascade-level analytics from cascade_analytics table
+            cascade_analytics_map = {}
+            try:
+                analytics_query = """
+                SELECT
+                    cascade_id,
+                    COUNT(*) as total_runs,
+                    COUNT(CASE WHEN ca.session_id IN (
+                        SELECT session_id FROM session_state WHERE status = 'completed'
+                    ) THEN 1 END) as completed_runs,
+                    COUNT(CASE WHEN is_cost_outlier = true THEN 1 END) as outlier_runs,
+                    AVG(context_cost_pct) as avg_context_pct,
+                    AVG(CASE WHEN created_at > now() - INTERVAL 7 DAY THEN total_cost END) as cost_7d,
+                    AVG(CASE WHEN created_at > now() - INTERVAL 30 DAY THEN total_cost END) as cost_30d
+                FROM cascade_analytics ca
+                WHERE cascade_id IS NOT NULL AND cascade_id != ''
+                GROUP BY cascade_id
+                """
+                analytics_results = conn.execute(analytics_query).fetchall()
+
+                for row in analytics_results:
+                    cascade_id, total_runs, completed_runs, outlier_runs, avg_context_pct, cost_7d, cost_30d = row
+
+                    success_rate = (completed_runs / total_runs * 100) if total_runs > 0 else 0
+                    outlier_rate = (outlier_runs / total_runs * 100) if total_runs > 0 else 0
+
+                    # Calculate cost trend (7d vs 30d)
+                    cost_trend_pct = 0
+                    if cost_30d and cost_30d > 0 and cost_7d:
+                        cost_trend_pct = ((cost_7d - cost_30d) / cost_30d * 100)
+
+                    cascade_analytics_map[cascade_id] = {
+                        'success_rate': float(success_rate),
+                        'outlier_rate': float(outlier_rate),
+                        'avg_context_pct': float(avg_context_pct) if avg_context_pct else 0.0,
+                        'cost_trend_pct': float(cost_trend_pct),
+                        'cost_7d_avg': float(cost_7d) if cost_7d else 0.0,
+                        'cost_30d_avg': float(cost_30d) if cost_30d else 0.0,
+                    }
+            except Exception as e:
+                print(f"[ERROR] Cascade analytics batch query failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # BATCH QUERY 4: Get most common bottleneck per cascade
+            bottleneck_map = {}
+            try:
+                bottleneck_query = """
+                SELECT
+                    cascade_id,
+                    argMax(cell_name, cnt) as common_bottleneck,
+                    max(cnt) as bottleneck_frequency
+                FROM (
+                    SELECT
+                        cascade_id,
+                        cell_name,
+                        COUNT(*) as cnt
+                    FROM (
+                        SELECT
+                            ca.cascade_id,
+                            argMax(cell_name, cell_cost_pct) as cell_name
+                        FROM cascade_analytics ca
+                        JOIN cell_analytics cel ON ca.session_id = cel.session_id
+                        WHERE ca.cascade_id IS NOT NULL AND ca.cascade_id != ''
+                        GROUP BY ca.cascade_id, ca.session_id
+                        HAVING COUNT(DISTINCT cel.cell_name) > 1
+                    )
+                    GROUP BY cascade_id, cell_name
+                )
+                GROUP BY cascade_id
+                """
+                bottleneck_results = conn.execute(bottleneck_query).fetchall()
+
+                for cascade_id, common_bottleneck, bottleneck_frequency in bottleneck_results:
+                    bottleneck_map[cascade_id] = {
+                        'common_bottleneck': common_bottleneck,
+                        'bottleneck_frequency': int(bottleneck_frequency) if bottleneck_frequency else 0
+                    }
+            except Exception as e:
+                print(f"[ERROR] Cascade bottleneck batch query failed: {e}")
+                import traceback
+                traceback.print_exc()
+
             # Now process results with pre-fetched data (NO queries in loop!)
             for row in result:
                 cascade_id, run_count, avg_duration, min_duration, max_duration, total_cost = row
@@ -712,6 +795,28 @@ def get_cascade_definitions():
                         for phase in all_cascades[cascade_id]['phases']:
                             if phase['name'] in phase_costs:
                                 phase['avg_cost'] = phase_costs[phase['name']]
+
+                    # Add cascade analytics from batch query
+                    if cascade_id in cascade_analytics_map:
+                        all_cascades[cascade_id]['analytics'] = cascade_analytics_map[cascade_id]
+                    else:
+                        # Default values if no analytics available
+                        all_cascades[cascade_id]['analytics'] = {
+                            'success_rate': 0.0,
+                            'outlier_rate': 0.0,
+                            'avg_context_pct': 0.0,
+                            'cost_trend_pct': 0.0,
+                            'cost_7d_avg': 0.0,
+                            'cost_30d_avg': 0.0,
+                        }
+
+                    # Add bottleneck data from batch query
+                    if cascade_id in bottleneck_map:
+                        all_cascades[cascade_id]['analytics']['common_bottleneck'] = bottleneck_map[cascade_id]['common_bottleneck']
+                        all_cascades[cascade_id]['analytics']['bottleneck_frequency'] = bottleneck_map[cascade_id]['bottleneck_frequency']
+                    else:
+                        all_cascades[cascade_id]['analytics']['common_bottleneck'] = None
+                        all_cascades[cascade_id]['analytics']['bottleneck_frequency'] = 0
 
                     # Get latest session from batch query
                     if cascade_id in latest_sessions_by_cascade:

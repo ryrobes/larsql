@@ -24,6 +24,7 @@ const RichTooltip = ({
   delay = 200,
   disabled = false,
   className = '',
+  autoHideDelay = 8000, // Auto-hide after 8 seconds as safety fallback
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -31,6 +32,9 @@ const RichTooltip = ({
   const triggerRef = useRef(null);
   const tooltipRef = useRef(null);
   const timeoutRef = useRef(null);
+  const autoHideTimeoutRef = useRef(null);
+  const isMouseOverTooltipRef = useRef(false);
+  const isMouseOverTriggerRef = useRef(false);
 
   // Calculate position based on trigger element and placement
   const calculatePosition = useCallback(() => {
@@ -105,22 +109,58 @@ const RichTooltip = ({
     setEffectivePlacement(actualPlacement);
   }, [placement]);
 
+  // Force hide - clears all timers and hides tooltip
+  const forceHide = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (autoHideTimeoutRef.current) {
+      clearTimeout(autoHideTimeoutRef.current);
+      autoHideTimeoutRef.current = null;
+    }
+    isMouseOverTooltipRef.current = false;
+    isMouseOverTriggerRef.current = false;
+    setIsVisible(false);
+  }, []);
+
   const handleMouseEnter = useCallback(() => {
     if (disabled) return;
+
+    isMouseOverTriggerRef.current = true;
 
     timeoutRef.current = setTimeout(() => {
       setIsVisible(true);
       // Recalculate position after render
       requestAnimationFrame(calculatePosition);
+
+      // Start auto-hide timer as safety fallback
+      if (autoHideDelay > 0) {
+        autoHideTimeoutRef.current = setTimeout(() => {
+          // Only hide if mouse isn't over trigger or tooltip
+          if (!isMouseOverTooltipRef.current && !isMouseOverTriggerRef.current) {
+            forceHide();
+          }
+        }, autoHideDelay);
+      }
     }, delay);
-  }, [delay, disabled, calculatePosition]);
+  }, [delay, disabled, calculatePosition, autoHideDelay, forceHide]);
 
   const handleMouseLeave = useCallback(() => {
+    isMouseOverTriggerRef.current = false;
+
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
-    setIsVisible(false);
-  }, []);
+
+    // Small delay before hiding to allow moving to tooltip
+    setTimeout(() => {
+      if (!isMouseOverTooltipRef.current && !isMouseOverTriggerRef.current) {
+        forceHide();
+      }
+    }, 100);
+  }, [forceHide]);
 
   // Recalculate position when tooltip becomes visible
   useEffect(() => {
@@ -132,14 +172,45 @@ const RichTooltip = ({
     }
   }, [isVisible, calculatePosition]);
 
+  // Safety mechanisms to prevent stuck tooltips
+  useEffect(() => {
+    if (!isVisible) return;
+
+    // 1. Hide on scroll (any scroll in the page)
+    const handleScroll = () => forceHide();
+
+    // 2. Hide on window blur (user switches tabs/windows)
+    const handleBlur = () => forceHide();
+
+    // 3. Hide on Escape key
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        forceHide();
+      }
+    };
+
+    // 4. Hide on window resize
+    const handleResize = () => forceHide();
+
+    window.addEventListener('scroll', handleScroll, true); // Use capture to catch all scrolls
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isVisible, forceHide]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      forceHide();
     };
-  }, []);
+  }, [forceHide]);
 
   const tooltipElement = isVisible && content && createPortal(
     <div
@@ -151,12 +222,21 @@ const RichTooltip = ({
         left: `${position.left}px`,
       }}
       onMouseEnter={() => {
+        isMouseOverTooltipRef.current = true;
         // Keep tooltip visible when hovering over it
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
+        // Cancel auto-hide when mouse is over tooltip
+        if (autoHideTimeoutRef.current) {
+          clearTimeout(autoHideTimeoutRef.current);
+          autoHideTimeoutRef.current = null;
+        }
       }}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={() => {
+        isMouseOverTooltipRef.current = false;
+        handleMouseLeave();
+      }}
     >
       <div className="rich-tooltip-content">
         {content}

@@ -23,7 +23,25 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredModel, setHoveredModel] = useState(null);
-  const [granularity, setGranularity] = useState('day');  // 'hour', 'day', 'week', 'month'
+
+  // Load granularity from localStorage, default to 'day'
+  const [granularity, setGranularityState] = useState(() => {
+    try {
+      return localStorage.getItem('rvbbit_cost_analytics_granularity') || 'day';
+    } catch (err) {
+      return 'day';
+    }
+  });
+
+  // Wrapper to save to localStorage when granularity changes
+  const setGranularity = (newGranularity) => {
+    setGranularityState(newGranularity);
+    try {
+      localStorage.setItem('rvbbit_cost_analytics_granularity', newGranularity);
+    } catch (err) {
+      console.error('Failed to save granularity preference:', err);
+    }
+  };
 
   // Stable string representation of cascadeIds to avoid infinite re-renders
   const cascadeIdsKey = cascadeIds.join(',');

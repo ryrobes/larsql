@@ -11,6 +11,185 @@ import './CascadesView.css';
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+// Cell renderers for cascade analytics
+const SuccessRateRenderer = (props) => {
+  const rate = props.value || 0;
+  const color = rate >= 95 ? '#34d399' : rate >= 80 ? '#fbbf24' : '#f87171';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{rate.toFixed(0)}%</div>
+    </div>
+  );
+};
+
+const CostTrendRenderer = (props) => {
+  const trend = props.value || 0;
+  const cost7d = props.data.analytics?.cost_7d_avg || 0;
+  const cost30d = props.data.analytics?.cost_30d_avg || 0;
+
+  // No trend if insufficient data
+  if (cost7d === 0 && cost30d === 0) {
+    return <span style={{ color: '#475569' }}>-</span>;
+  }
+
+  const color = trend > 20 ? '#f87171' : trend > 5 ? '#fbbf24' : trend < -5 ? '#34d399' : '#94a3b8';
+  const arrow = trend > 5 ? '↑' : trend < -5 ? '↓' : '';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{arrow}{Math.abs(trend).toFixed(0)}%</div>
+      {cost7d > 0 && (
+        <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+          7d: ${cost7d.toFixed(4)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const OutlierRateRenderer = (props) => {
+  const rate = props.value || 0;
+  const color = rate > 20 ? '#f87171' : rate > 10 ? '#fbbf24' : '#34d399';
+
+  if (rate === 0) {
+    return <span style={{ color: '#34d399', fontWeight: '500' }}>0%</span>;
+  }
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{rate.toFixed(0)}%</div>
+    </div>
+  );
+};
+
+const AvgContextRenderer = (props) => {
+  const pct = props.value || 0;
+  const color = pct > 60 ? '#fbbf24' : pct < 30 ? '#34d399' : '#94a3b8';
+
+  if (pct === 0) {
+    return <span style={{ color: '#475569' }}>-</span>;
+  }
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{pct.toFixed(0)}%</div>
+    </div>
+  );
+};
+
+// Session-level cell renderers (for instances grid)
+const InputBadgeRenderer = (props) => {
+  const category = props.value;
+  const badges = {
+    tiny: { label: 'T', color: '#34d399' },
+    small: { label: 'S', color: '#60a5fa' },
+    medium: { label: 'M', color: '#94a3b8' },
+    large: { label: 'L', color: '#fbbf24' },
+    huge: { label: 'H', color: '#f87171' }
+  };
+
+  if (!category) {
+    return <span style={{ color: '#475569', fontSize: '11px' }}>-</span>;
+  }
+
+  const badge = badges[category] || { label: '?', color: '#94a3b8' };
+
+  return (
+    <span style={{
+      background: badge.color,
+      color: '#0f172a',
+      padding: '2px 6px',
+      borderRadius: '3px',
+      fontSize: '11px',
+      fontWeight: '600'
+    }}>
+      {badge.label}
+    </span>
+  );
+};
+
+const CostRenderer = (props) => {
+  const cost = props.value || 0;
+  const zScore = props.data.cost_z_score || 0;
+  const isOutlier = props.data.is_cost_outlier;
+
+  const color = isOutlier ? '#f87171' :
+                Math.abs(zScore) > 1 ? '#fbbf24' :
+                '#34d399';
+
+  const zDisplay = Math.abs(zScore) > 1 ? `(${zScore > 0 ? '+' : ''}${zScore.toFixed(1)}σ)` : '';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>${cost.toFixed(4)}</div>
+      {zDisplay && <div style={{ fontSize: '10px', marginTop: '2px' }}>{zDisplay}</div>}
+    </div>
+  );
+};
+
+const ContextRenderer = (props) => {
+  const pct = props.value || 0;
+  const contextCost = props.data.total_context_cost_estimated || 0;
+  const totalCost = props.data.total_cost || 0;
+  const newCost = totalCost - contextCost;
+
+  const color = pct > 60 ? '#fbbf24' : pct < 30 ? '#34d399' : '#94a3b8';
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{pct.toFixed(0)}%</div>
+      {pct > 0 && (
+        <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+          ctx: ${contextCost.toFixed(3)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BottleneckRenderer = (props) => {
+  const cell = props.value;
+  const pct = props.data.bottleneck_cell_pct || 0;
+
+  if (!cell || pct < 40) {
+    return <span style={{ color: '#475569' }}>-</span>;
+  }
+
+  const color = pct > 70 ? '#f87171' : '#fbbf24';
+
+  return (
+    <div style={{ color, fontWeight: '500', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+      <div>{cell}</div>
+      <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+        {pct.toFixed(0)}% of cascade
+      </div>
+    </div>
+  );
+};
+
+const DurationRenderer = (props) => {
+  const ms = props.value || 0;
+  const seconds = (ms / 1000).toFixed(1);
+  const clusterAvg = props.data.cluster_avg_duration || 0;
+  const isOutlier = props.data.is_duration_outlier;
+
+  const color = isOutlier ? '#f87171' : '#94a3b8';
+
+  const multiplier = clusterAvg > 0 ? (ms / clusterAvg).toFixed(1) : null;
+
+  return (
+    <div style={{ color, fontWeight: '500' }}>
+      <div>{seconds}s</div>
+      {isOutlier && multiplier && (
+        <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
+          {multiplier}x slower
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Dark theme matching other views
 const darkTheme = themeQuartz.withParams({
   backgroundColor: '#000000',
@@ -124,6 +303,7 @@ const CascadesView = ({ navigate, params = {} }) => {
         cascade_id: session.cascade_id,
         status: session.status,
         total_cost: session.total_cost || 0,
+        total_duration_ms: session.total_duration_ms || 0,
         duration_seconds: session.started_at && session.completed_at
           ? (new Date(session.completed_at) - new Date(session.started_at)) / 1000
           : 0,
@@ -131,10 +311,24 @@ const CascadesView = ({ navigate, params = {} }) => {
         start_time: session.started_at,
         end_time: session.completed_at,
         message_count: session.message_count || 0,
-        // Include percentage differences (calculated by backend)
+        // Legacy percentage differences (hidden by default)
         cost_diff_pct: session.cost_diff_pct,
         messages_diff_pct: session.messages_diff_pct,
         duration_diff_pct: session.duration_diff_pct,
+        // New analytics metrics
+        input_category: session.input_category,
+        input_char_count: session.input_char_count || 0,
+        cost_z_score: session.cost_z_score || 0,
+        duration_z_score: session.duration_z_score || 0,
+        is_cost_outlier: session.is_cost_outlier || false,
+        is_duration_outlier: session.is_duration_outlier || false,
+        cluster_avg_cost: session.cluster_avg_cost || 0,
+        cluster_avg_duration: session.cluster_avg_duration || 0,
+        cluster_run_count: session.cluster_run_count || 0,
+        context_cost_pct: session.context_cost_pct || 0,
+        total_context_cost_estimated: session.total_context_cost_estimated || 0,
+        bottleneck_cell: session.bottleneck_cell,
+        bottleneck_cell_pct: session.bottleneck_cell_pct || 0,
       }));
 
       setInstances(transformed);
@@ -236,6 +430,85 @@ const CascadesView = ({ navigate, params = {} }) => {
       cellStyle: { fontFamily: 'var(--font-mono)' },
     },
     {
+      field: 'analytics.success_rate',
+      headerName: 'Success',
+      headerTooltip: 'Percentage of runs that completed successfully',
+      width: 95,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: SuccessRateRenderer,
+      tooltipValueGetter: (params) => {
+        const rate = params.value || 0;
+        return `Success rate: ${rate.toFixed(1)}% of runs completed successfully`;
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    {
+      field: 'analytics.cost_trend_pct',
+      headerName: 'Cost Trend',
+      headerTooltip: '7-day vs 30-day average cost trend',
+      width: 110,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: CostTrendRenderer,
+      tooltipValueGetter: (params) => {
+        const trend = params.value || 0;
+        const cost7d = params.data.analytics?.cost_7d_avg || 0;
+        const cost30d = params.data.analytics?.cost_30d_avg || 0;
+        if (cost7d === 0 && cost30d === 0) return 'Insufficient data for trend';
+        return `7d avg: $${cost7d.toFixed(4)} | 30d avg: $${cost30d.toFixed(4)} | Trend: ${trend > 0 ? '+' : ''}${trend.toFixed(1)}%`;
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    {
+      field: 'analytics.outlier_rate',
+      headerName: 'Outliers',
+      headerTooltip: 'Percentage of runs that are cost outliers',
+      width: 95,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: OutlierRateRenderer,
+      tooltipValueGetter: (params) => {
+        const rate = params.value || 0;
+        return `Outlier rate: ${rate.toFixed(1)}% of runs are statistical outliers (>2σ)`;
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    {
+      field: 'analytics.avg_context_pct',
+      headerName: 'Avg Ctx%',
+      headerTooltip: 'Average percentage of cost from context injection',
+      width: 95,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: AvgContextRenderer,
+      tooltipValueGetter: (params) => {
+        const pct = params.value || 0;
+        return `Average context cost: ${pct.toFixed(1)}% of total cost typically from context injection`;
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    {
       field: 'latest_run',
       headerName: 'Latest Run',
       flex: 1.5,
@@ -247,7 +520,7 @@ const CascadesView = ({ navigate, params = {} }) => {
     },
   ], []);
 
-  // Instances grid columns
+  // Instances grid columns (execution history for selected cascade)
   const instanceColumns = useMemo(() => [
     {
       field: 'session_id',
@@ -276,121 +549,142 @@ const CascadesView = ({ navigate, params = {} }) => {
         );
       },
     },
+    // INPUT SIZE BADGE
+    {
+      field: 'input_category',
+      headerName: 'Input',
+      headerTooltip: 'Input size category for apples-to-apples comparison',
+      width: 80,
+      cellRenderer: InputBadgeRenderer,
+      tooltipValueGetter: (params) => {
+        const cat = params.value;
+        const charCount = params.data.input_char_count || 0;
+        if (!cat) {
+          return charCount > 0 ? `Input size: ${charCount} chars (no category)` : 'No input data';
+        }
+        return `Input size: ${cat} (${charCount} chars)`;
+      },
+    },
+    // COST WITH Z-SCORE
     {
       field: 'total_cost',
       headerName: 'Cost',
-      width: 110,
-      valueFormatter: (params) => {
+      headerTooltip: 'Statistical anomaly score vs similar input size runs',
+      width: 130,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: CostRenderer,
+      tooltipValueGetter: (params) => {
         const cost = params.value || 0;
-        return cost > 0 ? `$${cost.toFixed(6)}` : '-';
+        const clusterAvg = params.data.cluster_avg_cost || 0;
+        const clusterSize = params.data.cluster_run_count || 0;
+        const zScore = params.data.cost_z_score || 0;
+        return `Cost: $${cost.toFixed(4)} | Cluster avg: $${clusterAvg.toFixed(4)} (n=${clusterSize} similar runs) | Z-score: ${zScore.toFixed(1)}σ`;
       },
-      cellStyle: { color: '#34d399', fontFamily: 'var(--font-mono)' },
-    },
-    {
-      field: 'cost_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
-      tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average cost`;
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
       },
     },
+    // CONTEXT %
     {
-      field: 'message_count',
-      headerName: 'Messages',
-      width: 95,
-      valueFormatter: (params) => {
-        const count = params.value || 0;
-        return count > 0 ? count.toString() : '-';
-      },
-      cellStyle: { fontFamily: 'var(--font-mono)' },
-    },
-    {
-      field: 'messages_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
-      tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average messages`;
-      },
-    },
-    {
-      field: 'duration_seconds',
-      headerName: 'Duration',
+      field: 'context_cost_pct',
+      headerName: 'Context%',
+      headerTooltip: 'Percentage of cost from context injection vs new tokens',
       width: 100,
-      valueFormatter: (params) => {
-        const secs = params.value || 0;
-        if (secs === 0) return '-';
-        if (secs < 60) return `${Math.round(secs)}s`;
-        const mins = Math.floor(secs / 60);
-        const remainingSecs = Math.round(secs % 60);
-        return `${mins}m ${remainingSecs}s`;
-      },
-      cellStyle: { fontFamily: 'var(--font-mono)' },
-    },
-    {
-      field: 'duration_diff_pct',
-      headerName: 'Δ%',
-      width: 85,
-      valueFormatter: (params) => {
-        if (params.value === null || params.value === undefined) return '-';
-        const val = params.value;
-        return val > 0 ? `+${val}%` : `${val}%`;
-      },
-      cellStyle: (params) => {
-        if (params.value === null || params.value === undefined) return { fontFamily: 'var(--font-mono)', fontSize: '11px' };
-        const val = params.value;
-        // For duration: faster is better (negative is good)
-        const color = val > 10 ? '#ff006e' : val < -10 ? '#34d399' : '#cbd5e1';
-        return { color, fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 };
-      },
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: ContextRenderer,
       tooltipValueGetter: (params) => {
-        if (params.value === null || params.value === undefined) return null;
-        return `${params.value}% vs cascade average duration`;
+        const pct = params.value || 0;
+        const contextCost = params.data.total_context_cost_estimated || 0;
+        const totalCost = params.data.total_cost || 0;
+        const newCost = totalCost - contextCost;
+        return `Context cost: $${contextCost.toFixed(4)} (${pct.toFixed(0)}%) | New tokens: $${newCost.toFixed(4)}`;
+      },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
       },
     },
+    // BOTTLENECK CELL
+    {
+      field: 'bottleneck_cell',
+      headerName: 'Bottleneck',
+      headerTooltip: 'Cell that consumed the most cascade cost/time',
+      width: 140,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: BottleneckRenderer,
+      tooltipValueGetter: (params) => {
+        const cell = params.value;
+        const pct = params.data.bottleneck_cell_pct || 0;
+        return cell ? `Cell '${cell}' consumed ${pct.toFixed(0)}% of cascade cost` : 'No dominant bottleneck';
+      },
+      cellStyle: {
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    // DURATION WITH MULTIPLIER
+    {
+      field: 'total_duration_ms',
+      headerName: 'Duration',
+      headerTooltip: 'Execution time compared to similar input size runs',
+      width: 120,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: DurationRenderer,
+      tooltipValueGetter: (params) => {
+        const ms = params.value || 0;
+        const clusterAvg = params.data.cluster_avg_duration || 0;
+        const clusterSize = params.data.cluster_run_count || 0;
+        const multiplier = clusterAvg > 0 ? (ms / clusterAvg).toFixed(1) : 0;
+        return `Duration: ${(ms/1000).toFixed(1)}s | Cluster avg: ${(clusterAvg/1000).toFixed(1)}s (n=${clusterSize} similar runs) | ${multiplier}x ${ms > clusterAvg ? 'slower' : 'faster'}`;
+      },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '4px',
+        paddingBottom: '4px'
+      },
+    },
+    // LEGACY COLUMNS (HIDDEN)
+    { field: 'cost_diff_pct', hide: true },
+    { field: 'messages_diff_pct', hide: true },
+    { field: 'duration_diff_pct', hide: true },
+    { field: 'message_count', hide: true },
+    { field: 'duration_seconds', hide: true },
     {
       field: 'input_data',
       headerName: 'Inputs',
       flex: 2,
       minWidth: 150,
+      wrapText: true,
+      autoHeight: true,
       valueFormatter: (params) => {
         if (!params.value) return '-';
         try {
           const inputs = typeof params.value === 'string' ? JSON.parse(params.value) : params.value;
           if (typeof inputs === 'object' && inputs !== null) {
-            const keys = Object.keys(inputs);
-            if (keys.length === 0) return '{}';
-            if (keys.length <= 2) {
-              return keys.map(k => `${k}: ${JSON.stringify(inputs[k])}`).join(', ');
-            }
-            return `${keys.length} inputs`;
+            const str = JSON.stringify(inputs, null, 2);
+            // Truncate to 150 chars (same as console/output)
+            return str.length > 150 ? str.slice(0, 150) + '...' : str;
           }
-          return JSON.stringify(inputs).slice(0, 50);
+          const str = JSON.stringify(inputs);
+          return str.length > 150 ? str.slice(0, 150) + '...' : str;
         } catch {
-          return String(params.value).slice(0, 50);
+          const str = String(params.value);
+          return str.length > 150 ? str.slice(0, 150) + '...' : str;
         }
       },
       tooltipValueGetter: (params) => {
@@ -402,7 +696,14 @@ const CascadesView = ({ navigate, params = {} }) => {
           return String(params.value);
         }
       },
-      cellStyle: { fontFamily: 'var(--font-mono)', fontSize: '12px' },
+      cellStyle: {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px',
+        lineHeight: '1.4',
+        whiteSpace: 'normal',
+        paddingTop: '8px',
+        paddingBottom: '8px'
+      },
     },
     {
       field: 'start_time',
