@@ -57,9 +57,10 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
     for (const log of cellLogs) {
       const metadata = parseMetadata(log.metadata_json);
 
-      // Track winning candidate
-      if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
-        winnerIndex = log.winning_sounding_index;
+      // Track winning candidate (check both old and new field names)
+      const logWinner = log.winner_index ?? log.winning_sounding_index ?? metadata.winner_index;
+      if (logWinner !== null && logWinner !== undefined && logWinner >= 0) {
+        winnerIndex = logWinner;
       }
 
       // Extract evaluator result (role === 'evaluator' or node_type === 'evaluator')
@@ -217,6 +218,11 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
         // Track model
         if (log.model) {
           candidate.model = log.model;
+        }
+
+        // Track mutation type (not the full mutated prompt text)
+        if (metadata.mutation_type && !candidate.mutation) {
+          candidate.mutation = metadata.mutation_type;
         }
 
         // Accumulate cost

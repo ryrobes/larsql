@@ -22,11 +22,12 @@ from typing import Optional, Dict, Any
 import duckdb
 
 
-# Global cache for UDF results
-_udf_cache: Dict[str, str] = {}
+# Enhanced UDF cache with TTL support
+# Format: Dict[key, Tuple[value, timestamp, ttl_seconds]]
+_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 
-# Global cache for cascade UDF results (full cascade executions)
-_cascade_udf_cache: Dict[str, str] = {}
+# Enhanced cascade UDF cache with TTL support
+_cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 
 # Track which connections have UDF registered (to avoid duplicate registration)
 _registered_connections: set = set()
@@ -46,13 +47,65 @@ def _make_cascade_cache_key(cascade_path: str, inputs: dict) -> str:
     return hashlib.md5(cache_str.encode()).hexdigest()
 
 
+def _cache_get(cache: dict, key: str) -> Optional[str]:
+    """Get from cache, checking TTL expiry."""
+    import time
+
+    if key not in cache:
+        return None
+
+    value, timestamp, ttl = cache[key]
+
+    # Check if expired
+    if ttl is not None and (time.time() - timestamp) > ttl:
+        del cache[key]  # Expired, remove
+        return None
+
+    return value
+
+
+def _cache_set(cache: dict, key: str, value: str, ttl: Optional[float] = None):
+    """Set in cache with optional TTL."""
+    import time
+    cache[key] = (value, time.time(), ttl)
+
+
+def _parse_duration(duration_str: str) -> float:
+    """
+    Parse duration string to seconds.
+
+    Supports: '1d', '2h', '30m', '60s', or raw seconds as int/float
+
+    Examples:
+        >>> _parse_duration('1d')
+        86400.0
+        >>> _parse_duration('2h')
+        7200.0
+        >>> _parse_duration(3600)
+        3600.0
+    """
+    if isinstance(duration_str, (int, float)):
+        return float(duration_str)
+
+    import re
+    match = re.match(r'(\d+)([smhd])', str(duration_str).lower())
+    if not match:
+        raise ValueError(f"Invalid duration format: {duration_str}. Use '1d', '2h', '30m', '60s', or raw seconds")
+
+    value, unit = int(match.group(1)), match.group(2)
+
+    multipliers = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
+    return value * multipliers[unit]
+
+
 def rvbbit_udf_impl(
     instructions: str,
     input_value: str,
     model: str = None,
     temperature: float = 0.0,
     max_tokens: int = 500,
-    use_cache: bool = True
+    use_cache: bool = True,
+    cache_ttl: Optional[str] = None
 ) -> str:
     """
     Core implementation of rvbbit_udf.
@@ -64,15 +117,17 @@ def rvbbit_udf_impl(
         temperature: LLM temperature (default: 0.0 for deterministic)
         max_tokens: Max tokens in response
         use_cache: Whether to use cache (default: True)
+        cache_ttl: Cache TTL (e.g., '1d', '2h', '30m') or None for infinite
 
     Returns:
         LLM response as string (or None on error)
     """
-    # Check cache first
+    # Check cache first (TTL-aware)
     if use_cache:
         cache_key = _make_cache_key(instructions, input_value, model)
-        if cache_key in _udf_cache:
-            return _udf_cache[cache_key]
+        cached_value = _cache_get(_udf_cache, cache_key)
+        if cached_value is not None:
+            return cached_value
 
     try:
         # Import locally to avoid circular dependencies
@@ -127,9 +182,10 @@ def rvbbit_udf_impl(
         if not result:
             result = "N/A"
 
-        # Cache result
+        # Cache result with TTL
         if use_cache:
-            _udf_cache[cache_key] = result
+            ttl_seconds = _parse_duration(cache_ttl) if cache_ttl else None
+            _cache_set(_udf_cache, cache_key, result, ttl_seconds)
 
         return result
 
@@ -199,22 +255,22 @@ def rvbbit_cascade_udf_impl(
         # Create cache key
         cache_key = _make_cascade_cache_key(cascade_path, inputs)
 
-        # Check cache
-        if use_cache and cache_key in _cascade_udf_cache:
-            cached_result = _cascade_udf_cache[cache_key]
+        # Check cache (TTL-aware)
+        if use_cache:
+            cached_result = _cache_get(_cascade_udf_cache, cache_key)
+            if cached_result is not None:
+                # If return_field specified, extract it
+                if return_field:
+                    result_obj = json.loads(cached_result)
+                    # Try to extract from outputs first, then state
+                    for phase_output in result_obj.get("outputs", {}).values():
+                        if isinstance(phase_output, dict) and return_field in phase_output:
+                            return str(phase_output[return_field])
+                    # Fallback: search in state
+                    if return_field in result_obj.get("state", {}):
+                        return str(result_obj["state"][return_field])
 
-            # If return_field specified, extract it
-            if return_field:
-                result_obj = json.loads(cached_result)
-                # Try to extract from outputs first, then state
-                for phase_output in result_obj.get("outputs", {}).values():
-                    if isinstance(phase_output, dict) and return_field in phase_output:
-                        return str(phase_output[return_field])
-                # Fallback: search in state
-                if return_field in result_obj.get("state", {}):
-                    return str(result_obj["state"][return_field])
-
-            return cached_result
+                return cached_result
 
         # Resolve cascade path
         resolved_path = cascade_path
@@ -275,9 +331,9 @@ def rvbbit_cascade_udf_impl(
         state_output = result.get("state", {}).get("output_extract", "N/A")
         print(f"✅ [UDF] Completed: session={session_id}, output={str(state_output)[:30]}...")
 
-        # Cache result
+        # Cache result (with infinite TTL for backward compatibility)
         if use_cache:
-            _cascade_udf_cache[cache_key] = json_result
+            _cache_set(_cascade_udf_cache, cache_key, json_result, ttl=None)
 
         # Extract specific field if requested
         if return_field:
@@ -497,6 +553,100 @@ def rvbbit_run_parallel_batch(
         return json_module.dumps({"error": str(e)})
 
 
+def rvbbit_map_parallel_exec(
+    cascade_path: str,
+    rows_json_array: str,
+    max_workers: int,
+    result_column: str
+):
+    """
+    Execute cascade on multiple rows in parallel, return DataFrame.
+
+    Used by RVBBIT MAP PARALLEL syntax. Each row becomes a cascade input,
+    results are joined back to original columns in order.
+
+    Args:
+        cascade_path: Path to cascade file
+        rows_json_array: JSON array of input rows from USING query
+        max_workers: Max concurrent cascade executions
+        result_column: Name for result column
+
+    Returns:
+        pandas DataFrame with enriched rows (DuckDB converts to relation automatically)
+
+    Example:
+        Input:  [{"id": 1, "text": "foo"}, {"id": 2, "text": "bar"}]
+        Output: DataFrame with columns [id, text, result]
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import json as json_module
+    import pandas as pd
+
+    try:
+        # Parse input rows
+        rows = json_module.loads(rows_json_array)
+        if not isinstance(rows, list):
+            raise ValueError("Expected JSON array of rows")
+        if len(rows) == 0:
+            return pd.DataFrame()  # Empty DataFrame
+
+        # Process rows in parallel with order preservation
+        results = [None] * len(rows)
+
+        def process_row(index, row):
+            """Process single row, return (index, enriched_row)."""
+            try:
+                # Convert row to JSON for cascade input
+                row_json = json_module.dumps(row)
+
+                # Run cascade via rvbbit_cascade_udf_impl (handles context vars properly)
+                result_json = rvbbit_cascade_udf_impl(cascade_path, row_json, use_cache=True)
+                result_obj = json_module.loads(result_json)
+
+                # Extract meaningful result
+                # Priority: state.output_extract > last phase output > full result
+                extracted = (
+                    result_obj.get("state", {}).get("output_extract") or
+                    list(result_obj.get("outputs", {}).values())[-1] if result_obj.get("outputs") else
+                    result_json
+                )
+
+                # Return enriched row with result column
+                return index, {**row, result_column: extracted}
+
+            except Exception as e:
+                # On error, return row with error message in result column
+                return index, {**row, result_column: f"ERROR: {str(e)[:100]}"}
+
+        # Execute in parallel with ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            futures = {
+                executor.submit(process_row, i, row): i
+                for i, row in enumerate(rows)
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                index, enriched_row = future.result()
+                results[index] = enriched_row  # Preserve original order
+
+        # Return as DataFrame (DuckDB converts to relation automatically)
+        return pd.DataFrame(results)
+
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger(__name__).error(
+            f"rvbbit_map_parallel_exec error: {e}\n{traceback.format_exc()}"
+        )
+        # Return error as DataFrame
+        return pd.DataFrame([{
+            "error": str(e),
+            "hint": "Check cascade path and input data format"
+        }])
+
+
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):
     """
     Register rvbbit_udf as a DuckDB user-defined function.
@@ -597,6 +747,17 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_run_batch: {e}")
+
+    # Register parallel MAP UDF (for RVBBIT MAP PARALLEL syntax)
+    try:
+        # Register as table-valued function (no return_type = DuckDB infers from DataFrame)
+        connection.create_function(
+            "rvbbit_map_parallel_exec",
+            rvbbit_map_parallel_exec
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register rvbbit_map_parallel_exec: {e}")
 
     # TODO Phase 2B: Register parallel batch UDF when threading is implemented
     # try:

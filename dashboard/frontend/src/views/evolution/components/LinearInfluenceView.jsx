@@ -52,10 +52,12 @@ function TrainingSnippet({ snippet, color, generation, onClick, isHighlighted })
 /**
  * GenerationBlock - Single generation showing winner + training sources
  */
-function GenerationBlock({ generation, generationColor, onSnippetClick, highlightedGen }) {
+function GenerationBlock({ generation, generationColor, onSnippetClick, highlightedGen, onEvolveClick }) {
   const [showFullWinner, setShowFullWinner] = useState(false);
 
   const winner = generation.candidates.find(c => c.is_winner) || generation.candidates[0];
+
+  console.log('[GenerationBlock] Gen', generation.generation, '- Has winner:', !!winner?.is_winner, '- Has evolveClick:', !!onEvolveClick);
   const winnerPrompt = winner?.prompt || '';
   const winnerPreview = winnerPrompt.length > 400 ? winnerPrompt.substring(0, 400) + '...' : winnerPrompt;
   const hasMore = winnerPrompt.length > 400;
@@ -86,6 +88,20 @@ function GenerationBlock({ generation, generationColor, onSnippetClick, highligh
           <span>Winner</span>
           {winner?.mutation_type && (
             <span className="winner-mutation">{winner.mutation_type}</span>
+          )}
+          {winner?.is_winner && onEvolveClick && (
+            <button
+              className="evolve-btn-mini"
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log('[GenerationBlock] Evolve clicked!', generation);
+                onEvolveClick(generation);
+              }}
+              title="Evolve: Promote this winner to baseline and create new species"
+            >
+              <Icon icon="mdi:dna" width="12" />
+              ⚡ Evolve
+            </button>
           )}
         </div>
         <div
@@ -155,8 +171,9 @@ function GenerationBlock({ generation, generationColor, onSnippetClick, highligh
  * Props:
  * - nodes: React Flow nodes array
  * - currentSessionId: Current session for highlighting
+ * - onEvolveClick: Callback when evolve button clicked (optional)
  */
-const LinearInfluenceView = ({ nodes, currentSessionId }) => {
+const LinearInfluenceView = ({ nodes, currentSessionId, onEvolveClick }) => {
   const [highlightedGen, setHighlightedGen] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
@@ -164,6 +181,8 @@ const LinearInfluenceView = ({ nodes, currentSessionId }) => {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const timelineRef = React.useRef(null);
+
+  console.log('[LinearInfluenceView] onEvolveClick prop:', !!onEvolveClick);
 
   // Group nodes by generation
   const generations = useMemo(() => {
@@ -206,6 +225,12 @@ const LinearInfluenceView = ({ nodes, currentSessionId }) => {
   // Drag-to-scroll handlers
   const handleMouseDown = (e) => {
     if (!timelineRef.current) return;
+    // Don't start drag if clicking on a button or interactive element
+    if (e.target.closest('button')) {
+      console.log('[LinearInfluence] Clicked button, not dragging');
+      return;
+    }
+
     setIsDragging(true);
     setStartX(e.pageX - timelineRef.current.offsetLeft);
     setStartY(e.pageY - timelineRef.current.offsetTop);
@@ -215,9 +240,16 @@ const LinearInfluenceView = ({ nodes, currentSessionId }) => {
 
   const handleMouseMove = (e) => {
     if (!isDragging || !timelineRef.current) return;
-    e.preventDefault();
+
+    // Only treat as drag if moved more than 5px (prevents accidental drags on click)
     const x = e.pageX - timelineRef.current.offsetLeft;
     const y = e.pageY - timelineRef.current.offsetTop;
+    const deltaX = Math.abs(x - startX);
+    const deltaY = Math.abs(y - startY);
+
+    if (deltaX < 5 && deltaY < 5) return; // Not a real drag yet
+
+    e.preventDefault();
     const walkX = (x - startX) * 1.5; // Multiply for faster scroll
     const walkY = (y - startY) * 1.5;
     timelineRef.current.scrollLeft = scrollLeft - walkX;
@@ -269,6 +301,7 @@ const LinearInfluenceView = ({ nodes, currentSessionId }) => {
                 generationColor={genColor}
                 onSnippetClick={handleSnippetClick}
                 highlightedGen={highlightedGen}
+                onEvolveClick={onEvolveClick}
               />
 
               {/* Arrow Connector */}

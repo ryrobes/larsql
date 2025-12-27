@@ -6,8 +6,10 @@ import SpeciesSelector from './components/SpeciesSelector';
 import CascadeSelector from './components/CascadeSelector';
 import NgramAnalysis from './components/NgramAnalysis';
 import ModelPerformance from './components/ModelPerformance';
+import EvolutionMetrics from './components/EvolutionMetrics';
 import GenerationTimeline from './components/GenerationTimeline';
 import LinearInfluenceView from './components/LinearInfluenceView';
+import EvolveModal from './components/EvolveModal';
 import './EvolutionView.css';
 
 /**
@@ -33,8 +35,13 @@ const EvolutionView = ({ params, navigate }) => {
   const [loadingSpecies, setLoadingSpecies] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [analysisTab, setAnalysisTab] = useState('ngrams'); // 'ngrams' or 'models'
+  const [evolveModalOpen, setEvolveModalOpen] = useState(false);
+  const [evolveGeneration, setEvolveGeneration] = useState(null);
   const [phylogenyMetadata, setPhylogenyMetadata] = useState(null); // Metadata from the actual evolution graph
   const [phylogenyNodes, setPhylogenyNodes] = useState([]); // Nodes from the graph for timeline
+  const [phylogenyEdges, setPhylogenyEdges] = useState([]); // Edges for graph
+  const [evolutionLoading, setEvolutionLoading] = useState(false);
+  const [evolutionError, setEvolutionError] = useState(null);
   const [highlightedNode, setHighlightedNode] = useState(null); // Node to highlight in graph
   const [showTimeline, setShowTimeline] = useState(true); // Toggle timeline sidebar
   const [splitSizes, setSplitSizes] = useState([70, 30]); // Graph 70%, Timeline 30%
@@ -80,17 +87,59 @@ const EvolutionView = ({ params, navigate }) => {
 
     try {
       setLoadingSpecies(true);
-      // Fetch sessions for this cascade and pick the most recent
-      const res = await fetch(`http://localhost:5001/api/sessions?cascade_id=${selectedCascade}&limit=1`);
-      const data = await res.json();
 
-      if (data.sessions && data.sessions.length > 0) {
-        const latestSession = data.sessions[0];
-        setSelectedSession(latestSession.session_id);
-        console.log('[Evolution] Auto-selected latest session:', latestSession.session_id);
-        console.log('[Evolution] Full session data:', latestSession);
+      // Step 1: Try to find ANY session with evolution data to determine cell_name
+      const sessionsRes = await fetch(`http://localhost:5001/api/sessions?cascade_id=${selectedCascade}&limit=20`);
+      const sessionsData = await sessionsRes.json();
+
+      let foundCellName = null;
+      let foundSpeciesHash = null;
+      let foundSession = null;
+
+      // Try each session until we find one with evolution data
+      for (const session of sessionsData.sessions || []) {
+        const evolutionRes = await fetch(
+          `http://localhost:5001/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
+        );
+        const evolutionData = await evolutionRes.json();
+
+        if (evolutionData.nodes && evolutionData.nodes.length > 0 && evolutionData.metadata) {
+          foundCellName = evolutionData.metadata.cell_name;
+          foundSpeciesHash = evolutionData.metadata.species_hash;
+          foundSession = session.session_id;
+          break;
+        }
+      }
+
+      if (!foundCellName) {
+        console.warn('[Evolution] No sessions with evolution data found for cascade:', selectedCascade);
+        setLoadingSpecies(false);
+        return;
+      }
+
+      // Step 2: Fetch species for this cascade + cell combination
+      const speciesRes = await fetch(
+        `http://localhost:5001/api/sextant/species/${selectedCascade}/${foundCellName}`
+      );
+      const speciesData = await speciesRes.json();
+
+      setSpecies(speciesData.species || []);
+      console.log('[Evolution] Found species:', speciesData.species?.length);
+
+      // Step 3: Auto-select species or let user choose
+      if (speciesData.species && speciesData.species.length === 1) {
+        // Only one species, auto-select it
+        setSelectedSpecies(speciesData.species[0].species_hash);
+        setSelectedSession(foundSession);
+        console.log('[Evolution] Auto-selected single species and session');
+      } else if (speciesData.species && speciesData.species.length > 1) {
+        // Multiple species, auto-select the one we found but show selector
+        setSelectedSpecies(foundSpeciesHash);
+        setSelectedSession(foundSession);
+        console.log('[Evolution] Multiple species found, user can choose');
       } else {
-        console.warn('[Evolution] No sessions found for cascade:', selectedCascade);
+        // No species data, just use the session we found
+        setSelectedSession(foundSession);
       }
 
       setLoadingSpecies(false);
@@ -104,10 +153,46 @@ const EvolutionView = ({ params, navigate }) => {
     setSelectedCascade(cascadeId);
     setSelectedSession(null); // Clear session so it auto-selects latest
     setSelectedSpecies(null);
+    setSpecies([]); // Clear species list
 
     // Update URL
     if (cascadeId) {
       navigate('evolution', { cascade: cascadeId });
+    }
+  };
+
+  const handleSpeciesSelect = (speciesHash) => {
+    setSelectedSpecies(speciesHash);
+    // When species changes, we need to find a session with this species
+    // For now, just trigger a refetch by clearing session
+    setSelectedSession(null);
+    fetchSessionForSpecies(speciesHash);
+  };
+
+  const fetchSessionForSpecies = async (speciesHash) => {
+    if (!selectedCascade || !speciesHash) return;
+
+    try {
+      // Query sessions and find one with this species_hash
+      const sessionsRes = await fetch(`http://localhost:5001/api/sessions?cascade_id=${selectedCascade}&limit=20`);
+      const sessionsData = await sessionsRes.json();
+
+      for (const session of sessionsData.sessions || []) {
+        const evolutionRes = await fetch(
+          `http://localhost:5001/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
+        );
+        const evolutionData = await evolutionRes.json();
+
+        if (evolutionData.metadata?.species_hash === speciesHash && evolutionData.nodes?.length > 0) {
+          setSelectedSession(session.session_id);
+          console.log('[Evolution] Found session for species:', session.session_id);
+          return;
+        }
+      }
+
+      console.warn('[Evolution] No session found for species:', speciesHash);
+    } catch (err) {
+      console.error('Failed to fetch session for species:', err);
     }
   };
 
@@ -126,13 +211,75 @@ const EvolutionView = ({ params, navigate }) => {
   const handleNodeFocus = (nodeId) => {
     console.log('[Evolution] Focusing node:', nodeId);
     setHighlightedNode(nodeId);
-
-    // TODO: Could also trigger fitView to center on this node in React Flow
   };
 
-  const handleNodesLoad = (nodes) => {
-    console.log('[Evolution] Nodes loaded:', nodes.length);
-    setPhylogenyNodes(nodes);
+  const handleEvolveClick = (generation) => {
+    console.log('[Evolution] Evolve clicked for generation:', generation.generation);
+    setEvolveGeneration(generation);
+    setEvolveModalOpen(true);
+  };
+
+  const handleEvolveSuccess = (result) => {
+    console.log('[Evolution] Species evolved:', result);
+    // Refresh data to show new species
+    fetchCascades();
+    // Could show toast notification here
+  };
+
+  // Get baseline prompt (from first generation, baseline candidate)
+  const baselinePrompt = phylogenyNodes.find(n =>
+    n.data.generation === 1 && n.data.candidate_index === 0
+  )?.data.prompt || '';
+
+  // Fetch evolution data when session is selected
+  useEffect(() => {
+    if (selectedSession) {
+      fetchEvolutionData();
+    }
+  }, [selectedSession, selectedSpecies]);
+
+  const fetchEvolutionData = async () => {
+    if (!selectedSession) return;
+
+    setEvolutionLoading(true);
+    setEvolutionError(null);
+
+    try {
+      const params = new URLSearchParams({
+        as_of: 'session',
+        include_future: 'false'
+      });
+
+      if (selectedSpecies) {
+        params.append('species_hash', selectedSpecies);
+      }
+
+      const response = await fetch(
+        `http://localhost:5001/api/sextant/evolution/${selectedSession}?${params}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Store the raw data from API
+      setPhylogenyNodes(data.nodes || []);
+      setPhylogenyEdges(data.edges || []);
+      setPhylogenyMetadata(data.metadata || {});
+
+      console.log('[Evolution] Data loaded:', data.nodes?.length, 'nodes');
+    } catch (err) {
+      console.error('[Evolution] Failed to fetch evolution data:', err);
+      setEvolutionError(err.message);
+    } finally {
+      setEvolutionLoading(false);
+    }
   };
 
   const selectedCascadeData = cascades.find(c => c.cascade_id === selectedCascade);
@@ -266,15 +413,23 @@ const EvolutionView = ({ params, navigate }) => {
         </div>
       ) : (
         <>
-          {/* Species Selector (if multiple species detected) */}
-          {species.length > 1 && (
-            <div className="evolution-species-section">
+          {/* Species Selector (compact, inline with controls if multiple) */}
+          {species.length > 0 && (
+            <div className="evolution-species-inline">
               <SpeciesSelector
                 species={species}
                 selected={selectedSpecies}
-                onSelect={setSelectedSpecies}
+                onSelect={handleSpeciesSelect}
               />
             </div>
+          )}
+
+          {/* Metrics Dashboard (compact) */}
+          {phylogenyNodes.length > 0 && (
+            <EvolutionMetrics
+              nodes={phylogenyNodes}
+              metadata={phylogenyMetadata}
+            />
           )}
 
           {/* Main Content - Switches between Graph and Linear views */}
@@ -291,10 +446,11 @@ const EvolutionView = ({ params, navigate }) => {
                 {/* Left: Prompt Phylogeny Graph */}
                 <div className="evolution-phylogeny-section">
                   <PromptPhylogeny
-                    sessionId={selectedSession}
-                    speciesHash={selectedSpecies}
-                    onMetadataLoad={setPhylogenyMetadata}
-                    onNodesLoad={handleNodesLoad}
+                    nodes={phylogenyNodes}
+                    edges={phylogenyEdges}
+                    metadata={phylogenyMetadata}
+                    loading={evolutionLoading}
+                    error={evolutionError}
                     highlightedNode={highlightedNode}
                   />
                 </div>
@@ -315,6 +471,7 @@ const EvolutionView = ({ params, navigate }) => {
               <LinearInfluenceView
                 nodes={phylogenyNodes}
                 currentSessionId={selectedSession}
+                onEvolveClick={handleEvolveClick}
               />
             )}
           </div>
@@ -368,6 +525,17 @@ const EvolutionView = ({ params, navigate }) => {
           </div>
         </>
       )}
+
+      {/* Evolve Modal */}
+      <EvolveModal
+        isOpen={evolveModalOpen}
+        onClose={() => setEvolveModalOpen(false)}
+        generation={evolveGeneration}
+        currentBaseline={baselinePrompt}
+        cascadeId={selectedCascade}
+        cellName={phylogenyMetadata?.cell_name}
+        onEvolve={handleEvolveSuccess}
+      />
     </div>
   );
 };

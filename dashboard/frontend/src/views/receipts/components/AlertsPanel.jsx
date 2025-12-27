@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
+import useNavigationStore from '../../../stores/navigationStore';
 import './AlertsPanel.css';
 
 // Register AG Grid modules
@@ -32,6 +33,20 @@ const darkTheme = themeQuartz.withParams({
  * @param {Array} alerts - Array of alert objects from backend
  */
 const AlertsPanel = ({ alerts = [] }) => {
+  const navigate = useNavigationStore((state) => state.navigate);
+
+  // Handle row click - navigate to Studio with session
+  const handleRowClick = (event) => {
+    const { cascade_id, session_id } = event.data;
+    if (session_id) {
+      const params = { session: session_id };
+      if (cascade_id) {
+        params.cascade = cascade_id;
+      }
+      navigate('studio', params);
+    }
+  };
+
   const columnDefs = useMemo(() => [
     {
       field: 'severity',
@@ -108,16 +123,25 @@ const AlertsPanel = ({ alerts = [] }) => {
     },
     {
       field: 'z_score',
-      headerName: 'Z-Score',
-      width: 100,
+      headerName: 'Deviation',
+      width: 110,
+      headerTooltip: 'Standard deviations from average (σ)',
       valueFormatter: (params) => {
-        return params.value ? `${params.value.toFixed(1)}σ` : '-';
+        if (!params.value) return '-';
+        const absZ = Math.abs(params.value);
+        if (absZ >= 4) return `Very High`;
+        if (absZ >= 3) return `High`;
+        if (absZ >= 2) return `Elevated`;
+        return `Normal`;
       },
       cellStyle: (params) => {
         if (!params.value) return {};
         const absZ = Math.abs(params.value);
         const color = absZ > 3 ? '#ff006e' : absZ > 2 ? '#fbbf24' : '#cbd5e1';
-        return { color, fontWeight: 600, fontFamily: 'var(--font-mono)' };
+        return { color, fontWeight: 600 };
+      },
+      tooltipValueGetter: (params) => {
+        return params.value ? `${params.value.toFixed(1)}σ (${Math.abs(params.value).toFixed(1)} standard deviations)` : '';
       },
     },
     {
@@ -163,6 +187,8 @@ const AlertsPanel = ({ alerts = [] }) => {
             suppressCellFocus={true}
             enableCellTextSelection={true}
             rowHeight={40}
+            onRowClicked={handleRowClick}
+            rowStyle={{ cursor: 'pointer' }}
           />
         )}
       </div>

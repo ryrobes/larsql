@@ -623,12 +623,12 @@
 
 /* Winner lane - prominent gold glow with crown indicator */
 .candidate-lane-winner {
-  border-color: #fbbf24 !important;
+  border-color: #FFD700 !important;
   box-shadow:
-    0 0 8px rgba(251, 191, 36, 0.4),
-    0 0 16px rgba(251, 191, 36, 0.2),
-    inset 0 0 20px rgba(251, 191, 36, 0.05);
-  background: linear-gradient(180deg, rgba(251, 191, 36, 0.1) 0%, #050410 100%);
+    0 0 8px rgba(255, 215, 0, 0.4),
+    0 0 16px rgba(255, 215, 0, 0.2),
+    inset 0 0 20px rgba(255, 215, 0, 0.05);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.1) 0%, #050410 100%);
   animation: winner-glow 2s ease-in-out infinite;
   position: relative;
 }
@@ -636,25 +636,25 @@
 @keyframes winner-glow {
   0%, 100% {
     box-shadow:
-      0 0 8px rgba(251, 191, 36, 0.4),
-      0 0 16px rgba(251, 191, 36, 0.2),
-      inset 0 0 20px rgba(251, 191, 36, 0.05);
+      0 0 8px rgba(255, 215, 0, 0.4),
+      0 0 16px rgba(255, 215, 0, 0.2),
+      inset 0 0 20px rgba(255, 215, 0, 0.05);
   }
   50% {
     box-shadow:
-      0 0 12px rgba(251, 191, 36, 0.5),
-      0 0 24px rgba(251, 191, 36, 0.3),
-      inset 0 0 24px rgba(251, 191, 36, 0.08);
+      0 0 12px rgba(255, 215, 0, 0.5),
+      0 0 24px rgba(255, 215, 0, 0.3),
+      inset 0 0 24px rgba(255, 215, 0, 0.08);
   }
 }
 
 .candidate-lane-winner .candidate-lane-header {
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15) 0%, transparent 100%);
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15) 0%, transparent 100%);
   border-radius: 4px 4px 0 0;
 }
 
 .candidate-lane-winner .candidate-lane-index {
-  color: #fbbf24;
+  color: #FFD700;
 }
 
 /* Loser lanes - dimmed when there's a winner */
@@ -694,8 +694,8 @@
 }
 
 .candidate-lane-crown {
-  color: #fbbf24;
-  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.8));
+  color: #FFD700;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.8));
   animation: crown-pulse 1.5s ease-in-out infinite;
 }
 

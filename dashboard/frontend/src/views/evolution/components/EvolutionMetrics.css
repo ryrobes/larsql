@@ -1,0 +1,90 @@
+/* Evolution Metrics - Compact Dashboard */
+.evolution-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 16px 24px;
+  background: #0a0510;
+  border-bottom: 1px solid #1a1628;
+}
+
+/* Metric Card - Super Compact */
+.metric-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.metric-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.metric-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+}
+
+.metric-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.metric-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0f4f8;
+  font-family: 'Google Sans Code', monospace;
+  line-height: 1;
+}
+
+.metric-subvalue {
+  font-size: 10px;
+  color: #94a3b8;
+  font-family: 'Google Sans Code', monospace;
+  margin-top: 2px;
+}
+
+.metric-trend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.metric-trend.up {
+  color: #f87171;
+}
+
+.metric-trend.down {
+  color: #34d399;
+}
+
+.metric-trend svg {
+  width: 12px;
+  height: 12px;
+}

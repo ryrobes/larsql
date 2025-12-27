@@ -680,7 +680,7 @@ class ClientConnection:
                 set_caller_context(caller_id, metadata)
 
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
-            query = rewrite_rvbbit_syntax(query)
+            query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
             # Execute on DuckDB
             result_df = self.duckdb_conn.execute(query).fetchdf()
@@ -1306,7 +1306,7 @@ class ClientConnection:
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL BEFORE preparing
             from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
             original_query = query
-            query = rewrite_rvbbit_syntax(query)
+            query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
             if query != original_query:
                 print(f"[{self.session_id}]      🔄 Rewrote RVBBIT syntax ({len(original_query)} → {len(query)} chars)")

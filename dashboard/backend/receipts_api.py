@@ -39,6 +39,40 @@ def safe_float(value, default=0.0):
 receipts_bp = Blueprint('receipts', __name__)
 
 
+def describe_z_score(z_score, value, baseline):
+    """Convert z-score to human-readable description."""
+    abs_z = abs(z_score)
+
+    if baseline and baseline > 0:
+        # Calculate how many times higher/lower
+        multiplier = value / baseline
+
+        if multiplier > 1:
+            # Higher than normal
+            pct_above = (multiplier - 1) * 100
+            if abs_z >= 4:
+                return f"extremely high ({pct_above:.0f}% above typical)"
+            elif abs_z >= 3:
+                return f"unusually high ({pct_above:.0f}% above typical)"
+            else:
+                return f"higher than typical (+{pct_above:.0f}%)"
+        else:
+            # Lower than normal
+            pct_below = (1 - multiplier) * 100
+            if abs_z >= 4:
+                return f"extremely low ({pct_below:.0f}% below typical)"
+            elif abs_z >= 3:
+                return f"unusually low ({pct_below:.0f}% below typical)"
+            else:
+                return f"lower than typical (-{pct_below:.0f}%)"
+    else:
+        # No baseline for comparison
+        if abs_z >= 3:
+            return "significantly different from typical"
+        else:
+            return "different from typical"
+
+
 @receipts_bp.route('/api/receipts/overview', methods=['GET'])
 def get_overview():
     """
@@ -175,6 +209,11 @@ def get_alerts():
             severity = 'critical' if abs(row['cost_z_score']) > 3 else 'major'
 
             if row['is_cost_outlier']:
+                description = describe_z_score(
+                    row['cost_z_score'],
+                    row['total_cost'],
+                    row['cluster_avg_cost']
+                )
                 alerts.append({
                     'severity': severity,
                     'type': 'cost_outlier',
@@ -184,7 +223,7 @@ def get_alerts():
                     'z_score': float(row['cost_z_score']),
                     'value': float(row['total_cost']),
                     'baseline': float(row['cluster_avg_cost'] or 0),
-                    'message': f"Cascade '{row['cascade_id']}' cost is {abs(row['cost_z_score']):.1f}σ above normal",
+                    'message': f"Cascade '{row['cascade_id']}' cost is {description}",
                     'action': 'investigate_session',
                     'timestamp': row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at']),
                 })
@@ -256,6 +295,7 @@ def _generate_insights(db, days: int) -> list:
         # Check for cost outliers
         outliers_query = f"""
             SELECT
+                ca.session_id,
                 cascade_id,
                 cell_name,
                 cost_z_score,
@@ -274,18 +314,28 @@ def _generate_insights(db, days: int) -> list:
 
         for row in outliers:
             cell_part = f" in cell '{row['cell_name']}'" if row.get('cell_name') else ""
+            description = describe_z_score(
+                row['cost_z_score'],
+                row['total_cost'],
+                row['cluster_avg_cost']
+            )
             insights.append({
                 'severity': 'critical',
                 'type': 'outlier',
-                'message': f"Cascade '{row['cascade_id']}'{cell_part} is {abs(row['cost_z_score']):.1f}σ above normal. "
-                          f"Cost: ${row['total_cost']:.4f} vs cluster avg ${row['cluster_avg_cost']:.4f}. "
-                          f"This is unusual for {row['input_category']} inputs.",
-                'action': {'type': 'view_session', 'cascade_id': row['cascade_id']},
+                'message': f"Cascade '{row['cascade_id']}'{cell_part} cost is {description}. "
+                          f"Paid ${row['total_cost']:.4f} vs typical ${row['cluster_avg_cost']:.4f} "
+                          f"for {row['input_category']} inputs.",
+                'action': {
+                    'type': 'view_session',
+                    'cascade_id': row['cascade_id'],
+                    'session_id': row['session_id']
+                },
             })
 
         # Check for context hotspots
         hotspots_query = f"""
             SELECT
+                session_id,
                 cascade_id,
                 cell_name,
                 context_cost_pct,
@@ -310,7 +360,51 @@ def _generate_insights(db, days: int) -> list:
                 'message': f"Cell '{row['cell_name']}' in '{row['cascade_id']}' spends {savings_pct:.0f}% on context injection. "
                           f"Context overhead: ${savings:.4f}. "
                           f"Consider selective context to save {savings_pct:.0f}%.",
-                'action': {'type': 'view_context', 'cell_name': row['cell_name']},
+                'action': {
+                    'type': 'view_context',
+                    'cell_name': row['cell_name'],
+                    'cascade_id': row['cascade_id'],
+                    'session_id': row['session_id']
+                },
+            })
+
+        # Check for low-value, high-cost context (optimization opportunities!)
+        low_value_query = f"""
+            SELECT
+                session_id,
+                cascade_id,
+                cell_name,
+                context_message_hash,
+                context_message_tokens,
+                context_message_cost_estimated,
+                context_message_pct,
+                relevance_score,
+                relevance_reasoning
+            FROM cell_context_breakdown
+            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND relevance_score IS NOT NULL
+              AND relevance_score < 30
+              AND context_message_pct > 10
+            ORDER BY (context_message_pct - relevance_score) DESC
+            LIMIT 3
+        """
+
+        low_value = db.query(low_value_query)
+
+        for row in low_value:
+            waste_indicator = row['context_message_pct'] - row['relevance_score']
+            insights.append({
+                'severity': 'warning',
+                'type': 'low_value_context',
+                'message': f"Message {row['context_message_hash'][:8]} in cell '{row['cell_name']}' costs {row['context_message_pct']:.0f}% "
+                          f"but has only {row['relevance_score']:.0f}% relevance. "
+                          f"Removing could save ${row['context_message_cost_estimated']:.4f} with minimal impact.",
+                'action': {
+                    'type': 'view_context',
+                    'cell_name': row['cell_name'],
+                    'cascade_id': row['cascade_id'],
+                    'session_id': row['session_id']
+                },
             })
 
         # No anomalies
@@ -373,12 +467,15 @@ def get_context_breakdown():
 
         where_sql = ' AND '.join(where_clauses)
 
-        # Get grouped breakdown by cell with session timestamp
+        # Get breakdown by cell with model and candidate info
+        # Each candidate is a separate row (candidates tracked via candidate_index column)
         query = f"""
             SELECT
                 session_id,
                 cascade_id,
                 cell_name,
+                model_requested,
+                candidate_index,
                 MAX(created_at) as session_timestamp,
                 MAX(total_cell_cost) as cell_cost,
                 MAX(total_context_messages) as total_messages,
@@ -389,13 +486,17 @@ def get_context_breakdown():
                     context_message_role,
                     context_message_tokens,
                     context_message_cost_estimated,
-                    context_message_pct
-                )) as messages
+                    context_message_pct,
+                    relevance_score,
+                    relevance_reasoning
+                )) as messages,
+                any(relevance_analysis_session) as analysis_session,
+                MAX(relevance_analyzed_at) as analyzed_at
             FROM cell_context_breakdown
             WHERE {where_sql}
-            GROUP BY session_id, cascade_id, cell_name
-            ORDER BY session_timestamp DESC, cell_cost DESC
-            LIMIT 50
+            GROUP BY session_id, cascade_id, cell_name, model_requested, candidate_index
+            ORDER BY session_timestamp DESC, candidate_index ASC NULLS LAST, cell_cost DESC
+            LIMIT 100
         """
 
         results = db.query(query)
@@ -412,6 +513,8 @@ def get_context_breakdown():
                     'tokens': int(msg_tuple[3]),
                     'cost': safe_float(msg_tuple[4]),
                     'pct': safe_float(msg_tuple[5]),
+                    'relevance_score': safe_float(msg_tuple[6]) if len(msg_tuple) > 6 and msg_tuple[6] is not None else None,
+                    'relevance_reason': msg_tuple[7] if len(msg_tuple) > 7 else None,
                 })
 
             # Format timestamp
@@ -424,6 +527,16 @@ def get_context_breakdown():
             else:
                 timestamp_str = None
 
+            # Format analyzed_at timestamp
+            analyzed_at = row.get('analyzed_at')
+            if analyzed_at:
+                if hasattr(analyzed_at, 'isoformat'):
+                    analyzed_at_str = analyzed_at.isoformat()
+                else:
+                    analyzed_at_str = str(analyzed_at)
+            else:
+                analyzed_at_str = None
+
             breakdown.append({
                 'session_id': row['session_id'],
                 'cascade_id': row['cascade_id'],
@@ -432,7 +545,11 @@ def get_context_breakdown():
                 'cell_cost': safe_float(row['cell_cost']),
                 'total_messages': int(row.get('total_messages', 0) or 0),
                 'total_tokens': int(row.get('total_tokens', 0) or 0),
+                'model': row.get('model'),
+                'candidate_index': row.get('candidate_index'),
                 'messages': messages,
+                'relevance_analysis_session': row.get('analysis_session'),
+                'relevance_analyzed_at': analyzed_at_str,
             })
 
         return jsonify({

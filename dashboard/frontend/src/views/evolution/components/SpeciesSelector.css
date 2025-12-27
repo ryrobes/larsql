@@ -1,150 +1,108 @@
-/* Species Selector */
-.species-selector {
-  background: #0a0510;
-  border-radius: 8px;
-  border: 1px solid #1a1628;
-  padding: 20px;
-}
-
-.species-selector-header {
+/* Species Selector - Compact Horizontal Layout */
+.species-selector-compact {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #f0f4f8;
+  padding: 12px 16px;
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  border-radius: 6px;
+  border-left: 3px solid #00e5ff;
 }
 
-.species-selector-header svg {
+.selector-label-icon {
   color: #00e5ff;
+  flex-shrink: 0;
 }
 
-.species-count {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 400;
-  color: #64748b;
+.selector-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.species-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+.species-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-/* Species Card */
-.species-card {
-  background: #000000;
-  border: 2px solid #1a1628;
-  border-radius: 8px;
-  padding: 14px;
+/* Species Chip */
+.species-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #0a0510;
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.species-card:hover {
+.species-chip:hover {
   border-color: #00e5ff;
-  background: #050a15;
+  background: #100a1a;
+  transform: translateY(-1px);
 }
 
-.species-card.selected {
+.species-chip.selected {
+  background: rgba(0, 229, 255, 0.15);
   border-color: #00e5ff;
-  background: linear-gradient(135deg, #050a15 0%, #0a0510 100%);
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
+  color: #00e5ff;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
 }
 
-.species-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.dna-icon {
+.species-chip svg {
   color: #00e5ff;
 }
 
-.species-hash {
+.chip-hash {
   font-family: 'Google Sans Code', monospace;
-  font-size: 12px;
-  font-weight: 600;
-  color: #f0f4f8;
+  font-size: 11px;
 }
 
-.selected-icon {
-  margin-left: auto;
+.check-icon {
   color: #00e5ff;
 }
 
-.species-instructions-preview,
-.species-input-preview {
+.chip-stats-inline {
   display: flex;
-  align-items: flex-start;
   gap: 6px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #94a3b8;
-  margin-bottom: 8px;
-  padding-left: 4px;
-}
-
-.species-instructions-preview svg,
-.species-input-preview svg {
-  color: #64748b;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.species-instructions-preview span,
-.species-input-preview span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.species-card-stats {
-  display: flex;
-  gap: 12px;
   align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid #1a1628;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.species-card-stats .stat {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
+.stat-item {
+  font-size: 10px;
   color: #64748b;
-}
-
-.species-card-stats .stat svg {
-  color: #00e5ff;
-}
-
-.species-card-stats .win-rate {
-  margin-left: auto;
+  font-family: 'Google Sans Code', monospace;
   font-weight: 600;
 }
 
-/* Species Hint */
-.species-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #64748b;
-  padding: 10px;
-  background: rgba(0, 229, 255, 0.05);
-  border: 1px solid rgba(0, 229, 255, 0.1);
-  border-radius: 6px;
+.stat-item.cost {
+  color: #34d399;
 }
 
-.species-hint svg {
+.species-chip.selected .stat-item {
   color: #00e5ff;
-  flex-shrink: 0;
+}
+
+.species-chip.selected .stat-item.cost {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.species-count-compact {
+  margin-left: auto;
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
 }

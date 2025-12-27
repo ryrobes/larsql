@@ -1,0 +1,75 @@
+cascade_id: analyze_context_relevance
+description: |
+  Meta-analysis cascade that evaluates context message relevance.
+
+  Takes an LLM output + its context messages, and scores each context message
+  based on how much it actually contributed to generating the output.
+
+  This enables cost-value optimization: identify expensive context that provides
+  little value and can be safely removed.
+
+inputs_schema:
+  output_content: "The assistant's response text that was generated"
+  context_messages: "Array of {hash, content, tokens, cost} objects representing context"
+
+cells:
+  - name: rank_relevance
+    instructions: |
+      You are a meta-analyst evaluating which context messages were most useful in generating an LLM response.
+
+      **The Response That Was Generated:**
+      {{ input.output_content }}
+
+      **Context Messages That Were Provided:**
+      {% for msg in input.context_messages %}
+      {{ loop.index }}. [{{ msg.hash[:8] }}] ({{ msg.tokens }} tokens, ${{ "%.6f"|format(msg.cost) }})
+         {{ msg.content[:500] }}{% if msg.content|length > 500 %}...{% endif %}
+
+      {% endfor %}
+
+      **Your Task:**
+      For each context message, score its relevance (0-100) based on:
+      - **Direct usage (50 points)**: Information from it appears verbatim or paraphrased in response
+      - **Reasoning influence (30 points)**: Shaped the logic, conclusions, or approach taken
+      - **Background context (20 points)**: Provided necessary domain knowledge or constraints
+
+      Score 0 means: "This context was completely unused and could be removed"
+      Score 100 means: "This context was critical and heavily used throughout"
+
+      **Output Format (STRICT JSON):**
+      Return a JSON array with one entry per context message:
+      [
+        {
+          "hash": "abc12345",
+          "score": 85,
+          "reason": "Information about X directly cited in response. Influenced conclusion Y."
+        },
+        {
+          "hash": "def67890",
+          "score": 15,
+          "reason": "Provided background but not directly used. Could likely be removed."
+        }
+      ]
+
+      Be honest and critical. The goal is to identify waste, not justify everything.
+      Low scores help users optimize costs. High scores validate necessary context.
+
+    model: google/gemini-2.5-flash-lite
+
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          hash:
+            type: string
+            description: Message hash (first 8+ chars)
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: Relevance score
+          reason:
+            type: string
+            description: Why this score was given
+        required: [hash, score, reason]

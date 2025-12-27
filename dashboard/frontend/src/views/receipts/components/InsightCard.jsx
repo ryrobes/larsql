@@ -100,6 +100,35 @@ const InsightCard = ({ insight }) => {
           <div className="insight-context-header">
             <Icon icon="mdi:file-tree" width={14} />
             <span>Context Messages</span>
+            {contextData.session_id && (
+              <>
+                <span style={{ color: '#475569' }}>•</span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  color: '#64748b'
+                }}>
+                  {contextData.session_id}
+                </span>
+              </>
+            )}
+            {contextData.model && (
+              <>
+                <span style={{ color: '#475569' }}>•</span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  color: 'var(--color-accent-cyan)'
+                }}>
+                  {contextData.model}
+                </span>
+              </>
+            )}
+            {contextData.candidate_index !== null && contextData.candidate_index !== undefined && (
+              <Badge variant="label" color="purple" size="sm">
+                Candidate {contextData.candidate_index}
+              </Badge>
+            )}
             <Badge
               variant="count"
               color="yellow"
@@ -142,7 +171,7 @@ const InsightCard = ({ insight }) => {
                         backgroundColor: msg.pct > 50 ? '#ff006e' : msg.pct > 20 ? '#fbbf24' : '#34d399'
                       }}
                     />
-                    <span>{msg.pct.toFixed(1)}%</span>
+                    <span>{Math.min(msg.pct, 100).toFixed(1)}%</span>
                   </div>
                 </div>
               </div>
@@ -159,7 +188,21 @@ const InsightCard = ({ insight }) => {
           onClick={handleViewSession}
           className="insight-card-action"
         >
-          {insight.action.type === 'view_session' && 'View Session'}
+          {insight.action.type === 'view_session' && (
+            <>
+              View Session
+              {insight.action.session_id && (
+                <span style={{
+                  marginLeft: 6,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  opacity: 0.7
+                }}>
+                  {insight.action.session_id}
+                </span>
+              )}
+            </>
+          )}
           {!insight.action.type && 'View Details'}
           <Icon icon="mdi:arrow-right" width={14} style={{ marginLeft: 4 }} />
         </Button>

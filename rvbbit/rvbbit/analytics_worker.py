@@ -838,10 +838,8 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
             species_hash = cell['species_hash'] or ''
 
             # Calculate contribution percentages
-            cell_cost_pct = (cell['cell_cost'] / cascade_total_cost * 100
-                           if cascade_total_cost > 0 else 0)
-            cell_duration_pct = (cell['cell_duration_ms'] / cascade_total_duration * 100
-                               if cascade_total_duration > 0 else 0)
+            cell_cost_pct = (cell['cell_cost'] / cascade_total_cost * 100) if cascade_total_cost > 0 else 0
+            cell_duration_pct = (cell['cell_duration_ms'] / cascade_total_duration * 100) if cascade_total_duration > 0 else 0
 
             # Analyze context attribution (RVBBIT's unique capability!)
             context_attr = _analyze_context_attribution(session_id, cell_name, db)
@@ -1252,7 +1250,162 @@ def _analyze_context_attribution(session_id: str, cell_name: str, db) -> Dict:
         }
 
 
-def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int, 
+def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
+                                messages: list, db) -> None:
+    """
+    Analyze context message relevance using a cheap LLM.
+
+    Calls traits/analyze_context_relevance.yaml to score each context message
+    based on how much it contributed to the generated output.
+
+    Updates cell_context_breakdown with relevance_score and relevance_reasoning.
+
+    Cost: ~$0.0001 per cell (using gemini-flash-lite)
+    """
+    try:
+        from .runner import RVBBITRunner
+        import json as json_module
+
+        # Get the assistant output for this cell
+        output_query = f"""
+            SELECT content, content_hash
+            FROM unified_logs
+            WHERE session_id = '{session_id}'
+              AND cell_name = '{cell_name}'
+              AND role = 'assistant'
+              AND model IS NOT NULL
+            LIMIT 1
+        """
+
+        output_result = db.query(output_query)
+        if not output_result:
+            logger.debug(f"No assistant output found for {cell_name}, skipping relevance analysis")
+            return
+
+        output_content = output_result[0]['content']
+
+        # Get all context messages that were found in breakdown
+        # Query to get the unique context hashes for this cell
+        context_hashes_query = f"""
+            SELECT DISTINCT context_message_hash
+            FROM cell_context_breakdown
+            WHERE session_id = '{session_id}'
+              AND cell_name = '{cell_name}'
+        """
+
+        hash_results = db.query(context_hashes_query)
+        if not hash_results:
+            return
+
+        # Fetch content for each context message
+        context_messages = []
+        for row in hash_results:
+            ctx_hash = row['context_message_hash']
+
+            # Look up the actual content
+            content_query = f"""
+                SELECT content, tokens_in, tokens_out
+                FROM unified_logs
+                WHERE session_id = '{session_id}'
+                  AND content_hash = '{ctx_hash}'
+                LIMIT 1
+            """
+
+            content_result = db.query(content_query)
+            if content_result:
+                ctx_content = content_result[0]['content']
+                ctx_tokens = (content_result[0]['tokens_in'] or 0) + (content_result[0]['tokens_out'] or 0)
+
+                # Get the cost from breakdown table
+                cost_query = f"""
+                    SELECT context_message_cost_estimated
+                    FROM cell_context_breakdown
+                    WHERE session_id = '{session_id}'
+                      AND cell_name = '{cell_name}'
+                      AND context_message_hash = '{ctx_hash}'
+                    LIMIT 1
+                """
+                cost_result = db.query(cost_query)
+                ctx_cost = cost_result[0]['context_message_cost_estimated'] if cost_result else 0
+
+                context_messages.append({
+                    'hash': ctx_hash,
+                    'content': ctx_content or '',
+                    'tokens': ctx_tokens,
+                    'cost': ctx_cost,
+                })
+
+        if not context_messages:
+            return
+
+        # Run the relevance analysis cascade
+        runner = RVBBITRunner()
+        analysis_session_id = f"{session_id}_relevance_{cell_name}"
+
+        logger.info(f"Analyzing relevance for {len(context_messages)} context messages in {cell_name}")
+
+        result = runner.run_cascade(
+            cascade_file='traits/analyze_context_relevance.yaml',
+            input_data={
+                'output_content': output_content,
+                'context_messages': context_messages,
+            },
+            session_id=analysis_session_id
+        )
+
+        if not result or not result.get('output'):
+            logger.warning(f"Relevance analysis returned no output for {cell_name}")
+            return
+
+        # Parse the JSON response
+        try:
+            relevance_scores = json_module.loads(result['output'])
+        except json_module.JSONDecodeError:
+            logger.warning(f"Could not parse relevance analysis JSON for {cell_name}: {result.get('output', '')[:200]}")
+            return
+
+        # Get the analysis cost from the meta-analysis session
+        cost_query = f"""
+            SELECT SUM(cost) as total_cost
+            FROM unified_logs
+            WHERE session_id = '{analysis_session_id}'
+        """
+        cost_result = db.query(cost_query)
+        analysis_cost = float(cost_result[0]['total_cost']) if cost_result and cost_result[0]['total_cost'] else 0
+
+        # Update each context breakdown row with relevance scores
+        current_time = datetime.now(timezone.utc)
+
+        for score_data in relevance_scores:
+            ctx_hash = score_data.get('hash', '')
+            score = score_data.get('score', 0)
+            reason = score_data.get('reason', '')
+
+            # Match by hash prefix (analysis returns 8 chars, DB has full hash)
+            update_query = f"""
+                ALTER TABLE cell_context_breakdown
+                UPDATE
+                    relevance_score = {score},
+                    relevance_reasoning = '{reason.replace("'", "''")}',
+                    relevance_analysis_cost = {analysis_cost / len(relevance_scores)},
+                    relevance_analyzed_at = toDateTime('{current_time.strftime('%Y-%m-%d %H:%M:%S')}'),
+                    relevance_analysis_session = '{analysis_session_id}'
+                WHERE session_id = '{session_id}'
+                  AND cell_name = '{cell_name}'
+                  AND startsWith(context_message_hash, '{ctx_hash[:8]}')
+            """
+
+            db.query(update_query)
+
+        logger.info(f"✓ Relevance analysis complete for {cell_name}: {len(relevance_scores)} messages scored, cost=${analysis_cost:.6f}")
+
+    except Exception as e:
+        logger.warning(f"Relevance analysis failed for {cell_name}: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                                cascade_id: str, total_cell_cost: float, db) -> None:
     """
     Create granular per-message context breakdown for this cell.
@@ -1272,7 +1425,8 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 context_hashes,
                 tokens_in,
                 tokens_out,
-                cost
+                cost,
+                model_requested
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
@@ -1322,21 +1476,54 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                     (ctx_info['tokens_in'] or 0) + (ctx_info['tokens_out'] or 0)
                 ) or (ctx_info['estimated_tokens'] or 0)
 
-                # Estimate cost contribution from this context message
-                # Proportional to its token contribution
-                total_msg_tokens = (msg['tokens_in'] or 0) + (msg['tokens_out'] or 0)
-                if total_msg_tokens > 0 and msg['cost']:
-                    ctx_msg_cost = (ctx_tokens / total_msg_tokens) * msg['cost']
-                    ctx_msg_pct = (ctx_msg_cost / total_cell_cost * 100) if total_cell_cost > 0 else 0
-                else:
-                    ctx_msg_cost = 0
-                    ctx_msg_pct = 0
+                # Calculate accurate cost using model pricing
+                # When a context message is injected, ALL its tokens become INPUT tokens in the new message
+                model_requested = msg.get('model_requested')
+                ctx_msg_cost = 0
+
+                if model_requested and ctx_tokens > 0:
+                    # Look up model pricing using model_requested (base model name)
+                    pricing_query = f"""
+                        SELECT prompt_price, completion_price
+                        FROM openrouter_models
+                        WHERE model_id = '{model_requested}'
+                        LIMIT 1
+                    """
+                    try:
+                        pricing_result = db.query(pricing_query)
+
+                        if pricing_result and pricing_result[0].get('prompt_price'):
+                            prompt_price = float(pricing_result[0]['prompt_price'])
+                            # Context tokens are all input tokens in the new message
+                            ctx_msg_cost = ctx_tokens * prompt_price
+                            logger.debug(f"Context cost for {ctx_hash[:8]}: {ctx_tokens} tokens * ${prompt_price:.10f} = ${ctx_msg_cost:.8f}")
+                        else:
+                            # Fallback to proportional estimation if no pricing data
+                            total_msg_tokens = (msg['tokens_in'] or 0) + (msg['tokens_out'] or 0)
+                            if total_msg_tokens > 0 and msg['cost']:
+                                ctx_msg_cost = (ctx_tokens / total_msg_tokens) * msg['cost']
+                                logger.debug(f"No pricing for {model_requested}, using proportional: {ctx_tokens}/{total_msg_tokens} * ${msg['cost']:.8f} = ${ctx_msg_cost:.8f}")
+                    except Exception as e:
+                        logger.debug(f"Failed to look up pricing for {model_requested}: {e}")
+                        # Fallback to proportional estimation
+                        total_msg_tokens = (msg['tokens_in'] or 0) + (msg['tokens_out'] or 0)
+                        if total_msg_tokens > 0 and msg['cost']:
+                            ctx_msg_cost = (ctx_tokens / total_msg_tokens) * msg['cost']
+
+                # Calculate percentage
+                ctx_msg_pct = (ctx_msg_cost / total_cell_cost * 100) if total_cell_cost > 0 else 0
+
+                # Sanity check: log if percentage exceeds 100% (shouldn't happen with accurate pricing)
+                if ctx_msg_pct > 100:
+                    logger.warning(f"Context message {ctx_hash[:8]} has {ctx_msg_pct:.1f}% of cell cost (${ctx_msg_cost:.8f} / ${total_cell_cost:.8f}) for model {model_requested}. Check pricing data.")
 
                 breakdown_rows.append({
                     'session_id': session_id,
                     'cascade_id': cascade_id,
                     'cell_name': cell_name,
                     'cell_index': cell_index,
+                    'model_requested': model_requested,
+                    'candidate_index': msg.get('candidate_index'),
                     'context_message_hash': ctx_hash,
                     'context_message_cell': ctx_info['source_cell'] or 'unknown',
                     'context_message_role': ctx_info['role'] or 'unknown',
@@ -1345,7 +1532,7 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                     'context_message_cost_estimated': ctx_msg_cost,
                     'context_message_pct': ctx_msg_pct,
                     'total_context_messages': len(context_hashes),
-                    'total_context_tokens': sum((msg['tokens_in'] or 0) + (msg['tokens_out'] or 0) for msg in messages),
+                    'total_context_tokens': sum((m['tokens_in'] or 0) + (m['tokens_out'] or 0) for m in messages),
                     'total_cell_cost': total_cell_cost,
                     'created_at': datetime.now(timezone.utc),
                 })
@@ -1357,6 +1544,18 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 breakdown_rows,
                 columns=list(breakdown_rows[0].keys())
             )
+
+            # Optional: Run relevance analysis (if enabled)
+            import os
+            if os.getenv('RVBBIT_ENABLE_RELEVANCE_ANALYSIS', 'false').lower() == 'true':
+                logger.info(f"Running relevance analysis for {cell_name} in {session_id}")
+                _analyze_context_relevance(
+                    session_id=session_id,
+                    cascade_id=cascade_id,
+                    cell_name=cell_name,
+                    messages=messages,
+                    db=db
+                )
 
     except Exception as e:
         logger.debug(f"Could not create context breakdown for {cell_name}: {e}")

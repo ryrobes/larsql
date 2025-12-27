@@ -5876,7 +5876,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
     def _filter_models_by_context(
         self,
         models: List[str],
-        phase: CellConfig,
+        cell: CellConfig,
         input_data: dict
     ) -> Dict[str, Any]:
         """
@@ -5887,7 +5887,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         Args:
             models: List of candidate model IDs
-            phase: Phase configuration
+            cell: Cell configuration
             input_data: Input data for rendering
 
         Returns:
@@ -5927,7 +5927,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Render system prompt to estimate tokens
         try:
-            rendered_instructions = render_instruction(phase.instructions, render_context)
+            rendered_instructions = render_instruction(cell.instructions, render_context)
         except Exception as e:
             # If rendering fails, skip filtering
             console.print(f"  [yellow]Warning: Failed to render instructions for token estimation: {e}[/yellow]")
@@ -5941,10 +5941,10 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Get tool schemas (estimate token cost)
         tools_schema = []
-        if phase.traits:
+        if cell.traits:
             try:
                 from .trait_registry import get_trait
-                tool_map, tools_schema, tool_descriptions = get_trait(phase.traits)
+                tool_map, tools_schema, tool_descriptions = get_trait(cell.traits)
             except Exception:
                 pass  # If tackle fails, just skip tool token estimation
 
@@ -7999,16 +7999,16 @@ Use only numbers 0-100 for scores."""
 
         return context_messages
 
-    def _reforge_winner(self, winner: dict, phase: CellConfig, input_data: dict, trace: TraceNode,
+    def _reforge_winner(self, winner: dict, cell: CellConfig, input_data: dict, trace: TraceNode,
                         context_snapshot: list, reforge_step: int) -> dict:
         """
         Reforge (refine) the winning output through iterative soundings.
         Each step runs mini-soundings with honing prompt to progressively improve quality.
         """
         indent = "  " * self.depth
-        reforge_config = phase.candidates.reforge
+        reforge_config = cell.candidates.reforge
         current_output = winner['result']
-        original_instructions = phase.instructions
+        original_instructions = cell.instructions
 
         for step in range(1, reforge_config.steps + 1):
             # Set current reforge step for metadata tagging
@@ -8046,7 +8046,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 "node_type": "reforge_step"
             }, trace_id=reforge_trace.id, parent_id=trace.id, node_type="reforge_step",
                metadata={
-                   "cell_name": phase.name,
+                   "cell_name": cell.name,
                    "reforge_step": step,
                    "total_steps": reforge_config.steps,
                    "factor_per_step": reforge_config.factor_per_step,
@@ -8058,7 +8058,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Create temporary phase config for refinement
             # Use a modified phase with refinement instructions
             from copy import deepcopy
-            refine_phase = deepcopy(phase)
+            refine_phase = deepcopy(cell)
             refine_phase.instructions = refinement_instructions
 
             # Snapshot state before reforge soundings
@@ -8076,7 +8076,7 @@ Refinement directive: {reforge_config.honing_prompt}
             from concurrent.futures import ThreadPoolExecutor, as_completed
             from .echo import Echo
             factor_per_step = reforge_config.factor_per_step
-            max_parallel = phase.candidates.max_parallel or 3
+            max_parallel = cell.candidates.max_parallel or 3
             max_workers = min(factor_per_step, max_parallel)
             console.print(f"{indent}    [dim]Parallel workers: {max_workers}[/dim]")
 
@@ -8186,7 +8186,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     "node_type": "reforge_attempt"
                 }, trace_id=refinement['trace_id'], parent_id=reforge_trace.id, node_type="reforge_attempt",
                    metadata={
-                       "cell_name": phase.name,
+                       "cell_name": cell.name,
                        "reforge_step": step,
                        "attempt_index": i,
                        "is_winner": False,
@@ -8200,7 +8200,7 @@ Refinement directive: {reforge_config.honing_prompt}
             evaluator_trace = reforge_trace.create_child("evaluator", "reforge_evaluation")
 
             # Use custom evaluator or default
-            eval_instructions = reforge_config.evaluator_override or phase.candidates.evaluator_instructions
+            eval_instructions = reforge_config.evaluator_override or cell.candidates.evaluator_instructions
 
             eval_prompt = f"{eval_instructions}\n\n"
             eval_prompt += "Please evaluate the following refinements and select the best one.\n\n"
@@ -8285,7 +8285,7 @@ Refinement directive: {reforge_config.honing_prompt}
                        node_type="reforge_evaluator", depth=self.depth, reforge_step=step,
                        model=eval_model, cost=eval_cost, tokens_in=eval_tokens_in,
                        tokens_out=eval_tokens_out, request_id=eval_request_id,
-                       cell_name=phase.name)
+                       cell_name=cell.name)
 
             # Build evaluator input summary for observability (like soundings)
             total_images_evaluated = sum(len(r.get('images', [])) for r in reforge_results)
@@ -8315,7 +8315,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 "node_type": "reforge_evaluator"
             }, trace_id=evaluator_trace.id, parent_id=reforge_trace.id, node_type="reforge_evaluator",
                metadata=self._get_metadata({
-                   "cell_name": phase.name,
+                   "cell_name": cell.name,
                    "reforge_step": step,
                    "evaluator_prompt": eval_prompt,
                    "evaluator_system_prompt": "You are an expert evaluator. Your job is to select the best refined version. If refinements include images, consider the visual quality and correctness as well.",
@@ -8347,7 +8347,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 "node_type": "reforge_winner"
             }, trace_id=reforge_trace.id, parent_id=trace.id, node_type="reforge_winner",
                metadata={
-                   "cell_name": phase.name,
+                   "cell_name": cell.name,
                    "reforge_step": step,
                    "winner_index": winner_index,
                    "total_steps": reforge_config.steps,
@@ -8357,7 +8357,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Mark reforge winner in database for prompt evolution learning
             from .unified_logs import mark_sounding_winner
-            mark_sounding_winner(self.session_id, phase.name, winner_index)
+            mark_sounding_winner(self.session_id, cell.name, winner_index)
 
             # Check threshold ward if configured
             if reforge_config.threshold:
@@ -8874,7 +8874,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
     def _auto_fix_and_retry(
         self,
-        phase: CellConfig,
+        cell: CellConfig,
         error: Exception,
         input_data: dict,
         trace: TraceNode,
@@ -8909,11 +8909,11 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Get original code/query from error inputs
         original_inputs = getattr(error, 'inputs', {}) or {}
-        if phase.tool == "sql_data":
+        if cell.tool == "sql_data":
             original_code = original_inputs.get("query", "")
             tool_type = "SQL"
             code_key = "query"
-        elif phase.tool == "python_data":
+        elif cell.tool == "python_data":
             original_code = original_inputs.get("code", "")
             tool_type = "Python"
             code_key = "code"
@@ -8968,7 +8968,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             rendered_prompt = render_instruction(prompt_template, fix_context)
 
             # Create fix trace
-            fix_trace = trace.create_child("auto_fix", f"{phase.name}_fix_{attempt + 1}")
+            fix_trace = trace.create_child("auto_fix", f"{cell.name}_fix_{attempt + 1}")
 
             # Call LLM for fix (uses session_id for cost tracking)
             try:
@@ -9013,7 +9013,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     role="system",
                     depth=self.depth,
                     cascade_id=self.config.cascade_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     content=f"Auto-fix attempt {attempt + 1}: Generated {len(fixed_code)} char fix",
                     metadata={
                         "attempt": attempt + 1,
@@ -9028,14 +9028,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 fixed_inputs[code_key] = fixed_code
 
                 # Re-run the tool
-                tool_func = resolve_tool_function(phase.tool)
+                tool_func = resolve_tool_function(cell.tool)
 
                 # Inject context for data tools
-                if phase.tool in ("sql_data", "python_data"):
-                    fixed_inputs["_cell_name"] = phase.name
+                if cell.tool in ("sql_data", "python_data"):
+                    fixed_inputs["_cell_name"] = cell.name
                     fixed_inputs["_session_id"] = self.echo.session_id
 
-                    if phase.tool == "python_data":
+                    if cell.tool == "python_data":
                         # Build outputs dict
                         outputs = {}
                         for item in self.echo.lineage:
@@ -9060,7 +9060,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     role="system",
                     depth=self.depth,
                     cascade_id=self.config.cascade_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     content=f"Auto-fix succeeded on attempt {attempt + 1}",
                     metadata={
                         "attempt": attempt + 1,
@@ -9069,7 +9069,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 )
 
                 # Update lineage with the successful result
-                self.echo.add_lineage(phase.name, result, trace.id)
+                self.echo.add_lineage(cell.name, result, trace.id)
 
                 return result
 
@@ -9087,7 +9087,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     role="system",
                     depth=self.depth,
                     cascade_id=self.config.cascade_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     content=f"Auto-fix attempt {attempt + 1} failed: {str(retry_error)}",
                     metadata={
                         "attempt": attempt + 1,

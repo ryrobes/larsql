@@ -177,6 +177,13 @@
   gap: 8px;
   font-size: 12px;
   color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.context-breakdown-cell-model {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-accent-cyan);
 }
 
 /* Cell Right Side */
@@ -223,7 +230,7 @@
 
 .context-breakdown-messages-header {
   display: grid;
-  grid-template-columns: 100px 120px 80px 90px 100px 1fr;
+  grid-template-columns: 100px 120px 80px 90px 100px 1fr 140px;
   gap: 12px;
   padding: 8px 12px;
   font-size: 11px;
@@ -237,7 +244,7 @@
 
 .context-breakdown-message {
   display: grid;
-  grid-template-columns: 100px 120px 80px 90px 100px 1fr;
+  grid-template-columns: 100px 120px 80px 90px 100px 1fr 140px;
   gap: 12px;
   padding: 10px 12px;
   align-items: center;
@@ -291,11 +298,36 @@
   text-align: right;
 }
 
+/* Relevance Column */
+.context-breakdown-message-relevance {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.context-breakdown-relevance-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-breakdown-relevance-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.context-breakdown-relevance-score {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 25px;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .context-breakdown-messages-header,
   .context-breakdown-message {
-    grid-template-columns: 90px 100px 70px 80px 90px 1fr;
+    grid-template-columns: 90px 100px 70px 80px 90px 1fr 120px;
     gap: 8px;
   }
 }

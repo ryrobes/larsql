@@ -180,121 +180,43 @@ const getLayoutedElements = (nodes, edges, direction = 'LR') => {
  * PromptPhylogeny - Visualization of prompt evolution across runs
  *
  * Props:
- * - sessionId: Session to show evolution for (required)
- * - speciesHash: Species filter (optional)
- * - onMetadataLoad: Callback when metadata is loaded (optional)
- * - onNodesLoad: Callback when nodes are loaded (optional)
+ * - nodes: Pre-loaded nodes from parent (required)
+ * - edges: Pre-loaded edges from parent (required)
+ * - metadata: Pre-loaded metadata (optional)
+ * - loading: Loading state from parent (optional)
+ * - error: Error state from parent (optional)
  * - highlightedNode: Node ID to highlight (optional)
  */
-function PromptPhylogenyInner({ sessionId, speciesHash, onMetadataLoad, onNodesLoad, highlightedNode }) {
+function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, loading, error, highlightedNode }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [metadata, setMetadata] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showFuture, setShowFuture] = useState(false);
   const [winnersOnly, setWinnersOnly] = useState(false);
-  const [allNodes, setAllNodes] = useState([]);
-  const [allEdges, setAllEdges] = useState([]);
   const reactFlowInstance = useReactFlow();
 
-  // Fetch evolution data
-  const fetchEvolution = useCallback(async () => {
-    if (!sessionId) {
-      console.log('[PromptPhylogeny] No sessionId provided, skipping fetch');
-      setLoading(false);
+  // Apply layout to raw nodes/edges when they change
+  useEffect(() => {
+    if (!rawNodes || rawNodes.length === 0) {
+      setNodes([]);
+      setEdges([]);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    let filteredNodes = rawNodes;
+    let filteredEdges = rawEdges;
 
-    try {
-      const endpoint = `/api/sextant/evolution/${sessionId}`;
-      const params = new URLSearchParams({
-        as_of: 'session',
-        include_future: showFuture.toString()
-      });
-
-      if (speciesHash) {
-        params.append('species_hash', speciesHash);
-      }
-
-      console.log('[PromptPhylogeny] Fetching evolution for session:', sessionId);
-      console.log('[PromptPhylogeny] Request URL:', `http://localhost:5001${endpoint}?${params}`);
-
-      const response = await fetch(
-        `http://localhost:5001${endpoint}?${params}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('[PromptPhylogeny] API Response:', data);
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      if (!data.nodes || data.nodes.length === 0) {
-        console.warn('[PromptPhylogeny] No nodes returned from API');
-        console.log('[PromptPhylogeny] Metadata:', data.metadata);
-      }
-
-      // Store original data
-      setAllNodes(data.nodes || []);
-      setAllEdges(data.edges || []);
-
-      // Apply dagre auto-layout
-      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-        data.nodes || [],
-        data.edges || [],
-        'LR'
-      );
-
-      setNodes(layoutedNodes);
-      setEdges(layoutedEdges);
-      setMetadata(data.metadata || {});
-
-      // Pass data to parent
-      if (onMetadataLoad && data.metadata) {
-        onMetadataLoad(data.metadata);
-      }
-      if (onNodesLoad) {
-        onNodesLoad(layoutedNodes);
-      }
-    } catch (err) {
-      console.error('Failed to fetch evolution data:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, speciesHash, showFuture]);
-
-  useEffect(() => {
-    fetchEvolution();
-  }, [fetchEvolution]);
-
-  // Filter and re-layout when winnersOnly changes
-  useEffect(() => {
-    if (!allNodes.length || !allEdges.length) return;
-
-    let filteredNodes = allNodes;
-    let filteredEdges = allEdges;
-
+    // Apply winners-only filter if enabled
     if (winnersOnly) {
       const winnerNodeIds = new Set(
-        allNodes.filter(n => n.data.is_winner).map(n => n.id)
+        rawNodes.filter(n => n.data?.is_winner).map(n => n.id)
       );
 
-      filteredNodes = allNodes.filter(n => winnerNodeIds.has(n.id));
-      filteredEdges = allEdges.filter(e =>
+      filteredNodes = rawNodes.filter(n => winnerNodeIds.has(n.id));
+      filteredEdges = rawEdges.filter(e =>
         winnerNodeIds.has(e.source) && winnerNodeIds.has(e.target)
       );
     }
 
+    // Apply dagre layout
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
       filteredNodes,
       filteredEdges,
@@ -303,12 +225,7 @@ function PromptPhylogenyInner({ sessionId, speciesHash, onMetadataLoad, onNodesL
 
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
-
-    // Notify parent of filtered nodes
-    if (onNodesLoad) {
-      onNodesLoad(layoutedNodes);
-    }
-  }, [winnersOnly, allNodes, allEdges, setNodes, setEdges, onNodesLoad]);
+  }, [rawNodes, rawEdges, winnersOnly, setNodes, setEdges]);
 
   // Apply highlighting and zoom when highlightedNode changes
   useEffect(() => {
@@ -433,15 +350,6 @@ function PromptPhylogenyInner({ sessionId, speciesHash, onMetadataLoad, onNodesL
             <Icon icon="mdi:trophy" width="14" />
             <span>Winners Only</span>
           </label>
-          <label className="control-toggle">
-            <input
-              type="checkbox"
-              checked={showFuture}
-              onChange={(e) => setShowFuture(e.target.checked)}
-            />
-            <Icon icon="mdi:clock-fast" width="14" />
-            <span>Show Future</span>
-          </label>
         </div>
       </div>
 
@@ -500,12 +408,6 @@ function PromptPhylogenyInner({ sessionId, speciesHash, onMetadataLoad, onNodesL
           <span className="legend-icon">📍</span>
           <span>Current Session</span>
         </div>
-        {showFuture && (
-          <div className="legend-item">
-            <div className="legend-box future-box"></div>
-            <span>Future Runs</span>
-          </div>
-        )}
       </div>
     </div>
   );

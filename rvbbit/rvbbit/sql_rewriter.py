@@ -5,7 +5,7 @@ Phase 1-2: MAP with optional PARALLEL
 """
 
 import re
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 
 
@@ -40,14 +40,46 @@ class RVBBITStatement:
     result_alias: Optional[str]
     with_options: Dict[str, Any]
     parallel: Optional[int] = None
+    output_columns: Optional[List[Tuple[str, str]]] = None  # [(col_name, sql_type), ...]
 
 
 # ============================================================================
 # Main Entry Point
 # ============================================================================
 
-def rewrite_rvbbit_syntax(query: str) -> str:
+def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     """Detect and rewrite RVBBIT MAP/RUN syntax."""
+    # Check for EXPLAIN prefix
+    explain_match = re.match(r'EXPLAIN\s+', query.strip(), re.IGNORECASE)
+    if explain_match:
+        from rvbbit.sql_explain import explain_rvbbit_map, format_explain_result
+
+        # Strip EXPLAIN and parse statement
+        inner_query = query[explain_match.end():].strip()
+
+        if not _is_rvbbit_statement(inner_query):
+            # Not an RVBBIT statement, return as-is (might be regular EXPLAIN)
+            return query
+
+        stmt = _parse_rvbbit_statement(inner_query)
+
+        if stmt.mode != 'MAP':
+            # EXPLAIN only supported for MAP currently
+            raise RVBBITSyntaxError("EXPLAIN is only supported for RVBBIT MAP")
+
+        # Analyze (don't execute)
+        if duckdb_conn is None:
+            # Can't analyze without connection, return error message
+            return "SELECT 'ERROR: EXPLAIN requires database connection for analysis' AS error"
+
+        result = explain_rvbbit_map(stmt, duckdb_conn)
+
+        # Return formatted plan as a SELECT query
+        plan_text = format_explain_result(result)
+        # Escape single quotes for SQL
+        plan_text_escaped = plan_text.replace("'", "''")
+        return f"SELECT '{plan_text_escaped}' AS query_plan"
+
     if not _is_rvbbit_statement(query):
         return query
 
@@ -83,6 +115,14 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     mode = mode_match.group(1).upper()
     remaining = query[mode_match.end():].strip()
 
+    # Extract DISTINCT (optional for MAP)
+    is_distinct = False
+    if mode == 'MAP':
+        distinct_match = re.match(r'DISTINCT\s+', remaining, re.IGNORECASE)
+        if distinct_match:
+            is_distinct = True
+            remaining = remaining[distinct_match.end():].strip()
+
     # Extract PARALLEL (optional)
     parallel = None
     if mode == 'MAP':
@@ -99,12 +139,22 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     cascade_path = cascade_match.group(1)
     remaining = remaining[cascade_match.end():].strip()
 
-    # Extract AS alias
+    # Extract AS alias or AS (col TYPE, ...) schema
     result_alias = None
+    output_columns = None
+
     as_match = re.match(r'AS\s+(\w+)', remaining, re.IGNORECASE)
     if as_match:
         result_alias = as_match.group(1)
         remaining = remaining[as_match.end():].strip()
+    else:
+        # Try AS (col TYPE, col TYPE, ...)
+        as_schema_match = re.match(r'AS\s*\(', remaining, re.IGNORECASE)
+        if as_schema_match:
+            remaining = remaining[as_schema_match.end():].strip()
+            schema_content, remaining = _extract_balanced_parens('(' + remaining)
+            if schema_content:
+                output_columns = _parse_output_schema(schema_content)
 
     # Extract USING clause
     if not remaining.upper().startswith('USING'):
@@ -125,13 +175,22 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
             raise RVBBITSyntaxError("Expected balanced parentheses after WITH")
         with_options = _parse_with_options(with_clause)
 
+    # Store DISTINCT flag in with_options
+    if is_distinct:
+        with_options['distinct'] = True
+
+    # Infer schema from cascade if requested
+    if with_options.get('infer_schema') and not output_columns:
+        output_columns = _infer_columns_from_cascade(cascade_path)
+
     return RVBBITStatement(
         mode=mode,
         cascade_path=cascade_path,
         using_query=using_query,
         result_alias=result_alias,
         with_options=with_options,
-        parallel=parallel
+        parallel=parallel,
+        output_columns=output_columns
     )
 
 
@@ -219,6 +278,156 @@ def _parse_value(value_str: str) -> Any:
         return value_str
 
 
+def _parse_output_schema(schema_str: str) -> List[Tuple[str, str]]:
+    """
+    Parse AS (col TYPE, col TYPE, ...) output schema.
+
+    Args:
+        schema_str: String like "brand VARCHAR, confidence DOUBLE"
+
+    Returns:
+        List of (column_name, sql_type) tuples
+
+    Example:
+        >>> _parse_output_schema("brand VARCHAR, confidence DOUBLE, is_luxury BOOLEAN")
+        [("brand", "VARCHAR"), ("confidence", "DOUBLE"), ("is_luxury", "BOOLEAN")]
+    """
+    columns = []
+    parts = _smart_split(schema_str, ',')
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Split into name and type (e.g., "brand VARCHAR")
+        tokens = part.split()
+        if len(tokens) != 2:
+            raise RVBBITSyntaxError(
+                f"Expected 'column_name TYPE', got: {part}"
+            )
+
+        col_name, col_type = tokens
+
+        # Validate type is a known SQL type
+        valid_types = {
+            'VARCHAR', 'TEXT', 'STRING',  # String types
+            'BIGINT', 'INTEGER', 'INT', 'SMALLINT', 'TINYINT',  # Integer types
+            'DOUBLE', 'FLOAT', 'REAL', 'DECIMAL', 'NUMERIC',  # Float types
+            'BOOLEAN', 'BOOL',  # Boolean
+            'JSON',  # JSON type
+            'TIMESTAMP', 'DATE', 'TIME',  # Temporal
+        }
+
+        if col_type.upper() not in valid_types:
+            raise RVBBITSyntaxError(
+                f"Unsupported SQL type: {col_type}. Valid types: {', '.join(sorted(valid_types))}"
+            )
+
+        columns.append((col_name, col_type.upper()))
+
+    return columns
+
+
+def _infer_columns_from_cascade(cascade_path: str) -> Optional[List[Tuple[str, str]]]:
+    """
+    Load cascade file and infer output columns from output_schema.
+
+    Allows: RVBBIT MAP 'cascade.yaml' USING (...) WITH (infer_schema=true)
+
+    Args:
+        cascade_path: Path to cascade file
+
+    Returns:
+        List of (col_name, sql_type) or None if no output_schema
+    """
+    import os
+    import json
+    import yaml
+
+    # Resolve cascade path
+    if not os.path.isabs(cascade_path):
+        cascade_path = os.path.join(os.getcwd(), cascade_path)
+
+    if not os.path.exists(cascade_path):
+        for ext in ['.yaml', '.yml', '.json']:
+            if os.path.exists(cascade_path + ext):
+                cascade_path = cascade_path + ext
+                break
+
+    if not os.path.exists(cascade_path):
+        return None
+
+    # Load cascade config
+    try:
+        with open(cascade_path, 'r') as f:
+            if cascade_path.endswith('.json'):
+                config = json.load(f)
+            else:
+                config = yaml.safe_load(f)
+    except Exception:
+        return None
+
+    # Find first cell with output_schema
+    cells = config.get('cells', [])
+    for cell in cells:
+        output_schema = cell.get('output_schema')
+        if output_schema and isinstance(output_schema, dict):
+            # Convert JSON Schema to SQL types
+            return _json_schema_to_sql_types(output_schema)
+
+    return None
+
+
+def _json_schema_to_sql_types(json_schema: dict) -> List[Tuple[str, str]]:
+    """
+    Convert JSON Schema to SQL column types.
+
+    Args:
+        json_schema: JSON Schema dict with 'properties' and 'type' fields
+
+    Returns:
+        List of (column_name, sql_type) tuples
+
+    Example:
+        >>> schema = {
+        ...     "type": "object",
+        ...     "properties": {
+        ...         "brand": {"type": "string"},
+        ...         "confidence": {"type": "number"},
+        ...         "is_luxury": {"type": "boolean"}
+        ...     }
+        ... }
+        >>> _json_schema_to_sql_types(schema)
+        [("brand", "VARCHAR"), ("confidence", "DOUBLE"), ("is_luxury", "BOOLEAN")]
+    """
+    columns = []
+
+    properties = json_schema.get('properties', {})
+    for prop_name, prop_schema in properties.items():
+        prop_type = prop_schema.get('type', 'string')
+
+        # Map JSON Schema types to SQL types
+        if prop_type == 'string':
+            sql_type = 'VARCHAR'
+        elif prop_type == 'number':
+            sql_type = 'DOUBLE'
+        elif prop_type == 'integer':
+            sql_type = 'BIGINT'
+        elif prop_type == 'boolean':
+            sql_type = 'BOOLEAN'
+        elif prop_type == 'array':
+            sql_type = 'JSON'  # DuckDB can handle JSON arrays
+        elif prop_type == 'object':
+            sql_type = 'JSON'  # Nested objects as JSON
+        else:
+            sql_type = 'VARCHAR'  # Fallback
+
+        columns.append((prop_name, sql_type))
+
+    return columns
+
+
 # ============================================================================
 # MAP Rewrite
 # ============================================================================
@@ -228,15 +437,30 @@ def _rewrite_map(stmt: RVBBITStatement) -> str:
     using_query = _ensure_limit(stmt.using_query)
     result_column = stmt.result_alias or stmt.with_options.get('result_column', DEFAULT_RESULT_COLUMN)
 
-    # For Phase 2 MVP: PARALLEL syntax is accepted but executes sequentially
-    # Real ThreadPoolExecutor optimization deferred to Phase 2B
-    # This allows users to write PARALLEL queries that work today and get faster later
-    if stmt.parallel is not None:
-        # TODO Phase 2B: Add actual concurrent execution with ThreadPoolExecutor
-        pass  # Fall through to sequential logic
+    # Apply DISTINCT deduplication if requested
+    if stmt.with_options.get('distinct'):
+        dedupe_by = stmt.with_options.get('dedupe_by')
+        if dedupe_by:
+            # Dedupe by specific column(s)
+            using_query = f"SELECT DISTINCT ON ({dedupe_by}) * FROM ({using_query}) AS t"
+        else:
+            # Dedupe all columns
+            using_query = f"SELECT DISTINCT * FROM ({using_query}) AS t"
 
-    # Sequential execution (works for both MAP and MAP PARALLEL currently)
-    rewritten = f"""
+    if stmt.parallel is not None:
+        # PARALLEL execution: Use batching + parallelism
+        # Note: For now, fall back to sequential with note about parallelism
+        # True parallelism requires redesign to avoid DuckDB's table function + subquery limitation
+        max_workers = stmt.parallel
+
+        # TODO: Implement true parallel execution
+        # Current limitation: DuckDB table functions can't take subqueries,
+        # and temp tables created during query execution aren't visible to later parts of same query.
+        #
+        # For now, execute sequentially (same as non-PARALLEL MAP)
+        # Future: Could use DuckDB's parallel execution hints or custom extension
+
+        rewritten = f"""
 WITH rvbbit_input AS (
   {using_query}
 ),
@@ -254,7 +478,67 @@ SELECT
     _raw_result
   ) AS {result_column}
 FROM rvbbit_raw r
-    """.strip()
+        """.strip()
+    else:
+        # Sequential execution (existing logic)
+        rewritten = f"""
+WITH rvbbit_input AS (
+  {using_query}
+),
+rvbbit_raw AS (
+  SELECT
+    i.*,
+    rvbbit_run('{stmt.cascade_path}', to_json(i)) AS _raw_result
+  FROM rvbbit_input i
+)
+SELECT
+  r.* EXCLUDE (_raw_result),
+  COALESCE(
+    json_extract_string(_raw_result, '$.state.output_extract'),
+    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_phase')),
+    _raw_result
+  ) AS {result_column}
+FROM rvbbit_raw r
+        """.strip()
+
+    # Handle typed output columns if specified
+    if stmt.output_columns:
+        # Generate typed column extraction from JSON result
+        select_cols = []
+        for col_name, col_type in stmt.output_columns:
+            if col_type in ('VARCHAR', 'TEXT', 'STRING'):
+                expr = f"json_extract_string(_raw_result, '$.{col_name}') AS {col_name}"
+            elif col_type in ('BIGINT', 'INTEGER', 'INT'):
+                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS BIGINT) AS {col_name}"
+            elif col_type in ('DOUBLE', 'FLOAT', 'REAL'):
+                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS DOUBLE) AS {col_name}"
+            elif col_type == 'BOOLEAN':
+                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS BOOLEAN) AS {col_name}"
+            elif col_type == 'JSON':
+                expr = f"json_extract(_raw_result, '$.{col_name}') AS {col_name}"
+            else:
+                # Generic cast for other types
+                expr = f"CAST(json_extract(_raw_result, '$.{col_name}') AS {col_type}) AS {col_name}"
+
+            select_cols.append(expr)
+
+        # Replace the final SELECT with typed extraction
+        # Find the last SELECT in the rewritten query
+        lines = rewritten.split('\n')
+        select_idx = None
+        for i in range(len(lines) - 1, -1, -1):
+            if 'SELECT' in lines[i]:
+                select_idx = i
+                break
+
+        if select_idx is not None:
+            # Replace from SELECT onwards
+            rewritten = '\n'.join(lines[:select_idx]) + f"""
+SELECT
+  r.* EXCLUDE (_raw_result),
+  {',\n  '.join(select_cols)}
+FROM rvbbit_raw r
+            """.strip()
 
     return rewritten
 

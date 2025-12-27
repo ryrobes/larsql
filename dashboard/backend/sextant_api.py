@@ -95,21 +95,27 @@ def list_species(cascade_id, cell_name):
     db = get_db()
 
     try:
-        # Get distinct species with counts
+        # Get distinct species with counts and cost data
+        # Join with agent rows to get actual costs
         species_query = f"""
             SELECT
-                species_hash,
-                COUNT(DISTINCT session_id) as session_count,
-                SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
+                sa.species_hash,
+                COUNT(DISTINCT sa.session_id) as session_count,
+                SUM(CASE WHEN sa.is_winner = true THEN 1 ELSE 0 END) as winner_count,
                 COUNT(*) as total_attempts,
-                MIN(timestamp) as first_seen,
-                MAX(timestamp) as last_seen
-            FROM unified_logs
-            WHERE cascade_id = '{cascade_id}'
-              AND cell_name = '{cell_name}'
-              AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
-              AND species_hash IS NOT NULL
-            GROUP BY species_hash
+                MIN(sa.timestamp) as first_seen,
+                MAX(sa.timestamp) as last_seen,
+                SUM(CASE WHEN agent.role = 'assistant' THEN agent.cost ELSE 0 END) as total_cost
+            FROM unified_logs sa
+            LEFT JOIN unified_logs agent ON
+                agent.session_id = sa.session_id
+                AND agent.candidate_index = sa.candidate_index
+                AND agent.role = 'assistant'
+            WHERE sa.cascade_id = '{cascade_id}'
+              AND sa.cell_name = '{cell_name}'
+              AND sa.node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
+              AND sa.species_hash IS NOT NULL
+            GROUP BY sa.species_hash
             ORDER BY session_count DESC
         """
 
@@ -197,11 +203,16 @@ def list_species(cascade_id, cell_name):
             # Get identifying information for this species
             input_preview, instructions_preview = get_species_sample(row['species_hash'])
 
+            total_cost = float(row.get('total_cost', 0)) if row.get('total_cost') else 0
+            avg_cost = total_cost / session_count if session_count > 0 else 0
+
             species.append({
                 'species_hash': row['species_hash'],
                 'session_count': session_count,
                 'winner_count': winner_count,
                 'total_attempts': row['total_attempts'],
+                'total_cost': total_cost,
+                'avg_cost': round(avg_cost, 6),
                 'win_rate': win_rate,
                 'input_preview': input_preview,
                 'instructions_preview': instructions_preview,
@@ -2856,6 +2867,131 @@ def get_species_info(session_id):
 
     except Exception as e:
         import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@sextant_bp.route('/evolve-species', methods=['POST'])
+def evolve_species():
+    """
+    Evolve a species by promoting a winning prompt to the baseline.
+    
+    Updates the cascade YAML file with the new instructions and logs
+    promotion metadata for lineage tracking.
+    
+    Request body:
+    {
+        "cascade_id": str,
+        "cell_name": str,
+        "new_instructions": str,
+        "promoted_from": {
+            "session_id": str,
+            "generation": int,
+            "candidate_index": int,
+            "old_species_hash": str
+        }
+    }
+    
+    Returns:
+    {
+        "success": bool,
+        "cascade_file": str,
+        "new_species_hash": str,
+        "message": str
+    }
+    """
+    import yaml
+    from pathlib import Path
+    from datetime import datetime
+    import hashlib
+    
+    try:
+        data = request.get_json()
+        cascade_id = data.get('cascade_id')
+        cell_name = data.get('cell_name')
+        new_instructions = data.get('new_instructions')
+        promoted_from = data.get('promoted_from', {})
+        
+        if not all([cascade_id, cell_name, new_instructions]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        config = get_config()
+        
+        # Find cascade file - check multiple locations
+        possible_paths = [
+            Path(config.cascades_dir) / f"{cascade_id}.yaml",
+            Path(config.cascades_dir) / f"{cascade_id}.json",
+            Path(config.examples_dir) / f"{cascade_id}.yaml",
+            Path(config.examples_dir) / f"{cascade_id}.json",
+            Path(config.tackle_dir) / f"{cascade_id}.yaml",
+        ]
+        
+        cascade_file = None
+        for path in possible_paths:
+            if path.exists():
+                cascade_file = path
+                break
+        
+        if not cascade_file:
+            return jsonify({'error': f'Cascade file not found for: {cascade_id}'}), 404
+        
+        # Load cascade definition
+        with open(cascade_file, 'r') as f:
+            if cascade_file.suffix == '.json':
+                cascade_def = json.load(f)
+            else:
+                cascade_def = yaml.safe_load(f)
+        
+        # Find the cell to update
+        cells = cascade_def.get('cells', [])
+        cell_found = False
+        
+        for cell in cells:
+            if cell.get('name') == cell_name:
+                # Update instructions
+                cell['instructions'] = new_instructions
+                
+                # Add promotion metadata
+                if 'metadata' not in cell:
+                    cell['metadata'] = {}
+                
+                cell['metadata']['evolved_from'] = {
+                    'previous_species_hash': promoted_from.get('old_species_hash'),
+                    'promoted_from_session': promoted_from.get('session_id'),
+                    'promoted_from_generation': promoted_from.get('generation'),
+                    'promoted_from_candidate': promoted_from.get('candidate_index'),
+                    'promoted_at': datetime.utcnow().isoformat(),
+                }
+                
+                cell_found = True
+                break
+        
+        if not cell_found:
+            return jsonify({'error': f'Cell not found: {cell_name}'}), 404
+        
+        # Calculate new species hash
+        cell_str = json.dumps(cells[0], sort_keys=True)  # Simplified hash
+        new_species_hash = hashlib.md5(cell_str.encode()).hexdigest()[:16]
+        
+        # Save updated cascade
+        with open(cascade_file, 'w') as f:
+            if cascade_file.suffix == '.json':
+                json.dump(cascade_def, f, indent=2)
+            else:
+                yaml.dump(cascade_def, f, default_flow_style=False, sort_keys=False)
+        
+        return jsonify({
+            'success': True,
+            'cascade_file': str(cascade_file),
+            'new_species_hash': new_species_hash,
+            'message': f'Species evolved! New baseline set from Gen {promoted_from.get("generation")}'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': str(e),
             'traceback': traceback.format_exc()

@@ -1,0 +1,43 @@
+cascade_id: test_schema_output
+description: Test cascade for schema-aware SQL outputs
+
+cells:
+- name: extract_product_info
+  instructions: |
+    Extract structured information from this product name: {{ input.product_name }}
+
+    Return a JSON object with:
+    - brand: The brand name (string)
+    - category: Product category like "Electronics", "Clothing", etc (string)
+    - price_tier: "Budget", "Mid-range", or "Premium" (string)
+    - confidence: Your confidence score from 0.0 to 1.0 (number)
+    - is_luxury: Whether this is a luxury product (boolean)
+
+    Example output:
+    {
+      "brand": "Apple",
+      "category": "Electronics",
+      "price_tier": "Premium",
+      "confidence": 0.95,
+      "is_luxury": true
+    }
+  traits: []
+  output_schema:
+    type: object
+    properties:
+      brand:
+        type: string
+        minLength: 1
+      category:
+        type: string
+        minLength: 1
+      price_tier:
+        type: string
+        enum: ["Budget", "Mid-range", "Premium"]
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+      is_luxury:
+        type: boolean
+    required: [brand, category, price_tier, confidence, is_luxury]
