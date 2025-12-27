@@ -18,7 +18,7 @@ import remarkEmoji from 'remark-emoji';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../styles/studioPrismTheme';
 import 'katex/dist/katex.min.css';
 import './RichMarkdown.css';
 
@@ -49,13 +49,13 @@ function RichMarkdown({ children, ...props }) {
 
             return !inline && language ? (
               <SyntaxHighlighter
-                style={vscDarkPlus}
+                style={studioDarkPrismTheme}
                 language={language}
                 PreTag="div"
                 customStyle={{
                   margin: '1em 0',
                   borderRadius: '6px',
-                  fontSize: '0.9em',
+                  // fontSize inherited from theme (13px)
                 }}
                 {...codeProps}
               >

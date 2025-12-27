@@ -7801,11 +7801,12 @@ Use only numbers 0-100 for scores."""
 
         # Add winning result to history
         # IMPORTANT: Include candidate_index and is_winner so UI can identify winning model
+        # CRITICAL: Store actual winner output in "content" for fallback extraction
         if is_aggregated:
             # Aggregate mode: all contributing soundings are "winners"
             self.echo.add_history({
                 "role": "soundings_result",
-                "content": f"Aggregated {winner.get('aggregated_count', 0)} of {factor} attempts",
+                "content": winner.get('result'),  # Actual aggregated output
                 "winner_index": -1,  # No single winner
                 "evaluation": eval_content,
                 "is_aggregated": True,
@@ -7824,7 +7825,7 @@ Use only numbers 0-100 for scores."""
             # Single winner mode
             self.echo.add_history({
                 "role": "soundings_result",
-                "content": f"Selected best of {factor} attempts",
+                "content": winner.get('result'),  # Actual winner output
                 "winner_index": winner_index + 1,
                 "evaluation": eval_content
             }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
@@ -10259,9 +10260,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                                 if budget_status["over_budget"]:
                                     console.print(f"{indent}  [red]💥 Token budget exceeded, enforcing with strategy: {self.config.token_budget.strategy}[/red]")
+                                    tokens_before = budget_status['current']
                                     self.context_messages = self.token_manager.enforce_budget(self.context_messages)
+                                    tokens_after = self.token_manager.count_tokens(self.context_messages)
+                                    tokens_pruned = tokens_before - tokens_after
 
-                                    # Log budget enforcement
+                                    # Log budget enforcement to first-class fields
                                     from .unified_logs import log_unified
                                     log_unified(
                                         session_id=self.session_id,
@@ -10269,14 +10273,16 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         parent_id=trace.id,
                                         node_type="token_budget_enforcement",
                                         role="system",
-                                        content=f"Token budget enforced: {budget_status['current']} → {self.token_manager.count_tokens(self.context_messages)} tokens",
-                                        metadata={
-                                            "strategy": self.config.token_budget.strategy,
-                                            "tokens_before": budget_status["current"],
-                                            "tokens_after": self.token_manager.count_tokens(self.context_messages),
-                                            "tokens_limit": budget_status["limit"],
-                                            "cell_name": phase.name
-                                        }
+                                        content=f"Token budget enforced: {tokens_before} → {tokens_after} tokens (pruned {tokens_pruned})",
+                                        cell_name=phase.name,
+                                        cascade_id=self.config.cascade_id,
+                                        # First-class budget fields
+                                        budget_strategy=self.config.token_budget.strategy,
+                                        budget_tokens_before=tokens_before,
+                                        budget_tokens_after=tokens_after,
+                                        budget_tokens_limit=budget_status['limit'],
+                                        budget_tokens_pruned=tokens_pruned,
+                                        budget_percentage=budget_status['percentage']
                                     )
 
                             # AUTO-CONTEXT: Build bounded context for this turn

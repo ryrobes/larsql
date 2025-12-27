@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../styles/studioPrismTheme';
 import { Icon } from '@iconify/react';
 import './CandidateComparison.css';
 
@@ -373,7 +373,7 @@ function AttemptCard({
           actualRender === 'code' ? (
             <SyntaxHighlighter
               language="javascript"
-              style={vscDarkPlus}
+              style={studioDarkPrismTheme}
               customStyle={{ margin: 0, borderRadius: '6px', fontSize: '0.85em' }}
             >
               {output}

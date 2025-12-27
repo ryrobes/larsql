@@ -1,6 +1,6 @@
 import React from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../../styles/studioPrismTheme';
 import './CodeSection.css';
 
 /**
@@ -56,7 +56,7 @@ function CodeSection({ spec }) {
   const renderCode = (code, isHighlighted = false) => (
     <SyntaxHighlighter
       language={lang}
-      style={vscDarkPlus}
+      style={studioDarkPrismTheme}
       showLineNumbers={line_numbers}
       wrapLines={true}
       wrapLongLines={wrap_lines}

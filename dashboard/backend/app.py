@@ -74,6 +74,7 @@ from sql_query_api import sql_query_bp
 from notebook_api import notebook_bp
 from studio_api import studio_bp
 from receipts_api import receipts_bp
+from budget_api import budget_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -85,6 +86,7 @@ app.register_blueprint(tool_browser_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(browser_sessions_bp)
+app.register_blueprint(budget_bp)
 # New unified Studio API (combines SQL Query + Notebook)
 app.register_blueprint(studio_bp)
 app.register_blueprint(receipts_bp)

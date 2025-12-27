@@ -102,13 +102,30 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   const candidateInfo = React.useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
 
-    const candidatesMap = new Map(); // candidate_index -> status
+    const candidatesMap = new Map(); // candidate_index -> { status, maxTurn, maxTurnsAllowed }
     let winningIndex = null;
+    let maxTurnsForCell = null;
+
+    // Helper to parse metadata_json
+    const parseMetadata = (meta) => {
+      if (!meta) return {};
+      if (typeof meta === 'string') {
+        try { return JSON.parse(meta); } catch { return {}; }
+      }
+      return meta;
+    };
 
     for (const log of cellLogs) {
+      const metadata = parseMetadata(log.metadata_json);
+
       // Track winning candidate index
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winningIndex = log.winning_sounding_index;
+      }
+
+      // Track max_turns for the cell (same for all candidates)
+      if (metadata.max_turns && maxTurnsForCell === null) {
+        maxTurnsForCell = metadata.max_turns;
       }
 
       // Track candidate status based on log entries
@@ -116,18 +133,37 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
         const idx = log.candidate_index;
 
         if (!candidatesMap.has(idx)) {
-          candidatesMap.set(idx, 'running'); // Default to running when first seen
+          candidatesMap.set(idx, { status: 'running', maxTurn: 0, maxTurnsAllowed: null });
         }
 
-        // Update status based on log type
-        // Success indicators: 'sounding_attempt' or 'phase_complete' role/node_type
-        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt' ||
-            log.role === 'phase_complete') {
-          candidatesMap.set(idx, 'complete');
+        const candidate = candidatesMap.get(idx);
+
+        // Track the highest turn number we've seen for this candidate
+        if (metadata.turn_number && metadata.turn_number > candidate.maxTurn) {
+          candidate.maxTurn = metadata.turn_number;
         }
-        // Error indicator
-        else if (log.role === 'error') {
-          candidatesMap.set(idx, 'error');
+
+        // Track max_turns from metadata
+        if (metadata.max_turns && !candidate.maxTurnsAllowed) {
+          candidate.maxTurnsAllowed = metadata.max_turns;
+        }
+
+        // COMPLETION DETECTION - check multiple indicators
+        // 1. Final turn reached (turn_number >= max_turns)
+        if (candidate.maxTurn > 0 && candidate.maxTurnsAllowed &&
+            candidate.maxTurn >= candidate.maxTurnsAllowed &&
+            candidate.status === 'running') {
+          candidate.status = 'complete';
+        }
+
+        // 2. Explicit completion markers
+        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
+          candidate.status = 'complete';
+        }
+
+        // 3. Error indicator
+        if (log.role === 'error') {
+          candidate.status = 'error';
         }
       }
     }
@@ -137,15 +173,16 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     // Convert to array with status information
     const candidates = Array.from(candidatesMap.entries())
       .sort((a, b) => a[0] - b[0])  // Sort by index
-      .map(([index, status]) => ({
+      .map(([index, data]) => ({
         index,
-        status,
+        status: data.status,
         isWinner: index === winningIndex
       }));
 
     return {
       candidates,
-      winner: winningIndex
+      winner: winningIndex,
+      maxTurns: maxTurnsForCell
     };
   }, [cellLogs]);
 

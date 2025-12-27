@@ -1,0 +1,392 @@
+/**
+ * GlobalVoiceInput - Windlass-themed floating voice input
+ *
+ * Design System: Pure black cyberpunk with neon cyan accents
+ * Uses Windlass CSS variables for consistency
+ */
+
+/* ============================================
+   MAIN CONTAINER
+   ============================================ */
+
+.wl-global-voice-input {
+  position: fixed;
+  bottom: var(--space-xl);
+  right: var(--space-xl);
+  z-index: var(--z-tooltip); /* Above modals and toasts */
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: var(--space-md);
+  transition: all 0.3s var(--ease-in-out);
+}
+
+/* ============================================
+   MAIN BUTTON
+   ============================================ */
+
+.wl-global-voice-input .wl-voice-button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-round);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.wl-global-voice-input .wl-voice-button:hover {
+  border-color: var(--color-border-bright);
+  background: rgba(0, 0, 0, 0.95);
+  color: var(--color-text-primary);
+  transform: scale(1.05);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.wl-global-voice-input .wl-voice-button:active {
+  transform: scale(0.98);
+}
+
+.wl-global-voice-input .wl-voice-button:disabled {
+  cursor: wait;
+}
+
+/* ============================================
+   ICON
+   ============================================ */
+
+.wl-global-voice-input .wl-voice-icon {
+  font-size: 20px;
+  transition: transform 0.2s ease;
+}
+
+.wl-global-voice-input .wl-voice-icon.spinning {
+  animation: wl-voice-spin 1s linear infinite;
+}
+
+@keyframes wl-voice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   AUDIO LEVEL RING (Recording State)
+   ============================================ */
+
+.wl-global-voice-input .wl-level-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: var(--radius-round);
+  border: 2px solid var(--color-accent-pink);
+  pointer-events: none;
+  transition: transform 0.05s ease-out, opacity 0.05s ease-out;
+}
+
+/* ============================================
+   DURATION BADGE (Recording Timer)
+   ============================================ */
+
+.wl-global-voice-input .wl-duration-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  background: var(--color-accent-pink);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  padding: 2px 5px;
+  border-radius: var(--radius-md);
+  line-height: 1;
+}
+
+/* ============================================
+   STATE-SPECIFIC BUTTON STYLES
+   ============================================ */
+
+/* Idle - Subtle, waiting */
+.wl-global-voice-input.idle .wl-voice-button {
+  opacity: 0.7;
+}
+
+.wl-global-voice-input.idle:hover .wl-voice-button {
+  opacity: 1;
+}
+
+/* Ready - Input focused, cyan accent */
+.wl-global-voice-input.ready .wl-voice-button {
+  color: var(--color-accent-cyan);
+  border-color: var(--color-border-bright);
+  opacity: 1;
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+/* Recording - Pink/red gradient with pulse */
+.wl-global-voice-input.recording .wl-voice-button {
+  background: linear-gradient(135deg, var(--color-accent-pink) 0%, #e6006a 100%);
+  border-color: var(--color-accent-pink);
+  color: white;
+  animation: wl-voice-pulse-glow 1.5s ease-in-out infinite;
+  width: 48px;
+  height: 48px;
+}
+
+@keyframes wl-voice-pulse-glow {
+  0%, 100% {
+    box-shadow: var(--shadow-glow-pink);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(255, 0, 110, 0.6);
+  }
+}
+
+/* Processing - Cyan background */
+.wl-global-voice-input.processing .wl-voice-button {
+  background: var(--color-accent-cyan);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-bg-primary);
+  box-shadow: var(--shadow-glow-cyan-strong);
+}
+
+/* Success - Green background */
+.wl-global-voice-input.success .wl-voice-button {
+  background: var(--color-accent-green);
+  border-color: var(--color-accent-green);
+  color: var(--color-bg-primary);
+  box-shadow: var(--shadow-glow-green);
+}
+
+/* Error - Red background */
+.wl-global-voice-input.error .wl-voice-button {
+  background: var(--color-accent-red);
+  border-color: var(--color-accent-red);
+  color: white;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.4);
+}
+
+/* ============================================
+   INFO PANEL (Expanded State)
+   ============================================ */
+
+.wl-global-voice-input .wl-info-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--space-sm) 14px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid var(--color-border-dim);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-radius: 20px;
+  box-shadow: var(--shadow-md);
+  animation: wl-voice-slide-in 0.2s var(--ease-out);
+  max-width: 280px;
+}
+
+@keyframes wl-voice-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Panel text styles */
+.wl-global-voice-input .wl-status-text {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.wl-global-voice-input .wl-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.wl-global-voice-input .wl-target-hint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.wl-global-voice-input .wl-error-text {
+  font-size: var(--font-size-base);
+  color: var(--color-accent-red);
+  white-space: nowrap;
+}
+
+/* ============================================
+   WAVEFORM VISUALIZATION
+   ============================================ */
+
+.wl-global-voice-input .wl-waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+
+.wl-global-voice-input .wl-waveform-bar {
+  width: 3px;
+  background: var(--color-accent-pink);
+  border-radius: 1.5px;
+  transition: height 0.1s ease;
+}
+
+/* ============================================
+   TRANSCRIPT PREVIEW (Success State)
+   ============================================ */
+
+.wl-global-voice-input .wl-transcript-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wl-global-voice-input .wl-success-icon {
+  color: var(--color-accent-green);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.wl-global-voice-input .wl-transcript-text {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   KEYBOARD HINT (Hover State)
+   ============================================ */
+
+.wl-global-voice-input .wl-keyboard-hint {
+  position: absolute;
+  bottom: -24px;
+  right: 0;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.wl-global-voice-input:hover .wl-keyboard-hint,
+.wl-global-voice-input.idle:hover .wl-keyboard-hint {
+  opacity: 0.5;
+}
+
+.wl-global-voice-input.recording .wl-keyboard-hint,
+.wl-global-voice-input.processing .wl-keyboard-hint,
+.wl-global-voice-input.expanded .wl-keyboard-hint {
+  opacity: 0;
+}
+
+.wl-global-voice-input .wl-keyboard-hint kbd {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   VISIBILITY CONTROLS
+   ============================================ */
+
+/* Collapsed state when idle */
+.wl-global-voice-input.idle:not(:hover) {
+  opacity: 0.6;
+}
+
+/* Hide info panel when not expanded */
+.wl-global-voice-input:not(.expanded) .wl-info-panel {
+  display: none;
+}
+
+/* ============================================
+   MOBILE RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .wl-global-voice-input {
+    bottom: var(--space-lg);
+    right: var(--space-lg);
+  }
+
+  .wl-global-voice-input .wl-voice-button {
+    width: 52px;
+    height: 52px;
+  }
+
+  .wl-global-voice-input .wl-voice-icon {
+    font-size: 24px;
+  }
+
+  /* Hide info panel on mobile - button only */
+  .wl-global-voice-input .wl-info-panel {
+    display: none !important;
+  }
+
+  .wl-global-voice-input .wl-keyboard-hint {
+    display: none;
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY - REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-global-voice-input .wl-voice-button,
+  .wl-global-voice-input .wl-info-panel,
+  .wl-global-voice-input .wl-level-ring {
+    transition: none;
+    animation: none;
+  }
+
+  .wl-global-voice-input.recording .wl-voice-button {
+    animation: none;
+    box-shadow: var(--shadow-glow-pink);
+  }
+
+  .wl-global-voice-input .wl-voice-icon.spinning {
+    animation: none;
+  }
+}
+
+/* ============================================
+   THEME INTEGRATION
+   ============================================ */
+
+/* Ensure consistent glassmorphism with rest of Windlass UI */
+.wl-global-voice-input .wl-voice-button,
+.wl-global-voice-input .wl-info-panel {
+  /* Use global glass effect when available */
+  background: var(--glass-bg, rgba(0, 0, 0, 0.85));
+}
+
+/* Ensure borders match global cyan theme */
+.wl-global-voice-input .wl-voice-button {
+  border-color: var(--glass-border, var(--color-border-dim));
+}

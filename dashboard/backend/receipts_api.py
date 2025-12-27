@@ -368,24 +368,28 @@ def _generate_insights(db, days: int) -> list:
                 },
             })
 
-        # Check for low-value, high-cost context (optimization opportunities!)
+        # Relevance-based insights (cost-value optimization)
+        # Heuristic 1: High cost + Low relevance = WASTE
         low_value_query = f"""
             SELECT
-                session_id,
-                cascade_id,
-                cell_name,
-                context_message_hash,
-                context_message_tokens,
-                context_message_cost_estimated,
-                context_message_pct,
-                relevance_score,
-                relevance_reasoning
-            FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND relevance_score IS NOT NULL
-              AND relevance_score < 30
-              AND context_message_pct > 10
-            ORDER BY (context_message_pct - relevance_score) DESC
+                ccb.session_id,
+                ccb.cascade_id,
+                ccb.cell_name,
+                ccb.context_message_hash,
+                ccb.context_message_role,
+                ccb.context_message_tokens,
+                ccb.context_message_cost_estimated,
+                ccb.context_message_pct,
+                ccb.relevance_score,
+                ccb.relevance_reasoning,
+                ul.content_json
+            FROM cell_context_breakdown ccb
+            LEFT JOIN unified_logs ul ON ccb.context_message_hash = ul.content_hash
+            WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND ccb.relevance_score IS NOT NULL
+              AND ccb.relevance_score < 30
+              AND ccb.context_message_pct > 15
+            ORDER BY (ccb.context_message_pct - ccb.relevance_score) DESC
             LIMIT 3
         """
 
@@ -393,11 +397,26 @@ def _generate_insights(db, days: int) -> list:
 
         for row in low_value:
             waste_indicator = row['context_message_pct'] - row['relevance_score']
+
+            # Extract content preview (truncate to 100 chars)
+            content = row.get('content_json', '')
+            if isinstance(content, str):
+                content_preview = content[:100]
+            elif isinstance(content, (dict, list)):
+                import json
+                content_preview = json.dumps(content)[:100]
+            else:
+                content_preview = str(content)[:100]
+
+            if len(str(content)) > 100:
+                content_preview += '...'
+
             insights.append({
                 'severity': 'warning',
                 'type': 'low_value_context',
-                'message': f"Message {row['context_message_hash'][:8]} in cell '{row['cell_name']}' costs {row['context_message_pct']:.0f}% "
-                          f"but has only {row['relevance_score']:.0f}% relevance. "
+                'message': f"Message {row['context_message_hash'][:8]} ({row['context_message_role']}) in '{row['cell_name']}' "
+                          f"costs {row['context_message_pct']:.0f}% but scores only {row['relevance_score']:.0f}/100 relevance. "
+                          f"Content: \"{content_preview}\". "
                           f"Removing could save ${row['context_message_cost_estimated']:.4f} with minimal impact.",
                 'action': {
                     'type': 'view_context',
@@ -405,6 +424,92 @@ def _generate_insights(db, days: int) -> list:
                     'cascade_id': row['cascade_id'],
                     'session_id': row['session_id']
                 },
+            })
+
+        # Heuristic 2: System messages with low relevance (UNUSUAL!)
+        unused_system_query = f"""
+            SELECT
+                ccb.session_id,
+                ccb.cascade_id,
+                ccb.cell_name,
+                ccb.context_message_hash,
+                ccb.context_message_tokens,
+                ccb.context_message_cost_estimated,
+                ccb.relevance_score,
+                ccb.relevance_reasoning,
+                ul.content_json
+            FROM cell_context_breakdown ccb
+            LEFT JOIN unified_logs ul ON ccb.context_message_hash = ul.content_hash
+            WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND ccb.relevance_score IS NOT NULL
+              AND ccb.context_message_role = 'system'
+              AND ccb.relevance_score < 40
+            ORDER BY ccb.relevance_score ASC
+            LIMIT 2
+        """
+
+        unused_system = db.query(unused_system_query)
+
+        for row in unused_system:
+            # Extract content preview
+            content = row.get('content_json', '')
+            if isinstance(content, str):
+                content_preview = content[:100]
+            elif isinstance(content, (dict, list)):
+                import json
+                content_preview = json.dumps(content)[:100]
+            else:
+                content_preview = str(content)[:100]
+
+            if len(str(content)) > 100:
+                content_preview += '...'
+
+            insights.append({
+                'severity': 'major',
+                'type': 'unused_system_instructions',
+                'message': f"System instructions (message {row['context_message_hash'][:8]}) in '{row['cell_name']}' "
+                          f"have low relevance ({row['relevance_score']:.0f}/100). "
+                          f"Instructions: \"{content_preview}\". "
+                          f"This suggests instructions that aren't being followed or are unnecessary.",
+                'action': {
+                    'type': 'view_context',
+                    'cell_name': row['cell_name'],
+                    'cascade_id': row['cascade_id'],
+                    'session_id': row['session_id']
+                },
+            })
+
+        # Heuristic 3: High relevance + High cost = Expensive but worth it (informational)
+        high_value_query = f"""
+            SELECT
+                session_id,
+                cascade_id,
+                cell_name,
+                context_message_hash,
+                context_message_role,
+                context_message_tokens,
+                context_message_cost_estimated,
+                context_message_pct,
+                relevance_score
+            FROM cell_context_breakdown
+            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND relevance_score IS NOT NULL
+              AND relevance_score > 80
+              AND context_message_pct > 30
+            ORDER BY context_message_cost_estimated DESC
+            LIMIT 1
+        """
+
+        high_value = db.query(high_value_query)
+
+        for row in high_value:
+            insights.append({
+                'severity': 'info',
+                'type': 'high_value_context',
+                'message': f"Message {row['context_message_hash'][:8]} ({row['context_message_role']}) in '{row['cell_name']}' "
+                          f"costs {row['context_message_pct']:.0f}% but has high relevance ({row['relevance_score']:.0f}/100). "
+                          f"This is expensive (${row['context_message_cost_estimated']:.4f}) but valuable - cost justified.",
+                'action': None,
             })
 
         # No anomalies

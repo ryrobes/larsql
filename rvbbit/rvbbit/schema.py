@@ -82,6 +82,14 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     reasoning_max_tokens Nullable(Int32),
     tokens_reasoning Nullable(Int32),
 
+    -- Token Budget Enforcement (when context is pruned to stay within limits)
+    budget_strategy LowCardinality(Nullable(String)),  -- 'sliding_window', 'prune_oldest', 'summarize', 'fail'
+    budget_tokens_before Nullable(Int32),               -- Context size before enforcement
+    budget_tokens_after Nullable(Int32),                -- Context size after enforcement
+    budget_tokens_limit Nullable(Int32),                -- The configured budget limit
+    budget_tokens_pruned Nullable(Int32),               -- Calculated: before - after
+    budget_percentage Nullable(Float32),                -- before / limit (for threshold tracking)
+
     -- Content (stored as JSON strings for flexibility)
     content_json Nullable(String),
     full_request_json Nullable(String) CODEC(ZSTD(3)),

@@ -71,6 +71,12 @@ const InsightCard = ({ insight }) => {
       if (insight.action.cascade_id) params.cascade = insight.action.cascade_id;
       if (insight.action.session_id) params.session = insight.action.session_id;
       navigate('studio', params);
+    } else if (insight.action?.type === 'view_context') {
+      // Navigate to Studio with this session
+      const params = {};
+      if (insight.action.cascade_id) params.cascade = insight.action.cascade_id;
+      if (insight.action.session_id) params.session = insight.action.session_id;
+      navigate('studio', params);
     }
   };
 
@@ -191,6 +197,21 @@ const InsightCard = ({ insight }) => {
           {insight.action.type === 'view_session' && (
             <>
               View Session
+              {insight.action.session_id && (
+                <span style={{
+                  marginLeft: 6,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  opacity: 0.7
+                }}>
+                  {insight.action.session_id}
+                </span>
+              )}
+            </>
+          )}
+          {insight.action.type === 'view_context' && (
+            <>
+              View in Studio
               {insight.action.session_id && (
                 <span style={{
                   marginLeft: 6,

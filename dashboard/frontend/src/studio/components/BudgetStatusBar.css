@@ -1,0 +1,129 @@
+.budget-status-bar {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.budget-status-bar.budget-green {
+  border-left: 3px solid #34d399;
+}
+
+.budget-status-bar.budget-yellow {
+  border-left: 3px solid #fbbf24;
+}
+
+.budget-status-bar.budget-red {
+  border-left: 3px solid #f87171;
+}
+
+.budget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.budget-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.budget-title {
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.budget-percentage {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.budget-green .budget-percentage {
+  color: #34d399;
+}
+
+.budget-yellow .budget-percentage {
+  color: #fbbf24;
+}
+
+.budget-red .budget-percentage {
+  color: #f87171;
+}
+
+.enforcement-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #fbbf24;
+}
+
+.budget-progress-bar {
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #34d399, #60a5fa);
+}
+
+.budget-green .budget-progress-fill {
+  background: linear-gradient(90deg, #34d399, #34d399);
+}
+
+.budget-yellow .budget-progress-fill {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.budget-red .budget-progress-fill {
+  background: linear-gradient(90deg, #f87171, #dc2626);
+}
+
+.budget-details {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 11px;
+  color: #707070;
+}
+
+.budget-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.budget-detail-label {
+  color: #909090;
+}
+
+.budget-detail-value {
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.budget-loading {
+  color: #707070;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.budget-error {
+  color: #f87171;
+  font-size: 12px;
+}

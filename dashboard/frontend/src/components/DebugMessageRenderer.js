@@ -2,7 +2,7 @@ import React from 'react';
 import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../styles/studioPrismTheme';
 import { formatCost } from '../utils/debugUtils';
 
 // Helper to detect and render audio from entry.audio field
@@ -326,7 +326,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
       return (
         <div className="tool-call-content">
           <div className="tool-name">{toolName}</div>
-          <SyntaxHighlighter language="json" style={vscDarkPlus} customStyle={{margin: 0, borderRadius: '4px'}}>
+          <SyntaxHighlighter language="json" style={studioDarkPrismTheme} customStyle={{margin: 0, borderRadius: '4px'}}>
             {argsStr}
           </SyntaxHighlighter>
         </div>
@@ -353,7 +353,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
         <div className="tool-result-content">
           <div className="tool-name">{toolName} result</div>
           {looksLikeCode ? (
-            <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{margin: 0, borderRadius: '4px', maxHeight: '400px', overflow: 'auto'}}>
+            <SyntaxHighlighter language="python" style={studioDarkPrismTheme} customStyle={{margin: 0, borderRadius: '4px', maxHeight: '400px', overflow: 'auto'}}>
               {contentStr}
             </SyntaxHighlighter>
           ) : (
@@ -380,7 +380,7 @@ function DebugMessageRenderer({ entry, sessionId }) {
       try {
         const parsed = JSON.parse(contentStr);
         return (
-          <SyntaxHighlighter language="json" style={vscDarkPlus} customStyle={{margin: 0, borderRadius: '4px'}}>
+          <SyntaxHighlighter language="json" style={studioDarkPrismTheme} customStyle={{margin: 0, borderRadius: '4px'}}>
             {JSON.stringify(parsed, null, 2)}
           </SyntaxHighlighter>
         );

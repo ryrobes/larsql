@@ -74,8 +74,8 @@ export function deriveCellState(logs, cellName) {
       result = toolResult;
     }
 
-    // Extract output from LLM/assistant messages
-    if (role === 'assistant' && row.content_json) {
+    // Extract output from LLM/assistant messages (but skip evaluator!)
+    if (role === 'assistant' && row.content_json && row.node_type !== 'evaluator') {
       let content = row.content_json;
 
       // Parse if JSON-encoded string (may need multiple parses for double-encoding)
@@ -92,6 +92,24 @@ export function deriveCellState(logs, cellName) {
 
       //console.log('[deriveCellState]', cellName, '✓ Found assistant result, type:', typeof content);
       result = content;
+    }
+
+    // Extract output from soundings_result (final winner output for candidates)
+    if (role === 'soundings_result' && row.content_json) {
+      let content = row.content_json;
+
+      // Parse if JSON-encoded string
+      while (typeof content === 'string' && content.startsWith('"')) {
+        try {
+          const parsed = JSON.parse(content);
+          content = parsed;
+        } catch {
+          break;
+        }
+      }
+
+      //console.log('[deriveCellState]', cellName, '✓ Found soundings_result, overriding with winner output');
+      result = content;  // Override any previous result with winner output
     }
 
     // Extract images from metadata_json

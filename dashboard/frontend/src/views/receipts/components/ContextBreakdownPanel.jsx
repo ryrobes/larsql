@@ -241,15 +241,19 @@ const ContextBreakdownPanel = ({ breakdown = [] }) => {
                             >
                               {hasRelevance ? (
                                 <div className="context-breakdown-relevance-display">
-                                  <div className="context-breakdown-relevance-stars">
-                                    {[...Array(5)].map((_, i) => {
-                                      const filled = (msg.relevance_score / 20) > i;
+                                  {/* Chunky bar chart (10 blocks) */}
+                                  <div className="context-breakdown-relevance-bar">
+                                    {[...Array(10)].map((_, i) => {
+                                      const filled = (msg.relevance_score / 10) > i;
                                       return (
-                                        <Icon
+                                        <div
                                           key={i}
-                                          icon={filled ? 'mdi:star' : 'mdi:star-outline'}
-                                          width={14}
-                                          style={{ color: filled ? '#fbbf24' : '#475569' }}
+                                          className={`context-breakdown-bar-block ${filled ? 'filled' : 'empty'}`}
+                                          style={{
+                                            backgroundColor: filled
+                                              ? (msg.relevance_score >= 80 ? '#34d399' : msg.relevance_score >= 50 ? '#fbbf24' : '#ff006e')
+                                              : '#1a1628'
+                                          }}
                                         />
                                       );
                                     })}

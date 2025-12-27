@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../styles/studioPrismTheme';
 import './ParametersCard.css';
 
 function ParametersCard({ instance }) {
@@ -39,7 +39,7 @@ function ParametersCard({ instance }) {
             <div className="parameter-content">
               <SyntaxHighlighter
                 language="json"
-                style={vscDarkPlus}
+                style={studioDarkPrismTheme}
                 customStyle={{ margin: 0, borderRadius: '4px', fontSize: '13px' }}
               >
                 {JSON.stringify(instance.input_data, null, 2)}

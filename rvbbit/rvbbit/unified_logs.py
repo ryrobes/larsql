@@ -352,6 +352,14 @@ class UnifiedLogger:
         reasoning_max_tokens: int = None,
         tokens_reasoning: int = None,
 
+        # Token budget enforcement
+        budget_strategy: str = None,
+        budget_tokens_before: int = None,
+        budget_tokens_after: int = None,
+        budget_tokens_limit: int = None,
+        budget_tokens_pruned: int = None,
+        budget_percentage: float = None,
+
         # Content
         content: Any = None,
         full_request: dict = None,
@@ -476,6 +484,14 @@ class UnifiedLogger:
             "reasoning_effort": reasoning_effort,
             "reasoning_max_tokens": reasoning_max_tokens,
             "tokens_reasoning": tokens_reasoning,
+
+            # Token budget enforcement
+            "budget_strategy": budget_strategy,
+            "budget_tokens_before": budget_tokens_before,
+            "budget_tokens_after": budget_tokens_after,
+            "budget_tokens_limit": budget_tokens_limit,
+            "budget_tokens_pruned": budget_tokens_pruned,
+            "budget_percentage": budget_percentage,
 
             # Content (JSON blobs)
             "content_json": safe_json(content),
@@ -636,6 +652,12 @@ def log_unified(
     reasoning_effort: str = None,
     reasoning_max_tokens: int = None,
     tokens_reasoning: int = None,
+    budget_strategy: str = None,
+    budget_tokens_before: int = None,
+    budget_tokens_after: int = None,
+    budget_tokens_limit: int = None,
+    budget_tokens_pruned: int = None,
+    budget_percentage: float = None,
     content: Any = None,
     full_request: dict = None,
     full_response: dict = None,
@@ -711,6 +733,12 @@ def log_unified(
         reasoning_effort=reasoning_effort,
         reasoning_max_tokens=reasoning_max_tokens,
         tokens_reasoning=tokens_reasoning,
+        budget_strategy=budget_strategy,
+        budget_tokens_before=budget_tokens_before,
+        budget_tokens_after=budget_tokens_after,
+        budget_tokens_limit=budget_tokens_limit,
+        budget_tokens_pruned=budget_tokens_pruned,
+        budget_percentage=budget_percentage,
         content=content,
         full_request=full_request,
         full_response=full_response,

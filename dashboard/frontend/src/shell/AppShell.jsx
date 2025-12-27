@@ -6,6 +6,7 @@ import useRunningSessions from '../studio/hooks/useRunningSessions';
 import VerticalSidebar from './VerticalSidebar';
 import ErrorBoundary from './ErrorBoundary';
 import { ToastContainer } from '../components/Toast/Toast';
+import GlobalVoiceInput from '../components/GlobalVoiceInput';
 import { views } from '../views';
 import './AppShell.css';
 
@@ -154,6 +155,9 @@ const AppShell = ({
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Global Voice Input */}
+      <GlobalVoiceInput />
     </div>
   );
 };

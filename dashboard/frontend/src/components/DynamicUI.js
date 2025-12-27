@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichMarkdown from './RichMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { studioDarkPrismTheme } from '../styles/studioPrismTheme';
 import './DynamicUI.css';
 
 // Import new section components
@@ -424,7 +424,7 @@ function PreviewSection({ spec, phaseOutput }) {
                   const match = /language-(\w+)/.exec(className || '');
                   return !inline && match ? (
                     <SyntaxHighlighter
-                      style={vscDarkPlus}
+                      style={studioDarkPrismTheme}
                       language={match[1]}
                       PreTag="div"
                       {...props}
@@ -447,7 +447,7 @@ function PreviewSection({ spec, phaseOutput }) {
         return (
           <SyntaxHighlighter
             language="javascript"
-            style={vscDarkPlus}
+            style={studioDarkPrismTheme}
             customStyle={{ margin: 0, borderRadius: '6px' }}
           >
             {content}
