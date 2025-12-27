@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
@@ -81,6 +81,7 @@ const ConsoleView = () => {
         total_cost: session.total_cost || 0,
         message_count: session.message_count || 0,
         input_data: session.input_data,
+        output: session.output || null,
         cost_diff_pct: session.cost_diff_pct,
         messages_diff_pct: session.messages_diff_pct,
         duration_diff_pct: session.duration_diff_pct,
@@ -215,6 +216,25 @@ const ConsoleView = () => {
       headerName: 'Last Cell',
       flex: 1,
       minWidth: 120,
+      hide: true, // Hidden by default
+    },
+    {
+      field: 'output',
+      headerName: 'Output',
+      flex: 2,
+      minWidth: 180,
+      valueFormatter: (params) => {
+        if (!params.value) return '-';
+        // Truncate to 200 chars for display (already truncated to 300 from backend)
+        const output = String(params.value);
+        return output.length > 200 ? output.slice(0, 200) + '...' : output;
+      },
+      tooltipValueGetter: (params) => {
+        if (!params.value) return null;
+        // Show full truncated output (300 chars) in tooltip
+        return String(params.value);
+      },
+      cellStyle: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#94a3b8' },
     },
     {
       field: 'total_cost',
@@ -343,7 +363,22 @@ const ConsoleView = () => {
       minWidth: 160,
       valueFormatter: (params) => {
         if (!params.value) return '-';
-        return new Date(params.value).toLocaleString();
+        // Convert UTC timestamp to local timezone
+        const utcDate = new Date(params.value + 'Z'); // Append Z to treat as UTC
+        return utcDate.toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+      },
+      tooltipValueGetter: (params) => {
+        if (!params.value) return null;
+        const utcDate = new Date(params.value + 'Z');
+        return `Local: ${utcDate.toLocaleString()}\nUTC: ${params.value}`;
       },
     },
   ], []);
@@ -354,7 +389,31 @@ const ConsoleView = () => {
     resizable: true,
     autoHeight: true,
     wrapText: false,
+    menuTabs: ['filterMenuTab', 'generalMenuTab', 'columnsMenuTab'], // Enable column hiding
   }), []);
+
+  // Context menu for column visibility
+  const getContextMenuItems = useCallback((params) => {
+    const result = [
+      {
+        name: 'Show/Hide Columns',
+        icon: '<span class="ag-icon ag-icon-columns"></span>',
+        subMenu: params.api.getColumns().map(col => ({
+          name: col.getColDef().headerName || col.getColId(),
+          checked: col.isVisible(),
+          action: () => {
+            params.api.setColumnsVisible([col.getColId()], !col.isVisible());
+          },
+        })),
+      },
+      'separator',
+      'copy',
+      'copyWithHeaders',
+      'separator',
+      'export',
+    ];
+    return result;
+  }, []);
 
   // Columns sized on first render - flex handles responsive sizing automatically
   const onFirstDataRendered = (params) => {
@@ -411,6 +470,7 @@ const ConsoleView = () => {
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               getRowId={(params) => params.data.session_id} // Stable row tracking
+              getContextMenuItems={getContextMenuItems} // Custom context menu
               domLayout="normal"
               suppressCellFocus={true}
               suppressMovableColumns={false}
@@ -422,6 +482,7 @@ const ConsoleView = () => {
               onFirstDataRendered={onFirstDataRendered}
               rowClass="console-grid-row-clickable"
               tooltipShowDelay={500}
+              preventDefaultOnContextMenu={true} // Prevent browser context menu
             />
           </div>
         )}

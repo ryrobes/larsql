@@ -4339,6 +4339,8 @@ Refinement directive: {reforge_config.honing_prompt}
             from .db_adapter import get_db
             from datetime import datetime
             import yaml
+            import json
+            import sys
 
             db = get_db()
 
@@ -4413,6 +4415,65 @@ Refinement directive: {reforge_config.honing_prompt}
                 )
             except Exception:
                 pass  # Don't fail if status update fails
+
+            # Save final output to cascade_sessions for Console UI
+            try:
+                from .db_adapter import get_db
+                import json
+
+                db = get_db()
+
+                # Extract final output from last executed cell
+                final_output = None
+
+                # Strategy: Get last cell's output from state using lineage
+                if result and result.get("state"):
+                    state = result["state"]
+
+                    # Use lineage to get execution order (most reliable)
+                    if result.get("lineage") and len(result["lineage"]) > 0:
+                        # Get last cell name from lineage (lineage is list of dicts with 'cell' key)
+                        lineage_entry = result["lineage"][-1]
+                        last_cell = lineage_entry.get("cell") if isinstance(lineage_entry, dict) else lineage_entry
+
+                        # State stores outputs as "output_{cell_name}" convention
+                        output_key = f"output_{last_cell}"
+
+                        if output_key in state:
+                            final_output = state[output_key]
+
+                    # Fallback: Get last cell from cells definition
+                    if final_output is None and self.config.cells:
+                        # Iterate cells in reverse to find last one with output
+                        for cell in reversed(self.config.cells):
+                            output_key = f"output_{cell.name}"
+                            if output_key in state:
+                                final_output = state[output_key]
+                                break
+
+                # Serialize output for storage (preserve format as-is)
+                if final_output is not None:
+                    # Handle different output types
+                    if isinstance(final_output, str):
+                        output_str = final_output
+                    elif isinstance(final_output, (dict, list)):
+                        output_str = json.dumps(final_output, ensure_ascii=False)
+                    else:
+                        output_str = str(final_output)
+
+                    # Update cascade_sessions with full output (NO truncation)
+                    # Use db.update_row() which properly handles ClickHouse ALTER UPDATE syntax
+                    db.update_row(
+                        'cascade_sessions',
+                        {'output': output_str},
+                        f"session_id = '{self.session_id}'",
+                        sync=False  # Don't wait for mutation (faster, non-blocking)
+                    )
+
+            except Exception as e:
+                # Don't fail cascade if output save fails
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Could not save output to cascade_sessions: {e}")
 
             # For cascade soundings, emit cascade_complete event here since
             # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent

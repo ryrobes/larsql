@@ -57,6 +57,7 @@ with open('windlass/migrations/add_callouts_columns.sql') as f:
 - `add_model_requested_column.sql` - Adds `model_requested` column (2025-12-10)
 - `add_reasoning_columns.sql` - Adds extended thinking columns (2025-12-19)
 - `add_ui_sql_log_columns.sql` - Adds UI query tracking columns (2025-12-20)
+- `add_output_column_to_cascade_sessions.sql` - Adds `output` column for storing final cascade results (2025-12-27)
 
 ## Notes
 
