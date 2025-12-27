@@ -198,8 +198,11 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
     }
 
     try {
+      console.log('[HTMLSection] ===== NEW RENDER =====');
       console.log('[HTMLSection] checkpointId:', checkpointId);
       console.log('[HTMLSection] sessionId:', sessionId);
+      console.log('[HTMLSection] cellName:', spec.cell_name);
+      console.log('[HTMLSection] cascadeId:', spec.cascade_id);
       console.log('[HTMLSection] spec.content (first 200 chars):', spec.content?.substring(0, 200));
 
       // Process template variables
@@ -456,30 +459,31 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
  * Build complete iframe HTML document with base theme CSS and HTMX
  */
 function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
-  // Inline the lite theme CSS
+  // Inline the AppShell-themed CSS - DATA DENSE, BRIGHT ACCENTS
   const baseCSS = `
-/* RVBBIT Lite Theme - Minimal base styles for HTMX iframes */
+/* RVBBIT AppShell Theme - Data-dense HTMX forms */
 :root {
-  --bg-darkest: #0a0a0a;
-  --bg-dark: #121212;
-  --bg-card: #1a1a1a;
-  --border-default: #333;
-  --border-subtle: #222;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
+  --bg-darkest: #000000;
+  --bg-dark: #0a0510;
+  --bg-card: rgba(0, 0, 0, 0.6);
+  --border-default: rgba(0, 229, 255, 0.2);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --text-primary: #cbd5e1;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent-cyan: #00e5ff;
   --accent-purple: #a78bfa;
-  --accent-blue: #4A9EDD;
-  --accent-green: #10b981;
-  --accent-red: #ef4444;
+  --accent-green: #22d399;
+  --accent-red: #ff4757;
+  --accent-yellow: #fbbf24;
 }
 
 body {
   margin: 0;
-  padding: 16px;
-  font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
+  padding: 10px;
+  font-family: 'Google Sans Code', 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text-primary);
   background: transparent;
   -webkit-font-smoothing: antialiased;
@@ -488,55 +492,177 @@ body {
 * { box-sizing: border-box; }
 
 h1, h2, h3, h4, h5, h6 {
-  color: var(--accent-purple);
-  font-weight: 600;
-  margin: 0 0 0.75rem 0;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-h1 { font-size: 1.875rem; }
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.25rem; }
+h1 { font-size: 1.125rem; }
+h2 { font-size: 1rem; }
+h3 { font-size: 0.875rem; }
 
-p { margin: 0 0 0.75rem 0; }
+p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 input, select, textarea {
-  background: var(--bg-darkest);
+  background: rgba(0, 0, 0, 0.8);
   border: 1px solid var(--border-default);
   color: var(--text-primary);
-  padding: 0.5rem 0.75rem;
+  padding: 7px 9px;
   border-radius: 4px;
-  font-family: inherit;
-  font-size: 0.875rem;
+  font-family: 'Google Sans Code', monospace;
+  font-size: 12px;
+  transition: all 0.15s;
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--accent-purple);
-  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+  background: #000;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 50px;
+  line-height: 1.5;
 }
 
 button {
-  background: var(--accent-purple);
-  color: white;
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+  color: #000;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: 4px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
 }
 
-button:hover:not(:disabled) { filter: brightness(1.1); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
 
 code, pre {
   font-family: 'Google Sans Code', monospace;
-  background: var(--bg-darkest);
+  background: rgba(0, 0, 0, 0.8);
   border-radius: 4px;
 }
 
-code { padding: 2px 6px; font-size: 0.875em; }
-pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); }
+code {
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--accent-purple);
+}
+
+pre {
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  line-height: 1.5;
+}
+
+label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Table styling for data-dense layouts */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+th, td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+th {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+
+tr:hover {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+/* Checkbox/Radio styling */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent-cyan);
+  width: 16px;
+  height: 16px;
+}
+
+/* Select dropdown */
+select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300e5ff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 30px;
+}
+
+/* Links */
+a {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+a:hover {
+  text-decoration: underline;
+  filter: brightness(1.2);
+}
+
+/* Lists - compact */
+ul, ol {
+  margin: 0 0 8px 0;
+  padding-left: 20px;
+}
+
+li {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+/* Utility classes */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.mt-1 { margin-top: 8px; }
+.mb-1 { margin-bottom: 8px; }
+.p-1 { padding: 8px; }
   `;
 
   return `<!DOCTYPE html>
@@ -578,6 +704,37 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
       //console.log('[HTMX iframe] vegaEmbed:', typeof vegaEmbed !== 'undefined');
       //console.log('[HTMX iframe] AG Grid:', typeof agGrid !== 'undefined');
 
+      // FIX: Repair malformed HTMX URLs before HTMX processes them
+      // This handles cases where template variables weren't replaced properly
+      const checkpointId = document.body.getAttribute('data-checkpoint-id');
+      const sessionId = document.body.getAttribute('data-session-id');
+      console.log('[HTMX iframe] Checkpoint context from body:', {checkpointId, sessionId});
+
+      // DEBUG: Check form structure
+      const forms = document.querySelectorAll('form');
+      console.log('[HTMX iframe] Forms found:', forms.length);
+      forms.forEach((form, idx) => {
+        console.log('[HTMX iframe] Form', idx, ':', {
+          hasHxPost: form.hasAttribute('hx-post'),
+          hxPost: form.getAttribute('hx-post'),
+          hasHxExt: form.hasAttribute('hx-ext'),
+          hxExt: form.getAttribute('hx-ext'),
+          buttonCount: form.querySelectorAll('button').length
+        });
+      });
+
+      if (checkpointId) {
+        document.querySelectorAll('[hx-post]').forEach(el => {
+          const url = el.getAttribute('hx-post');
+          // Fix malformed URLs like '/api/checkpoints//respond'
+          if (url && url.includes('//respond')) {
+            const fixedUrl = '/api/checkpoints/' + checkpointId + '/respond';
+            el.setAttribute('hx-post', fixedUrl);
+            console.log('[HTMX iframe] Fixed malformed URL:', url, '->', fixedUrl);
+          }
+        });
+      }
+
       if (typeof htmx !== 'undefined') {
         // HTMX configuration for iframe
         htmx.config.globalViewTransitions = true;
@@ -616,8 +773,38 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
 
         console.log('[HTMX iframe] Final check - json-enc available:', htmx.ext && htmx.ext['json-enc']);
 
+        // DEBUG: Log all clicks and manually submit if requestSubmit fails
+        document.addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON') {
+            console.log('[HTMX iframe] Button clicked:', e.target.textContent.trim(), 'type:', e.target.type);
+
+            const form = e.target.closest('form');
+            if (form) {
+              console.log('[HTMX iframe] Button is inside form');
+
+              // For type="button", the onclick should handle submission
+              // But if requestSubmit() doesn't fire submit event, we need a backup
+              if (e.target.type === 'button') {
+                console.log('[HTMX iframe] Button type is "button" - relying on onclick');
+
+                // BACKUP: Manually trigger submit after onclick executes
+                setTimeout(() => {
+                  console.log('[HTMX iframe] Manually triggering submit event as backup');
+                  const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                  form.dispatchEvent(submitEvent);
+                }, 150);
+              } else if (e.target.type === 'submit') {
+                console.log('[HTMX iframe] Button type is "submit" - will trigger submit automatically');
+              }
+            } else {
+              console.log('[HTMX iframe] Button is NOT inside form');
+            }
+          }
+        }, true);
+
         // WORKAROUND: Intercept form submissions and use fetch with JSON instead of HTMX
         document.addEventListener('submit', (e) => {
+          console.log('[HTMX iframe] Submit event fired on:', e.target.tagName);
           const form = e.target;
 
           // Check if this form has hx-post and json-enc
@@ -626,10 +813,21 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
             e.preventDefault();
             e.stopPropagation();
 
-            // Get the URL
-            let url = form.getAttribute('hx-post');
-            if (url.startsWith('/')) {
-              url = 'http://localhost:5001' + url;
+            // Reuse checkpoint context from outer scope
+            const cpId = checkpointId;
+            const sessId = sessionId;
+
+            // Build URL from context (fallback to form attribute if context missing)
+            let url;
+            if (cpId) {
+              url = 'http://localhost:5001/api/checkpoints/' + cpId + '/respond';
+              console.log('[HTMX iframe] Using checkpoint context for URL:', url);
+            } else {
+              url = form.getAttribute('hx-post');
+              if (url.startsWith('/')) {
+                url = 'http://localhost:5001' + url;
+              }
+              console.log('[HTMX iframe] Using form hx-post attribute:', url);
             }
 
             // Build JSON from form data
@@ -654,20 +852,15 @@ pre { padding: 1rem; overflow-x: auto; border: 1px solid var(--border-default); 
             const jsonBody = JSON.stringify(params);
             console.log('[HTMX iframe] Submitting via fetch:', url);
             console.log('[HTMX iframe] JSON body:', jsonBody);
-
-            // Get checkpoint context from body data attributes
-            const checkpointId = document.body.getAttribute('data-checkpoint-id');
-            const sessionId = document.body.getAttribute('data-session-id');
-
-            console.log('[HTMX iframe] Checkpoint context - checkpointId:', checkpointId, 'sessionId:', sessionId);
+            console.log('[HTMX iframe] Checkpoint context - checkpointId:', cpId, 'sessionId:', sessId);
 
             // Submit via fetch
             fetch(url, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-Checkpoint-Id': checkpointId || '',
-                'X-Session-Id': sessionId || ''
+                'X-Checkpoint-Id': cpId || '',
+                'X-Session-Id': sessId || ''
               },
               body: jsonBody
             })

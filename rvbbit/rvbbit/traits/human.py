@@ -1219,6 +1219,17 @@ def _build_structured_decision_ui(
         "multiline": True
     })
 
+    # Add system extras (consistent with HTMX mode)
+    sections.append({
+        "type": "text_input",
+        "name": "notes",
+        "label": "💬 Additional Notes (optional):",
+        "placeholder": "Add context, feedback, or clarifications...",
+        "optional": True,
+        "multiline": True,
+        "rows": 3
+    })
+
     return {
         "layout": "vertical",
         "title": question,

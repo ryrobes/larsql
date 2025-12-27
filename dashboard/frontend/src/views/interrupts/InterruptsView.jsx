@@ -1,25 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Split from 'react-split';
 import { Icon } from '@iconify/react';
-import { Button, Card, Badge, useToast } from '../../components';
-import DynamicUI from '../../components/DynamicUI';
-import HTMLSection from '../../components/sections/HTMLSection';
+import { Button, Badge, useToast } from '../../components';
+import CheckpointRenderer from '../../components/CheckpointRenderer';
+import CheckpointModal from '../../components/CheckpointModal';
 import useNavigationStore from '../../stores/navigationStore';
 import './InterruptsView.css';
 
 /**
- * InterruptsView - Manage blocked sessions and HITL checkpoints
+ * InterruptsView - Studio-style HITL checkpoint manager
  *
- * Features:
- * - List of pending checkpoints (grouped by session)
- * - Inline checkpoint UI rendering (HTMX + DSL)
- * - Real-time updates via polling
- * - Quick actions (respond, cancel, view session)
+ * Layout:
+ * - Left sidebar: Compact list of pending checkpoints
+ * - Right panel: Selected checkpoint detail with full UI
  */
 const InterruptsView = () => {
   const [checkpoints, setCheckpoints] = useState([]);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedCards, setExpandedCards] = useState(new Set());
+  const [splitSizes, setSplitSizes] = useState([25, 75]);
+  const [showModal, setShowModal] = useState(false);
   const { showToast } = useToast();
   const { navigate } = useNavigationStore();
 
@@ -38,10 +39,32 @@ const InterruptsView = () => {
       const pending = (data.checkpoints || []).filter(cp => cp.status === 'pending');
       setCheckpoints(pending);
 
-      // Auto-expand cards if there are pending checkpoints
-      if (pending.length > 0 && expandedCards.size === 0) {
-        setExpandedCards(new Set(pending.map(cp => cp.id)));
-      }
+      // Update selected checkpoint logic (using functional setState to avoid dependency)
+      setSelectedCheckpoint(prevSelected => {
+        // Auto-select first checkpoint if none selected
+        if (!prevSelected && pending.length > 0) {
+          return pending[0];
+        }
+
+        // Update selected checkpoint if it's still in the list
+        if (prevSelected) {
+          const updated = pending.find(cp => cp.id === prevSelected.id);
+          if (updated) {
+            // Only update if data actually changed (prevent unnecessary re-renders)
+            if (JSON.stringify(updated) === JSON.stringify(prevSelected)) {
+              return prevSelected; // Keep same reference
+            }
+            return updated;
+          } else if (pending.length > 0) {
+            // Selected checkpoint was removed, select first one
+            return pending[0];
+          } else {
+            return null;
+          }
+        }
+
+        return prevSelected;
+      });
 
       setError(null);
     } catch (err) {
@@ -49,7 +72,7 @@ const InterruptsView = () => {
     } finally {
       setLoading(false);
     }
-  }, [expandedCards.size]);
+  }, []); // No dependencies - uses functional setState instead
 
   // Poll every 3 seconds
   useEffect(() => {
@@ -57,19 +80,6 @@ const InterruptsView = () => {
     const interval = setInterval(fetchCheckpoints, 3000);
     return () => clearInterval(interval);
   }, [fetchCheckpoints]);
-
-  // Toggle card expansion
-  const toggleCard = (checkpointId) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      if (next.has(checkpointId)) {
-        next.delete(checkpointId);
-      } else {
-        next.add(checkpointId);
-      }
-      return next;
-    });
-  };
 
   // Handle checkpoint response
   const handleResponse = async (checkpointId, response) => {
@@ -123,15 +133,6 @@ const InterruptsView = () => {
     }
   };
 
-  // Group checkpoints by session
-  const groupedCheckpoints = checkpoints.reduce((acc, cp) => {
-    if (!acc[cp.session_id]) {
-      acc[cp.session_id] = [];
-    }
-    acc[cp.session_id].push(cp);
-    return acc;
-  }, {});
-
   // Format waiting time
   const formatWaitTime = (createdAt) => {
     const seconds = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
@@ -142,181 +143,189 @@ const InterruptsView = () => {
     return `${hours}h ${mins}m`;
   };
 
-  // Check if checkpoint has HTML sections
-  const hasHTMLSections = (uiSpec) => {
-    if (!uiSpec || !uiSpec.sections) return false;
-    return uiSpec.sections.some(section => section.type === 'html');
-  };
-
+  // Loading state
   if (loading && checkpoints.length === 0) {
     return (
-      <div className="interrupts-view">
-        <div className="interrupts-loading">
-          <Icon icon="mdi:loading" className="spinning" width="32" />
-          <p>Loading checkpoints...</p>
-        </div>
+      <div className="interrupts-view-loading">
+        <Icon icon="mdi:loading" className="spinning" width="32" />
+        <p>Loading checkpoints...</p>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (checkpoints.length === 0) {
+    return (
+      <div className="interrupts-view-empty">
+        <Icon icon="mdi:check-circle" width="64" className="empty-icon" />
+        <h2>All clear!</h2>
+        <p>No pending checkpoints. All cascades are running smoothly.</p>
       </div>
     );
   }
 
   return (
-    <div className="interrupts-view">
-      {/* Header */}
-      <div className="interrupts-header">
-        <div className="interrupts-title">
-          <Icon icon="mdi:hand-back-right" width="32" />
-          <h1>Interrupts</h1>
-          {checkpoints.length > 0 && (
-            <Badge variant="count" color="yellow" glow pulse>
-              {checkpoints.length}
-            </Badge>
+    <div className="interrupts-view-split">
+      <Split
+        className="interrupts-horizontal-split"
+        sizes={splitSizes}
+        onDragEnd={(sizes) => setSplitSizes(sizes)}
+        minSize={[200, 400]}
+        maxSize={[500, Infinity]}
+        gutterSize={4}
+        gutterAlign="center"
+        direction="horizontal"
+      >
+        {/* Left Sidebar - Checkpoint List */}
+        <div className="interrupts-sidebar">
+          <div className="interrupts-sidebar-header">
+            <div className="sidebar-title">
+              <Icon icon="mdi:hand-back-right" width="16" />
+              <span>Interrupts</span>
+              <Badge variant="count" color="yellow" size="sm" glow pulse>
+                {checkpoints.length}
+              </Badge>
+            </div>
+            {selectedCheckpoint && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="mdi:window-restore"
+                onClick={() => setShowModal(true)}
+                style={{marginTop: '8px'}}
+              >
+                Test Modal
+              </Button>
+            )}
+          </div>
+
+          <div className="interrupts-list">
+            {checkpoints.map((checkpoint) => (
+              <div
+                key={checkpoint.id}
+                className={`checkpoint-list-item ${selectedCheckpoint?.id === checkpoint.id ? 'selected' : ''}`}
+                onClick={() => setSelectedCheckpoint(checkpoint)}
+              >
+                <div className="checkpoint-list-header">
+                  <Badge variant="label" color="purple" size="sm">
+                    {checkpoint.checkpoint_type}
+                  </Badge>
+                  <span className="checkpoint-wait-time">
+                    {formatWaitTime(checkpoint.created_at)}
+                  </span>
+                </div>
+
+                <div className="checkpoint-list-session">
+                  {checkpoint.session_id.substring(0, 16)}...
+                </div>
+
+                <div className="checkpoint-list-meta">
+                  <span className="checkpoint-list-cascade">
+                    {checkpoint.cascade_id}
+                  </span>
+                  {checkpoint.cell_name && (
+                    <>
+                      <Icon icon="mdi:chevron-right" width="10" />
+                      <span className="checkpoint-list-cell">
+                        {checkpoint.cell_name}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Panel - Checkpoint Detail */}
+        <div className="interrupts-detail-panel">
+          {selectedCheckpoint ? (
+            <>
+              {/* Detail Header */}
+              <div className="interrupts-detail-header">
+                <div className="detail-header-main">
+                  <div className="detail-header-type">
+                    <Badge variant="label" color="purple">
+                      {selectedCheckpoint.checkpoint_type}
+                    </Badge>
+                  </div>
+                  <div className="detail-header-info">
+                    <span className="detail-session" title={selectedCheckpoint.session_id}>
+                      {selectedCheckpoint.session_id}
+                    </span>
+                    <Icon icon="mdi:chevron-right" width="12" />
+                    <span className="detail-cascade">{selectedCheckpoint.cascade_id}</span>
+                    {selectedCheckpoint.cell_name && (
+                      <>
+                        <Icon icon="mdi:chevron-right" width="12" />
+                        <span className="detail-cell">{selectedCheckpoint.cell_name}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="detail-header-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="mdi:eye"
+                    onClick={() => navigate(`studio?session=${selectedCheckpoint.session_id}`)}
+                  >
+                    View in Studio
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon="mdi:close-circle"
+                    onClick={() => handleCancel(selectedCheckpoint.id)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+
+              {/* Detail Content */}
+              <div className="interrupts-detail-content">
+                <CheckpointRenderer
+                  checkpoint={selectedCheckpoint}
+                  onSubmit={(response) => handleResponse(selectedCheckpoint.id, response)}
+                  variant="page"
+                  showPhaseOutput={true}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="interrupts-detail-empty">
+              <Icon icon="mdi:cursor-default-click" width="48" />
+              <p>Select a checkpoint to view details</p>
+            </div>
           )}
         </div>
-        <p className="interrupts-subtitle">
-          Human-in-the-loop checkpoints waiting for your response
-        </p>
-      </div>
+      </Split>
 
-      {/* Error message */}
+      {/* Error Toast */}
       {error && (
-        <Card variant="default" padding="md" className="interrupts-error">
-          <Icon icon="mdi:alert-circle" width="20" />
-          <span>Error loading checkpoints: {error}</span>
-        </Card>
+        <div className="interrupts-error-toast">
+          <Icon icon="mdi:alert-circle" width="16" />
+          <span>{error}</span>
+        </div>
       )}
 
-      {/* Empty state */}
-      {checkpoints.length === 0 && !loading && (
-        <Card variant="glass" padding="xl" className="interrupts-empty">
-          <Icon icon="mdi:check-circle" width="48" className="empty-icon" />
-          <h2>All clear!</h2>
-          <p>No pending checkpoints. All cascades are running smoothly.</p>
-        </Card>
+      {/* Test Modal */}
+      {showModal && selectedCheckpoint && (
+        <CheckpointModal
+          checkpoint={selectedCheckpoint}
+          onSubmit={async (response) => {
+            await handleResponse(selectedCheckpoint.id, response);
+            setShowModal(false);
+          }}
+          onClose={() => setShowModal(false)}
+          onCancel={async () => {
+            await handleCancel(selectedCheckpoint.id);
+            setShowModal(false);
+          }}
+        />
       )}
-
-      {/* Checkpoint cards grouped by session */}
-      <div className="interrupts-list">
-        {Object.entries(groupedCheckpoints).map(([sessionId, sessionCheckpoints]) => (
-          <div key={sessionId} className="session-group">
-            {sessionCheckpoints.map((checkpoint) => {
-              const isExpanded = expandedCards.has(checkpoint.id);
-              const hasHTML = hasHTMLSections(checkpoint.ui_spec);
-
-              return (
-                <Card
-                  key={checkpoint.id}
-                  variant="default"
-                  padding="none"
-                  className="checkpoint-card"
-                >
-                  {/* Card Header */}
-                  <div className="checkpoint-header" onClick={() => toggleCard(checkpoint.id)}>
-                    <div className="checkpoint-info">
-                      <div className="checkpoint-meta">
-                        <Badge variant="label" color="purple">
-                          {checkpoint.checkpoint_type}
-                        </Badge>
-                        <span className="checkpoint-session" title={sessionId}>
-                          {sessionId.substring(0, 12)}...
-                        </span>
-                        <span className="checkpoint-cascade">
-                          {checkpoint.cascade_id}
-                        </span>
-                        {checkpoint.cell_name && (
-                          <span className="checkpoint-cell">
-                            {checkpoint.cell_name}
-                          </span>
-                        )}
-                      </div>
-                      <div className="checkpoint-status">
-                        <Icon icon="mdi:clock-outline" width="14" />
-                        <span>{formatWaitTime(checkpoint.created_at)} waiting</span>
-                      </div>
-                    </div>
-                    <div className="checkpoint-actions-header">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon="mdi:eye"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`studio?session=${sessionId}`);
-                        }}
-                      >
-                        View
-                      </Button>
-                      <Icon
-                        icon={isExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                        width="20"
-                        className="expand-icon"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card Content (expanded) */}
-                  {isExpanded && (
-                    <div className="checkpoint-content">
-                      {/* Phase output */}
-                      {checkpoint.phase_output && (
-                        <div className="checkpoint-output">
-                          <div className="output-label">
-                            <Icon icon="mdi:message-text" width="14" />
-                            Phase Output
-                          </div>
-                          <div className="output-text">
-                            {checkpoint.phase_output}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* UI Rendering */}
-                      <div className="checkpoint-ui">
-                        {hasHTML ? (
-                          // HTMX HTML sections
-                          checkpoint.ui_spec.sections
-                            .filter(section => section.type === 'html')
-                            .map((section, idx) => (
-                              <HTMLSection
-                                key={idx}
-                                spec={section}
-                                checkpointId={checkpoint.id}
-                                sessionId={checkpoint.session_id}
-                                cellName={checkpoint.cell_name}
-                                cascadeId={checkpoint.cascade_id}
-                                onSubmit={(response) => handleResponse(checkpoint.id, response)}
-                              />
-                            ))
-                        ) : (
-                          // DSL UI
-                          <DynamicUI
-                            spec={checkpoint.ui_spec}
-                            onSubmit={(response) => handleResponse(checkpoint.id, response)}
-                            phaseOutput={checkpoint.phase_output}
-                            checkpointId={checkpoint.id}
-                            sessionId={checkpoint.session_id}
-                          />
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="checkpoint-actions">
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          icon="mdi:close-circle"
-                          onClick={() => handleCancel(checkpoint.id)}
-                        >
-                          Cancel Checkpoint
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        ))}
-      </div>
     </div>
   );
 };

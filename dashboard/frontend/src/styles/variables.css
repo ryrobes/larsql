@@ -8,17 +8,17 @@
      COLORS - Background
      ============================================ */
   --color-bg-primary: #000000;           /* Pure black - main canvas */
-  --color-bg-secondary: #0a0818;         /* Very dark purple - panels */
-  --color-bg-tertiary: #0f0e21;          /* Dark purple - tooltips */
-  --color-bg-card: #0c0a1a;              /* Card background */
-  --color-bg-input: #080510;             /* Input fields */
+  --color-bg-secondary: #000000;         /* Pure black - panels */
+  --color-bg-tertiary: #0a0a0a;          /* Very dark gray - tooltips */
+  --color-bg-card: #000000;              /* Pure black - cards */
+  --color-bg-input: #000000;             /* Pure black - inputs */
 
   /* ============================================
      COLORS - Borders
      ============================================ */
-  --color-border-dim: #1a1628;           /* Subtle dividers */
-  --color-border-medium: #2a2638;        /* Medium emphasis */
-  --color-border-bright: #3a3648;        /* High emphasis */
+  --color-border-dim: rgba(0, 229, 255, 0.15);    /* Subtle cyan dividers */
+  --color-border-medium: rgba(0, 229, 255, 0.25); /* Medium cyan */
+  --color-border-bright: rgba(0, 229, 255, 0.4);  /* Bright cyan */
 
   /* ============================================
      COLORS - Text

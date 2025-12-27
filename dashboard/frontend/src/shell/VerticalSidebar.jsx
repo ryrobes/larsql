@@ -152,7 +152,7 @@ const VerticalSidebar = ({
                 const isCurrent = session.session_id === currentSessionId;
 
                 // DEBUG: Log session data to understand what we're getting
-                if (process.env.NODE_ENV === 'development' && Math.random() < 0.1) {
+                if (process.env.NODE_ENV === 'development-NO' && Math.random() < 0.1) {
                   console.log('[VerticalSidebar] Session data:', {
                     session_id: session.session_id,
                     cascade_id: session.cascade_id,

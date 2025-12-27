@@ -534,8 +534,16 @@ class CheckpointManager:
 
         try:
             while True:
-                # Refresh checkpoint from cache/db
-                checkpoint = self.get_checkpoint(checkpoint_id)
+                # CRITICAL: Force reload from database (not cache) to see updates from API
+                # The API endpoint runs in a different process and updates the DB
+                if self.use_db:
+                    checkpoint = self._load_checkpoint(checkpoint_id)
+                    # Update cache with fresh data
+                    if checkpoint:
+                        with self._cache_lock:
+                            self._cache[checkpoint_id] = checkpoint
+                else:
+                    checkpoint = self.get_checkpoint(checkpoint_id)
 
                 if checkpoint.status == CheckpointStatus.RESPONDED:
                     console.print(f"[green]✓ Received human response[/green]")

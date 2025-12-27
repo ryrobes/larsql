@@ -16,6 +16,10 @@ export { default as Toast } from './Toast';
 export { ToastContainer } from './Toast/Toast';
 export { default as Modal, ModalHeader, ModalContent, ModalFooter } from './Modal';
 
+// Checkpoint Components (Universal HITL rendering)
+export { default as CheckpointRenderer } from './CheckpointRenderer';
+export { default as CheckpointModal } from './CheckpointModal';
+
 // Hooks
 export { useToast } from '../stores/toastStore';
 export { useModal } from '../stores/modalStore';

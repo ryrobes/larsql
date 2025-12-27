@@ -322,12 +322,37 @@ function StudioPage({
     if (dragType === 'input-placeholder') {
       const dropTarget = over.data.current;
 
+      // Helper: Add input to top-level inputs_schema and return the input name
+      const addInputToSchema = () => {
+        const cascadeStore = useStudioCascadeStore.getState();
+        const existingInputs = cascadeStore.cascade?.inputs_schema || {};
+
+        // Find unique input name (input_1, input_2, etc.)
+        let inputName = 'input_1';
+        let counter = 1;
+        while (existingInputs[inputName]) {
+          counter++;
+          inputName = `input_${counter}`;
+        }
+
+        // Add to top-level inputs_schema
+        const updatedInputsSchema = {
+          ...existingInputs,
+          [inputName]: 'Describe this input parameter'
+        };
+
+        return { inputName, updatedInputsSchema };
+      };
+
       // Drop on canvas → Create llm_phase with input placeholder
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
 
-        // Find unique name
+        // Add to inputs_schema first
+        const { inputName, updatedInputsSchema } = addInputToSchema();
+
+        // Find unique cell name
         let cellName = 'with_input';
         let counter = 1;
         while (existingCells.some(c => c.name === cellName)) {
@@ -338,45 +363,61 @@ function StudioPage({
         // Create llm_phase cell with input reference
         const newCell = {
           name: cellName,
-          instructions: "Process this data:\n\n{{ input.RENAME_ME }}",
+          instructions: `Process this data:\n\n{{ input.${inputName} }}`,
         };
 
         const updatedCells = [...existingCells, newCell];
-        updateCascade({ cells: updatedCells });
+        updateCascade({
+          inputs_schema: updatedInputsSchema,
+          cells: updatedCells
+        });
         return;
       }
 
-      // Drop on cell → Add input to cell's inputs object (or create it)
+      // Drop on cell → Add to inputs_schema and inject into instructions/code
       if (dropTarget?.type === 'cell-card') {
         const cellIndex = dropTarget.cellIndex;
         const cascadeStore = useStudioCascadeStore.getState();
         const cellToUpdate = cascadeStore.cascade?.cells[cellIndex];
 
         if (cellToUpdate) {
-          // Create inputs object if it doesn't exist
-          const currentInputs = cellToUpdate.inputs || {};
+          // Add to inputs_schema first
+          const { inputName, updatedInputsSchema } = addInputToSchema();
 
-          // Find a unique input name
-          let inputName = 'RENAME_ME';
-          let counter = 1;
-          while (currentInputs[inputName]) {
-            inputName = `RENAME_ME_${counter}`;
-            counter++;
+          const jinjaRef = `{{ input.${inputName} }}`;
+
+          // Inject into instructions (preferred) or code field
+          const updatedCells = [...cascadeStore.cascade.cells];
+
+          if (cellToUpdate.instructions !== undefined) {
+            // Add to instructions field
+            const currentInstructions = cellToUpdate.instructions || '';
+            updatedCells[cellIndex] = {
+              ...cellToUpdate,
+              instructions: currentInstructions + (currentInstructions ? '\n\n' : '') + jinjaRef
+            };
+          } else if (cellToUpdate.inputs?.code !== undefined) {
+            // Add to code field (for deterministic cells like python_data, sql_data)
+            const currentCode = cellToUpdate.inputs.code || '';
+            updatedCells[cellIndex] = {
+              ...cellToUpdate,
+              inputs: {
+                ...cellToUpdate.inputs,
+                code: currentCode + (currentCode ? '\n\n' : '') + `# Input: ${jinjaRef}\n`
+              }
+            };
+          } else {
+            // Fallback: create instructions field
+            updatedCells[cellIndex] = {
+              ...cellToUpdate,
+              instructions: jinjaRef
+            };
           }
 
-          // Add new input field with Jinja2 reference
-          const updatedInputs = {
-            ...currentInputs,
-            [inputName]: '{{ input.RENAME_ME }}'
-          };
-
-          const updatedCells = [...cascadeStore.cascade.cells];
-          updatedCells[cellIndex] = {
-            ...cellToUpdate,
-            inputs: updatedInputs
-          };
-
-          updateCascade({ cells: updatedCells });
+          updateCascade({
+            inputs_schema: updatedInputsSchema,
+            cells: updatedCells
+          });
         }
         return;
       }

@@ -4,43 +4,103 @@ import { Icon } from '@iconify/react';
 import { Tooltip } from '../../components/RichTooltip';
 
 /**
- * ToolBrowserPalette - Draggable tool browser for cascade building
+ * ToolBrowserPalette - Draggable trait browser for cascade building
  *
  * Features:
- * - Fetches tools from tool_manifest_vectors and hf_spaces tables
- * - Groups by tool type (function, cascade, memory, validator, hf_space)
- * - Draggable tool pills (not functional yet)
- * - Separate sections for built-in tools and HuggingFace Spaces
+ * - Fetches traits from tool_manifest_vectors and hf_spaces tables
+ * - Groups by trait type (function, cascade, memory, validator, hf_space)
+ * - Special "manifest" trait for dynamic trait selection
+ * - Draggable trait pills
+ * - Separate sections for built-in traits and HuggingFace Spaces
  */
 
-// Tool type metadata for icons and colors
-const TOOL_TYPE_CONFIG = {
+// Trait type metadata for icons and colors
+const TRAIT_TYPE_CONFIG = {
   function: { icon: 'mdi:function-variant', color: '#60a5fa', label: 'Function' },
   cascade: { icon: 'mdi:water', color: '#a78bfa', label: 'Cascade' },
   memory: { icon: 'mdi:database-outline', color: '#34d399', label: 'Memory' },
   validator: { icon: 'mdi:shield-check', color: '#f472b6', label: 'Validator' },
   hf_space: { icon: 'mdi:cube-outline', color: '#fbbf24', label: 'HF Space' },
+  manifest: { icon: 'mdi:auto-fix', color: '#ff006e', label: 'Manifest (Auto)' },
 };
 
 /**
- * Draggable tool pill
+ * Special Manifest pill - magic trait that auto-selects tools based on context
  */
-function ToolPill({ tool, isHfSpace = false }) {
-  const toolType = isHfSpace ? 'hf_space' : tool.type;
-  const config = TOOL_TYPE_CONFIG[toolType] || TOOL_TYPE_CONFIG.function;
-
-  const toolName = isHfSpace ? tool.name : tool.name;
-  const toolId = isHfSpace ? tool.id : tool.name;
+const ManifestPill = React.memo(() => {
+  const config = TRAIT_TYPE_CONFIG.manifest;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `tool-${toolId}`,
-    data: { type: 'tool', toolId: toolId, toolType: toolType },
+    id: 'trait-manifest',
+    data: { type: 'tool', toolId: 'manifest', toolType: 'manifest' },
   });
 
-  // Build tooltip content
-  const tooltipContent = isHfSpace
-    ? `${tool.author}/${tool.name}\nSDK: ${tool.sdk || 'unknown'}\nStatus: ${tool.status || 'unknown'}`
-    : tool.description;
+  return (
+    <Tooltip
+      label="manifest (Quartermaster)"
+      description="Magic trait that analyzes your cell's instructions and conversation context to automatically inject the most relevant tools. The Quartermaster intelligently selects tools based on what the LLM is trying to accomplish."
+      placement="right"
+    >
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        className={`model-pill model-pill-manifest ${isDragging ? 'dragging' : ''}`}
+        style={{
+          borderColor: config.color + '44',
+          background: `linear-gradient(135deg, rgba(255, 0, 110, 0.08), rgba(167, 139, 250, 0.08))`,
+          borderWidth: '1.5px',
+        }}
+      >
+        <Icon icon={config.icon} width="14" style={{ color: config.color, opacity: 0.9 }} />
+        <span className="model-pill-name" style={{ color: config.color, fontWeight: 600 }}>
+          manifest
+        </span>
+        <span
+          className="model-pill-context"
+          style={{
+            fontSize: '8px',
+            color: config.color,
+            opacity: 0.7,
+            fontWeight: 500,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+          }}
+        >
+          AUTO
+        </span>
+      </div>
+    </Tooltip>
+  );
+});
+
+ManifestPill.displayName = 'ManifestPill';
+
+/**
+ * Draggable trait pill
+ */
+function TraitPill({ tool, isHfSpace = false }) {
+  const traitType = isHfSpace ? 'hf_space' : tool.type;
+  const config = TRAIT_TYPE_CONFIG[traitType] || TRAIT_TYPE_CONFIG.function;
+
+  const traitName = isHfSpace ? tool.name : tool.name;
+  const traitId = isHfSpace ? tool.id : tool.name;
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `trait-${traitId}`,
+    data: { type: 'tool', toolId: traitId, toolType: traitType },
+  });
+
+  // Build tooltip content with proper label/description split
+  let tooltipLabel, tooltipDescription;
+
+  if (isHfSpace) {
+    tooltipLabel = `${tool.author}/${tool.name}`;
+    tooltipDescription = `HuggingFace Space • SDK: ${tool.sdk || 'unknown'} • Status: ${tool.status || 'unknown'}`;
+  } else {
+    tooltipLabel = traitName;
+    tooltipDescription = tool.description || 'No description available';
+  }
 
   // Status indicator color for HF Spaces
   const statusColor = isHfSpace
@@ -51,17 +111,21 @@ function ToolPill({ tool, isHfSpace = false }) {
     : null;
 
   return (
-    <Tooltip label={tooltipContent}>
+    <Tooltip
+      label={tooltipLabel}
+      description={tooltipDescription}
+      placement="right"
+    >
       <div
         ref={setNodeRef}
         {...listeners}
         {...attributes}
-        className={`model-pill model-pill-${toolType} ${isDragging ? 'dragging' : ''}`}
+        className={`model-pill model-pill-${traitType} ${isDragging ? 'dragging' : ''}`}
         style={{ borderColor: config.color + '34' }}
       >
         <Icon icon={config.icon} width="12" style={{ color: config.color, opacity: 0.8 }} />
         <span className="model-pill-name" style={{ color: config.color }}>
-          {toolName}
+          {traitName}
         </span>
         {isHfSpace && (
           <span
@@ -82,9 +146,9 @@ function ToolPill({ tool, isHfSpace = false }) {
 }
 
 /**
- * Collapsible tool group
+ * Collapsible trait group
  */
-function ToolGroup({ title, iconName, iconImage, tools, isHfSpace = false, defaultOpen = true }) {
+function TraitGroup({ title, iconName, iconImage, tools, isHfSpace = false, defaultOpen = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
   if (tools.length === 0) return null;
@@ -117,7 +181,7 @@ function ToolGroup({ title, iconName, iconImage, tools, isHfSpace = false, defau
       {isExpanded && (
         <div className="model-group-content">
           {tools.map(t => (
-            <ToolPill key={isHfSpace ? t.id : t.name} tool={t} isHfSpace={isHfSpace} />
+            <TraitPill key={isHfSpace ? t.id : t.name} tool={t} isHfSpace={isHfSpace} />
           ))}
         </div>
       )}
@@ -245,13 +309,13 @@ function ToolBrowserPalette() {
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
             className="nav-chevron"
           />
-          <Icon icon="mdi:tools" className="nav-section-icon" />
-          <span className="nav-section-title">Tools</span>
+          <Icon icon="mdi:rabbit" className="nav-section-icon" />
+          <span className="nav-section-title">Traits</span>
         </div>
         {isExpanded && (
           <div className="model-browser-loading">
             <Icon icon="mdi:loading" className="spinning" width="16" />
-            <span>Loading tools...</span>
+            <span>Loading traits...</span>
           </div>
         )}
       </div>
@@ -269,8 +333,8 @@ function ToolBrowserPalette() {
             icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
             className="nav-chevron"
           />
-          <Icon icon="mdi:tools" className="nav-section-icon" />
-          <span className="nav-section-title">Tools</span>
+          <Icon icon="mdi:rabbit" className="nav-section-icon" />
+          <span className="nav-section-title">Traits</span>
         </div>
         {isExpanded && (
           <div className="model-browser-error">
@@ -282,7 +346,7 @@ function ToolBrowserPalette() {
     );
   }
 
-  const totalTools = filteredTools.length + filteredHfSpaces.length;
+  const totalTraits = filteredTools.length + filteredHfSpaces.length + 1; // +1 for manifest
 
   return (
     <div className="nav-section model-browser-section">
@@ -294,9 +358,9 @@ function ToolBrowserPalette() {
           icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
           className="nav-chevron"
         />
-        <Icon icon="mdi:tools" className="nav-section-icon" />
-        <span className="nav-section-title">Tools</span>
-        <span className="nav-section-count">{totalTools}</span>
+        <Icon icon="mdi:rabbit" className="nav-section-icon" />
+        <span className="nav-section-title">Traits</span>
+        <span className="nav-section-count">{totalTraits}</span>
       </div>
 
       {isExpanded && (
@@ -306,7 +370,7 @@ function ToolBrowserPalette() {
             <Icon icon="mdi:magnify" width="14" className="model-search-icon" />
             <input
               type="text"
-              placeholder="Search tools..."
+              placeholder="Search traits..."
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               className="model-search-input"
@@ -321,21 +385,28 @@ function ToolBrowserPalette() {
             )}
           </div>
 
-          {/* Tool groups by type */}
+          {/* Trait groups by type */}
           <div className="model-groups-container">
-            {groupedTools.length === 0 && filteredHfSpaces.length === 0 && (
-              <div className="model-browser-empty">
-                <Icon icon="mdi:folder-open-outline" width="24" />
-                <span>No tools found</span>
+            {/* Special Manifest pill - always at top */}
+            {!searchText && (
+              <div style={{ padding: '8px 8px 12px', borderBottom: '1px solid rgba(26, 22, 40, 0.5)' }}>
+                <ManifestPill />
               </div>
             )}
 
-            {/* Built-in/Cascade tools grouped by type */}
+            {groupedTools.length === 0 && filteredHfSpaces.length === 0 && searchText && (
+              <div className="model-browser-empty">
+                <Icon icon="mdi:folder-open-outline" width="24" />
+                <span>No traits found</span>
+              </div>
+            )}
+
+            {/* Built-in/Cascade traits grouped by type */}
             {groupedTools.map(({ type, tools }) => (
-              <ToolGroup
+              <TraitGroup
                 key={type}
-                title={TOOL_TYPE_CONFIG[type]?.label || type}
-                iconName={TOOL_TYPE_CONFIG[type]?.icon || 'mdi:function-variant'}
+                title={TRAIT_TYPE_CONFIG[type]?.label || type}
+                iconName={TRAIT_TYPE_CONFIG[type]?.icon || 'mdi:function-variant'}
                 tools={tools}
                 defaultOpen={type === 'function'}
               />
@@ -343,7 +414,7 @@ function ToolBrowserPalette() {
 
             {/* HuggingFace Spaces */}
             {filteredHfSpaces.length > 0 && (
-              <ToolGroup
+              <TraitGroup
                 title="HuggingFace Spaces"
                 iconImage="/huggingface_logo-noborder_greyscale.svg"
                 tools={filteredHfSpaces}
