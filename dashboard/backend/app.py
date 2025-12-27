@@ -20,6 +20,15 @@ from flask_cors import CORS
 import pandas as pd
 from queue import Empty
 
+# CRITICAL: Set RVBBIT_ROOT before any imports
+# When running from dashboard/backend, we need to point to the repo root
+# This ensures cascade files, traits, and other resources are found correctly
+if 'RVBBIT_ROOT' not in os.environ:
+    # Detect repo root: go up two levels from dashboard/backend to get to rvbbit/
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+    os.environ['RVBBIT_ROOT'] = repo_root
+    print(f"[Backend] Set RVBBIT_ROOT={repo_root}")
+
 # Note: live_store.py is now a stub - all data comes from ClickHouse directly
 
 # Add rvbbit package to path for imports
@@ -3629,9 +3638,6 @@ def playground_run_from():
                         tokens_out=0,
                         cost=0.0,
                         duration_ms=0,
-                        tool_name=None,
-                        tool_args=None,
-                        tool_result=None,
                     )
 
                     print(f"[Playground RunFrom] Session {new_session_id} marked as ERROR in database")

@@ -605,11 +605,19 @@ def rvbbit_map_parallel_exec(
 
                 # Extract meaningful result
                 # Priority: state.output_extract > last phase output > full result
-                extracted = (
-                    result_obj.get("state", {}).get("output_extract") or
-                    list(result_obj.get("outputs", {}).values())[-1] if result_obj.get("outputs") else
-                    result_json
-                )
+                state = result_obj.get("state", {})
+                outputs = result_obj.get("outputs", {})
+
+                # Try to extract in order of preference
+                if "output_extract" in state and state["output_extract"]:
+                    # Has output_extract and it's not None/empty
+                    extracted = state["output_extract"]
+                elif outputs and len(outputs) > 0:
+                    # Has outputs dict with at least one entry
+                    extracted = list(outputs.values())[-1]
+                else:
+                    # Fallback to full result
+                    extracted = result_json
 
                 # Return enriched row with result column
                 return index, {**row, result_column: extracted}

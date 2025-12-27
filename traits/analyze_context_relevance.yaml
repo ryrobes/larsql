@@ -14,7 +14,14 @@ inputs_schema:
 
 cells:
   - name: rank_relevance
+    rules:
+      max_attempts: 3  # Allow retries if schema validation fails
     instructions: |
+      IMPORTANT: Return ONLY the raw JSON array. Do NOT wrap in markdown code fences.
+      Do NOT include any explanatory text before or after the JSON.
+      Your ENTIRE response should be valid JSON that starts with [ and ends with ].
+
+
       You are a meta-analyst evaluating which context messages were most useful in generating an LLM response.
 
       **The Response That Was Generated:**
@@ -22,7 +29,7 @@ cells:
 
       **Context Messages That Were Provided:**
       {% for msg in input.context_messages %}
-      {{ loop.index }}. [{{ msg.hash[:8] }}] ({{ msg.tokens }} tokens, ${{ "%.6f"|format(msg.cost) }})
+      {{ loop.index }}. [{{ msg.hash[:8] }}] Role: {{ msg.role|upper }} ({{ msg.tokens }} tokens, ${{ "%.6f"|format(msg.cost) }})
          {{ msg.content[:500] }}{% if msg.content|length > 500 %}...{% endif %}
 
       {% endfor %}
@@ -33,11 +40,23 @@ cells:
       - **Reasoning influence (30 points)**: Shaped the logic, conclusions, or approach taken
       - **Background context (20 points)**: Provided necessary domain knowledge or constraints
 
+      **IMPORTANT: System messages (role=system) often contain the core task instructions.**
+      If a system message defines WHAT to do, HOW to do it, or the OUTPUT format - it's critical!
+      Score system messages based on how much the response follows their instructions, not just
+      whether their text appears verbatim.
+
+      Examples:
+      - System: "Extract brand from product title" → Response extracts brand → Score 100 (defines entire task!)
+      - System: "Available tools: X, Y, Z" → Response doesn't use tools → Score 0 (irrelevant)
+      - User: "Analyze this data: [data]" → Response analyzes that data → Score 100 (provides input)
+      - Assistant: "Here are results: [results]" → Response references results → Score 80 (reused)
+
       Score 0 means: "This context was completely unused and could be removed"
       Score 100 means: "This context was critical and heavily used throughout"
 
-      **Output Format (STRICT JSON ARRAY):**
+      **Output Format (STRICT JSON ARRAY - NO MARKDOWN FENCES):**
       CRITICAL: You MUST return a JSON ARRAY, even if there is only one context message!
+      CRITICAL: Return ONLY raw JSON, NO markdown code fences (no ```json ... ```)!
 
       CORRECT (one message):
       [

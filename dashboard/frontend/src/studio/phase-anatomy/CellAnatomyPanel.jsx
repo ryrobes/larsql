@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import InputLayer from './components/InputLayer';
 import ContextLayer from './components/ContextLayer';
 import WardsLayer from './components/WardsLayer';
 import CandidatesLayer from './components/CandidatesLayer';
+import ParetoLayer from './components/ParetoLayer';
 import ConvergenceSection from './components/ConvergenceSection';
 import ReforgeLayer from './components/ReforgeLayer';
 import OutputLayer from './components/OutputLayer';
@@ -350,6 +351,42 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
   // Determine mode based on whether we have execution data
   const hasExecutionData = executionData && executionData.hasCandidates;
 
+  // Fetch Pareto frontier data if available
+  const [paretoData, setParetoData] = useState(null);
+
+  useEffect(() => {
+    // Extract session_id from cellLogs
+    const sessionId = cellLogs.length > 0 ? cellLogs[0].session_id : null;
+
+    if (!sessionId || !cell?.name) {
+      setParetoData(null);
+      return;
+    }
+
+    // Fetch pareto data from API
+    const fetchParetoData = async () => {
+      try {
+        const response = await fetch(`http://localhost:5001/api/pareto/${sessionId}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Only set if this pareto data matches the current cell
+          if (data.has_pareto && data.cell_name === cell.name) {
+            setParetoData(data);
+          } else {
+            setParetoData(null);
+          }
+        } else {
+          setParetoData(null);
+        }
+      } catch (error) {
+        console.error('[CellAnatomyPanel] Failed to fetch pareto data:', error);
+        setParetoData(null);
+      }
+    };
+
+    fetchParetoData();
+  }, [cellLogs, cell?.name]);
+
   // Extract cell configuration
   const cellConfig = useMemo(() => ({
     // Inputs schema
@@ -474,6 +511,11 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
           execution={executionData}
           isLLMCell={isLLMCell}
         />
+
+        {/* Pareto Frontier Layer - Cost vs Quality Analysis */}
+        {paretoData && (
+          <ParetoLayer paretoData={paretoData} />
+        )}
 
         {/* Convergence Section (inside Candidates visual) */}
         {(cellConfig.factor > 1 || cellConfig.preValidator || cellConfig.evaluator) && (

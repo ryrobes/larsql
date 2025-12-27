@@ -149,14 +149,21 @@ const ContextBreakdownPanel = ({ breakdown = [] }) => {
                                   <span>•</span>
                                 </>
                               )}
-                              {cell.candidate_index !== null && cell.candidate_index !== undefined && (
+                              {cell.candidate_index !== null && cell.candidate_index !== undefined ? (
                                 <>
                                   <Badge variant="label" color="purple" size="sm">
                                     Candidate {cell.candidate_index}
                                   </Badge>
                                   <span>•</span>
                                 </>
-                              )}
+                              ) : cell.model && !cell.candidate_index ? (
+                                <>
+                                  <Badge variant="label" color="gray" size="sm">
+                                    Legacy data
+                                  </Badge>
+                                  <span>•</span>
+                                </>
+                              ) : null}
                               <span>{cell.total_tokens.toLocaleString()} tokens</span>
                               <span>•</span>
                               <span>{cell.messages.length} context messages</span>
@@ -193,6 +200,7 @@ const ContextBreakdownPanel = ({ breakdown = [] }) => {
                           const hasRelevance = msg.relevance_score !== null && msg.relevance_score !== undefined;
                           const isLowValue = hasRelevance && msg.relevance_score < 30 && msg.pct > 10;
                           const isHighValue = hasRelevance && msg.relevance_score > 70;
+                          const isSystemWithLowRelevance = msg.role === 'system' && hasRelevance && msg.relevance_score < 50;
 
                           return (
                           <div key={msgIdx} className="context-breakdown-message">
@@ -204,7 +212,7 @@ const ContextBreakdownPanel = ({ breakdown = [] }) => {
                             </span>
                             <Badge
                               variant="label"
-                              color={msg.role === 'user' ? 'blue' : 'purple'}
+                              color={msg.role === 'system' ? 'yellow' : msg.role === 'user' ? 'blue' : 'purple'}
                               size="sm"
                             >
                               {msg.role}
@@ -263,6 +271,14 @@ const ContextBreakdownPanel = ({ breakdown = [] }) => {
                                       width={14}
                                       style={{ color: '#34d399' }}
                                       title="High value - keep this context!"
+                                    />
+                                  )}
+                                  {isSystemWithLowRelevance && (
+                                    <Icon
+                                      icon="mdi:alert-octagon"
+                                      width={14}
+                                      style={{ color: '#fbbf24' }}
+                                      title="System message with low relevance - may indicate unused instructions"
                                     />
                                   )}
                                 </div>

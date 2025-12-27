@@ -102,22 +102,49 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   const candidateInfo = React.useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
 
-    const candidateIndices = new Set();
+    const candidatesMap = new Map(); // candidate_index -> status
     let winningIndex = null;
 
     for (const log of cellLogs) {
-      if (log.candidate_index !== null && log.candidate_index !== undefined) {
-        candidateIndices.add(log.candidate_index);
-      }
+      // Track winning candidate index
       if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
         winningIndex = log.winning_sounding_index;
       }
+
+      // Track candidate status based on log entries
+      if (log.candidate_index !== null && log.candidate_index !== undefined) {
+        const idx = log.candidate_index;
+
+        if (!candidatesMap.has(idx)) {
+          candidatesMap.set(idx, 'running'); // Default to running when first seen
+        }
+
+        // Update status based on log type
+        // Success indicators: 'sounding_attempt' or 'phase_complete' role/node_type
+        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt' ||
+            log.role === 'phase_complete') {
+          candidatesMap.set(idx, 'complete');
+        }
+        // Error indicator
+        else if (log.role === 'error') {
+          candidatesMap.set(idx, 'error');
+        }
+      }
     }
 
-    if (candidateIndices.size === 0) return null;
+    if (candidatesMap.size === 0) return null;
+
+    // Convert to array with status information
+    const candidates = Array.from(candidatesMap.entries())
+      .sort((a, b) => a[0] - b[0])  // Sort by index
+      .map(([index, status]) => ({
+        index,
+        status,
+        isWinner: index === winningIndex
+      }));
 
     return {
-      candidates: Array.from(candidateIndices).sort((a, b) => a - b),
+      candidates,
       winner: winningIndex
     };
   }, [cellLogs]);
@@ -239,16 +266,33 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
         )}
       </div>
 
-      {/* Candidates indicator row (after execution - shows actual results) */}
-      {candidateInfo && (
+      {/* Candidates indicator row */}
+      {/* Show during execution (from logs) or before execution (from config) */}
+      {(candidateInfo || (hasCandidates && candidatesFactor)) && (
         <div className="cell-card-candidates-row">
-          {candidateInfo.candidates.map((idx) => (
-            <div
-              key={idx}
-              className={`cell-card-candidate-dot ${idx === candidateInfo.winner ? 'winner' : ''}`}
-              title={idx === candidateInfo.winner ? `Candidate ${idx} (WINNER)` : `Candidate ${idx}`}
-            />
-          ))}
+          {candidateInfo ? (
+            // Execution mode - show actual candidate statuses
+            candidateInfo.candidates.map((candidate) => (
+              <div
+                key={candidate.index}
+                className={`cell-card-candidate-dot ${candidate.status} ${candidate.isWinner ? 'winner' : ''}`}
+                title={
+                  candidate.isWinner
+                    ? `Candidate ${candidate.index} (WINNER)`
+                    : `Candidate ${candidate.index} - ${candidate.status}`
+                }
+              />
+            ))
+          ) : (
+            // Spec mode - show placeholder dots
+            Array.from({ length: candidatesFactor }, (_, idx) => (
+              <div
+                key={idx}
+                className="cell-card-candidate-dot pending"
+                title={`Candidate ${idx} - pending`}
+              />
+            ))
+          )}
         </div>
       )}
       </div>

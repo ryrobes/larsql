@@ -191,9 +191,6 @@ def execute_tool():
                         tokens_out=0,
                         cost=0.0,
                         duration_ms=0,
-                        tool_name=tool_name,
-                        tool_args=None,
-                        tool_result=None,
                     )
 
                     print(f"[Tool Browser] Session {session_id} marked as ERROR in database")

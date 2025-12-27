@@ -9,12 +9,8 @@ cells:
   candidates:
     evaluator_instructions: Evaluate the quality of each response for clarity, accuracy,
       and usefulness.
-    factor: 6
+    factor: 3
     models:
-      amazon/nova-premier-v1:
-        factor: 3
-      anthropic/claude-opus-4.5:
-        factor: 3
       anthropic/claude-sonnet-4.5:
         factor: 3
       google/gemini-3-pro-preview:
@@ -32,4 +28,4 @@ cells:
       policy: balanced
       quality_metric: evaluator_score
       show_frontier: true
-  traits: []
+  traits: [manifest]

@@ -679,6 +679,172 @@ class ClientConnection:
                 )
                 set_caller_context(caller_id, metadata)
 
+                # SPECIAL PATH: MAP PARALLEL with true concurrency
+                from rvbbit.sql_rewriter import _parse_rvbbit_statement
+                try:
+                    # Normalize query first (same as rewrite_rvbbit_syntax does)
+                    normalized = query.strip()
+                    lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
+                    normalized = ' '.join(line for line in lines if line)
+
+                    print(f"[{self.session_id}]      🔍 Parsing normalized query: {normalized[:100]}...")
+                    stmt = _parse_rvbbit_statement(normalized)
+                    print(f"[{self.session_id}]      ✓ Parsed: mode={stmt.mode}, parallel={stmt.parallel}, as_table={stmt.with_options.get('as_table')}")
+
+                    # SPECIAL PATH 1: MAP PARALLEL (true concurrency)
+                    # SPECIAL PATH 2: Table materialization (CREATE TABLE AS or WITH as_table)
+                    # Both need server-side handling to avoid DuckDB timing issues
+
+                    if stmt.mode == 'MAP' and (stmt.parallel or stmt.with_options.get('as_table')):
+                        is_parallel = stmt.parallel is not None
+                        is_materialized = stmt.with_options.get('as_table') is not None
+
+                        if is_parallel and is_materialized:
+                            print(f"[{self.session_id}]   🚀 MAP PARALLEL + Materialization: {stmt.parallel} workers → {stmt.with_options['as_table']}")
+                        elif is_parallel:
+                            print(f"[{self.session_id}]   🚀 MAP PARALLEL detected: {stmt.parallel} workers")
+                        else:
+                            print(f"[{self.session_id}]   💾 Table materialization: {stmt.with_options['as_table']}")
+
+                        # 1. Execute USING query to get input rows
+                        import re
+                        using_query = stmt.using_query
+
+                        # Apply DISTINCT if requested (BEFORE parallel execution for cache efficiency!)
+                        dedupe_by = stmt.with_options.get('dedupe_by')
+                        if stmt.with_options.get('distinct') or dedupe_by:
+                            original_count = None
+                            if dedupe_by:
+                                # Count before dedupe for logging
+                                try:
+                                    original_count = self.duckdb_conn.execute(f"SELECT COUNT(*) FROM ({using_query}) AS t").fetchone()[0]
+                                except:
+                                    pass
+                                # Dedupe by specific column
+                                using_query = f"SELECT DISTINCT ON ({dedupe_by}) * FROM ({using_query}) AS t"
+                            else:
+                                # Dedupe all columns
+                                using_query = f"SELECT DISTINCT * FROM ({using_query}) AS t"
+
+                            if original_count:
+                                deduped_count = self.duckdb_conn.execute(f"SELECT COUNT(*) FROM ({using_query}) AS t").fetchone()[0]
+                                savings = ((original_count - deduped_count) / original_count * 100) if original_count > 0 else 0
+                                print(f"[{self.session_id}]      🔧 DISTINCT applied: {original_count} → {deduped_count} rows ({savings:.0f}% reduction)")
+
+                        if not re.search(r'\bLIMIT\s+\d+', using_query, re.IGNORECASE):
+                            using_query += ' LIMIT 1000'  # Safety
+
+                        print(f"[{self.session_id}]      📊 Fetching input rows...")
+                        input_df = self.duckdb_conn.execute(using_query).fetchdf()
+                        print(f"[{self.session_id}]      ✓ Got {len(input_df)} input rows")
+
+                        # 2. Convert to JSON array for parallel processing
+                        import json
+                        rows_json = json.dumps(input_df.to_dict('records'))
+
+                        # 3. Execute (parallel or sequential)
+                        result_column = stmt.result_alias or stmt.with_options.get('result_column', 'result')
+
+                        if is_parallel:
+                            print(f"[{self.session_id}]      ⚡ Executing in parallel ({stmt.parallel} workers)...")
+                            from rvbbit.sql_tools.udf import rvbbit_map_parallel_exec
+
+                            result_df = rvbbit_map_parallel_exec(
+                                cascade_path=stmt.cascade_path,
+                                rows_json_array=rows_json,
+                                max_workers=stmt.parallel,
+                                result_column=result_column
+                            )
+                            print(f"[{self.session_id}]      ✓ Parallel execution complete")
+                        else:
+                            # Sequential execution for non-parallel materialization
+                            print(f"[{self.session_id}]      🔄 Executing sequentially for materialization...")
+                            # Use the regular rewritten query but execute row-by-row
+                            from rvbbit.sql_rewriter import _rewrite_map
+                            from dataclasses import replace
+
+                            # Build statement without as_table to get clean execution query
+                            temp_stmt_options = dict(stmt.with_options)
+                            temp_stmt_options.pop('as_table', None)  # Remove to avoid recursive materialization
+
+                            # Create new statement with modified options
+                            temp_stmt = replace(stmt, with_options=temp_stmt_options)
+
+                            print(f"[{self.session_id}]      🔍 Rewriting query without as_table...")
+                            rewritten_query = _rewrite_map(temp_stmt)
+                            print(f"[{self.session_id}]      🔍 Executing rewritten query...")
+                            result_df = self.duckdb_conn.execute(rewritten_query).fetchdf()
+                            print(f"[{self.session_id}]      ✓ Sequential execution complete ({len(result_df)} rows)")
+
+                        # 4. Apply schema extraction if specified
+                        if stmt.output_columns:
+                            print(f"[{self.session_id}]      🔧 Applying schema extraction...")
+                            # Register result for JSON extraction
+                            self.duckdb_conn.register("_parallel_raw", result_df)
+
+                            # Build typed column extraction
+                            select_cols = []
+                            for col_name, col_type in stmt.output_columns:
+                                # Extract from result column which contains the JSON
+                                if col_type in ('VARCHAR', 'TEXT', 'STRING'):
+                                    expr = f"json_extract_string({result_column}, '$.state.validated_output.{col_name}') AS {col_name}"
+                                elif col_type in ('BIGINT', 'INTEGER', 'INT'):
+                                    expr = f"CAST(json_extract({result_column}, '$.state.validated_output.{col_name}') AS BIGINT) AS {col_name}"
+                                elif col_type in ('DOUBLE', 'FLOAT', 'REAL'):
+                                    expr = f"CAST(json_extract({result_column}, '$.state.validated_output.{col_name}') AS DOUBLE) AS {col_name}"
+                                elif col_type == 'BOOLEAN':
+                                    expr = f"CAST(json_extract({result_column}, '$.state.validated_output.{col_name}') AS BOOLEAN) AS {col_name}"
+                                elif col_type == 'JSON':
+                                    expr = f"json_extract({result_column}, '$.state.validated_output.{col_name}') AS {col_name}"
+                                else:
+                                    expr = f"CAST(json_extract({result_column}, '$.state.validated_output.{col_name}') AS {col_type}) AS {col_name}"
+                                select_cols.append(expr)
+
+                            # Execute extraction query
+                            extraction_query = f"SELECT * EXCLUDE ({result_column}), {', '.join(select_cols)} FROM _parallel_raw"
+                            result_df = self.duckdb_conn.execute(extraction_query).fetchdf()
+                            self.duckdb_conn.unregister("_parallel_raw")
+
+                        # 5. Handle table materialization if requested
+                        as_table = stmt.with_options.get('as_table')
+                        if as_table:
+                            print(f"[{self.session_id}]      💾 Materializing to table: {as_table}")
+                            # Register and create table
+                            self.duckdb_conn.register("_temp_materialize", result_df)
+                            self.duckdb_conn.execute(f"CREATE OR REPLACE TEMP TABLE {as_table} AS SELECT * FROM _temp_materialize")
+                            self.duckdb_conn.unregister("_temp_materialize")
+                            print(f"[{self.session_id}]      ✓ Table created: {as_table}")
+
+                            # Return metadata instead of data
+                            import pandas as pd
+                            metadata_df = pd.DataFrame([{
+                                "status": "success",
+                                "table_created": as_table,
+                                "row_count": len(result_df),
+                                "columns": list(result_df.columns)
+                            }])
+                            send_query_results(self.sock, metadata_df, self.transaction_status)
+                        else:
+                            # 6. Send results to client
+                            send_query_results(self.sock, result_df, self.transaction_status)
+
+                        if is_parallel and is_materialized:
+                            print(f"[{self.session_id}]   ✅ MAP PARALLEL + Materialized: {len(result_df)} rows, {stmt.parallel} workers → {stmt.with_options['as_table']}")
+                        elif is_parallel:
+                            print(f"[{self.session_id}]   ✅ MAP PARALLEL complete: {len(result_df)} rows, {stmt.parallel} workers")
+                        else:
+                            print(f"[{self.session_id}]   ✅ Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)")
+
+                        return  # Skip normal execution path
+
+                except Exception as parallel_error:
+                    # If parallel execution fails, log and fall back to normal path
+                    print(f"[{self.session_id}]   ⚠️  Special path failed: {parallel_error}")
+                    import traceback
+                    traceback.print_exc()
+                    print(f"[{self.session_id}]      Falling back to sequential execution")
+                    # Fall through to normal execution
+
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 

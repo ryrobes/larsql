@@ -1313,9 +1313,9 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         for row in hash_results:
             ctx_hash = row['context_message_hash']
 
-            # Look up the actual content
+            # Look up the actual content AND role
             content_query = f"""
-                SELECT content_json, tokens_in, tokens_out
+                SELECT content_json, tokens_in, tokens_out, role
                 FROM unified_logs
                 WHERE session_id = '{session_id}'
                   AND content_hash = '{ctx_hash}'
@@ -1326,6 +1326,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             if content_result:
                 ctx_content = content_result[0]['content_json']
                 ctx_tokens = (content_result[0]['tokens_in'] or 0) + (content_result[0]['tokens_out'] or 0)
+                ctx_role = content_result[0]['role']
 
                 # Get the cost from breakdown table
                 cost_query = f"""
@@ -1344,6 +1345,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
                     'content': ctx_content or '',
                     'tokens': ctx_tokens,
                     'cost': ctx_cost,
+                    'role': ctx_role,  # Include role so LLM knows which are system messages
                 })
 
         if not context_messages:
@@ -1365,13 +1367,55 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             'context_messages': context_messages,
         })
 
-        if not result or not result.get('output'):
-            logger.warning(f"Relevance analysis returned no output for {cell_name}")
+        if not result:
+            logger.warning(f"Relevance analysis returned no result for {cell_name}")
             return
 
+        # Extract output from result (check multiple possible locations)
+        output_text = None
+
+        # Try lineage first (where outputs are stored)
+        if result.get('lineage'):
+            for entry in reversed(result['lineage']):
+                if isinstance(entry, dict) and 'output' in entry:
+                    output_text = entry['output']
+                    break
+
+        # Fallback to history
+        if not output_text and result.get('history'):
+            for msg in reversed(result['history']):
+                if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                    output_text = msg.get('content_json') or msg.get('content')
+                    if output_text:
+                        break
+
+        if not output_text:
+            logger.warning(f"Relevance analysis completed but no output found for {cell_name}")
+            logger.debug(f"Result keys: {result.keys()}")
+            return
+
+        logger.debug(f"[Relevance] Got output for {cell_name}, length={len(str(output_text))}")
+
         # Parse the JSON response
+        # Strip markdown code fences if present (LLMs often wrap JSON in ```json ... ```)
+        if isinstance(output_text, str):
+            output_text = output_text.strip()
+        else:
+            # If already parsed as JSON (from content_json), stringify it
+            output_text = json_module.dumps(output_text) if isinstance(output_text, (dict, list)) else str(output_text)
+
+        # Remove markdown fences
+        if output_text.startswith('```'):
+            # Find the end of first line (language identifier like "json")
+            first_newline = output_text.find('\n')
+            if first_newline > 0:
+                output_text = output_text[first_newline + 1:]
+            # Remove trailing fence
+            if output_text.endswith('```'):
+                output_text = output_text[:-3].strip()
+
         try:
-            relevance_scores = json_module.loads(result['output'])
+            relevance_scores = json_module.loads(output_text)
 
             # Handle case where LLM returns single object instead of array (common with 1 context message)
             if isinstance(relevance_scores, dict):
@@ -1382,8 +1426,9 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
                 logger.warning(f"Relevance analysis returned unexpected type {type(relevance_scores)} for {cell_name}")
                 return
 
-        except json_module.JSONDecodeError:
-            logger.warning(f"Could not parse relevance analysis JSON for {cell_name}: {result.get('output', '')[:200]}")
+        except json_module.JSONDecodeError as e:
+            logger.warning(f"Could not parse relevance analysis JSON for {cell_name}: {e}")
+            logger.debug(f"Raw output (first 300 chars): {output_text[:300]}")
             return
 
         # Get the analysis cost from the meta-analysis session
@@ -1398,10 +1443,15 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         # Update each context breakdown row with relevance scores
         current_time = datetime.now(timezone.utc)
 
+        logger.debug(f"[Relevance] Parsed {len(relevance_scores)} scores from LLM output")
+
+        updated_count = 0
         for score_data in relevance_scores:
             ctx_hash = score_data.get('hash', '')
             score = score_data.get('score', 0)
             reason = score_data.get('reason', '')
+
+            logger.debug(f"[Relevance]   Updating hash={ctx_hash} score={score}")
 
             # Match by hash prefix (analysis returns 8 chars, DB has full hash)
             update_query = f"""
@@ -1417,9 +1467,24 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
                   AND startsWith(context_message_hash, '{ctx_hash[:8]}')
             """
 
-            db.query(update_query)
+            try:
+                db.query(update_query)
+                updated_count += 1
+            except Exception as e:
+                logger.warning(f"[Relevance] Failed to update hash {ctx_hash}: {e}")
 
-        logger.info(f"[Relevance] ✓ {cell_name}: scored {len(relevance_scores)} messages, cost=${analysis_cost:.6f}, session={analysis_session_id}")
+        # Verify updates worked
+        verify_query = f"""
+            SELECT COUNT(*) as count
+            FROM cell_context_breakdown
+            WHERE session_id = '{session_id}'
+              AND cell_name = '{cell_name}'
+              AND relevance_score IS NOT NULL
+        """
+        verify_result = db.query(verify_query)
+        actual_count = verify_result[0]['count'] if verify_result else 0
+
+        logger.info(f"[Relevance] ✓ {cell_name}: scored {len(relevance_scores)} messages, updated {actual_count} rows, cost=${analysis_cost:.6f}, session={analysis_session_id}")
 
     except Exception as e:
         logger.warning(f"Relevance analysis failed for {cell_name}: {e}")
@@ -1448,7 +1513,8 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 tokens_in,
                 tokens_out,
                 cost,
-                model_requested
+                model_requested,
+                candidate_index
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
@@ -1544,7 +1610,7 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                     'cascade_id': cascade_id,
                     'cell_name': cell_name,
                     'cell_index': cell_index,
-                    'model_requested': model_requested,
+                    'model_requested': model_requested or '',  # Default to empty string for ClickHouse
                     'candidate_index': msg.get('candidate_index'),
                     'context_message_hash': ctx_hash,
                     'context_message_cell': ctx_info['source_cell'] or 'unknown',
@@ -1570,29 +1636,33 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
             # Optional: Run relevance analysis (enabled by default, opt-out with RVBBIT_ENABLE_RELEVANCE_ANALYSIS=false)
             import os
             if os.getenv('RVBBIT_ENABLE_RELEVANCE_ANALYSIS', 'true').lower() == 'true':
-                # Check if already analyzed (avoid duplicate runs)
-                check_query = f"""
-                    SELECT COUNT(*) as analyzed_count
-                    FROM cell_context_breakdown
-                    WHERE session_id = '{session_id}'
-                      AND cell_name = '{cell_name}'
-                      AND relevance_score IS NOT NULL
-                    LIMIT 1
-                """
-                check_result = db.query(check_query)
-                already_analyzed = check_result and check_result[0]['analyzed_count'] > 0
-
-                if already_analyzed:
-                    logger.debug(f"Skipping relevance analysis for {cell_name} (already analyzed)")
+                # CRITICAL: Don't analyze relevance analyzer itself (prevents infinite recursion!)
+                if '_relevance_' in session_id or cascade_id == 'analyze_context_relevance':
+                    logger.debug(f"Skipping relevance analysis for meta-analysis session {session_id}")
                 else:
-                    logger.info(f"[Relevance] Analyzing {cell_name} in {session_id} ({len(breakdown_rows)} context messages)")
-                    _analyze_context_relevance(
-                        session_id=session_id,
-                        cascade_id=cascade_id,
-                        cell_name=cell_name,
-                        messages=messages,
-                        db=db
-                    )
+                    # Check if already analyzed (avoid duplicate runs)
+                    check_query = f"""
+                        SELECT COUNT(*) as analyzed_count
+                        FROM cell_context_breakdown
+                        WHERE session_id = '{session_id}'
+                          AND cell_name = '{cell_name}'
+                          AND relevance_score IS NOT NULL
+                        LIMIT 1
+                    """
+                    check_result = db.query(check_query)
+                    already_analyzed = check_result and check_result[0]['analyzed_count'] > 0
+
+                    if already_analyzed:
+                        logger.debug(f"Skipping relevance analysis for {cell_name} (already analyzed)")
+                    else:
+                        logger.info(f"[Relevance] Analyzing {cell_name} in {session_id} ({len(breakdown_rows)} context messages)")
+                        _analyze_context_relevance(
+                            session_id=session_id,
+                            cascade_id=cascade_id,
+                            cell_name=cell_name,
+                            messages=messages,
+                            db=db
+                        )
 
     except Exception as e:
         logger.debug(f"Could not create context breakdown for {cell_name}: {e}")

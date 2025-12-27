@@ -492,15 +492,58 @@
   width: 10px;
   height: 10px;
   border-radius: 2px;
-  /* background-color: #475569; */
   border: 1px solid #64748b;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  background-color: transparent;
 }
 
+/* Pending - dim gray border, empty */
+.cell-card-candidate-dot.pending {
+  border: 1px solid #475569;
+  background-color: transparent;
+  opacity: 0.5;
+}
+
+/* Running - pulsing cyan border with empty center */
+.cell-card-candidate-dot.running {
+  border: 1px solid #00e5ff;
+  background-color: transparent;
+  animation: candidate-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes candidate-pulse {
+  0%, 100% {
+    border-color: #00e5ff;
+    box-shadow: 0 0 4px rgba(0, 229, 255, 0.4);
+  }
+  50% {
+    border-color: #5eead4;
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+  }
+}
+
+/* Complete - filled cyan/teal */
+.cell-card-candidate-dot.complete {
+  background-color: #00e5ff;
+  border: 1px solid #5eead4;
+  box-shadow: 0 0 4px rgba(0, 229, 255, 0.5);
+  animation: none;
+}
+
+/* Error - filled red */
+.cell-card-candidate-dot.error {
+  background-color: #ff006e;
+  border: 1px solid #ff0080;
+  box-shadow: 0 0 4px rgba(255, 0, 110, 0.5);
+  animation: none;
+}
+
+/* Winner - golden/yellow with enhanced glow */
 .cell-card-candidate-dot.winner {
   background-color: #fbbf24;
   border: 1px solid #f59e0b;
-  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6), 0 0 10px rgba(251, 191, 36, 0.3);
   width: 10px;
   height: 10px;
+  animation: none;
 }

@@ -1137,6 +1137,190 @@
 }
 
 /* ============================================
+   PARETO FRONTIER LAYER
+   ============================================ */
+
+.cell-anatomy-layer-pareto {
+  border-left-color: rgba(52, 211, 153, 0.4); /* Green */
+}
+
+.layer-icon-pareto {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.2), rgba(16, 185, 129, 0.1));
+  color: #34d399;
+}
+
+.layer-pareto-badges {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.layer-pareto-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.layer-pareto-badge.badge-frontier {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.layer-pareto-badge.badge-dominated {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.layer-pareto-chart-wrapper {
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border: 1px solid #1a1628;
+}
+
+/* Pareto tooltip */
+.layer-pareto-tooltip {
+  background: linear-gradient(135deg, #1a1d24 0%, #0f1114 100%);
+  border: 1px solid #34d399;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  min-width: 140px;
+}
+
+.pareto-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.pareto-tooltip-model {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pareto-tooltip-trophy {
+  color: #FFD700;
+  filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.6));
+}
+
+.pareto-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #94a3b8;
+  margin: 4px 0;
+}
+
+.pareto-tooltip-row svg {
+  color: #64748b;
+}
+
+.pareto-tooltip-badge {
+  margin-top: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.pareto-tooltip-badge.frontier {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.pareto-tooltip-badge.dominated {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+/* Model legend */
+.layer-pareto-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.layer-pareto-legend-title {
+  font-size: 9px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+
+.layer-pareto-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+.layer-pareto-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid #0a0a0a;
+}
+
+.layer-pareto-legend-model {
+  font-family: 'Google Sans Code', monospace;
+  letter-spacing: 0.3px;
+}
+
+/* Winner info */
+.layer-pareto-winner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: #FFD700;
+}
+
+.layer-pareto-winner svg {
+  color: #FFD700;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.5));
+}
+
+.layer-pareto-winner strong {
+  color: #FFD700;
+  font-weight: 700;
+}
+
+/* ============================================
    REFORGE LAYER
    ============================================ */
 

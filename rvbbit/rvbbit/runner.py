@@ -7340,9 +7340,6 @@ Use only numbers 0-100 for scores."""
                     tokens_out=eval_tokens_out,
                     cost=eval_cost,
                     duration_ms=0,  # Not tracked for evaluators
-                    tool_name=None,
-                    tool_args=None,
-                    tool_result=None,
                     request_id=eval_request_id,
                 )
 
@@ -7503,9 +7500,6 @@ Use only numbers 0-100 for scores."""
                     tokens_out=eval_tokens_out,
                     cost=eval_cost,
                     duration_ms=0,
-                    tool_name=None,
-                    tool_args=None,
-                    tool_result=None,
                     request_id=eval_request_id,
                 )
 
@@ -11203,17 +11197,28 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     except json.JSONDecodeError:
                         # If that fails, try to extract JSON from markdown code blocks
                         import re
-                        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)
+                        # Try to match arrays first (for list-based schemas)
+                        json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_content, re.DOTALL)
                         if json_match:
                             output_data = json.loads(json_match.group(1))
                         else:
-                            # Try to find any JSON object in the response
-                            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)
+                            # Try to match objects
+                            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)
                             if json_match:
-                                output_data = json.loads(json_match.group(0))
+                                output_data = json.loads(json_match.group(1))
                             else:
-                                # No JSON found
-                                raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
+                                # Try to find any JSON array in the response (without fences)
+                                json_match = re.search(r'\[\s*\{.*?\}\s*\]', response_content, re.DOTALL)
+                                if json_match:
+                                    output_data = json.loads(json_match.group(0))
+                                else:
+                                    # Try to find any JSON object in the response
+                                    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)
+                                    if json_match:
+                                        output_data = json.loads(json_match.group(0))
+                                    else:
+                                        # No JSON found
+                                        raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
 
                     # Validate against schema
                     jsonschema.validate(instance=output_data, schema=phase.output_schema)

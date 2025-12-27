@@ -130,26 +130,34 @@ def _parse_rvbbit_statement(query: str) -> RVBBITStatement:
     mode = mode_match.group(1).upper()
     remaining = query[mode_match.end():].strip()
 
-    # Extract DISTINCT (optional for MAP)
-    is_distinct = False
-    if mode == 'MAP':
-        distinct_match = re.match(r'DISTINCT\s+', remaining, re.IGNORECASE)
-        if distinct_match:
-            is_distinct = True
-            remaining = remaining[distinct_match.end():].strip()
-
-    # Extract PARALLEL (optional)
+    # Extract PARALLEL and DISTINCT (can appear in either order for MAP)
     parallel = None
+    is_distinct = False
+
     if mode == 'MAP':
+        # Try PARALLEL first, then DISTINCT
         parallel_match = re.match(r'PARALLEL\s+(\d+)', remaining, re.IGNORECASE)
         if parallel_match:
             parallel = int(parallel_match.group(1))
             remaining = remaining[parallel_match.end():].strip()
 
+        # Now check for DISTINCT (after PARALLEL if present)
+        distinct_match = re.match(r'DISTINCT\s+', remaining, re.IGNORECASE)
+        if distinct_match:
+            is_distinct = True
+            remaining = remaining[distinct_match.end():].strip()
+
+        # If we didn't find PARALLEL yet, try again after DISTINCT
+        if parallel is None:
+            parallel_match = re.match(r'PARALLEL\s+(\d+)', remaining, re.IGNORECASE)
+            if parallel_match:
+                parallel = int(parallel_match.group(1))
+                remaining = remaining[parallel_match.end():].strip()
+
     # Extract cascade path
     cascade_match = re.match(r"'([^']+)'", remaining)
     if not cascade_match:
-        raise RVBBITSyntaxError("Expected cascade path as string literal")
+        raise RVBBITSyntaxError(f"Expected cascade path as string literal, got: {remaining[:100]}")
 
     cascade_path = cascade_match.group(1)
     remaining = remaining[cascade_match.end():].strip()

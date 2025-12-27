@@ -150,7 +150,7 @@ const InsightCard = ({ insight }) => {
                   </span>
                   <Badge
                     variant="label"
-                    color={msg.role === 'user' ? 'blue' : 'purple'}
+                    color={msg.role === 'system' ? 'yellow' : msg.role === 'user' ? 'blue' : 'purple'}
                     size="sm"
                   >
                     {msg.role}
