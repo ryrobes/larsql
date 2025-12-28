@@ -109,7 +109,7 @@ class SnapshotCapture:
                 "cells": []
             },
             "expectations": {
-                "phases_executed": [],
+                "cells_executed": [],
                 "final_state": {},
                 "completion_status": "success",
                 "error_count": 0
@@ -196,9 +196,9 @@ class SnapshotCapture:
                     "result": content
                 })
 
-        # Add phases to snapshot
-        snapshot["execution"]["phases"] = list(phases_map.values())
-        snapshot["expectations"]["phases_executed"] = list(phases_map.keys())
+        # Add cells to snapshot
+        snapshot["execution"]["cells"] = list(phases_map.values())
+        snapshot["expectations"]["cells_executed"] = list(phases_map.keys())
         snapshot["expectations"]["error_count"] = error_count
 
         if error_count > 0:

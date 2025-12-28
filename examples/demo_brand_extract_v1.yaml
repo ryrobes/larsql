@@ -1,0 +1,269 @@
+# Demo: Brand Extraction with Receipts (v1 - Fixed Context)
+#
+# This is the FIXED version of demo_brand_extract_v0.yaml
+#
+# THE FIX:
+#   Changed lookup_brands to LIMIT 5 instead of LIMIT 50.
+#   Now even broad queries like "USB" only return 5 top brands,
+#   keeping the prompt size (and cost) reasonable.
+#
+# WHAT CHANGED (diff from v0):
+#   - lookup_brands: LIMIT 50 -> LIMIT 5
+#   - Added comment explaining the fix
+#
+# This is a "1-line fix" that dramatically reduces cost for outlier inputs.
+#
+# RUN WITH:
+#   Normal:  rvbbit run examples/demo_brand_extract_v1.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
+#   Outlier: rvbbit run examples/demo_brand_extract_v1.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
+#
+# COMPARE COSTS:
+#   Run both v0 and v1 with the "USB-C Cable" input.
+#   Check receipts - v1 should be ~5-10x cheaper for the outlier.
+
+cascade_id: demo_brand_extract_v1
+description: |
+  Brand extraction demo with FIXED context control.
+  Compare with demo_brand_extract_v0.yaml to see the difference.
+
+model: anthropic/claude-opus-4.5
+
+inputs_schema:
+  product_name: "Raw product name to extract brand from"
+
+cells:
+  # ============================================================
+  # Cell 1: SETUP - Create the brands reference table
+  # ============================================================
+  - name: setup_brands
+    tool: sql_data
+    inputs:
+      query: |
+        CREATE TEMP TABLE IF NOT EXISTS _known_brands AS
+        SELECT * FROM (VALUES
+          -- Major electronics brands
+          ('Sony', 'Electronics', 'Japanese multinational', 95),
+          ('Apple', 'Electronics', 'Premium consumer tech', 99),
+          ('Samsung', 'Electronics', 'Korean conglomerate', 97),
+          ('Bose', 'Audio', 'Premium audio equipment', 90),
+          ('JBL', 'Audio', 'Harman subsidiary', 85),
+          ('Sennheiser', 'Audio', 'German audio', 88),
+          ('Bang & Olufsen', 'Audio', 'Danish luxury', 82),
+          ('Marshall', 'Audio', 'British amplifiers', 78),
+
+          -- Cable/USB brands (many entries to demonstrate the fix)
+          ('Anker', 'Cables & Chargers', 'Popular accessories', 88),
+          ('UGREEN', 'Cables & Chargers', 'Chinese accessories', 75),
+          ('Belkin', 'Cables & Chargers', 'Legacy accessories', 80),
+          ('AmazonBasics', 'Cables & Chargers', 'Amazon private label', 70),
+          ('Cable Matters', 'Cables & Chargers', 'Specialty cables', 65),
+          ('Monoprice', 'Cables & Chargers', 'Budget cables', 72),
+          ('StarTech', 'Cables & Chargers', 'IT cables', 68),
+          ('Sabrent', 'Cables & Chargers', 'USB hubs and cables', 60),
+          ('JSAUX', 'Cables & Chargers', 'Gaming accessories', 55),
+          ('Syncwire', 'Cables & Chargers', 'Apple-style cables', 50),
+          ('Rampow', 'Cables & Chargers', 'Braided cables', 48),
+          ('INIU', 'Cables & Chargers', 'Power banks and cables', 45),
+          ('Nimaso', 'Cables & Chargers', 'Screen protectors and cables', 42),
+          ('ESR', 'Cables & Chargers', 'Phone accessories', 40),
+          ('Spigen', 'Cables & Chargers', 'Cases and cables', 82),
+          ('Nekteck', 'Cables & Chargers', 'USB-C specialist', 38),
+          ('CableCreation', 'Cables & Chargers', 'Premium cables', 35),
+          ('Plugable', 'Cables & Chargers', 'Docking and cables', 33),
+          ('uni', 'Cables & Chargers', 'Minimalist cables', 28),
+          ('AINOPE', 'Cables & Chargers', 'Right-angle cables', 30),
+          ('Baseus', 'Cables & Chargers', 'Fast charging', 52),
+          ('VENTION', 'Cables & Chargers', 'AV cables', 45),
+          ('CHOETECH', 'Cables & Chargers', 'Wireless charging', 48),
+          ('RAVPower', 'Cables & Chargers', 'Power solutions', 58),
+          ('Aukey', 'Cables & Chargers', 'Charging accessories', 55),
+          ('PowerA', 'Cables & Chargers', 'Gaming cables', 40)
+        ) AS t(brand_name, category, description, popularity);
+
+        SELECT 'Ready' as status, COUNT(*) as brands_loaded FROM _known_brands;
+    handoffs:
+      - prep
+
+  # ============================================================
+  # Cell 2: PREP - Normalize input and extract search key
+  # ============================================================
+  - name: prep
+    tool: python_data
+    inputs:
+      code: |
+        import re
+
+        product_name = """{{ input.product_name }}"""
+
+        # Normalize
+        normalized = product_name.strip()
+
+        # Tokenize
+        tokens = re.findall(r'\b[A-Za-z0-9]+\b', product_name)
+
+        # Stopwords
+        stopwords = {
+          'the', 'and', 'for', 'with', 'new', 'pack', 'set',
+          'black', 'white', 'red', 'blue', 'gray', 'grey',
+          'green', 'pink', 'gold', 'silver', 'pro', 'max',
+          'ft', 'feet', 'inch', 'mm', 'cm', 'm'
+        }
+
+        # Find first strong token
+        query_key = None
+        for t in tokens:
+          t_lower = t.lower()
+          if len(t) >= 3 and t_lower not in stopwords:
+            query_key = t
+            break
+
+        if not query_key and tokens:
+          query_key = tokens[0]
+
+        result = {
+          'normalized_name': normalized,
+          'query_key': query_key or 'unknown',
+          'all_tokens': tokens[:8]
+        }
+    handoffs:
+      - lookup_brands
+
+  # ============================================================
+  # Cell 3: LOOKUP - Search brands table (FIXED!)
+  # ============================================================
+  # THE FIX: Changed LIMIT from 50 to 5
+  #
+  # Now even broad queries only return the top 5 brands.
+  # This keeps prompt size bounded and predictable.
+  # ============================================================
+  - name: lookup_brands
+    tool: sql_data
+    inputs:
+      query: |
+        -- v1 FIX: Reduced LIMIT from 50 to 5
+        -- This caps context size and prevents cost spikes
+        SELECT
+          brand_name,
+          category,
+          description,
+          popularity
+        FROM _known_brands
+        WHERE
+          LOWER(brand_name) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+          OR LOWER(category) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+          OR LOWER(description) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+        ORDER BY popularity DESC
+        LIMIT 5
+    handoffs:
+      - extract_brand
+
+  # ============================================================
+  # Cell 4: EXTRACT - LLM extraction with Candidates
+  # ============================================================
+  - name: extract_brand
+    model: google/gemini-2.0-flash-001
+    instructions: |
+      Extract the brand from this product name.
+
+      ## Product
+      "{{ input.product_name }}"
+
+      ## Prep Analysis
+      Query key: {{ outputs.prep.query_key }}
+      Tokens: {{ outputs.prep.all_tokens | join(', ') }}
+
+      ## Top Brand Matches (from database)
+      {{ outputs.lookup_brands | tojson }}
+
+      ## Your Task
+      Analyze the product name and database matches to identify the brand.
+
+      Return a JSON object:
+      {
+        "brand": "The brand name, or 'Unknown' if unclear",
+        "confidence": 0.0 to 1.0,
+        "evidence": "Why you chose this brand (cite product name tokens or DB match)"
+      }
+    candidates:
+      factor: 3
+      mode: evaluate
+      evaluator_instructions: |
+        Compare the 3 brand extraction attempts.
+
+        PICK the one with:
+        - Clear evidence from the product name itself
+        - Reasonable confidence (not overconfident without proof)
+        - Brand that actually appears in the product name or is strongly implied
+
+        REJECT:
+        - Wild guesses based only on category matches
+        - Overconfident (0.9+) without direct brand name match
+    output_schema:
+      type: object
+      properties:
+        brand:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: string
+      required: [brand, confidence, evidence]
+    handoffs:
+      - validate
+
+  # ============================================================
+  # Cell 5: VALIDATE - Ward validation with retry
+  # ============================================================
+  - name: validate
+    model: google/gemini-2.0-flash-lite-001
+    instructions: |
+      Finalize the brand extraction result.
+
+      ## Input
+      Product: "{{ input.product_name }}"
+      Extraction: {{ outputs.extract_brand | tojson }}
+
+      ## Validation Checklist
+      1. Is the brand plausible for this product?
+      2. Is confidence appropriately calibrated?
+      3. Does evidence support the conclusion?
+
+      ## Output
+      Return the validated result:
+      {
+        "brand": "...",
+        "confidence": 0.0-1.0,
+        "evidence": "...",
+        "validated": true,
+        "product_name": "{{ input.product_name }}"
+      }
+    wards:
+      post:
+        - validator:
+            python: |
+              # Simple validation - demonstrates ward with retry
+              # The output_schema below handles structural validation
+              if len(content) < 20:
+                result = {"valid": False, "reason": "Response too short"}
+              elif "brand" not in content.lower():
+                result = {"valid": False, "reason": "Response must mention brand"}
+              else:
+                result = {"valid": True, "reason": "Basic checks passed"}
+          mode: retry
+          max_retries: 1
+    output_schema:
+      type: object
+      properties:
+        brand:
+          type: string
+        confidence:
+          type: number
+        evidence:
+          type: string
+        validated:
+          type: boolean
+        product_name:
+          type: string
+      required: [brand, confidence, evidence, validated]

@@ -1,0 +1,315 @@
+# Demo: Brand Extraction with Receipts (v2 - Web Search Augmented)
+#
+# This builds on v1 with an additional feature:
+#   - Web search for low-confidence extractions
+#   - Multi-turn sounding loops visible in the UI
+#
+# WHAT'S NEW IN v2:
+#   - brave_web_search tool for additional context
+#   - loop_until with is_satisfied validator (per-turn early exit)
+#   - loop_until_silent: true (impartial - model doesn't game the check)
+#   - Each sounding exits early when confident, continues if unsure
+#   - Creates visible multi-turn conversation in each sounding
+#
+# THE DEMO STORY:
+#   For clear brands like "Sony", extraction is instant (1 turn).
+#   For ambiguous products like "USB-C Cable", the LLM:
+#     1. Realizes confidence is low
+#     2. Calls brave_web_search for more context
+#     3. Makes a refined extraction with the new info
+#   This multi-turn pattern is visible in the sounding visualizer.
+#
+# REQUIREMENTS:
+#   Set BRAVE_SEARCH_API_KEY in your environment
+#
+# RUN WITH:
+#   Normal:  rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
+#   Outlier: rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
+#   Unknown: rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "JSAUX Steam Deck Dock"}'
+
+cascade_id: demo_brand_extract_v2
+description: |
+  Brand extraction with web search augmentation for low-confidence cases.
+  Demonstrates multi-turn tool use within soundings.
+
+model: anthropic/claude-opus-4.5
+
+inputs_schema:
+  product_name: "Raw product name to extract brand from"
+
+cells:
+  # ============================================================
+  # Cell 1: SETUP - Create the brands reference table
+  # ============================================================
+  - name: setup_brands
+    tool: sql_data
+    inputs:
+      query: |
+        CREATE TEMP TABLE IF NOT EXISTS _known_brands AS
+        SELECT * FROM (VALUES
+          -- Major electronics brands
+          ('Sony', 'Electronics', 'Japanese multinational', 95),
+          ('Apple', 'Electronics', 'Premium consumer tech', 99),
+          ('Samsung', 'Electronics', 'Korean conglomerate', 97),
+          ('Bose', 'Audio', 'Premium audio equipment', 90),
+          ('JBL', 'Audio', 'Harman subsidiary', 85),
+          ('Sennheiser', 'Audio', 'German audio', 88),
+          ('Bang & Olufsen', 'Audio', 'Danish luxury', 82),
+          ('Marshall', 'Audio', 'British amplifiers', 78),
+
+          -- Cable/USB brands
+          ('Anker', 'Cables & Chargers', 'Popular accessories', 88),
+          ('UGREEN', 'Cables & Chargers', 'Chinese accessories', 75),
+          ('Belkin', 'Cables & Chargers', 'Legacy accessories', 80),
+          ('AmazonBasics', 'Cables & Chargers', 'Amazon private label', 70),
+          ('Cable Matters', 'Cables & Chargers', 'Specialty cables', 65),
+          ('Monoprice', 'Cables & Chargers', 'Budget cables', 72),
+          ('StarTech', 'Cables & Chargers', 'IT cables', 68),
+          ('Sabrent', 'Cables & Chargers', 'USB hubs and cables', 60),
+          ('JSAUX', 'Cables & Chargers', 'Gaming accessories', 55),
+          ('Syncwire', 'Cables & Chargers', 'Apple-style cables', 50),
+          ('Rampow', 'Cables & Chargers', 'Braided cables', 48),
+          ('INIU', 'Cables & Chargers', 'Power banks and cables', 45),
+          ('Nimaso', 'Cables & Chargers', 'Screen protectors and cables', 42),
+          ('ESR', 'Cables & Chargers', 'Phone accessories', 40),
+          ('Spigen', 'Cables & Chargers', 'Cases and cables', 82),
+          ('Nekteck', 'Cables & Chargers', 'USB-C specialist', 38),
+          ('CableCreation', 'Cables & Chargers', 'Premium cables', 35),
+          ('Plugable', 'Cables & Chargers', 'Docking and cables', 33),
+          ('uni', 'Cables & Chargers', 'Minimalist cables', 28),
+          ('AINOPE', 'Cables & Chargers', 'Right-angle cables', 30),
+          ('Baseus', 'Cables & Chargers', 'Fast charging', 52),
+          ('VENTION', 'Cables & Chargers', 'AV cables', 45),
+          ('CHOETECH', 'Cables & Chargers', 'Wireless charging', 48),
+          ('RAVPower', 'Cables & Chargers', 'Power solutions', 58),
+          ('Aukey', 'Cables & Chargers', 'Charging accessories', 55),
+          ('PowerA', 'Cables & Chargers', 'Gaming cables', 40)
+        ) AS t(brand_name, category, description, popularity);
+
+        SELECT 'Ready' as status, COUNT(*) as brands_loaded FROM _known_brands;
+    handoffs:
+      - prep
+
+  # ============================================================
+  # Cell 2: PREP - Normalize input and extract search key
+  # ============================================================
+  - name: prep
+    tool: python_data
+    inputs:
+      code: |
+        import re
+
+        product_name = """{{ input.product_name }}"""
+
+        # Normalize
+        normalized = product_name.strip()
+
+        # Tokenize
+        tokens = re.findall(r'\b[A-Za-z0-9]+\b', product_name)
+
+        # Stopwords
+        stopwords = {
+          'the', 'and', 'for', 'with', 'new', 'pack', 'set',
+          'black', 'white', 'red', 'blue', 'gray', 'grey',
+          'green', 'pink', 'gold', 'silver', 'pro', 'max',
+          'ft', 'feet', 'inch', 'mm', 'cm', 'm'
+        }
+
+        # Find first strong token
+        query_key = None
+        for t in tokens:
+          t_lower = t.lower()
+          if len(t) >= 3 and t_lower not in stopwords:
+            query_key = t
+            break
+
+        if not query_key and tokens:
+          query_key = tokens[0]
+
+        result = {
+          'normalized_name': normalized,
+          'query_key': query_key or 'unknown',
+          'all_tokens': tokens[:8]
+        }
+    handoffs:
+      - lookup_brands
+
+  # ============================================================
+  # Cell 3: LOOKUP - Search brands table
+  # ============================================================
+  - name: lookup_brands
+    tool: sql_data
+    inputs:
+      query: |
+        -- v2: Same as v1 (LIMIT 5)
+        SELECT
+          brand_name,
+          category,
+          description,
+          popularity
+        FROM _known_brands
+        WHERE
+          LOWER(brand_name) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+          OR LOWER(category) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+          OR LOWER(description) LIKE LOWER('%{{ outputs.prep.query_key }}%')
+        ORDER BY popularity DESC
+        LIMIT 5
+    handoffs:
+      - extract_brand
+
+  # ============================================================
+  # Cell 4: EXTRACT - LLM extraction with Web Search + Candidates
+  # ============================================================
+  # NEW IN v2:
+  #   - brave_web_search tool for additional context
+  #   - loop_until with is_satisfied validator (per-turn early exit)
+  #   - loop_until_silent: true (impartial - model doesn't game it)
+  #   - Each sounding exits early when confident, continues if unsure
+  # ============================================================
+  - name: extract_brand
+    model: anthropic/claude-opus-4.5
+    traits:
+      - brave_web_search
+    instructions: |
+      Extract the brand from this product name.
+
+      ## Product
+      "{{ input.product_name }}"
+
+      ## Prep Analysis
+      Query key: {{ outputs.prep.query_key }}
+      Tokens: {{ outputs.prep.all_tokens | join(', ') }}
+
+      ## Known Brand Matches (from database)
+      {{ outputs.lookup_brands | tojson }}
+
+      ## Your Task
+      Analyze the product name and database matches to identify the brand.
+
+      If you're uncertain about the brand based on the product name and database
+      matches alone, use the brave_web_search tool to find more information.
+      Search for something like "[product tokens] brand" or "[unknown term] company".
+
+      Return a JSON object:
+      {
+        "brand": "The brand name, or 'Unknown' if unclear",
+        "confidence": 0.0 to 1.0,
+        "evidence": "Why you chose this brand (cite product name, DB match, or web search)",
+        "searched_web": true/false
+      }
+    rules:
+      max_turns: 3
+      # Per-turn validator: exits early when confidence >= 0.7
+      # Silent mode: model doesn't know about this check (impartial validation)
+      loop_until: #satisfied
+        python: |
+          import json
+          try:
+            # Parse JSON from response (handle markdown code blocks)
+            text = content
+            if "```json" in text:
+              text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+              text = text.split("```")[1].split("```")[0]
+            data = json.loads(text.strip())
+            confidence = data.get("confidence", 0)
+            if confidence >= 0.7:
+              result = {"valid": True, "reason": f"Confident extraction (confidence={confidence})"}
+            else:
+              result = {"valid": False, "reason": f"Low confidence ({confidence}) - continue searching"}
+          except Exception as e:
+            result = {"valid": False, "reason": f"Could not parse output: {e}"}
+      loop_until_silent: true
+    candidates:
+      factor: 3
+      mode: evaluate
+      model: google/gemini-2.0-flash-001
+      evaluator_instructions: |
+        Compare the 3 brand extraction attempts.
+
+        PICK the one with:
+        - Clear evidence from product name, database, OR web search
+        - Reasonable confidence calibrated to the evidence quality
+        - Brand that can be traced back to a specific source
+
+        BONUS:
+        - Attempts that used web search for ambiguous cases show good judgment
+        - Higher confidence is good IF backed by strong evidence
+
+        REJECT:
+        - Wild guesses without evidence
+        - Overconfident (0.9+) without clear brand match
+    output_schema:
+      type: object
+      properties:
+        brand:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: string
+        searched_web:
+          type: boolean
+      required: [brand, confidence, evidence]
+    handoffs:
+      - validate
+
+  # ============================================================
+  # Cell 5: VALIDATE - Ward validation with retry
+  # ============================================================
+  - name: validate
+    model: anthropic/claude-opus-4.5
+    instructions: |
+      Finalize the brand extraction result.
+
+      ## Input
+      Product: "{{ input.product_name }}"
+      Extraction: {{ outputs.extract_brand | tojson }}
+
+      ## Validation Checklist
+      1. Is the brand plausible for this product?
+      2. Is confidence appropriately calibrated?
+      3. Does evidence support the conclusion?
+      4. If web search was used, is the evidence from it cited?
+
+      ## Output
+      Return the validated result:
+      {
+        "brand": "...",
+        "confidence": 0.0-1.0,
+        "evidence": "...",
+        "validated": true,
+        "searched_web": true/false,
+        "product_name": "{{ input.product_name }}"
+      }
+    wards:
+      post:
+        - validator:
+            python: |
+              # Simple validation - demonstrates ward with retry
+              if len(content) < 20:
+                result = {"valid": False, "reason": "Response too short"}
+              elif "brand" not in content.lower():
+                result = {"valid": False, "reason": "Response must mention brand"}
+              else:
+                result = {"valid": True, "reason": "Basic checks passed"}
+          mode: retry
+          max_retries: 1
+    output_schema:
+      type: object
+      properties:
+        brand:
+          type: string
+        confidence:
+          type: number
+        evidence:
+          type: string
+        validated:
+          type: boolean
+        searched_web:
+          type: boolean
+        product_name:
+          type: string
+      required: [brand, confidence, evidence, validated]

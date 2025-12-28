@@ -103,6 +103,29 @@
   font-family: var(--font-mono);
 }
 
+.cascades-open-studio-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.6;
+}
+
+.cascades-open-studio-btn:hover {
+  opacity: 1;
+  color: var(--color-accent-purple);
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.08);
+}
+
 .cascades-filter-label {
   font-size: var(--font-size-sm);
   color: var(--color-accent-cyan);

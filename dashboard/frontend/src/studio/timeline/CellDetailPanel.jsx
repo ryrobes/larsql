@@ -47,7 +47,7 @@ const formatDuration = (ms) => {
  * - Config: Cell configuration (LLM settings, candidates, wards)
  * - Output: Results table/JSON
  */
-const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose }) => {
+const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose, onMessageClick, hoveredHash = null, onHoverHash, externalSelectedMessage = null }) => {
   const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode, cascade } = useStudioCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
@@ -353,16 +353,12 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     return { grouped, winner: winningIndex };
   }, [cellLogs]);
 
-  // Process cell logs into messages (filtering for relevant roles) - fallback for non-candidate cells
+  // Process cell logs into messages (filtering for relevant roles) - ALWAYS available
   const cellMessages = React.useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return [];
 
-    // Check if cell has candidates - if so, skip this (use candidate tabs instead)
-    const hasAnyCandidate = cellLogs.some(log =>
-      log.candidate_index !== null && log.candidate_index !== undefined
-    );
-    if (hasAnyCandidate) return [];
-
+    // Always return all messages - Messages tab should always be available
+    // (candidate tabs are ADDITIONAL views, not replacements)
     return cellLogs
       .filter(log => ['user', 'assistant', 'tool', 'system'].includes(log.role))
       .map(log => {
@@ -1244,44 +1240,40 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     >
                       Output
                     </button>
-                    {/* Candidate tabs OR single Messages tab */}
-                    {messagesByCandidate ? (
-                      // Multiple candidates - show tab per candidate
-                      Object.keys(messagesByCandidate.grouped).sort().map((candidateIdx) => {
-                        // Compare as numbers (candidateIdx from Object.keys is string)
-                        const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
-                        const count = messagesByCandidate.grouped[candidateIdx].length;
-
-                        // Debug winner detection
-                        if (candidateIdx === '0' || candidateIdx === '1') {
-                          console.log('[CellDetailPanel] Tab', candidateIdx, '- isWinner:', isWinner, 'winner:', messagesByCandidate.winner, 'parsed:', parseInt(candidateIdx));
-                        }
-
-                        return (
-                          <button
-                            key={candidateIdx}
-                            className={`cell-detail-results-tab ${activeOutputTab === `candidate-${candidateIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
-                            onClick={() => setActiveOutputTab(`candidate-${candidateIdx}`)}
-                            title={isWinner ? `Candidate ${candidateIdx} (WINNER - ${count} messages)` : `Candidate ${candidateIdx} (${count} messages)`}
-                          >
-                            {isWinner && <Icon icon="mdi:crown" width="14" />}
-                            <Icon icon="mdi:message-processing" width="14" />
-                            C{candidateIdx}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      // No candidates - single Messages tab
-                      cellMessages.length > 0 && (
-                        <button
-                          className={`cell-detail-results-tab ${activeOutputTab === 'messages' ? 'active' : ''}`}
-                          onClick={() => setActiveOutputTab('messages')}
-                        >
-                          <Icon icon="mdi:message-processing" width="14" />
-                          Messages ({cellMessages.length})
-                        </button>
-                      )
+                    {/* Messages tab - ALWAYS available when there are messages */}
+                    {cellMessages.length > 0 && (
+                      <button
+                        className={`cell-detail-results-tab ${activeOutputTab === 'messages' ? 'active' : ''}`}
+                        onClick={() => setActiveOutputTab('messages')}
+                      >
+                        <Icon icon="mdi:message-processing" width="14" />
+                        Messages ({cellMessages.length})
+                      </button>
                     )}
+                    {/* Candidate tabs (additional per-candidate views) */}
+                    {messagesByCandidate && Object.keys(messagesByCandidate.grouped).sort().map((candidateIdx) => {
+                      // Compare as numbers (candidateIdx from Object.keys is string)
+                      const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
+                      const count = messagesByCandidate.grouped[candidateIdx].length;
+
+                      // Debug winner detection
+                      if (candidateIdx === '0' || candidateIdx === '1') {
+                        console.log('[CellDetailPanel] Tab', candidateIdx, '- isWinner:', isWinner, 'winner:', messagesByCandidate.winner, 'parsed:', parseInt(candidateIdx));
+                      }
+
+                      return (
+                        <button
+                          key={candidateIdx}
+                          className={`cell-detail-results-tab ${activeOutputTab === `candidate-${candidateIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
+                          onClick={() => setActiveOutputTab(`candidate-${candidateIdx}`)}
+                          title={isWinner ? `Candidate ${candidateIdx} (WINNER - ${count} messages)` : `Candidate ${candidateIdx} (${count} messages)`}
+                        >
+                          {isWinner && <Icon icon="mdi:crown" width="14" />}
+                          <Icon icon="mdi:message-processing" width="14" />
+                          C{candidateIdx}
+                        </button>
+                      );
+                    })}
                     {(result && !error) && (
                       <button
                         className={`cell-detail-results-tab ${activeOutputTab === 'raw' ? 'active' : ''}`}
@@ -1430,6 +1422,10 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           showCellColumn={false}
                           compact={true}
                           className="cell-detail-messages-log"
+                          onMessageClick={onMessageClick}
+                          hoveredHash={hoveredHash}
+                          onHoverHash={onHoverHash}
+                          externalSelectedMessage={externalSelectedMessage}
                         />
                       </div>
                     );
@@ -1445,6 +1441,10 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                       showCellColumn={false}
                       compact={true}
                       className="cell-detail-messages-log"
+                      onMessageClick={onMessageClick}
+                      hoveredHash={hoveredHash}
+                      onHoverHash={onHoverHash}
+                      externalSelectedMessage={externalSelectedMessage}
                     />
                   )}
                   {activeOutputTab === 'raw' && result && (

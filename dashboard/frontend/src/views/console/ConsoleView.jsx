@@ -150,12 +150,16 @@ const darkTheme = themeQuartz.withParams({
  * - Recent cascade executions table
  * - Live updates via polling
  */
+// System cascades to hide when filter is enabled
+const SYSTEM_CASCADES = ['analyze_context_relevance'];
+
 const ConsoleView = () => {
   const [sessions, setSessions] = useState([]);
   const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridHeight, setGridHeight] = useState(600); // Dynamic grid height
+  const [hideSystemCascades, setHideSystemCascades] = useState(true); // Default ON - hide system cascades
   const gridRef = useRef(null);
   const containerRef = useRef(null);
   const { showToast } = useToast();
@@ -323,6 +327,14 @@ const ConsoleView = () => {
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds}s`;
   };
+
+  // Filter out system cascades when toggle is enabled
+  const filteredSessions = useMemo(() => {
+    if (!hideSystemCascades) return sessions;
+    return sessions.filter(session =>
+      !SYSTEM_CASCADES.includes(session.cascade_id)
+    );
+  }, [sessions, hideSystemCascades]);
 
   // AG Grid column definitions
   const columnDefs = useMemo(() => [
@@ -682,7 +694,20 @@ const ConsoleView = () => {
         <div className="console-section-header">
           <Icon icon="mdi:table" width="14" />
           <h2>Recent Sessions</h2>
-          <span className="console-count">{sessions.length} sessions</span>
+          <span className="console-count">
+            {hideSystemCascades && filteredSessions.length !== sessions.length
+              ? `${filteredSessions.length} of ${sessions.length}`
+              : sessions.length
+            } sessions
+          </span>
+          <button
+            className={`console-system-toggle ${hideSystemCascades ? 'active' : ''}`}
+            onClick={() => setHideSystemCascades(!hideSystemCascades)}
+            title={hideSystemCascades ? 'Show system cascades' : 'Hide system cascades'}
+          >
+            <Icon icon={hideSystemCascades ? 'mdi:eye-off' : 'mdi:eye'} width="12" />
+            <span>System</span>
+          </button>
         </div>
 
         {error && (
@@ -697,7 +722,7 @@ const ConsoleView = () => {
             <AgGridReact
               ref={gridRef}
               theme={darkTheme}
-              rowData={sessions}
+              rowData={filteredSessions}
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               getRowId={(params) => params.data.session_id} // Stable row tracking

@@ -573,7 +573,7 @@ const CanvasDropZone = () => {
  * - Middle strip: Horizontal scrolling cell cards (left→right) with drop zones
  * - Bottom panel: Selected cell details (config, code, outputs)
  */
-const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, onMessagesViewVisibleChange, hoveredHash, onHoverHash, gridSelectedMessage, onGridMessageSelect }) => {
+const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, onMessagesViewVisibleChange, hoveredHash, onHoverHash, gridSelectedMessage, onGridMessageSelect, onMessageFiltersChange }) => {
   //console.log('[CascadeTimeline] Component mounting/rendering');
 
   // Optimized store selectors - only subscribe to what we need
@@ -655,16 +655,19 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     }
   }, [logs, onLogsUpdate]);
 
-  // Track if messages view is visible (no cell selected + logs exist)
+  // Track if messages view is visible
+  // True when: (no cell selected AND logs exist) OR (cell IS selected - CellDetailPanel shows messages)
   useEffect(() => {
-    const isMessagesViewVisible = selectedCellIndex === null && logs && logs.length > 0;
+    const hasLogs = logs && logs.length > 0;
+    const isMessagesViewVisible = hasLogs && (selectedCellIndex === null || selectedCellIndex !== null);
+    // Simplified: messages are visible whenever we have logs (either SessionMessagesLog or CellDetailPanel)
     console.log('[CascadeTimeline] Messages view visible:', isMessagesViewVisible, {
       selectedCellIndex,
       logsLength: logs?.length
     });
 
     if (onMessagesViewVisibleChange) {
-      onMessagesViewVisibleChange(isMessagesViewVisible);
+      onMessagesViewVisibleChange(hasLogs);
     }
   }, [selectedCellIndex, logs, onMessagesViewVisibleChange]);
 
@@ -1593,6 +1596,19 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             allSessionLogs={logs}
             currentSessionId={sessionToPoll}
             onClose={() => setSelectedCellIndex(null)}
+            hoveredHash={hoveredHash}
+            onHoverHash={onHoverHash}
+            externalSelectedMessage={gridSelectedMessage}
+            onMessageClick={(message) => {
+              // Update grid selection state
+              if (onGridMessageSelect) {
+                onGridMessageSelect(message);
+              }
+              // Notify parent for context explorer
+              if (onMessageContextSelect) {
+                onMessageContextSelect(message);
+              }
+            }}
           />
         ) : logs.length > 0 ? (
           <SessionMessagesLog
@@ -1616,6 +1632,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                 onMessageContextSelect(message);
               }
             }}
+            onFiltersChange={onMessageFiltersChange}
           />
         ) : (
           <div className="cascade-empty-detail">

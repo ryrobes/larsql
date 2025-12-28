@@ -665,3 +665,42 @@
 .ce-insight-high svg {
   color: #f87171;
 }
+
+/* ============================================
+   RELEVANCE SCORES
+   ============================================ */
+
+.ce-block-relevance {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+}
+
+.ce-block-relevance.high {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+.ce-block-relevance.high svg {
+  color: #34d399;
+}
+
+.ce-block-relevance.medium {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+.ce-block-relevance.medium svg {
+  color: #fbbf24;
+}
+
+.ce-block-relevance.low {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+.ce-block-relevance.low svg {
+  color: #f87171;
+}

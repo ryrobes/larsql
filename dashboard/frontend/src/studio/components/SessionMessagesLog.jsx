@@ -70,6 +70,7 @@ const ROLE_CONFIG = {
  * @param {Boolean} compact - Compact mode for tab view (default: false)
  * @param {String} className - Additional CSS class names
  * @param {Boolean} includeChildSessions - Include child session logs (default: true)
+ * @param {Function} onFiltersChange - Callback when filters change (receives filter object)
  */
 const SessionMessagesLog = ({
   logs = [],
@@ -87,6 +88,7 @@ const SessionMessagesLog = ({
   className = '',
   includeChildSessions = true,
   shouldPollBudget = true, // Whether to poll for budget updates (set false for replay mode)
+  onFiltersChange,
 }) => {
   const gridRef = useRef(null);
 
@@ -129,7 +131,15 @@ const SessionMessagesLog = ({
     searchText: '',
     showToolCalls: true,
     showErrors: true,
+    winnersOnly: false, // Only show winning candidates (or main flow)
   });
+
+  // Notify parent when filters change
+  useEffect(() => {
+    if (onFiltersChange) {
+      onFiltersChange(filters);
+    }
+  }, [filters, onFiltersChange]);
 
   // Get unique cells and roles for filter options
   const filterOptions = useMemo(() => {
@@ -164,6 +174,18 @@ const SessionMessagesLog = ({
           ? String(log.candidate_index)
           : 'main';
         return logCandidate === candidateStr;
+      });
+    }
+
+    // Filter to winners only (main flow or winning candidates)
+    if (filters.winnersOnly) {
+      result = result.filter(log => {
+        // Main flow messages (no candidate index) always pass
+        if (log.candidate_index === null || log.candidate_index === undefined) {
+          return true;
+        }
+        // Candidate messages only pass if they're winners
+        return log.is_winner === true;
       });
     }
 
@@ -551,6 +573,7 @@ const SessionMessagesLog = ({
       searchText: '',
       showToolCalls: true,
       showErrors: true,
+      winnersOnly: false,
     });
   }, []);
 
@@ -595,9 +618,17 @@ const SessionMessagesLog = ({
     let totalCost = 0;
     let totalTokensIn = 0;
     let totalTokensOut = 0;
+    let mostExpensiveMessage = null;
+    let maxCost = 0;
 
     for (const log of filteredLogs) {
-      if (log.cost) totalCost += log.cost;
+      if (log.cost) {
+        totalCost += log.cost;
+        if (log.cost > maxCost) {
+          maxCost = log.cost;
+          mostExpensiveMessage = log;
+        }
+      }
       if (log.tokens_in) totalTokensIn += log.tokens_in;
       if (log.tokens_out) totalTokensOut += log.tokens_out;
     }
@@ -608,10 +639,44 @@ const SessionMessagesLog = ({
       cost: totalCost,
       tokensIn: totalTokensIn,
       tokensOut: totalTokensOut,
+      mostExpensiveMessage,
     };
   }, [filteredLogs, logs]);
 
-  const hasActiveFilters = filters.roles.size > 0 || filters.cells.size > 0 || filters.searchText;
+  // Jump to and select the most expensive message
+  const jumpToMostExpensive = useCallback(() => {
+    if (!stats.mostExpensiveMessage) return;
+
+    const message = stats.mostExpensiveMessage;
+
+    // Select the message
+    setInternalSelectedMessage(message);
+    if (onMessageClick) {
+      onMessageClick(message);
+    }
+
+    // Scroll to it in the grid
+    if (gridRef.current?.api) {
+      const rowNode = gridRef.current.api.getRowNode(
+        message.message_id || `${message.timestamp_iso}-${message.trace_id}`
+      );
+      if (rowNode) {
+        gridRef.current.api.ensureNodeVisible(rowNode, 'middle');
+        // Flash effect
+        setTimeout(() => {
+          const rowElement = document.querySelector(`[row-id="${message.message_id}"]`);
+          if (rowElement) {
+            rowElement.classList.add('sml-row-flash');
+            setTimeout(() => {
+              rowElement.classList.remove('sml-row-flash');
+            }, 1500);
+          }
+        }, 100);
+      }
+    }
+  }, [stats.mostExpensiveMessage, onMessageClick]);
+
+  const hasActiveFilters = filters.roles.size > 0 || filters.cells.size > 0 || filters.searchText || filters.winnersOnly;
 
   // Empty state
   if (logs.length === 0) {
@@ -641,6 +706,16 @@ const SessionMessagesLog = ({
                 : `${stats.count} of ${stats.totalCount} messages`
               }
             </span>
+            {stats.mostExpensiveMessage && (
+              <button
+                className="sml-stat sml-stat-expensive"
+                onClick={jumpToMostExpensive}
+                title={`Jump to most expensive: $${stats.mostExpensiveMessage.cost?.toFixed(4)} (${stats.mostExpensiveMessage.role})`}
+              >
+                <Icon icon="mdi:fire" width="12" />
+                ${stats.mostExpensiveMessage.cost?.toFixed(4)}
+              </button>
+            )}
           </div>
           <div className="sml-stats-right">
             {stats.tokensIn > 0 && (
@@ -966,6 +1041,19 @@ const SessionMessagesLog = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Winners Only toggle */}
+        <div className="sml-filter-section">
+          <button
+            className={`sml-filter-toggle ${filters.winnersOnly ? 'active' : ''}`}
+            onClick={() => setFilters(prev => ({ ...prev, winnersOnly: !prev.winnersOnly }))}
+            title="Only show winning candidates (hide losing candidate paths)"
+          >
+            <Icon icon={filters.winnersOnly ? 'mdi:trophy' : 'mdi:trophy-outline'} width="14" />
+            <span>Winners Only</span>
+            <Icon icon={filters.winnersOnly ? 'mdi:toggle-switch' : 'mdi:toggle-switch-off-outline'} width="18" />
+          </button>
         </div>
 
         {/* Role filters */}

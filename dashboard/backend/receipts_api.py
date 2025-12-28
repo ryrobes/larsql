@@ -609,18 +609,33 @@ def get_context_breakdown():
         # Format response
         breakdown = []
         for row in results:
-            messages = []
+            # Deduplicate messages by hash (same message can appear multiple times
+            # when multiple LLM calls in a cell use the same context message)
+            seen_hashes = set()
+            unique_messages = []
             for msg_tuple in row.get('messages', []):
-                messages.append({
-                    'hash': msg_tuple[0],
+                msg_hash = msg_tuple[0]
+                if msg_hash in seen_hashes:
+                    continue  # Skip duplicate
+                seen_hashes.add(msg_hash)
+                unique_messages.append({
+                    'hash': msg_hash,
                     'source_cell': msg_tuple[1],
                     'role': msg_tuple[2],
                     'tokens': int(msg_tuple[3]),
                     'cost': safe_float(msg_tuple[4]),
-                    'pct': safe_float(msg_tuple[5]),
+                    'pct': safe_float(msg_tuple[5]),  # Will be recalculated below
                     'relevance_score': safe_float(msg_tuple[6]) if len(msg_tuple) > 6 and msg_tuple[6] is not None else None,
                     'relevance_reason': msg_tuple[7] if len(msg_tuple) > 7 else None,
                 })
+
+            # Recalculate percentages so they sum to 100% within this cell
+            total_tokens = sum(m['tokens'] for m in unique_messages)
+            if total_tokens > 0:
+                for msg in unique_messages:
+                    msg['pct'] = round((msg['tokens'] / total_tokens) * 100, 2)
+
+            messages = unique_messages
 
             # Format timestamp
             timestamp = row.get('session_timestamp')

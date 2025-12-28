@@ -103,6 +103,11 @@ if stt_available():
     register_trait("listen", voice_listen)
     register_trait("process_voice_recording", process_voice_recording)
 
+# Conditional: Brave Search (only if API key is configured)
+from .traits.web_search import brave_web_search, is_available as brave_search_available
+if brave_search_available():
+    register_trait("brave_web_search", brave_web_search)
+
 # Browser automation - Visual browser control
 from .traits.rabbitize import (
     rabbitize_start,

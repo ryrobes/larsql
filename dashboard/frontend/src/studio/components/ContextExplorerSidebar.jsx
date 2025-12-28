@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import ContextMatrixView from './ContextMatrixView';
 import './ContextExplorerSidebar.css';
@@ -110,10 +110,70 @@ const ContextExplorerSidebar = ({
   onClose,
   onNavigateToMessage,
   cascadeAnalytics,
-  cellAnalytics
+  cellAnalytics,
+  messageFilters
 }) => {
 
-  // Build hash index from all logs for O(1) lookups
+  // Apply message filters to logs (especially winnersOnly)
+  const filteredLogs = useMemo(() => {
+    if (!allLogs) return [];
+    if (!messageFilters || !messageFilters.winnersOnly) {
+      return allLogs;
+    }
+
+    // Filter to winners only (main flow or winning candidates)
+    return allLogs.filter(log => {
+      // Main flow messages (no candidate index) always pass
+      if (log.candidate_index === null || log.candidate_index === undefined) {
+        return true;
+      }
+      // Candidate messages only pass if they're winners
+      return log.is_winner === true;
+    });
+  }, [allLogs, messageFilters]);
+
+  // State for relevance scores from backend
+  const [relevanceScores, setRelevanceScores] = useState({});
+  const [relevanceLoading, setRelevanceLoading] = useState(false);
+
+  // Fetch relevance scores when message changes
+  useEffect(() => {
+    const fetchRelevance = async () => {
+      if (!selectedMessage?.session_id || !selectedMessage?.cell_name) {
+        return;
+      }
+
+      setRelevanceLoading(true);
+      try {
+        const url = `http://localhost:5001/api/receipts/context-breakdown?session_id=${encodeURIComponent(selectedMessage.session_id)}&cell_name=${encodeURIComponent(selectedMessage.cell_name)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          // Build hash -> relevance mapping
+          const scores = {};
+          if (data.messages) {
+            data.messages.forEach(msg => {
+              if (msg.hash && msg.relevance_score !== null && msg.relevance_score !== undefined) {
+                scores[msg.hash] = {
+                  score: msg.relevance_score,
+                  reason: msg.relevance_reason || null
+                };
+              }
+            });
+          }
+          setRelevanceScores(scores);
+        }
+      } catch (err) {
+        console.error('[ContextExplorer] Failed to fetch relevance scores:', err);
+      } finally {
+        setRelevanceLoading(false);
+      }
+    };
+
+    fetchRelevance();
+  }, [selectedMessage?.session_id, selectedMessage?.cell_name, selectedMessage?.content_hash]);
+
+  // Build hash index from all logs for O(1) lookups (used for ancestor navigation)
   const hashIndex = useMemo(() => {
     if (!allLogs) return {};
 
@@ -131,6 +191,25 @@ const ContextExplorerSidebar = ({
     });
     return index;
   }, [allLogs]);
+
+  // Build filtered hash index for matrix view (respects winnersOnly filter)
+  const filteredHashIndex = useMemo(() => {
+    if (!filteredLogs) return {};
+
+    const index = {};
+    filteredLogs.forEach((msg, idx) => {
+      if (msg.content_hash) {
+        if (!index[msg.content_hash]) {
+          index[msg.content_hash] = [];
+        }
+        index[msg.content_hash].push({
+          ...msg,
+          _index: idx
+        });
+      }
+    });
+    return index;
+  }, [filteredLogs]);
 
   // Build ancestors list (messages in this message's context)
   const ancestors = useMemo(() => {
@@ -166,13 +245,13 @@ const ContextExplorerSidebar = ({
     });
   }, [selectedMessage, hashIndex]);
 
-  // Build descendants list (messages that saw this message)
+  // Build descendants list (messages that saw this message) - uses filtered logs
   const descendants = useMemo(() => {
-    if (!selectedMessage?.content_hash || !allLogs) {
+    if (!selectedMessage?.content_hash || !filteredLogs) {
       return [];
     }
 
-    return allLogs
+    return filteredLogs
       .filter(msg => msg.context_hashes?.includes(selectedMessage.content_hash))
       .map((msg, idx) => ({
         _index: idx,
@@ -181,7 +260,7 @@ const ContextExplorerSidebar = ({
         timestamp: msg.timestamp,
         hasMatch: true
       }));
-  }, [selectedMessage, allLogs]);
+  }, [selectedMessage, filteredLogs]);
 
   // Calculate token breakdown including selected message with global rankings
   const tokenBreakdown = useMemo(() => {
@@ -643,7 +722,7 @@ const ContextExplorerSidebar = ({
       {/* Context Matrix (30-40%) */}
       <div className="ce-matrix-section">
         <ContextMatrixView
-          data={{ all_messages: allLogs, hash_index: hashIndex }}
+          data={{ all_messages: filteredLogs, hash_index: filteredHashIndex }}
           selectedMessage={selectedMessage}
           hoveredHash={hoveredHash}
           compact={true}
@@ -747,6 +826,19 @@ const ContextExplorerSidebar = ({
                           </span>
                         )}
                       </>
+                    )}
+                    {/* Relevance Score */}
+                    {relevanceScores[ancestor.hash] && (
+                      <span
+                        className={`ce-block-relevance ${
+                          relevanceScores[ancestor.hash].score >= 80 ? 'high' :
+                          relevanceScores[ancestor.hash].score >= 50 ? 'medium' : 'low'
+                        }`}
+                        title={relevanceScores[ancestor.hash].reason || `Relevance: ${relevanceScores[ancestor.hash].score}/100`}
+                      >
+                        <Icon icon="mdi:target" width="10" />
+                        {relevanceScores[ancestor.hash].score}
+                      </span>
                     )}
                   </div>
                   {ancestor.tokenPercentage > 0 && (

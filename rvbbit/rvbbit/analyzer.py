@@ -394,9 +394,9 @@ class PromptSuggestionManager:
         with open(cascade_file, 'r') as f:
             cascade = json.load(f)
 
-        # Find and update the phase
+        # Find and update the cell
         updated = False
-        for phase in cascade.get("phases", []):
+        for phase in cascade.get("cells", []):
             if phase.get("name") == cell_name:
                 old_instruction = phase.get("instructions", "")
                 phase["instructions"] = new_instruction
@@ -480,7 +480,7 @@ def analyze_and_suggest(
 
         # Find current instruction
         current_instruction = None
-        for p in cascade.get("phases", []):
+        for p in cascade.get("cells", []):
             if p.get("name") == phase:
                 current_instruction = p.get("instructions", "")
                 break

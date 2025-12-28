@@ -452,11 +452,11 @@ class NarratorService:
 
         # Override instructions if custom ones provided
         if self.config and self.config.instructions:
-            cascade_dict["phases"][0]["instructions"] = self.config.instructions
+            cascade_dict["cells"][0]["instructions"] = self.config.instructions
 
         # Override model if specified
         if self.config and self.config.model:
-            cascade_dict["phases"][0]["model"] = self.config.model
+            cascade_dict["cells"][0]["model"] = self.config.model
 
         try:
             # Create runner for narrator cascade (pass dict directly to config_path)

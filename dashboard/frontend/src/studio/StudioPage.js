@@ -89,6 +89,7 @@ function StudioPage({
   const [isMessagesViewVisible, setIsMessagesViewVisible] = useState(false);
   const [hoveredHash, setHoveredHash] = useState(null); // Cross-component hover highlighting
   const [gridSelectedMessage, setGridSelectedMessage] = useState(null); // Grid selection state
+  const [messageFilters, setMessageFilters] = useState(null); // Filters from SessionMessagesLog
 
   // Handle cascade load from browser
   const handleBrowserLoad = useCallback(async (file) => {
@@ -712,6 +713,7 @@ function StudioPage({
                     onNavigateToMessage={handleNavigateToMessage}
                     cascadeAnalytics={cascadeAnalytics}
                     cellAnalytics={cellAnalytics}
+                    messageFilters={messageFilters}
                   />
                 ) : (
                   <CascadeNavigator />
@@ -730,6 +732,7 @@ function StudioPage({
                   onHoverHash={setHoveredHash}
                   gridSelectedMessage={gridSelectedMessage}
                   onGridMessageSelect={setGridSelectedMessage}
+                  onMessageFiltersChange={setMessageFilters}
                 />
               </div>
             </Split>

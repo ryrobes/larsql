@@ -64,6 +64,28 @@
   font-weight: 500;
 }
 
+.sml-stat-expensive {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin-left: 4px;
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 4px;
+  color: #fb923c;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sml-stat-expensive:hover {
+  background: rgba(251, 146, 60, 0.2);
+  border-color: #fb923c;
+  box-shadow: 0 0 8px rgba(251, 146, 60, 0.3);
+}
+
 /* Grid container */
 .sml-grid-container {
   flex: 1 1 0;
@@ -348,6 +370,39 @@
   background-color: rgba(167, 139, 250, 0.1);
   border-color: #a78bfa;
   color: #cbd5e1;
+}
+
+/* Winners Only Toggle */
+.sml-filter-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: #0a0815;
+  border: 1px solid #1a1628;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sml-filter-toggle:hover {
+  border-color: #fbbf24;
+  color: #94a3b8;
+}
+
+.sml-filter-toggle.active {
+  background-color: rgba(251, 191, 36, 0.15);
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
+.sml-filter-toggle span {
+  flex: 1;
+  text-align: left;
 }
 
 /* ============================================

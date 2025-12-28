@@ -1068,6 +1068,16 @@ const CascadesView = ({ navigate, params = {} }) => {
               : gridData.length
             } {selectedCascade ? 'sessions' : 'cascades'}
           </span>
+          {selectedCascade && (
+            <button
+              className="cascades-open-studio-btn"
+              onClick={handleLoadInStudio}
+              title="Open cascade spec in Studio (no session)"
+            >
+              <Icon icon="mdi:pencil-ruler" width="14" />
+              Open in Studio
+            </button>
+          )}
         </div>
 
         {/* Filter Bar */}

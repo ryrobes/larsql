@@ -402,7 +402,7 @@ def extract_routing_choices(lineage: List[Dict]) -> Dict[str, str]:
         output = item.get("output", "")
         if isinstance(output, str) and output.startswith("Dynamically routed to: "):
             target = output.replace("Dynamically routed to: ", "")
-            routing_choices[phase] = target
+            routing_choices[cell] = target
     return routing_choices
 
 
@@ -3125,7 +3125,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
             if has_sub_cascades:
                 for sc_idx, sc_data in enumerate(sub_cascades_by_cell_name[cell_name]):
                     sc_cascade = sc_data["cascade"]
-                    sc_phases = sc_data["phases"]
+                    sc_cells = sc_data["cells"]
                     sc_name = sc_data.get("sub_echo", f"sub_{sc_idx}")
 
                     sc_content = sc_cascade.get("content", "")
@@ -3150,10 +3150,10 @@ def generate_state_diagram_string(echo: Echo) -> str:
                             if line.strip():
                                 # Add extra indentation to nest within parent composite state
                                 lines.append(f"            {line}")
-                    elif sc_phases:
-                        # Fallback: Render sub-cascade phases as simple nodes
+                    elif sc_cells:
+                        # Fallback: Render sub-cascade cells as simple nodes
                         sc_phase_ids = []
-                        for sp_idx, sp_entry in enumerate(sc_phases):
+                        for sp_idx, sp_entry in enumerate(sc_cells):
                             sp_content = sp_entry.get("content", "")
                             sp_name = sp_content.replace("Phase: ", "") if sp_content.startswith("Phase: ") else sp_content
                             sp_id = f"{sc_id}_p{sp_idx}"
