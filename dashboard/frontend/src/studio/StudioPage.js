@@ -57,7 +57,9 @@ function StudioPage({
     cascadeSessionId,
     fetchDefaultModel,
     fetchCellTypes,
-    joinLiveSession
+    joinLiveSession,
+    cascadeAnalytics,
+    cellAnalytics
   } = useStudioCascadeStore();
 
   // DEBUG: Log mode and cascade state (runs on EVERY render)
@@ -708,6 +710,8 @@ function StudioPage({
                     onHoverHash={setHoveredHash}
                     onClose={handleCloseContextExplorer}
                     onNavigateToMessage={handleNavigateToMessage}
+                    cascadeAnalytics={cascadeAnalytics}
+                    cellAnalytics={cellAnalytics}
                   />
                 ) : (
                   <CascadeNavigator />

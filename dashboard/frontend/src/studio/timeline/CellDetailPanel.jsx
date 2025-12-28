@@ -11,6 +11,8 @@ import SessionMessagesLog from '../components/SessionMessagesLog';
 import { detectPhaseEditors } from '../editors';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount} from '../utils/monacoTheme';
 import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../components';
+import useSpecValidation from '../../hooks/useSpecValidation';
+import ValidationPanel from '../../components/validation/ValidationPanel';
 import './CellDetailPanel.css';
 
 /**
@@ -46,7 +48,7 @@ const formatDuration = (ms) => {
  * - Output: Results table/JSON
  */
 const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose }) => {
-  const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode } = useStudioCascadeStore();
+  const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode, cascade } = useStudioCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
   const [showYamlEditor, setShowYamlEditor] = useState(false);
@@ -59,6 +61,22 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
   const yamlEditorEverFocusedRef = useRef(false);
+
+  // Build cascade context for validation (all cell names for accurate handoff checking)
+  const cascadeContext = useMemo(() => {
+    if (!cascade || !cascade.cells) return null;
+    return {
+      cellNames: cascade.cells.map(c => c.name),
+      cascadeId: cascade.cascade_id || '_temp',
+    };
+  }, [cascade]);
+
+  // Spec validation for YAML editor
+  const validation = useSpecValidation(localYaml, {
+    enabled: showYamlEditor && localYaml.length > 0,
+    cellMode: true, // Always treat as single cell YAML
+    cascadeContext, // Pass full cascade context for accurate validation
+  });
 
   // Apply desired output tab when it changes (from Media section navigation)
   React.useEffect(() => {
@@ -527,21 +545,29 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   }, [cell.name, messagesByCandidate]);
 
   // Initialize/reset localYaml when cell changes or YAML editor is opened
+  // Use a ref to track which cell we last initialized for
+  const lastInitializedCellRef = useRef(null);
+
   React.useEffect(() => {
     if (!showYamlEditor) return; // Only initialize when editor is visible
 
-    if (!localYaml && cell) {
+    // Always reinitialize when cell identity changes (name or cascade)
+    const cellKey = `${cascadeContext?.cascadeId || ''}_${cell.name}`;
+    if (lastInitializedCellRef.current !== cellKey) {
       const initialYaml = yaml.dump(cell, { indent: 2, lineWidth: -1, noRefs: true });
       setLocalYaml(initialYaml);
       lastSyncedYamlRef.current = initialYaml;
+      lastInitializedCellRef.current = cellKey;
+      setYamlParseError(null);
     }
-  }, [cell.name, showYamlEditor]); // Re-init when cell changes or editor opens
+  }, [cell, cell.name, showYamlEditor, cascadeContext]); // Re-init when cell/cascade changes or editor opens
 
   // Clear localYaml when YAML editor is closed (free memory)
   React.useEffect(() => {
     if (!showYamlEditor && localYaml) {
       setLocalYaml('');
       lastSyncedYamlRef.current = '';
+      lastInitializedCellRef.current = null; // Reset so it reinitializes on next open
       setYamlParseError(null);
       yamlEditorEverFocusedRef.current = false;
     }
@@ -902,42 +928,64 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                               Parse Error
                             </span>
                           )}
+                          {!yamlParseError && validation.errorCount > 0 && (
+                            <span className="cell-yaml-error" title={`${validation.errorCount} validation error(s)`}>
+                              <Icon icon="mdi:alert-circle" width="12" />
+                              {validation.errorCount} error{validation.errorCount > 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {!yamlParseError && validation.warningCount > 0 && (
+                            <span className="cell-yaml-warning" title={`${validation.warningCount} warning(s)`}>
+                              <Icon icon="mdi:alert" width="12" />
+                              {validation.warningCount}
+                            </span>
+                          )}
                           <span className="cell-yaml-hint">Auto-saves on blur</span>
                         </div>
-                        <Editor
-                          key={`yaml-${cell.name}`}
-                          height="100%"
-                          language="yaml"
-                          value={cellYaml}
-                          onChange={handleYamlChange}
-                          theme={STUDIO_THEME_NAME}
-                          beforeMount={configureMonacoTheme}
-                          onMount={(editor, monaco) => {
-                            yamlEditorRef.current = editor;
-                            handleEditorMount(editor, monaco);
-                            // Add focus/blur handlers
-                            editor.onDidFocusEditorText(() => {
-                              yamlEditorEverFocusedRef.current = true;
-                              setYamlEditorFocused(true);
-                            });
-                            editor.onDidBlurEditorText(() => {
-                              // Only process blur if editor was actually focused by user
-                              if (!yamlEditorEverFocusedRef.current) return;
-                              const currentValue = editor.getValue();
-                              handleYamlBlur(currentValue);
-                            });
-                          }}
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 13,
-                            fontFamily: "'Google Sans Code', monospace",
-                            lineNumbers: 'on',
-                            renderLineHighlightOnlyWhenFocus: true,
-                            wordWrap: 'on',
-                            automaticLayout: true,
-                            scrollBeyondLastLine: false,
-                            padding: { top: 12, bottom: 12 },
-                          }}
+                        <div className="cell-detail-yaml-editor-wrapper">
+                          <Editor
+                            key={`yaml-${cell.name}`}
+                            height="100%"
+                            language="yaml"
+                            value={cellYaml}
+                            onChange={handleYamlChange}
+                            theme={STUDIO_THEME_NAME}
+                            beforeMount={configureMonacoTheme}
+                            onMount={(editor, monaco) => {
+                              yamlEditorRef.current = editor;
+                              handleEditorMount(editor, monaco);
+                              // Add focus/blur handlers
+                              editor.onDidFocusEditorText(() => {
+                                yamlEditorEverFocusedRef.current = true;
+                                setYamlEditorFocused(true);
+                              });
+                              editor.onDidBlurEditorText(() => {
+                                // Only process blur if editor was actually focused by user
+                                if (!yamlEditorEverFocusedRef.current) return;
+                                const currentValue = editor.getValue();
+                                handleYamlBlur(currentValue);
+                              });
+                            }}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              fontFamily: "'Google Sans Code', monospace",
+                              lineNumbers: 'on',
+                              renderLineHighlightOnlyWhenFocus: true,
+                              wordWrap: 'on',
+                              automaticLayout: true,
+                              scrollBeyondLastLine: false,
+                              padding: { top: 12, bottom: 12 },
+                            }}
+                          />
+                        </div>
+                        <ValidationPanel
+                          errors={validation.errors}
+                          warnings={validation.warnings}
+                          suggestions={validation.suggestions}
+                          isValidating={validation.isValidating}
+                          parseError={validation.parseError}
+                          collapsed={true}
                         />
                       </div>
                     </Split>
@@ -1023,6 +1071,18 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                             Parse Error
                           </span>
                         )}
+                        {!yamlParseError && validation.errorCount > 0 && (
+                          <span className="cell-yaml-error" title={`${validation.errorCount} validation error(s)`}>
+                            <Icon icon="mdi:alert-circle" width="12" />
+                            {validation.errorCount} error{validation.errorCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {!yamlParseError && validation.warningCount > 0 && (
+                          <span className="cell-yaml-warning" title={`${validation.warningCount} warning(s)`}>
+                            <Icon icon="mdi:alert" width="12" />
+                            {validation.warningCount}
+                          </span>
+                        )}
                         <span className="cell-yaml-hint">Auto-saves on blur</span>
                       </div>
                       <div className="cell-detail-editor-wrapper">
@@ -1077,6 +1137,14 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           }}
                         />
                       </div>
+                      <ValidationPanel
+                        errors={validation.errors}
+                        warnings={validation.warnings}
+                        suggestions={validation.suggestions}
+                        isValidating={validation.isValidating}
+                        parseError={validation.parseError}
+                        collapsed={true}
+                      />
                     </div>
                   </Split>
                 ) : (
@@ -1355,6 +1423,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                         <SessionMessagesLog
                           logs={cellLogs || []}
                           currentSessionId={currentSessionId}
+                          shouldPollBudget={viewMode !== 'replay' && isRunningAll}
                           showFilters={true}
                           filterByCell={cell.name}
                           filterByCandidate={candidateIdx}
@@ -1370,6 +1439,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     <SessionMessagesLog
                       logs={cellLogs || []}
                       currentSessionId={currentSessionId}
+                      shouldPollBudget={viewMode !== 'replay' && isRunningAll}
                       showFilters={true}
                       filterByCell={cell.name}
                       showCellColumn={false}

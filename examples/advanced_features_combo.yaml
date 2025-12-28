@@ -60,7 +60,7 @@ cells:
   output_extraction:
     pattern: <analysis>(.*?)</analysis>
     store_as: final_analysis
-  traits: []
+  traits: [manifest]
 - context:
     from:
     - all
@@ -74,15 +74,15 @@ cells:
   name: summarize
   traits: []
 token_budget:
-  max_total: 15000
-  reserve_for_output: 3000
+  max_total: 150000
+  reserve_for_output: 30000
   strategy: sliding_window
   warning_threshold: 0.8
-tool_caching:
-  enabled: true
-  tools:
-    sql_search:
-      enabled: true
-      hit_message: '⚡ Cache hit: Skipped redundant RAG search'
-      key: query
-      ttl: 3600
+# tool_caching:
+#   enabled: true
+#   tools:
+#     sql_search:
+#       enabled: true
+#       hit_message: '⚡ Cache hit: Skipped redundant RAG search'
+#       key: query
+#       ttl: 3600

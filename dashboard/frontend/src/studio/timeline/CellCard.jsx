@@ -59,7 +59,22 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   const costDeltaPct = costMetrics?.costDeltaPct || 0;
   const duration = costMetrics?.duration || 0;
   const costColor = costMetrics?.color || 'cyan';
-  const showAnnotation = costMetrics && Math.abs(costDeltaPct) > 5;
+
+  // New analytics-based metrics
+  const cellCostPct = costMetrics?.cellCostPct || 0;
+  const costMultiplier = costMetrics?.costMultiplier;
+  const isOutlier = costMetrics?.isOutlier || false;
+  const speciesRunCount = costMetrics?.speciesRunCount || 0;
+
+  // Show annotation if:
+  // 1. Historical comparison available and significantly different (1.2x+)
+  // 2. OR bottleneck (>25% of cascade cost)
+  // 3. OR statistical outlier
+  const showAnnotation = costMetrics && (
+    (costMultiplier && Math.abs(costMultiplier - 1) >= 0.2) ||
+    cellCostPct >= 25 ||
+    isOutlier
+  );
 
   // Format duration
   const formatDurationShort = (ms) => {
@@ -337,7 +352,27 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
       {/* Blueprint-style cost annotation */}
       {showAnnotation && (
         <div className={`cell-cost-annotation ${costColor}`}>
-          {costDeltaPct > 0 ? '+' : ''}{costDeltaPct.toFixed(0)}% cost
+          {/* Show outlier badge if statistical outlier */}
+          {isOutlier && (
+            <span style={{ marginRight: '4px' }} title="Statistical outlier vs historical runs">⚠</span>
+          )}
+          {/* Primary metric: multiplier vs avg OR bottleneck % */}
+          {costMultiplier && speciesRunCount > 0 ? (
+            // Historical comparison available
+            <>
+              {costMultiplier >= 1.1
+                ? `${costMultiplier.toFixed(1)}x avg`
+                : costMultiplier <= 0.9
+                  ? `${costMultiplier.toFixed(1)}x avg`
+                  : null}
+              {cellCostPct >= 25 && (
+                <span style={{ marginLeft: '4px' }}>{cellCostPct.toFixed(0)}% of cascade</span>
+              )}
+            </>
+          ) : (
+            // No historical data, show bottleneck %
+            cellCostPct >= 25 && `${cellCostPct.toFixed(0)}% of cascade`
+          )}
           {duration > 0 && (
             <span className="annotation-duration"> · {formatDurationShort(duration)}</span>
           )}
@@ -356,10 +391,24 @@ const arePropsEqual = (prevProps, nextProps) => {
   if (prevProps.defaultModel !== nextProps.defaultModel) return false;
   if (prevProps.onSelect !== nextProps.onSelect) return false;
 
-  // Cost metrics - check if changed
-  const prevCost = prevProps.costMetrics?.cost || 0;
-  const nextCost = nextProps.costMetrics?.cost || 0;
-  if (prevCost !== nextCost) return false;
+  // Cost metrics - compare by reference first, then by key fields
+  // If references differ, check if values actually changed
+  if (prevProps.costMetrics !== nextProps.costMetrics) {
+    // Quick reference check - different objects, need to compare values
+    const prev = prevProps.costMetrics || {};
+    const next = nextProps.costMetrics || {};
+
+    // Check all fields that affect rendering
+    if (prev.cost !== next.cost) return false;
+    if (prev.cellCostPct !== next.cellCostPct) return false;
+    if (prev.costMultiplier !== next.costMultiplier) return false;
+    if (prev.isOutlier !== next.isOutlier) return false;
+    if (prev.speciesRunCount !== next.speciesRunCount) return false;
+    if (prev.speciesAvgCost !== next.speciesAvgCost) return false;
+    if (prev.duration !== next.duration) return false;
+    if (prev.scale !== next.scale) return false;
+    if (prev.color !== next.color) return false;
+  }
 
   // Cell config - compare by reference (should be stable from layout memoization)
   if (prevProps.cell !== nextProps.cell) {

@@ -448,6 +448,28 @@
   align-items: center;
 }
 
+/* Validation indicators in header */
+.card-validation-errors,
+.card-validation-warnings {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.card-validation-errors {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.card-validation-warnings {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
 /* =============================================================================
    Mutation Trait Icons
    ============================================================================= */

@@ -1116,7 +1116,8 @@
   font-weight: 600;
 }
 
-.cell-detail-editor-wrapper {
+.cell-detail-editor-wrapper,
+.cell-detail-yaml-editor-wrapper {
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -1146,6 +1147,16 @@
   gap: 4px;
   color: #f87171;
   margin-left: auto;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cell-yaml-warning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #fbbf24;
   font-size: 10px;
   text-transform: none;
   letter-spacing: 0;

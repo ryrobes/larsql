@@ -79,6 +79,10 @@ const useStudioCascadeStore = create(
       cellStates: {},  // { [cellName]: { status, result, error, duration } }
       // status: 'pending' | 'running' | 'success' | 'error' | 'stale'
 
+      // Pre-computed analytics from cascade_analytics/cell_analytics tables
+      cascadeAnalytics: null,  // { context_cost_pct, cost_z_score, cluster_avg_cost, ... }
+      cellAnalytics: {},  // { [cellName]: { cell_cost_pct, species_avg_cost, is_cost_outlier, ... } }
+
       isRunningAll: false,  // Full cascade execution in progress
       cascadeSessionId: null,  // Session ID when running full cascade (for SSE tracking)
 
@@ -1230,6 +1234,18 @@ output_schema:
             }
             // If all pending (no running, not complete), keep isRunningAll as-is
             // This prevents stopping polling when execution just started
+          }
+        });
+      },
+
+      // Update analytics data from polling (pre-computed metrics from cascade_analytics/cell_analytics)
+      updateAnalyticsFromPolling: (cascadeAnalytics, cellAnalytics) => {
+        set(s => {
+          if (cascadeAnalytics) {
+            s.cascadeAnalytics = cascadeAnalytics;
+          }
+          if (cellAnalytics && Object.keys(cellAnalytics).length > 0) {
+            s.cellAnalytics = cellAnalytics;
           }
         });
       },

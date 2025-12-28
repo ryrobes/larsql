@@ -86,6 +86,7 @@ const SessionMessagesLog = ({
   compact = false,
   className = '',
   includeChildSessions = true,
+  shouldPollBudget = true, // Whether to poll for budget updates (set false for replay mode)
 }) => {
   const gridRef = useRef(null);
 
@@ -628,7 +629,7 @@ const SessionMessagesLog = ({
       {/* Main table area */}
       <div className={`sml-table-area ${!showFilters ? 'sml-table-area-full' : ''}`}>
         {/* Budget Status Bar - at top of content area */}
-        <BudgetStatusBar sessionId={currentSessionId} />
+        <BudgetStatusBar sessionId={currentSessionId} shouldPoll={shouldPollBudget} />
 
         {/* Stats bar */}
         <div className="sml-stats-bar">

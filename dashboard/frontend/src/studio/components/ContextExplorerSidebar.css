@@ -590,3 +590,78 @@
   margin: 0;
   font-size: var(--font-size-sm);
 }
+
+/* ============================================
+   ANALYTICS INSIGHTS - Pre-computed metrics
+   ============================================ */
+
+.ce-analytics-insights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(20, 20, 25, 0.8), rgba(15, 15, 20, 0.9));
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.ce-insight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: help;
+  transition: all 0.15s ease;
+}
+
+.ce-insight:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ce-insight svg {
+  opacity: 0.7;
+}
+
+.ce-insight-label {
+  color: var(--color-text-dim);
+}
+
+.ce-insight-value {
+  font-weight: 600;
+}
+
+/* Severity colors */
+.ce-insight-low {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.ce-insight-low .ce-insight-value {
+  color: #34d399;
+}
+.ce-insight-low svg {
+  color: #34d399;
+}
+
+.ce-insight-medium {
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.ce-insight-medium .ce-insight-value {
+  color: #fbbf24;
+}
+.ce-insight-medium svg {
+  color: #fbbf24;
+}
+
+.ce-insight-high {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.ce-insight-high .ce-insight-value {
+  color: #f87171;
+}
+.ce-insight-high svg {
+  color: #f87171;
+}

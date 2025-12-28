@@ -1,0 +1,152 @@
+/**
+ * ValidationPanel styles
+ *
+ * Matches RVBBIT dashboard theme (dark background, bright accents)
+ */
+
+.validation-panel {
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  font-size: 11px;
+  min-height: 28px;  /* Ensure minimum visibility */
+  max-height: 150px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;  /* Don't shrink when editor takes all space */
+}
+
+.validation-panel.collapsed {
+  min-height: 28px;
+  max-height: 28px;
+}
+
+/* Header */
+.validation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: #1a1a1a;
+  border-bottom: 1px solid #252525;
+  flex-shrink: 0;
+}
+
+.validation-header:hover {
+  background: #222;
+}
+
+.validation-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.validation-summary > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.issue-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.error-count {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.warning-count {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.validation-ok {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #34d399;
+}
+
+.collapse-icon {
+  color: #666;
+}
+
+/* Issues list */
+.validation-issues {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.validation-issue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.validation-issue:hover {
+  background: #252525;
+}
+
+.validation-issue-error {
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.validation-issue-warning {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.validation-issue-suggestion {
+  background: rgba(96, 165, 250, 0.05);
+}
+
+.issue-code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  color: #888;
+  min-width: 36px;
+}
+
+.issue-message {
+  flex: 1;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.issue-cell {
+  font-size: 10px;
+  color: #666;
+  background: #252525;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.parse-error .issue-message {
+  color: #f87171;
+}
+
+/* Spinning animation for loading */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

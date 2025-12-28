@@ -4,8 +4,12 @@ import './layers.css';
 
 /**
  * SummaryBar - Bottom bar with execution stats
+ *
+ * Now includes analytics-based metrics:
+ * - Context cost % (from cascadeAnalytics)
+ * - Cell cost comparison vs historical avg (from cellAnalytics)
  */
-const SummaryBar = ({ cellState = {}, executionData, config }) => {
+const SummaryBar = ({ cellState = {}, executionData, config, cascadeAnalytics, cellAnalytics }) => {
   const { duration: cellDuration, cost, tokens_in, tokens_out, status } = cellState;
 
   // Calculate totals from execution data if available
@@ -62,6 +66,54 @@ const SummaryBar = ({ cellState = {}, executionData, config }) => {
             <Icon icon="mdi:currency-usd" width="12" />
             <span className="cell-anatomy-summary-stat-value">
               ${cost < 0.01 ? '<0.01' : cost.toFixed(4)}
+            </span>
+            {/* Show cost multiplier if historical comparison available */}
+            {cellAnalytics?.species_avg_cost > 0 && (
+              <span
+                style={{
+                  marginLeft: '4px',
+                  fontSize: '10px',
+                  color: (cost / cellAnalytics.species_avg_cost) >= 1.5 ? '#f87171'
+                       : (cost / cellAnalytics.species_avg_cost) >= 1.2 ? '#fbbf24'
+                       : (cost / cellAnalytics.species_avg_cost) <= 0.7 ? '#34d399'
+                       : '#94a3b8'
+                }}
+                title={`vs avg $${cellAnalytics.species_avg_cost.toFixed(4)} (n=${cellAnalytics.species_run_count} runs)`}
+              >
+                ({(cost / cellAnalytics.species_avg_cost).toFixed(1)}x avg)
+              </span>
+            )}
+          </span>
+        )}
+
+        {/* Cell cost % of cascade (bottleneck indicator) */}
+        {cellAnalytics?.cell_cost_pct >= 25 && (
+          <span
+            className="cell-anatomy-summary-stat"
+            style={{
+              color: cellAnalytics.cell_cost_pct > 60 ? '#f87171'
+                   : cellAnalytics.cell_cost_pct > 40 ? '#fbbf24'
+                   : '#94a3b8'
+            }}
+            title="Percentage of total cascade cost consumed by this cell"
+          >
+            <Icon icon="mdi:chart-pie" width="12" />
+            <span className="cell-anatomy-summary-stat-value">
+              {cellAnalytics.cell_cost_pct.toFixed(0)}% of cascade
+            </span>
+          </span>
+        )}
+
+        {/* Context cost % (cascade-level) */}
+        {cascadeAnalytics?.context_cost_pct >= 30 && (
+          <span
+            className="cell-anatomy-summary-stat"
+            style={{ color: cascadeAnalytics.context_cost_pct > 60 ? '#fbbf24' : '#94a3b8' }}
+            title={`${cascadeAnalytics.context_cost_pct.toFixed(0)}% of cascade cost from context injection`}
+          >
+            <Icon icon="mdi:database-import" width="12" />
+            <span className="cell-anatomy-summary-stat-value">
+              {cascadeAnalytics.context_cost_pct.toFixed(0)}% ctx
             </span>
           </span>
         )}

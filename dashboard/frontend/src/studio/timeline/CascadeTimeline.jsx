@@ -601,6 +601,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const setSelectedCellIndex = useStudioCascadeStore(state => state.setSelectedCellIndex);
   const setLiveMode = useStudioCascadeStore(state => state.setLiveMode);
   const updateCellStatesFromPolling = useStudioCascadeStore(state => state.updateCellStatesFromPolling);
+  const updateAnalyticsFromPolling = useStudioCascadeStore(state => state.updateAnalyticsFromPolling);
 
   // Screen wipe transition state
   const [isWiping, setIsWiping] = useState(false);
@@ -632,10 +633,10 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   //   shouldPoll,
   // });
 
-  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionStatusFor, sessionError, childSessions } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
+  const { logs, cellStates: polledCellStates, totalCost, sessionStatus, sessionStatusFor, sessionError, childSessions, cascadeAnalytics, cellAnalytics } = useTimelinePolling(sessionToPoll, shouldPoll, viewMode === 'replay');
 
-  // Get budget data for this session (use sessionToPoll to match polling logic)
-  const { events: budgetEvents } = useBudgetData(sessionToPoll);
+  // Get budget data for this session (use sessionToPoll and shouldPoll to match timeline polling logic)
+  const { events: budgetEvents } = useBudgetData(sessionToPoll, shouldPoll);
 
   // Debug: Check if logs now include context data & notify parent
   useEffect(() => {
@@ -758,6 +759,22 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     prevChildSessionsHashRef.current = currentHash;
     useStudioCascadeStore.setState({ childSessions });
   }, [childSessions]);
+
+  // Update analytics when polling returns new data
+  const prevAnalyticsHashRef = useRef('');
+  useEffect(() => {
+    if (!cascadeAnalytics && (!cellAnalytics || Object.keys(cellAnalytics).length === 0)) return;
+
+    const currentHash = JSON.stringify({ cascadeAnalytics, cellAnalytics });
+    if (currentHash === prevAnalyticsHashRef.current) return;
+
+    console.log('[CascadeTimeline] Updating analytics from polling:', {
+      hasCascadeAnalytics: !!cascadeAnalytics,
+      cellAnalyticsCount: Object.keys(cellAnalytics || {}).length
+    });
+    prevAnalyticsHashRef.current = currentHash;
+    updateAnalyticsFromPolling(cascadeAnalytics, cellAnalytics);
+  }, [cascadeAnalytics, cellAnalytics, updateAnalyticsFromPolling]);
 
   const timelineRef = useRef(null);
   const [layoutMode, setLayoutMode] = useState('linear'); // 'linear' or 'graph'
@@ -1103,51 +1120,92 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   }, [cellStates]);
 
   // Calculate cost metrics for each cell (needs stableCellStates, before layout)
+  // Uses pre-computed cellAnalytics when available, falls back to per-run calculation
   const cellCostMetrics = useMemo(() => {
     if (!cells || cells.length === 0) return {};
 
+    console.log('[CascadeTimeline] Calculating cellCostMetrics, cellAnalytics:', cellAnalytics);
+
     const metrics = {};
-    let totalCost = 0;
-    let maxCost = 0;
+    let totalCascadeCost = 0;
 
     // First pass: collect costs
     cells.forEach(cell => {
       const cost = stableCellStates[cell.name]?.cost || 0;
       metrics[cell.name] = { cost };
-      totalCost += cost;
-      if (cost > maxCost) maxCost = cost;
+      totalCascadeCost += cost;
     });
 
-    const avgCost = cells.length > 0 ? totalCost / cells.length : 0;
-
-    // Second pass: calculate deltas and scales
+    // Second pass: enhance with analytics data when available
     Object.keys(metrics).forEach(cellName => {
       const cost = metrics[cellName].cost;
       const duration = stableCellStates[cellName]?.duration || 0;
-      const costDeltaPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
 
-      // Scale: 0.85x (cheap) → 1.0x (normal) → 1.3x (expensive)
+      // Check if we have pre-computed cell analytics
+      const analytics = cellAnalytics?.[cellName];
+      if (analytics) {
+        console.log(`[CascadeTimeline] Using analytics for ${cellName}:`, analytics);
+      }
+
+      let costMultiplier = null;  // vs species avg (historical comparison)
+      let cellCostPct = 0;        // % of cascade cost (bottleneck indicator)
+      let isOutlier = false;
+      let speciesAvgCost = 0;
+      let speciesRunCount = 0;
+
+      if (analytics && analytics.species_avg_cost > 0) {
+        // Use pre-computed analytics
+        costMultiplier = cost / analytics.species_avg_cost;
+        cellCostPct = analytics.cell_cost_pct || 0;
+        isOutlier = analytics.is_cost_outlier || false;
+        speciesAvgCost = analytics.species_avg_cost;
+        speciesRunCount = analytics.species_run_count || 0;
+      } else {
+        // Fall back to per-run calculation (% of cascade cost)
+        cellCostPct = totalCascadeCost > 0 ? (cost / totalCascadeCost) * 100 : 0;
+      }
+
+      // Scale based on cell_cost_pct (bottleneck detection)
+      // High % of cascade = larger card
       let scale = 1.0;
-      if (costDeltaPct > 100) scale = 1.3;
-      else if (costDeltaPct > 50) scale = 1.2;
-      else if (costDeltaPct > 10) scale = 1.1;
-      else if (costDeltaPct < -50) scale = 0.85;
-      else if (costDeltaPct < -20) scale = 0.9;
+      if (cellCostPct > 60) scale = 1.3;       // Major bottleneck
+      else if (cellCostPct > 40) scale = 1.2;  // Significant bottleneck
+      else if (cellCostPct > 25) scale = 1.1;  // Notable
+      else if (cellCostPct < 10) scale = 0.9;  // Cheap
+      else if (cellCostPct < 5) scale = 0.85;  // Very cheap
 
-      // Color
+      // Color based on historical comparison or bottleneck status
       let color = 'cyan';
-      if (costDeltaPct > 50) color = 'red';
-      else if (costDeltaPct > 10) color = 'orange';
-      else if (costDeltaPct < -20) color = 'green';
+      if (isOutlier) {
+        color = 'red';  // Statistical outlier (vs history)
+      } else if (costMultiplier && costMultiplier >= 1.5) {
+        color = 'red';  // 1.5x+ more expensive than usual
+      } else if (costMultiplier && costMultiplier >= 1.2) {
+        color = 'orange';  // 1.2x+ more expensive
+      } else if (costMultiplier && costMultiplier <= 0.7) {
+        color = 'green';  // 0.7x or cheaper than usual
+      } else if (cellCostPct > 50) {
+        color = 'orange';  // Major bottleneck (no historical data)
+      }
 
-      metrics[cellName].costDeltaPct = costDeltaPct;
-      metrics[cellName].duration = duration;
-      metrics[cellName].scale = scale;
-      metrics[cellName].color = color;
+      metrics[cellName] = {
+        cost,
+        duration,
+        scale,
+        color,
+        // New analytics-based metrics (for CellCard to display)
+        cellCostPct,              // "42% of cascade" (bottleneck indicator)
+        costMultiplier,           // "1.5x avg" (vs historical)
+        isOutlier,                // true/false (statistical outlier)
+        speciesAvgCost,           // Avg cost for this cell config
+        speciesRunCount,          // How many runs in the comparison
+        // Legacy field for backwards compatibility
+        costDeltaPct: costMultiplier ? (costMultiplier - 1) * 100 : 0,
+      };
     });
 
     return metrics;
-  }, [cells, stableCellStates]);
+  }, [cells, stableCellStates, cellAnalytics]);
 
   // Layout must come after cellCostMetrics
   const layout = useMemo(
@@ -1540,6 +1598,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
           <SessionMessagesLog
             logs={logs}
             currentSessionId={sessionToPoll}
+            shouldPollBudget={shouldPoll}
             hoveredHash={hoveredHash}
             onHoverHash={onHoverHash}
             externalSelectedMessage={gridSelectedMessage}
@@ -1586,6 +1645,8 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             cellLogs={cellLogsByName[selectedCell.name] || EMPTY_LOGS_ARRAY}
             cellState={stableCellStates[selectedCell.name]}
             onClose={() => setShowAnatomyPanel(false)}
+            cascadeAnalytics={cascadeAnalytics}
+            cellAnalytics={cellAnalytics?.[selectedCell.name]}
           />
         </div>
       )}

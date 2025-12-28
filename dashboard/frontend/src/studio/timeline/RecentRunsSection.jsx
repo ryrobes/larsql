@@ -9,7 +9,9 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
  * - Timestamp
  * - Status (success/error)
  * - Duration
- * - Cost
+ * - Cost with comparison to cluster average
+ * - Outlier indicator (red dot for statistical outliers)
+ * - Context cost % if significant
  *
  * Click to load that execution (replay mode)
  */
@@ -108,6 +110,29 @@ function RecentRunsSection() {
     return `$${cost.toFixed(2)}`;
   };
 
+  // Format cost comparison as a simple multiplier or percentage
+  const formatCostComparison = (run) => {
+    const cost = run.total_cost || 0;
+    const clusterAvg = run.cluster_avg_cost || 0;
+
+    if (!clusterAvg || clusterAvg === 0 || cost === 0) return null;
+
+    const multiplier = cost / clusterAvg;
+
+    // Show as multiplier if significantly different
+    if (multiplier >= 1.5) {
+      return { text: `${multiplier.toFixed(1)}x avg`, color: '#f87171' }; // red
+    } else if (multiplier >= 1.2) {
+      return { text: `${multiplier.toFixed(1)}x avg`, color: '#fbbf24' }; // yellow
+    } else if (multiplier <= 0.7) {
+      return { text: `${multiplier.toFixed(1)}x avg`, color: '#34d399' }; // green - cheap!
+    }
+    return null; // Within normal range, don't show
+  };
+
+  // Check if run is a statistical outlier
+  const isOutlier = (run) => run.is_cost_outlier || run.is_duration_outlier;
+
   return (
     <div className="nav-section recent-runs-section">
       <div
@@ -142,41 +167,83 @@ function RecentRunsSection() {
               )}
 
               {/* Recent runs list */}
-              {recentRuns.map((run) => (
-                <button
-                  key={run.session_id}
-                  className={`recent-run-item ${
-                    viewMode === 'replay' && replaySessionId === run.session_id
-                      ? 'recent-run-active'
-                      : ''
-                  }`}
-                  onClick={() => handleSelectRun(run)}
-                  title={run.session_id}
-                >
-                  <div className="recent-run-status">
-                    <Icon
-                      icon={run.status === 'error' ? 'mdi:alert-circle' : 'mdi:check-circle'}
-                      className={`recent-run-icon ${
-                        run.status === 'error' ? 'recent-run-error' : 'recent-run-success'
-                      }`}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span className="recent-run-label">{formatTimestamp(run.started_at)}</span>
-                        <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
-                          {run.session_id}
-                        </span>
-                      </div>
-                      <div className="recent-run-meta">
-                        {formatDuration(run.duration_ms)}
-                        {run.total_cost > 0 && (
-                          <span className="recent-run-cost">{formatCost(run.total_cost)}</span>
+              {recentRuns.map((run) => {
+                const costComparison = formatCostComparison(run);
+                const runIsOutlier = isOutlier(run);
+
+                return (
+                  <button
+                    key={run.session_id}
+                    className={`recent-run-item ${
+                      viewMode === 'replay' && replaySessionId === run.session_id
+                        ? 'recent-run-active'
+                        : ''
+                    }`}
+                    onClick={() => handleSelectRun(run)}
+                    title={run.session_id}
+                  >
+                    <div className="recent-run-status">
+                      {/* Status icon with optional outlier indicator */}
+                      <div style={{ position: 'relative' }}>
+                        <Icon
+                          icon={run.status === 'error' ? 'mdi:alert-circle' : 'mdi:check-circle'}
+                          className={`recent-run-icon ${
+                            run.status === 'error' ? 'recent-run-error' : 'recent-run-success'
+                          }`}
+                        />
+                        {runIsOutlier && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: '-2px',
+                              right: '-2px',
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              background: '#f87171',
+                              border: '1px solid #0a0a0a'
+                            }}
+                            title="Statistical outlier"
+                          />
                         )}
                       </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <span className="recent-run-label">{formatTimestamp(run.started_at)}</span>
+                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>
+                            {run.session_id}
+                          </span>
+                        </div>
+                        <div className="recent-run-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          {/* Left side: duration */}
+                          <span>{formatDuration(run.duration_ms)}</span>
+                          {/* Right side: cost metrics */}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', textAlign: 'right' }}>
+                            {run.context_cost_pct > 40 && (
+                              <span
+                                style={{ fontSize: '9px', color: '#fbbf24' }}
+                                title={`${run.context_cost_pct.toFixed(0)}% of cost from context injection`}
+                              >
+                                {run.context_cost_pct.toFixed(0)}% ctx
+                              </span>
+                            )}
+                            {run.total_cost > 0 && (
+                              <>
+                                <span className="recent-run-cost">{formatCost(run.total_cost)}</span>
+                                {costComparison && (
+                                  <span style={{ fontSize: '9px', color: costComparison.color }}>
+                                    ({costComparison.text})
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </>
           )}
         </div>

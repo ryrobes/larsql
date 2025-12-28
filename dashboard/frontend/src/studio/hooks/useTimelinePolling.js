@@ -38,6 +38,8 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
   const [sessionError, setSessionError] = useState(null);    // Error message if status == 'error'
   const [totalCost, setTotalCost] = useState(0);
   const [childSessions, setChildSessions] = useState({});    // Child sub-cascades spawned by this session
+  const [cascadeAnalytics, setCascadeAnalytics] = useState(null);  // Pre-computed cascade-level analytics
+  const [cellAnalytics, setCellAnalytics] = useState({});    // Pre-computed per-cell analytics
 
   const cursorRef = useRef('1970-01-01 00:00:00');
   const pollIntervalRef = useRef(null);
@@ -173,6 +175,18 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
         });
       }
 
+      // Update cascade analytics (pre-computed session-level metrics)
+      if (data.cascade_analytics) {
+        console.log('[useTimelinePolling] Received cascade_analytics:', data.cascade_analytics);
+        setCascadeAnalytics(data.cascade_analytics);
+      }
+
+      // Update cell analytics (pre-computed per-cell metrics)
+      if (data.cell_analytics && Object.keys(data.cell_analytics).length > 0) {
+        console.log('[useTimelinePolling] Received cell_analytics:', Object.keys(data.cell_analytics), data.cell_analytics);
+        setCellAnalytics(data.cell_analytics);
+      }
+
       // Only clear error if there was one
       if (error) {
         setError(null);
@@ -204,6 +218,8 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
       setSessionError(null);
       setTotalCost(0);
       setChildSessions({});
+      setCascadeAnalytics(null);  // Clear cascade analytics
+      setCellAnalytics({});  // Clear cell analytics
       cursorRef.current = '1970-01-01 00:00:00';
       seenIdsRef.current.clear();
       prevSessionRef.current = sessionId;
@@ -293,6 +309,8 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
     sessionError,      // Error message if sessionStatus == 'error'
     totalCost,         // Accumulated session cost
     childSessions,     // Child sub-cascades spawned by this session
+    cascadeAnalytics,  // Pre-computed cascade-level analytics (context%, outliers, etc.)
+    cellAnalytics,     // Pre-computed per-cell analytics (bottlenecks, comparisons)
     error,             // Polling error
   };
 }

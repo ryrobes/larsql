@@ -75,6 +75,7 @@ from notebook_api import notebook_bp
 from studio_api import studio_bp
 from receipts_api import receipts_bp
 from budget_api import budget_bp
+from spec_api import spec_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -90,6 +91,7 @@ app.register_blueprint(budget_bp)
 # New unified Studio API (combines SQL Query + Notebook)
 app.register_blueprint(studio_bp)
 app.register_blueprint(receipts_bp)
+app.register_blueprint(spec_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
@@ -4310,6 +4312,93 @@ def playground_session_stream(session_id):
         cost_result = db.query(cost_query)
         total_cost = float(cost_result[0]['total'] or 0) if cost_result and cost_result[0].get('total') else 0
 
+        # Fetch cascade_analytics data (pre-computed offline)
+        # This provides context-aware comparisons (vs cluster avg, outlier status, etc.)
+        cascade_analytics = None
+        try:
+            ca_query = f"""
+                SELECT
+                    input_category,
+                    cost_z_score,
+                    duration_z_score,
+                    is_cost_outlier,
+                    is_duration_outlier,
+                    cluster_avg_cost,
+                    cluster_avg_duration,
+                    cluster_run_count,
+                    context_cost_pct,
+                    total_context_cost_estimated,
+                    cost_per_message,
+                    tokens_per_message
+                FROM cascade_analytics
+                WHERE session_id = '{session_id}'
+                LIMIT 1
+            """
+            ca_result = db.query(ca_query)
+            if ca_result and len(ca_result) > 0:
+                row = ca_result[0]
+                cascade_analytics = {
+                    'input_category': row.get('input_category'),
+                    'cost_z_score': float(row.get('cost_z_score', 0) or 0),
+                    'duration_z_score': float(row.get('duration_z_score', 0) or 0),
+                    'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
+                    'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
+                    'cluster_avg_cost': float(row.get('cluster_avg_cost', 0) or 0),
+                    'cluster_avg_duration': float(row.get('cluster_avg_duration', 0) or 0),
+                    'cluster_run_count': int(row.get('cluster_run_count', 0) or 0),
+                    'context_cost_pct': float(row.get('context_cost_pct', 0) or 0),
+                    'total_context_cost_estimated': float(row.get('total_context_cost_estimated', 0) or 0),
+                    'cost_per_message': float(row.get('cost_per_message', 0) or 0),
+                    'tokens_per_message': float(row.get('tokens_per_message', 0) or 0),
+                }
+        except Exception as e:
+            print(f"[session-stream] Could not fetch cascade_analytics: {e}")
+
+        # Fetch cell_analytics data (per-cell metrics)
+        # This provides cell-level bottleneck detection and comparison
+        cell_analytics = {}
+        try:
+            cells_query = f"""
+                SELECT
+                    cell_name,
+                    cell_cost,
+                    cell_duration_ms,
+                    cost_z_score,
+                    duration_z_score,
+                    is_cost_outlier,
+                    is_duration_outlier,
+                    species_avg_cost,
+                    species_avg_duration,
+                    species_run_count,
+                    cell_cost_pct,
+                    cell_duration_pct,
+                    cost_per_turn,
+                    tokens_per_turn
+                FROM cell_analytics
+                WHERE session_id = '{session_id}'
+            """
+            cells_result = db.query(cells_query)
+            for row in cells_result:
+                cell_name = row.get('cell_name')
+                if cell_name:
+                    cell_analytics[cell_name] = {
+                        'cell_cost': float(row.get('cell_cost', 0) or 0),
+                        'cell_duration_ms': float(row.get('cell_duration_ms', 0) or 0),
+                        'cost_z_score': float(row.get('cost_z_score', 0) or 0),
+                        'duration_z_score': float(row.get('duration_z_score', 0) or 0),
+                        'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
+                        'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
+                        'species_avg_cost': float(row.get('species_avg_cost', 0) or 0),
+                        'species_avg_duration': float(row.get('species_avg_duration', 0) or 0),
+                        'species_run_count': int(row.get('species_run_count', 0) or 0),
+                        'cell_cost_pct': float(row.get('cell_cost_pct', 0) or 0),
+                        'cell_duration_pct': float(row.get('cell_duration_pct', 0) or 0),
+                        'cost_per_turn': float(row.get('cost_per_turn', 0) or 0),
+                        'tokens_per_turn': float(row.get('tokens_per_turn', 0) or 0),
+                    }
+        except Exception as e:
+            print(f"[session-stream] Could not fetch cell_analytics: {e}")
+
         # Extract child session info (sub-cascades that were spawned)
         child_sessions = {}
         for row in rows_to_return:
@@ -4332,7 +4421,9 @@ def playground_session_stream(session_id):
             'session_status': session_status,  # 'running', 'completed', 'error', 'cancelled', 'orphaned'
             'session_error': session_error,    # Error message if session_status == 'error'
             'total_cost': round(total_cost, 6),
-            'child_sessions': list(child_sessions.values())  # NEW: List of spawned sub-cascades
+            'child_sessions': list(child_sessions.values()),  # List of spawned sub-cascades
+            'cascade_analytics': cascade_analytics,  # Pre-computed session-level analytics
+            'cell_analytics': cell_analytics,  # Pre-computed per-cell analytics
         })
 
     except Exception as e:

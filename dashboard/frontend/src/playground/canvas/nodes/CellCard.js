@@ -5,8 +5,10 @@ import Editor from '@monaco-editor/react';
 import yaml from 'js-yaml';
 import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
+import useSpecValidation from '../../../hooks/useSpecValidation';
 import RichMarkdown from '../../../components/RichMarkdown';
 import PhaseExplosionView from '../PhaseExplosionView';
+import ValidationPanel from '../../../components/validation/ValidationPanel';
 import './CellCard.css';
 
 // Default dimensions (grid-aligned to 16px)
@@ -95,6 +97,9 @@ function PhaseCard({ id, data, selected }) {
   const [parseError, setParseError] = useState(null);
   const [discoveredInputs, setDiscoveredInputs] = useState(data.discoveredInputs || []);
   const [isDirty, setIsDirty] = useState(false);
+
+  // Spec validation hook - validates YAML against cascade schema
+  const validation = useSpecValidation(localYaml, { enabled: isFlipped });
 
   // Explosion view state
   const [showExplosion, setShowExplosion] = useState(false);
@@ -928,6 +933,18 @@ function PhaseCard({ id, data, selected }) {
                   <Icon icon="mdi:alert" width="14" />
                 </div>
               )}
+              {!parseError && validation.errorCount > 0 && (
+                <div className="card-validation-errors" title={`${validation.errorCount} validation error(s)`}>
+                  <Icon icon="mdi:alert-circle" width="14" style={{ color: '#f87171' }} />
+                  <span>{validation.errorCount}</span>
+                </div>
+              )}
+              {!parseError && validation.errorCount === 0 && validation.warningCount > 0 && (
+                <div className="card-validation-warnings" title={`${validation.warningCount} warning(s)`}>
+                  <Icon icon="mdi:alert" width="14" style={{ color: '#fbbf24' }} />
+                  <span>{validation.warningCount}</span>
+                </div>
+              )}
             </div>
 
             {/* Monaco Editor */}
@@ -954,6 +971,16 @@ function PhaseCard({ id, data, selected }) {
                 }
               />
             </div>
+
+            {/* Validation Panel */}
+            <ValidationPanel
+              errors={validation.errors}
+              warnings={validation.warnings}
+              suggestions={validation.suggestions}
+              isValidating={validation.isValidating}
+              parseError={validation.parseError}
+              collapsed={true}
+            />
           </div>
         </div>
       </div>

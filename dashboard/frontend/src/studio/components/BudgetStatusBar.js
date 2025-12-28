@@ -1,57 +1,50 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useBudgetData } from '../hooks/useBudgetData';
 import './BudgetStatusBar.css';
 
 /**
- * BudgetStatusBar - Displays token budget status and enforcement events
+ * BudgetStatusBar - Displays real-time token budget status
  *
  * Shows:
- * - Current usage vs limit
+ * - Live token usage that increases with each LLM call
  * - Progress bar with color-coded thresholds
- * - Enforcement count and strategy
+ * - Enforcement events when budget is pruned
  * - Total tokens pruned
+ *
+ * The bar updates in real-time as tokens accumulate during cascade execution.
  */
-export function BudgetStatusBar({ sessionId }) {
-  const { budgetConfig, events, totalEnforcements, totalPruned, currentUsage, loading, error } = useBudgetData(sessionId);
+export function BudgetStatusBar({ sessionId, shouldPoll = true }) {
+  const { budgetConfig, usageHistory, totalEnforcements, totalPruned, currentUsage, loading, error } = useBudgetData(sessionId, shouldPoll);
+  const prevUsageRef = useRef(null);
 
-  // Debug logging
-  console.log('[BudgetStatusBar] Render check:', {
-    sessionId,
-    hasBudgetConfig: !!budgetConfig,
-    strategy: budgetConfig?.strategy,
-    totalEnforcements,
-    totalPruned,
-    eventsLength: events.length,
-    loading,
-    error,
-    willRender: !(!sessionId || loading || error || !budgetConfig)
-  });
+  // Track if usage changed to show animation
+  const usageChanged = prevUsageRef.current !== null && prevUsageRef.current !== currentUsage;
+  const usageIncreased = usageChanged && currentUsage > prevUsageRef.current;
+  const usageDecreased = usageChanged && currentUsage < prevUsageRef.current;
+
+  useEffect(() => {
+    prevUsageRef.current = currentUsage;
+  }, [currentUsage]);
 
   // Don't render anything if no sessionId
   if (!sessionId) {
-    console.log('[BudgetStatusBar] Not rendering: no sessionId');
     return null;
   }
 
   // Don't show loading state - just wait silently
   if (loading) {
-    console.log('[BudgetStatusBar] Not rendering: loading');
     return null;
   }
 
   // Silently ignore errors - they're expected when session doesn't exist yet
   if (error) {
-    console.log('[BudgetStatusBar] Not rendering: error', error);
     return null;
   }
 
   // No budget configured for this cascade - don't render
   if (!budgetConfig) {
-    console.log('[BudgetStatusBar] Not rendering: no budgetConfig');
     return null;
   }
-
-  console.log('[BudgetStatusBar] RENDERING with config:', budgetConfig);
 
   // Calculate metrics
   const maxTokens = budgetConfig.max_total || 100000;
@@ -60,9 +53,12 @@ export function BudgetStatusBar({ sessionId }) {
   const warningThreshold = budgetConfig.warning_threshold || 0.8;
   const strategy = budgetConfig.strategy || 'sliding_window';
 
-  // Estimate current usage from last event or use 0
+  // Current usage from live token tracking
   const usage = currentUsage || 0;
   const percentage = limit > 0 ? usage / limit : 0;
+
+  // Count LLM calls from usage history
+  const llmCallCount = usageHistory?.filter(e => e.event_type === 'llm_call').length || 0;
 
   // Determine color based on percentage
   const color =
@@ -75,27 +71,43 @@ export function BudgetStatusBar({ sessionId }) {
     return num.toLocaleString();
   };
 
+  // Animation class for usage changes
+  const usageAnimationClass = usageIncreased ? 'usage-increased' : usageDecreased ? 'usage-decreased' : '';
+
   return (
     <div className={`budget-status-bar budget-${color}`}>
       <div className="budget-header">
         <div className="budget-header-main">
           <span className="budget-title">Token Budget:</span>
-          <span className="budget-percentage">
+          <span className={`budget-percentage ${usageAnimationClass}`}>
             {formatNumber(usage)} / {formatNumber(limit)} tokens
             ({(percentage * 100).toFixed(0)}%)
           </span>
         </div>
-        {totalEnforcements > 0 && (
-          <div className="enforcement-count">
-            💥 {totalEnforcements} enforcement{totalEnforcements > 1 ? 's' : ''}
-          </div>
-        )}
+        <div className="budget-header-stats">
+          {llmCallCount > 0 && (
+            <div className="llm-call-count" title="Number of LLM calls in this session">
+              🔄 {llmCallCount} call{llmCallCount > 1 ? 's' : ''}
+            </div>
+          )}
+          {totalEnforcements > 0 && (
+            <div className="enforcement-count">
+              💥 {totalEnforcements} enforcement{totalEnforcements > 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="budget-progress-bar">
         <div
-          className="budget-progress-fill"
+          className={`budget-progress-fill ${usageAnimationClass}`}
           style={{ width: `${Math.min(percentage * 100, 100)}%` }}
+        />
+        {/* Warning threshold marker */}
+        <div
+          className="budget-threshold-marker"
+          style={{ left: `${warningThreshold * 100}%` }}
+          title={`Warning threshold: ${(warningThreshold * 100).toFixed(0)}%`}
         />
       </div>
 
@@ -105,7 +117,7 @@ export function BudgetStatusBar({ sessionId }) {
           <span className="budget-detail-value">{strategy}</span>
         </div>
         {totalPruned > 0 && (
-          <div className="budget-detail-item">
+          <div className="budget-detail-item budget-detail-pruned">
             <span className="budget-detail-label">Pruned:</span>
             <span className="budget-detail-value">{formatNumber(totalPruned)} tokens</span>
           </div>
@@ -115,8 +127,8 @@ export function BudgetStatusBar({ sessionId }) {
           <span className="budget-detail-value">{formatNumber(reserve)} tokens</span>
         </div>
         <div className="budget-detail-item">
-          <span className="budget-detail-label">Warning:</span>
-          <span className="budget-detail-value">{(warningThreshold * 100).toFixed(0)}%</span>
+          <span className="budget-detail-label">Limit:</span>
+          <span className="budget-detail-value">{formatNumber(limit)} tokens</span>
         </div>
       </div>
     </div>

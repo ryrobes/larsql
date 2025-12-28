@@ -26,7 +26,7 @@ import './CellAnatomyPanel.css';
  * - Spec mode: Shows cell configuration (what CAN happen)
  * - Execution mode: Shows actual execution data (what DID happen)
  */
-const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
+const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascadeAnalytics, cellAnalytics }) => {
   // Derive execution data from logs
   const executionData = useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
@@ -567,6 +567,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
         cellState={cellState}
         executionData={executionData}
         config={cellConfig}
+        cascadeAnalytics={cascadeAnalytics}
+        cellAnalytics={cellAnalytics}
       />
     </div>
   );

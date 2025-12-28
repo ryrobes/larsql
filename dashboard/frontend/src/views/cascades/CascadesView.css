@@ -403,6 +403,21 @@
 }
 
 /* ============================================
+   KPI CARDS SECTION
+   ============================================ */
+
+.cascades-kpi-section {
+  padding: 0 var(--space-xl);
+  margin-bottom: var(--space-md);
+}
+
+.cascades-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-md);
+}
+
+/* ============================================
    RESPONSIVE
    ============================================ */
 
@@ -410,5 +425,10 @@
   .cascades-view {
     padding: var(--space-lg);
     gap: var(--space-lg);
+  }
+
+  .cascades-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-sm);
   }
 }

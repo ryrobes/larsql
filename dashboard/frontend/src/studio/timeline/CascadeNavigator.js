@@ -106,7 +106,7 @@ function formatRowCount(count) {
 }
 
 // Cell node with expandable columns
-function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, costDeltaPct = 0, costBarWidth = 0 }) {
+function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, costBarWidth = 0, analytics = null }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const status = cellState?.status || 'pending';
@@ -117,12 +117,22 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
   const columns = result?.columns || [];
   const rows = result?.rows || [];
 
-  // Determine cost indicator color
+  // Use pre-computed analytics when available
+  const speciesAvgCost = analytics?.species_avg_cost || 0;
+  const cellCostPct = analytics?.cell_cost_pct || 0;
+  const isOutlier = analytics?.is_cost_outlier || false;
+
+  // Calculate cost multiplier vs historical average
+  const costMultiplier = speciesAvgCost > 0 && cost > 0 ? cost / speciesAvgCost : null;
+
+  // Determine cost indicator color based on analytics
   const getCostColor = () => {
     if (cost === 0) return null;
-    if (costDeltaPct > 50) return 'red';
-    if (costDeltaPct > 10) return 'orange';
-    if (costDeltaPct < -20) return 'green';
+    if (isOutlier) return 'red';  // Statistical outlier
+    if (costMultiplier && costMultiplier >= 1.5) return 'red';  // 1.5x+ more expensive
+    if (costMultiplier && costMultiplier >= 1.2) return 'orange';  // 1.2x+ more expensive
+    if (costMultiplier && costMultiplier <= 0.7) return 'green';  // 0.7x or cheaper
+    if (cellCostPct > 50) return 'orange';  // Major bottleneck
     return 'cyan';
   };
 
@@ -249,17 +259,22 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
               <div
                 className={`nav-cost-bar ${costColor || 'cyan'}`}
                 style={{ width: `${costBarWidth}%` }}
-                title={`$${cost.toFixed(6)}`}
+                title={`$${cost.toFixed(6)}${speciesAvgCost > 0 ? ` (avg: $${speciesAvgCost.toFixed(4)})` : ''}`}
               />
               <div className="nav-cost-metrics">
                 <span className={`nav-cost-amount ${costColor || 'cyan'}`}>
                   ${cost < 0.01 ? '<0.01' : cost.toFixed(4)}
                 </span>
-                {Math.abs(costDeltaPct) > 5 && (
+                {/* Show multiplier vs avg if historical data available, otherwise show bottleneck % */}
+                {costMultiplier && Math.abs(costMultiplier - 1) >= 0.15 ? (
                   <span className={`nav-cost-delta ${costColor || 'cyan'}`}>
-                    {costDeltaPct > 0 ? '+' : ''}{costDeltaPct.toFixed(0)}%
+                    {costMultiplier.toFixed(1)}x avg
                   </span>
-                )}
+                ) : cellCostPct >= 25 ? (
+                  <span className={`nav-cost-delta ${costColor || 'cyan'}`}>
+                    {cellCostPct.toFixed(0)}%
+                  </span>
+                ) : null}
               </div>
             </div>
           )}
@@ -763,6 +778,7 @@ function CascadeNavigator() {
     cascade,
     cascadeInputs,
     cellStates,
+    cellAnalytics,
     sessionId,
     isRunningAll,
     runCascadeStandard,
@@ -1158,16 +1174,15 @@ function CascadeNavigator() {
                   return { cell, index, cost };
                 });
 
-                const totalCost = cellCosts.reduce((sum, c) => sum + c.cost, 0);
-                const avgCost = cellCosts.length > 0 ? totalCost / cellCosts.length : 0;
                 const maxCost = Math.max(...cellCosts.map(c => c.cost), 0.0001); // Avoid div by 0
 
                 // Sort by cost (descending) for "hot cells first"
                 const sortedCells = [...cellCosts].sort((a, b) => b.cost - a.cost);
 
                 return sortedCells.map(({ cell, index, cost }) => {
-                  const costPct = avgCost > 0 ? ((cost - avgCost) / avgCost) * 100 : 0;
                   const barWidth = maxCost > 0 ? (cost / maxCost) * 100 : 0;
+                  // Get pre-computed analytics for this cell
+                  const analytics = cellAnalytics?.[cell.name] || null;
 
                   return (
                     <CellNode
@@ -1178,8 +1193,8 @@ function CascadeNavigator() {
                       isActive={selectedCellIndex === index}
                       onNavigate={scrollToCell}
                       cost={cost}
-                      costDeltaPct={costPct}
                       costBarWidth={barWidth}
+                      analytics={analytics}
                     />
                   );
                 });

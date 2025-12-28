@@ -108,7 +108,9 @@ const ContextExplorerSidebar = ({
   hoveredHash,
   onHoverHash,
   onClose,
-  onNavigateToMessage
+  onNavigateToMessage,
+  cascadeAnalytics,
+  cellAnalytics
 }) => {
 
   // Build hash index from all logs for O(1) lookups
@@ -226,6 +228,74 @@ const ContextExplorerSidebar = ({
 
   // Get selected message cost (this is the actual LLM call cost)
   const messageCost = selectedMessage.cost || 0;
+
+  // Get cell-level analytics for the selected message's cell
+  const selectedCellAnalytics = selectedMessage.cell_name
+    ? cellAnalytics?.[selectedMessage.cell_name]
+    : null;
+
+  // Compute analytics-based insights
+  const analyticsInsights = useMemo(() => {
+    const insights = [];
+
+    // Cascade-level context cost
+    if (cascadeAnalytics?.context_cost_pct > 0) {
+      const pct = cascadeAnalytics.context_cost_pct;
+      const severity = pct > 70 ? 'high' : pct > 50 ? 'medium' : 'low';
+      insights.push({
+        type: 'cascade_context',
+        severity,
+        label: 'Session Context',
+        value: `${pct.toFixed(0)}%`,
+        detail: `${pct.toFixed(0)}% of session cost is context injection`,
+        icon: 'mdi:database-import'
+      });
+    }
+
+    // Cell is a bottleneck
+    if (selectedCellAnalytics?.cell_cost_pct > 30) {
+      const pct = selectedCellAnalytics.cell_cost_pct;
+      const severity = pct > 60 ? 'high' : pct > 40 ? 'medium' : 'low';
+      insights.push({
+        type: 'cell_bottleneck',
+        severity,
+        label: 'Bottleneck',
+        value: `${pct.toFixed(0)}%`,
+        detail: `This cell is ${pct.toFixed(0)}% of cascade cost`,
+        icon: 'mdi:chart-pie'
+      });
+    }
+
+    // Cell cost comparison to historical avg
+    if (selectedCellAnalytics?.species_avg_cost > 0 && messageCost > 0) {
+      const multiplier = messageCost / selectedCellAnalytics.species_avg_cost;
+      if (Math.abs(multiplier - 1) >= 0.2) {
+        const severity = multiplier >= 1.5 ? 'high' : multiplier >= 1.2 ? 'medium' : 'low';
+        insights.push({
+          type: 'cost_comparison',
+          severity,
+          label: 'vs Average',
+          value: `${multiplier.toFixed(1)}x`,
+          detail: `This call is ${multiplier.toFixed(1)}x the avg cost for this cell`,
+          icon: multiplier > 1 ? 'mdi:trending-up' : 'mdi:trending-down'
+        });
+      }
+    }
+
+    // Session is a cost outlier
+    if (cascadeAnalytics?.is_cost_outlier) {
+      insights.push({
+        type: 'session_outlier',
+        severity: 'high',
+        label: 'Outlier',
+        value: '⚠',
+        detail: 'This session is a statistical cost outlier',
+        icon: 'mdi:alert'
+      });
+    }
+
+    return insights;
+  }, [cascadeAnalytics, selectedCellAnalytics, messageCost]);
 
   // Calculate waste score - BOTH input context AND output response
   const wasteAnalysis = useMemo(() => {
@@ -552,6 +622,23 @@ const ContextExplorerSidebar = ({
           <span className="ce-stat-value cyan">{tokenBreakdown.totalTokens.toLocaleString()}</span>
         </div>
       </div>
+
+      {/* Analytics Insights - Pre-computed metrics from offline processing */}
+      {analyticsInsights.length > 0 && (
+        <div className="ce-analytics-insights">
+          {analyticsInsights.map((insight, idx) => (
+            <div
+              key={idx}
+              className={`ce-insight ce-insight-${insight.severity}`}
+              title={insight.detail}
+            >
+              <Icon icon={insight.icon} width="12" />
+              <span className="ce-insight-label">{insight.label}</span>
+              <span className="ce-insight-value">{insight.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Context Matrix (30-40%) */}
       <div className="ce-matrix-section">

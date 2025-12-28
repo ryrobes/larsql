@@ -6,6 +6,7 @@ import { Button } from '../../components';
 import useNavigationStore from '../../stores/navigationStore';
 import useStudioCascadeStore from '../../studio/stores/studioCascadeStore';
 import CostTimelineChart from '../../components/CostTimelineChart';
+import KPICard from '../receipts/components/KPICard';
 import './CascadesView.css';
 
 // Register AG Grid modules
@@ -814,6 +815,68 @@ const CascadesView = ({ navigate, params = {} }) => {
       filters.hasSubCascades !== null;
   }, [filters]);
 
+  // Compute cascade-specific KPIs from instances (for drill-down view)
+  const cascadeKpis = useMemo(() => {
+    if (!selectedCascade || instances.length === 0) {
+      return null;
+    }
+
+    // Total runs and cost
+    const totalRuns = instances.length;
+    const totalCost = instances.reduce((sum, i) => sum + (i.total_cost || 0), 0);
+
+    // Outlier count
+    const outlierCount = instances.filter(i => i.is_cost_outlier).length;
+
+    // Average context %
+    const instancesWithContext = instances.filter(i => i.context_cost_pct > 0);
+    const avgContextPct = instancesWithContext.length > 0
+      ? instancesWithContext.reduce((sum, i) => sum + i.context_cost_pct, 0) / instancesWithContext.length
+      : 0;
+
+    // Top bottleneck cell (most frequent bottleneck across runs)
+    const bottleneckCounts = {};
+    const bottleneckPcts = {};
+    instances.forEach(i => {
+      if (i.bottleneck_cell && i.bottleneck_cell_pct >= 40) {
+        bottleneckCounts[i.bottleneck_cell] = (bottleneckCounts[i.bottleneck_cell] || 0) + 1;
+        if (!bottleneckPcts[i.bottleneck_cell]) {
+          bottleneckPcts[i.bottleneck_cell] = [];
+        }
+        bottleneckPcts[i.bottleneck_cell].push(i.bottleneck_cell_pct);
+      }
+    });
+
+    let topBottleneck = null;
+    let topBottleneckCount = 0;
+    let topBottleneckAvgPct = 0;
+    Object.entries(bottleneckCounts).forEach(([cell, count]) => {
+      if (count > topBottleneckCount) {
+        topBottleneckCount = count;
+        topBottleneck = cell;
+        const pcts = bottleneckPcts[cell];
+        topBottleneckAvgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+      }
+    });
+
+    // Success rate
+    const completedCount = instances.filter(i => i.status === 'completed').length;
+    const errorCount = instances.filter(i => i.status === 'error').length;
+    const successRate = totalRuns > 0 ? (completedCount / (completedCount + errorCount)) * 100 : 100;
+
+    return {
+      totalRuns,
+      totalCost,
+      outlierCount,
+      avgContextPct,
+      topBottleneck,
+      topBottleneckCount,
+      topBottleneckAvgPct,
+      successRate,
+      errorCount,
+    };
+  }, [selectedCascade, instances]);
+
   // Clear all filters
   const clearFilters = () => {
     setFilters({
@@ -926,6 +989,54 @@ const CascadesView = ({ navigate, params = {} }) => {
           }
         </div>
       </div>
+
+      {/* KPI Cards Section - Only show when viewing a specific cascade */}
+      {selectedCascade && cascadeKpis && (
+        <div className="cascades-kpi-section">
+          <div className="cascades-kpi-grid">
+            <KPICard
+              title="Total Runs"
+              value={cascadeKpis.totalRuns}
+              subtitle={cascadeKpis.errorCount > 0 ? `${cascadeKpis.errorCount} errors` : 'no errors'}
+              icon="mdi:play-circle"
+              color={cascadeKpis.successRate >= 95 ? '#34d399' : cascadeKpis.successRate >= 80 ? '#fbbf24' : '#f87171'}
+            />
+            <KPICard
+              title="Total Cost"
+              value={`$${cascadeKpis.totalCost.toFixed(4)}`}
+              subtitle={`$${(cascadeKpis.totalCost / cascadeKpis.totalRuns).toFixed(4)} avg/run`}
+              icon="mdi:cash"
+              color="#34d399"
+            />
+            <KPICard
+              title="Outliers"
+              value={cascadeKpis.outlierCount}
+              subtitle={cascadeKpis.outlierCount > 0
+                ? `${((cascadeKpis.outlierCount / cascadeKpis.totalRuns) * 100).toFixed(0)}% of runs`
+                : 'none detected'
+              }
+              icon="mdi:alert-circle"
+              color={cascadeKpis.outlierCount > 0 ? '#f87171' : '#64748b'}
+            />
+            <KPICard
+              title="Avg Context%"
+              value={`${cascadeKpis.avgContextPct.toFixed(0)}%`}
+              subtitle="of cost is context"
+              icon="mdi:database-import"
+              color={cascadeKpis.avgContextPct > 60 ? '#fbbf24' : cascadeKpis.avgContextPct > 30 ? '#60a5fa' : '#34d399'}
+            />
+            {cascadeKpis.topBottleneck && (
+              <KPICard
+                title="Top Bottleneck"
+                value={cascadeKpis.topBottleneck}
+                subtitle={`${cascadeKpis.topBottleneckAvgPct.toFixed(0)}% avg (${cascadeKpis.topBottleneckCount} runs)`}
+                icon="mdi:target"
+                color="#fbbf24"
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Cost Chart Section - filtered when cascade selected or filters active */}
       <div className="cascades-section">
