@@ -22,6 +22,7 @@ cells:
       x-ai/grok-4.1-fast:
         factor: 3
     mutate: false
+    downstream_model: true  # Cascade tools use each candidate's model for fair benchmarking
     pareto_frontier:
       enabled: true
       include_dominated: true

@@ -14,6 +14,12 @@ current_cascade_context = ContextVar("current_cascade_context", default=None)
 # ContextVar to track current candidate index (for parallel candidate decisions)
 current_sounding_context = ContextVar("current_sounding_context", default=None)
 
+# ContextVar to track resolved model for current execution context (for downstream_model)
+current_model_context = ContextVar("current_model_context", default=None)
+
+# ContextVar to track whether to propagate model to downstream cascade tools
+downstream_model_context = ContextVar("downstream_model_context", default=False)
+
 def set_current_session_id(sid):
     return current_session_context.set(sid)
 
@@ -37,6 +43,22 @@ def set_current_candidate_index(candidate_index):
 
 def get_current_candidate_index():
     return current_sounding_context.get()
+
+def set_current_model(model):
+    """Set the resolved model for current execution context."""
+    return current_model_context.set(model)
+
+def get_current_model():
+    """Get the resolved model for current execution context."""
+    return current_model_context.get()
+
+def set_downstream_model(enabled: bool):
+    """Set whether to propagate model to downstream cascade tools."""
+    return downstream_model_context.set(enabled)
+
+def get_downstream_model() -> bool:
+    """Check if model should propagate to downstream cascade tools."""
+    return downstream_model_context.get() or False
 
 def set_state_internal(key: str, value) -> None:
     """

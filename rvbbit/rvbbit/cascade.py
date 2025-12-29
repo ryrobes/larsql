@@ -281,6 +281,12 @@ class CandidatesConfig(BaseModel):
     llm_prefilter: Optional[int] = None  # For hybrid mode: LLM picks top N, human picks winner
     llm_prefilter_instructions: Optional[str] = None  # Instructions for LLM prefilter
 
+    # Model propagation to downstream cascade tools
+    # When True, any cascade-based tool called from within this candidate
+    # will use the candidate's resolved model instead of its own default.
+    # Perfect for fair benchmarking - each model's tool calls use that same model.
+    downstream_model: bool = False
+
 class RagConfig(BaseModel):
     """
     RAG configuration for a phase.

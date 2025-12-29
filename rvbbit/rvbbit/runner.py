@@ -54,7 +54,11 @@ from .session_state import (
     SessionStatus, BlockedType
 )
 from .traits.system import spawn_cascade
-from .traits.state_tools import set_current_session_id, set_current_cell_name, set_current_cascade_id, set_current_candidate_index
+from .traits.state_tools import (
+    set_current_session_id, set_current_cell_name, set_current_cascade_id,
+    set_current_candidate_index, set_current_model, get_current_model,
+    set_downstream_model, get_downstream_model
+)
 from .traits.research_db import set_current_research_db
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
@@ -6885,7 +6889,13 @@ Use only numbers 0-100 for scores."""
                 cascade_token = set_current_cascade_id(sounding_runner.config.cascade_id)
                 sounding_token = set_current_candidate_index(i)
 
-                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, cell={phase.name}, candidate_index={i}")
+                # Set model context for downstream_model propagation
+                model_token = set_current_model(sounding_model)
+                downstream_token = set_downstream_model(
+                    phase.candidates.downstream_model if phase.candidates else False
+                )
+
+                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, cell={phase.name}, candidate_index={i}, model={sounding_model}, downstream={phase.candidates.downstream_model if phase.candidates else False}")
 
                 # Execute the phase on isolated runner
                 result = sounding_runner._execute_phase_internal(
@@ -11870,6 +11880,16 @@ def run_cascade(config_path: str | dict, input_data: dict = None, session_id: st
         if ctx_caller_id:
             caller_id = ctx_caller_id
             invocation_metadata = invocation_metadata or ctx_metadata
+
+    # Auto-inherit model if downstream_model propagation is enabled
+    # This allows cascade tools to use the calling candidate's model
+    if get_downstream_model():
+        parent_model = get_current_model()
+        if parent_model:
+            overrides = (overrides or {}).copy()
+            if "model" not in overrides:  # Don't override explicit model
+                overrides["model"] = parent_model
+                console.print(f"[dim]↳ Inheriting model from parent: {parent_model}[/dim]")
 
     runner = RVBBITRunner(config_path, session_id, overrides, depth, parent_trace, hooks, candidate_index=candidate_index,
                           parent_session_id=parent_session_id, caller_id=caller_id, invocation_metadata=invocation_metadata)
