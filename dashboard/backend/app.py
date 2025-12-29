@@ -4290,8 +4290,9 @@ def playground_session_stream(session_id):
         session_status = None
         session_error = None
         try:
+            # Fetch status AND heartbeat info for zombie detection
             status_query = f"""
-                SELECT status, error_message
+                SELECT status, error_message, heartbeat_at, heartbeat_lease_seconds
                 FROM session_state FINAL
                 WHERE session_id = '{session_id}'
                 LIMIT 1
@@ -4300,6 +4301,41 @@ def playground_session_stream(session_id):
             if status_result and len(status_result) > 0:
                 session_status = status_result[0].get('status')
                 session_error = status_result[0].get('error_message')
+
+                # ZOMBIE DETECTION: If session is active but heartbeat expired, mark as orphaned
+                if session_status in ('running', 'blocked', 'starting'):
+                    heartbeat_at = status_result[0].get('heartbeat_at')
+                    lease_seconds = status_result[0].get('heartbeat_lease_seconds', 60)
+
+                    if heartbeat_at:
+                        from datetime import datetime, timezone
+                        now = datetime.now(timezone.utc)
+                        # Handle both datetime object and string
+                        if isinstance(heartbeat_at, str):
+                            heartbeat_dt = datetime.fromisoformat(heartbeat_at.replace('Z', '+00:00'))
+                        else:
+                            heartbeat_dt = heartbeat_at.replace(tzinfo=timezone.utc) if heartbeat_at.tzinfo is None else heartbeat_at
+
+                        elapsed = (now - heartbeat_dt).total_seconds()
+                        grace_period = 30  # Additional grace period
+
+                        if elapsed > lease_seconds + grace_period:
+                            # Zombie detected! Mark as orphaned
+                            print(f"[session-stream] ZOMBIE DETECTED: {session_id} (heartbeat {elapsed:.0f}s ago, lease {lease_seconds}s)")
+                            try:
+                                from rvbbit.session_state import update_session_status, SessionStatus
+                                update_session_status(
+                                    session_id=session_id,
+                                    status=SessionStatus.ORPHANED,
+                                    error_message=f"Heartbeat expired ({elapsed:.0f}s since last heartbeat)"
+                                )
+                                session_status = 'orphaned'
+                                session_error = f"Process died (no heartbeat for {elapsed:.0f}s)"
+                            except Exception as mark_err:
+                                print(f"[session-stream] Failed to mark zombie as orphaned: {mark_err}")
+
+                # Note: Terminal states are normal - no need to log on every poll
+            # Note: Missing session_state rows are common for older sessions - no need to log
         except Exception as e:
             # session_state table might not exist in all setups
             print(f"[session-stream] Could not check session_state: {e}")
@@ -4540,23 +4576,64 @@ def cancel_cascade():
         # This works for both running and zombie sessions
         print(f"[cancel-cascade] Cancelling session: {session_id}, Reason: {reason}")
 
-        # Update DB status to cancelled
-        update_session_status(
-            session_id=session_id,
-            status=SessionStatus.CANCELLED,
-            cancel_reason=reason
-        )
+        # Check existing state before update
+        existing_state = get_session(session_id)
+        print(f"[cancel-cascade] Existing state before: {existing_state.status.value if existing_state else 'NONE (will create)'}")
 
-        # Also set cancellation flag for running processes
+        # First set cancellation flag (stores the reason)
         request_session_cancellation(session_id, reason)
 
+        # Then update DB status to cancelled
+        update_session_status(
+            session_id=session_id,
+            status=SessionStatus.CANCELLED
+        )
+
         print(f"[cancel-cascade] Session {session_id} marked as cancelled in DB")
+
+        # Also delete any pending checkpoints for this session
+        # (so blocked/interrupt UI disappears - checkpoints are ephemeral)
+        db = get_db()
+        checkpoints_deleted = 0
+        try:
+            # Count pending checkpoints first
+            count_query = f"""
+                SELECT count() as cnt FROM checkpoints
+                WHERE session_id = '{session_id}' AND status = 'pending'
+            """
+            count_result = db.query(count_query)
+            checkpoints_deleted = int(count_result[0]['cnt']) if count_result else 0
+
+            if checkpoints_deleted > 0:
+                print(f"[cancel-cascade] Deleting {checkpoints_deleted} pending checkpoint(s)")
+                # Delete pending checkpoints (ALTER DELETE is async in ClickHouse)
+                db.execute(f"""
+                    ALTER TABLE checkpoints DELETE
+                    WHERE session_id = '{session_id}' AND status = 'pending'
+                """)
+                print(f"[cancel-cascade] Checkpoints deletion initiated")
+        except Exception as cp_err:
+            print(f"[cancel-cascade] Warning: Could not delete checkpoints: {cp_err}")
+
+        # VERIFY: Query the database to confirm the update was saved
+        verify_query = f"""
+            SELECT session_id, status, cancel_requested, cancel_reason, updated_at
+            FROM session_state FINAL
+            WHERE session_id = '{session_id}'
+            LIMIT 1
+        """
+        verify_result = db.query(verify_query)
+        verified_status = verify_result[0] if verify_result else None
+        print(f"[cancel-cascade] VERIFICATION: {verified_status}")
 
         return jsonify({
             'success': True,
             'session_id': session_id,
             'status': 'cancelled',
-            'message': f'Session {session_id} cancelled successfully'
+            'message': f'Session {session_id} cancelled successfully',
+            'verified_status': verified_status.get('status') if verified_status else None,
+            'verification': verified_status,
+            'checkpoints_deleted': checkpoints_deleted
         })
 
     except Exception as e:

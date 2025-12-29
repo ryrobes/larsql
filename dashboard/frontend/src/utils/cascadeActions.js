@@ -38,9 +38,17 @@ export async function cancelCascade(sessionId, reason = 'User requested cancella
     }
 
     console.log('[cancelCascade] Success:', data);
+    // Log verification details for debugging
+    if (data.verification) {
+      console.log('[cancelCascade] DB Verification:', data.verification);
+    }
+    if (data.verified_status && data.verified_status !== 'cancelled') {
+      console.warn('[cancelCascade] WARNING: Status in DB is', data.verified_status, 'not "cancelled"');
+    }
     return {
       success: true,
       forced: data.forced || false,
+      verified_status: data.verified_status,
       data
     };
 

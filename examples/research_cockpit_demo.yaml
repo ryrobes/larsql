@@ -15,6 +15,16 @@ description: 'Interactive research assistant optimized for the Research Cockpit 
   '
 inputs_schema:
   initial_query: Your first research question (optional)
+auto_context:
+  inter_phase:
+    enabled: true
+    selection:
+      max_tokens: 200000
+      strategy: hybrid  
+  intra_phase:
+    enabled: true
+    mask_observations_after: 4
+    window: 5
 #model: x-ai/grok-4.1-fast
 model: openai/gpt-5.2
 #model: openrouter/auto
@@ -24,6 +34,7 @@ cells:
   traits: manifest
   rules:
     max_turns: 100
+  
   handoffs:
   - research_loop
   instructions: "You are an interactive research assistant. Work incrementally - don't\

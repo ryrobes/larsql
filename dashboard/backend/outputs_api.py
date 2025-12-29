@@ -475,6 +475,52 @@ def get_cell_detail(message_id):
             if isinstance(metadata, dict) and metadata.get('images'):
                 images = metadata['images']
 
+        # =========================================================================
+        # RENDER ENTRY LOOKUP - For request_decision tool calls, look for the
+        # linked render entry with clean ui_spec and screenshot metadata.
+        # This avoids the need to parse tool call content from markdown fences.
+        # =========================================================================
+        render_data = None
+        if content_type == 'tool_call:request_decision':
+            session_id = row.get('session_id', '')
+            cell_name = row.get('cell_name', '')
+            timestamp = row.get('timestamp')
+
+            # Look for render entry with same session/cell, created around the same time
+            render_query = f"""
+                SELECT
+                    content_json,
+                    metadata_json,
+                    content_type
+                FROM unified_logs
+                WHERE session_id = '{session_id}'
+                    AND cell_name = '{cell_name}'
+                    AND content_type = 'render:request_decision'
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+
+            render_rows = db.query(render_query)
+            if render_rows:
+                render_row = render_rows[0]
+                try:
+                    render_content_json = render_row.get('content_json')
+                    render_metadata_json = render_row.get('metadata_json')
+
+                    render_content = json.loads(render_content_json) if isinstance(render_content_json, str) else render_content_json
+                    render_metadata = json.loads(render_metadata_json) if isinstance(render_metadata_json, str) else render_metadata_json
+
+                    # Use render entry's clean ui_spec and metadata
+                    render_data = {
+                        'ui_spec': render_content,
+                        'screenshot_url': render_metadata.get('screenshot_url') if render_metadata else None,
+                        'screenshot_path': render_metadata.get('screenshot_path') if render_metadata else None,
+                        'checkpoint_id': render_metadata.get('checkpoint_id') if render_metadata else None,
+                    }
+                except Exception as e:
+                    # Log but don't fail
+                    print(f"[outputs_api] Error parsing render entry: {e}")
+
         return jsonify(sanitize_for_json({
             'message_id': str(row.get('message_id', '')),
             'session_id': row.get('session_id', ''),
@@ -488,7 +534,9 @@ def get_cell_detail(message_id):
             'images': images,
             'model': row.get('model', ''),
             'tokens_in': row.get('tokens_in'),
-            'tokens_out': row.get('tokens_out')
+            'tokens_out': row.get('tokens_out'),
+            # NEW: Include render data if available (clean ui_spec + screenshot)
+            'render_data': render_data
         }))
 
     except Exception as e:

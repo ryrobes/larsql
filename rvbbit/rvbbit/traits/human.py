@@ -1029,24 +1029,30 @@ def _request_decision_via_checkpoint(
     console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")
     console.print(f"Waiting for human input on checkpoint {checkpoint.id[:8]}...")
 
-    # Capture screenshot of HTMX content (async, non-blocking, overwrites iterations)
+    # Capture screenshot of HTMX content (async, non-blocking)
+    # Use checkpoint.id for unique filename - each request_decision gets its own screenshot
+    screenshot_path = None
     if html:
         try:
             from ..screenshot_service import get_screenshot_service
+            from ..config import get_config
 
             screenshot_service = get_screenshot_service()
+            cfg = get_config()
 
             # Build complete iframe HTML document (same as frontend renders)
             complete_html = _build_screenshot_html(html)
 
-            screenshot_service.capture_htmx_render(
+            # Use checkpoint.id for unique screenshots (never overwrites)
+            screenshot_path = screenshot_service.capture_htmx_render(
                 html=complete_html,
                 session_id=session_id,
                 cell_name=cell_name or "request_decision",
                 candidate_index=candidate_index,
-                render_type="decision"
+                render_type="decision",
+                unique_id=checkpoint.id  # Unique per checkpoint - no overwrites
             )
-            console.print(f"[dim]📸 Screenshot queued (overwrites)[/dim]")
+            console.print(f"[dim]📸 Screenshot queued (unique: {checkpoint.id[:8]})[/dim]")
         except Exception as e:
             # Don't fail checkpoint if screenshot fails
             console.print(f"[dim]⚠ Screenshot skipped: {e}[/dim]")
@@ -1068,25 +1074,12 @@ def _request_decision_via_checkpoint(
 
     # Always attach screenshot metadata when HTML was provided (screenshot is always captured)
     # This allows browsing historical request_decisions with visual preview
-    if html:
+    if html and screenshot_path:
         try:
-            from .config import get_config
             import time
 
-            cfg = get_config()
-
-            # Build screenshot path (matches what screenshot_service saves)
-            if candidate_index is not None:
-                filename = f"decision_s{candidate_index}.png"
-            else:
-                filename = "decision_latest.png"
-
-            screenshot_path = os.path.join(
-                cfg.image_dir,
-                session_id,
-                cell_name or "request_decision",
-                filename
-            )
+            # screenshot_path is already set from capture_htmx_render() above
+            filename = f"decision_{checkpoint.id[:12]}.png"
 
             # Wait up to 10 seconds for screenshot to be saved
             console.print(f"[dim]📸 Waiting for screenshot to finish...[/dim]")
@@ -1096,18 +1089,62 @@ def _request_decision_via_checkpoint(
                     result['_screenshot_metadata'] = {
                         'path': screenshot_path,
                         'url': f"/images/{session_id}/{cell_name or 'request_decision'}/{filename}",
-                        'filename': filename
+                        'filename': filename,
+                        'checkpoint_id': checkpoint.id
                     }
                     console.print(f"[green]📸 Screenshot attached: {screenshot_path}[/green]")
                     break
                 time.sleep(0.5)
             else:
                 # Timeout - screenshot not ready
-                result['_screenshot_metadata'] = {'pending': True, 'expected_path': screenshot_path}
+                result['_screenshot_metadata'] = {'pending': True, 'expected_path': screenshot_path, 'checkpoint_id': checkpoint.id}
                 console.print(f"[yellow]📸 Screenshot timeout (will be available later)[/yellow]")
 
         except Exception as e:
             console.print(f"[yellow]⚠ Could not attach screenshot: {e}[/yellow]")
+
+    # =========================================================================
+    # LOG RENDER ENTRY - Store clean ui_spec for /outputs page rendering
+    # This creates a dedicated "render" log entry that the frontend can use
+    # directly without parsing tool call content from markdown fences.
+    # =========================================================================
+    try:
+        from ..unified_logs import log_unified
+
+        # Build render metadata
+        render_metadata = {
+            "checkpoint_id": checkpoint.id,
+            "question": question,
+            "severity": severity,
+            "has_html": bool(html),
+            "options_count": len(options) if options else 0,
+            "candidate_index": candidate_index,
+        }
+
+        # Add screenshot path if available
+        if screenshot_path:
+            render_metadata["screenshot_path"] = screenshot_path
+            render_metadata["screenshot_url"] = f"/images/{session_id}/{cell_name or 'request_decision'}/decision_{checkpoint.id[:12]}.png"
+
+        # Log the render entry with clean ui_spec
+        log_unified(
+            session_id=session_id,
+            trace_id=f"{checkpoint.id}_render",
+            parent_id=trace.id if trace else None,
+            role="render",
+            node_type="request_decision_render",
+            content=ui_spec,  # The clean, structured ui_spec - ready to render!
+            content_type="render:request_decision",
+            metadata=render_metadata,
+            cell_name=cell_name or "request_decision",
+            cascade_id=trace.name if trace else "unknown",
+            candidate_index=candidate_index,
+        )
+        console.print(f"[dim]📝 Render entry logged for /outputs[/dim]")
+
+    except Exception as e:
+        # Don't fail the tool if logging fails
+        console.print(f"[yellow]⚠ Could not log render entry: {e}[/yellow]")
 
     # Store in state
     import json
@@ -1430,7 +1467,7 @@ body {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-primary);
-  background: transparent;
+  background: var(--bg-dark);  /* Dark background for screenshots - NOT transparent! */
   -webkit-font-smoothing: antialiased;
 }
 

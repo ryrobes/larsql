@@ -15,6 +15,7 @@ import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
 import { Tooltip } from '../../components/RichTooltip';
 import { Button, useToast } from '../../components';
 import CheckpointModal from '../../components/CheckpointModal';
+import { cancelCascade } from '../../utils/cascadeActions';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -1153,6 +1154,43 @@ function CascadeNavigator() {
     await runCascadeStandard();
   };
 
+  // Handle cascade cancellation
+  const handleCancelCascade = async () => {
+    if (!cascadeSessionId) {
+      showToast('No active session to cancel', { type: 'warning' });
+      return;
+    }
+
+    console.log('[handleCancelCascade] Cancelling session:', cascadeSessionId);
+
+    // IMMEDIATELY reset UI state to prevent stuck UI
+    // (don't wait for API response in case of network issues)
+    useStudioCascadeStore.setState({ isRunningAll: false });
+
+    // Clear any pending checkpoint/interrupt UI
+    setPendingCheckpoint(null);
+    setShowCheckpointModal(false);
+
+    const result = await cancelCascade(cascadeSessionId, 'Cancelled via Studio UI');
+
+    if (result.success) {
+      // Log verification result
+      console.log('[handleCancelCascade] Success! Verified status:', result.verified_status);
+      console.log('[handleCancelCascade] Checkpoints deleted:', result.data?.checkpoints_deleted || 0);
+      if (result.verified_status === 'cancelled') {
+        showToast('Cascade cancelled', { type: 'success' });
+      } else {
+        // DB update might have failed silently
+        console.warn('[handleCancelCascade] Warning: DB status is', result.verified_status, 'not "cancelled"');
+        showToast(`Cancelled (DB: ${result.verified_status || 'unknown'})`, { type: 'warning' });
+      }
+    } else {
+      console.error('[handleCancelCascade] Failed:', result.error);
+      showToast(`Failed to cancel: ${result.error}`, { type: 'error' });
+      // isRunningAll is already false - leave it (user can click Run again)
+    }
+  };
+
   return (
     <div className="cascade-navigator">
       {/* Parent Session Banner (if this is a sub-cascade) */}
@@ -1200,18 +1238,30 @@ function CascadeNavigator() {
               />
             </Tooltip>
 
-            <Tooltip label={inputValidationError || "Run all phases"}>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={isRunningAll ? "mdi:loading" : "mdi:play"}
-                onClick={handleRunAll}
-                disabled={isRunningAll || cells.length === 0}
-                loading={isRunningAll}
-              >
-                Run All
-              </Button>
-            </Tooltip>
+            {isRunningAll ? (
+              <Tooltip label="Stop running cascade">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon="mdi:stop"
+                  onClick={handleCancelCascade}
+                >
+                  Stop
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip label={inputValidationError || "Run all phases"}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon="mdi:play"
+                  onClick={handleRunAll}
+                  disabled={cells.length === 0}
+                >
+                  Run All
+                </Button>
+              </Tooltip>
+            )}
           </div>
 
           {inputValidationError && (

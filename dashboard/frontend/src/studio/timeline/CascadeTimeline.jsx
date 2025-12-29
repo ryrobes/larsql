@@ -418,17 +418,25 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     }
 
     const terminalStatuses = ['completed', 'error', 'cancelled', 'orphaned'];
-    if (terminalStatuses.includes(sessionStatus) && isRunningAll) {
-      console.log(`[CascadeTimeline] ⚠️ SETTING isRunningAll = FALSE due to terminal status:`, {
-        sessionId: cascadeSessionId,
-        sessionStatus,
-        sessionError
-      });
+    if (terminalStatuses.includes(sessionStatus)) {
+      // Clear blocked cell indicator when session terminates
+      if (blockedCellName) {
+        console.log('[CascadeTimeline] Clearing blocked cell indicator (session terminal)');
+        setBlockedCellName(null);
+      }
 
-      // Update the store to stop execution
-      useStudioCascadeStore.setState({ isRunningAll: false });
+      if (isRunningAll) {
+        console.log(`[CascadeTimeline] ⚠️ SETTING isRunningAll = FALSE due to terminal status:`, {
+          sessionId: cascadeSessionId,
+          sessionStatus,
+          sessionError
+        });
+
+        // Update the store to stop execution
+        useStudioCascadeStore.setState({ isRunningAll: false });
+      }
     }
-  }, [sessionStatus, sessionStatusFor, cascadeSessionId, isRunningAll, sessionError, sessionToPoll]);
+  }, [sessionStatus, sessionStatusFor, cascadeSessionId, isRunningAll, sessionError, sessionToPoll, blockedCellName]);
 
   // Debug polling state
   React.useEffect(() => {

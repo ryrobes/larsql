@@ -285,16 +285,24 @@ class ScreenshotService:
         session_id: str,
         cell_name: str,
         candidate_index: Optional[int] = None,
-        render_type: str = "htmx"
+        render_type: str = "htmx",
+        unique_id: Optional[str] = None
     ):
         """
-        Capture screenshot of HTMX render (overwrites previous for this phase/candidate).
+        Capture screenshot of HTMX render.
 
-        Path strategy (overwrites on each call):
-        - No candidate: /images/{session}/{phase}/htmx_latest.png
-        - With candidate: /images/{session}/{phase}/htmx_s{N}.png
+        Path strategy:
+        - With unique_id: /images/{session}/{phase}/{render_type}_{unique_id}.png (unique, never overwrites)
+        - With candidate (no unique_id): /images/{session}/{phase}/{render_type}_s{N}.png (overwrites per candidate)
+        - No candidate, no unique_id: /images/{session}/{phase}/{render_type}_latest.png (overwrites)
 
-        This keeps only the FINAL state, iterations are overwritten.
+        Args:
+            html: Complete HTML document to render
+            session_id: Session identifier
+            cell_name: Phase/cell name
+            candidate_index: Optional candidate index for parallel candidates
+            render_type: Type prefix for filename (default "htmx")
+            unique_id: Optional unique identifier (e.g., checkpoint_id) for persistent screenshots
 
         Queues screenshot task to run in background thread.
         Returns immediately - screenshot happens asynchronously.
@@ -304,8 +312,12 @@ class ScreenshotService:
         cfg = get_config()
         image_dir = cfg.image_dir
 
-        # Build path that overwrites on each render
-        if candidate_index is not None:
+        # Build path - unique_id takes precedence for persistent screenshots
+        if unique_id:
+            # Unique ID provided - create a unique, non-overwriting screenshot
+            # Truncate to 12 chars for reasonable filename length
+            filename = f"{render_type}_{unique_id[:12]}.png"
+        elif candidate_index is not None:
             filename = f"{render_type}_s{candidate_index}.png"
         else:
             filename = f"{render_type}_latest.png"
@@ -317,7 +329,10 @@ class ScreenshotService:
             filename
         )
 
-        print(f"[Screenshots] Queuing HTMX screenshot (overwrites): {output_path}")
+        if unique_id:
+            print(f"[Screenshots] Queuing HTMX screenshot (unique): {output_path}")
+        else:
+            print(f"[Screenshots] Queuing HTMX screenshot (overwrites): {output_path}")
 
         # Queue async capture
         self._queue_capture(html, output_path)

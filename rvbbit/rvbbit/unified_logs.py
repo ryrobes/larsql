@@ -386,7 +386,10 @@ class UnifiedLogger:
         callout_name: str = None,
 
         # Metadata
-        metadata: Dict = None
+        metadata: Dict = None,
+
+        # Content type override (optional - normally auto-classified)
+        content_type: str = None
     ):
         """
         Log a single message/event to ClickHouse.
@@ -394,6 +397,11 @@ class UnifiedLogger:
         This is a NON-BLOCKING call. Messages are buffered and INSERTed in batches.
         If request_id is provided (LLM response), the message is also queued for
         cost UPDATE after OpenRouter's delay.
+
+        Args:
+            content_type: Optional content type override. If provided, bypasses
+                         automatic classification. Useful for render entries
+                         (e.g., 'render:request_decision') where the type is known.
         """
         trace_id = trace_id or str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc)
@@ -422,14 +430,16 @@ class UnifiedLogger:
         estimated_tokens_val = estimate_tokens(content)
 
         # Classify content type for filtering and specialized rendering
-        content_type = classify_content(
-            content=content,
-            metadata=metadata,
-            images=image_paths,
-            videos=video_paths,
-            tool_calls=tool_calls,
-            role=role
-        )
+        # Use override if provided (e.g., for render entries with known type)
+        if content_type is None:
+            content_type = classify_content(
+                content=content,
+                metadata=metadata,
+                images=image_paths,
+                videos=video_paths,
+                tool_calls=tool_calls,
+                role=role
+            )
 
         # JSON serializer with fallback
         def safe_json(obj):
@@ -692,13 +702,19 @@ def log_unified(
     mermaid_content: str = None,
     is_callout: bool = False,
     callout_name: str = None,
-    metadata: Dict = None
+    metadata: Dict = None,
+    content_type: str = None
 ):
     """
     Global function to log unified mega-table entries.
 
     This is a NON-BLOCKING call. Messages are buffered and written to ClickHouse
     in batches. Cost data is UPDATEd separately after OpenRouter's delay.
+
+    Args:
+        content_type: Optional content type override. If provided, bypasses
+                     automatic classification. Useful for render entries
+                     (e.g., 'render:request_decision') where the type is known.
     """
     # If caller tracking or genus_hash not provided, look it up from Echo automatically
     # This ensures ALL log calls (including direct log_unified() calls) get tracking!
@@ -773,7 +789,8 @@ def log_unified(
         mermaid_content=mermaid_content,
         is_callout=is_callout,
         callout_name=callout_name,
-        metadata=metadata
+        metadata=metadata,
+        content_type=content_type
     )
 
 

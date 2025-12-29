@@ -44,6 +44,8 @@ const getContentTypeIcon = (contentType) => {
       return 'mdi:code-json';
     case 'tool_call':
       return 'mdi:tools';
+    case 'render':
+      return 'mdi:monitor-screenshot'; // For render entries (e.g., render:request_decision)
     case 'error':
       return 'mdi:alert-circle';
     default:
@@ -240,7 +242,7 @@ const ToolCallRenderer = ({ content, contentType }) => {
 /**
  * Render content based on type
  */
-const ContentRenderer = ({ content, contentType, images }) => {
+const ContentRenderer = ({ content, contentType, images, metadata, renderData }) => {
   const baseType = getBaseContentType(contentType);
 
   // Handle images
@@ -259,7 +261,124 @@ const ContentRenderer = ({ content, contentType, images }) => {
     );
   }
 
-  // Handle tool calls with special rendering
+  // =========================================================================
+  // RENDER DATA PATH - Preferred for request_decision tool calls
+  // When render_data is available from the backend, use the clean ui_spec
+  // instead of trying to parse tool call content from markdown fences.
+  // =========================================================================
+  if (contentType === 'tool_call:request_decision' && renderData?.ui_spec) {
+    const uiSpec = renderData.ui_spec;
+    const screenshotUrl = renderData.screenshot_url;
+    const checkpointId = renderData.checkpoint_id;
+
+    return (
+      <div className="cell-detail-request-decision">
+        <div className="request-decision-header">
+          <Icon icon="mdi:account-question" width="20" />
+          <span>Human Decision Request</span>
+          {checkpointId && (
+            <span className="checkpoint-id-badge">
+              {checkpointId.slice(0, 8)}
+            </span>
+          )}
+        </div>
+
+        {/* Screenshot thumbnail if available */}
+        {screenshotUrl && (
+          <div className="request-decision-screenshot">
+            <img
+              src={`http://localhost:5001${screenshotUrl}`}
+              alt="Decision UI Preview"
+              className="screenshot-preview"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        )}
+
+        {/* Render the clean UI spec from render_data */}
+        {uiSpec && typeof uiSpec === 'object' ? (
+          <DynamicUI
+            spec={uiSpec}
+            onSubmit={() => {}} // Read-only, no submission
+            isLoading={false}
+          />
+        ) : (
+          <div className="cell-detail-json">
+            <pre>{JSON.stringify(uiSpec, null, 2)}</pre>
+          </div>
+        )}
+
+        <div className="request-decision-note">
+          <Icon icon="mdi:information-outline" width="14" />
+          <span>This is a historical view of the decision request</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle render entries directly (for render:request_decision content type)
+  if (contentType === 'render:request_decision') {
+    // Content is the clean ui_spec directly from the backend
+    let uiSpec = content;
+
+    // Parse if it's a string (shouldn't be, but handle gracefully)
+    if (typeof content === 'string') {
+      try {
+        uiSpec = JSON.parse(content);
+      } catch (e) {
+        // Fall through to raw display
+      }
+    }
+
+    // Get screenshot URL from metadata if available
+    const screenshotUrl = metadata?.screenshot_url;
+
+    return (
+      <div className="cell-detail-request-decision">
+        <div className="request-decision-header">
+          <Icon icon="mdi:account-question" width="20" />
+          <span>Human Decision Request</span>
+          {metadata?.checkpoint_id && (
+            <span className="checkpoint-id-badge">
+              {metadata.checkpoint_id.slice(0, 8)}
+            </span>
+          )}
+        </div>
+
+        {/* Screenshot thumbnail if available */}
+        {screenshotUrl && (
+          <div className="request-decision-screenshot">
+            <img
+              src={`http://localhost:5001${screenshotUrl}`}
+              alt="Decision UI Preview"
+              className="screenshot-preview"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        )}
+
+        {/* Render the actual UI spec */}
+        {uiSpec && typeof uiSpec === 'object' ? (
+          <DynamicUI
+            spec={uiSpec}
+            onSubmit={() => {}} // Read-only, no submission
+            isLoading={false}
+          />
+        ) : (
+          <div className="cell-detail-json">
+            <pre>{typeof content === 'string' ? content : JSON.stringify(content, null, 2)}</pre>
+          </div>
+        )}
+
+        <div className="request-decision-note">
+          <Icon icon="mdi:information-outline" width="14" />
+          <span>This is a historical view of the decision request</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle tool calls with special rendering (legacy path - requires parsing)
   if (baseType === 'tool_call') {
     return <ToolCallRenderer content={content} contentType={contentType} />;
   }
@@ -551,6 +670,8 @@ const CellDetailModal = ({
               content={cellDetail.content}
               contentType={cellDetail.content_type}
               images={cellDetail.images}
+              metadata={cellDetail.metadata}
+              renderData={cellDetail.render_data}
             />
           ) : (
             <div className="cell-detail-empty">
