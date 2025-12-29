@@ -1,6 +1,6 @@
 /* ========================================
    ReceiptsView - Cost & Reliability Explorer
-   Dark, data-dense aesthetic matching Studio
+   Studio-inspired flat design
    ======================================== */
 
 .receipts-view {
@@ -8,7 +8,7 @@
   flex-direction: column;
   height: 100vh;
   background-color: #0a0a0a;
-  color: var(--color-text-secondary);
+  color: #94a3b8;
   overflow: hidden;
 }
 
@@ -20,108 +20,105 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 16px;
   background-color: #050508;
-  border-bottom: 1px solid var(--color-border-dim);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
   flex-shrink: 0;
 }
 
 .receipts-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .receipts-header-left h1 {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: #f1f5f9;
   margin: 0;
 }
 
 .receipts-subtitle {
-  font-size: 13px;
-  color: var(--color-text-muted);
+  font-size: 12px;
+  color: #64748b;
 }
 
 .receipts-header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-/* Time Range Selector */
+/* Time Range Selector - Studio style */
 .receipts-time-select {
-  background: #0a0614;
-  border: 1px solid var(--color-border-dim);
-  border-radius: 6px;
-  color: var(--color-text-secondary);
-  padding: 6px 12px;
-  font-size: 13px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  padding: 5px 10px;
+  font-size: 12px;
   cursor: pointer;
-  transition: var(--transition-normal);
+  transition: all 0.15s ease;
 }
 
 .receipts-time-select:hover {
-  border-color: var(--color-accent-cyan);
+  border-color: rgba(0, 229, 255, 0.4);
 }
 
 .receipts-time-select:focus {
   outline: none;
-  border-color: var(--color-accent-cyan);
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+  border-color: #00e5ff;
 }
 
 /* ========================================
-   Tabs
+   Tabs - Studio pill style
    ======================================== */
 
 .receipts-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   padding: 8px 16px;
-  background-color: #080510;
-  border-bottom: 1px solid var(--color-border-dim);
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
   flex-shrink: 0;
 }
 
 .receipts-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: 5px;
+  padding: 6px 12px;
   background: transparent;
   border: none;
-  border-radius: 6px;
-  color: var(--color-text-muted);
-  font-size: 13px;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: var(--transition-normal);
-  position: relative;
+  transition: all 0.15s ease;
+  font-family: inherit;
 }
 
 .receipts-tab:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: var(--color-text-secondary);
+  background: rgba(100, 116, 139, 0.1);
+  color: #94a3b8;
 }
 
 .receipts-tab.active {
-  background-color: rgba(0, 229, 255, 0.1);
-  color: var(--color-accent-cyan);
-  border-bottom: 2px solid var(--color-accent-cyan);
-  border-radius: 6px 6px 0 0;
+  background: rgba(0, 229, 255, 0.12);
+  color: #00e5ff;
 }
 
 .receipts-tab-badge {
-  background: var(--color-accent-pink);
+  background: #ff006e;
   color: #fff;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
   font-weight: 600;
-  min-width: 18px;
+  min-width: 16px;
   text-align: center;
 }
 
@@ -131,9 +128,27 @@
 
 .receipts-content {
   flex: 1;
-  background-color: #000000;
+  background-color: #0a0a0a;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* Scrollbar */
+.receipts-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.receipts-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.receipts-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 3px;
+}
+
+.receipts-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
 }
 
 /* Loading State */
@@ -142,24 +157,20 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 80px 40px;
+  gap: 12px;
+  padding: 60px 40px;
   text-align: center;
 }
 
 .receipts-loading p {
   margin: 0;
-  font-size: 14px;
-  color: var(--color-text-muted);
+  font-size: 12px;
+  color: #64748b;
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .spin {
@@ -169,28 +180,26 @@
 /* Error State */
 .receipts-error {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px;
-  margin: 16px;
-  background: linear-gradient(90deg, rgba(255, 0, 110, 0.05) 0%, rgba(10, 6, 20, 0) 30%);
-  border: 1px solid rgba(255, 0, 110, 0.3);
-  border-left: 3px solid var(--color-accent-pink);
-  border-radius: 6px;
-  color: var(--color-text-primary);
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  background: rgba(255, 0, 110, 0.05);
+  border-left: 2px solid #ff006e;
+  color: #f1f5f9;
 }
 
 .receipts-error strong {
   display: block;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .receipts-error p {
   margin: 0;
-  font-size: 13px;
-  color: var(--color-text-secondary);
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 /* ========================================
@@ -201,7 +210,7 @@
   .receipts-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
   }
 
   .receipts-header-right {
@@ -212,7 +221,7 @@
     width: 100%;
   }
 
-  .overview-kpi-grid {
-    grid-template-columns: 1fr;
+  .receipts-tabs {
+    flex-wrap: wrap;
   }
 }

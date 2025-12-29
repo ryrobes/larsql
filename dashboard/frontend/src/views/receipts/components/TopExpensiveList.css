@@ -1,0 +1,252 @@
+/* ========================================
+   TopExpensiveList Component Styles
+   Flat, data-dense table design
+   ======================================== */
+
+.top-expensive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Header */
+.top-expensive-list .list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.top-expensive-list .list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.top-expensive-list .list-title svg {
+  color: #475569;
+  width: 14px;
+  height: 14px;
+}
+
+.top-expensive-list .list-subtitle {
+  font-size: 10px;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Loading/Empty States */
+.top-expensive-list.loading,
+.top-expensive-list.empty {
+  min-height: 120px;
+}
+
+.top-expensive-list .list-loading,
+.top-expensive-list .list-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 11px;
+  min-height: 100px;
+}
+
+.top-expensive-list .list-loading svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* List Content - flat rows */
+.top-expensive-list .list-content {
+  display: flex;
+  flex-direction: column;
+}
+
+/* List Item - flat table row */
+.top-expensive-list .list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.top-expensive-list .list-item:hover,
+.top-expensive-list .list-item.hovered {
+  background: rgba(100, 116, 139, 0.06);
+}
+
+.top-expensive-list .list-item.outlier {
+  border-left: 2px solid #ff006e;
+  padding-left: 6px;
+}
+
+/* Rank */
+.top-expensive-list .item-rank {
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.top-expensive-list .item-rank svg {
+  width: 14px;
+  height: 14px;
+}
+
+.top-expensive-list .item-rank .gold {
+  color: #fbbf24;
+}
+
+.top-expensive-list .item-rank .silver {
+  color: #94a3b8;
+}
+
+.top-expensive-list .item-rank .bronze {
+  color: #c27b4e;
+}
+
+.top-expensive-list .rank-number {
+  font-size: 10px;
+  font-weight: 500;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Main Content */
+.top-expensive-list .item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.top-expensive-list .item-top-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-expensive-list .item-cascade {
+  font-size: 11px;
+  font-weight: 500;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-expensive-list .outlier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  background: rgba(255, 0, 110, 0.15);
+  color: #ff006e;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.top-expensive-list .outlier-badge svg {
+  width: 10px;
+  height: 10px;
+}
+
+.top-expensive-list .item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-expensive-list .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.top-expensive-list .meta-item svg {
+  width: 10px;
+  height: 10px;
+  color: #475569;
+}
+
+/* Cost */
+.top-expensive-list .item-cost {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.top-expensive-list .cost-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #00e5ff;
+}
+
+.top-expensive-list .context-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  color: #a78bfa;
+}
+
+.top-expensive-list .context-indicator svg {
+  width: 9px;
+  height: 9px;
+}
+
+/* Time */
+.top-expensive-list .item-time {
+  font-size: 10px;
+  color: #475569;
+  flex-shrink: 0;
+  width: 100px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Action chevron */
+.top-expensive-list .item-action {
+  color: #334155;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.top-expensive-list .item-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.top-expensive-list .list-item:hover .item-action {
+  opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .top-expensive-list .item-time {
+    display: none;
+  }
+
+  .top-expensive-list .item-meta {
+    gap: 6px;
+  }
+}

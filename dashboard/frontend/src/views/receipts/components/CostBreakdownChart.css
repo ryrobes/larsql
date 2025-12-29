@@ -1,0 +1,224 @@
+/* ========================================
+   CostBreakdownChart Component Styles
+   Flat, data-dense table-like design
+   ======================================== */
+
+.cost-breakdown-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+/* Header */
+.cost-breakdown-chart .chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cost-breakdown-chart .chart-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cost-breakdown-chart .chart-title svg {
+  color: #475569;
+}
+
+.cost-breakdown-chart .chart-subtitle {
+  font-size: 10px;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Chart Container */
+.cost-breakdown-chart .chart-container {
+  width: 100%;
+  min-height: 140px;
+}
+
+/* Loading/Empty States */
+.cost-breakdown-chart.loading,
+.cost-breakdown-chart.empty {
+  min-height: 180px;
+}
+
+.cost-breakdown-chart .chart-loading,
+.cost-breakdown-chart .chart-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 11px;
+  min-height: 140px;
+}
+
+.cost-breakdown-chart .chart-loading svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Data Grid Table */
+.cost-breakdown-chart .chart-data-grid {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.cost-breakdown-chart .grid-header {
+  display: flex;
+  align-items: center;
+  background: rgba(100, 116, 139, 0.08);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  padding: 4px 0;
+}
+
+.cost-breakdown-chart .grid-header .grid-col {
+  font-size: 9px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cost-breakdown-chart .grid-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cost-breakdown-chart .grid-body::-webkit-scrollbar {
+  width: 3px;
+}
+
+.cost-breakdown-chart .grid-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cost-breakdown-chart .grid-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.cost-breakdown-chart .grid-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.06);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.cost-breakdown-chart .grid-row:last-child {
+  border-bottom: none;
+}
+
+.cost-breakdown-chart .grid-row:hover,
+.cost-breakdown-chart .grid-row.hovered {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.cost-breakdown-chart .grid-row:nth-child(even) {
+  background: rgba(100, 116, 139, 0.03);
+}
+
+.cost-breakdown-chart .grid-row:nth-child(even):hover,
+.cost-breakdown-chart .grid-row:nth-child(even).hovered {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.cost-breakdown-chart .grid-col {
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
+.cost-breakdown-chart .col-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cost-breakdown-chart .col-cost {
+  width: 70px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #00e5ff;
+}
+
+.cost-breakdown-chart .col-pct {
+  width: 45px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #64748b;
+}
+
+.cost-breakdown-chart .legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* Tooltip */
+.breakdown-tooltip {
+  background: rgba(5, 5, 8, 0.95);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  padding: 8px 10px;
+  font-size: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  min-width: 140px;
+}
+
+.breakdown-tooltip .tooltip-header {
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+  word-break: break-word;
+  font-size: 11px;
+}
+
+.breakdown-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.breakdown-tooltip .tooltip-row span:first-child {
+  color: #64748b;
+}
+
+.breakdown-tooltip .tooltip-row span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  color: #f1f5f9;
+}
+
+.breakdown-tooltip .tooltip-row.highlight span:last-child {
+  color: #00e5ff;
+  font-weight: 600;
+}
+
+.breakdown-tooltip .tooltip-row.warning span:last-child {
+  color: #ff006e;
+}

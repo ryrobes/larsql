@@ -1066,8 +1066,9 @@ def _request_decision_via_checkpoint(
     result = _process_decision_response(response, ui_spec)
     console.print(f"[green]✓ Decision received: {result.get('selected', result)}[/green]")
 
-    # If screenshot was requested, wait for it to finish and attach path
-    if result.get('include_screenshot') == 'true':
+    # Always attach screenshot metadata when HTML was provided (screenshot is always captured)
+    # This allows browsing historical request_decisions with visual preview
+    if html:
         try:
             from .config import get_config
             import time

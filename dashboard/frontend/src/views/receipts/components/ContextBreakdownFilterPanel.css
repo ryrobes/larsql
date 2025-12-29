@@ -1,0 +1,156 @@
+/* ============================================
+   CONTEXT BREAKDOWN FILTER PANEL
+   ============================================ */
+
+.context-breakdown-filter-panel {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(100, 116, 139, 0.15);
+  background: transparent;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Filter sections */
+.context-breakdown-filter-panel .filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-breakdown-filter-panel .filter-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.context-breakdown-filter-panel .filter-section-header svg {
+  color: #475569;
+}
+
+.context-breakdown-filter-panel .filter-section-header .filter-clear-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #00e5ff;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.context-breakdown-filter-panel .filter-section-header .filter-clear-btn:hover {
+  text-decoration: underline;
+}
+
+/* Filter chips */
+.context-breakdown-filter-panel .filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.context-breakdown-filter-panel .filter-chip {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+}
+
+.context-breakdown-filter-panel .filter-chip:hover {
+  border-color: rgba(100, 116, 139, 0.4);
+  color: #f1f5f9;
+}
+
+.context-breakdown-filter-panel .filter-chip.active {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: #00e5ff;
+  color: #00e5ff;
+}
+
+.context-breakdown-filter-panel .filter-chip.analyzed-chip.active {
+  background: rgba(52, 211, 153, 0.15);
+  border-color: #34d399;
+  color: #34d399;
+}
+
+/* Cascades list */
+.context-breakdown-filter-panel .cascades-filter {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.context-breakdown-filter-panel .filter-cascades-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.context-breakdown-filter-panel .filter-cascades-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.context-breakdown-filter-panel .filter-cascades-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.context-breakdown-filter-panel .filter-cascades-list::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.context-breakdown-filter-panel .filter-cascade-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  color: #94a3b8;
+  transition: background 0.15s ease;
+}
+
+.context-breakdown-filter-panel .filter-cascade-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.context-breakdown-filter-panel .filter-cascade-item input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: #00e5ff;
+}
+
+.context-breakdown-filter-panel .filter-cascade-item .cascade-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-breakdown-filter-panel .filter-empty {
+  font-size: 10px;
+  color: #475569;
+  font-style: italic;
+  padding: 8px 0;
+}

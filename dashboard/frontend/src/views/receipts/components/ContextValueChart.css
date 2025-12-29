@@ -1,0 +1,229 @@
+/* ========================================
+   ContextValueChart Component Styles
+   ======================================== */
+
+.context-value-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+}
+
+/* Header */
+.context-value-chart .chart-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-value-chart .chart-header svg {
+  color: #475569;
+}
+
+.context-value-chart .chart-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.context-value-chart .chart-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.context-value-chart .stat {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.context-value-chart .stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.context-value-chart .stat.useful .stat-value {
+  color: #34d399;
+}
+
+.context-value-chart .stat.wasted .stat-value {
+  color: #ff006e;
+}
+
+.context-value-chart .stat-label {
+  font-size: 9px;
+  color: #475569;
+}
+
+/* Chart Container */
+.context-value-chart .chart-container {
+  width: 100%;
+  height: 100px;
+}
+
+/* Loading/Empty States */
+.context-value-chart.loading,
+.context-value-chart.empty {
+  min-height: 120px;
+}
+
+.context-value-chart .chart-loading,
+.context-value-chart .chart-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 11px;
+  min-height: 100px;
+}
+
+.context-value-chart .chart-loading svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Data Grid */
+.context-value-chart .chart-data-grid {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.context-value-chart .grid-header {
+  display: flex;
+  align-items: center;
+  background: rgba(100, 116, 139, 0.08);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  padding: 3px 0;
+}
+
+.context-value-chart .grid-header .grid-col {
+  font-size: 8px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.context-value-chart .grid-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.context-value-chart .grid-body::-webkit-scrollbar {
+  width: 3px;
+}
+
+.context-value-chart .grid-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.context-value-chart .grid-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.context-value-chart .grid-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.06);
+}
+
+.context-value-chart .grid-row:last-child {
+  border-bottom: none;
+}
+
+.context-value-chart .grid-row:nth-child(even) {
+  background: rgba(100, 116, 139, 0.03);
+}
+
+.context-value-chart .grid-col {
+  padding: 4px 6px;
+  font-size: 9px;
+}
+
+.context-value-chart .col-tier {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #94a3b8;
+}
+
+.context-value-chart .tier-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.context-value-chart .col-cost {
+  width: 55px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #00e5ff;
+}
+
+.context-value-chart .col-msgs {
+  width: 35px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #a78bfa;
+}
+
+.context-value-chart .col-pct {
+  width: 40px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #64748b;
+}
+
+/* Tooltip */
+.context-value-tooltip {
+  background: rgba(5, 5, 8, 0.95);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  padding: 6px 8px;
+  font-size: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.context-value-tooltip .tooltip-header {
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+}
+
+.context-value-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.context-value-tooltip .tooltip-row span:first-child {
+  color: #64748b;
+}
+
+.context-value-tooltip .tooltip-row span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  color: #f1f5f9;
+}
+
+.context-value-tooltip .tooltip-row .value {
+  color: #00e5ff;
+}

@@ -319,6 +319,7 @@ class ClickHouseAdapter:
     _instance = None
     _lock = threading.Lock()
     _initialized = False
+    _housekeeping_done = False  # Track if schema/migrations have been run
     _query_lock = threading.Lock()  # Serialize all queries to avoid concurrent connection issues
 
     def __new__(cls, *args, **kwargs):
@@ -336,7 +337,7 @@ class ClickHouseAdapter:
         database: str = "rvbbit",
         user: str = "default",
         password: str = "",
-        auto_create: bool = True
+        auto_create: bool = False
     ):
         """
         Initialize ClickHouse adapter (singleton - only runs once).
@@ -347,7 +348,9 @@ class ClickHouseAdapter:
             database: Database name
             user: Username
             password: Password
-            auto_create: Automatically create database and tables if they don't exist
+            auto_create: If True, create database/tables/migrations on connect.
+                         Default is False for fast cascade startup.
+                         Use run_housekeeping() to explicitly initialize schema.
         """
         # Skip if already initialized (singleton)
         if ClickHouseAdapter._initialized:
@@ -392,12 +395,39 @@ class ClickHouseAdapter:
             }
         )
 
-        # Auto-create tables
+        # Auto-create tables if requested
         if auto_create:
             self._ensure_tables()
             self._run_migrations()
+            ClickHouseAdapter._housekeeping_done = True
 
         ClickHouseAdapter._initialized = True
+
+    def run_housekeeping(self):
+        """
+        Run database schema and migration housekeeping.
+
+        This is idempotent - safe to call multiple times.
+        Should be called explicitly by:
+        - Backend startup (app.py)
+        - CLI commands that manage the database (db init, tools sync, etc.)
+
+        NOT called by:
+        - rvbbit run (cascade execution should be fast)
+        - Backend cascade API (reuses existing schema)
+        """
+        if ClickHouseAdapter._housekeeping_done:
+            return
+
+        with ClickHouseAdapter._lock:
+            # Double-check after acquiring lock
+            if ClickHouseAdapter._housekeeping_done:
+                return
+
+            self._ensure_database()
+            self._ensure_tables()
+            self._run_migrations()
+            ClickHouseAdapter._housekeeping_done = True
 
     def _ensure_database(self):
         """Ensure the database exists, creating it if necessary."""
@@ -1262,9 +1292,25 @@ def get_db() -> ClickHouseAdapter:
     return get_db_adapter()
 
 
+def ensure_housekeeping():
+    """
+    Ensure database schema and migrations are up to date.
+
+    Call this explicitly at:
+    - Backend startup (before querying)
+    - CLI commands that need full schema (db init, tools sync, etc.)
+
+    This is idempotent - safe to call multiple times.
+    Cascade runs (rvbbit run) should NOT call this for fast startup.
+    """
+    db = get_db_adapter()
+    db.run_housekeeping()
+
+
 def reset_adapter():
     """Reset the adapter singleton (useful for testing)."""
     global _adapter_singleton
     _adapter_singleton = None
     ClickHouseAdapter._instance = None
     ClickHouseAdapter._initialized = False
+    ClickHouseAdapter._housekeeping_done = False

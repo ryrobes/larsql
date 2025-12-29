@@ -1,153 +1,201 @@
 /* ========================================
    InsightCard Component Styles
+   Flat, inline row design
    ======================================== */
 
 .insight-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  border-left: 2px solid rgba(100, 116, 139, 0.2);
+  background: transparent;
 }
 
-/* Severity-based border accent */
-.insight-card-critical {
-  border-left: 3px solid #ff006e;
-  background: linear-gradient(90deg, rgba(255, 0, 110, 0.05) 0%, rgba(10, 6, 20, 0) 30%);
+/* Severity colors */
+.insight-critical {
+  border-left-color: #ff006e;
 }
 
-.insight-card-warning,
-.insight-card-major {
-  border-left: 3px solid #fbbf24;
-  background: linear-gradient(90deg, rgba(251, 191, 36, 0.05) 0%, rgba(10, 6, 20, 0) 30%);
+.insight-warning,
+.insight-major {
+  border-left-color: #fbbf24;
 }
 
-.insight-card-info {
-  border-left: 3px solid #60a5fa;
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.05) 0%, rgba(10, 6, 20, 0) 30%);
+.insight-info {
+  border-left-color: #60a5fa;
 }
 
-/* Header */
-.insight-card-header {
+/* Main row */
+.insight-main {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.1s ease;
 }
 
-.insight-card-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+.insight-main:hover {
+  background: rgba(100, 116, 139, 0.06);
 }
 
-.insight-card-type {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  text-transform: capitalize;
-  margin-left: auto;
+.insight-icon {
+  flex-shrink: 0;
 }
 
-/* Message */
-.insight-card-message {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
+.insight-message {
+  flex: 1;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
 }
 
-/* Action Button */
-.insight-card-action {
-  align-self: flex-start;
-  margin-top: 4px;
+.insight-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.1s ease;
 }
 
-/* Inline Context Breakdown */
+.insight-action:hover {
+  background: rgba(100, 116, 139, 0.1);
+  color: #94a3b8;
+}
+
+.insight-expand {
+  color: #475569;
+  flex-shrink: 0;
+}
+
+/* Context Breakdown */
 .insight-context-breakdown {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border-dim);
+  padding: 8px 8px 8px 24px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  border-top: 1px solid rgba(100, 116, 139, 0.1);
+}
+
+.insight-context-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.insight-context-loading svg.spin {
+  animation: spin 1s linear infinite;
 }
 
 .insight-context-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  font-size: 10px;
+}
+
+.insight-context-session {
+  font-family: 'JetBrains Mono', monospace;
+  color: #64748b;
+}
+
+.insight-context-model {
+  font-family: 'JetBrains Mono', monospace;
+  color: #00e5ff;
 }
 
 .insight-context-messages {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
 .insight-context-message {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-  border-left: 2px solid var(--color-border-dim);
-  transition: var(--transition-normal);
-}
-
-.insight-context-message:hover {
-  background: rgba(0, 0, 0, 0.4);
-  border-left-color: var(--color-accent-cyan);
-}
-
-.insight-context-message-info {
-  display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.06);
+  font-size: 10px;
 }
 
-.insight-context-message-hash {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-muted);
+.msg-hash {
+  font-family: 'JetBrains Mono', monospace;
+  color: #475569;
+  width: 60px;
 }
 
-.insight-context-message-source {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.insight-context-message-stats {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.insight-context-message-tokens,
-.insight-context-message-cost {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-
-.insight-context-message-pct {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.msg-source {
+  color: #64748b;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.insight-context-message-pct-bar {
-  height: 4px;
-  border-radius: 2px;
-  transition: width 0.3s ease;
+.msg-role {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 9px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+}
+
+.msg-role-system {
+  color: #fbbf24;
+}
+
+.msg-role-user {
+  color: #60a5fa;
+}
+
+.msg-role-assistant {
+  color: #a78bfa;
+}
+
+.msg-tokens,
+.msg-cost {
+  font-family: 'JetBrains Mono', monospace;
+  color: #64748b;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.msg-tokens {
+  width: 60px;
+}
+
+.msg-cost {
+  width: 70px;
+  color: #00e5ff;
+}
+
+.msg-pct {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.msg-pct-bar {
+  height: 3px;
+  flex: 1;
   min-width: 2px;
 }
 
-.insight-context-message-pct span {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  min-width: 40px;
+.msg-pct span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #64748b;
+  min-width: 30px;
   text-align: right;
 }

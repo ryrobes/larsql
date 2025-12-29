@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { Button } from '../../components';
 import OverviewPanel from './components/OverviewPanel';
@@ -6,41 +6,71 @@ import AlertsPanel from './components/AlertsPanel';
 import ContextBreakdownPanel from './components/ContextBreakdownPanel';
 import './ReceiptsView.css';
 
+// Deep equality check for data comparison (prevents unnecessary re-renders)
+const isEqual = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+// localStorage keys
+const STORAGE_KEY_TIME_RANGE = 'receipts_timeRange';
+const STORAGE_KEY_GRANULARITY = 'receipts_granularity';
+
+// Read initial values from localStorage
+const getInitialTimeRange = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_TIME_RANGE);
+    if (stored) {
+      const value = Number(stored);
+      if ([1, 7, 30, 90].includes(value)) return value;
+    }
+  } catch (e) {}
+  return 7;
+};
+
+const getInitialGranularity = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_GRANULARITY);
+    if (stored && ['hourly', 'daily', 'weekly', 'monthly'].includes(stored)) {
+      return stored;
+    }
+  } catch (e) {}
+  return 'daily';
+};
+
 /**
  * ReceiptsView - Cost & Reliability Explorer
- *
- * Features:
- * - KPI dashboard with trends
- * - Operational intelligence (insights)
- * - Alerts and anomalies table
- * - Context breakdown (message-level attribution)
- *
- * Three views:
- * 1. Overview - KPIs + Insights
- * 2. Alerts - Anomalies table
- * 3. Context Breakdown - Granular message attribution
  */
 const ReceiptsView = ({ navigate, params = {} }) => {
   const [activeView, setActiveView] = useState('overview');
-  const [timeRange, setTimeRange] = useState(7); // days
+  const [timeRange, setTimeRange] = useState(getInitialTimeRange);
+  const [granularity, setGranularity] = useState(getInitialGranularity);
   const [overviewData, setOverviewData] = useState(null);
   const [alertsData, setAlertsData] = useState([]);
   const [breakdownData, setBreakdownData] = useState([]);
+
+  // Chart data states
+  const [timeSeriesData, setTimeSeriesData] = useState([]);
+  const [cascadeData, setCascadeData] = useState({ cascades: [], grand_total: 0 });
+  const [modelData, setModelData] = useState({ models: [], grand_total: 0 });
+  const [topExpensive, setTopExpensive] = useState([]);
+  const [contextEfficiency, setContextEfficiency] = useState(null);
+
   const [loading, setLoading] = useState(true);
+  const [chartsLoading, setChartsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch overview data
+  // Fetch overview data (only update state if data changed)
   const fetchOverview = async () => {
     try {
       const res = await fetch(`http://localhost:5001/api/receipts/overview?days=${timeRange}`);
       const data = await res.json();
-
       if (data.error) {
         setError(data.error);
         return;
       }
-
-      setOverviewData(data);
+      setOverviewData(prev => isEqual(prev, data) ? prev : data);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -49,39 +79,146 @@ const ReceiptsView = ({ navigate, params = {} }) => {
     }
   };
 
-  // Fetch alerts data
+  // Fetch alerts data (only update state if data changed)
   const fetchAlerts = async () => {
     try {
       const res = await fetch(`http://localhost:5001/api/receipts/alerts?days=${timeRange}`);
       const data = await res.json();
-
       if (data.error) {
         setError(data.error);
         return;
       }
-
-      setAlertsData(data.alerts || []);
+      const alerts = data.alerts || [];
+      setAlertsData(prev => isEqual(prev, alerts) ? prev : alerts);
     } catch (err) {
       setError(err.message);
     }
   };
 
-  // Fetch context breakdown data
+  // Fetch context breakdown data (only update state if data changed)
   const fetchBreakdown = async () => {
     try {
       const res = await fetch(`http://localhost:5001/api/receipts/context-breakdown?days=${timeRange}`);
       const data = await res.json();
-
       if (data.error) {
         setError(data.error);
         return;
       }
-
-      setBreakdownData(data.breakdown || []);
+      const breakdown = data.breakdown || [];
+      setBreakdownData(prev => isEqual(prev, breakdown) ? prev : breakdown);
     } catch (err) {
       setError(err.message);
     }
   };
+
+  // Fetch time series data for trend chart (only update state if data changed)
+  const fetchTimeSeries = async () => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/receipts/time-series?days=${timeRange}&granularity=${granularity}`);
+      const data = await res.json();
+      if (!data.error) {
+        const series = data.series || [];
+        setTimeSeriesData(prev => isEqual(prev, series) ? prev : series);
+      }
+    } catch (err) {
+      console.error('Failed to fetch time series:', err);
+    }
+  };
+
+  // Fetch cascade breakdown (only update state if data changed)
+  const fetchCascadeBreakdown = async () => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/receipts/by-cascade?days=${timeRange}&limit=10`);
+      const data = await res.json();
+      if (!data.error) {
+        const newData = { cascades: data.cascades || [], grand_total: data.grand_total || 0 };
+        setCascadeData(prev => isEqual(prev, newData) ? prev : newData);
+      }
+    } catch (err) {
+      console.error('Failed to fetch cascade breakdown:', err);
+    }
+  };
+
+  // Fetch model breakdown (only update state if data changed)
+  const fetchModelBreakdown = async () => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/receipts/by-model?days=${timeRange}`);
+      const data = await res.json();
+      if (!data.error) {
+        const newData = { models: data.models || [], grand_total: data.grand_total || 0 };
+        setModelData(prev => isEqual(prev, newData) ? prev : newData);
+      }
+    } catch (err) {
+      console.error('Failed to fetch model breakdown:', err);
+    }
+  };
+
+  // Fetch top expensive sessions (only update state if data changed)
+  const fetchTopExpensive = async () => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/receipts/top-expensive?days=${timeRange}&limit=8`);
+      const data = await res.json();
+      if (!data.error) {
+        const sessions = data.sessions || [];
+        setTopExpensive(prev => isEqual(prev, sessions) ? prev : sessions);
+      }
+    } catch (err) {
+      console.error('Failed to fetch top expensive:', err);
+    }
+  };
+
+  // Fetch context efficiency data (only update state if data changed)
+  const fetchContextEfficiency = async () => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/receipts/context-efficiency?days=${timeRange}`);
+      const data = await res.json();
+      if (!data.error) {
+        setContextEfficiency(prev => isEqual(prev, data) ? prev : data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch context efficiency:', err);
+    }
+  };
+
+  // Fetch all chart data (isBackground = true skips loading state for polls)
+  const fetchChartData = useCallback(async (isBackground = false) => {
+    if (!isBackground) {
+      setChartsLoading(true);
+    }
+    await Promise.all([
+      fetchTimeSeries(),
+      fetchCascadeBreakdown(),
+      fetchModelBreakdown(),
+      fetchTopExpensive(),
+      fetchContextEfficiency()
+    ]);
+    if (!isBackground) {
+      setChartsLoading(false);
+    }
+  }, [timeRange, granularity]);
+
+  // Navigate to session detail
+  const handleSessionClick = useCallback((session) => {
+    if (navigate && session.session_id) {
+      navigate(`studio/${session.cascade_id}/${session.session_id}`);
+    }
+  }, [navigate]);
+
+  // Handle granularity change (also persists to localStorage)
+  const handleGranularityChange = useCallback((newGranularity) => {
+    setGranularity(newGranularity);
+    try {
+      localStorage.setItem(STORAGE_KEY_GRANULARITY, newGranularity);
+    } catch (e) {}
+  }, []);
+
+  // Handle time range change (also persists to localStorage)
+  const handleTimeRangeChange = useCallback((newTimeRange) => {
+    setTimeRange(newTimeRange);
+    try {
+      localStorage.setItem(STORAGE_KEY_TIME_RANGE, String(newTimeRange));
+    } catch (e) {}
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -90,32 +227,36 @@ const ReceiptsView = ({ navigate, params = {} }) => {
     fetchBreakdown();
   }, [timeRange]);
 
-  // Refresh on interval (30 seconds)
+  // Fetch chart data when timeRange or granularity changes
+  useEffect(() => {
+    fetchChartData();
+  }, [timeRange, granularity]);
+
+  // Refresh on interval (30 seconds) - background mode to avoid loading flashes
   useEffect(() => {
     const interval = setInterval(() => {
       fetchOverview();
       fetchAlerts();
       fetchBreakdown();
+      fetchChartData(true); // background = true, no loading state
     }, 30000);
-
     return () => clearInterval(interval);
-  }, [timeRange]);
+  }, [timeRange, granularity]);
 
   return (
     <div className="receipts-view">
       {/* Header */}
       <div className="receipts-header">
         <div className="receipts-header-left">
-          <Icon icon="mdi:receipt-text" width={24} style={{ color: '#34d399' }} />
+          <Icon icon="mdi:receipt-text" width={20} style={{ color: '#00e5ff' }} />
           <h1>Receipts</h1>
           <span className="receipts-subtitle">Cost & Reliability Explorer</span>
         </div>
 
         <div className="receipts-header-right">
-          {/* Time range selector */}
           <select
             value={timeRange}
-            onChange={(e) => setTimeRange(Number(e.target.value))}
+            onChange={(e) => handleTimeRangeChange(Number(e.target.value))}
             className="receipts-time-select"
           >
             <option value={1}>Last 24 Hours</option>
@@ -132,14 +273,14 @@ const ReceiptsView = ({ navigate, params = {} }) => {
           className={`receipts-tab ${activeView === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveView('overview')}
         >
-          <Icon icon="mdi:view-dashboard" width={16} />
+          <Icon icon="mdi:view-dashboard" width={14} />
           <span>Overview</span>
         </button>
         <button
           className={`receipts-tab ${activeView === 'alerts' ? 'active' : ''}`}
           onClick={() => setActiveView('alerts')}
         >
-          <Icon icon="mdi:alert-circle" width={16} />
+          <Icon icon="mdi:alert-circle" width={14} />
           <span>Alerts</span>
           {alertsData.length > 0 && (
             <span className="receipts-tab-badge">{alertsData.length}</span>
@@ -149,7 +290,7 @@ const ReceiptsView = ({ navigate, params = {} }) => {
           className={`receipts-tab ${activeView === 'breakdown' ? 'active' : ''}`}
           onClick={() => setActiveView('breakdown')}
         >
-          <Icon icon="mdi:file-tree" width={16} />
+          <Icon icon="mdi:file-tree" width={14} />
           <span>Context Breakdown</span>
           {breakdownData.length > 0 && (
             <span className="receipts-tab-badge">{breakdownData.length}</span>
@@ -161,7 +302,7 @@ const ReceiptsView = ({ navigate, params = {} }) => {
       <div className="receipts-content">
         {error && (
           <div className="receipts-error">
-            <Icon icon="mdi:alert-circle" width={24} />
+            <Icon icon="mdi:alert-circle" width={20} />
             <div>
               <strong>Error loading data</strong>
               <p>{error}</p>
@@ -171,7 +312,7 @@ const ReceiptsView = ({ navigate, params = {} }) => {
 
         {loading && !overviewData && (
           <div className="receipts-loading">
-            <Icon icon="mdi:loading" className="spin" width={32} />
+            <Icon icon="mdi:loading" className="spin" width={24} />
             <p>Loading receipts data...</p>
           </div>
         )}
@@ -179,7 +320,18 @@ const ReceiptsView = ({ navigate, params = {} }) => {
         {!loading && !error && (
           <>
             {activeView === 'overview' && (
-              <OverviewPanel data={overviewData} />
+              <OverviewPanel
+                data={overviewData}
+                timeSeriesData={timeSeriesData}
+                cascadeData={cascadeData}
+                modelData={modelData}
+                topExpensive={topExpensive}
+                contextEfficiency={contextEfficiency}
+                chartsLoading={chartsLoading}
+                onSessionClick={handleSessionClick}
+                granularity={granularity}
+                onGranularityChange={handleGranularityChange}
+              />
             )}
             {activeView === 'alerts' && (
               <AlertsPanel alerts={alertsData} />

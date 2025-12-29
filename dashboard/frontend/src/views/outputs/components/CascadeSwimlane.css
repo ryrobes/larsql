@@ -1,0 +1,215 @@
+/* ============================================
+   CASCADE SWIMLANE
+   ============================================ */
+
+.cascade-swimlane {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.cascade-swimlane:hover {
+  border-color: var(--color-border-medium);
+}
+
+.cascade-swimlane.expanded {
+  border-color: var(--color-accent-cyan);
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.swimlane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.swimlane-header:hover {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.swimlane-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swimlane-chevron {
+  color: var(--color-text-dim);
+  transition: transform var(--transition-fast);
+}
+
+.cascade-swimlane.expanded .swimlane-chevron {
+  color: var(--color-accent-cyan);
+}
+
+.swimlane-icon {
+  color: var(--color-accent-purple);
+}
+
+.swimlane-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.swimlane-run-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+}
+
+.swimlane-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.swimlane-cost {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-green);
+  font-family: var(--font-mono);
+}
+
+/* ============================================
+   CONTENT
+   ============================================ */
+
+.swimlane-content {
+  padding: 8px 12px 12px;
+}
+
+.cascade-swimlane.expanded .swimlane-content {
+  padding: 0;
+  overflow: visible;
+}
+
+/* ============================================
+   COLLAPSED STATE
+   ============================================ */
+
+.swimlane-collapsed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.swimlane-run-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.run-session {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.run-time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+}
+
+/* Filmstrip */
+.swimlane-filmstrip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.filmstrip-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+/* Stack indicator (shadow layers) */
+.stack-indicator {
+  position: absolute;
+  bottom: -4px;
+  left: 12px;
+  right: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.stack-layer {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  border: 1px solid var(--color-border-dim);
+  border-top: none;
+}
+
+.stack-layer:nth-child(1) {
+  bottom: 4px;
+}
+
+.stack-layer:nth-child(2) {
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+}
+
+.swimlane-empty {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ============================================
+   EXPANDED STATE
+   ============================================ */
+
+.swimlane-expanded {
+  border-top: 1px solid var(--color-border-dim);
+  padding: 12px;
+  height: 500px;
+}
+
+.swimlane-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

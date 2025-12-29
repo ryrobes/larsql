@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
@@ -601,28 +601,6 @@ const ConsoleView = () => {
     menuTabs: ['filterMenuTab', 'generalMenuTab', 'columnsMenuTab'], // Enable column hiding
   }), []);
 
-  // Context menu for column visibility
-  const getContextMenuItems = useCallback((params) => {
-    const result = [
-      {
-        name: 'Show/Hide Columns',
-        icon: '<span class="ag-icon ag-icon-columns"></span>',
-        subMenu: params.api.getColumns().map(col => ({
-          name: col.getColDef().headerName || col.getColId(),
-          checked: col.isVisible(),
-          action: () => {
-            params.api.setColumnsVisible([col.getColId()], !col.isVisible());
-          },
-        })),
-      },
-      'separator',
-      'copy',
-      'copyWithHeaders',
-      'separator',
-      'export',
-    ];
-    return result;
-  }, []);
 
   // Columns sized on first render - flex handles responsive sizing automatically
   const onFirstDataRendered = (params) => {
@@ -726,7 +704,6 @@ const ConsoleView = () => {
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               getRowId={(params) => params.data.session_id} // Stable row tracking
-              getContextMenuItems={getContextMenuItems} // Custom context menu
               domLayout="normal"
               suppressCellFocus={true}
               suppressMovableColumns={false}
@@ -738,7 +715,6 @@ const ConsoleView = () => {
               onFirstDataRendered={onFirstDataRendered}
               rowClass="console-grid-row-clickable"
               tooltipShowDelay={500}
-              preventDefaultOnContextMenu={true} // Prevent browser context menu
             />
           </div>
         )}

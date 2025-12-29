@@ -37,6 +37,7 @@
   --color-accent-pink: #ff006e;          /* Error/branch accent */
   --color-accent-green: #34d399;         /* Success accent */
   --color-accent-yellow: #fbbf24;        /* Warning/running accent */
+  --color-accent-orange: #ff9500;        /* Tool call accent */
   --color-accent-red: #f87171;           /* Error accent */
   --color-accent-blue: #60a5fa;          /* Info accent */
   --color-accent-teal: #14b8a6;          /* Teal variant */

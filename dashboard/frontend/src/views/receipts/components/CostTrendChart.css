@@ -1,0 +1,116 @@
+/* ========================================
+   CostTrendChart Component Styles
+   ======================================== */
+
+.cost-trend-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Chart Container */
+.cost-trend-chart .chart-container {
+  width: 100%;
+  height: 120px;
+}
+
+/* Loading/Empty States */
+.cost-trend-chart.loading,
+.cost-trend-chart.empty {
+  min-height: 120px;
+}
+
+.cost-trend-chart .chart-loading,
+.cost-trend-chart .chart-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #475569;
+  font-size: 11px;
+  min-height: 120px;
+}
+
+.cost-trend-chart .chart-loading svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Legend - minimal inline */
+.cost-trend-chart .chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cost-trend-chart .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.cost-trend-chart .legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.cost-trend-chart .legend-line {
+  width: 10px;
+  height: 1px;
+  background: #475569;
+}
+
+/* Tooltip */
+.cost-trend-tooltip {
+  background: rgba(5, 5, 8, 0.95);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  padding: 8px 10px;
+  font-size: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.cost-trend-tooltip .tooltip-header {
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+  font-size: 11px;
+}
+
+.cost-trend-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.cost-trend-tooltip .tooltip-row span:first-child {
+  color: #64748b;
+}
+
+.cost-trend-tooltip .tooltip-row span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  color: #f1f5f9;
+}
+
+.cost-trend-tooltip .tooltip-row.highlight span:last-child {
+  color: #00e5ff;
+  font-weight: 600;
+}
+
+.cost-trend-tooltip .tooltip-row span.context {
+  color: #a78bfa;
+}
+
+.cost-trend-tooltip .tooltip-row span.new {
+  color: #34d399;
+}

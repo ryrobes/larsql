@@ -208,7 +208,10 @@ def extract_image_paths_from_tool_result(result: Any) -> list:
     """
     Extract image file paths from tool result.
 
-    Looks for {"images": ["/path/to/file.png", ...]} pattern.
+    Looks for:
+    - {"images": ["/path/to/file.png", ...]} pattern
+    - {"_screenshot_metadata": {"path": "/path/to/file.png", "url": "..."}} pattern
+      (used by request_decision tool for automatic screenshots)
 
     Args:
         result: Tool result (can be dict, str, etc.)
@@ -216,14 +219,30 @@ def extract_image_paths_from_tool_result(result: Any) -> list:
     Returns:
         List of image file paths (empty if none found)
     """
-    if isinstance(result, dict) and "images" in result:
-        images = result["images"]
-        if isinstance(images, list):
-            return [str(img) for img in images]
-        elif isinstance(images, str):
-            return [images]
+    if not isinstance(result, dict):
+        return []
 
-    return []
+    images = []
+
+    # Check for standard "images" key
+    if "images" in result:
+        img_data = result["images"]
+        if isinstance(img_data, list):
+            images.extend([str(img) for img in img_data])
+        elif isinstance(img_data, str):
+            images.append(img_data)
+
+    # Check for _screenshot_metadata (from request_decision tool)
+    if "_screenshot_metadata" in result:
+        meta = result["_screenshot_metadata"]
+        if isinstance(meta, dict):
+            # Prefer URL for API access, fall back to path
+            if meta.get("url"):
+                images.append(meta["url"])
+            elif meta.get("path"):
+                images.append(meta["path"])
+
+    return images
 
 
 def extract_audio_paths_from_tool_result(result: Any) -> list:

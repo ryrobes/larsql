@@ -76,6 +76,7 @@ from studio_api import studio_bp
 from receipts_api import receipts_bp
 from budget_api import budget_bp
 from spec_api import spec_bp
+from outputs_api import outputs_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -92,6 +93,7 @@ app.register_blueprint(budget_bp)
 app.register_blueprint(studio_bp)
 app.register_blueprint(receipts_bp)
 app.register_blueprint(spec_bp)
+app.register_blueprint(outputs_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
@@ -6100,6 +6102,14 @@ if __name__ == '__main__':
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
     print(f"   Package Examples Dir: {PACKAGE_EXAMPLES_DIR}")
+    print()
+
+    # Run database housekeeping (schema creation, migrations) ONCE at startup
+    # This ensures cascade runs via API are fast (they skip housekeeping)
+    print("🔧 Running database housekeeping...")
+    from rvbbit.db_adapter import ensure_housekeeping
+    ensure_housekeeping()
+    print("✅ Database housekeeping complete")
     print()
 
     # Start connection stats logger in background

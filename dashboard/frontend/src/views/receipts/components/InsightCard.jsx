@@ -1,38 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { Icon } from '@iconify/react';
-import Card from '../../../components/Card/Card';
 import Badge from '../../../components/Badge/Badge';
-import Button from '../../../components/Button/Button';
 import useNavigationStore from '../../../stores/navigationStore';
 import './InsightCard.css';
 
 /**
- * InsightCard - Displays a human-readable insight with inline context breakdown
+ * InsightCard - Flat, inline insight display
  * For context_hotspot warnings, shows the actual message breakdown inline
- *
- * @param {Object} insight - Insight object from backend
  */
 const InsightCard = ({ insight }) => {
   const navigate = useNavigationStore((state) => state.navigate);
   const [contextData, setContextData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const severityConfig = {
-    critical: { icon: 'mdi:alert-circle', color: '#ff006e', label: 'CRITICAL' },
-    warning: { icon: 'mdi:alert', color: '#fbbf24', label: 'WARNING' },
-    major: { icon: 'mdi:alert', color: '#fbbf24', label: 'MAJOR' },
-    info: { icon: 'mdi:information', color: '#60a5fa', label: 'INFO' },
+    critical: { icon: 'mdi:alert-circle', color: '#ff006e' },
+    warning: { icon: 'mdi:alert', color: '#fbbf24' },
+    major: { icon: 'mdi:alert', color: '#fbbf24' },
+    info: { icon: 'mdi:information', color: '#60a5fa' },
   };
 
   const config = severityConfig[insight.severity] || severityConfig.info;
 
   // For context_hotspot warnings, fetch the breakdown data
   useEffect(() => {
-    if (insight.type === 'context_hotspot' && insight.action?.cell_name) {
+    if (insight.type === 'context_hotspot' && insight.action?.cell_name && expanded) {
       const fetchContextBreakdown = async () => {
         setLoading(true);
         try {
-          // Extract cascade_id from message or action
           const cascadeMatch = insight.message.match(/in '([^']+)'/);
           const cascadeId = cascadeMatch ? cascadeMatch[1] : null;
 
@@ -51,7 +47,6 @@ const InsightCard = ({ insight }) => {
           const data = await res.json();
 
           if (data.breakdown && data.breakdown.length > 0) {
-            // Take the first matching cell
             setContextData(data.breakdown[0]);
           }
         } catch (err) {
@@ -63,16 +58,10 @@ const InsightCard = ({ insight }) => {
 
       fetchContextBreakdown();
     }
-  }, [insight]);
+  }, [insight, expanded]);
 
   const handleViewSession = () => {
-    if (insight.action?.type === 'view_session') {
-      const params = {};
-      if (insight.action.cascade_id) params.cascade = insight.action.cascade_id;
-      if (insight.action.session_id) params.session = insight.action.session_id;
-      navigate('studio', params);
-    } else if (insight.action?.type === 'view_context') {
-      // Navigate to Studio with this session
+    if (insight.action?.type === 'view_session' || insight.action?.type === 'view_context') {
       const params = {};
       if (insight.action.cascade_id) params.cascade = insight.action.cascade_id;
       if (insight.action.session_id) params.session = insight.action.session_id;
@@ -80,156 +69,69 @@ const InsightCard = ({ insight }) => {
     }
   };
 
+  const hasExpandableContent = insight.type === 'context_hotspot';
+
   return (
-    <Card
-      variant="default"
-      padding="md"
-      className={`insight-card insight-card-${insight.severity}`}
-    >
-      <div className="insight-card-header">
-        <Icon icon={config.icon} width={18} style={{ color: config.color }} />
-        <span className="insight-card-label" style={{ color: config.color }}>
-          {config.label}
-        </span>
-        {insight.type && (
-          <span className="insight-card-type">{insight.type.replace(/_/g, ' ')}</span>
+    <div className={`insight-card insight-${insight.severity}`}>
+      <div className="insight-main" onClick={hasExpandableContent ? () => setExpanded(!expanded) : undefined}>
+        <Icon icon={config.icon} width={12} style={{ color: config.color }} className="insight-icon" />
+        <span className="insight-message">{insight.message}</span>
+        {insight.action && (
+          <button className="insight-action" onClick={(e) => { e.stopPropagation(); handleViewSession(); }}>
+            <Icon icon="mdi:arrow-right" width={12} />
+          </button>
+        )}
+        {hasExpandableContent && (
+          <Icon
+            icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+            width={14}
+            className="insight-expand"
+          />
         )}
       </div>
 
-      <div className="insight-card-message">
-        {insight.message}
-      </div>
-
-      {/* Inline Context Breakdown for context_hotspot warnings */}
-      {insight.type === 'context_hotspot' && contextData && (
+      {/* Expanded Context Breakdown */}
+      {expanded && insight.type === 'context_hotspot' && (
         <div className="insight-context-breakdown">
-          <div className="insight-context-header">
-            <Icon icon="mdi:file-tree" width={14} />
-            <span>Context Messages</span>
-            {contextData.session_id && (
-              <>
-                <span style={{ color: '#475569' }}>•</span>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  color: '#64748b'
-                }}>
-                  {contextData.session_id}
-                </span>
-              </>
-            )}
-            {contextData.model && (
-              <>
-                <span style={{ color: '#475569' }}>•</span>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  color: 'var(--color-accent-cyan)'
-                }}>
-                  {contextData.model}
-                </span>
-              </>
-            )}
-            {contextData.candidate_index !== null && contextData.candidate_index !== undefined && (
-              <Badge variant="label" color="purple" size="sm">
-                Candidate {contextData.candidate_index}
-              </Badge>
-            )}
-            <Badge
-              variant="count"
-              color="yellow"
-              size="sm"
-            >
-              {contextData.messages.length} messages
-            </Badge>
-          </div>
-
-          <div className="insight-context-messages">
-            {contextData.messages.map((msg, idx) => (
-              <div key={idx} className="insight-context-message">
-                <div className="insight-context-message-info">
-                  <span className="insight-context-message-hash" title={msg.hash}>
-                    {msg.hash.substring(0, 8)}...
-                  </span>
-                  <span className="insight-context-message-source">
-                    from {msg.source_cell}
-                  </span>
-                  <Badge
-                    variant="label"
-                    color={msg.role === 'system' ? 'yellow' : msg.role === 'user' ? 'blue' : 'purple'}
-                    size="sm"
-                  >
-                    {msg.role}
-                  </Badge>
-                </div>
-                <div className="insight-context-message-stats">
-                  <span className="insight-context-message-tokens">
-                    {msg.tokens.toLocaleString()} tokens
-                  </span>
-                  <span className="insight-context-message-cost">
-                    ${msg.cost.toFixed(6)}
-                  </span>
-                  <div className="insight-context-message-pct">
-                    <div
-                      className="insight-context-message-pct-bar"
-                      style={{
+          {loading && (
+            <div className="insight-context-loading">
+              <Icon icon="mdi:loading" className="spin" width={14} />
+              <span>Loading breakdown...</span>
+            </div>
+          )}
+          {contextData && (
+            <>
+              <div className="insight-context-header">
+                <span className="insight-context-session">{contextData.session_id}</span>
+                <span className="insight-context-model">{contextData.model}</span>
+                {contextData.candidate_index !== null && (
+                  <Badge variant="label" color="purple" size="sm">#{contextData.candidate_index}</Badge>
+                )}
+              </div>
+              <div className="insight-context-messages">
+                {contextData.messages.map((msg, idx) => (
+                  <div key={idx} className="insight-context-message">
+                    <span className="msg-hash">{msg.hash.substring(0, 8)}</span>
+                    <span className="msg-source">{msg.source_cell}</span>
+                    <span className={`msg-role msg-role-${msg.role}`}>{msg.role}</span>
+                    <span className="msg-tokens">{msg.tokens.toLocaleString()}</span>
+                    <span className="msg-cost">${msg.cost.toFixed(6)}</span>
+                    <div className="msg-pct">
+                      <div className="msg-pct-bar" style={{
                         width: `${Math.min(msg.pct, 100)}%`,
                         backgroundColor: msg.pct > 50 ? '#ff006e' : msg.pct > 20 ? '#fbbf24' : '#34d399'
-                      }}
-                    />
-                    <span>{Math.min(msg.pct, 100).toFixed(1)}%</span>
+                      }} />
+                      <span>{msg.pct.toFixed(1)}%</span>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       )}
-
-      {/* Action button for non-context-hotspot insights */}
-      {insight.action && insight.type !== 'context_hotspot' && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleViewSession}
-          className="insight-card-action"
-        >
-          {insight.action.type === 'view_session' && (
-            <>
-              View Session
-              {insight.action.session_id && (
-                <span style={{
-                  marginLeft: 6,
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  opacity: 0.7
-                }}>
-                  {insight.action.session_id}
-                </span>
-              )}
-            </>
-          )}
-          {insight.action.type === 'view_context' && (
-            <>
-              View in Studio
-              {insight.action.session_id && (
-                <span style={{
-                  marginLeft: 6,
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  opacity: 0.7
-                }}>
-                  {insight.action.session_id}
-                </span>
-              )}
-            </>
-          )}
-          {!insight.action.type && 'View Details'}
-          <Icon icon="mdi:arrow-right" width={14} style={{ marginLeft: 4 }} />
-        </Button>
-      )}
-    </Card>
+    </div>
   );
 };
 
-export default InsightCard;
+export default memo(InsightCard);

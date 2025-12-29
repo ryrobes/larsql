@@ -1324,10 +1324,9 @@ def cmd_db_status(args):
 
 
 def cmd_db_init(args):
-    """Initialize ClickHouse schema (create tables if needed)."""
+    """Initialize ClickHouse schema (create tables and run migrations)."""
     from rvbbit.config import get_clickhouse_url
-    from rvbbit.db_adapter import get_db
-    from rvbbit.schema import ensure_schema
+    from rvbbit.db_adapter import ensure_housekeeping
 
     print()
     print("="*60)
@@ -1338,11 +1337,10 @@ def cmd_db_init(args):
     print()
 
     try:
-        db = get_db()
-        print("Creating/verifying tables...")
+        print("Creating database, tables, and running migrations...")
         print()
 
-        ensure_schema(db)
+        ensure_housekeeping()
 
         print()
         print("✓ Schema initialization complete!")

@@ -1,0 +1,224 @@
+/* ============================================
+   LINKED SCROLL GRID
+   ============================================ */
+
+.linked-scroll-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.linked-scroll-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--color-text-dim);
+  font-size: var(--font-size-sm);
+}
+
+/* ============================================
+   HEADER ROW
+   ============================================ */
+
+.linked-scroll-header {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-border-dim);
+  background: rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.header-time-col {
+  width: 70px;
+  min-width: 70px;
+  padding: 8px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-right: 1px solid var(--color-border-dim);
+  display: flex;
+  align-items: center;
+}
+
+.header-cells-row {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow: hidden;
+}
+
+.header-cell {
+  min-width: 230px;
+  max-width: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.header-cell-index {
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-cyan);
+  background: rgba(0, 229, 255, 0.1);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.header-cell-name {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.header-session-col {
+  width: 100px;
+  min-width: 100px;
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-left: 1px solid var(--color-border-dim);
+  display: flex;
+  align-items: center;
+}
+
+/* ============================================
+   SCROLLABLE ROWS
+   ============================================ */
+
+.linked-scroll-rows {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.linked-scroll-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 220px;
+  border-bottom: 1px solid var(--color-border-dim);
+  transition: background var(--transition-fast);
+}
+
+.linked-scroll-row:hover {
+  background: rgba(0, 229, 255, 0.02);
+}
+
+.linked-scroll-row:last-child {
+  border-bottom: none;
+}
+
+/* Time column */
+.row-time-col {
+  width: 70px;
+  min-width: 70px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  border-right: 1px solid var(--color-border-dim);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.row-time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.row-cost {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--color-accent-green);
+}
+
+/* Cells */
+.row-cells {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  padding: 12px 8px;
+  min-width: min-content;
+}
+
+.row-cell {
+  min-width: 230px;
+  max-width: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 8px 4px;
+}
+
+.row-cell-empty {
+  min-width: 230px;
+  max-width: 230px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+  opacity: 0.3;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
+  margin: 8px 4px;
+}
+
+/* Session column */
+.row-session-col {
+  width: 100px;
+  min-width: 100px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--color-border-dim);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.row-session {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--transition-fast);
+}
+
+.row-session:hover {
+  color: var(--color-accent-cyan);
+  text-decoration: underline;
+}
+
+/* ============================================
+   SCROLL INDICATOR
+   ============================================ */
+
+.linked-scroll-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  border-top: 1px solid var(--color-border-dim);
+  background: rgba(0, 0, 0, 0.2);
+}

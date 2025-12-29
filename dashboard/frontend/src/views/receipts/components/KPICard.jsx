@@ -1,46 +1,33 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Icon } from '@iconify/react';
-import Card from '../../../components/Card/Card';
 import './KPICard.css';
 
 /**
- * KPICard - Displays a single metric with trend indicator
- * Uses Windlass Card component with custom styling
- *
- * @param {string} title - Metric name
- * @param {string|number} value - Metric value
- * @param {string} subtitle - Optional subtitle (e.g., "sessions")
- * @param {number} trend - Percentage change (positive/negative)
- * @param {string} icon - Iconify icon ID
- * @param {string} color - Accent color for icon and value
+ * KPICard - Flat, inline metric display
+ * Data-dense design without card wrapper
  */
 const KPICard = ({ title, value, subtitle, trend, icon, color = '#00e5ff' }) => {
   const trendColor = trend > 0 ? '#ff006e' : trend < 0 ? '#34d399' : '#64748b';
   const trendIcon = trend > 0 ? 'mdi:trending-up' : 'mdi:trending-down';
 
   return (
-    <Card variant="default" padding="md" className="kpi-card">
-      <div className="kpi-card-header">
-        <Icon icon={icon} width={20} style={{ color }} />
-        <span className="kpi-card-title">{title}</span>
+    <div className="kpi-card">
+      <div className="kpi-icon">
+        <Icon icon={icon} width={14} style={{ color: '#475569' }} />
       </div>
-
-      <div className="kpi-card-value" style={{ color }}>
-        {value}
+      <div className="kpi-content">
+        <span className="kpi-label">{title}</span>
+        <span className="kpi-value" style={{ color }}>{value}</span>
+        {subtitle && <span className="kpi-unit">{subtitle}</span>}
       </div>
-
-      {subtitle && (
-        <div className="kpi-card-subtitle">{subtitle}</div>
-      )}
-
       {trend !== undefined && trend !== 0 && (
-        <div className="kpi-card-trend" style={{ color: trendColor }}>
-          <Icon icon={trendIcon} width={14} />
-          <span>{Math.abs(trend).toFixed(1)}% vs prev</span>
+        <div className="kpi-trend" style={{ color: trendColor }}>
+          <Icon icon={trendIcon} width={12} />
+          <span>{Math.abs(trend).toFixed(0)}%</span>
         </div>
       )}
-    </Card>
+    </div>
   );
 };
 
-export default KPICard;
+export default memo(KPICard);

@@ -23,6 +23,8 @@ import requests
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
+from .content_classifier import classify_content
+
 
 # ============================================================================
 # Content Identity Functions
@@ -414,6 +416,15 @@ class UnifiedLogger:
         context_hashes = extract_context_hashes(full_request)
         estimated_tokens_val = estimate_tokens(content)
 
+        # Classify content type for filtering and specialized rendering
+        content_type = classify_content(
+            content=content,
+            metadata=metadata,
+            images=image_paths,
+            tool_calls=tool_calls,
+            role=role
+        )
+
         # JSON serializer with fallback
         def safe_json(obj):
             if obj is None:
@@ -522,7 +533,10 @@ class UnifiedLogger:
             "callout_name": callout_name,
 
             # Metadata
-            "metadata_json": safe_json(metadata)
+            "metadata_json": safe_json(metadata),
+
+            # Content classification (for filtering and rendering)
+            "content_type": content_type
         }
 
         # INSERT immediately to ClickHouse (no buffering for snappy UI)

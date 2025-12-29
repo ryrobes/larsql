@@ -1,12 +1,23 @@
 /* ========================================
    ContextBreakdownPanel Component Styles
+   Clean black aesthetic with full drill-down
    ======================================== */
 
+/* Container with sidebar */
+.context-breakdown-panel-container {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Main panel area */
 .context-breakdown-panel {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 16px;
+  overflow: auto;
 }
 
 /* Header */
@@ -17,335 +28,668 @@
 }
 
 .context-breakdown-header h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: #f1f5f9;
   margin: 0;
 }
 
 .context-breakdown-count {
   margin-left: auto;
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: 11px;
+  color: #64748b;
   background: rgba(100, 116, 139, 0.2);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 3px;
 }
 
-/* Empty State */
-.context-breakdown-empty {
+/* Loading State */
+.context-breakdown-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.context-breakdown-loading svg.spin,
+.cells-loading svg.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Error State */
+.context-breakdown-error {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
+  text-align: center;
+}
+
+.context-breakdown-error .error-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f87171;
+}
+
+.context-breakdown-error .error-message {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Empty State */
+.context-breakdown-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 60px 40px;
   text-align: center;
 }
 
-.context-breakdown-empty p {
-  margin: 0;
-  font-size: 16px;
+.context-breakdown-empty .empty-title {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: #94a3b8;
 }
 
-.context-breakdown-empty span {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  max-width: 500px;
+.context-breakdown-empty .empty-message {
+  font-size: 12px;
+  color: #64748b;
+  max-width: 400px;
 }
 
-/* Session List */
-.context-breakdown-sessions {
+/* Cascades container */
+.context-breakdown-cascades {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 1px;
 }
 
-.context-breakdown-session {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* ========================================
+   Expand Indicator (CSS-only triangle)
+   ======================================== */
+
+.expand-indicator {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent #475569;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
-/* Session Header */
-.context-breakdown-session-header {
+.expand-indicator.expanded {
+  transform: rotate(90deg);
+}
+
+/* ========================================
+   LEVEL 1: Cascade Rollup Row
+   ======================================== */
+
+.cascade-group {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.cascade-rollup-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: rgba(0, 229, 255, 0.05);
-  border: 1px solid rgba(0, 229, 255, 0.2);
-  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  background: rgba(0, 0, 0, 0.3);
 }
 
-.context-breakdown-session-left {
+.cascade-rollup-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cascade-rollup-row.expanded {
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+.cascade-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.context-breakdown-session-time {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
+.cascade-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
 }
 
-.context-breakdown-session-id {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
+.cascade-runs {
+  font-size: 10px;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.15);
+  padding: 2px 6px;
+  border-radius: 3px;
 }
 
-.context-breakdown-session-right {
+.cascade-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
-.context-breakdown-session-cells,
-.context-breakdown-session-cost {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.context-breakdown-session-cost {
-  font-family: var(--font-mono);
-  color: #34d399;
-  font-weight: 600;
-  min-width: 90px;
-  text-align: right;
-}
-
-/* Cells within session */
-.context-breakdown-cells {
+.cascade-stat {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-left: 20px;
+  align-items: flex-end;
+  gap: 1px;
 }
 
-.context-breakdown-cell {
-  overflow: hidden;
+.cascade-stat.efficiency {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
-/* Cell Header (simplified, no click) */
-.context-breakdown-cell-header-simple {
+.cascade-stat .stat-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+}
+
+.cascade-stat .stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cascade-stat .stat-value.cost {
+  color: #34d399;
+}
+
+.cascade-stat .stat-value.wasted {
+  color: #94a3b8;
+}
+
+.cascade-stat .stat-value.wasted.high {
+  color: #f87171;
+}
+
+.analysis-coverage {
+  font-size: 9px;
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* ========================================
+   LEVEL 2: Session Headers
+   ======================================== */
+
+.cascade-sessions {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.session-group {
+  border-bottom: 1px solid rgba(100, 116, 139, 0.06);
+}
+
+.session-group:last-child {
+  border-bottom: none;
+}
+
+.session-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background-color: rgba(0, 0, 0, 0.2);
-  border-bottom: 1px solid var(--color-border-dim);
+  padding: 8px 14px 8px 24px;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.context-breakdown-cell-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
+.session-header:hover {
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.context-breakdown-cell-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.session-header.expanded {
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.08);
 }
 
-.context-breakdown-cell-title {
+.session-left {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.context-breakdown-cell-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  font-family: var(--font-mono);
-}
-
-.context-breakdown-cascade-name {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.context-breakdown-cell-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  flex-wrap: wrap;
-}
-
-.context-breakdown-cell-model {
-  font-family: var(--font-mono);
+.session-time {
   font-size: 11px;
-  color: var(--color-accent-cyan);
+  color: #94a3b8;
 }
 
-/* Cell Right Side */
-.context-breakdown-cell-right {
+.session-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.session-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.context-breakdown-cell-cost {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
+.session-cells {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.session-cost {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
   color: #34d399;
-  min-width: 90px;
+  min-width: 60px;
   text-align: right;
 }
 
-.context-breakdown-view-btn {
-  padding: 6px;
+.session-relevance {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.session-relevance span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.session-not-analyzed {
+  font-size: 9px;
+  color: #475569;
+  font-style: italic;
+}
+
+.view-session-btn {
+  padding: 3px;
   background: transparent;
-  border: 1px solid var(--color-border-dim);
-  border-radius: 4px;
-  color: var(--color-text-muted);
+  border: 1px solid rgba(100, 116, 139, 0.15);
+  border-radius: 2px;
+  color: #64748b;
   cursor: pointer;
-  transition: var(--transition-normal);
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.context-breakdown-view-btn:hover {
-  background: rgba(0, 229, 255, 0.1);
-  border-color: var(--color-accent-cyan);
-  color: var(--color-accent-cyan);
+.view-session-btn:hover {
+  background: rgba(100, 116, 139, 0.15);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
 }
 
-/* Messages Table */
-.context-breakdown-messages {
-  border-top: 1px solid var(--color-border-dim);
-  padding: 12px 16px;
+/* ========================================
+   LEVEL 3: Cell Blocks
+   ======================================== */
+
+.session-cells-container {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px 10px 36px;
+}
+
+.cells-loading,
+.cells-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  color: #475569;
+  font-size: 11px;
+}
+
+/* ========================================
+   Candidate Group (multiple candidates)
+   ======================================== */
+
+.candidate-group {
+  margin-bottom: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.candidate-group:last-child {
+  margin-bottom: 0;
+}
+
+.candidate-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
   background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.15);
 }
 
-.context-breakdown-messages-header {
-  display: grid;
-  grid-template-columns: 100px 120px 80px 90px 100px 1fr 140px;
-  gap: 12px;
-  padding: 8px 12px;
+.candidate-group-name {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--color-border-dim);
+  color: #fbbf24;
+}
+
+.candidate-count {
+  font-size: 9px;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.candidate-group-cells {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Single cell block */
+.cell-block {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
   margin-bottom: 8px;
 }
 
-.context-breakdown-message {
-  display: grid;
-  grid-template-columns: 100px 120px 80px 90px 100px 1fr 140px;
-  gap: 12px;
-  padding: 10px 12px;
+.cell-block:last-child {
+  margin-bottom: 0;
+}
+
+/* Winner cell styling */
+.cell-block.winner {
+  border-left: 2px solid #34d399;
+  background: rgba(52, 211, 153, 0.05);
+}
+
+.candidate-group-cells .cell-block {
+  margin-bottom: 0;
+}
+
+.cell-header {
+  display: flex;
   align-items: center;
-  border-radius: 4px;
-  transition: var(--transition-normal);
-  font-size: 13px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.08);
 }
 
-.context-breakdown-message:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.context-breakdown-message-hash {
-  font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.context-breakdown-message-source {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.context-breakdown-message-tokens,
-.context-breakdown-message-cost {
-  font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  text-align: right;
-}
-
-/* Percentage Bar */
-.context-breakdown-message-pct {
+.cell-left {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.context-breakdown-message-pct-bar {
-  height: 6px;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-  min-width: 2px;
+.cell-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f1f5f9;
 }
 
-.context-breakdown-message-pct span {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  min-width: 45px;
+.cell-model {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #a78bfa;
+}
+
+.candidate-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.cell-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cell-cost {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #34d399;
+}
+
+.cell-msgs {
+  font-size: 9px;
+  color: #64748b;
+}
+
+/* ========================================
+   Messages Table
+   ======================================== */
+
+.messages-table {
+  padding: 6px 10px;
+}
+
+.messages-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.08);
+  margin-bottom: 2px;
+}
+
+.messages-header .msg-col {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+}
+
+.message-row {
+  display: flex;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.04);
+}
+
+.message-row:last-child,
+.message-evidence:last-child {
+  border-bottom: none;
+}
+
+.message-row:hover {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* Evidence row under message */
+.message-evidence {
+  padding: 2px 10px 6px 60px;
+  font-size: 9px;
+  color: #64748b;
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.04);
+}
+
+.message-evidence .evidence-label {
+  color: #475569;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 8px;
+}
+
+/* Column widths */
+.msg-col {
+  font-size: 10px;
+}
+
+.msg-col.hash {
+  width: 60px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #64748b;
+}
+
+.msg-col.source {
+  width: 80px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-col.role {
+  width: 70px;
+}
+
+.msg-col.tokens {
+  width: 60px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #94a3b8;
+}
+
+.msg-col.cost {
+  width: 70px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: #34d399;
+}
+
+.msg-col.pct {
+  width: 90px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.msg-col.pct span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #64748b;
+  min-width: 30px;
   text-align: right;
 }
 
-/* Relevance Column */
-.context-breakdown-message-relevance {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
+.msg-col.relevance {
+  flex: 1;
+  min-width: 80px;
 }
 
-.context-breakdown-relevance-display {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Chunky bar chart (10 blocks) */
-.context-breakdown-relevance-bar {
-  display: flex;
-  gap: 2px;
-}
-
-.context-breakdown-bar-block {
-  width: 6px;
-  height: 14px;
+/* Role tags */
+.role-tag {
+  font-size: 9px;
+  padding: 1px 4px;
   border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.role-tag.system {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.role-tag.assistant {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.role-tag.user {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+/* Percentage bar */
+.pct-bar-container {
+  width: 45px;
+  height: 3px;
+  background: rgba(30, 30, 35, 0.6);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.pct-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #a78bfa, #60a5fa);
+  border-radius: 1px;
+}
+
+/* Relevance display */
+.relevance-display {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.relevance-display span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  min-width: 18px;
+}
+
+.not-analyzed {
+  font-size: 10px;
+  color: #3d4451;
+}
+
+/* Relevance bar (10 blocks) */
+.relevance-bar {
+  display: flex;
+  gap: 1px;
+}
+
+.bar-block {
+  border-radius: 1px;
   transition: background-color 0.2s ease;
 }
 
-.context-breakdown-bar-block.filled {
-  /* Color set via inline style based on score */
+.bar-block.empty {
+  background-color: rgba(30, 30, 35, 0.6);
 }
 
-.context-breakdown-bar-block.empty {
-  background-color: #1a1628;
-  opacity: 0.4;
+/* ========================================
+   Responsive adjustments
+   ======================================== */
+
+@media (max-width: 1100px) {
+  .msg-col.source {
+    display: none;
+  }
 }
 
-.context-breakdown-relevance-score {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  min-width: 25px;
-  text-align: right;
-}
+@media (max-width: 900px) {
+  .cascade-stat:not(.efficiency) {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+  }
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .context-breakdown-messages-header,
-  .context-breakdown-message {
-    grid-template-columns: 90px 100px 70px 80px 90px 1fr 120px;
-    gap: 8px;
+  .cascade-stat .stat-label {
+    display: none;
   }
 }

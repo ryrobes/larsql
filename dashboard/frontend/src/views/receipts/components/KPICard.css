@@ -1,51 +1,64 @@
 /* ========================================
    KPICard Component Styles
+   Flat, inline, transparent design
    ======================================== */
 
 .kpi-card {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 220px;
-}
-
-/* Header */
-.kpi-card-header {
-  display: flex;
   align-items: center;
   gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border-left: 2px solid rgba(100, 116, 139, 0.15);
+  flex: 1;
+  min-width: 140px;
 }
 
-.kpi-card-title {
-  font-size: 12px;
+.kpi-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.kpi-content {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kpi-label {
+  font-size: 10px;
   font-weight: 500;
-  color: var(--color-text-muted);
+  color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 
-/* Value */
-.kpi-card-value {
-  font-size: 28px;
-  font-weight: 700;
-  font-family: var(--font-mono);
+.kpi-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1;
-  margin-top: 4px;
 }
 
-/* Subtitle */
-.kpi-card-subtitle {
-  font-size: 11px;
+.kpi-unit {
+  font-size: 10px;
   color: #475569;
-  margin-top: -4px;
 }
 
-/* Trend Indicator */
-.kpi-card-trend {
+.kpi-trend {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 2px;
+  font-size: 10px;
   font-weight: 600;
-  margin-top: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.kpi-trend svg {
+  width: 12px;
+  height: 12px;
 }
